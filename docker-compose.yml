@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: godswar-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-godswar}
+      POSTGRES_USER: ${POSTGRES_USER:-godswar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-godswar_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - godswar-postgres-data:/var/lib/postgresql/data
+      - ./database/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: godswar-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GODSWAR_STORAGE_PROVIDER: postgres
+      GODSWAR_POSTGRES_CONNECTION_STRING: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-godswar};Username=${POSTGRES_USER:-godswar};Password=${POSTGRES_PASSWORD:-godswar_dev_password};Pooling=true"
+      GODSWAR_LOGIN_BIND_HOST: 0.0.0.0
+      GODSWAR_LOGIN_PORT: 5999
+      GODSWAR_GAME_BIND_HOST: 0.0.0.0
+      GODSWAR_GAME_PORT: 7000
+      GODSWAR_GAME_PUBLIC_HOST: ${GODSWAR_GAME_PUBLIC_HOST:-127.1.1.110}
+    ports:
+      - "${GODSWAR_LOGIN_HOST_PORT:-5999}:5999"
+      - "${GODSWAR_GAME_HOST_PORT:-7000}:7000"
+    restart: unless-stopped
+
+volumes:
+  godswar-postgres-data:

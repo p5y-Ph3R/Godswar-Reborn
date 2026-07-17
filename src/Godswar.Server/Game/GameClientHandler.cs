@@ -1,0 +1,1951 @@
+using System.Buffers.Binary;
+using Godswar.Server.Networking;
+using Godswar.Server.Packets;
+using Godswar.Server.Protocol;
+using Godswar.Server.State;
+
+namespace Godswar.Server.Game;
+
+internal sealed class GameClientHandler : IClientHandler
+{
+    private const uint LocalPlayerObjectId = 0x00001448;
+    private const uint HolyStoneArtisanNpcId = 5083;
+    private const int HolyStoneDialogIndex = 30;
+    private const int HolyStoneMenuMount = 101;
+    private const int HolyStoneMenuRemove = 201;
+    private const int HolyStoneMenuDrill = 301;
+    private const int HolyStoneMountSuccess = 800;
+    private const int HolyStoneRemoveSuccess = 1200;
+    private const int HolyStoneInsufficientFunds = 1400;
+    private const int HolyStoneDrillSuccess = 1500;
+    private static readonly bool EnableExperimentalMonsterSpawns = false;
+    private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan LastItemInfoTtl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
+
+    private readonly ClientSession _session;
+    private readonly IGameStore _store;
+    private readonly GameSessionRegistry _registry;
+    private GameAccount? _account;
+    private GameCharacter? _character;
+    private PendingUnequipFollowup? _pendingUnequipFollowup;
+    private PendingItemInfo? _lastItemInfo;
+    private bool _registered;
+    private bool _accountSessionRegistered;
+    private bool _worldPresenceAnnounced;
+    private bool _clientReadyReceived;
+    private bool _postEnterBootstrapSent;
+    private DateTime _lastMonsterSpawnUtc = DateTime.MinValue;
+    private DateTime _lastPositionPersistUtc = DateTime.MinValue;
+    private byte[]? _lastSkillCastPacket;
+    private bool _positionDirty;
+
+    public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
+    {
+        _session = session;
+        _store = store;
+        _registry = registry;
+    }
+
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var packet = await _session.ReadPacketAsync(cancellationToken);
+                if (packet is null)
+                {
+                    return;
+                }
+
+                await HandlePacketAsync(packet, cancellationToken);
+            }
+        }
+        finally
+        {
+            try
+            {
+                await PersistCharacterPositionAsync(force: true, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[world] failed saving final position: {ex.Message}");
+            }
+
+            if (_registered)
+            {
+                try
+                {
+                    await BroadcastPlayerLeaveAsync(CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[world] failed broadcasting leave: {ex.Message}");
+                }
+
+                _registry.Remove(_session);
+                _registered = false;
+            }
+
+            if (_account is not null && _accountSessionRegistered)
+            {
+                var removedCurrentSession = _registry.RemoveAccountSession(_account.Id, _session);
+                if (removedCurrentSession)
+                {
+                    await _store.MarkAccountOfflineAsync(_account.Id, CancellationToken.None);
+                    Console.WriteLine($"[game] marked offline account={_account.Username}");
+                }
+            }
+        }
+    }
+
+    private async Task HandlePacketAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        LogReceived(packet);
+
+        switch (packet.Opcode)
+        {
+            case Opcodes.LoginGameServer:
+                await HandleGameLoginAsync(packet, cancellationToken);
+                break;
+            case Opcodes.RoleInfo:
+                await SendCharacterPreviewAsync(cancellationToken);
+                break;
+            case Opcodes.CreateRole:
+                await HandleCreateRoleAsync(packet, cancellationToken);
+                break;
+            case Opcodes.DeleteRole:
+                await HandleDeleteRoleAsync(packet, cancellationToken);
+                break;
+            case Opcodes.EnterGame:
+                await HandleEnterGameAsync(cancellationToken);
+                break;
+            case Opcodes.Ping:
+                await _session.SendAsync(packet.Buffer, cancellationToken, "PingEcho");
+                break;
+            case Opcodes.UiHeartbeat:
+                await _session.SendAsync(packet.Buffer, cancellationToken, "UiHeartbeatEcho");
+                break;
+            case Opcodes.Talk:
+            case Opcodes.WalkBegin:
+            case Opcodes.WalkEnd:
+            case Opcodes.Walk:
+                if (packet.Opcode == Opcodes.Walk)
+                {
+                    await HandleWalkAsync(packet, cancellationToken);
+                }
+                else if (packet.Opcode == Opcodes.WalkEnd)
+                {
+                    await PersistCharacterPositionAsync(force: true, cancellationToken);
+                }
+
+                await BroadcastToCurrentMapAsync(packet, cancellationToken);
+                break;
+            case Opcodes.SkillCast:
+                await HandleSkillCastAsync(packet, cancellationToken);
+                break;
+            case Opcodes.SkillCastFinishRequest:
+                await HandleSkillCastFinishRequestAsync(packet, cancellationToken);
+                break;
+            case Opcodes.Kitbag:
+            case Opcodes.Storage:
+            case Opcodes.PickupDrops:
+            case Opcodes.MoveItem:
+            case Opcodes.Sell:
+                LogInventoryPacket(packet);
+                break;
+            case Opcodes.UseOrEquip:
+                await HandleUseOrEquipAsync(packet, cancellationToken);
+                break;
+            case Opcodes.BagItemAction:
+                await HandleBagItemActionAsync(packet, cancellationToken);
+                break;
+            case Opcodes.ItemInfoRequest:
+                HandleItemInfoRequest(packet);
+                break;
+            case Opcodes.NpcDialogOpen:
+                await HandleNpcDialogOpenAsync(packet, cancellationToken);
+                break;
+            case Opcodes.NpcDialogPageRequest:
+                HandleNpcDialogPageRequest(packet);
+                break;
+            case Opcodes.NpcFunctionAction:
+                await HandleNpcFunctionActionAsync(packet, cancellationToken);
+                break;
+            case Opcodes.PlayerNameInspectRequest:
+                await _session.SendAsync(packet.Buffer, cancellationToken, "PlayerNameInspectAck");
+                break;
+            case Opcodes.PlayerInspectRequest:
+                await HandlePlayerInspectRequestAsync(packet, cancellationToken);
+                break;
+            case Opcodes.PlayerInspectVisualRequest:
+                await HandlePlayerInspectVisualRequestAsync(packet, cancellationToken);
+                break;
+            case Opcodes.BreakItem:
+                await HandleBreakItemAsync(packet, cancellationToken);
+                break;
+            case Opcodes.StorageItem:
+                await HandleStorageItemAsync(packet, cancellationToken);
+                break;
+            case Opcodes.ServerTimeRequest:
+                await _session.SendAsync(PacketBuilder.ServerTime(), cancellationToken, "ServerTime");
+                break;
+            case Opcodes.ClientReady:
+                _clientReadyReceived = true;
+                Console.WriteLine($"[game] ClientReady character={_character?.Name ?? "<none>"}");
+                break;
+            case Opcodes.PlayerDetailRequest:
+                await HandlePlayerDetailRequestAsync(packet, cancellationToken);
+                break;
+            case Opcodes.PlayerDetailAckRequest:
+                await _session.SendAsync(PacketBuilder.PlayerDetailAck(packet.Payload), cancellationToken, "PlayerDetailAck");
+                break;
+            case Opcodes.GameServerReady:
+            case Opcodes.GameServerInfo:
+            case Opcodes.Forge:
+            case Opcodes.PlayerInspectFollowup:
+            case 10192:
+            case 10357:
+                Console.WriteLine($"[game] ignored {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode}");
+                break;
+            default:
+                Console.WriteLine(
+                    $"[game] unknown {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode} len={packet.Length} {packet.ToHexPreview()}");
+                break;
+        }
+    }
+
+    private async Task HandleGameLoginAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
+        _account = await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
+        _accountSessionRegistered = true;
+
+        var replacedSession = _registry.ReplaceAccountSession(_account.Id, _session);
+        if (replacedSession is not null)
+        {
+            Console.WriteLine($"[game] replacing stale session account={_account.Username}");
+            _registry.Remove(replacedSession);
+            replacedSession.Disconnect();
+        }
+
+        Console.WriteLine($"[game] accepted {_account.Username}");
+
+        await _session.SendAsync(PacketBuilder.AfterLogin(), cancellationToken, "AfterLogin");
+        await SendCharacterPreviewAsync(cancellationToken);
+    }
+
+    private async Task SendCharacterPreviewAsync(CancellationToken cancellationToken)
+    {
+        if (_account is null)
+        {
+            await _session.SendAsync(PacketBuilder.BlankUser(), cancellationToken, "BlankUser");
+            return;
+        }
+
+        _character = await _store.GetFirstCharacterAsync(_account.Id, cancellationToken);
+        await _session.SendAsync(
+            _character is null ? PacketBuilder.BlankUser() : PacketBuilder.CharacterPreview(_character),
+            cancellationToken,
+            _character is null ? "BlankUser" : "CharacterPreview");
+    }
+
+    private async Task HandleCreateRoleAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        _account ??= await _store.LoginOrCreateAccountAsync("player", string.Empty, cancellationToken);
+
+        var payload = packet.Payload;
+        var character = new GameCharacter
+        {
+            Name = PacketText.ReadFixedAscii(payload, 0, 32),
+            Gender = ReadByte(payload, 32, 1),
+            Camp = ReadByte(payload, 33, 1),
+            Profession = ReadByte(payload, 34, 0),
+            Hair = ReadByte(payload, 36, 0),
+            Face = ReadByte(payload, 37, 0),
+            Faith = ReadByte(payload, 70, 1),
+            Level = 1,
+            CurrentHp = 1500,
+            CurrentMp = 177,
+            MaxHp = 1500,
+            MaxMp = 177
+        };
+
+        _character = await _store.CreateCharacterAsync(_account.Id, character, cancellationToken);
+        Console.WriteLine($"[game] created character {_character.Name}");
+        await _session.SendAsync(PacketBuilder.CreateRoleSuccess(), cancellationToken, "CreateRoleSuccess");
+    }
+
+    private async Task HandleDeleteRoleAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
+        _account ??= await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
+
+        var characterName = PacketText.ReadFixedAscii(packet.Payload, 32, 32);
+        await _store.DeleteCharacterAsync(_account.Id, characterName, cancellationToken);
+        _character = null;
+
+        Console.WriteLine($"[game] deleted character {characterName}");
+        await _session.SendAsync(PacketBuilder.DeleteRoleSuccess(), cancellationToken, "DeleteRoleSuccess");
+    }
+
+    private async Task HandleEnterGameAsync(CancellationToken cancellationToken)
+    {
+        if (_account is not null && _character is null)
+        {
+            _character = await _store.GetFirstCharacterAsync(_account.Id, cancellationToken);
+        }
+
+        if (_character is null)
+        {
+            await _session.SendAsync(PacketBuilder.BlankUser(), cancellationToken, "BlankUser");
+            return;
+        }
+
+        await RefreshActiveCharacterStatsAsync("enter", cancellationToken);
+
+        _registry.JoinMap(
+            _session,
+            _account?.Id ?? _character.AccountId,
+            _character,
+            WorldObjectIds.ForPlayer(_character.Id));
+        _registered = true;
+
+        var enterMain = PacketBuilder.EnterMain(_character);
+        var kitBagDetailPages = PacketBuilder.KitBagDetailPages(_character);
+        var kitBagSlotIndexes = PacketBuilder.KitBagSlotIndexes(_character);
+        var skillStates = _account is null
+            ? []
+            : await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var talentStates = _account is null
+            ? []
+            : await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        Console.WriteLine(
+            $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count}");
+
+        await _session.SendAsync(enterMain, cancellationToken, "EnterMain");
+        await _session.SendAsync(PacketBuilder.EnterUiBootstrap(), cancellationToken, "EnterUiBootstrap");
+
+        foreach (var packet in kitBagDetailPages)
+        {
+            await _session.SendAsync(packet, cancellationToken, "KitBagDetail");
+        }
+
+        foreach (var packet in kitBagSlotIndexes)
+        {
+            await _session.SendAsync(packet, cancellationToken, "KitBagSlotIndex");
+        }
+
+        await _session.SendAsync(PacketBuilder.SkillUiState(), cancellationToken, "SkillUiState");
+        await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
+        await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
+    }
+
+    private async Task SendCurrentTalentBootstrapAsync(string reason, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        await SendTalentBootstrapAsync(skillStates, talentStates, reason, cancellationToken);
+    }
+
+    private async Task SendTalentBootstrapAsync(
+        IReadOnlyList<SkillState> skillStates,
+        IReadOnlyList<TalentState> talentStates,
+        string reason,
+        CancellationToken cancellationToken,
+        bool includeTalentRankList = true,
+        bool useCapturedSkillList = false)
+    {
+        Console.WriteLine(
+            $"[talent] bootstrap reason={reason} character={_character?.Name ?? "<none>"} skills={skillStates.Count} talents={talentStates.Count} points={_character?.TalentPoints ?? 0} includeRanks={includeTalentRankList} capturedSkillList={useCapturedSkillList}");
+
+        var skillList = useCapturedSkillList
+            ? PacketBuilder.SkillListBootstrap()
+            : PacketBuilder.SkillList(skillStates);
+        if (skillList.Length > 0)
+        {
+            await _session.SendAsync(skillList, cancellationToken, "SkillList");
+        }
+
+        if (!includeTalentRankList)
+        {
+            return;
+        }
+
+        var talentRankList = PacketBuilder.TalentRankList(talentStates);
+        if (talentRankList.Length > 0)
+        {
+            await _session.SendAsync(talentRankList, cancellationToken, "TalentRankList");
+        }
+
+        var talentSkillUnlockList = PacketBuilder.TalentSkillUnlockList(skillStates);
+        if (talentSkillUnlockList.Length > 0)
+        {
+            await _session.SendAsync(talentSkillUnlockList, cancellationToken, "TalentSkillUnlockList");
+        }
+    }
+
+    private async Task SendTalentRankPacketsAsync(
+        IReadOnlyList<SkillState> skillStates,
+        IReadOnlyList<TalentState> talentStates,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        Console.WriteLine(
+            $"[talent] rank-list reason={reason} character={_character?.Name ?? "<none>"} talents={talentStates.Count} points={_character?.TalentPoints ?? 0}");
+
+        var talentRankList = PacketBuilder.TalentRankList(talentStates);
+        if (talentRankList.Length > 0)
+        {
+            await _session.SendAsync(talentRankList, cancellationToken, "TalentRankList");
+        }
+
+        var talentSkillUnlockList = PacketBuilder.TalentSkillUnlockList(skillStates);
+        if (talentSkillUnlockList.Length > 0)
+        {
+            await _session.SendAsync(talentSkillUnlockList, cancellationToken, "TalentSkillUnlockList");
+        }
+    }
+
+    private async Task SendMapNpcsAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[npc] ignored ClientReady: no active character");
+            return;
+        }
+
+        var capturedSpawns = await _store.GetCapturedNpcSpawnsAsync(_character.CurrentMap, cancellationToken);
+        var packet = capturedSpawns.Count == 0
+            ? PacketBuilder.CityNpcFallback(_character)
+            : PacketBuilder.CapturedNpcSpawns(capturedSpawns);
+        var source = capturedSpawns.Count == 0 ? "fallback" : "captured";
+        var count = capturedSpawns.Count == 0
+            ? PacketBuilder.CountCityNpcSpawnPackets(packet)
+            : capturedSpawns.Count;
+
+        if (packet.Length > 0)
+        {
+            Console.WriteLine($"[npc] sending {source} NPC stream character={_character.Name} map={_character.CurrentMap} count={count} bytes={packet.Length}");
+            await _session.SendAsync(packet, cancellationToken, "CityNpcSpawns", framed: false);
+        }
+        else
+        {
+            Console.WriteLine($"[npc] no NPC stream available character={_character.Name} map={_character.CurrentMap}");
+        }
+
+        await SendCapturedMonstersAsync(cancellationToken);
+        await SendMapPlayersAsync(cancellationToken);
+
+        if (EnableExperimentalMonsterSpawns)
+        {
+            await SendNearbyMonstersAsync(cancellationToken);
+        }
+        else
+        {
+            Console.WriteLine($"[mob] skipped experimental monster spawns character={_character.Name} map={_character.CurrentMap}");
+        }
+    }
+
+    private async Task HandleNpcDialogOpenAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (packet.Payload.Length < 4)
+        {
+            Console.WriteLine("[npc] dialog open ignored: payload too short");
+            return;
+        }
+
+        var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
+        if (npcId != HolyStoneArtisanNpcId)
+        {
+            Console.WriteLine($"[npc] dialog open ignored: npc={npcId}");
+            return;
+        }
+
+        var scriptKey = _character?.CurrentMap == 1 ? "Athens_086" : "Sparta_086";
+        await _session.SendAsync(
+            PacketBuilder.NpcDialogOpenAck(npcId, HolyStoneDialogIndex, scriptKey),
+            cancellationToken,
+            "NpcDialogOpenAck");
+        Console.WriteLine($"[holy-stone] dialog open npc={npcId} script={scriptKey}");
+    }
+
+    private void HandleNpcDialogPageRequest(GamePacket packet)
+    {
+        if (packet.Payload.Length < 4)
+        {
+            Console.WriteLine("[npc] page request ignored: payload too short");
+            return;
+        }
+
+        var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
+        Console.WriteLine($"[npc] page request npc={npcId}");
+    }
+
+    private async Task HandleNpcFunctionActionAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[holy-stone] action ignored: no active character");
+            return;
+        }
+
+        if (!TryReadNpcFunctionAction(packet.Payload, out var npcId, out var dialogIndex, out var subId, out var args))
+        {
+            Console.WriteLine("[holy-stone] action ignored: payload does not match captured NPC function shape");
+            return;
+        }
+
+        if (npcId != HolyStoneArtisanNpcId)
+        {
+            Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
+            return;
+        }
+
+        Console.WriteLine(
+            $"[holy-stone] action npc={npcId} dialog={dialogIndex} subId={subId} args={string.Join(',', args)}");
+
+        if (subId == -1)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, 101, 201, 301, 401, 501, 601, 701),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            return;
+        }
+
+        if (subId == HolyStoneMenuMount && !HasClientKitBagSlot(args))
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, 106, 206, 306, 406),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            return;
+        }
+
+        var operation = subId switch
+        {
+            HolyStoneMenuMount or 106 or 206 or 306 or 406 => HolyStoneOperation.MountStone,
+            HolyStoneMenuRemove => HolyStoneOperation.RemoveStone,
+            HolyStoneMenuDrill => HolyStoneOperation.DrillSocket,
+            _ => (HolyStoneOperation?)null
+        };
+
+        if (operation is null)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, HolyStoneInsufficientFunds),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            return;
+        }
+
+        var targetSlot = FirstClientKitBagSlot(args);
+        var stoneSlot = NextClientKitBagSlot(args, targetSlot);
+        var destinationSlot = stoneSlot >= 0 ? stoneSlot : -1;
+        var socketIndex = SocketIndexFromSubId(subId);
+        var updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
+            _account.Id,
+            _character.Id,
+            operation.Value,
+            targetSlot,
+            socketIndex,
+            stoneSlot,
+            destinationSlot,
+            cancellationToken);
+
+        var responseSubId = updatedCharacter is null
+            ? HolyStoneInsufficientFunds
+            : operation.Value switch
+            {
+                HolyStoneOperation.MountStone => HolyStoneMountSuccess,
+                HolyStoneOperation.RemoveStone => HolyStoneRemoveSuccess,
+                HolyStoneOperation.DrillSocket => HolyStoneDrillSuccess,
+                _ => HolyStoneInsufficientFunds
+            };
+
+        await _session.SendAsync(
+            PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, responseSubId),
+            cancellationToken,
+            "NpcFunctionActionResponse");
+
+        if (updatedCharacter is null)
+        {
+            return;
+        }
+
+        _character = updatedCharacter;
+        await RefreshActiveCharacterStatsAsync($"holy-stone-{operation.Value}", cancellationToken);
+        _registry.UpdateCharacter(_session, _character);
+
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentItemSnapshot(_character, EquipmentSlots.Weapon),
+            cancellationToken,
+            "EquipmentItemSnapshot");
+        foreach (var detailPage in PacketBuilder.KitBagDetailPages(_character))
+        {
+            await _session.SendAsync(detailPage, cancellationToken, "KitBagDetail");
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(_character),
+            cancellationToken,
+            "EquipmentVisualRefresh");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(),
+            cancellationToken,
+            "PlayerDetailRefreshAck");
+        await BroadcastEquipmentRefreshAsync($"holy-stone-{operation.Value}", cancellationToken);
+    }
+
+    private async Task SendCapturedMonstersAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var capturedSpawns = await _store.GetCapturedMonsterSpawnsAsync(_character.CurrentMap, cancellationToken);
+        if (capturedSpawns.Count == 0)
+        {
+            Console.WriteLine($"[mob] no captured monster stream available character={_character.Name} map={_character.CurrentMap}");
+            return;
+        }
+
+        var packet = PacketBuilder.CapturedMonsterSpawns(capturedSpawns);
+        Console.WriteLine($"[mob] sending captured monster stream character={_character.Name} map={_character.CurrentMap} count={capturedSpawns.Count} bytes={packet.Length}");
+        await _session.SendAsync(packet, cancellationToken, "CapturedMonsterSpawns", framed: false);
+    }
+
+    private async Task HandleWalkAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        UpdateCharacterPositionFromWalk(packet);
+        await PersistCharacterPositionAsync(force: false, cancellationToken);
+        if (EnableExperimentalMonsterSpawns && (DateTime.UtcNow - _lastMonsterSpawnUtc) >= TimeSpan.FromSeconds(5))
+        {
+            await SendNearbyMonstersAsync(cancellationToken);
+        }
+    }
+
+    private async Task HandleSkillCastAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[skill] ignored cast before character enter");
+            return;
+        }
+
+        if (packet.Payload.Length < 8)
+        {
+            Console.WriteLine($"[skill] ignored cast payload too short len={packet.Length} hex={packet.ToHexPreview()}");
+            return;
+        }
+
+        var casterObjectId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
+        var skillId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(4, 4));
+        var targetObjectId = packet.Payload.Length >= 12
+            ? BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(8, 4))
+            : 0;
+        var castX = packet.Payload.Length >= 24
+            ? BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(20, 4))
+            : _character.PositionX;
+        var castZ = packet.Payload.Length >= 28
+            ? BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(24, 4))
+            : _character.PositionZ;
+        var learned = await IsSkillLearnedAsync((int)skillId, cancellationToken);
+
+        Console.WriteLine(
+            $"[skill] cast character={_character.Name} skill={skillId} learned={learned} caster={casterObjectId} target={targetObjectId} x={castX:F2} z={castZ:F2}");
+        _lastSkillCastPacket = packet.Buffer.ToArray();
+
+        await _session.SendAsync(
+            PacketBuilder.SkillCastVisual(packet.Buffer, LocalPlayerObjectId),
+            cancellationToken,
+            "SkillCastSelf");
+        await _session.SendAsync(
+            PacketBuilder.SkillCastImpact(packet.Buffer, LocalPlayerObjectId),
+            cancellationToken,
+            "SkillCastImpactSelf");
+
+        var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
+        var visualRecipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId),
+            cancellationToken,
+            _session,
+            "SkillCastWorld");
+        var impactRecipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            PacketBuilder.SkillCastImpact(packet.Buffer, worldObjectId),
+            cancellationToken,
+            _session,
+            "SkillCastImpactWorld");
+
+        if (visualRecipients > 0 || impactRecipients > 0)
+        {
+            Console.WriteLine(
+                $"[world] broadcast skill cast map={_character.CurrentMap} character={_character.Name} object={worldObjectId} skill={skillId} visualRecipients={visualRecipients} impactRecipients={impactRecipients}");
+        }
+    }
+
+    private async Task HandleSkillCastFinishRequestAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[skill] ignored finish request before character enter");
+            return;
+        }
+
+        var objectId = packet.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4])
+            : 0;
+        if (_lastSkillCastPacket is null)
+        {
+            Console.WriteLine($"[skill] finish request with no active cast character={_character.Name} object={objectId}");
+            await _session.SendAsync(packet.Buffer, cancellationToken, "SkillCastFinishEcho");
+            return;
+        }
+
+        Console.WriteLine($"[skill] finish request character={_character.Name} object={objectId}");
+        await _session.SendAsync(
+            PacketBuilder.SkillCastImpact(_lastSkillCastPacket, LocalPlayerObjectId),
+            cancellationToken,
+            "SkillCastImpactFinish");
+    }
+
+    private async Task<bool> IsSkillLearnedAsync(int skillId, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null || skillId <= 0)
+        {
+            return false;
+        }
+
+        var skills = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        return skills.Any(skill => skill.SkillId == skillId);
+    }
+
+    private async Task BroadcastToCurrentMapAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine($"[world] ignored {Opcodes.Name(packet.Opcode)} broadcast before character enter");
+            return;
+        }
+
+        var outboundPacket = packet.Opcode == Opcodes.Walk
+            ? PacketBuilder.PlayerWorldMovement(packet.Buffer.AsSpan(), WorldObjectIds.ForPlayer(_character.Id))
+            : packet.Buffer;
+        var excludeSelf = packet.Opcode == Opcodes.Walk ? _session : null;
+        var recipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            outboundPacket,
+            cancellationToken,
+            excludeSelf);
+
+        if (packet.Opcode == Opcodes.Walk && recipients > 0)
+        {
+            Console.WriteLine($"[world] broadcast walk map={_character.CurrentMap} character={_character.Name} object={WorldObjectIds.ForPlayer(_character.Id)} recipients={recipients}");
+        }
+
+        if (packet.Opcode == Opcodes.Talk)
+        {
+            Console.WriteLine($"[world] broadcast talk map={_character.CurrentMap} character={_character.Name} recipients={recipients}");
+        }
+    }
+
+    private async Task BroadcastEquipmentRefreshAsync(string reason, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var recipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            PacketBuilder.EquipmentVisualRefresh(_character, objectId),
+            cancellationToken,
+            _session);
+
+        if (recipients > 0)
+        {
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.EquipmentItemClearSnapshots(objectId),
+                cancellationToken,
+                _session,
+                "PlayerInspectClearSnapshots",
+                framed: false);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerInspectEquipmentStatusBundle(_character, objectId),
+                cancellationToken,
+                _session,
+                "PlayerInspectEquipmentStatusBroadcast",
+                framed: false);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerDetailRefreshAck(objectId),
+                cancellationToken,
+                _session,
+                "PlayerInspectDetailRefreshAck");
+        }
+
+        if (recipients > 0)
+        {
+            Console.WriteLine(
+                $"[world] broadcast equipment refresh reason={reason} map={_character.CurrentMap} character={_character.Name} object={objectId} recipients={recipients} equipment={PacketBuilder.EnterEquipmentSummary(_character)}");
+        }
+    }
+
+    private async Task BroadcastPlayerLeaveAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var recipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            PacketBuilder.RemoveWorldObjects(objectId),
+            cancellationToken,
+            _session,
+            "WorldObjectRemove");
+
+        if (recipients > 0)
+        {
+            Console.WriteLine(
+                $"[world] broadcast leave map={_character.CurrentMap} character={_character.Name} object={objectId} recipients={recipients}");
+        }
+    }
+
+    private async Task SendMapPlayersAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null || _worldPresenceAnnounced)
+        {
+            return;
+        }
+
+        var existingPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
+        foreach (var player in existingPlayers)
+        {
+            await RefreshCharacterStatsAsync(player.Character, player.AccountId, "visible-player", cancellationToken);
+            Console.WriteLine(
+                $"[world] sending existing player to {_character.Name} existing={player.CharacterName} object={player.ObjectId} x={player.Character.PositionX:F2} z={player.Character.PositionZ:F2} wr={player.Character.WeaponRank}/aura{player.Character.WeaponAuraEffect} ar={player.Character.ArmorRank}/aura{player.Character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(player.Character)}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerWorldSpawn(player.Character, player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerSpawn");
+            await _session.SendAsync(
+                PacketBuilder.EquipmentVisualRefresh(player.Character, player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerEquipment");
+            await _session.SendAsync(
+                PacketBuilder.PlayerAppearanceExtras(player.Character, player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerAppearanceExtras");
+            await _session.SendAsync(
+                PacketBuilder.PlayerTitleInfo(player.Character, player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerTitleInfo");
+            await _session.SendAsync(
+                PacketBuilder.PlayerWorldPosition(player.Character, player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerPosition");
+        }
+
+        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var spawnRecipients = await _registry.BroadcastToMapAsync(
+            _character.CurrentMap,
+            PacketBuilder.PlayerWorldSpawn(_character, objectId),
+            cancellationToken,
+            _session);
+        if (spawnRecipients > 0)
+        {
+            Console.WriteLine(
+                $"[world] announcing player to map character={_character.Name} object={objectId} wr={_character.WeaponRank}/aura{_character.WeaponAuraEffect} ar={_character.ArmorRank}/aura{_character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(_character)} recipients={spawnRecipients}");
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.EquipmentVisualRefresh(_character, objectId),
+                cancellationToken,
+                _session);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerAppearanceExtras(_character, objectId),
+                cancellationToken,
+                _session);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerTitleInfo(_character, objectId),
+                cancellationToken,
+                _session);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerWorldPosition(_character, objectId),
+                cancellationToken,
+                _session);
+        }
+
+        _worldPresenceAnnounced = true;
+        Console.WriteLine(
+            $"[world] player presence map={_character.CurrentMap} character={_character.Name} object={objectId} receivedExisting={existingPlayers.Count} announcedTo={spawnRecipients}");
+    }
+
+    private async Task SendNearbyMonstersAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var monsters = PacketBuilder.NearbyMonsterSpawns(_character);
+        if (monsters.Length == 0)
+        {
+            return;
+        }
+
+        _lastMonsterSpawnUtc = DateTime.UtcNow;
+        Console.WriteLine($"[mob] resending nearby monster stream character={_character.Name} map={_character.CurrentMap} x={_character.PositionX:F2} z={_character.PositionZ:F2} bytes={monsters.Length}");
+        await _session.SendAsync(monsters, cancellationToken, "NearbyMonsterSpawns", framed: false);
+    }
+
+    private async Task HandlePlayerDetailRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[game] ignored PlayerDetailRequest: no active character");
+            return;
+        }
+
+        var requestedA = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        var requestedB = request.Payload.Length >= 8
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload.Slice(4, 4))
+            : 0;
+        await RefreshActiveCharacterStatsAsync("player-detail", cancellationToken);
+        var packet = PacketBuilder.PlayerDetail(_character);
+        if (packet.Length == 0)
+        {
+            Console.WriteLine($"[game] ignored PlayerDetailRequest: no detail template character={_character.Name}");
+            return;
+        }
+
+        Console.WriteLine(
+            $"[game] sending self player detail character={_character.Name} requestA={requestedA} requestB={requestedB} level={_character.Level} bytes={packet.Length}");
+        await _session.SendAsync(packet, cancellationToken, "PlayerDetail", framed: false);
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        if (_clientReadyReceived)
+        {
+            await SendPostEnterBootstrapAsync(cancellationToken);
+        }
+    }
+
+    private async Task SendPostEnterBootstrapAsync(CancellationToken cancellationToken)
+    {
+        if (_postEnterBootstrapSent || _account is null || _character is null)
+        {
+            return;
+        }
+
+        _postEnterBootstrapSent = true;
+
+        var enterSyncPackets = await _store.GetEnterSyncPacketsAsync(cancellationToken);
+        foreach (var packet in enterSyncPackets)
+        {
+            await _session.SendAsync(packet, cancellationToken, "SynGameData");
+        }
+
+        await SendMapNpcsAsync(cancellationToken);
+
+        var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        await _session.SendAsync(PacketBuilder.PlayerStatusUpdate(_character), cancellationToken, "PlayerStatusUpdate");
+        await SendTalentRankPacketsAsync(skillStates, talentStates, "post-enter", cancellationToken);
+        await _session.SendAsync(PacketBuilder.PlayerExtendedStatus(_character), cancellationToken, "PlayerExtendedStatus");
+        await _session.SendAsync(PacketBuilder.PlayerUnknown10098(0), cancellationToken, "PlayerUnknown10098");
+        await _session.SendAsync(PacketBuilder.PlayerUnknown10098(1), cancellationToken, "PlayerUnknown10098");
+        var skillList = PacketBuilder.SkillList(skillStates);
+        if (skillList.Length > 0)
+        {
+            await _session.SendAsync(skillList, cancellationToken, "SkillList");
+        }
+    }
+
+    private async Task HandlePlayerInspectRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[inspect] ignored PlayerInspectRequest: no active character");
+            return;
+        }
+
+        var requestedObjectId = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        var requestedName = PacketText.ReadFixedAscii(request.Payload, 4, 32);
+        if (!TryResolveMapPlayer(requestedObjectId, requestedName, out var target))
+        {
+            Console.WriteLine(
+                $"[inspect] target not found requester={_character.Name} object={requestedObjectId} name={requestedName}");
+            return;
+        }
+
+        var inspectProfileObjectId = requestedObjectId == 0 ? target.ObjectId : requestedObjectId;
+        var inspectDetailObjectId = target.ObjectId;
+        await RefreshCharacterStatsAsync(target.Character, target.AccountId, "inspect-target", cancellationToken);
+        Console.WriteLine(
+            $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} inspectProfileObject={inspectProfileObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
+        await _session.SendAsync(
+            PacketBuilder.PlayerInspectProfile(target.Character, inspectProfileObjectId),
+            cancellationToken,
+            "PlayerInspectProfile");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentItemClearSnapshots(inspectDetailObjectId),
+            cancellationToken,
+            "PlayerInspectClearSnapshots",
+            framed: false);
+        await _session.SendAsync(
+            PacketBuilder.PlayerInspectEquipmentStatusBundle(target.Character, inspectDetailObjectId),
+            cancellationToken,
+            "PlayerInspectEquipmentStatusBundle",
+            framed: false);
+        await _session.SendAsync(
+            PacketBuilder.PlayerInspectComplete(),
+            cancellationToken,
+            "PlayerInspectComplete");
+    }
+
+    private async Task HandlePlayerInspectVisualRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[inspect] ignored PlayerInspectVisualRequest: no active character");
+            return;
+        }
+
+        var requestedObjectId = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        if (!TryResolveMapPlayer(requestedObjectId, string.Empty, out var target))
+        {
+            Console.WriteLine($"[inspect] visual target not found requester={_character.Name} object={requestedObjectId}");
+            return;
+        }
+
+        await SendPlayerVisualBundleAsync(target, cancellationToken, "PlayerInspectVisual");
+    }
+
+    private async Task SendPlayerVisualBundleAsync(
+        GameSessionContext target,
+        CancellationToken cancellationToken,
+        string labelPrefix)
+    {
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}Equipment");
+        await _session.SendAsync(
+            PacketBuilder.PlayerAppearanceExtras(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}AppearanceExtras");
+        await _session.SendAsync(
+            PacketBuilder.PlayerTitleInfo(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}TitleInfo");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}RefreshAck");
+    }
+
+    private bool TryResolveMapPlayer(uint objectId, string characterName, out GameSessionContext target)
+    {
+        target = default!;
+        if (_character is null)
+        {
+            return false;
+        }
+
+        if (objectId != 0
+            && _registry.TryGetMapSessionByObjectId(_character.CurrentMap, objectId, _session, out target))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(characterName))
+        {
+            foreach (var player in _registry.GetMapSessions(_character.CurrentMap, _session))
+            {
+                if (!string.Equals(player.CharacterName, characterName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                target = player;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Task RefreshActiveCharacterStatsAsync(string reason, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var accountId = _account?.Id ?? _character.AccountId;
+        return RefreshCharacterStatsAsync(_character, accountId, reason, cancellationToken);
+    }
+
+    private async Task RefreshCharacterStatsAsync(
+        GameCharacter character,
+        int accountId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var stats = accountId > 0
+            ? await _store.GetCharacterStatsAsync(accountId, character.Id, cancellationToken)
+            : CharacterStats.FromCharacter(character);
+
+        if (stats is null)
+        {
+            Console.WriteLine($"[stats] missing character={character.Name} id={character.Id} account={accountId} reason={reason}");
+            return;
+        }
+
+        stats.ApplyTo(character);
+        Console.WriteLine($"[stats] refreshed reason={reason} character={character.Name} {stats.ToLogSummary()}");
+    }
+
+    private void UpdateCharacterPositionFromWalk(GamePacket packet)
+    {
+        if (_character is null || packet.Payload.Length < 12)
+        {
+            return;
+        }
+
+        _character.PositionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
+        _character.PositionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
+        _positionDirty = true;
+        _registry.UpdateCharacter(_session, _character);
+    }
+
+    private async Task PersistCharacterPositionAsync(bool force, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null || !_positionDirty)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (!force && now - _lastPositionPersistUtc < PositionPersistInterval)
+        {
+            return;
+        }
+
+        try
+        {
+            await _store.SaveCharacterPositionAsync(
+                _account.Id,
+                _character.Id,
+                _character.CurrentMap,
+                _character.PositionX,
+                _character.PositionZ,
+                cancellationToken);
+            _positionDirty = false;
+            _lastPositionPersistUtc = now;
+            Console.WriteLine(
+                $"[world] saved position character={_character.Name} map={_character.CurrentMap} x={_character.PositionX:F2} z={_character.PositionZ:F2} force={force}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine($"[world] failed to save position character={_character.Name}: {ex.Message}");
+        }
+    }
+
+    private async Task HandleStorageItemAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        LogInventoryPacket(packet);
+
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[equip-re] StorageItem ignored: no active character");
+            return;
+        }
+
+        if (TryReadStorageItemUnequip(packet.Payload, out var equipmentSlot, out var destinationSlot))
+        {
+            await HandleUnequipItemAsync(equipmentSlot, destinationSlot, cancellationToken);
+            return;
+        }
+
+        if (TryReadStorageItemKitBagMove(packet.Payload, out var moveSourceSlot, out var moveDestinationSlot))
+        {
+            await HandleMoveKitBagItemAsync(moveSourceSlot, moveDestinationSlot, cancellationToken);
+            return;
+        }
+
+        if (TryReadStorageItemEquip(packet.Payload, out var sourceSlot, out var clientEquipmentSlot))
+        {
+            await HandleEquipItemAsync(sourceSlot, clientEquipmentSlot, itemIdHint: 0, cancellationToken);
+            return;
+        }
+
+        Console.WriteLine("[equip-re] StorageItem ignored: payload does not match known equip/unequip shapes");
+    }
+
+    private async Task HandleBreakItemAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        LogInventoryPacket(packet);
+
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[equip-re] BreakItem ignored: no active character");
+            return;
+        }
+
+        if (!TryReadBreakItemEquip(packet.Payload, out var sourceSlot))
+        {
+            if (!TryResolveEquipSourceFromLastItemInfo(out sourceSlot, out var itemIdHint))
+            {
+                Console.WriteLine("[equip-re] BreakItem ignored: payload does not match captured bag-to-equipment shape and no recent item info is available");
+                return;
+            }
+
+            Console.WriteLine($"[equip-re] BreakItem equip resolved from recent item info sourceSlot={sourceSlot} item={itemIdHint}");
+            await HandleEquipItemAsync(sourceSlot, requestedEquipmentSlot: -1, itemIdHint: itemIdHint, cancellationToken);
+            return;
+        }
+
+        await HandleEquipItemAsync(sourceSlot, requestedEquipmentSlot: -1, itemIdHint: 0, cancellationToken);
+    }
+
+    private async Task HandleUseOrEquipAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        LogInventoryPacket(packet);
+
+        if (!TryReadTalentUpgrade(packet.Payload, out var talentId, out var clientRank, out var clientTalentPoints))
+        {
+            Console.WriteLine("[talent] UseOrEquip ignored: payload does not match captured talent-upgrade shape");
+            return;
+        }
+
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[talent] upgrade ignored: no active character");
+            return;
+        }
+
+        var result = await _store.UpgradeTalentAsync(
+            _account.Id,
+            _character.Id,
+            talentId,
+            clientRank,
+            clientTalentPoints,
+            cancellationToken);
+
+        if (result is null)
+        {
+            Console.WriteLine(
+                $"[talent] upgrade failed character={_character.Name} talent={talentId} clientRank={clientRank} clientPoints={clientTalentPoints}");
+            return;
+        }
+
+        _character = result.Character;
+        await RefreshActiveCharacterStatsAsync("talent-upgrade", cancellationToken);
+        _registry.UpdateCharacter(_session, _character);
+        Console.WriteLine(
+            $"[talent] upgraded character={_character.Name} talent={result.TalentId} rank={result.NewRank} cost={result.Cost} remaining={result.RemainingTalentPoints} value={result.DisplayValue}");
+
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        await _session.SendAsync(
+            PacketBuilder.TalentUpgradeAck(result),
+            cancellationToken,
+            "TalentUpgradeAck");
+    }
+
+    private async Task HandleBagItemActionAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        LogInventoryPacket(packet);
+
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[equip-re] BagItemAction ignored: no active character");
+            return;
+        }
+
+        if (!TryReadBagItemAction(packet.Payload, out var sourceSlot, out var itemId))
+        {
+            Console.WriteLine("[equip-re] BagItemAction ignored: payload does not match captured bag-to-equipment shape");
+            return;
+        }
+
+        if (TryConsumeUnequipFollowup(sourceSlot, itemId))
+        {
+            Console.WriteLine(
+                $"[equip-re] BagItemAction unequip follow-up acknowledged character={_character.Name} sourceSlot={sourceSlot} item={itemId}");
+            await _session.SendAsync(
+                PacketBuilder.BagItemActionAck(packet.Buffer),
+                cancellationToken,
+                "BagItemActionAck");
+            return;
+        }
+
+        _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
+        Console.WriteLine($"[equip-re] BagItemAction remembered pending equip source character={_character.Name} sourceSlot={sourceSlot} item={itemId}");
+        await _session.SendAsync(
+            PacketBuilder.BagItemActionAck(packet.Buffer),
+            cancellationToken,
+            "BagItemActionInspectAck");
+    }
+
+    private void HandleItemInfoRequest(GamePacket packet)
+    {
+        LogInventoryPacket(packet);
+
+        if (TryReadItemInfoRequest(packet.Payload, out var sourceSlot, out var itemId))
+        {
+            _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
+            Console.WriteLine($"[equip-re] ItemInfoRequest sourceSlot={sourceSlot} item={itemId}");
+            return;
+        }
+
+        Console.WriteLine("[equip-re] ItemInfoRequest ignored: payload does not match captured kitbag item-info shape");
+    }
+
+    private async Task HandleUnequipItemAsync(int equipmentSlot, int destinationSlot, CancellationToken cancellationToken)
+    {
+        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot))
+        {
+            Console.WriteLine($"[equip-re] StorageItem unequip ignored: unsupported slot={equipmentSlot} destination={destinationSlot}");
+            return;
+        }
+
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var previousItemId = EquipmentSlots.GetItemId(_character.Equipment, _character.Profession, equipmentSlot);
+        var updatedCharacter = await _store.MoveEquipmentToKitBagAsync(
+            _account.Id,
+            _character.Id,
+            equipmentSlot,
+            destinationSlot,
+            cancellationToken);
+
+        if (updatedCharacter is null)
+        {
+            Console.WriteLine(
+                $"[equip-re] StorageItem unequip failed: character={_character.Name} id={_character.Id} slot={equipmentSlot}");
+            return;
+        }
+
+        if (previousItemId != 0
+            && EquipmentSlots.GetItemId(updatedCharacter.Equipment, updatedCharacter.Profession, equipmentSlot) == previousItemId)
+        {
+            _character = updatedCharacter;
+            Console.WriteLine(
+                $"[equip-re] StorageItem unequip did not move item: character={_character.Name} slot={equipmentSlot} item={previousItemId} destination={destinationSlot}");
+            return;
+        }
+
+        var actualDestinationSlot = ResolveMovedKitBagDestination(updatedCharacter, destinationSlot, previousItemId);
+        _character = updatedCharacter;
+        await RefreshActiveCharacterStatsAsync("unequip", cancellationToken);
+        _registry.UpdateCharacter(_session, _character);
+        _pendingUnequipFollowup = previousItemId == 0
+            ? null
+            : new PendingUnequipFollowup(actualDestinationSlot, previousItemId, DateTime.UtcNow);
+
+        var clientEquipmentSlot = PacketBuilder.ToClientEquipmentSlot(equipmentSlot);
+        Console.WriteLine(
+            $"[equip-re] unequipped character={_character.Name} slot={equipmentSlot} clientSlot={clientEquipmentSlot} previousItem={previousItemId} destination={actualDestinationSlot} requestedDestination={destinationSlot} equipment={PacketBuilder.EnterEquipmentSummary(_character)}");
+
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        await _session.SendAsync(
+            PacketBuilder.StorageItemUnequipToKitBag(clientEquipmentSlot, actualDestinationSlot),
+            cancellationToken,
+            "StorageItemUnequipAck");
+        if (equipmentSlot is not (EquipmentSlots.Ring1 or EquipmentSlots.Ring2))
+        {
+            await _session.SendAsync(
+                PacketBuilder.EquipmentItemClearSnapshot(equipmentSlot),
+                cancellationToken,
+                "EquipmentItemClearSnapshot");
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(_character),
+            cancellationToken,
+            "EquipmentVisualRefresh");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(),
+            cancellationToken,
+            "PlayerDetailRefreshAck");
+        await BroadcastEquipmentRefreshAsync("unequip", cancellationToken);
+    }
+
+    private static int ResolveMovedKitBagDestination(GameCharacter character, int requestedDestinationSlot, uint itemId)
+    {
+        if (itemId == 0)
+        {
+            return requestedDestinationSlot;
+        }
+
+        if (requestedDestinationSlot is >= 0 and < 96
+            && KitBagSlots.GetItemId(character.KitBag, requestedDestinationSlot) == itemId)
+        {
+            return requestedDestinationSlot;
+        }
+
+        for (var slot = 0; slot < 96; slot++)
+        {
+            if (KitBagSlots.GetItemId(character.KitBag, slot) == itemId)
+            {
+                return slot;
+            }
+        }
+
+        return requestedDestinationSlot;
+    }
+
+    private bool TryConsumeUnequipFollowup(int sourceSlot, uint itemId)
+    {
+        if (_pendingUnequipFollowup is not { } pending)
+        {
+            return false;
+        }
+
+        if (DateTime.UtcNow - pending.CreatedUtc > PendingUnequipFollowupTtl)
+        {
+            _pendingUnequipFollowup = null;
+            return false;
+        }
+
+        if (pending.DestinationSlot != sourceSlot || pending.ItemId != itemId)
+        {
+            return false;
+        }
+
+        _pendingUnequipFollowup = null;
+        return true;
+    }
+
+    private async Task HandleEquipItemAsync(
+        int sourceSlot,
+        int requestedEquipmentSlot,
+        uint itemIdHint,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var kitBagItemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
+        var effectiveItemIdHint = itemIdHint != 0 ? itemIdHint : kitBagItemId;
+        var updatedCharacter = await _store.MoveKitBagToEquipmentAsync(
+            _account.Id,
+            _character.Id,
+            sourceSlot,
+            requestedEquipmentSlot,
+            cancellationToken);
+
+        if (updatedCharacter is null)
+        {
+            Console.WriteLine(
+                $"[equip-re] StorageItem equip failed: character={_character.Name} id={_character.Id} sourceSlot={sourceSlot}");
+            return;
+        }
+
+        _character = updatedCharacter;
+        await RefreshActiveCharacterStatsAsync("equip", cancellationToken);
+        _registry.UpdateCharacter(_session, _character);
+        _lastItemInfo = null;
+        var equippedSlot = ResolveEquippedSlotForAck(_character, requestedEquipmentSlot, effectiveItemIdHint);
+        Console.WriteLine(
+            $"[equip-re] equipped character={_character.Name} sourceSlot={sourceSlot} requestedTarget={requestedEquipmentSlot} equippedSlot={equippedSlot} itemHint={effectiveItemIdHint} equipment={PacketBuilder.EnterEquipmentSummary(_character)}");
+
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        if (EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot) && EquipmentSlots.IsEquipmentSlot(equippedSlot))
+        {
+            await _session.SendAsync(
+                PacketBuilder.StorageItemEquipFromKitBag(sourceSlot, PacketBuilder.ToClientEquipmentSlot(equippedSlot)),
+                cancellationToken,
+                "StorageItemEquipAck");
+        }
+
+        var snapshot = PacketBuilder.KitBagItemSnapshot(_character, sourceSlot);
+        if (snapshot.Length > 0)
+        {
+            await _session.SendAsync(
+                snapshot,
+                cancellationToken,
+                "EquipmentItemSnapshot");
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(_character),
+            cancellationToken,
+            "EquipmentVisualRefresh");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(),
+            cancellationToken,
+            "PlayerDetailRefreshAck");
+        await BroadcastEquipmentRefreshAsync("equip", cancellationToken);
+    }
+
+    private async Task HandleMoveKitBagItemAsync(int sourceSlot, int destinationSlot, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        if (sourceSlot is < 0 or >= 96 || destinationSlot is < 0 or >= 96)
+        {
+            Console.WriteLine($"[equip-re] StorageItem kitbag move ignored: unsupported source={sourceSlot} destination={destinationSlot}");
+            return;
+        }
+
+        var updatedCharacter = await _store.MoveKitBagItemAsync(
+            _account.Id,
+            _character.Id,
+            sourceSlot,
+            destinationSlot,
+            cancellationToken);
+
+        if (updatedCharacter is null)
+        {
+            Console.WriteLine(
+                $"[equip-re] StorageItem kitbag move failed: character={_character.Name} id={_character.Id} source={sourceSlot} destination={destinationSlot}");
+            return;
+        }
+
+        _character = updatedCharacter;
+        _registry.UpdateCharacter(_session, _character);
+        Console.WriteLine(
+            $"[equip-re] kitbag move character={_character.Name} source={sourceSlot} destination={destinationSlot}");
+
+        await _session.SendAsync(
+            PacketBuilder.StorageItemKitBagMove(sourceSlot, destinationSlot),
+            cancellationToken,
+            "StorageItemKitBagMoveAck");
+    }
+
+    private bool TryResolveEquipSourceFromLastItemInfo(out int sourceSlot, out uint itemId)
+    {
+        sourceSlot = 0;
+        itemId = 0;
+
+        if (_lastItemInfo is not { } itemInfo)
+        {
+            return false;
+        }
+
+        if (DateTime.UtcNow - itemInfo.CreatedUtc > LastItemInfoTtl)
+        {
+            _lastItemInfo = null;
+            return false;
+        }
+
+        sourceSlot = itemInfo.SourceSlot;
+        itemId = itemInfo.ItemId;
+        return true;
+    }
+
+    private static bool TryReadNpcFunctionAction(
+        ReadOnlySpan<byte> payload,
+        out uint npcId,
+        out int dialogIndex,
+        out int subId,
+        out int[] args)
+    {
+        npcId = 0;
+        dialogIndex = 0;
+        subId = 0;
+        args = [];
+
+        if (payload.Length < 16)
+        {
+            return false;
+        }
+
+        npcId = BinaryPrimitives.ReadUInt32LittleEndian(payload[..4]);
+        dialogIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
+        subId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(12, 4));
+
+        var count = Math.Max(0, (payload.Length - 16) / 4);
+        args = new int[count];
+        for (var i = 0; i < count; i++)
+        {
+            args[i] = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16 + (i * 4), 4));
+        }
+
+        return true;
+    }
+
+    private static bool HasClientKitBagSlot(IReadOnlyList<int> args)
+    {
+        return args.Any(arg => DecodeClientKitBagSlot(arg) >= 0);
+    }
+
+    private static int FirstClientKitBagSlot(IReadOnlyList<int> args)
+    {
+        foreach (var arg in args)
+        {
+            var slot = DecodeClientKitBagSlot(arg);
+            if (slot >= 0)
+            {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int NextClientKitBagSlot(IReadOnlyList<int> args, int firstSlot)
+    {
+        foreach (var arg in args)
+        {
+            var slot = DecodeClientKitBagSlot(arg);
+            if (slot >= 0 && slot != firstSlot)
+            {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int DecodeClientKitBagSlot(int value)
+    {
+        if (value is >= 100 and < 196)
+        {
+            return value - 100;
+        }
+
+        if (value is >= 0 and < 96)
+        {
+            return value;
+        }
+
+        return -1;
+    }
+
+    private static int SocketIndexFromSubId(int subId)
+    {
+        return subId switch
+        {
+            106 => 0,
+            206 => 1,
+            306 => 2,
+            406 => 3,
+            _ => -1
+        };
+    }
+
+    private static void LogReceived(GamePacket packet)
+    {
+        Console.WriteLine(
+            $"[game] recv {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode} len={packet.Length} hex={packet.ToHexPreview(32)}");
+    }
+
+    private static void LogInventoryPacket(GamePacket packet)
+    {
+        var payload = packet.Payload;
+        Console.WriteLine(
+            $"[equip-re] {Opcodes.Name(packet.Opcode)} payloadLen={payload.Length} bytes={FormatBytes(payload)} u16={FormatUInt16(payload)} u32={FormatUInt32(payload)}");
+    }
+
+    private static int ResolveEquippedSlotForAck(GameCharacter character, int requestedEquipmentSlot, uint itemIdHint)
+    {
+        if (EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+        {
+            return requestedEquipmentSlot;
+        }
+
+        if (itemIdHint == 0)
+        {
+            return -1;
+        }
+
+        for (var slot = EquipmentSlots.Head; slot <= EquipmentSlots.Stylish; slot++)
+        {
+            if (EquipmentSlots.GetItemId(character.Equipment, character.Profession, slot) == itemIdHint)
+            {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string FormatBytes(ReadOnlySpan<byte> payload)
+    {
+        return payload.Length == 0 ? "[]" : "[" + string.Join(",", payload.ToArray().Select(b => b.ToString())) + "]";
+    }
+
+    private static string FormatUInt16(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 2)
+        {
+            return "[]";
+        }
+
+        var values = new List<ushort>();
+        for (var i = 0; i + 1 < payload.Length; i += 2)
+        {
+            values.Add(BinaryPrimitives.ReadUInt16LittleEndian(payload[i..(i + 2)]));
+        }
+
+        return "[" + string.Join(",", values) + "]";
+    }
+
+    private static string FormatUInt32(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 4)
+        {
+            return "[]";
+        }
+
+        var values = new List<uint>();
+        for (var i = 0; i + 3 < payload.Length; i += 4)
+        {
+            values.Add(BinaryPrimitives.ReadUInt32LittleEndian(payload[i..(i + 4)]));
+        }
+
+        return "[" + string.Join(",", values) + "]";
+    }
+
+    private static bool TryReadStorageItemUnequip(
+        ReadOnlySpan<byte> payload,
+        out int equipmentSlot,
+        out int destinationSlot)
+    {
+        equipmentSlot = 0;
+        destinationSlot = 0;
+
+        if (payload.Length < 12)
+        {
+            return false;
+        }
+
+        equipmentSlot = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(4, 2));
+        var emptyMarker = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
+        var destinationPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+        var destinationIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
+        destinationSlot = (destinationPage * 24) + destinationIndex;
+        return emptyMarker == ushort.MaxValue;
+    }
+
+    private static bool TryReadStorageItemKitBagMove(
+        ReadOnlySpan<byte> payload,
+        out int sourceSlot,
+        out int destinationSlot)
+    {
+        sourceSlot = 0;
+        destinationSlot = 0;
+
+        if (payload.Length < 16)
+        {
+            return false;
+        }
+
+        var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(4, 2));
+        var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
+        var destinationPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+        var destinationIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
+        var marker1 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(12, 2));
+        var marker2 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(14, 2));
+
+        if (marker1 != ushort.MaxValue || marker2 != ushort.MaxValue)
+        {
+            return false;
+        }
+
+        if (sourcePage >= 4 || destinationPage >= 4 || sourceIndex >= 24 || destinationIndex >= 24)
+        {
+            return false;
+        }
+
+        sourceSlot = (sourcePage * 24) + sourceIndex;
+        destinationSlot = (destinationPage * 24) + destinationIndex;
+        return true;
+    }
+
+    private static bool TryReadStorageItemEquip(
+        ReadOnlySpan<byte> payload,
+        out int sourceSlot,
+        out int clientEquipmentSlot)
+    {
+        sourceSlot = 0;
+        clientEquipmentSlot = 0;
+
+        if (payload.Length < 16)
+        {
+            return false;
+        }
+
+        var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(4, 2));
+        var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
+        var targetPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+        clientEquipmentSlot = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
+        var marker1 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(12, 2));
+        var marker2 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(14, 2));
+
+        if (marker1 != ushort.MaxValue || marker2 != ushort.MaxValue || targetPage != 0)
+        {
+            return false;
+        }
+
+        sourceSlot = (sourcePage * 24) + sourceIndex;
+        return sourcePage < 4 && sourceIndex < 24;
+    }
+
+    private static bool TryReadBreakItemEquip(
+        ReadOnlySpan<byte> payload,
+        out int sourceSlot)
+    {
+        sourceSlot = 0;
+
+        if (payload.Length < 12)
+        {
+            return false;
+        }
+
+        var marker = BinaryPrimitives.ReadUInt32LittleEndian(payload[..4]);
+        if (marker == 0xFFFFFF00 || BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4, 4)) == LocalPlayerObjectId)
+        {
+            var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+            var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
+            if (sourcePage >= 4 || sourceIndex >= 24)
+            {
+                return false;
+            }
+
+            sourceSlot = (sourcePage * 24) + sourceIndex;
+            return true;
+        }
+
+        if (!TryResolvePackedBagSlot(marker, out sourceSlot))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryResolvePackedBagSlot(uint marker, out int sourceSlot)
+    {
+        sourceSlot = 0;
+        var sourcePage = (int)(marker & 0xFFFF);
+        var sourceIndex = (int)((marker >> 16) & 0xFFFF);
+        if (sourcePage >= 4 || sourceIndex >= 24)
+        {
+            return false;
+        }
+
+        sourceSlot = (sourcePage * 24) + sourceIndex;
+        return true;
+    }
+
+    private static bool TryReadBagItemAction(
+        ReadOnlySpan<byte> payload,
+        out int sourceSlot,
+        out uint itemId)
+    {
+        sourceSlot = 0;
+        itemId = 0;
+
+        if (payload.Length < 20)
+        {
+            return false;
+        }
+
+        sourceSlot = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(12, 4));
+        itemId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(16, 4));
+        return sourceSlot is >= 0 and < 96 && itemId != 0;
+    }
+
+    private static bool TryReadTalentUpgrade(
+        ReadOnlySpan<byte> payload,
+        out int talentId,
+        out int clientRank,
+        out int clientTalentPoints)
+    {
+        talentId = 0;
+        clientRank = 0;
+        clientTalentPoints = 0;
+
+        if (payload.Length != 24)
+        {
+            return false;
+        }
+
+        talentId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
+        clientRank = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(8, 4));
+        clientTalentPoints = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16, 4));
+        return talentId > 0 && clientRank >= 0 && clientTalentPoints >= 0;
+    }
+
+    private static bool TryReadItemInfoRequest(
+        ReadOnlySpan<byte> payload,
+        out int sourceSlot,
+        out uint itemId)
+    {
+        sourceSlot = 0;
+        itemId = 0;
+
+        if (payload.Length < 12)
+        {
+            return false;
+        }
+
+        sourceSlot = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
+        itemId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8, 4));
+        return sourceSlot is >= 0 and < 96 && itemId != 0;
+    }
+
+    private static byte ReadByte(ReadOnlySpan<byte> buffer, int offset, byte fallback)
+    {
+        return offset >= 0 && offset < buffer.Length ? buffer[offset] : fallback;
+    }
+
+    private sealed record PendingUnequipFollowup(int DestinationSlot, uint ItemId, DateTime CreatedUtc);
+
+    private sealed record PendingItemInfo(int SourceSlot, uint ItemId, DateTime CreatedUtc);
+}

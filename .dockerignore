@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+data/
+smoke-data/
+_reference/
+.git/
+.vs/
+.idea/
+*.log
+*.tmp

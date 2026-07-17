@@ -1,0 +1,44 @@
+# Local secrets and machine-specific runtime state
+.env
+.env.*
+!.env.example
+!.env.*.example
+appsettings.Local.json
+appsettings.*.local.json
+data/
+
+# .NET build output
+**/bin/
+**/obj/
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
+
+# IDE and editor state
+.idea/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Generated and captured research output
+artifacts/
+captures/
+
+# Large local research material and restore copies
+backups/
+origin_disasm.txt
+_reference/
+*.bak
+*.tmp
+
+# Accidental command output
+--help
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
