@@ -82,6 +82,10 @@ internal interface IGameStore : IAsyncDisposable
         short mapId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<NpcSpawnDefinition>> GetNpcSpawnDefinitionsAsync(
+        short mapId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<CapturedMonsterSpawn>> GetCapturedMonsterSpawnsAsync(
         short mapId,
         CancellationToken cancellationToken = default);

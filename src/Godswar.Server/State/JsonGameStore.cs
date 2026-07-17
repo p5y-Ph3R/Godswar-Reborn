@@ -436,6 +436,16 @@ internal sealed class JsonGameStore : IGameStore
         return Task.FromResult<IReadOnlyList<CapturedNpcSpawn>>([]);
     }
 
+    public Task<IReadOnlyList<NpcSpawnDefinition>> GetNpcSpawnDefinitionsAsync(
+        short mapId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var references = NpcSpawnDefinitionFactory.FromGeneratedSeeds(mapId);
+        var definitions = NpcSpawnDefinitionFactory.Create(mapId, [], [], references);
+        return Task.FromResult(definitions);
+    }
+
     public Task<IReadOnlyList<CapturedMonsterSpawn>> GetCapturedMonsterSpawnsAsync(
         short mapId,
         CancellationToken cancellationToken = default)

@@ -47,12 +47,20 @@ Implemented:
 - Character list, create, delete, and preview
 - PostgreSQL-backed accounts and characters under Docker
 - Enter-game packet stream based on the Go reference
-- Ping echo, server time, and basic talk/walk broadcast
+- Ping echo, server time, and map-scoped talk/walk broadcast
+- Two-client world synchronization using server-built remote-player spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets
+- World presence registration only after both the client-ready signal and the player-detail exchange have completed, so other sessions do not see a partially initialized character
+- Server-built static NPC definitions assembled from validated captured spawns, normalized NPC appearance/position references, and same-number capital-city fallbacks when a reference has no position
+- Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
+
+The multiplayer and NPC synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.
 
 Not complete yet:
 
 - Full world simulation
-- NPCs, combat, inventory mutations, quests, persistence beyond the JSON prototype
+- NPC coverage beyond the current static city baseline: the current PostgreSQL data resolves 100 Sparta and 95 Athens NPC identities (including 48 direct normalized references in each city), while most NPC dialog scripts and quests remain unimplemented
+- Full NPC/monster AI, combat, death, respawn, and drop simulation
+- Complete inventory, skill, and talent gameplay and packet coverage
 - Packet coverage outside the mapped reference opcodes
 
 ## Current Reverse Engineering Notes

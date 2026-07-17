@@ -9,7 +9,6 @@ namespace Godswar.Server.Game;
 internal sealed class GameClientHandler : IClientHandler
 {
     private const uint LocalPlayerObjectId = 0x00001448;
-    private const uint HolyStoneArtisanNpcId = 5083;
     private const int HolyStoneDialogIndex = 30;
     private const int HolyStoneMenuMount = 101;
     private const int HolyStoneMenuRemove = 201;
@@ -34,11 +33,13 @@ internal sealed class GameClientHandler : IClientHandler
     private bool _accountSessionRegistered;
     private bool _worldPresenceAnnounced;
     private bool _clientReadyReceived;
+    private bool _playerDetailSent;
     private bool _postEnterBootstrapSent;
     private DateTime _lastMonsterSpawnUtc = DateTime.MinValue;
     private DateTime _lastPositionPersistUtc = DateTime.MinValue;
     private byte[]? _lastSkillCastPacket;
     private bool _positionDirty;
+    private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
 
     public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
     {
@@ -194,6 +195,7 @@ internal sealed class GameClientHandler : IClientHandler
             case Opcodes.ClientReady:
                 _clientReadyReceived = true;
                 Console.WriteLine($"[game] ClientReady character={_character?.Name ?? "<none>"}");
+                await SendPostEnterBootstrapAsync(cancellationToken);
                 break;
             case Opcodes.PlayerDetailRequest:
                 await HandlePlayerDetailRequestAsync(packet, cancellationToken);
@@ -305,13 +307,6 @@ internal sealed class GameClientHandler : IClientHandler
 
         await RefreshActiveCharacterStatsAsync("enter", cancellationToken);
 
-        _registry.JoinMap(
-            _session,
-            _account?.Id ?? _character.AccountId,
-            _character,
-            WorldObjectIds.ForPlayer(_character.Id));
-        _registered = true;
-
         var enterMain = PacketBuilder.EnterMain(_character);
         var kitBagDetailPages = PacketBuilder.KitBagDetailPages(_character);
         var kitBagSlotIndexes = PacketBuilder.KitBagSlotIndexes(_character);
@@ -421,19 +416,19 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        var capturedSpawns = await _store.GetCapturedNpcSpawnsAsync(_character.CurrentMap, cancellationToken);
-        var packet = capturedSpawns.Count == 0
-            ? PacketBuilder.CityNpcFallback(_character)
-            : PacketBuilder.CapturedNpcSpawns(capturedSpawns);
-        var source = capturedSpawns.Count == 0 ? "fallback" : "captured";
-        var count = capturedSpawns.Count == 0
-            ? PacketBuilder.CountCityNpcSpawnPackets(packet)
-            : capturedSpawns.Count;
+        var npcDefinitions = await _store.GetNpcSpawnDefinitionsAsync(_character.CurrentMap, cancellationToken);
+        _mapNpcsByInteractionId.Clear();
+        foreach (var npc in npcDefinitions)
+        {
+            _mapNpcsByInteractionId[npc.InteractionId] = npc;
+        }
+
+        var packet = PacketBuilder.NpcSpawns(npcDefinitions);
 
         if (packet.Length > 0)
         {
-            Console.WriteLine($"[npc] sending {source} NPC stream character={_character.Name} map={_character.CurrentMap} count={count} bytes={packet.Length}");
-            await _session.SendAsync(packet, cancellationToken, "CityNpcSpawns", framed: false);
+            Console.WriteLine($"[npc] sending authoritative NPC stream character={_character.Name} map={_character.CurrentMap} count={npcDefinitions.Count} bytes={packet.Length}");
+            await _session.SendAsync(packet, cancellationToken, "MapNpcSpawns", framed: false);
         }
         else
         {
@@ -462,18 +457,23 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
-        if (npcId != HolyStoneArtisanNpcId)
+        if (!TryResolveMapNpc(npcId, out var npc))
         {
-            Console.WriteLine($"[npc] dialog open ignored: npc={npcId}");
+            Console.WriteLine($"[npc] dialog open ignored: unknown npc={npcId} map={_character?.CurrentMap.ToString() ?? "<none>"}");
             return;
         }
 
-        var scriptKey = _character?.CurrentMap == 1 ? "Athens_086" : "Sparta_086";
+        if (!IsHolyStoneArtisan(npc))
+        {
+            Console.WriteLine($"[npc] dialog open has no implemented script npc={npcId} key={npc.NpcKey}");
+            return;
+        }
+
         await _session.SendAsync(
-            PacketBuilder.NpcDialogOpenAck(npcId, HolyStoneDialogIndex, scriptKey),
+            PacketBuilder.NpcDialogOpenAck(npc.InteractionId, HolyStoneDialogIndex, npc.NpcKey),
             cancellationToken,
             "NpcDialogOpenAck");
-        Console.WriteLine($"[holy-stone] dialog open npc={npcId} script={scriptKey}");
+        Console.WriteLine($"[holy-stone] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
     }
 
     private void HandleNpcDialogPageRequest(GamePacket packet)
@@ -485,7 +485,10 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
-        Console.WriteLine($"[npc] page request npc={npcId}");
+        Console.WriteLine(
+            TryResolveMapNpc(npcId, out var npc)
+                ? $"[npc] page request npc={npcId} key={npc.NpcKey}"
+                : $"[npc] page request ignored: unknown npc={npcId}");
     }
 
     private async Task HandleNpcFunctionActionAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -502,7 +505,7 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (npcId != HolyStoneArtisanNpcId)
+        if (!TryResolveMapNpc(npcId, out var npc) || !IsHolyStoneArtisan(npc))
         {
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
@@ -606,6 +609,25 @@ internal sealed class GameClientHandler : IClientHandler
             cancellationToken,
             "PlayerDetailRefreshAck");
         await BroadcastEquipmentRefreshAsync($"holy-stone-{operation.Value}", cancellationToken);
+    }
+
+    private bool TryResolveMapNpc(uint interactionId, out NpcSpawnDefinition npc)
+    {
+        if (_character is not null &&
+            _mapNpcsByInteractionId.TryGetValue(interactionId, out var candidate) &&
+            candidate.MapId == _character.CurrentMap)
+        {
+            npc = candidate;
+            return true;
+        }
+
+        npc = default!;
+        return false;
+    }
+
+    private static bool IsHolyStoneArtisan(NpcSpawnDefinition npc)
+    {
+        return npc.NpcKey is "Sparta_086" or "Athens_086";
     }
 
     private async Task SendCapturedMonstersAsync(CancellationToken cancellationToken)
@@ -778,19 +800,31 @@ internal sealed class GameClientHandler : IClientHandler
         var objectId = WorldObjectIds.ForPlayer(_character.Id);
         var recipients = await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
-            PacketBuilder.EquipmentVisualRefresh(_character, objectId),
+            PacketBuilder.PlayerWorldSpawn(_character, objectId),
             cancellationToken,
-            _session);
+            _session,
+            "PlayerWorldSpawnRefresh");
 
         if (recipients > 0)
         {
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.EquipmentItemClearSnapshots(objectId),
+                PacketBuilder.EquipmentVisualRefresh(_character, objectId),
                 cancellationToken,
                 _session,
-                "PlayerInspectClearSnapshots",
-                framed: false);
+                "PlayerEquipmentVisualRefresh");
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerAppearanceExtras(_character, objectId),
+                cancellationToken,
+                _session,
+                "PlayerAppearanceExtrasRefresh");
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerTitleInfo(_character, objectId),
+                cancellationToken,
+                _session,
+                "PlayerTitleInfoRefresh");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
                 PacketBuilder.PlayerInspectEquipmentStatusBundle(_character, objectId),
@@ -842,32 +876,102 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        var existingPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
-        foreach (var player in existingPlayers)
+        var sentWorldRevisions = new Dictionary<uint, long>();
+        var initialPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
+        foreach (var player in initialPlayers)
         {
-            await RefreshCharacterStatsAsync(player.Character, player.AccountId, "visible-player", cancellationToken);
-            Console.WriteLine(
-                $"[world] sending existing player to {_character.Name} existing={player.CharacterName} object={player.ObjectId} x={player.Character.PositionX:F2} z={player.Character.PositionZ:F2} wr={player.Character.WeaponRank}/aura{player.Character.WeaponAuraEffect} ar={player.Character.ArmorRank}/aura{player.Character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(player.Character)}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerWorldSpawn(player.Character, player.ObjectId),
-                cancellationToken,
-                "VisiblePlayerSpawn");
-            await _session.SendAsync(
-                PacketBuilder.EquipmentVisualRefresh(player.Character, player.ObjectId),
-                cancellationToken,
-                "VisiblePlayerEquipment");
-            await _session.SendAsync(
-                PacketBuilder.PlayerAppearanceExtras(player.Character, player.ObjectId),
-                cancellationToken,
-                "VisiblePlayerAppearanceExtras");
-            await _session.SendAsync(
-                PacketBuilder.PlayerTitleInfo(player.Character, player.ObjectId),
-                cancellationToken,
-                "VisiblePlayerTitleInfo");
+            await SendVisiblePlayerAsync(player, "initial", cancellationToken);
+            sentWorldRevisions[player.ObjectId] = player.WorldRevision;
+        }
+
+        if (!_registered)
+        {
+            _registry.JoinMap(
+                _session,
+                _account?.Id ?? _character.AccountId,
+                _character,
+                WorldObjectIds.ForPlayer(_character.Id),
+                worldReady: false);
+            _registered = true;
+        }
+
+        // Reconcile the handoff after joining. A player that entered while the
+        // initial snapshot was being sent would otherwise be absent, while one
+        // that left before registration would remain as a ghost on this client.
+        var currentPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
+        foreach (var player in currentPlayers)
+        {
+            if (sentWorldRevisions.TryGetValue(player.ObjectId, out var sentRevision) &&
+                sentRevision == player.WorldRevision)
+            {
+                continue;
+            }
+
+            await SendVisiblePlayerAsync(player, "reconcile", cancellationToken);
+            sentWorldRevisions[player.ObjectId] = player.WorldRevision;
+        }
+
+        // Activation is atomic with respect to map joins. If another session
+        // became ready during the snapshot send, keep this one hidden until its
+        // spawn bundle has also been delivered. A session joining after the
+        // successful flip sees this player and announces itself normally.
+        while (!_registry.TryMarkWorldReady(
+                   _session,
+                   sentWorldRevisions,
+                   out var unseenPlayers))
+        {
+            if (unseenPlayers.Count == 0)
+            {
+                throw new InvalidOperationException("Cannot activate an unregistered world session.");
+            }
+
+            foreach (var player in unseenPlayers)
+            {
+                if (sentWorldRevisions.TryGetValue(player.ObjectId, out var sentRevision) &&
+                    sentRevision == player.WorldRevision)
+                {
+                    continue;
+                }
+
+                await SendVisiblePlayerAsync(player, "activation-reconcile", cancellationToken);
+                sentWorldRevisions[player.ObjectId] = player.WorldRevision;
+            }
+        }
+
+        // Position changes deliberately do not invalidate the durable-state
+        // barrier. Send one current position after activation so movement that
+        // occurred while this session was hidden is not lost. Subsequent movement
+        // broadcasts remain serialized with this handoff by the session send lock.
+        var activationPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
+        foreach (var player in activationPlayers)
+        {
+            if (!sentWorldRevisions.ContainsKey(player.ObjectId))
+            {
+                continue;
+            }
+
             await _session.SendAsync(
                 PacketBuilder.PlayerWorldPosition(player.Character, player.ObjectId),
                 cancellationToken,
-                "VisiblePlayerPosition");
+                "VisiblePlayerActivationPosition");
+        }
+
+        // Re-snapshot after the position sends. If a player disconnected during
+        // the loop, its normal remove may have preceded a queued position packet;
+        // this final remove is therefore guaranteed to be the last handoff event.
+        var finalPlayers = _registry.GetMapSessions(_character.CurrentMap, _session);
+        var currentObjectIds = finalPlayers
+            .Select(player => player.ObjectId)
+            .ToHashSet();
+        var staleObjectIds = sentWorldRevisions.Keys
+            .Where(objectId => !currentObjectIds.Contains(objectId))
+            .ToArray();
+        if (staleObjectIds.Length > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.RemoveWorldObjects(staleObjectIds),
+                cancellationToken,
+                "VisiblePlayerReconcileRemove");
         }
 
         var objectId = WorldObjectIds.ForPlayer(_character.Id);
@@ -900,11 +1004,56 @@ internal sealed class GameClientHandler : IClientHandler
                 PacketBuilder.PlayerWorldPosition(_character, objectId),
                 cancellationToken,
                 _session);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerStatusUpdate(_character, objectId),
+                cancellationToken,
+                _session,
+                "VisiblePlayerStatus");
         }
 
         _worldPresenceAnnounced = true;
         Console.WriteLine(
-            $"[world] player presence map={_character.CurrentMap} character={_character.Name} object={objectId} receivedExisting={existingPlayers.Count} announcedTo={spawnRecipients}");
+            $"[world] player presence map={_character.CurrentMap} character={_character.Name} object={objectId} receivedExisting={currentObjectIds.Count} announcedTo={spawnRecipients}");
+    }
+
+    private async Task SendVisiblePlayerAsync(
+        GameSessionContext player,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        await RefreshCharacterStatsAsync(player.Character, player.AccountId, "visible-player", cancellationToken);
+        Console.WriteLine(
+            $"[world] sending existing player phase={phase} to={_character.Name} existing={player.CharacterName} object={player.ObjectId} x={player.Character.PositionX:F2} z={player.Character.PositionZ:F2} wr={player.Character.WeaponRank}/aura{player.Character.WeaponAuraEffect} ar={player.Character.ArmorRank}/aura{player.Character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(player.Character)}");
+        await _session.SendAsync(
+            PacketBuilder.PlayerWorldSpawn(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerSpawn");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerEquipment");
+        await _session.SendAsync(
+            PacketBuilder.PlayerAppearanceExtras(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerAppearanceExtras");
+        await _session.SendAsync(
+            PacketBuilder.PlayerTitleInfo(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerTitleInfo");
+        await _session.SendAsync(
+            PacketBuilder.PlayerWorldPosition(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerPosition");
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerStatus");
     }
 
     private async Task SendNearbyMonstersAsync(CancellationToken cancellationToken)
@@ -954,15 +1103,17 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.PlayerStatusUpdate(_character),
             cancellationToken,
             "PlayerStatusUpdate");
-        if (_clientReadyReceived)
-        {
-            await SendPostEnterBootstrapAsync(cancellationToken);
-        }
+        _playerDetailSent = true;
+        await SendPostEnterBootstrapAsync(cancellationToken);
     }
 
     private async Task SendPostEnterBootstrapAsync(CancellationToken cancellationToken)
     {
-        if (_postEnterBootstrapSent || _account is null || _character is null)
+        if (_postEnterBootstrapSent
+            || !_clientReadyReceived
+            || !_playerDetailSent
+            || _account is null
+            || _character is null)
         {
             return;
         }
@@ -1010,20 +1161,10 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        var inspectProfileObjectId = requestedObjectId == 0 ? target.ObjectId : requestedObjectId;
         var inspectDetailObjectId = target.ObjectId;
         await RefreshCharacterStatsAsync(target.Character, target.AccountId, "inspect-target", cancellationToken);
         Console.WriteLine(
-            $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} inspectProfileObject={inspectProfileObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
-        await _session.SendAsync(
-            PacketBuilder.PlayerInspectProfile(target.Character, inspectProfileObjectId),
-            cancellationToken,
-            "PlayerInspectProfile");
-        await _session.SendAsync(
-            PacketBuilder.EquipmentItemClearSnapshots(inspectDetailObjectId),
-            cancellationToken,
-            "PlayerInspectClearSnapshots",
-            framed: false);
+            $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
         await _session.SendAsync(
             PacketBuilder.PlayerInspectEquipmentStatusBundle(target.Character, inspectDetailObjectId),
             cancellationToken,
@@ -1150,7 +1291,7 @@ internal sealed class GameClientHandler : IClientHandler
         _character.PositionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
         _character.PositionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
         _positionDirty = true;
-        _registry.UpdateCharacter(_session, _character);
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
     }
 
     private async Task PersistCharacterPositionAsync(bool force, CancellationToken cancellationToken)
@@ -1556,7 +1697,7 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         _character = updatedCharacter;
-        _registry.UpdateCharacter(_session, _character);
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         Console.WriteLine(
             $"[equip-re] kitbag move character={_character.Name} source={sourceSlot} destination={destinationSlot}");
 

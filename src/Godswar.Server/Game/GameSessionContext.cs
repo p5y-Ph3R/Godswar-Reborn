@@ -10,7 +10,9 @@ internal sealed record GameSessionContext(
     string CharacterName,
     byte MapId,
     uint ObjectId,
-    GameCharacter Character)
+    GameCharacter Character,
+    bool WorldReady,
+    long WorldRevision)
 {
     public string DisplayName => string.IsNullOrWhiteSpace(CharacterName)
         ? $"character:{CharacterId}"

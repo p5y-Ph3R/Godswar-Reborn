@@ -53,14 +53,11 @@ internal static class PacketBuilder
     private const ushort PlayerDetailAckOpcode = 0x27DA;
     private const int PlayerWorldVisualFlagsOffset = 81;
     private const int PlayerWorldVisualFlagsLength = 18;
-    private const int PlayerWorldVisualSubtypeOffset = 92;
-    private const int PlayerWorldVisualSubtypeLength = 7;
-    private const int PlayerWorldVisualTierOffset = 102;
-    private const int PlayerWorldVisualTierLength = 11;
-    private const int PlayerWorldEffectOffset = 112;
-    private const int PlayerWorldEffectLength = 7;
+    private const int PlayerWorldAttributeCountsOffset = 102;
+    private const int PlayerWorldAttributeCountsLength = 17;
     private const int PlayerWorldEquipmentIdsOffset = 124;
     private const int PlayerWorldEquipmentIdsLength = 18;
+    private const int PlayerWorldEquipmentMaskOffset = 168;
     private const short NativeClientHolyStoneSocketCount = 4;
     private const uint LocalPlayerObjectId = 0x00001448;
     private const uint MonsterObjectIdBase = 0x00002700;
@@ -140,22 +137,11 @@ internal static class PacketBuilder
         EquipmentSlots.Shield,
         EquipmentSlots.Stylish
     ];
+    // The 21 inspect records are source slots 0..20, not 13 gameplay slots plus
+    // eight empty records. Captured equipment masks place cosmetic/title items in
+    // slots 15..20 and preserve those same record positions during inspection.
     private static readonly int[] InspectEquipmentSlots =
-    [
-        EquipmentSlots.Head,
-        EquipmentSlots.Amulet,
-        EquipmentSlots.Glove,
-        EquipmentSlots.Armor,
-        EquipmentSlots.Cuff,
-        EquipmentSlots.Girdle,
-        EquipmentSlots.Shoes,
-        EquipmentSlots.Leggings,
-        EquipmentSlots.Ring1,
-        EquipmentSlots.Ring2,
-        EquipmentSlots.Weapon,
-        EquipmentSlots.Shield,
-        EquipmentSlots.Stylish
-    ];
+        Enumerable.Range(0, PlayerInspectEquipmentRecordCount).ToArray();
     private static readonly (float X, float Z)[] MonsterSpawnOffsets =
     [
         (10f, 7f),
@@ -236,6 +222,40 @@ internal static class PacketBuilder
         {
             spawn.Packet.CopyTo(stream.AsSpan(offset));
             offset += spawn.Packet.Length;
+            spawn.Detail10077.CopyTo(stream.AsSpan(offset));
+            offset += spawn.Detail10077.Length;
+            spawn.Detail10080.CopyTo(stream.AsSpan(offset));
+            offset += spawn.Detail10080.Length;
+        }
+
+        return stream;
+    }
+
+    public static byte[] NpcSpawns(IReadOnlyList<NpcSpawnDefinition> spawns)
+    {
+        if (spawns.Count == 0)
+        {
+            return [];
+        }
+
+        var length = 0;
+        foreach (var spawn in spawns)
+        {
+            length = checked(
+                length +
+                WorldObjectAppearanceLength +
+                spawn.Detail10077.Length +
+                spawn.Detail10080.Length);
+        }
+
+        var stream = new byte[length];
+        var offset = 0;
+        foreach (var spawn in spawns)
+        {
+            WriteNpcWorldObjectAppearance(
+                stream.AsSpan(offset, WorldObjectAppearanceLength),
+                spawn);
+            offset += WorldObjectAppearanceLength;
             spawn.Detail10077.CopyTo(stream.AsSpan(offset));
             offset += spawn.Detail10077.Length;
             spawn.Detail10080.CopyTo(stream.AsSpan(offset));
@@ -585,8 +605,10 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x27D9);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), 0x35);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), (uint)Math.Max(1, character.Profession + 1));
+        // Captured 0x27D9 packets carry the avatar hair/model byte followed by
+        // the one-based gender, not a constant hair id and profession.
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), character.Hair);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), (uint)character.Gender + 1u);
 
         var equipment = ParseEquipment(character);
         for (var slot = EquipmentSlots.Head; slot <= EquipmentSlots.Shield; slot++)
@@ -609,12 +631,17 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(44, 4), Math.Max(1, character.CurrentHp));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(48, 4), Math.Max(1, character.MaxHp));
         packet[52] = character.Gender;
-        packet[54] = (byte)Math.Clamp(character.Level, 1, byte.MaxValue);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(54, 2),
+            (ushort)Math.Clamp(character.Level, 1, ushort.MaxValue));
+        packet[56] = character.Face;
         packet[58] = ToWorldProfessionByte(character.Profession);
         packet[59] = character.Hair;
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(60, 4), character.PositionX);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(64, 4), 0f);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(68, 4), character.PositionZ);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(64, 4), character.PositionZ);
+        // The third captured coordinate is terrain height. It is not persisted by
+        // GameCharacter, so use the neutral value rather than shifting Z into it.
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(68, 4), 0f);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(72, 4), 1f);
         PatchPlayerWorldAppearance(packet, character);
         return packet;
@@ -623,17 +650,14 @@ internal static class PacketBuilder
     public static byte[] PlayerAppearanceExtras(GameCharacter character, uint objectId)
     {
         var packet = new byte[108];
-        var weaponId = EquipmentSlots.GetItemId(EquipmentFor(character), character.Profession, EquipmentSlots.Weapon);
 
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2808);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            packet.AsSpan(4, 4),
-            PlayerAppearanceExtraId(character, weaponId));
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(
-            packet.AsSpan(12, 4),
-            PlayerAppearanceEffectCode(character, weaponId));
+        // Working captures identify the remaining fields as character-specific
+        // guild/social appearance data (including an optional name at offset 32),
+        // not equipment-aura constants. GameCharacter does not model that data;
+        // emit the captured neutral form instead of inventing another player's ids.
         packet[64] = 1;
         return packet;
     }
@@ -644,8 +668,9 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x27D7);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(72, 4), 0x00010101);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(76, 4), (uint)Math.Max(0, character.Id));
+        // Offset 8 is the selected title text and offset 76 is a title id in the
+        // working captures. Neither is the character id. Until titles are modeled,
+        // the all-zero untitled body is the only truthful representation.
         return packet;
     }
 
@@ -1274,6 +1299,14 @@ internal static class PacketBuilder
             .ToArray();
     }
 
+    private static (int Slot, CompactItemEntry Item)[] PlayerWorldEquipmentItems(GameCharacter character)
+    {
+        var equipment = ParseEquipment(character);
+        return Enumerable.Range(0, equipment.Length)
+            .Select(slot => (Slot: slot, Item: equipment[slot]))
+            .ToArray();
+    }
+
     private static (int Slot, CompactItemEntry Item)[] EquipmentItemsForInspect(GameCharacter character)
     {
         var equipment = ParseEquipment(character);
@@ -1293,194 +1326,64 @@ internal static class PacketBuilder
     private static void PatchPlayerWorldAppearance(byte[] packet, GameCharacter character)
     {
         packet.AsSpan(PlayerWorldVisualFlagsOffset, PlayerWorldVisualFlagsLength).Clear();
-        packet.AsSpan(PlayerWorldVisualSubtypeOffset, PlayerWorldVisualSubtypeLength).Clear();
-        packet.AsSpan(PlayerWorldVisualTierOffset, PlayerWorldVisualTierLength).Clear();
-        packet.AsSpan(PlayerWorldEffectOffset, PlayerWorldEffectLength).Clear();
+        packet.AsSpan(PlayerWorldAttributeCountsOffset, PlayerWorldAttributeCountsLength).Clear();
         packet.AsSpan(PlayerWorldEquipmentIdsOffset, PlayerWorldEquipmentIdsLength * 2).Clear();
 
         var visualIndex = 0;
-        var weaponId = 0u;
-        var equippedVisualTier = 0;
-        foreach (var (slot, item) in EquipmentItemsBySlot(character))
+        var equipmentMask = 0u;
+        foreach (var (slot, item) in PlayerWorldEquipmentItems(character))
         {
             if (item.IsEmpty || visualIndex >= PlayerWorldEquipmentIdsLength)
             {
                 continue;
             }
 
-            if (slot == EquipmentSlots.Weapon)
+            if (slot < sizeof(uint) * 8)
             {
-                weaponId = item.Id;
+                equipmentMask |= 1u << slot;
             }
 
-            packet[PlayerWorldVisualFlagsOffset + visualIndex] = PackWorldItemVisual(slot, item);
-            equippedVisualTier = Math.Max(equippedVisualTier, WorldVisualTier(item));
+            packet[PlayerWorldVisualFlagsOffset + visualIndex] = PackWorldItemVisual(item);
+            if (visualIndex < PlayerWorldAttributeCountsLength)
+            {
+                packet[PlayerWorldAttributeCountsOffset + visualIndex] = WorldItemAttributeCount(item);
+            }
+
             BinaryPrimitives.WriteUInt16LittleEndian(
                 packet.AsSpan(PlayerWorldEquipmentIdsOffset + (visualIndex * 2), 2),
                 (ushort)Math.Min(item.Id, ushort.MaxValue));
             visualIndex++;
         }
 
-        if (visualIndex > 0)
-        {
-            WriteWorldVisualSubtype(packet, weaponId, character.Profession);
-        }
-
-        for (var i = 0; i < Math.Min(visualIndex, PlayerWorldVisualTierLength); i++)
-        {
-            packet[PlayerWorldVisualTierOffset + i] = ClampByte((short)equippedVisualTier);
-        }
-
-        var armorAuraEffect = ToWorldAuraEffect(character.ArmorAuraEffect);
-        var weaponAuraEffect = ToWorldWeaponAuraEffect(character.WeaponAuraEffect, weaponId, character.Profession);
-        packet[PlayerWorldEffectOffset] = ClampByte((short)Math.Max(equippedVisualTier, armorAuraEffect));
-        if (IsTwoHandWeapon(weaponId))
-        {
-            packet[PlayerWorldEffectOffset + 1] = 0;
-            packet[PlayerWorldEffectOffset + 2] = weaponAuraEffect;
-        }
-        else
-        {
-            packet[PlayerWorldEffectOffset + 1] = weaponAuraEffect;
-            packet[PlayerWorldEffectOffset + 2] = 0;
-        }
-
-        var hasWorldAura = character.ArmorAuraEffect > 0
-            || character.WeaponAuraEffect > 0
-            || packet[PlayerWorldEffectOffset + 1] != 0
-            || packet[PlayerWorldEffectOffset + 2] != 0;
-
-        packet[PlayerWorldEffectOffset + 3] =
-            (byte)(hasWorldAura ? 1 : 0);
-
-        if (packet[PlayerWorldEffectOffset + 3] != 0)
-        {
-            WriteWorldEffectTail(packet, weaponId, character.Profession);
-        }
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerWorldEquipmentMaskOffset, sizeof(uint)),
+            equipmentMask);
     }
 
-    private static byte PackWorldItemVisual(int slot, CompactItemEntry item)
+    private static byte PackWorldItemVisual(CompactItemEntry item)
     {
-        // The world-spawn packet stores visual grade/quality in two 4-bit nibbles.
-        // Extended DB values such as Boundless/G25 must be projected onto captured
-        // legacy values; sending raw extended values makes remote clients ignore the
-        // player appearance block.
-        if (item.Grade >= 12 || item.Quality >= 10)
-        {
-            return slot switch
-            {
-                EquipmentSlots.Amulet
-                    or EquipmentSlots.Cuff
-                    or EquipmentSlots.Girdle
-                    or EquipmentSlots.Shoes
-                    or EquipmentSlots.Leggings
-                    => 0xC8,
-                EquipmentSlots.Ring1 or EquipmentSlots.Ring2 => 0xC9,
-                _ => 0xCA
-            };
-        }
-
-        var grade = (int)Math.Clamp(item.Grade, (short)0, (short)12);
-        var quality = (int)Math.Clamp(item.Quality, (short)0, (short)10);
+        // Captures pair each equipment id with (grade << 4) | quality. In
+        // particular, every captured G12/Q10 item is 0xCA regardless of slot.
+        var grade = (int)Math.Clamp(item.Grade, (short)0, PlayerInspectGradeCap);
+        var quality = (int)Math.Clamp(item.Quality, (short)0, PlayerInspectQualityCap);
         return (byte)((grade << 4) | quality);
     }
 
-    private static int WorldVisualTier(CompactItemEntry item)
+    private static byte WorldItemAttributeCount(CompactItemEntry item)
     {
-        if (item.Grade >= 12 || item.Quality >= 10)
-        {
-            return 4;
-        }
-
-        if (item.Grade >= 9 || item.Quality >= 8)
-        {
-            return 4;
-        }
-
-        if (item.Grade >= 6 || item.Quality >= 6)
-        {
-            return 3;
-        }
-
-        return item.IsEmpty ? 0 : 1;
+        var count = 0;
+        count += HasWorldItemAttribute(item.Attribute1) ? 1 : 0;
+        count += HasWorldItemAttribute(item.Attribute2) ? 1 : 0;
+        count += HasWorldItemAttribute(item.Attribute3) ? 1 : 0;
+        count += HasWorldItemAttribute(item.Attribute4) ? 1 : 0;
+        count += HasWorldItemAttribute(item.Attribute5) ? 1 : 0;
+        return (byte)count;
     }
 
-    private static byte ToWorldAuraEffect(int auraEffect)
+    private static bool HasWorldItemAttribute(int? attribute)
     {
-        return ClampByte((short)Math.Clamp(auraEffect, 0, 4));
-    }
-
-    private static byte ToWorldWeaponAuraEffect(int auraEffect, uint weaponId, byte profession)
-    {
-        if (auraEffect <= 0)
-        {
-            return 0;
-        }
-
-        if (IsChampionTwoHandWeapon(weaponId, profession))
-        {
-            return 0x02;
-        }
-
-        return ClampByte((short)Math.Clamp(auraEffect, 1, 3));
-    }
-
-    private static uint PlayerAppearanceExtraId(GameCharacter character, uint weaponId)
-    {
-        if (IsChampionTwoHandWeapon(weaponId, character.Profession))
-        {
-            return 0x00008A2D;
-        }
-
-        return character.WeaponAuraEffect > 0 || character.ArmorAuraEffect > 0
-            ? 0x0002BB97u
-            : 0u;
-    }
-
-    private static uint PlayerAppearanceEffectCode(GameCharacter character, uint weaponId)
-    {
-        if (IsChampionTwoHandWeapon(weaponId, character.Profession))
-        {
-            return 0x00780015;
-        }
-
-        return character.WeaponAuraEffect > 0 || character.ArmorAuraEffect > 0
-            ? 0x00010101u
-            : 0u;
-    }
-
-    private static void WriteWorldVisualSubtype(byte[] packet, uint weaponId, byte profession)
-    {
-        ReadOnlySpan<byte> subtype = IsChampionTwoHandWeapon(weaponId, profession)
-            ? [0x11, 0x42, 0x32, 0x52, 0x31, 0x14, 0x11]
-            : [0x11, 0x21, 0x13, 0x42, 0x12, 0x21, 0x11];
-
-        subtype.CopyTo(packet.AsSpan(PlayerWorldVisualSubtypeOffset, PlayerWorldVisualSubtypeLength));
-    }
-
-    private static void WriteWorldEffectTail(byte[] packet, uint weaponId, byte profession)
-    {
-        if (IsChampionTwoHandWeapon(weaponId, profession))
-        {
-            packet[PlayerWorldEffectOffset + 4] = 0x03;
-            packet[PlayerWorldEffectOffset + 5] = 0x02;
-            packet[PlayerWorldEffectOffset + 6] = 0x03;
-            return;
-        }
-
-        packet[PlayerWorldEffectOffset + 4] = 0x02;
-        packet[PlayerWorldEffectOffset + 5] = 0x03;
-        packet[PlayerWorldEffectOffset + 6] = 0x02;
-    }
-
-    private static bool IsTwoHandWeapon(uint itemId)
-    {
-        return itemId is >= 1400 and < 2000;
-    }
-
-    private static bool IsChampionTwoHandWeapon(uint itemId, byte profession)
-    {
-        return profession == 1 && itemId is >= 1400 and < 1500;
+        // Captured item records use -1 as the absent sentinel; compact records use null.
+        return attribute is >= 0;
     }
 
     private static CompactItemEntry[] KitBagItems(GameCharacter character)
@@ -1747,6 +1650,30 @@ internal static class PacketBuilder
         PacketText.WriteFixedAscii(packet.Slice(WorldObjectTemplateOffset, WorldObjectTemplateLength), templateKey);
     }
 
+    private static void WriteNpcWorldObjectAppearance(
+        Span<byte> packet,
+        NpcSpawnDefinition spawn)
+    {
+        packet.Clear();
+        BinaryPrimitives.WriteUInt16LittleEndian(packet[..2], WorldObjectAppearanceLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(2, 2), 0x2724);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.Slice(4, 4),
+            spawn.AppearanceType == 0 ? NpcSpawnDefinitionFactory.DefaultAppearanceType : spawn.AppearanceType);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(8, 4), spawn.ObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(12, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(24, 4), 1521);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(28, 4), spawn.X);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(32, 4), 0f);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(36, 4), spawn.Z);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.Slice(40, 4),
+            float.IsFinite(spawn.Facing) ? spawn.Facing : NpcSpawnDefinitionFactory.DefaultFacing);
+        PacketText.WriteFixedAscii(
+            packet.Slice(WorldObjectTemplateOffset, WorldObjectTemplateLength),
+            spawn.TemplateKey);
+    }
+
     private static void WriteNullableInt32(Span<byte> destination, int? value)
     {
         BinaryPrimitives.WriteInt32LittleEndian(destination, value ?? -1);
@@ -1835,6 +1762,17 @@ internal static class PacketBuilder
         if (packet.Length > fieldBase)
         {
             packet[fieldBase] = character.Gender;
+        }
+
+        if (packet.Length >= fieldBase + 20)
+        {
+            // PlayerDetail and PlayerStatusUpdate share the captured transform
+            // layout. Do not leak the fixed template player's 165/-97 position
+            // when publishing an object-specific remote status packet.
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 4, 4), character.PositionX);
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 8, 4), 0f);
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 12, 4), character.PositionZ);
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 16, 4), 1f);
         }
 
         if (packet.Length >= fieldBase + 56)

@@ -74,17 +74,16 @@ internal sealed class ClientSession : IAsyncDisposable
         string? label = null,
         bool framed = true)
     {
-        if (!string.IsNullOrWhiteSpace(label))
-        {
-            LogSend(clearPacket, label, framed);
-        }
-
-        var encrypted = clearPacket.ToArray();
-        _sendCipher.Transform(encrypted);
-
         await _sendLock.WaitAsync(cancellationToken);
         try
         {
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                LogSend(clearPacket, label, framed);
+            }
+
+            var encrypted = clearPacket.ToArray();
+            _sendCipher.Transform(encrypted);
             await _stream.WriteAsync(encrypted, cancellationToken);
             await _stream.FlushAsync(cancellationToken);
         }

@@ -15,7 +15,8 @@ internal sealed class GameSessionRegistry
         ClientSession session,
         int accountId,
         GameCharacter character,
-        uint objectId)
+        uint objectId,
+        bool worldReady = true)
     {
         var context = new GameSessionContext(
             session,
@@ -24,7 +25,9 @@ internal sealed class GameSessionRegistry
             character.Name,
             character.CurrentMap,
             objectId,
-            character);
+            character,
+            worldReady,
+            0);
         GameSessionContext? previous = null;
         lock (_gate)
         {
@@ -68,7 +71,10 @@ internal sealed class GameSessionRegistry
         Console.WriteLine($"[world] left map={context.MapId} character={context.DisplayName} account={context.AccountId} population={GetMapPopulation(context.MapId)}");
     }
 
-    public void UpdateCharacter(ClientSession session, GameCharacter character)
+    public void UpdateCharacter(
+        ClientSession session,
+        GameCharacter character,
+        bool advanceWorldRevision = true)
     {
         lock (_gate)
         {
@@ -82,7 +88,10 @@ internal sealed class GameSessionRegistry
                 CharacterId = character.Id,
                 CharacterName = character.Name,
                 MapId = character.CurrentMap,
-                Character = character
+                Character = character,
+                WorldRevision = advanceWorldRevision
+                    ? existing.WorldRevision + 1
+                    : existing.WorldRevision
             };
 
             if (existing.MapId != updated.MapId)
@@ -92,6 +101,46 @@ internal sealed class GameSessionRegistry
 
             _sessions[session] = updated;
             AddToMap(updated);
+        }
+    }
+
+    public bool TryMarkWorldReady(
+        ClientSession session,
+        IReadOnlyDictionary<uint, long> knownWorldRevisions,
+        out IReadOnlyList<GameSessionContext> unseenPlayers)
+    {
+        lock (_gate)
+        {
+            unseenPlayers = [];
+            if (!_sessions.TryGetValue(session, out var existing))
+            {
+                return false;
+            }
+
+            if (existing.WorldReady)
+            {
+                return true;
+            }
+
+            if (_maps.TryGetValue(existing.MapId, out var map))
+            {
+                unseenPlayers = map.Snapshot()
+                    .Where(candidate =>
+                        candidate.WorldReady &&
+                        !ReferenceEquals(candidate.Session, session) &&
+                        (!knownWorldRevisions.TryGetValue(candidate.ObjectId, out var knownRevision) ||
+                         knownRevision != candidate.WorldRevision))
+                    .ToArray();
+                if (unseenPlayers.Count > 0)
+                {
+                    return false;
+                }
+            }
+
+            var updated = existing with { WorldReady = true };
+            _sessions[session] = updated;
+            AddToMap(updated);
+            return true;
         }
     }
 
@@ -137,7 +186,8 @@ internal sealed class GameSessionRegistry
         var sent = 0;
         foreach (var context in map.Snapshot())
         {
-            if (excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
+            if (!context.WorldReady ||
+                excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
             {
                 continue;
             }
@@ -169,7 +219,9 @@ internal sealed class GameSessionRegistry
         }
 
         return map.Snapshot()
-            .Where(context => excludeSession is null || !ReferenceEquals(context.Session, excludeSession))
+            .Where(context =>
+                context.WorldReady &&
+                (excludeSession is null || !ReferenceEquals(context.Session, excludeSession)))
             .ToArray();
     }
 
@@ -187,7 +239,8 @@ internal sealed class GameSessionRegistry
 
         foreach (var candidate in map.Snapshot())
         {
-            if (excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
+            if (!candidate.WorldReady ||
+                excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
             {
                 continue;
             }
@@ -218,7 +271,8 @@ internal sealed class GameSessionRegistry
 
         foreach (var candidate in map.Snapshot())
         {
-            if (excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
+            if (!candidate.WorldReady ||
+                excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
             {
                 continue;
             }

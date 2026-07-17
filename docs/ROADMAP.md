@@ -2,12 +2,15 @@
 
 This is the current step-by-step plan for moving the local C# server from packet replay toward real MMORPG gameplay.
 
-## 1. Map And Session Foundation
+## 1. Map And Session Foundation — Baseline Implemented
 
-- Track logged-in characters by account, character, and current map.
-- Broadcast movement/chat only to sessions in the same map instance.
-- Keep same-account relog behavior: a new login replaces the stale session.
-- Add enough logging to test two different accounts on the same PC.
+- Logged-in characters are tracked by account, character, and current map.
+- A character joins the visible map registry only after both `ClientReady` and the player-detail exchange have completed.
+- Movement and chat are broadcast only to sessions in the same map instance.
+- Two-client visibility sends server-built remote spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets in both directions.
+- Same-account relog behavior remains in place: a new login replaces the stale session.
+- This synchronization is server-side and requires no game client code changes for a client that is already pointed at the server.
+- Continue two-account testing around reconnects, equipment changes, and future map transitions.
 - Defer a separate map-server process until the in-process map boundary is clean.
 
 ## 2. Character Stats
@@ -26,11 +29,13 @@ This is the current step-by-step plan for moving the local C# server from packet
 - Tighten talent requirements, costs, rank caps, and stat effects.
 - Feed skill/talent effects into the shared stat calculator.
 
-## 4. Holy Stone Gameplay
+## 4. Static NPCs And Holy Stone Gameplay
 
-- Implement NPC dialog/action handling for Holy Stone Artisan opcodes `10067`, `10068`, `10069`, and `10070`.
-- Support drilling, mounting stones, removing stones, currency/material validation, and item mutation.
-- Refresh item state, equipment visuals, and character stats after each successful action.
+- Static NPC spawn packets are built from server-owned definitions rather than replaying a raw city stream. Validated captures are preferred, normalized appearance/position references fill missing definitions, and same-number capital NPCs provide a fallback where one city lacks a position.
+- Map-specific object and interaction IDs are assigned deterministically. The Holy Stone Artisan resolves to the correct identity and script in both Sparta and Athens.
+- Holy Stone Artisan dialog/action handling covers opcodes `10067`, `10068`, `10069`, and `10070`, including drilling, mounting, removing, validation, item mutation, and post-action item/visual/stat refreshes.
+- The current PostgreSQL baseline resolves 100 Sparta and 95 Athens NPC identities, including 48 directly normalized references in each city. Most other NPC dialog scripts and all quest flows still need implementation.
+- Add full NPC behavior/AI only after the static spawn and interaction baseline is stable.
 
 ## 5. Mobs, Bosses, And Combat
 

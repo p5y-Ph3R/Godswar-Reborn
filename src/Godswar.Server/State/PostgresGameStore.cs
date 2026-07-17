@@ -2671,6 +2671,108 @@ internal sealed class PostgresGameStore : IGameStore
         return spawns;
     }
 
+    public async Task<IReadOnlyList<NpcSpawnDefinition>> GetNpcSpawnDefinitionsAsync(
+        short mapId,
+        CancellationToken cancellationToken = default)
+    {
+        var capturedSpawns = await GetCapturedNpcSpawnsAsync(mapId, cancellationToken);
+        var capturedAppearanceFallbacks = mapId == 1
+            ? await GetCapturedNpcSpawnsAsync(0, cancellationToken)
+            : [];
+        var referenceDefinitions = await GetNormalizedNpcSpawnReferencesAsync(mapId, cancellationToken);
+        return NpcSpawnDefinitionFactory.Create(
+            mapId,
+            capturedSpawns,
+            capturedAppearanceFallbacks,
+            referenceDefinitions);
+    }
+
+    private async Task<IReadOnlyList<NpcSpawnReferenceDefinition>> GetNormalizedNpcSpawnReferencesAsync(
+        short mapId,
+        CancellationToken cancellationToken)
+    {
+        var definitions = new List<NpcSpawnReferenceDefinition>();
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            WITH position_counts AS (
+                SELECT ns.map_id,
+                       ns.npc_key,
+                       ns.pos_x,
+                       ns.pos_z,
+                       COUNT(*) AS reference_count
+                FROM npc_spawn_references ns
+                WHERE ns.map_id = @mapId
+                  AND ns.npc_key <> ''
+                GROUP BY ns.map_id, ns.npc_key, ns.pos_x, ns.pos_z
+            ),
+            ranked_positions AS (
+                SELECT pc.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY pc.map_id, pc.npc_key
+                           ORDER BY pc.reference_count DESC, pc.pos_x, pc.pos_z
+                       ) AS position_rank
+                FROM position_counts pc
+            ),
+            ranked_appearances AS (
+                SELECT na.npc_key,
+                       na.template_key,
+                       na.scene_key,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY na.npc_key
+                           ORDER BY CASE
+                                        WHEN na.scene_key <> '' AND na.scene_key = nt.scene_key THEN 0
+                                        WHEN na.scene_key <> '' THEN 1
+                                        ELSE 2
+                                    END,
+                                    LENGTH(na.template_key),
+                                    na.template_key
+                       ) AS appearance_rank
+                FROM npc_appearance_templates na
+                LEFT JOIN npc_text_templates nt ON nt.npc_key = na.npc_key
+                WHERE na.npc_key <> ''
+                  AND na.template_key <> ''
+            )
+            SELECT rp.map_id,
+                   COALESCE(
+                       NULLIF(ra.scene_key, ''),
+                       NULLIF(nt.scene_key, ''),
+                       NULLIF(mt.scene_key, ''),
+                       SPLIT_PART(rp.npc_key, '_', 1)
+                   ) AS scene_key,
+                   rp.npc_key,
+                   ra.template_key,
+                   rp.pos_x,
+                   rp.pos_z
+            FROM ranked_positions rp
+            JOIN ranked_appearances ra
+              ON ra.npc_key = rp.npc_key
+             AND ra.appearance_rank = 1
+            LEFT JOIN npc_text_templates nt ON nt.npc_key = rp.npc_key
+            LEFT JOIN map_templates mt ON mt.map_id = rp.map_id
+            WHERE rp.position_rank = 1
+            ORDER BY rp.npc_key, ra.template_key;
+            """, connection);
+        command.Parameters.AddWithValue("mapId", mapId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var definition = new NpcSpawnReferenceDefinition(
+                reader.GetInt16(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetFloat(4),
+                reader.GetFloat(5));
+            if (float.IsFinite(definition.X) && float.IsFinite(definition.Z))
+            {
+                definitions.Add(definition);
+            }
+        }
+
+        return definitions;
+    }
+
     public async Task<IReadOnlyList<CapturedMonsterSpawn>> GetCapturedMonsterSpawnsAsync(
         short mapId,
         CancellationToken cancellationToken = default)
