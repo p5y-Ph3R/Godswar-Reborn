@@ -63,6 +63,16 @@ internal static class PacketBuilder
     private const int PlayerWorldEquipmentIdsOffset = 124;
     private const int PlayerWorldEquipmentIdsLength = 18;
     private const int PlayerWorldEquipmentMaskOffset = 168;
+    private const int PlayerWorldNativeLength = 260;
+    private const int PlayerWorldFullVisualMarkerOffset = PlayerWorldNativeLength;
+    private const int PlayerWorldFullVisualQualityOffset = PlayerWorldFullVisualMarkerOffset + sizeof(uint);
+    private const int PlayerWorldFullVisualGradeOffset =
+        PlayerWorldFullVisualQualityOffset + PlayerWorldEquipmentIdsLength;
+    private const int PlayerWorldExtendedLength =
+        PlayerWorldFullVisualGradeOffset + PlayerWorldEquipmentIdsLength;
+    // ASCII "GWX1" on the wire. Patched clients require both this marker and
+    // the extended packet length before reading the appended full-byte fields.
+    private const uint PlayerWorldFullVisualMarker = 0x31585747;
     private const short NativeClientHolyStoneSocketCount = 4;
     private const uint LocalPlayerObjectId = 0x00001448;
     private const uint MonsterObjectIdBase = 0x00002700;
@@ -627,7 +637,8 @@ internal static class PacketBuilder
 
     public static byte[] PlayerWorldSpawn(GameCharacter character, uint objectId)
     {
-        var packet = PlayerWorldSpawnTemplate.ToArray();
+        var packet = new byte[PlayerWorldExtendedLength];
+        PlayerWorldSpawnTemplate.CopyTo(packet, 0);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerWorldSpawnOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
@@ -1352,6 +1363,11 @@ internal static class PacketBuilder
         packet.AsSpan(PlayerWorldVisualFlagsOffset, PlayerWorldVisualFlagsLength).Clear();
         packet.AsSpan(PlayerWorldAttributeCountsOffset, PlayerWorldAttributeCountsLength).Clear();
         packet.AsSpan(PlayerWorldEquipmentIdsOffset, PlayerWorldEquipmentIdsLength * 2).Clear();
+        packet.AsSpan(PlayerWorldFullVisualQualityOffset, PlayerWorldEquipmentIdsLength).Clear();
+        packet.AsSpan(PlayerWorldFullVisualGradeOffset, PlayerWorldEquipmentIdsLength).Clear();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerWorldFullVisualMarkerOffset, sizeof(uint)),
+            PlayerWorldFullVisualMarker);
 
         var visualIndex = 0;
         var equipmentMask = 0u;
@@ -1368,6 +1384,10 @@ internal static class PacketBuilder
             }
 
             packet[PlayerWorldVisualFlagsOffset + visualIndex] = PackWorldItemVisual(item);
+            packet[PlayerWorldFullVisualQualityOffset + visualIndex] =
+                (byte)Math.Clamp(item.Quality, (short)0, (short)byte.MaxValue);
+            packet[PlayerWorldFullVisualGradeOffset + visualIndex] =
+                (byte)Math.Clamp(item.Grade, (short)0, (short)byte.MaxValue);
             if (visualIndex < PlayerWorldAttributeCountsLength)
             {
                 packet[PlayerWorldAttributeCountsOffset + visualIndex] = WorldItemAttributeCount(item);

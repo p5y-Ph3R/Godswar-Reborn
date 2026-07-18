@@ -88,6 +88,7 @@ Grade/quality/rank support for local testing has been extended beyond the origin
 - Talent milestone bonuses are intentionally parked for now. The current talent system only has progressive base scaling through `talent_effective_rank(rank)` and the client tooltip compatibility patch above. There is no separate milestone-attribute layer yet. Future implementation should add a `talent_milestone_effects` table, include those effects in `character_stat_summary`, and then patch/discover the client tooltip path so rank milestones like `40/60/80/100` can show their bonus text separately from the base stat line.
 - `Origin.exe` has a weapon rank item-score cap patch in the single-item score path at file offsets `0xA70AA` and `0xA70B3`: quality is capped at `0x14`/20 and grade is capped at `0x19`/25. The original client compared against quality `10` and grade `12`, so future weapon quality/grade upgrades must revisit this path.
 - `Origin.exe` has a separate armor rank aggregate-score cap patch at file offsets `0xA7505` and `0xA750E`: quality now rejects only `>= 21` and grade now rejects only `>= 26`. The original client skipped armor contribution for quality `>= 11` or grade `>= 13`, which is why G13 gloves showed `0` contribution until this was patched. Backup is `C:\Reborn\backups\origin-armor-rank-q20-g25-20260518\Origin.exe`.
+- Remote-player opcode `0x2725` now retains its native Q10/G12 nibble projection and appends a versioned `GWX1` full-byte Q/G tail. `tools/PatchRemoteWorldEquipmentExtension.ps1` installs or reverts the guarded `Origin.exe` decoder. This lets nearby-player weapon/armor rank and aura calculations use Q20/G25 while unextended 260-byte packets keep the original decoder. The wire extension supports bytes through Q255/G255; future ceilings must still extend client template arrays and the score checks at `0xA70AA`, `0xA70B3`, `0xA7505`, and `0xA750E`.
 - Body armor rows (`armor` and `cloth`) need an extra final `DefendFraction`/`DefendEff` sentinel after the highest armor rank. For AR14 testing, use `DefendFraction="330,475,750,950,1350,1720,2225,3860,5250,8000,12000,17000,22000,25300,-1"` and `DefendEff="1,2,3,4,5,6,7,8,9,10,11,12,13,14,14"`; otherwise the client displays the wrong next threshold for the current armor rank.
 - Armor/weapon rank labels are translated through `Localization\<locale>\Text\EquipDescription.dat` keys `EffLv*`. The stock English client mapped higher ranks back to `9`, so `tools/PatchEquipDescriptionRankLabels.ps1` changes `EffLv10..EffLv14` to `10..14`.
 - Armor ranks `11`, `12`, `13`, and `14` are now reserved at scores `12000`, `17000`, `22000`, and `25300`. AR14 is currently the max server/client rank cap.
@@ -153,6 +154,7 @@ Important server/database files for the same work:
 - `tools/GenerateItemAttributeTemplates.ps1`
 - `tools/PatchLevel135GearCaps.ps1`
 - `tools/PatchEquipDescriptionRankLabels.ps1`
+- `tools/PatchRemoteWorldEquipmentExtension.ps1`
 - `tools/RecolorArmorRank10Effect.py`
 - `tools/RecolorArmorRank10Crimson.py`
 - `tools/RecolorArmorRank10Gold.py`

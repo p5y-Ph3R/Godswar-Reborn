@@ -22,6 +22,7 @@ internal static class Program
         {
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
+            ("PlayerWorldSpawn full quality/grade extension", CheckPlayerWorldExtendedAppearanceAsync),
             ("Player auxiliary appearance packets", CheckPlayerAuxiliaryAppearanceAsync),
             ("PlayerInspectEquipment packed slots and details", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
@@ -57,7 +58,7 @@ internal static class Program
         const uint objectId = 0x6A17C04D;
         var packet = PacketBuilder.PlayerWorldSpawn(character, objectId);
 
-        Check.Equal(260, packet.Length, "PlayerWorldSpawn packet length");
+        Check.Equal(300, packet.Length, "PlayerWorldSpawn packet length");
         Check.Equal((ushort)packet.Length, ReadUInt16(packet, 0), "PlayerWorldSpawn declared length");
         Check.Equal((ushort)0x2725, ReadUInt16(packet, 2), "PlayerWorldSpawn opcode");
         Check.Equal(objectId, ReadUInt32(packet, 4), "PlayerWorldSpawn object id");
@@ -102,6 +103,58 @@ internal static class Program
         }
 
         Check.Equal(0x00108409u, ReadUInt32(packet, 168), "world source-slot equipment mask");
+
+        Check.Equal(0x31585747u, ReadUInt32(packet, 260), "world full-visual extension marker");
+        ReadOnlySpan<byte> expectedFullQualities = [10, 10, 10, 7, 1];
+        ReadOnlySpan<byte> expectedFullGrades = [12, 12, 12, 8, 1];
+        Check.True(
+            packet.AsSpan(264, expectedFullQualities.Length).SequenceEqual(expectedFullQualities),
+            "world extension preserves full quality values");
+        Check.True(
+            packet.AsSpan(282, expectedFullGrades.Length).SequenceEqual(expectedFullGrades),
+            "world extension preserves full grade values");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckPlayerWorldExtendedAppearanceAsync()
+    {
+        var character = CreateCharacter();
+        var slots = Enumerable.Repeat("[]", 21).ToArray();
+        slots[0] = "[2344,4,80,40,60,240,20,25,1,1,0]";
+        slots[8] = "[3246,4,80,240,60,134,20,25,1,1,0]";
+        slots[9] = "[3246,4,80,240,60,134,20,25,1,1,0]";
+        slots[10] = "[1435,4,80,90,60,230,20,25,1,1,0]";
+        character.Equipment = string.Join('#', slots) + '#';
+
+        var packet = PacketBuilder.PlayerWorldSpawn(character, 0x814u);
+
+        ReadOnlySpan<byte> expectedLegacyVisuals = [0xCA, 0xCA, 0xCA, 0xCA];
+        Check.True(
+            packet.AsSpan(81, expectedLegacyVisuals.Length).SequenceEqual(expectedLegacyVisuals),
+            "legacy world decoder retains the captured Q10/G12 projection");
+        Check.Equal(0x31585747u, ReadUInt32(packet, 260), "extended world marker is GWX1");
+
+        ReadOnlySpan<byte> expectedFullQualities = [20, 20, 20, 20];
+        ReadOnlySpan<byte> expectedFullGrades = [25, 25, 25, 25];
+        Check.True(
+            packet.AsSpan(264, expectedFullQualities.Length).SequenceEqual(expectedFullQualities),
+            "extended world qualities preserve Q20");
+        Check.True(
+            packet.AsSpan(282, expectedFullGrades.Length).SequenceEqual(expectedFullGrades),
+            "extended world grades preserve G25");
+        Check.True(
+            packet.AsSpan(264 + expectedFullQualities.Length, 18 - expectedFullQualities.Length)
+                .IndexOfAnyExcept((byte)0) < 0,
+            "unused extended world quality bytes are zero");
+        Check.True(
+            packet.AsSpan(282 + expectedFullGrades.Length, 18 - expectedFullGrades.Length)
+                .IndexOfAnyExcept((byte)0) < 0,
+            "unused extended world grade bytes are zero");
+
+        Check.Equal((ushort)3246, ReadUInt16(packet, 126), "first extended ring remains packed");
+        Check.Equal((ushort)3246, ReadUInt16(packet, 128), "second extended ring remains packed");
+        Check.Equal((byte)5, packet[102], "extended head keeps its real append-attribute count");
+        Check.Equal((byte)5, packet[105], "extended weapon keeps its real append-attribute count");
         return Task.CompletedTask;
     }
 

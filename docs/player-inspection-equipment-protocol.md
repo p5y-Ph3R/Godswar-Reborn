@@ -102,6 +102,38 @@ capture corpus proves the packet shape and full-byte fields, but it is not evide
 of original-server Q20/G25 behavior. Q20/G25 is a local patched-client extension
 and must be retained in the local regression matrix.
 
+## Remote world full-quality/grade extension
+
+Remote avatar rank effects are calculated from opcode `10021` (`0x2725`), not from
+the detailed inspection packet. The native packet stores each compact item's
+quality and grade in one byte at offset `81+i`: quality is the low nibble and grade
+is the high nibble. Projecting account 7's Q20/G25 equipment to the captured
+Q10/G12 ceiling produces armor score `6825` and AR9, while the full equipment
+produces score `25350` and AR14.
+
+The local protocol keeps the native fields as a legacy fallback and extends the
+packet from 260 to 300 bytes:
+
+| Offset | Size | Meaning |
+| --- | ---: | --- |
+| `260` | 4 | Little-endian marker `0x31585747` (ASCII `GWX1`) |
+| `264` | 18 | Full-byte quality values in the same compact order as IDs at offset `124` |
+| `282` | 18 | Full-byte grade values in the same compact order |
+
+`tools/PatchRemoteWorldEquipmentExtension.ps1` patches the tracked local
+`Origin.exe` decoder at VA `0x004731A5` (file offset `0x731A5`). The replacement
+code is in reserved executable `.rdata` slack at VA `0x009C3270` (file offset
+`0x5C3270`). It reads the appended values only when the declared packet length is
+at least 300 and
+the `GWX1` marker matches. Native 260-byte packets and other servers continue
+through the original nibble decoder.
+
+The patched values then flow through the client's existing single-item and
+aggregate score routines. The current local executable accepts Q20/G25 there;
+the extension itself can carry `0..255` in each field. Raising the practical
+ceiling still requires longer client template arrays and updated score-routine
+bounds, but no new world wire layout through Q255/G255.
+
 ## Ceiling register
 
 Detailed inspection and remote world appearance are different protocols. They must
@@ -110,7 +142,7 @@ not share a ceiling constant.
 | Surface | Current effective ceiling | Where to change it | Important limitation |
 | --- | --- | --- | --- |
 | Detailed `10022` quality/grade | Q20/G25 from current DB/templates; serialized as full bytes | `PacketBuilder.PlayerInspectEquipment`, `WriteInspectItemRecord`, `WriteKitBagItemRecord`; DB/template and client sites below | Wire fields can hold `0..255`, but downstream data and client arrays are the practical ceiling |
-| Remote world equipment appearance | Explicit captured projection Q10/G12 | `CapturedWorldVisualQualityCap`, `CapturedWorldVisualGradeCap`, and `PackWorldItemVisual` in `PacketBuilder.cs` | One byte stores `(grade << 4) | quality`; each half is only four bits. Values above 15 require a protocol and client redesign |
+| Remote world equipment appearance | Native fallback Q10/G12; local `GWX1` extension Q20/G25 | Legacy caps and `PackWorldItemVisual`, plus `PlayerWorldFullVisual*` in `PacketBuilder.cs`; `tools/PatchRemoteWorldEquipmentExtension.ps1`; client score caps/template arrays | Native byte remains `(grade << 4) | quality`. The appended full-byte fields carry through 255, while the current client data and score checks remain Q20/G25 |
 | Append attributes | Five IDs; local data through L25 | Item record offsets `+4..+20`, DB attribute templates, client `ItemAppendAttribute.xml` and patches below | Attribute levels are not separate fields in captured 72-byte records. The client combines IDs, grade, and its XML. More than five attributes needs protocol/client work |
 | Holy suit | Current semantic type 7, level 10; code `710` | `CompactItemEntry.HolySuitType/HolySuitLevel`, `WriteItemExtension`, embedded schema, migrations `003` and `015`, tier/requirement data, and client holy-suit data | Wire code is a signed 16-bit value. New semantic tiers/levels need client lookup/effect discovery as well as larger server tables |
 | Holy stones | Four sockets, effects at levels 1..10 | `NativeClientHolyStoneSocketCount`, `CompactItemEntry.MaxSockets`, `HolyStoneItemMutator.MaxSockets`, `WriteHolyStoneValueRows`, `HolyStoneEffectCode`, and value tables | Captured/native record has exactly four effect/value pairs. DB columns 5/6 are dormant; six sockets need the reference client patches and a revised packet model |
@@ -122,7 +154,8 @@ these together:
 
 - `src/Godswar.Server/Packets/PacketBuilder.cs`
   - detailed inspection packing, identities, and full-byte serialization;
-  - `PackWorldItemVisual` and its separate nibble projection;
+  - `PackWorldItemVisual`, its separate nibble fallback, and the `GWX1`
+    full-byte world extension;
   - `WriteItemExtension`, socket count, effect-code level clamp, and stone-value
     lookup arrays;
   - other full-byte item paths (`WriteEnterItemRecord`, kitbag, and item snapshots).
@@ -163,9 +196,10 @@ these together:
 
 ### Patched game-client surfaces
 
-The game-client repository was clean at baseline commit `8418134` during this
-audit. No client edit is required for the present inspection fix. The following
-existing local changes are the checklist for any future ceiling increase:
+The game-client repository started from baseline commit `8418134`. Detailed
+inspection itself still uses the generic full-byte parser, while correct remote
+rank/aura rendering now also requires the guarded `GWX1` world-decoder patch.
+The following local changes are the checklist for any future ceiling increase:
 
 - `Origin.exe` file offsets `0xA70AA` and `0xA70B3`: single-item score path now
   accepts Q20/G25.
@@ -174,9 +208,10 @@ existing local changes are the checklist for any future ceiling increase:
 - Generic 72-byte item parser at VA `0x00441EA0`: copies quality, grade, five
   attributes, holy suit, socket count, and four stone pairs. No Q10/G12 clamp was
   found in this parser.
-- Remote-world visual decoder around VA `0x004731A5`: masks the low quality nibble
-  and shifts the high grade nibble. This is the client side of the 15/15 hard
-  protocol limit.
+- Remote-world visual decoder at VA `0x004731A5`: the native fallback still masks
+  the quality/grade nibbles, while the local hook reads full-byte `GWX1` arrays
+  from the extended packet. Reapply or revert it only through
+  `tools/PatchRemoteWorldEquipmentExtension.ps1`.
 - Append-attribute XML loader patch at VA `0x0043F275`: accepts `L1..L25`.
 - Append-attribute vector/clamp patches at VA `0x00580370` and `0x00580381`.
 - Both `en_us` and `zh_cn` copies of:
@@ -206,5 +241,5 @@ Before raising a ceiling or changing item identity behavior, verify all of these
    remains stable.
 8. Empty-record sentinels after the final packed item.
 9. Separate world-spawn checks for both ring IDs, mask `0x000007FF` for core slots
-   `0..10`, and the intentionally projected world visual byte.
+   `0..10`, the legacy projected visual byte, and the `GWX1` Q/G arrays.
 10. Two-account UI retest after clearing the old session/cache state by relogging.
