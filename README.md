@@ -52,15 +52,17 @@ Implemented:
 - World presence registration only after both the client-ready signal and the player-detail exchange have completed, so other sessions do not see a partially initialized character
 - Server-built static NPC definitions assembled from validated captured spawns, normalized NPC appearance/position references, and same-number capital-city fallbacks when a reference has no position
 - Movement-driven NPC visibility matching the working server's `32x32` world sectors: each client receives only its current sector and the eight neighboring sectors, with remove/spawn diffs when crossing a boundary
+- Movement-driven captured-monster visibility on the same `32x32`/`3x3` sector model, using the raw appearance packet's coordinates as authoritative, validating captured metadata at map load, and sending removals before newly visible monsters
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
 
-The multiplayer and NPC synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.
+The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.
 
 Not complete yet:
 
 - Full world simulation
 - NPC coverage beyond the current static city baseline: the current PostgreSQL data resolves 100 Sparta and 95 Athens NPC identities (including 48 direct normalized references in each city), while most NPC dialog scripts and quests remain unimplemented
-- Full NPC/monster AI, combat, death, respawn, and drop simulation
+- Monster coverage beyond the current 270 static captured appearances on Sparta/map 0; Athens and other maps do not yet have captured monster baselines
+- Full NPC/monster AI, movement, combat, death, respawn, and drop simulation; captured monster positions are frozen snapshots until map-instance monster state exists
 - Complete inventory, skill, and talent gameplay and packet coverage
 - Packet coverage outside the mapped reference opcodes
 

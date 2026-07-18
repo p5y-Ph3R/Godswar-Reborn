@@ -31,6 +31,7 @@ internal sealed class GameSessionRegistry
         GameSessionContext? previous = null;
         lock (_gate)
         {
+            EnsureMapObjectIdAvailable(context);
             if (_sessions.TryGetValue(session, out previous) && previous.MapId != character.CurrentMap)
             {
                 RemoveFromMap(previous);
@@ -93,6 +94,8 @@ internal sealed class GameSessionRegistry
                     ? existing.WorldRevision + 1
                     : existing.WorldRevision
             };
+
+            EnsureMapObjectIdAvailable(updated);
 
             if (existing.MapId != updated.MapId)
             {
@@ -293,6 +296,24 @@ internal sealed class GameSessionRegistry
     {
         var map = _maps.GetOrAdd(context.MapId, static mapId => new MapInstance(mapId));
         map.AddOrUpdate(context);
+    }
+
+    private void EnsureMapObjectIdAvailable(GameSessionContext context)
+    {
+        if (!_maps.TryGetValue(context.MapId, out var map))
+        {
+            return;
+        }
+
+        var collision = map.Snapshot()
+            .FirstOrDefault(candidate =>
+                !ReferenceEquals(candidate.Session, context.Session) &&
+                candidate.ObjectId == context.ObjectId);
+        if (collision is not null)
+        {
+            throw new InvalidOperationException(
+                $"World object ID {context.ObjectId} is already assigned to character {collision.CharacterName} on map {context.MapId}.");
+        }
     }
 
     private void RemoveFromMap(GameSessionContext context)

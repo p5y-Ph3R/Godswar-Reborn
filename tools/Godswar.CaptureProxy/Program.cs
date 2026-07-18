@@ -28,6 +28,12 @@ Console.WriteLine($"Log:    {Path.GetFullPath(options.OutputPath)}");
 Console.WriteLine(packetLog is null
     ? "DB:     disabled"
     : $"DB:     packet_transactions session={packetLog.SessionId}");
+if (packetLog is not null)
+{
+    Console.WriteLine(options.MonsterMapId is short monsterMapId
+        ? $"Mobs:   explicit map {monsterMapId}"
+        : "Mobs:   packet log only; spawn upserts require --monster-map-id");
+}
 Console.WriteLine("Press Ctrl+C to stop.");
 
 var login = RunListenerAsync(
@@ -635,6 +641,7 @@ sealed class PacketTransactionLog : IAsyncDisposable
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly short? _monsterMapId;
     private readonly Channel<PacketTransactionRecord> _queue =
         Channel.CreateUnbounded<PacketTransactionRecord>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, CapturedMonsterTemplate?> _monsterTemplateCache = new(StringComparer.Ordinal);
@@ -642,9 +649,10 @@ sealed class PacketTransactionLog : IAsyncDisposable
     private long _chunkSequence;
     private long _packetSequence;
 
-    private PacketTransactionLog(NpgsqlDataSource dataSource, Guid sessionId)
+    private PacketTransactionLog(NpgsqlDataSource dataSource, Guid sessionId, short? monsterMapId)
     {
         _dataSource = dataSource;
+        _monsterMapId = monsterMapId;
         SessionId = sessionId;
         _writerTask = Task.Run(WriteLoopAsync);
     }
@@ -705,7 +713,7 @@ sealed class PacketTransactionLog : IAsyncDisposable
             await sessionCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return new PacketTransactionLog(dataSource, sessionId);
+        return new PacketTransactionLog(dataSource, sessionId, options.MonsterMapId);
     }
 
     public long NextChunkSequence()
@@ -795,6 +803,11 @@ sealed class PacketTransactionLog : IAsyncDisposable
         }
         else if (TryParseMonsterSpawn(packet, out var monsterSpawn))
         {
+            if (!_monsterMapId.HasValue)
+            {
+                return;
+            }
+
             var template = await ResolveMonsterTemplateAsync(monsterSpawn.TemplateKey);
             if (template is not null)
             {
@@ -842,6 +855,11 @@ sealed class PacketTransactionLog : IAsyncDisposable
 
     private async Task<CapturedMonsterTemplate?> ResolveMonsterTemplateAsync(string templateKey)
     {
+        if (_monsterMapId is not short monsterMapId)
+        {
+            return null;
+        }
+
         if (_monsterTemplateCache.TryGetValue(templateKey, out var cached))
         {
             return cached;
@@ -851,21 +869,18 @@ sealed class PacketTransactionLog : IAsyncDisposable
             SELECT source_map_id, scene_key, display_name
             FROM monster_templates
             WHERE template_key = @template_key
-              AND source_map_id IS NOT NULL
-            ORDER BY CASE source_map_id
-                         WHEN 0 THEN 0
-                         WHEN 1 THEN 1
-                         WHEN 4 THEN 2
-                         ELSE 3
-                     END,
-                     source_map_id
+              AND source_map_id = @map_id
+            ORDER BY source_key
             LIMIT 1;
             """);
         command.Parameters.AddWithValue("template_key", templateKey);
+        command.Parameters.AddWithValue("map_id", monsterMapId);
 
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
+            Console.Error.WriteLine(
+                $"[db] skipped monster template={templateKey}: no template exists for explicit map {monsterMapId}");
             _monsterTemplateCache[templateKey] = null;
             return null;
         }
@@ -934,6 +949,10 @@ sealed class PacketTransactionLog : IAsyncDisposable
         var objectId = BinaryPrimitives.ReadUInt32LittleEndian(packet.ClearBytes.AsSpan(8, 4));
         var x = BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(28, 4));
         var z = BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(36, 4));
+        if (objectId == 0 || IsReservedPlayerObjectId(objectId) || !float.IsFinite(x) || !float.IsFinite(z))
+        {
+            return false;
+        }
 
         spawn = new CapturedNpcSpawnRecord(
             mapId,
@@ -974,18 +993,31 @@ sealed class PacketTransactionLog : IAsyncDisposable
         }
 
         var objectType = BinaryPrimitives.ReadUInt32LittleEndian(packet.ClearBytes.AsSpan(4, 4));
-        if (objectType != 0x00000212)
+        if ((objectType & 0xFFu) != 0x12u)
+        {
+            return false;
+        }
+
+        var objectId = BinaryPrimitives.ReadUInt32LittleEndian(packet.ClearBytes.AsSpan(8, 4));
+        var x = BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(28, 4));
+        var z = BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(36, 4));
+        if (objectId == 0 || IsReservedPlayerObjectId(objectId) || !float.IsFinite(x) || !float.IsFinite(z))
         {
             return false;
         }
 
         spawn = new CapturedMonsterSpawnRecord(
             templateKey,
-            BinaryPrimitives.ReadUInt32LittleEndian(packet.ClearBytes.AsSpan(8, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(28, 4)),
-            BinaryPrimitives.ReadSingleLittleEndian(packet.ClearBytes.AsSpan(36, 4)),
+            objectId,
+            x,
+            z,
             packet.ClearBytes[..length]);
         return true;
+    }
+
+    private static bool IsReservedPlayerObjectId(uint objectId)
+    {
+        return objectId == 0x1448 || objectId is >= 0x6000 and <= 0x7FFF;
     }
 
     private static bool TryParseNpcDetailPacket(PacketTransactionRecord packet, out CapturedNpcDetailRecord detail)
@@ -1155,6 +1187,7 @@ sealed record Options(
     int DefaultGamePort,
     string OutputPath,
     string PostgresConnectionString,
+    short? MonsterMapId,
     bool DisableDatabaseLogging)
 {
     private const string DefaultPostgresConnectionString =
@@ -1205,6 +1238,7 @@ sealed record Options(
                 Environment.GetEnvironmentVariable("GODSWAR_CAPTURE_POSTGRES_CONNECTION_STRING")
                     ?? Environment.GetEnvironmentVariable("GODSWAR_POSTGRES_CONNECTION_STRING")
                     ?? DefaultPostgresConnectionString),
+            MonsterMapId: GetOptionalShort(values, "monster-map-id"),
             DisableDatabaseLogging: GetBool(values, "disable-db", false));
     }
 
@@ -1227,5 +1261,20 @@ sealed record Options(
         return values.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed)
             ? parsed
             : fallback;
+    }
+
+    private static short? GetOptionalShort(Dictionary<string, string> values, string key)
+    {
+        if (!values.TryGetValue(key, out var value))
+        {
+            return null;
+        }
+
+        if (short.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new ArgumentException($"Invalid value for --{key}: {value}");
     }
 }

@@ -40,6 +40,9 @@ This is the current step-by-step plan for moving the local C# server from packet
 
 ## 5. Mobs, Bosses, And Combat
 
-- Convert captured mob spawns into server-owned monster state per map instance.
+- Captured map-0 monster appearances now use the working server's `32x32` sector grid: bootstrap sends only the player's `3x3` neighborhood, and movement sends global-object removals before newly visible raw `10020` appearances.
+- Capture ingestion recognizes the observed monster appearance-type variants by their shared low-byte `0x12` discriminator, but the current PostgreSQL baseline is still limited to 270 static Sparta/map-0 snapshots.
+- Capture tools now require an explicit monster map for spawn upserts (`--monster-map-id` in the live proxy). The historical importer additionally requires `-CaptureSessionId` with `-MonsterMapId`, preventing template-only map guesses and cross-session mixing. Deriving the active map automatically from protocol session state remains future work.
+- Convert captured mob spawns into server-owned monster state per map instance. Replace frozen capture positions with live sector membership when monster movement is implemented.
 - Add HP, death, respawn, drops, threat, and movement/AI.
 - Add world boss scheduling after normal mob state and combat are stable.

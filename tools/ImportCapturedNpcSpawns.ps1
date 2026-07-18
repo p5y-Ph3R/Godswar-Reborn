@@ -1,8 +1,38 @@
 param(
     [string]$Container = "godswar-postgres",
     [string]$Database = "godswar",
-    [string]$User = "godswar"
+    [string]$User = "godswar",
+    [Nullable[int]]$MonsterMapId = $null,
+    [string]$CaptureSessionId = ""
 )
+
+if ($null -ne $MonsterMapId -and
+    ($MonsterMapId -lt [int16]::MinValue -or $MonsterMapId -gt [int16]::MaxValue)) {
+    throw "MonsterMapId must fit a PostgreSQL smallint."
+}
+
+$normalizedCaptureSessionId = $null
+if (![string]::IsNullOrWhiteSpace($CaptureSessionId)) {
+    try {
+        $normalizedCaptureSessionId = ([guid]::Parse($CaptureSessionId)).ToString()
+    } catch {
+        throw "CaptureSessionId must be a valid UUID."
+    }
+}
+
+$transactionScopeSql = if ($null -eq $normalizedCaptureSessionId) {
+    ""
+} else {
+    "AND capture_session_id = '$normalizedCaptureSessionId'::uuid"
+}
+
+function Test-FiniteSingle([single]$Value) {
+    return ![single]::IsNaN($Value) -and ![single]::IsInfinity($Value)
+}
+
+function Test-ReservedPlayerObjectId([uint32]$ObjectId) {
+    return $ObjectId -eq 0x1448 -or ($ObjectId -ge 0x6000 -and $ObjectId -le 0x7FFF)
+}
 
 $rows = docker exec $Container psql -U $User -d $Database -At -F "|" -c @"
 SELECT encode(clear_bytes, 'hex')
@@ -10,6 +40,7 @@ FROM packet_transactions
 WHERE upper(connection_name) = 'GAME'
   AND direction = 'S2C'
   AND opcode = 10020
+  $transactionScopeSql
 ORDER BY id;
 "@
 
@@ -33,7 +64,7 @@ foreach ($row in $rows) {
     }
 
     $length = [BitConverter]::ToUInt16($bytes, 0)
-    if ($length -lt 108 -or $length -gt $bytes.Length) {
+    if ($length -lt 108 -or $length -ne $bytes.Length) {
         continue
     }
 
@@ -64,8 +95,17 @@ foreach ($row in $rows) {
 
     $npcKey = $templateKey.Substring(0, $secondUnderscore)
     $objectId = [BitConverter]::ToUInt32($bytes, 8)
-    $x = [BitConverter]::ToSingle($bytes, 28).ToString($culture)
-    $z = [BitConverter]::ToSingle($bytes, 36).ToString($culture)
+    $rawX = [BitConverter]::ToSingle($bytes, 28)
+    $rawZ = [BitConverter]::ToSingle($bytes, 36)
+    if ($objectId -eq 0 -or
+        (Test-ReservedPlayerObjectId $objectId) -or
+        !(Test-FiniteSingle $rawX) -or
+        !(Test-FiniteSingle $rawZ)) {
+        continue
+    }
+
+    $x = $rawX.ToString($culture)
+    $z = $rawZ.ToString($culture)
 
     [void]$sql.AppendLine(@"
 INSERT INTO npc_spawn_packets (map_id, scene_key, npc_key, template_key, object_id, pos_x, pos_z, clear_bytes, source, first_seen_at, last_seen_at, capture_count)
@@ -83,10 +123,9 @@ SET object_id = EXCLUDED.object_id,
 
 if ($count -eq 0) {
     Write-Host "No Athens/Sparta NPC spawn packets found in packet_transactions."
-    exit 0
+} else {
+    $sql.ToString() | docker exec -i $Container psql -U $User -d $Database
 }
-
-$sql.ToString() | docker exec -i $Container psql -U $User -d $Database
 
 $detailRows = docker exec $Container psql -U $User -d $Database -At -F "|" -c @"
 SELECT opcode, encode(clear_bytes, 'hex')
@@ -94,6 +133,7 @@ FROM packet_transactions
 WHERE upper(connection_name) = 'GAME'
   AND direction = 'S2C'
   AND opcode IN (10077, 10080)
+  $transactionScopeSql
 ORDER BY id;
 "@
 
@@ -138,12 +178,10 @@ if ($detailCount -gt 0) {
 }
 
 $templateRows = docker exec $Container psql -U $User -d $Database -At -F "|" -c @"
-SELECT DISTINCT ON (template_key) template_key, source_map_id, scene_key, display_name
+SELECT template_key, source_map_id, scene_key, display_name
 FROM monster_templates
 WHERE source_map_id IS NOT NULL
-ORDER BY template_key,
-         CASE source_map_id WHEN 0 THEN 0 WHEN 1 THEN 1 WHEN 4 THEN 2 ELSE 3 END,
-         source_map_id;
+ORDER BY template_key, source_map_id, source_key;
 "@
 
 $monsterTemplates = @{}
@@ -157,15 +195,21 @@ foreach ($row in $templateRows) {
         continue
     }
 
-    $monsterTemplates[$parts[0]] = [pscustomobject]@{
+    if (!$monsterTemplates.ContainsKey($parts[0])) {
+        $monsterTemplates[$parts[0]] = New-Object System.Collections.Generic.List[object]
+    }
+
+    $monsterTemplates[$parts[0]].Add([pscustomobject]@{
         MapId = [int]$parts[1]
         SceneKey = $parts[2]
         DisplayName = $parts[3]
-    }
+    })
 }
 
 $monsterSql = New-Object System.Text.StringBuilder
 $monsterCount = 0
+$missingMonsterScopeCount = 0
+$unresolvedMonsterCount = 0
 
 foreach ($row in $rows) {
     if ([string]::IsNullOrWhiteSpace($row)) {
@@ -183,12 +227,12 @@ foreach ($row in $rows) {
     }
 
     $length = [BitConverter]::ToUInt16($bytes, 0)
-    if ($length -lt 108 -or $length -gt $bytes.Length) {
+    if ($length -lt 108 -or $length -ne $bytes.Length) {
         continue
     }
 
     $objectType = [BitConverter]::ToUInt32($bytes, 4)
-    if ($objectType -ne 0x00000212) {
+    if (($objectType -band 0xFF) -ne 0x12) {
         continue
     }
 
@@ -210,10 +254,31 @@ foreach ($row in $rows) {
         continue
     }
 
-    $template = $monsterTemplates[$templateKey]
+    if ($null -eq $MonsterMapId -or $null -eq $normalizedCaptureSessionId) {
+        $missingMonsterScopeCount++
+        continue
+    }
+
+    $candidates = @($monsterTemplates[$templateKey])
+    $matchingCandidates = @($candidates | Where-Object { $_.MapId -eq $MonsterMapId })
+    if ($matchingCandidates.Count -eq 0) {
+        $unresolvedMonsterCount++
+        continue
+    }
+
+    $template = $matchingCandidates[0]
     $objectId = [BitConverter]::ToUInt32($bytes, 8)
-    $x = [BitConverter]::ToSingle($bytes, 28).ToString($culture)
-    $z = [BitConverter]::ToSingle($bytes, 36).ToString($culture)
+    $rawX = [BitConverter]::ToSingle($bytes, 28)
+    $rawZ = [BitConverter]::ToSingle($bytes, 36)
+    if ($objectId -eq 0 -or
+        (Test-ReservedPlayerObjectId $objectId) -or
+        !(Test-FiniteSingle $rawX) -or
+        !(Test-FiniteSingle $rawZ)) {
+        continue
+    }
+
+    $x = $rawX.ToString($culture)
+    $z = $rawZ.ToString($culture)
     $sceneKey = $template.SceneKey.Replace("'", "''")
     $displayName = $template.DisplayName.Replace("'", "''")
     $escapedTemplateKey = $templateKey.Replace("'", "''")
@@ -237,4 +302,7 @@ if ($monsterCount -gt 0) {
     $monsterSql.ToString() | docker exec -i $Container psql -U $User -d $Database
 }
 
-Write-Host "Imported $count Athens/Sparta NPC spawn packets, $detailCount NPC detail packets, and $monsterCount monster spawn packets."
+Write-Host "Imported $count Athens/Sparta NPC spawn packets, $detailCount NPC detail packets, and $monsterCount monster spawn packets. Skipped $missingMonsterScopeCount monster packets without an explicit map/session scope and $unresolvedMonsterCount packets unavailable on the requested map."
+if ($missingMonsterScopeCount -gt 0) {
+    Write-Host "Re-run with -MonsterMapId <map> -CaptureSessionId <uuid> to import monster spawn packets without mixing capture sessions."
+}

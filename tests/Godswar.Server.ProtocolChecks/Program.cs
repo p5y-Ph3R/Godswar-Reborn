@@ -27,6 +27,7 @@ internal static class Program
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
+            ("Monster movement-cell visibility and spawn layout", CheckMonsterMovementCellVisibilityAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
@@ -269,24 +270,28 @@ internal static class Program
         var nextSouthRow = CreateNpcDefinition(6002, 64f, -165f);
         var oldNorthRow = CreateNpcDefinition(6003, 85f, -116f);
         var farAway = CreateNpcDefinition(6004, 10f, 10f);
-        var tracker = new NpcVisibilityTracker(
-            [nearEast, nextSouthRow, oldNorthRow, farAway]);
+        var tracker = new WorldSectorVisibilityTracker<NpcSpawnDefinition>(
+            [nearEast, nextSouthRow, oldNorthRow, farAway],
+            npc => npc.ObjectId,
+            npc => npc.X,
+            npc => npc.Z,
+            "NPC");
 
         Check.True(
-            NpcVisibilityTracker.TryGetCell(-0.1f, -32f, out var negativeCell),
+            WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(-0.1f, -32f, out var negativeCell),
             "negative coordinates produce a valid NPC cell");
-        Check.Equal(new NpcGridCell(-1, -1), negativeCell, "NPC cells use floor for negatives");
+        Check.Equal(new WorldGridCell(-1, -1), negativeCell, "NPC cells use floor for negatives");
         Check.True(
-            !NpcVisibilityTracker.TryGetCell(float.NaN, 0f, out _),
+            !WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(float.NaN, 0f, out _),
             "non-finite positions are rejected");
         Check.True(
-            !NpcVisibilityTracker.TryGetCell(float.MaxValue, 0f, out _),
+            !WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(float.MaxValue, 0f, out _),
             "finite positions outside the grid range are rejected");
 
         Check.True(
             tracker.TryCalculate(85f, -119f, out var initial),
             "initial captured position resolves a visibility cell");
-        Check.Equal(new NpcGridCell(2, -4), initial.PlayerCell, "initial captured player cell");
+        Check.Equal(new WorldGridCell(2, -4), initial.PlayerCell, "initial captured player cell");
         Check.True(
             initial.Entering.Select(npc => npc.ObjectId).SequenceEqual([6001u, 6003u]),
             "initial 3x3 cell window contains only nearby NPCs");
@@ -305,7 +310,7 @@ internal static class Program
         Check.True(
             tracker.TryCalculate(92f, -129f, out var southCrossing),
             "south cell crossing is accepted");
-        Check.Equal(new NpcGridCell(2, -5), southCrossing.PlayerCell, "south crossing player cell");
+        Check.Equal(new WorldGridCell(2, -5), southCrossing.PlayerCell, "south crossing player cell");
         Check.True(
             southCrossing.Entering.Select(npc => npc.ObjectId).SequenceEqual([6002u]),
             "new southern NPC row enters after crossing z=-128");
@@ -333,6 +338,143 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task CheckMonsterMovementCellVisibilityAsync()
+    {
+        // These positions and player transitions come from the working-server
+        // monster capture and exercise both axes of the 32-unit sector grid.
+        var eastMonster = CreateCapturedMonster(10004, 210.353653f, -17.122650f, "A_normal_stub_001");
+        var westMonster = CreateCapturedMonster(10038, 143.051132f, -6.025902f, "A_normal_stub_001");
+        var farWestMonster = CreateCapturedMonster(10042, 119.999641f, 13.100252f, "A_normal_stub_001");
+        var northMonster = CreateCapturedMonster(10079, 141.978607f, 40.799419f, "A_normal_stub_003");
+        var tracker = new WorldSectorVisibilityTracker<CapturedMonsterSpawn>(
+            [westMonster, eastMonster, farWestMonster, northMonster],
+            monster => monster.ObjectId,
+            monster => monster.AppearanceX,
+            monster => monster.AppearanceZ,
+            "monster");
+
+        Check.True(
+            WorldObjectIds.IsReservedForPlayer(0x1448) &&
+            WorldObjectIds.IsReservedForPlayer(0x6000) &&
+            WorldObjectIds.IsReservedForPlayer(0x7FFF) &&
+            !WorldObjectIds.IsReservedForPlayer(westMonster.ObjectId),
+            "NPC and monster IDs cannot overlap the local or remote player namespace");
+
+        westMonster.Validate(0);
+        var roundedMetadata = westMonster with
+        {
+            X = westMonster.X + 0.00004f,
+            Z = westMonster.Z - 0.00004f
+        };
+        roundedMetadata.Validate(0);
+        Check.Equal(westMonster.X, roundedMetadata.AppearanceX, "packet X remains authoritative after metadata rounding");
+        Check.Equal(westMonster.Z, roundedMetadata.AppearanceZ, "packet Z remains authoritative after metadata rounding");
+        CreateCapturedMonster(10100, 1f, 1f, "field_monster", 0x00000112).Validate(0);
+        CreateCapturedMonster(10101, 1f, 1f, "newbie_monster", 0x00040212).Validate(0);
+        CreateCapturedMonster(10102, 1f, 1f, "elite_monster", 0x00040012).Validate(0);
+
+        var capturedTierFourPacket = Convert.FromHexString(
+            "6C00242712020000752700000400000000000000320100003201000017ED144300000000E0D55F42B70B05C0415F6E6F726D616C5F737475625F3030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        var capturedTierFour = new CapturedMonsterSpawn(
+            0,
+            "Sparta",
+            "A_normal_stub_003",
+            "captured tier-four monster",
+            ReadUInt32(capturedTierFourPacket, 8),
+            ReadSingle(capturedTierFourPacket, 28),
+            ReadSingle(capturedTierFourPacket, 36),
+            capturedTierFourPacket);
+        capturedTierFour.Validate(0);
+        Check.Equal(4u, ReadUInt32(capturedTierFourPacket, 12), "captured monster tier fixture");
+        Check.Equal(306u, ReadUInt32(capturedTierFourPacket, 20), "captured monster HP metadata fixture");
+        Check.True(
+            PacketBuilder.CapturedMonsterSpawns([capturedTierFour]).SequenceEqual(capturedTierFourPacket),
+            "captured tier-four appearance is replayed byte-for-byte");
+
+        Check.True(
+            tracker.TryCalculate(160.627f, -64.357f, out var initial),
+            "initial monster position resolves a visibility cell");
+        Check.Equal(new WorldGridCell(5, -3), initial.PlayerCell, "initial captured monster player cell");
+        Check.Equal(0, initial.Entering.Count, "initial captured sector contains none of the fixture monsters");
+        Check.Equal(0, initial.Leaving.Count, "initial monster visibility removes nothing");
+        tracker.Commit(initial);
+
+        Check.True(
+            tracker.TryCalculate(160.9f, -64.1f, out var sameCell),
+            "same-cell monster movement is accepted");
+        Check.Equal(0, sameCell.Entering.Count, "same-cell movement spawns no monsters");
+        Check.Equal(0, sameCell.Leaving.Count, "same-cell movement removes no monsters");
+
+        Check.True(
+            tracker.TryCalculate(160.627f, -63.638f, out var firstNorthCrossing),
+            "first captured north crossing updates monster visibility");
+        Check.True(
+            firstNorthCrossing.Entering.Select(monster => monster.ObjectId).SequenceEqual([10004u, 10038u]),
+            "captured first north crossing enters the observed monster row");
+        Check.True(!tracker.IsVisible(10004), "monster visibility waits for a successful spawn send");
+
+        var firstVisibleStream = PacketBuilder.CapturedMonsterSpawns(firstNorthCrossing.Entering);
+        Check.Equal(eastMonster.Packet.Length + westMonster.Packet.Length, firstVisibleStream.Length, "nearby monster stream length");
+        Check.Equal(10004u, ReadUInt32(firstVisibleStream, 8), "first nearby monster object ID");
+        Check.Equal(10038u, ReadUInt32(firstVisibleStream, eastMonster.Packet.Length + 8), "second nearby monster object ID");
+        tracker.Commit(firstNorthCrossing);
+
+        Check.True(
+            tracker.TryCalculate(159.841f, -50.757f, out var westCrossing),
+            "captured west crossing updates monster visibility");
+        Check.True(
+            westCrossing.Leaving.SequenceEqual([10004u]),
+            "captured west crossing removes the old eastern monster");
+        var removePacket = PacketBuilder.RemoveWorldObjects(westCrossing.Leaving.ToArray());
+        Check.Equal((ushort)10024, ReadUInt16(removePacket, 2), "monster remove opcode");
+        Check.Equal(10004u, ReadUInt32(removePacket, 8), "monster remove uses captured object ID");
+        tracker.Commit(westCrossing);
+
+        Check.True(
+            tracker.TryCalculate(157.447f, -31.132f, out var secondNorthCrossing),
+            "second captured north crossing updates monster visibility");
+        Check.True(
+            secondNorthCrossing.Entering.Select(monster => monster.ObjectId).SequenceEqual([10042u]),
+            "second captured north crossing enters the far-west monster");
+        tracker.Commit(secondNorthCrossing);
+
+        Check.True(
+            tracker.TryCalculate(160.338f, -17.239f, out var eastCrossing),
+            "captured east crossing updates monster visibility");
+        Check.True(
+            eastCrossing.Entering.Select(monster => monster.ObjectId).SequenceEqual([10004u]) &&
+            eastCrossing.Leaving.SequenceEqual([10042u]),
+            "one captured crossing can remove the old column and enter the new column");
+        tracker.Commit(eastCrossing);
+
+        Check.True(
+            tracker.TryCalculate(175.733f, 0.970f, out var thirdNorthCrossing),
+            "third captured north crossing updates monster visibility");
+        Check.True(
+            thirdNorthCrossing.Entering.Select(monster => monster.ObjectId).SequenceEqual([10079u]),
+            "third captured north crossing enters the northern monster");
+        tracker.Commit(thirdNorthCrossing);
+
+        Check.True(
+            tracker.TryCalculate(187.140f, -0.560f, out var finalSouthCrossing),
+            "captured south crossing updates monster visibility");
+        Check.True(
+            finalSouthCrossing.Leaving.SequenceEqual([10079u]),
+            "captured south crossing removes the northern monster");
+
+        var mismatchedPacket = westMonster.Packet.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(mismatchedPacket.AsSpan(8, 4), westMonster.ObjectId + 1);
+        var mismatchedMonster = westMonster with { Packet = mismatchedPacket };
+        Check.Throws<InvalidDataException>(
+            () => mismatchedMonster.Validate(0),
+            "captured monster metadata mismatch is rejected");
+        Check.Throws<InvalidDataException>(
+            () => (westMonster with { X = westMonster.X + 0.01f }).Validate(0),
+            "captured monster coordinate drift outside importer tolerance is rejected");
+
+        return Task.CompletedTask;
+    }
+
     private static NpcSpawnDefinition CreateNpcDefinition(uint objectId, float x, float z)
     {
         return new NpcSpawnDefinition(
@@ -348,6 +490,37 @@ internal static class Program
             NpcSpawnDefinitionFactory.DefaultFacing,
             [],
             []);
+    }
+
+    private static CapturedMonsterSpawn CreateCapturedMonster(
+        uint objectId,
+        float x,
+        float z,
+        string templateKey,
+        uint objectType = 0x00000212)
+    {
+        var packet = new byte[108];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 10020);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectType);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), objectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), 237);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), 237);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), x);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(36, 4), z);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(40, 4), 1f);
+        Encoding.ASCII.GetBytes(templateKey).CopyTo(packet.AsSpan(44));
+
+        return new CapturedMonsterSpawn(
+            0,
+            "Sparta",
+            templateKey,
+            templateKey,
+            objectId,
+            x,
+            z,
+            packet);
     }
 
     private static async Task CheckMapRegistryWorldReadinessAsync()
@@ -382,6 +555,9 @@ internal static class Program
                 existingCharacter.AccountId,
                 existingCharacter,
                 0x6402);
+            Check.Throws<InvalidOperationException>(
+                () => registry.JoinMap(session, character.AccountId, character, 0x6402, worldReady: false),
+                "map registry rejects duplicate player world object IDs");
             registry.JoinMap(session, character.AccountId, character, 0x6401, worldReady: false);
             Check.Equal(1, registry.GetMapSessions(character.CurrentMap).Count, "not-ready session is hidden from map snapshots");
             Check.True(
@@ -678,5 +854,21 @@ internal static class Check
         {
             throw new InvalidOperationException($"Assertion failed: {description}.");
         }
+    }
+
+    public static void Throws<TException>(Action action, string description)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Assertion failed: {description}; expected {typeof(TException).Name}.");
     }
 }

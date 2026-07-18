@@ -40,7 +40,8 @@ internal sealed class GameClientHandler : IClientHandler
     private byte[]? _lastSkillCastPacket;
     private bool _positionDirty;
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
-    private NpcVisibilityTracker? _npcVisibility;
+    private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
+    private WorldSectorVisibilityTracker<CapturedMonsterSpawn>? _monsterVisibility;
 
     public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
     {
@@ -412,27 +413,103 @@ internal sealed class GameClientHandler : IClientHandler
         }
     }
 
-    private async Task SendMapNpcsAsync(CancellationToken cancellationToken)
+    private async Task SendMapWorldObjectsAsync(CancellationToken cancellationToken)
     {
         if (_character is null)
         {
-            Console.WriteLine("[npc] ignored ClientReady: no active character");
+            Console.WriteLine("[world] ignored ClientReady: no active character");
             return;
         }
 
-        var npcDefinitions = await _store.GetNpcSpawnDefinitionsAsync(_character.CurrentMap, cancellationToken);
+        var loadedNpcDefinitions = await _store.GetNpcSpawnDefinitionsAsync(_character.CurrentMap, cancellationToken);
+        var npcDefinitions = new List<NpcSpawnDefinition>(loadedNpcDefinitions.Count);
+        foreach (var npc in loadedNpcDefinitions)
+        {
+            if (WorldObjectIds.IsReservedForPlayer(npc.ObjectId) ||
+                !WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(npc.X, npc.Z, out _))
+            {
+                Console.WriteLine(
+                    $"[npc] skipped invalid world object map={_character.CurrentMap} object={npc.ObjectId} key={npc.NpcKey} x={npc.X} z={npc.Z}");
+                continue;
+            }
+
+            npcDefinitions.Add(npc);
+        }
+
         _mapNpcsByInteractionId.Clear();
         foreach (var npc in npcDefinitions)
         {
             _mapNpcsByInteractionId[npc.InteractionId] = npc;
         }
 
-        _npcVisibility = new NpcVisibilityTracker(npcDefinitions);
+        var npcObjectIds = npcDefinitions
+            .Select(npc => npc.ObjectId)
+            .ToHashSet();
+
+        var loadedMonsterDefinitions = await _store.GetCapturedMonsterSpawnsAsync(
+            _character.CurrentMap,
+            cancellationToken);
+        var monsterDefinitions = new List<CapturedMonsterSpawn>(loadedMonsterDefinitions.Count);
+        foreach (var monster in loadedMonsterDefinitions)
+        {
+            try
+            {
+                monster.Validate(_character.CurrentMap);
+            }
+            catch (InvalidDataException ex)
+            {
+                Console.WriteLine(
+                    $"[mob] skipped invalid captured spawn map={_character.CurrentMap} object={monster.ObjectId}: {ex.Message}");
+                continue;
+            }
+
+            if (WorldObjectIds.IsReservedForPlayer(monster.ObjectId))
+            {
+                Console.WriteLine(
+                    $"[mob] skipped reserved player object ID map={_character.CurrentMap} object={monster.ObjectId} template={monster.TemplateKey}");
+                continue;
+            }
+
+            if (!WorldSectorVisibilityTracker<CapturedMonsterSpawn>.TryGetCell(
+                    monster.AppearanceX,
+                    monster.AppearanceZ,
+                    out _))
+            {
+                Console.WriteLine(
+                    $"[mob] skipped out-of-grid appearance map={_character.CurrentMap} object={monster.ObjectId} template={monster.TemplateKey} x={monster.AppearanceX} z={monster.AppearanceZ}");
+                continue;
+            }
+
+            if (npcObjectIds.Contains(monster.ObjectId))
+            {
+                Console.WriteLine(
+                    $"[mob] skipped NPC object-ID collision map={_character.CurrentMap} object={monster.ObjectId} template={monster.TemplateKey}");
+                continue;
+            }
+
+            monsterDefinitions.Add(monster);
+        }
+
+        _npcVisibility = new WorldSectorVisibilityTracker<NpcSpawnDefinition>(
+            npcDefinitions,
+            npc => npc.ObjectId,
+            npc => npc.X,
+            npc => npc.Z,
+            "NPC");
+        _monsterVisibility = new WorldSectorVisibilityTracker<CapturedMonsterSpawn>(
+            monsterDefinitions,
+            monster => monster.ObjectId,
+            monster => monster.AppearanceX,
+            monster => monster.AppearanceZ,
+            "monster");
         Console.WriteLine(
             $"[npc] loaded map definitions character={_character.Name} map={_character.CurrentMap} count={npcDefinitions.Count}");
-        await RefreshNearbyNpcsAsync("initial", cancellationToken);
+        Console.WriteLine(
+            monsterDefinitions.Count > 0
+                ? $"[mob] loaded captured map definitions character={_character.Name} map={_character.CurrentMap} count={monsterDefinitions.Count}"
+                : $"[mob] no captured map definitions character={_character.Name} map={_character.CurrentMap}");
+        await RefreshNearbyWorldObjectsAsync("initial", cancellationToken);
 
-        await SendCapturedMonstersAsync(cancellationToken);
         await SendMapPlayersAsync(cancellationToken);
 
         if (EnableExperimentalMonsterSpawns)
@@ -624,67 +701,74 @@ internal sealed class GameClientHandler : IClientHandler
         return false;
     }
 
-    private async Task RefreshNearbyNpcsAsync(
+    private async Task RefreshNearbyWorldObjectsAsync(
         string reason,
         CancellationToken cancellationToken)
     {
         if (_character is null ||
             _npcVisibility is null ||
+            _monsterVisibility is null ||
             !_npcVisibility.TryCalculate(
                 _character.PositionX,
                 _character.PositionZ,
-                out var delta))
+                out var npcDelta) ||
+            !_monsterVisibility.TryCalculate(
+                _character.PositionX,
+                _character.PositionZ,
+                out var monsterDelta))
         {
             return;
         }
 
-        if (delta.Leaving.Count > 0)
+        var leavingObjectIds = npcDelta.Leaving
+            .Concat(monsterDelta.Leaving)
+            .Distinct()
+            .OrderBy(objectId => objectId)
+            .ToArray();
+        if (leavingObjectIds.Length > 0)
         {
             await _session.SendAsync(
-                PacketBuilder.RemoveWorldObjects(delta.Leaving.ToArray()),
+                PacketBuilder.RemoveWorldObjects(leavingObjectIds),
                 cancellationToken,
-                "NearbyNpcRemovals");
+                "NearbyWorldObjectRemovals");
         }
 
-        if (delta.Entering.Count > 0)
+        if (npcDelta.Entering.Count > 0)
         {
             await _session.SendAsync(
-                PacketBuilder.NpcSpawns(delta.Entering),
+                PacketBuilder.NpcSpawns(npcDelta.Entering),
                 cancellationToken,
                 "NearbyNpcSpawns",
                 framed: false);
         }
 
-        _npcVisibility.Commit(delta);
-        if (delta.Entering.Count > 0 || delta.Leaving.Count > 0 || reason == "initial")
+        if (monsterDelta.Entering.Count > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.CapturedMonsterSpawns(monsterDelta.Entering),
+                cancellationToken,
+                "NearbyMonsterSpawns",
+                framed: false);
+        }
+
+        // Only advance either tracker after the complete remove/spawn transition
+        // has been sent, so a failed transition is never recorded as visible.
+        _npcVisibility.Commit(npcDelta);
+        _monsterVisibility.Commit(monsterDelta);
+        if (npcDelta.Entering.Count > 0 ||
+            npcDelta.Leaving.Count > 0 ||
+            monsterDelta.Entering.Count > 0 ||
+            monsterDelta.Leaving.Count > 0 ||
+            reason == "initial")
         {
             Console.WriteLine(
-                $"[npc] visibility reason={reason} character={_character.Name} map={_character.CurrentMap} cell={delta.PlayerCell.X},{delta.PlayerCell.Z} x={_character.PositionX:F2} z={_character.PositionZ:F2} entered={delta.Entering.Count} left={delta.Leaving.Count}");
+                $"[world] visibility reason={reason} character={_character.Name} map={_character.CurrentMap} cell={npcDelta.PlayerCell.X},{npcDelta.PlayerCell.Z} x={_character.PositionX:F2} z={_character.PositionZ:F2} npc-entered={npcDelta.Entering.Count} npc-left={npcDelta.Leaving.Count} mob-entered={monsterDelta.Entering.Count} mob-left={monsterDelta.Leaving.Count}");
         }
     }
 
     private static bool IsHolyStoneArtisan(NpcSpawnDefinition npc)
     {
         return npc.NpcKey is "Sparta_086" or "Athens_086";
-    }
-
-    private async Task SendCapturedMonstersAsync(CancellationToken cancellationToken)
-    {
-        if (_character is null)
-        {
-            return;
-        }
-
-        var capturedSpawns = await _store.GetCapturedMonsterSpawnsAsync(_character.CurrentMap, cancellationToken);
-        if (capturedSpawns.Count == 0)
-        {
-            Console.WriteLine($"[mob] no captured monster stream available character={_character.Name} map={_character.CurrentMap}");
-            return;
-        }
-
-        var packet = PacketBuilder.CapturedMonsterSpawns(capturedSpawns);
-        Console.WriteLine($"[mob] sending captured monster stream character={_character.Name} map={_character.CurrentMap} count={capturedSpawns.Count} bytes={packet.Length}");
-        await _session.SendAsync(packet, cancellationToken, "CapturedMonsterSpawns", framed: false);
     }
 
     private async Task<bool> HandleWalkAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -694,7 +778,7 @@ internal sealed class GameClientHandler : IClientHandler
             return false;
         }
 
-        await RefreshNearbyNpcsAsync("walk", cancellationToken);
+        await RefreshNearbyWorldObjectsAsync("walk", cancellationToken);
         await PersistCharacterPositionAsync(force: false, cancellationToken);
         if (EnableExperimentalMonsterSpawns && (DateTime.UtcNow - _lastMonsterSpawnUtc) >= TimeSpan.FromSeconds(5))
         {
@@ -1166,7 +1250,7 @@ internal sealed class GameClientHandler : IClientHandler
             await _session.SendAsync(packet, cancellationToken, "SynGameData");
         }
 
-        await SendMapNpcsAsync(cancellationToken);
+        await SendMapWorldObjectsAsync(cancellationToken);
 
         var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
         var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
@@ -1330,7 +1414,7 @@ internal sealed class GameClientHandler : IClientHandler
 
         var positionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
         var positionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
-        if (!NpcVisibilityTracker.TryGetCell(positionX, positionZ, out _))
+        if (!WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(positionX, positionZ, out _))
         {
             Console.WriteLine(
                 $"[world] ignored invalid walk position character={_character.Name} x={positionX} z={positionZ}");

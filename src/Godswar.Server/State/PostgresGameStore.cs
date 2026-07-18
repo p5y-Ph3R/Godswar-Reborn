@@ -2783,6 +2783,7 @@ internal sealed class PostgresGameStore : IGameStore
             SELECT map_id, scene_key, template_key, display_name, object_id, pos_x, pos_z, clear_bytes
             FROM monster_spawn_packets
             WHERE map_id = @mapId
+              AND object_id BETWEEN 1 AND 4294967295
             ORDER BY object_id;
             """, connection);
 
@@ -2796,7 +2797,7 @@ internal sealed class PostgresGameStore : IGameStore
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                unchecked((uint)reader.GetInt64(4)),
+                checked((uint)reader.GetInt64(4)),
                 reader.GetFloat(5),
                 reader.GetFloat(6),
                 (byte[])reader["clear_bytes"]));
