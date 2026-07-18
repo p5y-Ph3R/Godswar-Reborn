@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Godswar.Server.Game;
 
 namespace Godswar.Server.State;
 
@@ -179,6 +180,153 @@ internal sealed class JsonGameStore : IGameStore
                 character.TalentExperience,
                 gainedTalentPoints,
                 character.TalentPoints);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<ExperienceBoostState> GetExperienceBoostStateAsync(
+        int accountId,
+        int characterId,
+        byte camp,
+        byte mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            if (!db.Characters.Any(character =>
+                    character.Id == characterId &&
+                    character.AccountId == accountId))
+            {
+                return ExperienceBoostState.Empty;
+            }
+
+            var boosts = db.CharacterExperienceBoosts
+                .Where(boost =>
+                    boost.CharacterId == characterId &&
+                    boost.ActivatedAt <= now &&
+                    (boost.ExpiresAt is null || boost.ExpiresAt > now))
+                .GroupBy(boost => boost.Kind)
+                .Select(group => group
+                    .OrderByDescending(boost => boost.Priority)
+                    .ThenByDescending(boost => boost.BonusBasisPoints)
+                    .First())
+                .Select(boost => new ActiveExperienceBoost(
+                    boost.StatusId,
+                    boost.Kind,
+                    boost.BonusBasisPoints,
+                    boost.Priority,
+                    boost.ExpiresAt,
+                    boost.Source))
+                .ToList();
+
+            var account = db.Accounts.FirstOrDefault(candidate => candidate.Id == accountId);
+            if (account is not null &&
+                account.VipTier != VipTier.None &&
+                (account.VipExpiresAt is null || account.VipExpiresAt > now))
+            {
+                boosts.Add(new ActiveExperienceBoost(
+                    VipExperienceBoosts.StatusId(account.VipTier),
+                    ExperienceBoostKinds.Vip,
+                    VipExperienceBoosts.BonusBasisPoints(account.VipTier),
+                    (int)account.VipTier,
+                    account.VipExpiresAt,
+                    $"vip:{account.VipTier.ToString().ToLowerInvariant()}"));
+            }
+
+            var areaControl = db.FactionAreaExperienceControls.FirstOrDefault(control =>
+                control.MapId == mapId &&
+                control.ControllingCamp == camp &&
+                control.ActivatedAt <= now &&
+                control.ExpiresAt > now &&
+                WorldBossCatalog.Default.IsWorldBoss(mapId, control.BossTemplateKey));
+            if (areaControl is not null)
+            {
+                boosts.Add(new ActiveExperienceBoost(
+                    ExperienceStatusIds.FactionAreaExperience,
+                    ExperienceBoostKinds.FactionArea,
+                    areaControl.BonusBasisPoints,
+                    1,
+                    areaControl.ExpiresAt,
+                    $"world-boss:{areaControl.BossTemplateKey}"));
+            }
+
+            return new ExperienceBoostState(boosts.OrderBy(boost => boost.Kind).ToArray());
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
+        short mapId,
+        string bossTemplateKey,
+        byte controllingCamp,
+        DateTimeOffset killedAt,
+        string deathToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (controllingCamp is not (GameDefaults.SpartaCamp or GameDefaults.AthensCamp) ||
+            string.IsNullOrWhiteSpace(deathToken) ||
+            !WorldBossCatalog.Default.IsWorldBoss(mapId, bossTemplateKey))
+        {
+            return null;
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var existing = db.FactionAreaExperienceControls.FirstOrDefault(control => control.MapId == mapId);
+            if (existing is not null &&
+                string.Equals(existing.DeathToken, deathToken, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var control = existing ?? new FactionAreaExperienceControl { MapId = checked((byte)mapId) };
+            control.ControllingCamp = controllingCamp;
+            control.BossTemplateKey = bossTemplateKey;
+            control.DeathToken = deathToken;
+            control.BonusBasisPoints = 2_500;
+            control.ActivatedAt = killedAt;
+            control.ExpiresAt = killedAt + WorldBossCatalog.Default.RespawnInterval;
+            if (existing is null)
+            {
+                db.FactionAreaExperienceControls.Add(control);
+            }
+
+            await SaveUnsafeAsync(db, cancellationToken);
+            return control;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<WorldBossRespawnState?> GetActiveWorldBossRespawnAsync(
+        short mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var control = db.FactionAreaExperienceControls.FirstOrDefault(candidate =>
+                candidate.MapId == mapId &&
+                candidate.ExpiresAt > now &&
+                WorldBossCatalog.Default.IsWorldBoss(mapId, candidate.BossTemplateKey));
+            return control is null
+                ? null
+                : new WorldBossRespawnState(mapId, control.BossTemplateKey, control.ExpiresAt);
         }
         finally
         {
@@ -393,6 +541,32 @@ internal sealed class JsonGameStore : IGameStore
                 }
             }
 
+            await SaveUnsafeAsync(db, cancellationToken);
+            return Clone(character);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<GameCharacter?> DeleteKitBagItemAsync(
+        int accountId,
+        int characterId,
+        int kitBagSlot,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return null;
+            }
+
+            character.KitBag = KitBagSlots.ClearSlot(character.KitBag, kitBagSlot);
             await SaveUnsafeAsync(db, cancellationToken);
             return Clone(character);
         }
@@ -718,6 +892,8 @@ internal sealed class JsonGameStore : IGameStore
             Id = account.Id,
             Username = account.Username,
             Password = account.Password,
+            VipTier = account.VipTier,
+            VipExpiresAt = account.VipExpiresAt,
             CreatedUtc = account.CreatedUtc
         };
     }

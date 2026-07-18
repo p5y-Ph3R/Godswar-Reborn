@@ -30,7 +30,8 @@ internal sealed class MonsterMapRuntime
         IEnumerable<CapturedMonsterSpawn> definitions,
         DateTimeOffset initializedAt,
         TimeSpan? corpseDespawnDelay = null,
-        TimeSpan? respawnDelay = null)
+        TimeSpan? respawnDelay = null,
+        WorldBossRespawnState? activeWorldBossRespawn = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         MapId = mapId;
@@ -54,7 +55,11 @@ internal sealed class MonsterMapRuntime
             .OrderBy(definition => definition.ObjectId)
             .ToDictionary(
                 definition => definition.ObjectId,
-                definition => CreateState(mapId, definition, initializedAt));
+                definition => CreateState(
+                    mapId,
+                    definition,
+                    initializedAt,
+                    activeWorldBossRespawn));
     }
 
     public byte MapId { get; }
@@ -137,7 +142,12 @@ internal sealed class MonsterMapRuntime
                 monster.MovementTicks = 0;
                 monster.RemainingMovementTicks = 0;
                 monster.DespawnAt = now + _corpseDespawnDelay;
-                monster.RespawnAt = now + _respawnDelay;
+                var respawnDelay = WorldBossCatalog.Default.IsWorldBoss(
+                    MapId,
+                    monster.Definition.TemplateKey)
+                    ? WorldBossCatalog.Default.RespawnInterval
+                    : _respawnDelay;
+                monster.RespawnAt = now + respawnDelay;
                 _pendingUpdates.Enqueue(new MonsterRuntimeUpdate(
                     MonsterRuntimeUpdateKind.Died,
                     CreateSnapshot(monster)));
@@ -448,7 +458,8 @@ internal sealed class MonsterMapRuntime
     private static MonsterRuntimeState CreateState(
         byte mapId,
         CapturedMonsterSpawn definition,
-        DateTimeOffset initializedAt)
+        DateTimeOffset initializedAt,
+        WorldBossRespawnState? activeWorldBossRespawn)
     {
         if (definition.MapId != mapId)
         {
@@ -474,6 +485,20 @@ internal sealed class MonsterMapRuntime
             BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(20, 4)),
             BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(24, 4)),
             CreateSeed(mapId, definition.ObjectId));
+        if (activeWorldBossRespawn is not null &&
+            activeWorldBossRespawn.MapId == mapId &&
+            activeWorldBossRespawn.RespawnAt > initializedAt &&
+            string.Equals(
+                activeWorldBossRespawn.BossTemplateKey,
+                definition.TemplateKey,
+                StringComparison.Ordinal))
+        {
+            monster.CurrentHealth = 0;
+            monster.IsAlive = false;
+            monster.IsSpawned = false;
+            monster.RespawnAt = activeWorldBossRespawn.RespawnAt;
+        }
+
         monster.NextMovementAt = initializedAt + NextIdleDelay(monster);
         return monster;
     }

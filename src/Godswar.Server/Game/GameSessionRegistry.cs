@@ -9,12 +9,14 @@ internal sealed class GameSessionRegistry
 {
     private const uint LocalPlayerObjectId = 0x00001448;
     internal static readonly TimeSpan PlayerRecoveryInterval = TimeSpan.FromSeconds(6);
+    internal static readonly TimeSpan ExperienceBoostStatusReconciliationInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PlayerRecoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
     private readonly ConcurrentDictionary<int, ClientSession> _accountSessions = [];
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
     private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
+    private readonly ConcurrentDictionary<ClientSession, string> _experienceBoostStatusFingerprints = [];
     private readonly IGameStore? _store;
 
     public GameSessionRegistry(IGameStore? store = null)
@@ -75,6 +77,7 @@ internal sealed class GameSessionRegistry
 
             RemoveFromMap(context);
             _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
+            _experienceBoostStatusFingerprints.TryRemove(session, out _);
         }
 
         if (context is null)
@@ -308,12 +311,162 @@ internal sealed class GameSessionRegistry
     public int InitializeMapMonsters(
         byte mapId,
         IReadOnlyList<CapturedMonsterSpawn> definitions,
-        DateTimeOffset? initializedAt = null)
+        DateTimeOffset? initializedAt = null,
+        WorldBossRespawnState? activeWorldBossRespawn = null)
     {
         var map = _maps.GetOrAdd(mapId, static id => new MapInstance(id));
         return map.InitializeMonsters(
             definitions,
-            initializedAt ?? DateTimeOffset.UtcNow).Count;
+            initializedAt ?? DateTimeOffset.UtcNow,
+            activeWorldBossRespawn).Count;
+    }
+
+    public async Task<int> SendExperienceBoostStatusesAsync(
+        byte mapId,
+        byte? camp,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null || !_maps.TryGetValue(mapId, out var map))
+        {
+            return 0;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var sent = 0;
+        foreach (var context in map.Snapshot().Where(context =>
+                     context.WorldReady &&
+                     (camp is null || context.Character.Camp == camp.Value)))
+        {
+            try
+            {
+                var boosts = await _store.GetExperienceBoostStateAsync(
+                    context.AccountId,
+                    context.CharacterId,
+                    context.Character.Camp,
+                    context.MapId,
+                    now,
+                    cancellationToken);
+                var effects = boosts.ActiveBoosts
+                    .Select(boost => new ClientStatusEffect(
+                        checked((uint)boost.StatusId),
+                        checked((ushort)boost.RemainingSeconds(now))))
+                    .ToArray();
+                await context.Session.SendAsync(
+                    PacketBuilder.PlayerStatusEffects(
+                        effects,
+                        boosts.TotalBonusBasisPoints / 10_000f),
+                    cancellationToken,
+                    "PlayerStatusEffects");
+                RememberExperienceBoostStatus(context.Session, boosts);
+                sent++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[status] EXP boost map sync failed character={context.DisplayName} reason={reason}: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[status] EXP boost map sync map={mapId} camp={(camp?.ToString() ?? "all")} reason={reason} sent={sent}");
+        return sent;
+    }
+
+    public void RememberExperienceBoostStatus(
+        ClientSession session,
+        ExperienceBoostState boosts)
+    {
+        _experienceBoostStatusFingerprints[session] = BuildExperienceBoostStatusFingerprint(boosts);
+    }
+
+    public async Task RunExperienceBoostStatusReconciliationAsync(
+        CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(ExperienceBoostStatusReconciliationInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await ReconcileExperienceBoostStatusesOnceAsync(
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal async Task<int> ReconcileExperienceBoostStatusesOnceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null)
+        {
+            return 0;
+        }
+
+        var sent = 0;
+        foreach (var context in _sessions.Values.Where(static context => context.WorldReady))
+        {
+            try
+            {
+                var boosts = await _store.GetExperienceBoostStateAsync(
+                    context.AccountId,
+                    context.CharacterId,
+                    context.Character.Camp,
+                    context.MapId,
+                    now,
+                    cancellationToken);
+                var fingerprint = BuildExperienceBoostStatusFingerprint(boosts);
+                if (_experienceBoostStatusFingerprints.TryGetValue(
+                        context.Session,
+                        out var previousFingerprint) &&
+                    string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var effects = boosts.ActiveBoosts
+                    .Select(boost => new ClientStatusEffect(
+                        checked((uint)boost.StatusId),
+                        checked((ushort)boost.RemainingSeconds(now))))
+                    .ToArray();
+                await context.Session.SendAsync(
+                    PacketBuilder.PlayerStatusEffects(
+                        effects,
+                        boosts.TotalBonusBasisPoints / 10_000f),
+                    cancellationToken,
+                    "PlayerStatusEffectsReconcile");
+                _experienceBoostStatusFingerprints[context.Session] = fingerprint;
+                sent++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[status] EXP boost reconciliation failed character={context.DisplayName}: {ex.Message}");
+            }
+        }
+
+        if (sent > 0)
+        {
+            Console.WriteLine($"[status] EXP boost reconciliation updated={sent}");
+        }
+
+        return sent;
+    }
+
+    private static string BuildExperienceBoostStatusFingerprint(ExperienceBoostState boosts)
+    {
+        return string.Join(
+            '|',
+            boosts.ActiveBoosts
+                .OrderBy(static boost => boost.Kind)
+                .ThenBy(static boost => boost.StatusId)
+                .Select(static boost =>
+                    $"{boost.StatusId}:{boost.Kind}:{boost.BonusBasisPoints}:{boost.Priority}:" +
+                    $"{boost.ExpiresAt?.UtcTicks ?? long.MaxValue}:{boost.Source}"));
     }
 
     public IReadOnlyList<MonsterRuntimeSnapshot> GetMapMonsterSnapshots(byte mapId)

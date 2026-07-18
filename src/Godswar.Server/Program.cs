@@ -39,4 +39,5 @@ await Task.WhenAll(
     loginServer.RunAsync(shutdown.Token),
     gameServer.RunAsync(shutdown.Token),
     registry.RunMonsterRoamingAsync(shutdown.Token),
-    registry.RunPlayerRecoveryAsync(shutdown.Token));
+    registry.RunPlayerRecoveryAsync(shutdown.Token),
+    registry.RunExperienceBoostStatusReconciliationAsync(shutdown.Token));

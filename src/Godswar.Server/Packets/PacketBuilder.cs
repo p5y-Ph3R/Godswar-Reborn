@@ -68,9 +68,16 @@ internal static class PacketBuilder
     private const ushort PlayerManaUpdateOpcode = 0x2797;
     private const ushort PlayerVitalsUpdateOpcode = 0x2771;
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
+    private const ushort PlayerStatusEffectsOpcode = 0x2788;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
     private const int PlayerStatusTalentPointsOffset = 228;
+    private const int PlayerStatusEffectsLength = 280;
+    private const int PlayerStatusEffectsMaximumCount = 20;
+    private const int PlayerStatusEffectsCountOffset = 8;
+    private const int PlayerStatusEffectsIdsOffset = 12;
+    private const int PlayerStatusEffectsTimesOffset = 92;
+    private const int PlayerStatusEffectsExperienceBonusOffset = 260;
     private const ushort PlayerDetailAckOpcode = 0x27DA;
     private const int PlayerWorldVisualFlagsOffset = 81;
     private const int PlayerWorldVisualFlagsLength = 18;
@@ -524,6 +531,21 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(10, 2), (ushort)sourceIndex);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), (ushort)destinationPage);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), (ushort)destinationIndex);
+        return packet;
+    }
+
+    public static byte[] StorageItemKitBagDelete(int sourceSlot)
+    {
+        var packet = new byte[16];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2744);
+
+        var sourcePage = Math.DivRem(sourceSlot, 24, out var sourceIndex);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(8, 2), (ushort)sourcePage);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(10, 2), (ushort)sourceIndex);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), ushort.MaxValue);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), ushort.MaxValue);
         return packet;
     }
 
@@ -1266,6 +1288,67 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerExtendedStatusOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
+        return packet;
+    }
+
+    /// <summary>
+    /// Builds the original MSG_STATUS packet (10120 / 0x2788). The client uses
+    /// the status IDs and remaining times to populate its native buff/status bar.
+    /// </summary>
+    public static byte[] PlayerStatusEffects(
+        IReadOnlyList<ClientStatusEffect> effects,
+        float totalExperienceBonus)
+    {
+        return PlayerStatusEffects(LocalPlayerObjectId, effects, totalExperienceBonus);
+    }
+
+    public static byte[] PlayerStatusEffects(
+        uint objectId,
+        IReadOnlyList<ClientStatusEffect> effects,
+        float totalExperienceBonus)
+    {
+        ArgumentNullException.ThrowIfNull(effects);
+        if (effects.Count > PlayerStatusEffectsMaximumCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(effects),
+                effects.Count,
+                $"The client status packet supports at most {PlayerStatusEffectsMaximumCount} entries.");
+        }
+
+        if (!float.IsFinite(totalExperienceBonus))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(totalExperienceBonus),
+                totalExperienceBonus,
+                "The total experience bonus must be finite.");
+        }
+
+        var packet = new byte[PlayerStatusEffectsLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerStatusEffectsOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsCountOffset, 4),
+            (uint)effects.Count);
+
+        // The preserved server stores statuses in std::map<statusId, ...>, so its
+        // wire order is ascending by ID rather than activation order.
+        var orderedEffects = effects.OrderBy(static effect => effect.StatusId).ToArray();
+        for (var index = 0; index < orderedEffects.Length; index++)
+        {
+            var effect = orderedEffects[index];
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(PlayerStatusEffectsIdsOffset + (index * sizeof(uint)), sizeof(uint)),
+                effect.StatusId);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                packet.AsSpan(PlayerStatusEffectsTimesOffset + (index * sizeof(ushort)), sizeof(ushort)),
+                effect.RemainingSeconds);
+        }
+
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsExperienceBonusOffset, sizeof(float)),
+            totalExperienceBonus);
         return packet;
     }
 

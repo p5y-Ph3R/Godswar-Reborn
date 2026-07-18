@@ -31,6 +31,27 @@ internal interface IGameStore : IAsyncDisposable
         int talentExperience,
         CancellationToken cancellationToken = default);
 
+    Task<ExperienceBoostState> GetExperienceBoostStateAsync(
+        int accountId,
+        int characterId,
+        byte camp,
+        byte mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
+        short mapId,
+        string bossTemplateKey,
+        byte controllingCamp,
+        DateTimeOffset killedAt,
+        string deathToken,
+        CancellationToken cancellationToken = default);
+
+    Task<WorldBossRespawnState?> GetActiveWorldBossRespawnAsync(
+        short mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);
@@ -63,6 +84,12 @@ internal interface IGameStore : IAsyncDisposable
         int characterId,
         int sourceSlot,
         int destinationSlot,
+        CancellationToken cancellationToken = default);
+
+    Task<GameCharacter?> DeleteKitBagItemAsync(
+        int accountId,
+        int characterId,
+        int kitBagSlot,
         CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> ApplyWeaponHolyStoneAsync(

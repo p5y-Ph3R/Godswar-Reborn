@@ -350,6 +350,51 @@ internal sealed class GameClientHandler : IClientHandler
         await _session.SendAsync(PacketBuilder.SkillUiState(), cancellationToken, "SkillUiState");
         await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
+        await SendExperienceBoostStatusAsync("enter", cancellationToken);
+    }
+
+    private async Task SendExperienceBoostStatusAsync(
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        ExperienceBoostState boosts;
+        try
+        {
+            boosts = await _store.GetExperienceBoostStateAsync(
+                _account.Id,
+                _character.Id,
+                _character.Camp,
+                _character.CurrentMap,
+                now,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[status] EXP boost sync failed character={_character.Name} reason={reason}: {ex.Message}");
+            return;
+        }
+
+        var effects = boosts.ActiveBoosts
+            .Select(boost => new ClientStatusEffect(
+                checked((uint)boost.StatusId),
+                checked((ushort)boost.RemainingSeconds(now))))
+            .ToArray();
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusEffects(
+                effects,
+                boosts.TotalBonusBasisPoints / 10_000f),
+            cancellationToken,
+            "PlayerStatusEffects");
+        _registry.RememberExperienceBoostStatus(_session, boosts);
+        Console.WriteLine(
+            $"[status] EXP boost sync character={_character.Name} reason={reason} count={effects.Length} bonus-bps={boosts.TotalBonusBasisPoints}");
     }
 
     private async Task SendCurrentTalentBootstrapAsync(string reason, CancellationToken cancellationToken)
@@ -500,9 +545,35 @@ internal sealed class GameClientHandler : IClientHandler
             monsterDefinitions.Add(monster);
         }
 
+        var monsterRuntimeInitializedAt = DateTimeOffset.UtcNow;
+        WorldBossRespawnState? activeWorldBossRespawn = null;
+        try
+        {
+            activeWorldBossRespawn = await _store.GetActiveWorldBossRespawnAsync(
+                _character.CurrentMap,
+                monsterRuntimeInitializedAt,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[world-boss] failed loading persisted respawn map={_character.CurrentMap}: {ex.Message}");
+            if (WorldBossCatalog.Default.TryGet(_character.CurrentMap, out var worldBoss))
+            {
+                // A database outage must never make a killed world boss reappear
+                // early. Suppress it for this runtime and recover on restart.
+                activeWorldBossRespawn = new WorldBossRespawnState(
+                    _character.CurrentMap,
+                    worldBoss.TemplateKey,
+                    DateTimeOffset.MaxValue);
+            }
+        }
+
         var runtimeMonsterCount = _registry.InitializeMapMonsters(
             _character.CurrentMap,
-            monsterDefinitions);
+            monsterDefinitions,
+            monsterRuntimeInitializedAt,
+            activeWorldBossRespawn);
 
         _npcVisibility = new WorldSectorVisibilityTracker<NpcSpawnDefinition>(
             npcDefinitions,
@@ -1317,6 +1388,10 @@ internal sealed class GameClientHandler : IClientHandler
         var reward = MonsterRewardCatalog.Resolve(damageResult.Monster, _character.Level);
         if (reward.Experience == 0 && reward.TalentExperience == 0)
         {
+            await ActivateWorldBossAreaIfApplicableAsync(
+                damageResult,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
             await SendMonsterDeathProgressionAsync(
                 damageResult.ObjectId,
                 _character.Experience,
@@ -1328,13 +1403,38 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
+        var rewardTime = DateTimeOffset.UtcNow;
+        ExperienceBoostState experienceBoosts;
+        try
+        {
+            experienceBoosts = await _store.GetExperienceBoostStateAsync(
+                _account.Id,
+                _character.Id,
+                _character.Camp,
+                _character.CurrentMap,
+                rewardTime,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            experienceBoosts = ExperienceBoostState.Empty;
+            Console.WriteLine(
+                $"[reward] boost resolution failed character={_character.Name}: {ex.Message}");
+        }
+
+        var awardedExperience = experienceBoosts.ApplyTo(reward.Experience);
+        await ActivateWorldBossAreaIfApplicableAsync(
+            damageResult,
+            rewardTime,
+            cancellationToken);
+
         CharacterProgressionResult? progression;
         try
         {
             progression = await _store.ApplyMonsterKillRewardAsync(
                 _account.Id,
                 _character.Id,
-                reward.Experience,
+                awardedExperience,
                 reward.TalentExperience,
                 cancellationToken);
         }
@@ -1351,6 +1451,9 @@ internal sealed class GameClientHandler : IClientHandler
                 $"[reward] character missing account={_account.Id} character={_character.Id} monster={damageResult.ObjectId}");
             return;
         }
+
+        Console.WriteLine(
+            $"[reward] character={_character.Name} base-exp={reward.Experience} awarded-exp={awardedExperience} bonus-bps={experienceBoosts.TotalBonusBasisPoints} boosts={string.Join(',', experienceBoosts.ActiveBoosts.Select(boost => boost.StatusId))}");
 
         _character.Level = progression.CurrentLevel;
         _character.Experience = progression.CurrentExperience;
@@ -1459,6 +1562,49 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier} level={progression.PreviousLevel}->{progression.CurrentLevel} exp=+{progression.ExperienceGained}->{progression.CurrentExperience}/{progression.NextLevelExperience} talent-exp=+{progression.TalentExperienceGained}->{progression.CurrentTalentExperience} talent-points=+{progression.TalentPointsGained}->{progression.CurrentTalentPoints}");
+    }
+
+    private async Task ActivateWorldBossAreaIfApplicableAsync(
+        MonsterDamageResult damageResult,
+        DateTimeOffset killedAt,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null ||
+            !WorldBossCatalog.Default.IsWorldBoss(
+                _character.CurrentMap,
+                damageResult.Monster.Definition.TemplateKey))
+        {
+            return;
+        }
+
+        var deathToken = $"{_character.CurrentMap}:{damageResult.ObjectId}:{killedAt.UtcTicks}";
+        try
+        {
+            var control = await _store.ActivateWorldBossAreaAsync(
+                _character.CurrentMap,
+                damageResult.Monster.Definition.TemplateKey,
+                _character.Camp,
+                killedAt,
+                deathToken,
+                cancellationToken);
+            if (control is null)
+            {
+                return;
+            }
+
+            Console.WriteLine(
+                $"[world-boss] area-control map={control.MapId} camp={control.ControllingCamp} boss={control.BossTemplateKey} expires={control.ExpiresAt:O}");
+            await _registry.SendExperienceBoostStatusesAsync(
+                mapId: control.MapId,
+                camp: null,
+                reason: "world-boss-control",
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[world-boss] area-control activation failed map={_character.CurrentMap} boss={damageResult.Monster.Definition.TemplateKey}: {ex.Message}");
+        }
     }
 
     private async Task SendMonsterDeathProgressionAsync(
@@ -2082,6 +2228,12 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
+        if (TryReadStorageItemDelete(packet.Payload, out var deletedSlot))
+        {
+            await HandleDeleteKitBagItemAsync(deletedSlot, cancellationToken);
+            return;
+        }
+
         if (TryReadStorageItemKitBagMove(packet.Payload, out var moveSourceSlot, out var moveDestinationSlot))
         {
             await HandleMoveKitBagItemAsync(moveSourceSlot, moveDestinationSlot, cancellationToken);
@@ -2446,6 +2598,49 @@ internal sealed class GameClientHandler : IClientHandler
             "StorageItemKitBagMoveAck");
     }
 
+    private async Task HandleDeleteKitBagItemAsync(int sourceSlot, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var itemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
+        if (itemId == 0)
+        {
+            Console.WriteLine($"[inventory] kitbag delete ignored: empty source={sourceSlot}");
+            return;
+        }
+
+        var updatedCharacter = await _store.DeleteKitBagItemAsync(
+            _account.Id,
+            _character.Id,
+            sourceSlot,
+            cancellationToken);
+
+        if (updatedCharacter is null
+            || KitBagSlots.GetItemId(updatedCharacter.KitBag, sourceSlot) == itemId)
+        {
+            Console.WriteLine(
+                $"[inventory] kitbag delete failed: character={_character.Name} id={_character.Id} source={sourceSlot} item={itemId}");
+            return;
+        }
+
+        _character = updatedCharacter;
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        if (_lastItemInfo is { SourceSlot: var rememberedSlot } && rememberedSlot == sourceSlot)
+        {
+            _lastItemInfo = null;
+        }
+
+        Console.WriteLine(
+            $"[inventory] deleted kitbag item character={_character.Name} source={sourceSlot} item={itemId}");
+        await _session.SendAsync(
+            PacketBuilder.StorageItemKitBagDelete(sourceSlot),
+            cancellationToken,
+            "StorageItemKitBagDeleteAck");
+    }
+
     private bool TryResolveEquipSourceFromLastItemInfo(out int sourceSlot, out uint itemId)
     {
         sourceSlot = 0;
@@ -2684,6 +2879,32 @@ internal sealed class GameClientHandler : IClientHandler
 
         sourceSlot = (sourcePage * 24) + sourceIndex;
         destinationSlot = (destinationPage * 24) + destinationIndex;
+        return true;
+    }
+
+    internal static bool TryReadStorageItemDelete(ReadOnlySpan<byte> payload, out int sourceSlot)
+    {
+        sourceSlot = 0;
+
+        if (payload.Length < 12)
+        {
+            return false;
+        }
+
+        var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(4, 2));
+        var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
+        var destinationPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+        var destinationIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
+
+        if (sourcePage >= 4
+            || sourceIndex >= 24
+            || destinationPage != ushort.MaxValue
+            || destinationIndex != ushort.MaxValue)
+        {
+            return false;
+        }
+
+        sourceSlot = (sourcePage * 24) + sourceIndex;
         return true;
     }
 

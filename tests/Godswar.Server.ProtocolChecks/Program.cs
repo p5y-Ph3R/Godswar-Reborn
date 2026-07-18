@@ -24,6 +24,7 @@ internal static class Program
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
+            ("Additive fighter EXP boost stacking", CheckExperienceBoostStackingAsync),
             ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
             ("Warrior talent ID-zero upgrade protocol", CheckWarriorTalentIdZeroUpgradeAsync),
             ("JSON warrior talent persistence", CheckJsonWarriorTalentPersistenceAsync),
@@ -39,9 +40,13 @@ internal static class Program
             ("Player auxiliary appearance packets", CheckPlayerAuxiliaryAppearanceAsync),
             ("PlayerInspectEquipment packed slots and details", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
+            ("Native status-effect sync layout", CheckPlayerStatusEffectsAsync),
+            ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
             ("Monster movement-cell visibility and spawn layout", CheckMonsterMovementCellVisibilityAsync),
+            ("World boss outdoor-area catalog", WorldBossCatalogChecks.RunAsync),
+            ("Persisted world-boss respawn across restart", CheckPersistedWorldBossRespawnAsync),
             ("Monster movement and lifecycle packet layouts", CheckMonsterMovementPacketLayoutsAsync),
             ("Monster runtime appearance patch", CheckMonsterRuntimeAppearancePatchAsync),
             ("Shared bounded monster runtime and lifecycle", CheckSharedBoundedMonsterRuntimeAsync),
@@ -377,6 +382,38 @@ internal static class Program
         {
             Directory.Delete(dataPath, recursive: true);
         }
+    }
+
+    private static Task CheckExperienceBoostStackingAsync()
+    {
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(1);
+        var state = new ExperienceBoostState(
+        [
+            new(ExperienceStatusIds.MaxExperiencePotion, ExperienceBoostKinds.Consumable, 30_000, 11, expiresAt, "potion"),
+            new(ExperienceStatusIds.Weekend, ExperienceBoostKinds.Weekend, 20_000, 1, expiresAt, "weekend"),
+            new(ExperienceStatusIds.TrickOrTreat, ExperienceBoostKinds.TrickOrTreat, 1_000, 1, expiresAt, "event"),
+            new(ExperienceStatusIds.GuildDoubleExperience16Hours, ExperienceBoostKinds.Guild, 10_000, 1, expiresAt, "guild"),
+            new(ExperienceStatusIds.VipPlatinum, ExperienceBoostKinds.Vip, 2_000, 4, null, "vip:platinum"),
+            new(ExperienceStatusIds.FactionAreaExperience, ExperienceBoostKinds.FactionArea, 2_500, 1, expiresAt, "world-boss")
+        ]);
+
+        Check.Equal(65_500, state.TotalBonusBasisPoints, "all six fighter EXP families add their bonus rates");
+        Check.Equal(604, state.ApplyTo(80), "base 80 EXP receives the additive 7.55x total multiplier");
+        Check.Equal(0, state.ApplyTo(0), "zero base reward remains zero");
+        Check.Equal(2_000, VipExperienceBoosts.BonusBasisPoints(VipTier.Platinum), "Platinum VIP grants 20 percent");
+        Check.Equal(ExperienceStatusIds.VipPlatinum, VipExperienceBoosts.StatusId(VipTier.Platinum), "Platinum VIP status ID");
+        var finiteVip = new ActiveExperienceBoost(
+            ExperienceStatusIds.VipGold,
+            ExperienceBoostKinds.Vip,
+            1_500,
+            3,
+            expiresAt.AddDays(30),
+            "vip:gold");
+        Check.Equal(
+            (int)ushort.MaxValue,
+            finiteVip.RemainingSeconds(DateTimeOffset.UtcNow),
+            "finite VIP status remains permanent-looking until server reconciliation removes it");
+        return Task.CompletedTask;
     }
 
     private static Task CheckWarriorStarterSkillPacketsAsync()
@@ -988,6 +1025,126 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task CheckPlayerStatusEffectsAsync()
+    {
+        const uint objectId = 0x7135B24E;
+        var effects = new ClientStatusEffect[]
+        {
+            new(1504, 43_200),
+            new(511, 28_800),
+            new(1503, ushort.MaxValue),
+            new(586, 28_800)
+        };
+        var packet = PacketBuilder.PlayerStatusEffects(objectId, effects, 6.2f);
+
+        Check.Equal(280, packet.Length, "status-effect packet length");
+        Check.Equal((ushort)packet.Length, ReadUInt16(packet, 0), "status-effect declared length");
+        Check.Equal((ushort)10120, ReadUInt16(packet, 2), "status-effect opcode");
+        Check.Equal(objectId, ReadUInt32(packet, 4), "status-effect object id");
+        Check.Equal(4u, ReadUInt32(packet, 8), "status-effect count");
+
+        // Preserved MSG_STATUS writes std::map entries in ascending status-ID order.
+        Check.Equal(511u, ReadUInt32(packet, 12), "first sorted status ID");
+        Check.Equal(586u, ReadUInt32(packet, 16), "second sorted status ID");
+        Check.Equal(1503u, ReadUInt32(packet, 20), "third sorted status ID");
+        Check.Equal(1504u, ReadUInt32(packet, 24), "fourth sorted status ID");
+        Check.Equal((ushort)28_800, ReadUInt16(packet, 92), "first status remaining time");
+        Check.Equal((ushort)28_800, ReadUInt16(packet, 94), "second status remaining time");
+        Check.Equal(ushort.MaxValue, ReadUInt16(packet, 96), "permanent status remaining-time sentinel");
+        Check.Equal((ushort)43_200, ReadUInt16(packet, 98), "area status remaining time");
+        Check.Equal(0u, ReadUInt32(packet, 28), "unused status ID slot remains zero");
+        Check.Equal((ushort)0, ReadUInt16(packet, 100), "unused status time slot remains zero");
+        Check.Equal(6.2f, ReadSingle(packet, 260), "status aggregate fighter-EXP bonus");
+
+        var localPacket = PacketBuilder.PlayerStatusEffects([], 0f);
+        Check.Equal(0x1448u, ReadUInt32(localPacket, 4), "status-effect local player object ID");
+        Check.Equal(0u, ReadUInt32(localPacket, 8), "empty status-effect count");
+
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => PacketBuilder.PlayerStatusEffects(
+                Enumerable.Range(1, 21)
+                    .Select(static id => new ClientStatusEffect((uint)id, 1))
+                    .ToArray(),
+                0f),
+            "status-effect packet rejects more than twenty entries");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => PacketBuilder.PlayerStatusEffects([], float.NaN),
+            "status-effect packet rejects non-finite aggregate EXP");
+
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckBagItemDeletionAsync()
+    {
+        // Live client request after dragging bag slots 0 and 1 onto the ground
+        // and accepting both confirmation dialogs. Destination page/index -1/-1
+        // is the delete sentinel; trailing request bytes are unrelated stack data.
+        var slotZeroPayload = Convert.FromHexString(
+            "48F91A0000000000FFFFFFFF070000000800000009000000");
+        Check.True(
+            GameClientHandler.TryReadStorageItemDelete(slotZeroPayload, out var slotZero),
+            "captured ground-drop request parses");
+        Check.Equal(0, slotZero, "captured ground-drop source slot zero");
+
+        var slotOnePayload = Convert.FromHexString(
+            "48F91A0000000100FFFFFFFF070000000800000009000000");
+        Check.True(
+            GameClientHandler.TryReadStorageItemDelete(slotOnePayload, out var slotOne),
+            "second captured ground-drop request parses");
+        Check.Equal(1, slotOne, "captured ground-drop source slot one");
+
+        var ordinaryMovePayload = Convert.FromHexString(
+            "48F91A000000010000000200FFFFFFFF");
+        Check.True(
+            !GameClientHandler.TryReadStorageItemDelete(ordinaryMovePayload, out _),
+            "ordinary bag move is not parsed as deletion");
+
+        var acknowledgement = PacketBuilder.StorageItemKitBagDelete(sourceSlot: 25);
+        Check.Equal(16, acknowledgement.Length, "bag delete acknowledgement length");
+        Check.Equal((ushort)10052, ReadUInt16(acknowledgement, 2), "bag delete acknowledgement opcode");
+        Check.Equal(0x1448u, ReadUInt32(acknowledgement, 4), "bag delete local player object ID");
+        Check.Equal((ushort)1, ReadUInt16(acknowledgement, 8), "bag delete source page");
+        Check.Equal((ushort)1, ReadUInt16(acknowledgement, 10), "bag delete source index");
+        Check.Equal(ushort.MaxValue, ReadUInt16(acknowledgement, 12), "bag delete destination page sentinel");
+        Check.Equal(ushort.MaxValue, ReadUInt16(acknowledgement, 14), "bag delete destination index sentinel");
+
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-bag-delete-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            await using var store = new JsonGameStore(dataPath);
+            await store.EnsureSeedDataAsync();
+            var owner = await store.LoginOrCreateAccountAsync("bag-delete-owner", "");
+            var other = await store.LoginOrCreateAccountAsync("bag-delete-other", "");
+            var character = await store.CreateCharacterAsync(
+                owner.Id,
+                new GameCharacter { Name = "BagDeleteHero" });
+
+            Check.Equal(4000u, KitBagSlots.GetItemId(character.KitBag, 0), "delete fixture source item");
+            Check.Equal(4030u, KitBagSlots.GetItemId(character.KitBag, 1), "delete fixture neighboring item");
+
+            var unauthorized = await store.DeleteKitBagItemAsync(other.Id, character.Id, 1);
+            Check.True(unauthorized is null, "different account cannot delete bag item");
+
+            var deleted = await store.DeleteKitBagItemAsync(owner.Id, character.Id, 0)
+                ?? throw new InvalidOperationException("owner bag deletion returned no character");
+            Check.Equal(0u, KitBagSlots.GetItemId(deleted.KitBag, 0), "deleted slot is empty");
+            Check.Equal(4030u, KitBagSlots.GetItemId(deleted.KitBag, 1), "neighboring slot is unchanged");
+
+            var reloaded = await store.GetFirstCharacterAsync(owner.Id)
+                ?? throw new InvalidOperationException("bag deletion fixture was not reloaded");
+            Check.Equal(0u, KitBagSlots.GetItemId(reloaded.KitBag, 0), "bag deletion persists after reload");
+            Check.Equal(4030u, KitBagSlots.GetItemId(reloaded.KitBag, 1), "unauthorized deletion did not remove neighbor");
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
     private static Task CheckNpcDefinitionsAndSpawnLayoutAsync()
     {
         var capturedPacket = new byte[108];
@@ -1307,6 +1464,40 @@ internal static class Program
         Check.True(
             PacketBuilder.MonsterLifecycleMarker(10036).SequenceEqual(capturedLifecycleMarker),
             "opcode-10023 corpse/respawn marker matches the working-server fixture byte-for-byte");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckPersistedWorldBossRespawnAsync()
+    {
+        var initializedAt = new DateTimeOffset(2026, 7, 19, 0, 0, 0, TimeSpan.Zero);
+        var respawnAt = initializedAt.AddHours(6);
+        var definition = CreateCapturedMonster(
+            12003,
+            25f,
+            -30f,
+            "A_boss_boar_001",
+            mapId: 3,
+            sceneKey: "Parnitha_1");
+        var persisted = new WorldBossRespawnState(3, definition.TemplateKey, respawnAt);
+        var runtime = new MonsterMapRuntime(
+            3,
+            [definition],
+            initializedAt,
+            activeWorldBossRespawn: persisted);
+
+        var suppressed = runtime.Snapshot().Single();
+        Check.True(!suppressed.IsAlive, "persisted world boss remains dead after server restart");
+        Check.True(!suppressed.IsSpawned, "persisted world boss remains hidden before its next cycle");
+        Check.True(suppressed.RespawnAt == respawnAt, "persisted world-boss respawn timestamp is restored");
+
+        var beforeRespawn = runtime.Advance(respawnAt.AddTicks(-1));
+        Check.Equal(0, beforeRespawn.Updates.Count, "world boss does not respawn before persisted expiry");
+        var atRespawn = runtime.Advance(respawnAt);
+        Check.Equal(1, atRespawn.Updates.Count, "world boss respawns exactly at persisted expiry");
+        Check.True(
+            atRespawn.Updates[0].Kind == MonsterRuntimeUpdateKind.Respawned,
+            "persisted lifecycle emits respawn event");
+        Check.True(atRespawn.Updates[0].Monster.IsAlive, "respawned world boss is alive");
         return Task.CompletedTask;
     }
 
@@ -1799,7 +1990,9 @@ internal static class Program
         string templateKey,
         uint objectType = 0x00000212,
         uint tier = 1,
-        uint maximumHealth = 237)
+        uint maximumHealth = 237,
+        short mapId = 0,
+        string sceneKey = "Sparta")
     {
         var packet = new byte[108];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
@@ -1815,8 +2008,8 @@ internal static class Program
         Encoding.ASCII.GetBytes(templateKey).CopyTo(packet.AsSpan(44));
 
         return new CapturedMonsterSpawn(
-            0,
-            "Sparta",
+            mapId,
+            sceneKey,
             templateKey,
             templateKey,
             objectId,

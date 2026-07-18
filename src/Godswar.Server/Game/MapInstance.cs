@@ -38,11 +38,16 @@ internal sealed class MapInstance
 
     public MonsterMapRuntime InitializeMonsters(
         IReadOnlyList<CapturedMonsterSpawn> definitions,
-        DateTimeOffset initializedAt)
+        DateTimeOffset initializedAt,
+        WorldBossRespawnState? activeWorldBossRespawn = null)
     {
         lock (_monsterRuntimeGate)
         {
-            return _monsterRuntime ??= new MonsterMapRuntime(MapId, definitions, initializedAt);
+            return _monsterRuntime ??= new MonsterMapRuntime(
+                MapId,
+                definitions,
+                initializedAt,
+                activeWorldBossRespawn: activeWorldBossRespawn);
         }
     }
 

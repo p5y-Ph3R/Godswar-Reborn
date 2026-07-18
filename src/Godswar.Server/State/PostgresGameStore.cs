@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -19,7 +20,9 @@ internal sealed class PostgresGameStore : IGameStore
             last_login_ip varchar(255) NOT NULL DEFAULT '',
             last_login_mac varchar(255) NOT NULL DEFAULT '',
             total_online_time bigint NOT NULL DEFAULT 0,
-            status smallint NOT NULL DEFAULT 0
+            status smallint NOT NULL DEFAULT 0,
+            vip_tier smallint NOT NULL DEFAULT 0 CHECK (vip_tier BETWEEN 0 AND 4),
+            vip_expires_at timestamptz
         );
 
         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS uuid varchar(36) NOT NULL DEFAULT '';
@@ -31,6 +34,8 @@ internal sealed class PostgresGameStore : IGameStore
         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_login_mac varchar(255) NOT NULL DEFAULT '';
         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS total_online_time bigint NOT NULL DEFAULT 0;
         ALTER TABLE accounts ADD COLUMN IF NOT EXISTS status smallint NOT NULL DEFAULT 0;
+        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS vip_tier smallint NOT NULL DEFAULT 0;
+        ALTER TABLE accounts ADD COLUMN IF NOT EXISTS vip_expires_at timestamptz;
         CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_username ON accounts (username);
 
         CREATE TABLE IF NOT EXISTS server (
@@ -545,6 +550,43 @@ internal sealed class PostgresGameStore : IGameStore
         CREATE INDEX IF NOT EXISTS ix_character_base_server ON character_base (server_id);
         ALTER TABLE character_base ADD COLUMN IF NOT EXISTS holy_suit_points integer NOT NULL DEFAULT 0;
         ALTER TABLE character_base ADD COLUMN IF NOT EXISTS vitals_revision bigint NOT NULL DEFAULT 0;
+
+        CREATE TABLE IF NOT EXISTS character_experience_modifiers (
+            character_id integer NOT NULL REFERENCES character_base(id) ON DELETE CASCADE,
+            status_id integer NOT NULL,
+            kind integer NOT NULL,
+            bonus_basis_points integer NOT NULL,
+            priority integer NOT NULL DEFAULT 1,
+            source varchar(64) NOT NULL DEFAULT '',
+            activated_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz,
+            PRIMARY KEY (character_id, kind)
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_character_experience_modifiers_expiry
+            ON character_experience_modifiers (character_id, expires_at);
+
+        CREATE TABLE IF NOT EXISTS world_boss_areas (
+            map_id smallint PRIMARY KEY REFERENCES map_templates(map_id) ON DELETE CASCADE,
+            boss_template_key varchar(128) NOT NULL,
+            boss_display_name varchar(255) NOT NULL DEFAULT '',
+            bonus_basis_points integer NOT NULL DEFAULT 2500,
+            respawn_interval_seconds integer NOT NULL DEFAULT 43200,
+            enabled boolean NOT NULL DEFAULT true
+        );
+
+        CREATE TABLE IF NOT EXISTS faction_area_experience_control (
+            map_id smallint PRIMARY KEY REFERENCES world_boss_areas(map_id) ON DELETE CASCADE,
+            controlling_camp smallint NOT NULL CHECK (controlling_camp IN (0, 1)),
+            boss_template_key varchar(128) NOT NULL,
+            bonus_basis_points integer NOT NULL DEFAULT 2500,
+            activated_at timestamptz NOT NULL,
+            expires_at timestamptz NOT NULL,
+            death_token varchar(64) NOT NULL UNIQUE
+        );
+
+        CREATE INDEX IF NOT EXISTS ix_faction_area_experience_control_active
+            ON faction_area_experience_control (map_id, controlling_camp, expires_at);
 
         CREATE TABLE IF NOT EXISTS character_kitbag (
             user_id integer PRIMARY KEY REFERENCES character_base(id) ON DELETE CASCADE,
@@ -1791,7 +1833,7 @@ internal sealed class PostgresGameStore : IGameStore
         FROM combined;
         """;
 
-    private const string AccountColumns = "id, username, password, last_login_time";
+    private const string AccountColumns = "id, username, password, last_login_time, vip_tier, vip_expires_at";
     private const short ItemLocationEquipment = 0;
     private const short ItemLocationKitBag = 1;
     private const int EquipmentProjectionSlots = 24;
@@ -1839,6 +1881,7 @@ internal sealed class PostgresGameStore : IGameStore
                 await SeedNpcTemplatesAsync(cancellationToken);
                 await SeedMapTemplatesAsync(cancellationToken);
                 await SeedMonsterTemplatesAsync(cancellationToken);
+                await SeedWorldBossAreasAsync(cancellationToken);
                 await SyncCharacterEquipAsync(cancellationToken);
                 await SyncCharacterStarterSkillsAsync(cancellationToken);
                 return;
@@ -2033,6 +2076,205 @@ internal sealed class PostgresGameStore : IGameStore
             currentTalentExperience,
             talentPointsGained,
             currentTalentPoints);
+    }
+
+    public async Task<ExperienceBoostState> GetExperienceBoostStateAsync(
+        int accountId,
+        int characterId,
+        byte camp,
+        byte mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        var boosts = new List<ActiveExperienceBoost>();
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            WITH personal AS (
+                SELECT DISTINCT ON (modifier.kind)
+                    modifier.status_id,
+                    modifier.kind,
+                    modifier.bonus_basis_points,
+                    modifier.priority,
+                    modifier.expires_at,
+                    modifier.source
+                FROM character_experience_modifiers modifier
+                JOIN character_base character ON character.id = modifier.character_id
+                WHERE modifier.character_id = @characterId
+                  AND character.account_id = @accountId
+                  AND modifier.activated_at <= @now
+                  AND (modifier.expires_at IS NULL OR modifier.expires_at > @now)
+                ORDER BY modifier.kind, modifier.priority DESC, modifier.bonus_basis_points DESC
+            )
+            SELECT status_id, kind, bonus_basis_points, priority, expires_at, source
+            FROM personal
+            UNION ALL
+            SELECT
+                1504,
+                1009,
+                control.bonus_basis_points,
+                1,
+                control.expires_at,
+                'world-boss:' || control.boss_template_key
+            FROM faction_area_experience_control control
+            JOIN world_boss_areas area
+              ON area.map_id = control.map_id
+             AND area.boss_template_key = control.boss_template_key
+             AND area.enabled
+            WHERE control.map_id = @mapId
+              AND control.controlling_camp = @camp
+              AND control.activated_at <= @now
+              AND control.expires_at > @now
+            ORDER BY kind;
+            """, connection))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("camp", (short)camp);
+            command.Parameters.AddWithValue("mapId", (short)mapId);
+            command.Parameters.AddWithValue("now", now);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                boosts.Add(new ActiveExperienceBoost(
+                    reader.GetInt32(0),
+                    reader.GetInt32(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.IsDBNull(4)
+                        ? null
+                        : new DateTimeOffset(reader.GetDateTime(4).ToUniversalTime()),
+                    reader.GetString(5)));
+            }
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT vip_tier, vip_expires_at
+            FROM accounts
+            WHERE id = @accountId
+              AND vip_tier BETWEEN 1 AND 4
+              AND (vip_expires_at IS NULL OR vip_expires_at > @now);
+            """, connection))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("now", now);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var tier = (VipTier)reader.GetInt16(0);
+                var expiresAt = reader.IsDBNull(1)
+                    ? (DateTimeOffset?)null
+                    : new DateTimeOffset(reader.GetDateTime(1).ToUniversalTime());
+                boosts.Add(new ActiveExperienceBoost(
+                    VipExperienceBoosts.StatusId(tier),
+                    ExperienceBoostKinds.Vip,
+                    VipExperienceBoosts.BonusBasisPoints(tier),
+                    (int)tier,
+                    expiresAt,
+                    $"vip:{tier.ToString().ToLowerInvariant()}"));
+            }
+        }
+
+        return new ExperienceBoostState(boosts.OrderBy(boost => boost.Kind).ToArray());
+    }
+
+    public async Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
+        short mapId,
+        string bossTemplateKey,
+        byte controllingCamp,
+        DateTimeOffset killedAt,
+        string deathToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (controllingCamp is not (GameDefaults.SpartaCamp or GameDefaults.AthensCamp) ||
+            string.IsNullOrWhiteSpace(bossTemplateKey) ||
+            string.IsNullOrWhiteSpace(deathToken))
+        {
+            return null;
+        }
+
+        await using var command = _dataSource.CreateCommand("""
+            INSERT INTO faction_area_experience_control (
+                map_id,
+                controlling_camp,
+                boss_template_key,
+                bonus_basis_points,
+                activated_at,
+                expires_at,
+                death_token
+            )
+            SELECT
+                area.map_id,
+                @controllingCamp,
+                area.boss_template_key,
+                area.bonus_basis_points,
+                @killedAt,
+                @killedAt + (area.respawn_interval_seconds * interval '1 second'),
+                @deathToken
+            FROM world_boss_areas area
+            WHERE area.map_id = @mapId
+              AND area.boss_template_key = @bossTemplateKey
+              AND area.enabled
+            ON CONFLICT (map_id) DO UPDATE
+            SET controlling_camp = EXCLUDED.controlling_camp,
+                boss_template_key = EXCLUDED.boss_template_key,
+                bonus_basis_points = EXCLUDED.bonus_basis_points,
+                activated_at = EXCLUDED.activated_at,
+                expires_at = EXCLUDED.expires_at,
+                death_token = EXCLUDED.death_token
+            WHERE faction_area_experience_control.death_token <> EXCLUDED.death_token
+            RETURNING map_id, controlling_camp, boss_template_key, death_token,
+                      bonus_basis_points, activated_at, expires_at;
+            """);
+        command.Parameters.AddWithValue("mapId", mapId);
+        command.Parameters.AddWithValue("bossTemplateKey", bossTemplateKey);
+        command.Parameters.AddWithValue("controllingCamp", (short)controllingCamp);
+        command.Parameters.AddWithValue("killedAt", killedAt);
+        command.Parameters.AddWithValue("deathToken", deathToken);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new FactionAreaExperienceControl
+        {
+            MapId = checked((byte)reader.GetInt16(0)),
+            ControllingCamp = checked((byte)reader.GetInt16(1)),
+            BossTemplateKey = reader.GetString(2),
+            DeathToken = reader.GetString(3),
+            BonusBasisPoints = reader.GetInt32(4),
+            ActivatedAt = new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime()),
+            ExpiresAt = new DateTimeOffset(reader.GetDateTime(6).ToUniversalTime())
+        };
+    }
+
+    public async Task<WorldBossRespawnState?> GetActiveWorldBossRespawnAsync(
+        short mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        await using var command = _dataSource.CreateCommand("""
+            SELECT control.map_id, control.boss_template_key, control.expires_at
+            FROM faction_area_experience_control control
+            JOIN world_boss_areas area
+              ON area.map_id = control.map_id
+             AND area.boss_template_key = control.boss_template_key
+             AND area.enabled
+            WHERE control.map_id = @mapId
+              AND control.expires_at > @now;
+            """);
+        command.Parameters.AddWithValue("mapId", mapId);
+        command.Parameters.AddWithValue("now", now);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new WorldBossRespawnState(
+                reader.GetInt16(0),
+                reader.GetString(1),
+                new DateTimeOffset(reader.GetDateTime(2).ToUniversalTime()))
+            : null;
     }
 
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default)
@@ -2490,6 +2732,44 @@ internal sealed class PostgresGameStore : IGameStore
 
         await transaction.CommitAsync(cancellationToken);
 
+        return await GetCharacterByIdAsync(characterId, cancellationToken);
+    }
+
+    public async Task<GameCharacter?> DeleteKitBagItemAsync(
+        int accountId,
+        int characterId,
+        int kitBagSlot,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT true
+            FROM character_base cb
+            WHERE cb.account_id = @accountId AND cb.id = @characterId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null)
+            {
+                return null;
+            }
+        }
+
+        await DeleteCharacterItemSlotAsync(
+            connection,
+            transaction,
+            characterId,
+            ItemLocationKitBag,
+            kitBagSlot,
+            "client-ground-delete",
+            cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
         return await GetCharacterByIdAsync(characterId, cancellationToken);
     }
 
@@ -3820,6 +4100,52 @@ internal sealed class PostgresGameStore : IGameStore
         await transaction.CommitAsync(cancellationToken);
     }
 
+    private async Task SeedWorldBossAreasAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var disable = new NpgsqlCommand(
+                         "UPDATE world_boss_areas SET enabled = false;",
+                         connection,
+                         transaction))
+        {
+            await disable.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            INSERT INTO world_boss_areas (
+                map_id,
+                boss_template_key,
+                boss_display_name,
+                bonus_basis_points,
+                respawn_interval_seconds,
+                enabled
+            )
+            VALUES (@mapId, @templateKey, @displayName, 2500, @respawnSeconds, true)
+            ON CONFLICT (map_id) DO UPDATE
+            SET boss_template_key = EXCLUDED.boss_template_key,
+                boss_display_name = EXCLUDED.boss_display_name,
+                bonus_basis_points = EXCLUDED.bonus_basis_points,
+                respawn_interval_seconds = EXCLUDED.respawn_interval_seconds,
+                enabled = true;
+            """, connection, transaction))
+        {
+            var respawnSeconds = checked((int)WorldBossCatalog.Default.RespawnInterval.TotalSeconds);
+            foreach (var definition in WorldBossCatalog.Default.Definitions)
+            {
+                command.Parameters.Clear();
+                command.Parameters.AddWithValue("mapId", definition.MapId);
+                command.Parameters.AddWithValue("templateKey", definition.TemplateKey);
+                command.Parameters.AddWithValue("displayName", definition.DisplayName);
+                command.Parameters.AddWithValue("respawnSeconds", respawnSeconds);
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     private async Task SyncCharacterEquipAsync(CancellationToken cancellationToken)
     {
         // character_equip is now a compatibility view over character_items.
@@ -4379,7 +4705,11 @@ internal sealed class PostgresGameStore : IGameStore
             Id = reader.GetInt32(0),
             Username = reader.GetString(1),
             Password = reader.GetString(2),
-            CreatedUtc = reader.GetDateTime(3).ToUniversalTime()
+            CreatedUtc = reader.GetDateTime(3).ToUniversalTime(),
+            VipTier = (VipTier)reader.GetInt16(4),
+            VipExpiresAt = reader.IsDBNull(5)
+                ? null
+                : new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime())
         };
     }
 
