@@ -151,7 +151,7 @@ internal sealed class JsonGameStore : IGameStore
             character.Name = EnsureUniqueCharacterName(db, CleanCharacterName(character.Name));
             character.Id = db.NextCharacterId++;
             character.AccountId = accountId;
-            character.CurrentMap = character.Camp == 0 ? (byte)1 : character.Camp;
+            GameDefaults.InitializeStartingLocation(character);
             character.Equipment = string.IsNullOrWhiteSpace(character.Equipment)
                 ? GameDefaults.DefaultEquipment(character.Profession)
                 : character.Equipment;

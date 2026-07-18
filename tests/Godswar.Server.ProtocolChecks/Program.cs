@@ -20,6 +20,7 @@ internal static class Program
     {
         var checks = new (string Name, Func<Task> Run)[]
         {
+            ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
             ("PlayerWorldSpawn full quality/grade extension", CheckPlayerWorldExtendedAppearanceAsync),
@@ -50,6 +51,44 @@ internal static class Program
 
         Console.WriteLine($"Protocol checks: {checks.Length - failures} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static Task CheckCharacterCampStartingLocationAsync()
+    {
+        var sparta = new GameCharacter
+        {
+            Camp = GameDefaults.SpartaCamp,
+            CurrentMap = GameDefaults.AthensCapitalMap,
+            PositionX = 10f,
+            PositionZ = 20f
+        };
+        GameDefaults.InitializeStartingLocation(sparta);
+
+        Check.Equal(GameDefaults.SpartaCamp, sparta.Camp, "Sparta camp is preserved");
+        Check.Equal(GameDefaults.SpartaCapitalMap, sparta.CurrentMap, "Sparta starts on map 0");
+        Check.Equal(GameDefaults.StartingPositionX, sparta.PositionX, "Sparta starting X");
+        Check.Equal(GameDefaults.StartingPositionZ, sparta.PositionZ, "Sparta starting Z");
+
+        var athens = new GameCharacter
+        {
+            Camp = GameDefaults.AthensCamp,
+            CurrentMap = GameDefaults.SpartaCapitalMap,
+            PositionX = 10f,
+            PositionZ = 20f
+        };
+        GameDefaults.InitializeStartingLocation(athens);
+
+        Check.Equal(GameDefaults.AthensCamp, athens.Camp, "Athens camp is preserved");
+        Check.Equal(GameDefaults.AthensCapitalMap, athens.CurrentMap, "Athens starts on map 1");
+        Check.Equal(GameDefaults.StartingPositionX, athens.PositionX, "Athens starting X");
+        Check.Equal(GameDefaults.StartingPositionZ, athens.PositionZ, "Athens starting Z");
+
+        var invalid = new GameCharacter { Camp = byte.MaxValue };
+        GameDefaults.InitializeStartingLocation(invalid);
+
+        Check.Equal(GameDefaults.AthensCamp, invalid.Camp, "invalid camp uses the safe Athens default");
+        Check.Equal(GameDefaults.AthensCapitalMap, invalid.CurrentMap, "invalid camp uses the Athens capital");
+        return Task.CompletedTask;
     }
 
     private static Task CheckPlayerWorldSpawnAsync()

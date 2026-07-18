@@ -1996,7 +1996,7 @@ internal sealed class PostgresGameStore : IGameStore
             var candidateName = attempt == 0 ? baseName : $"{baseName}{attempt + 1}";
             character.Name = candidateName.Length <= 32 ? candidateName : candidateName[..32];
             character.AccountId = accountId;
-            character.CurrentMap = character.Camp == 0 ? (byte)1 : character.Camp;
+            GameDefaults.InitializeStartingLocation(character);
             character.Equipment = GameDefaults.DefaultEquipment(character.Profession);
             character.CreatedUtc = DateTime.UtcNow;
 

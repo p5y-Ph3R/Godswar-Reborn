@@ -12,7 +12,7 @@ internal sealed class GameCharacter
 
     public byte Gender { get; set; }
 
-    public byte Camp { get; set; } = 1;
+    public byte Camp { get; set; } = GameDefaults.AthensCamp;
 
     public byte Profession { get; set; }
 
@@ -22,7 +22,7 @@ internal sealed class GameCharacter
 
     public byte Faith { get; set; } = 1;
 
-    public byte CurrentMap { get; set; } = 1;
+    public byte CurrentMap { get; set; } = GameDefaults.AthensCapitalMap;
 
     public int Level { get; set; } = 1;
 
@@ -48,9 +48,9 @@ internal sealed class GameCharacter
 
     public int ArmorAuraEffect { get; set; }
 
-    public float PositionX { get; set; } = 165.0f;
+    public float PositionX { get; set; } = GameDefaults.StartingPositionX;
 
-    public float PositionZ { get; set; } = -97.0f;
+    public float PositionZ { get; set; } = GameDefaults.StartingPositionZ;
 
     public string Equipment { get; set; } = string.Empty;
 

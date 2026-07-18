@@ -5,6 +5,7 @@ This is the current step-by-step plan for moving the local C# server from packet
 ## 1. Map And Session Foundation — Baseline Implemented
 
 - Logged-in characters are tracked by account, character, and current map.
+- New characters start in their faction capital: Sparta/camp 0 on map 0 and Athens/camp 1 on map 1; a one-time migration repairs characters created by the previous map-1 fallback.
 - A character joins the visible map registry only after both `ClientReady` and the player-detail exchange have completed.
 - Movement and chat are broadcast only to sessions in the same map instance.
 - Two-client visibility sends server-built remote spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets in both directions.

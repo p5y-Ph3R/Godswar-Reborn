@@ -45,6 +45,7 @@ Implemented:
 - Stream XOR cipher and packet framing
 - Account auto-create
 - Character list, create, delete, and preview
+- Camp-aware character starts: Sparta/camp 0 enters map 0 and Athens/camp 1 enters map 1 at the captured `(165, -97)` starting position
 - PostgreSQL-backed accounts and characters under Docker
 - Enter-game packet stream based on the Go reference
 - Ping echo, server time, and map-scoped talk/walk broadcast

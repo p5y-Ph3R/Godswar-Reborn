@@ -2,8 +2,30 @@ namespace Godswar.Server.State;
 
 internal static class GameDefaults
 {
+    public const byte SpartaCamp = 0;
+
+    public const byte AthensCamp = 1;
+
+    public const byte SpartaCapitalMap = 0;
+
+    public const byte AthensCapitalMap = 1;
+
+    public const float StartingPositionX = 165.0f;
+
+    public const float StartingPositionZ = -97.0f;
+
     public const string DefaultKitBag =
         "[4000,,,,,,0,10,1,1,0]#[4030,,,,,,0,10,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#";
+
+    public static void InitializeStartingLocation(GameCharacter character)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        character.Camp = character.Camp == SpartaCamp ? SpartaCamp : AthensCamp;
+        character.CurrentMap = character.Camp == SpartaCamp ? SpartaCapitalMap : AthensCapitalMap;
+        character.PositionX = StartingPositionX;
+        character.PositionZ = StartingPositionZ;
+    }
 
     public static string DefaultEquipment(byte profession)
     {
