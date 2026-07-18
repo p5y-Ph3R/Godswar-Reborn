@@ -25,15 +25,20 @@ internal static class PacketBuilder
     private const int KitBagDetailHeaderLength = 24;
     private const int KitBagDetailPacketLength = KitBagDetailHeaderLength + (KitBagDetailRecordsPerPacket * EnterItemRecordLength);
     private const int EquipmentItemSnapshotLength = 92;
-    private const int PlayerInspectEquipmentLength = 1524;
+    private const int PlayerInspectEquipmentHeaderLength = 8;
     private const int PlayerInspectEquipmentRecordCount = 21;
+    private const int PlayerInspectEquipmentMaskLength = sizeof(uint);
+    private const int PlayerInspectEquipmentMaskOffset =
+        PlayerInspectEquipmentHeaderLength + (PlayerInspectEquipmentRecordCount * EnterItemRecordLength);
+    private const int PlayerInspectEquipmentLength =
+        PlayerInspectEquipmentMaskOffset + PlayerInspectEquipmentMaskLength;
     private const ushort EquipmentItemSnapshotOpcode = 0x2743;
     private const ushort PlayerInspectEquipmentOpcode = 0x2726;
     private const ushort PlayerInspectProfileOpcode = 0x2772;
     private const ushort PlayerInspectCompleteOpcode = 0x2826;
     private const int PlayerInspectProfileLength = 336;
-    private const short PlayerInspectQualityCap = 10;
-    private const short PlayerInspectGradeCap = 12;
+    private const short CapturedWorldVisualQualityCap = 10;
+    private const short CapturedWorldVisualGradeCap = 12;
     private const ushort EnterMainOpcode = 0x2723;
     private const ushort KitBagDetailOpcode = 0x2731;
     private const ushort BagItemActionOpcode = 0x2748;
@@ -137,9 +142,9 @@ internal static class PacketBuilder
         EquipmentSlots.Shield,
         EquipmentSlots.Stylish
     ];
-    // The 21 inspect records are source slots 0..20, not 13 gameplay slots plus
-    // eight empty records. Captured equipment masks place cosmetic/title items in
-    // slots 15..20 and preserve those same record positions during inspection.
+    // Inspection considers source slots 0..20 in ascending order. Non-empty items
+    // are packed into the record array and this source ordering is reconstructed by
+    // the trailing slot mask (including cosmetic/title slots 15..20).
     private static readonly int[] InspectEquipmentSlots =
         Enumerable.Range(0, PlayerInspectEquipmentRecordCount).ToArray();
     private static readonly (float X, float Z)[] MonsterSpawnOffsets =
@@ -788,15 +793,34 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerInspectEquipmentOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
 
-        var items = EquipmentItemsForInspect(character);
+        // Captured 0x2726 responses contain a compact sequence of non-empty item
+        // records. Their original source slots are carried separately in the mask
+        // at offset 1520; record index is not the equipment slot.
+        var items = EquipmentItemsForInspect(character)
+            .Where(entry => !entry.Item.IsEmpty)
+            .Take(PlayerInspectEquipmentRecordCount)
+            .ToArray();
+        uint equipmentMask = 0;
         for (var record = 0; record < PlayerInspectEquipmentRecordCount; record++)
         {
-            var item = record < items.Length ? items[record].Item : default;
+            var entry = record < items.Length ? items[record] : default;
             WriteInspectItemRecord(
-                packet.AsSpan(8 + (record * EnterItemRecordLength), EnterItemRecordLength),
-                item,
-                record);
+                packet.AsSpan(
+                    PlayerInspectEquipmentHeaderLength + (record * EnterItemRecordLength),
+                    EnterItemRecordLength),
+                entry.Item,
+                character.Id,
+                entry.Slot);
+
+            if (!entry.Item.IsEmpty && entry.Slot is >= 0 and < sizeof(uint) * 8)
+            {
+                equipmentMask |= 1u << entry.Slot;
+            }
         }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerInspectEquipmentMaskOffset, PlayerInspectEquipmentMaskLength),
+            equipmentMask);
 
         return packet;
     }
@@ -1364,8 +1388,8 @@ internal static class PacketBuilder
     {
         // Captures pair each equipment id with (grade << 4) | quality. In
         // particular, every captured G12/Q10 item is 0xCA regardless of slot.
-        var grade = (int)Math.Clamp(item.Grade, (short)0, PlayerInspectGradeCap);
-        var quality = (int)Math.Clamp(item.Quality, (short)0, PlayerInspectQualityCap);
+        var grade = (int)Math.Clamp(item.Grade, (short)0, CapturedWorldVisualGradeCap);
+        var quality = (int)Math.Clamp(item.Quality, (short)0, CapturedWorldVisualQualityCap);
         return (byte)((grade << 4) | quality);
     }
 
@@ -1457,34 +1481,98 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt32LittleEndian(record.Slice(68, 4), ownerObjectId);
     }
 
-    private static void WriteInspectItemRecord(Span<byte> record, CompactItemEntry item, int recordIndex)
+    private static void WriteInspectItemRecord(
+        Span<byte> record,
+        CompactItemEntry item,
+        int characterId,
+        int sourceSlot)
     {
-        WriteKitBagItemRecord(record, ProjectInspectItem(item));
+        // Unlike the one-byte world-appearance summary, an inspect record has a
+        // full byte each for quality and grade. Preserve the server values here;
+        // the patched client data currently supports Q20/G25.
+        WriteKitBagItemRecord(record, item);
         if (item.IsEmpty)
         {
             BinaryPrimitives.WriteInt32LittleEndian(record.Slice(64, 4), -1);
             return;
         }
 
-        // Working inspect packets use per-item instance ids here, not the player object id.
-        BinaryPrimitives.WriteUInt32LittleEndian(record.Slice(64, 4), (uint)(0x3E000000 + recordIndex));
-        BinaryPrimitives.WriteUInt32LittleEndian(record.Slice(68, 4), (uint)(0x00064000 + recordIndex));
+        // Working-server captures keep both tail identifiers stable for a given
+        // item across sessions. Reusing record-index identifiers across every
+        // character lets the client cache one player's item details for another.
+        // Build stable identities from the persistent character/source slot and
+        // the complete item state so an upgrade also invalidates stale details.
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            record.Slice(64, 4),
+            InspectItemStateIdentity(characterId, sourceSlot, item));
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            record.Slice(68, 4),
+            InspectItemSlotIdentity(characterId, sourceSlot));
     }
 
-    private static CompactItemEntry ProjectInspectItem(CompactItemEntry item)
+    private static uint InspectItemSlotIdentity(int characterId, int sourceSlot)
     {
-        if (item.IsEmpty)
-        {
-            return item;
-        }
+        var identity = unchecked(
+            0x00064000u
+            + ((uint)Math.Max(characterId, 0) * 32u)
+            + (uint)Math.Max(sourceSlot, 0));
+        return identity is 0 or uint.MaxValue ? 0x00064001u : identity;
+    }
 
-        // Captured working inspect packets project high/custom quality and grade down to
-        // legacy client ranges even when the real item has higher server-side values.
-        return item with
+    private static uint InspectItemStateIdentity(int characterId, int sourceSlot, CompactItemEntry item)
+    {
+        var hash = 2166136261u;
+
+        AddInspectIdentityValue(ref hash, unchecked((uint)characterId));
+        AddInspectIdentityValue(ref hash, unchecked((uint)sourceSlot));
+        AddInspectIdentityValue(ref hash, item.Id);
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute1));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute2));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute3));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute4));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute5));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel1));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel2));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel3));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel4));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel5));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.Quality));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.Grade));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.Bound));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.Stack));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.Exp));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.HolySuitCode));
+        AddInspectIdentityValue(ref hash, unchecked((uint)item.SocketCount));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket1EffectId));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket1Level));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket2EffectId));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket2Level));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket3EffectId));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket3Level));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket4EffectId));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket4Level));
+
+        return hash is 0 or uint.MaxValue ? 0x3E000001u : hash;
+    }
+
+    private static uint NullableInspectIdentityValue(int? value)
+    {
+        return value.HasValue ? unchecked((uint)value.Value) : uint.MaxValue;
+    }
+
+    private static uint NullableInspectIdentityValue(short? value)
+    {
+        return value.HasValue ? unchecked((uint)value.Value) : uint.MaxValue;
+    }
+
+    private static void AddInspectIdentityValue(ref uint hash, uint value)
+    {
+        // Fixed FNV-1a mixing is deterministic across processes and runtimes.
+        for (var shift = 0; shift < sizeof(uint) * 8; shift += 8)
         {
-            Quality = (short)Math.Clamp(item.Quality, (short)1, PlayerInspectQualityCap),
-            Grade = (short)Math.Clamp(item.Grade, (short)1, PlayerInspectGradeCap)
-        };
+            hash ^= (byte)(value >> shift);
+            hash *= 16777619u;
+        }
     }
 
     private static void WriteSnapshotItemRecord(Span<byte> record, CompactItemEntry item)

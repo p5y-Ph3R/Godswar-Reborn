@@ -57,6 +57,13 @@ Implemented:
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.
 
+Remote-player equipment inspection now follows the captured packed-record plus
+source-slot-mask layout, preserves detailed Q20/G25 values, and uses stable
+per-character/item identities so both rings and their grade, attributes, holy
+suit, and four holy stones can be associated correctly. The packet layout,
+capture evidence, and complete future-ceiling checklist are recorded in
+[`docs/player-inspection-equipment-protocol.md`](docs/player-inspection-equipment-protocol.md).
+
 Not complete yet:
 
 - Full world simulation

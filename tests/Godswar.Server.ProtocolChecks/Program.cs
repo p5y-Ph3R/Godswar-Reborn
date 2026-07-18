@@ -23,7 +23,7 @@ internal static class Program
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
             ("Player auxiliary appearance packets", CheckPlayerAuxiliaryAppearanceAsync),
-            ("PlayerInspectEquipment extended slots", CheckPlayerInspectExtendedSlotsAsync),
+            ("PlayerInspectEquipment packed slots and details", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
@@ -142,23 +142,125 @@ internal static class Program
 
     private static Task CheckPlayerInspectExtendedSlotsAsync()
     {
-        var packet = PacketBuilder.PlayerInspectEquipment(CreateAppearanceCharacter(), 0x817u);
+        var character = CreateAppearanceCharacter();
+        var packet = PacketBuilder.PlayerInspectEquipment(character, 0x817u);
         const int headerLength = 8;
         const int recordLength = 72;
+        const int maskOffset = 1520;
 
-        Check.Equal(2443u, ReadUInt32(packet, headerLength), "inspect source slot 0 item");
+        Check.Equal(1524, packet.Length, "inspect packet includes trailing slot mask");
+        Check.Equal(2443u, ReadUInt32(packet, headerLength), "inspect packed record 0 is source slot 0");
         Check.Equal(
-            uint.MaxValue,
+            2261u,
             ReadUInt32(packet, headerLength + recordLength),
-            "inspect empty source slot 1 sentinel");
+            "inspect packed record 1 skips empty source slots");
         Check.Equal(
             14504u,
-            ReadUInt32(packet, headerLength + (15 * recordLength)),
-            "inspect cosmetic source slot 15 item");
+            ReadUInt32(packet, headerLength + (3 * recordLength)),
+            "inspect packed cosmetic source slot 15 item");
         Check.Equal(
             16184u,
-            ReadUInt32(packet, headerLength + (20 * recordLength)),
-            "inspect title/cosmetic source slot 20 item");
+            ReadUInt32(packet, headerLength + (4 * recordLength)),
+            "inspect packed title/cosmetic source slot 20 item");
+        Check.Equal(
+            uint.MaxValue,
+            ReadUInt32(packet, headerLength + (5 * recordLength)),
+            "first unused inspect record uses empty sentinel");
+        Check.Equal(0x00108409u, ReadUInt32(packet, maskOffset), "inspect source-slot mask");
+
+        var detailedSlots = Enumerable.Repeat("[]", 21).ToArray();
+        detailedSlots[0] = "[2344,4,80,40,60,240,20,25,1,1,0,710,5,5,5,5,5,4,1,10,5,10,7,10,3,10]";
+        detailedSlots[8] = "[3246,4,80,240,60,134,20,25,1,1,0,710,5,5,5,5,5,4,1,10,5,10,7,10,3,10]";
+        detailedSlots[9] = "[3246,4,80,240,60,134,20,25,1,1,0,710,5,5,5,5,5,4,1,10,5,10,7,10,3,10]";
+        character.Equipment = string.Join('#', detailedSlots) + '#';
+
+        var detailedPacket = PacketBuilder.PlayerInspectEquipment(character, 0x817u);
+        Check.Equal(2344u, ReadUInt32(detailedPacket, headerLength), "inspect detailed head item");
+        Check.Equal((byte)20, detailedPacket[headerLength + 24], "inspect preserves Q20");
+        Check.Equal((byte)25, detailedPacket[headerLength + 25], "inspect preserves G25");
+        var expectedAttributes = new[] { 4, 80, 40, 60, 240 };
+        for (var attribute = 0; attribute < expectedAttributes.Length; attribute++)
+        {
+            Check.Equal(
+                expectedAttributes[attribute],
+                ReadInt32(detailedPacket, headerLength + 4 + (attribute * 4)),
+                $"inspect preserves append attribute {attribute + 1}");
+        }
+
+        Check.Equal((ushort)710, ReadUInt16(detailedPacket, headerLength + 32), "inspect preserves holy suit code");
+        Check.Equal((ushort)4, ReadUInt16(detailedPacket, headerLength + 34), "inspect preserves socket count");
+        var expectedStoneCodes = new ushort[] { 109, 509, 709, 309 };
+        var expectedStoneValues = new ushort[] { 1400, 2200, 1200, 1400 };
+        for (var stone = 0; stone < expectedStoneCodes.Length; stone++)
+        {
+            Check.Equal(
+                expectedStoneCodes[stone],
+                ReadUInt16(detailedPacket, headerLength + 36 + (stone * 2)),
+                $"inspect preserves holy-stone code {stone + 1}");
+            Check.Equal(
+                expectedStoneValues[stone],
+                ReadUInt16(detailedPacket, headerLength + 44 + (stone * 2)),
+                $"inspect preserves holy-stone value {stone + 1}");
+        }
+
+        Check.Equal(3246u, ReadUInt32(detailedPacket, headerLength + recordLength), "inspect first ring record");
+        Check.Equal(3246u, ReadUInt32(detailedPacket, headerLength + (2 * recordLength)), "inspect second ring record");
+        var expectedRingAttributes = new[] { 4, 80, 240, 60, 134 };
+        for (var attribute = 0; attribute < expectedRingAttributes.Length; attribute++)
+        {
+            Check.Equal(
+                expectedRingAttributes[attribute],
+                ReadInt32(
+                    detailedPacket,
+                    headerLength + (2 * recordLength) + 4 + (attribute * 4)),
+                $"inspect second ring preserves append attribute {attribute + 1}");
+        }
+
+        Check.Equal(
+            expectedStoneCodes[3],
+            ReadUInt16(detailedPacket, headerLength + (2 * recordLength) + 42),
+            "inspect second ring preserves fourth holy stone");
+        Check.Equal(0x00000301u, ReadUInt32(detailedPacket, maskOffset), "inspect distinguishes both ring slots");
+        Check.True(
+            ReadUInt32(detailedPacket, headerLength + recordLength + 64)
+                != ReadUInt32(detailedPacket, headerLength + (2 * recordLength) + 64),
+            "identical ring types have distinct item state identities");
+        Check.True(
+            ReadUInt32(detailedPacket, headerLength + recordLength + 68)
+                != ReadUInt32(detailedPacket, headerLength + (2 * recordLength) + 68),
+            "identical ring types have distinct item slot identities");
+
+        var repeatedPacket = PacketBuilder.PlayerInspectEquipment(character, 0x818u);
+        Check.Equal(
+            ReadUInt32(detailedPacket, headerLength + 64),
+            ReadUInt32(repeatedPacket, headerLength + 64),
+            "inspect item state identity is stable");
+        Check.Equal(
+            ReadUInt32(detailedPacket, headerLength + 68),
+            ReadUInt32(repeatedPacket, headerLength + 68),
+            "inspect item slot identity is stable");
+
+        var otherCharacter = CreateAppearanceCharacter();
+        otherCharacter.Id = character.Id + 1;
+        otherCharacter.Equipment = character.Equipment;
+        var otherPacket = PacketBuilder.PlayerInspectEquipment(otherCharacter, 0x819u);
+        Check.True(
+            ReadUInt32(detailedPacket, headerLength + 64) != ReadUInt32(otherPacket, headerLength + 64),
+            "inspect item state identity is character-specific");
+        Check.True(
+            ReadUInt32(detailedPacket, headerLength + 68) != ReadUInt32(otherPacket, headerLength + 68),
+            "inspect item slot identity is character-specific");
+
+        detailedSlots[0] = "[2344,4,80,40,60,240,20,25,1,1,0,711,5,5,5,5,5,4,1,10,5,10,7,10,3,10]";
+        character.Equipment = string.Join('#', detailedSlots) + '#';
+        var upgradedPacket = PacketBuilder.PlayerInspectEquipment(character, 0x81Au);
+        Check.True(
+            ReadUInt32(detailedPacket, headerLength + 64) != ReadUInt32(upgradedPacket, headerLength + 64),
+            "inspect item state identity changes with item metadata");
+        Check.Equal(
+            ReadUInt32(detailedPacket, headerLength + 68),
+            ReadUInt32(upgradedPacket, headerLength + 68),
+            "inspect item slot identity survives item metadata changes");
 
         return Task.CompletedTask;
     }
