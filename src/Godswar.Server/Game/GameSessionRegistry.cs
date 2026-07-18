@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Networking;
+using Godswar.Server.Packets;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -290,6 +291,317 @@ internal sealed class GameSessionRegistry
         }
 
         return false;
+    }
+
+    public int InitializeMapMonsters(
+        byte mapId,
+        IReadOnlyList<CapturedMonsterSpawn> definitions,
+        DateTimeOffset? initializedAt = null)
+    {
+        var map = _maps.GetOrAdd(mapId, static id => new MapInstance(id));
+        return map.InitializeMonsters(
+            definitions,
+            initializedAt ?? DateTimeOffset.UtcNow).Count;
+    }
+
+    public IReadOnlyList<MonsterRuntimeSnapshot> GetMapMonsterSnapshots(byte mapId)
+    {
+        return _maps.TryGetValue(mapId, out var map)
+            ? map.SnapshotMonsters()
+            : [];
+    }
+
+    public bool TryGetMonsterSnapshot(
+        byte mapId,
+        uint objectId,
+        out MonsterRuntimeSnapshot snapshot)
+    {
+        if (_maps.TryGetValue(mapId, out var map) &&
+            map.TryGetMonsterSnapshot(objectId, out snapshot))
+        {
+            return true;
+        }
+
+        snapshot = default!;
+        return false;
+    }
+
+    public bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        out MonsterDamageResult result)
+    {
+        return TryApplyMonsterDamage(
+            mapId,
+            objectId,
+            damage,
+            DateTimeOffset.UtcNow,
+            out result);
+    }
+
+    internal bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
+        if (_maps.TryGetValue(mapId, out var map) &&
+            map.TryApplyMonsterDamage(objectId, damage, now, out result))
+        {
+            return true;
+        }
+
+        result = default!;
+        return false;
+    }
+
+    public ValueTask<MonsterVisibilityTransition?> BeginMonsterVisibilityTransitionAsync(
+        ClientSession session,
+        byte mapId,
+        float playerX,
+        float playerZ,
+        CancellationToken cancellationToken)
+    {
+        return _maps.TryGetValue(mapId, out var map)
+            ? map.BeginMonsterVisibilityTransitionAsync(
+                session,
+                playerX,
+                playerZ,
+                cancellationToken)
+            : ValueTask.FromResult<MonsterVisibilityTransition?>(null);
+    }
+
+    public bool IsMonsterVisibleTo(ClientSession session, uint objectId)
+    {
+        return _sessions.TryGetValue(session, out var context) &&
+               _maps.TryGetValue(context.MapId, out var map) &&
+               map.IsMonsterVisibleTo(session, objectId);
+    }
+
+    public async Task<int> BroadcastToMonsterViewersAsync(
+        byte mapId,
+        uint monsterId,
+        ReadOnlyMemory<byte> packet,
+        CancellationToken cancellationToken,
+        ClientSession? excludeSession = null,
+        string? label = null,
+        bool framed = true)
+    {
+        if (!_maps.TryGetValue(mapId, out var map))
+        {
+            return 0;
+        }
+
+        var sent = 0;
+        foreach (var context in map.Snapshot())
+        {
+            if (!context.WorldReady ||
+                excludeSession is not null && ReferenceEquals(context.Session, excludeSession) ||
+                !map.IsMonsterVisibleTo(context.Session, monsterId))
+            {
+                continue;
+            }
+
+            try
+            {
+                await context.Session.SendAsync(packet, cancellationToken, label, framed);
+                sent++;
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                Remove(context.Session);
+            }
+        }
+
+        return sent;
+    }
+
+    public async Task RunMonsterRoamingAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(MonsterMapRuntime.TickInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await AdvanceMonsterWorldOnceAsync(DateTimeOffset.UtcNow, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal async Task AdvanceMonsterWorldOnceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        foreach (var map in _maps.Values.OrderBy(map => map.MapId))
+        {
+            var tick = map.AdvanceMonsters(now);
+            if (!tick.PositionsChanged && tick.Updates.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (var context in map.Snapshot())
+            {
+                if (!context.WorldReady)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await SendMonsterRuntimeTickAsync(
+                        map,
+                        context,
+                        tick,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                {
+                    Remove(context.Session);
+                }
+            }
+        }
+    }
+
+    private static async Task SendMonsterRuntimeTickAsync(
+        MapInstance map,
+        GameSessionContext context,
+        MonsterRuntimeTick tick,
+        CancellationToken cancellationToken)
+    {
+        await using var transition = await map.BeginMonsterVisibilityTransitionAsync(
+            context.Session,
+            context.Character.PositionX,
+            context.Character.PositionZ,
+            cancellationToken);
+        if (transition is null)
+        {
+            return;
+        }
+
+        var delta = transition.Delta;
+        var despawnedObjectIds = tick.Updates
+            .Where(update => update.Kind == MonsterRuntimeUpdateKind.Despawned)
+            .Select(update => update.Monster.ObjectId)
+            .ToHashSet();
+        var ordinaryLeaving = delta.Leaving
+            .Where(objectId => !despawnedObjectIds.Contains(objectId))
+            .ToArray();
+        if (ordinaryLeaving.Length > 0)
+        {
+            await context.Session.SendAsync(
+                PacketBuilder.RemoveWorldObjects(ordinaryLeaving),
+                cancellationToken,
+                "RoamingMonsterAoiRemovals");
+        }
+
+        foreach (var objectId in delta.Leaving.Where(despawnedObjectIds.Contains))
+        {
+            await context.Session.SendAsync(
+                PacketBuilder.MonsterLifecycleMarker(objectId),
+                cancellationToken,
+                "MonsterCorpseDespawn");
+        }
+
+        var enteringObjectIds = delta.Entering
+            .Select(monster => monster.ObjectId)
+            .ToHashSet();
+        var respawnedObjectIds = tick.Updates
+            .Where(update => update.Kind == MonsterRuntimeUpdateKind.Respawned)
+            .Select(update => update.Monster.ObjectId)
+            .ToHashSet();
+        foreach (var objectId in enteringObjectIds.Where(respawnedObjectIds.Contains))
+        {
+            await context.Session.SendAsync(
+                PacketBuilder.MonsterLifecycleMarker(objectId),
+                cancellationToken,
+                "MonsterRespawnMarker");
+        }
+
+        if (delta.Entering.Count > 0)
+        {
+            await context.Session.SendAsync(
+                PacketBuilder.CapturedMonsterSpawns(
+                    delta.Entering.Select(monster => monster.Appearance).ToArray()),
+                cancellationToken,
+                "RoamingMonsterAoiSpawns",
+                framed: false);
+        }
+
+        // A monster can cross into a stationary viewer's AOI midway through a
+        // leg. Start a continuation after its appearance so the new viewer does
+        // not see a frozen monster followed by an arrival snap.
+        foreach (var monster in delta.Entering.Where(monster => monster.IsMoving))
+        {
+            await context.Session.SendAsync(
+                PacketBuilder.MonsterMovementStart(
+                    monster.ObjectId,
+                    monster.X,
+                    monster.Y,
+                    monster.Z,
+                    monster.VelocityX,
+                    monster.VelocityY,
+                    monster.VelocityZ),
+                cancellationToken,
+                "RoamingMonsterContinuation");
+        }
+
+        foreach (var update in tick.Updates)
+        {
+            var monster = update.Monster;
+            if (enteringObjectIds.Contains(monster.ObjectId) ||
+                !transition.IsDesiredVisible(monster.ObjectId))
+            {
+                continue;
+            }
+
+            if (update.Kind is MonsterRuntimeUpdateKind.Started or MonsterRuntimeUpdateKind.Arrived &&
+                (!map.TryGetMonsterSnapshot(monster.ObjectId, out var currentMonster) ||
+                 !currentMonster.IsAlive ||
+                 !currentMonster.IsSpawned ||
+                 update.Kind == MonsterRuntimeUpdateKind.Started && !currentMonster.IsMoving))
+            {
+                // Combat can atomically kill a monster after this world tick was
+                // calculated but before a slower viewer send. Never resurrect a
+                // cancelled leg with a stale movement packet.
+                continue;
+            }
+
+            var packet = update.Kind switch
+            {
+                MonsterRuntimeUpdateKind.Started => PacketBuilder.MonsterMovementStart(
+                    monster.ObjectId,
+                    monster.X,
+                    monster.Y,
+                    monster.Z,
+                    monster.VelocityX,
+                    monster.VelocityY,
+                    monster.VelocityZ),
+                MonsterRuntimeUpdateKind.Arrived => PacketBuilder.MonsterMovementEnd(
+                    monster.ObjectId,
+                    monster.MovementTicks,
+                    monster.X,
+                    monster.Y,
+                    monster.Z,
+                    monster.Facing),
+                _ => []
+            };
+            if (packet.Length > 0)
+            {
+                await context.Session.SendAsync(
+                    packet,
+                    cancellationToken,
+                    $"RoamingMonster{update.Kind}");
+            }
+        }
+
+        // Commit only after the complete remove/spawn/movement handoff succeeds.
+        transition.Commit();
     }
 
     private void AddToMap(GameSessionContext context)

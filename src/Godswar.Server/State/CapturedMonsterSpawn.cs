@@ -114,3 +114,11 @@ internal sealed record CapturedMonsterSpawn(
                Math.Abs((double)metadataValue - appearanceValue) <= CoordinateMetadataTolerance;
     }
 }
+
+internal readonly record struct CapturedMonsterAppearanceState(
+    CapturedMonsterSpawn Definition,
+    float X,
+    float Z,
+    float Facing,
+    uint CurrentHealth,
+    uint MaximumHealth);

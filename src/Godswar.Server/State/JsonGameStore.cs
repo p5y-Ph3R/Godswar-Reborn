@@ -101,6 +101,33 @@ internal sealed class JsonGameStore : IGameStore
         }
     }
 
+    public async Task SaveCharacterVitalsAsync(
+        int accountId,
+        int characterId,
+        int currentHp,
+        int currentMp,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return;
+            }
+
+            character.CurrentHp = Math.Clamp(currentHp, 0, Math.Max(1, character.MaxHp));
+            character.CurrentMp = Math.Clamp(currentMp, 0, Math.Max(0, character.MaxMp));
+            await SaveUnsafeAsync(db, cancellationToken);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -421,12 +448,41 @@ internal sealed class JsonGameStore : IGameStore
         return Task.FromResult<IReadOnlyList<TalentState>>([]);
     }
 
-    public Task<IReadOnlyList<SkillState>> GetSkillStatesAsync(
+    public async Task<IReadOnlyList<SkillState>> GetSkillStatesAsync(
         int accountId,
         int characterId,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult<IReadOnlyList<SkillState>>([]);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null)
+            {
+                return [];
+            }
+
+            return SkillTalentSeeds.Skills
+                .Where(skill =>
+                    skill.PreviousSkillId is null &&
+                    skill.SkillLevel == 1 &&
+                    (skill.MinLevel ?? 1) <= character.Level &&
+                    skill.ClassIds.Contains((short)character.Profession))
+                .OrderBy(skill => skill.SkillId)
+                .Select(skill => new SkillState
+                {
+                    SkillId = skill.SkillId,
+                    Level = skill.SkillLevel!.Value
+                })
+                .ToArray();
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public Task<IReadOnlyList<CapturedNpcSpawn>> GetCapturedNpcSpawnsAsync(

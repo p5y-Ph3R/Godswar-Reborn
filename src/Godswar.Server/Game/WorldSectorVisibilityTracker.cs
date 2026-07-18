@@ -140,7 +140,7 @@ internal sealed class WorldSectorVisibilityTracker<TDefinition>
             $"{objectKind} object {objectId} has invalid coordinates ({x}, {z}).");
     }
 
-    private static bool IsNeighbor(WorldGridCell playerCell, WorldGridCell objectCell)
+    internal static bool IsNeighbor(WorldGridCell playerCell, WorldGridCell objectCell)
     {
         return Math.Abs((long)playerCell.X - objectCell.X) <= NeighborRadius &&
                Math.Abs((long)playerCell.Z - objectCell.Z) <= NeighborRadius;

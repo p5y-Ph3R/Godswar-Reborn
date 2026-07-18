@@ -5,6 +5,7 @@ namespace Godswar.Server.Packets;
 
 internal static class PacketBuilder
 {
+    private const int EnterPlayerDatabaseIdOffset = 4;
     private const int CharacterNameOffsetInEnterTemplate = 8;
     private const int EnterLevelOffset = 96;
     private const int EnterTalentPointsOffset = 92;
@@ -45,12 +46,18 @@ internal static class PacketBuilder
     private const ushort NpcDialogOpenOpcode = 0x2753;
     private const ushort NpcFunctionActionResponseOpcode = 0x2756;
     private const ushort EnterCompleteOpcode = 0x2715;
+    private const ushort MonsterMovementStartOpcode = 0x2720;
+    private const ushort MonsterMovementEndOpcode = 0x2721;
+    private const ushort MonsterLifecycleMarkerOpcode = 0x2727;
     private const ushort PlayerWorldSpawnOpcode = 0x2725;
     private const ushort WorldObjectRemoveOpcode = 0x2728;
     private const ushort PlayerDetailOpcode = 0x273B;
     private const ushort TalentRankListOpcode = 0x273A;
     private const ushort TalentSkillUnlockListOpcode = 0x2739;
     private const ushort SkillListOpcode = 0x27D4;
+    private const ushort SkillDamageOpcode = 0x273D;
+    private const ushort SkillCastImpactOpcode = 0x273E;
+    private const ushort PlayerManaUpdateOpcode = 0x2797;
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
@@ -75,8 +82,6 @@ internal static class PacketBuilder
     private const uint PlayerWorldFullVisualMarker = 0x31585747;
     private const short NativeClientHolyStoneSocketCount = 4;
     private const uint LocalPlayerObjectId = 0x00001448;
-    private const uint MonsterObjectIdBase = 0x00002700;
-    private const uint MonsterAppearanceType = 0x00000212;
     private const int WorldObjectAppearanceLength = 108;
     private const int WorldObjectTemplateOffset = 44;
     private const int WorldObjectTemplateLength = WorldObjectAppearanceLength - WorldObjectTemplateOffset;
@@ -157,18 +162,6 @@ internal static class PacketBuilder
     // the trailing slot mask (including cosmetic/title slots 15..20).
     private static readonly int[] InspectEquipmentSlots =
         Enumerable.Range(0, PlayerInspectEquipmentRecordCount).ToArray();
-    private static readonly (float X, float Z)[] MonsterSpawnOffsets =
-    [
-        (10f, 7f),
-        (14f, -5f),
-        (-11f, 9f),
-        (-16f, -7f),
-        (20f, 2f),
-        (-20f, 2f),
-        (7f, 17f),
-        (3f, -18f),
-    ];
-
     public static byte[] ServerList()
     {
         return ReferencePackets.ServerList.ToArray();
@@ -304,6 +297,105 @@ internal static class PacketBuilder
         return stream;
     }
 
+    public static byte[] CapturedMonsterSpawns(IReadOnlyList<CapturedMonsterAppearanceState> spawns)
+    {
+        if (spawns.Count == 0)
+        {
+            return [];
+        }
+
+        var packets = new byte[spawns.Count][];
+        var length = 0;
+        for (var index = 0; index < spawns.Count; index++)
+        {
+            packets[index] = CapturedMonsterAppearance(spawns[index]);
+            length += packets[index].Length;
+        }
+
+        var stream = new byte[length];
+        var offset = 0;
+        foreach (var packet in packets)
+        {
+            packet.CopyTo(stream.AsSpan(offset));
+            offset += packet.Length;
+        }
+
+        return stream;
+    }
+
+    public static byte[] CapturedMonsterAppearance(CapturedMonsterAppearanceState state)
+    {
+        var packet = state.Definition.Packet.ToArray();
+        if (packet.Length < WorldObjectTemplateOffset)
+        {
+            throw new ArgumentException(
+                $"Monster {state.Definition.ObjectId} appearance packet is too short.",
+                nameof(state));
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), state.CurrentHealth);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), state.MaximumHealth);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), state.X);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(36, 4), state.Z);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(40, 4), state.Facing);
+        return packet;
+    }
+
+    public static byte[] MonsterMovementStart(
+        uint objectId,
+        float x,
+        float y,
+        float z,
+        float velocityX,
+        float velocityY,
+        float velocityZ,
+        uint movementMode = 1)
+    {
+        var packet = new byte[40];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), MonsterMovementStartOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        // Offset 8 is zero in every captured idle-roaming packet.
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), movementMode);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(16, 4), x);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(20, 4), y);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(24, 4), z);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), velocityX);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(32, 4), velocityY);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(36, 4), velocityZ);
+        return packet;
+    }
+
+    public static byte[] MonsterMovementEnd(
+        uint objectId,
+        uint tickCount,
+        float x,
+        float y,
+        float z,
+        float facing)
+    {
+        var packet = new byte[34];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), MonsterMovementEndOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        // Offset 8 and the trailing UInt16 at offset 32 are zero in the capture.
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), tickCount);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(16, 4), x);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(20, 4), y);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(24, 4), z);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), facing);
+        return packet;
+    }
+
+    public static byte[] MonsterLifecycleMarker(uint objectId)
+    {
+        var packet = new byte[8];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), MonsterLifecycleMarkerOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        return packet;
+    }
+
     public static int CountCityNpcSpawnPackets(ReadOnlySpan<byte> stream)
     {
         var count = 0;
@@ -326,36 +418,6 @@ internal static class PacketBuilder
         }
 
         return count;
-    }
-
-    public static byte[] NearbyMonsterSpawns(GameCharacter character)
-    {
-        var templates = MonsterTemplateSeeds.Monsters
-            .Where(template => template.SourceMapId == character.CurrentMap && !template.IsPet)
-            .OrderBy(template => template.IsBoss ? 2 : template.IsElite ? 1 : 0)
-            .ThenBy(template => template.TemplateKey, StringComparer.Ordinal)
-            .Take(MonsterSpawnOffsets.Length)
-            .ToArray();
-
-        if (templates.Length == 0)
-        {
-            return [];
-        }
-
-        var stream = new byte[templates.Length * WorldObjectAppearanceLength];
-        for (var i = 0; i < templates.Length; i++)
-        {
-            var offset = MonsterSpawnOffsets[i % MonsterSpawnOffsets.Length];
-            WriteWorldObjectAppearance(
-                stream.AsSpan(i * WorldObjectAppearanceLength, WorldObjectAppearanceLength),
-                MonsterObjectIdBase + (uint)i,
-                templates[i].TemplateKey,
-                character.PositionX + offset.X,
-                character.PositionZ + offset.Z,
-                templates[i].Scale ?? 1.0f);
-        }
-
-        return stream;
     }
 
     public static byte[] EnterPart2Unknown()
@@ -715,11 +777,11 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2738);
         PatchSkillCastObjectId(packet, 4, objectId);
-        PatchSkillCastObjectId(packet, 16, objectId);
-        if (packet.Length >= 16
-            && BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(12, 4)) == LocalPlayerObjectId)
+        // The working server preserves the selected target at offset 16 and
+        // advances the cast state at offset 20 from the client value 0 to 10.
+        if (packet.Length >= 24)
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), objectId);
+            BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), 10);
         }
 
         return packet;
@@ -727,22 +789,75 @@ internal static class PacketBuilder
 
     public static byte[] SkillCastImpact(ReadOnlySpan<byte> clientSkillCastPacket, uint objectId)
     {
+        var targetObjectId = clientSkillCastPacket.Length >= 20
+            ? BinaryPrimitives.ReadUInt32LittleEndian(clientSkillCastPacket.Slice(16, 4))
+            : 0;
+        var skillId = clientSkillCastPacket.Length >= 12
+            ? BinaryPrimitives.ReadUInt32LittleEndian(clientSkillCastPacket.Slice(8, 4))
+            : 0;
+        var targetX = 0f;
+        var targetZ = 0f;
+        if (clientSkillCastPacket.Length >= 40)
+        {
+            targetX = BinaryPrimitives.ReadSingleLittleEndian(clientSkillCastPacket.Slice(32, 4));
+            targetZ = BinaryPrimitives.ReadSingleLittleEndian(clientSkillCastPacket.Slice(36, 4));
+        }
+        else if (clientSkillCastPacket.Length >= 32)
+        {
+            targetX = BinaryPrimitives.ReadSingleLittleEndian(clientSkillCastPacket.Slice(24, 4));
+            targetZ = BinaryPrimitives.ReadSingleLittleEndian(clientSkillCastPacket.Slice(28, 4));
+        }
+
+        return SkillCastImpact(objectId, targetObjectId, skillId, targetX, targetZ);
+    }
+
+    public static byte[] SkillCastImpact(
+        uint attackerObjectId,
+        uint targetObjectId,
+        uint skillId,
+        float targetX,
+        float targetZ)
+    {
         var packet = new byte[24];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x273E);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), objectId);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), SkillCastImpactOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), targetObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), skillId);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(16, 4), targetX);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(20, 4), targetZ);
+        return packet;
+    }
 
-        if (clientSkillCastPacket.Length >= 12)
-        {
-            clientSkillCastPacket.Slice(8, 4).CopyTo(packet.AsSpan(12, 4));
-        }
+    public static byte[] SkillDamage(
+        uint attackerObjectId,
+        uint targetObjectId,
+        uint resultFlags,
+        uint damage,
+        uint skillId,
+        float targetX,
+        float targetZ)
+    {
+        var packet = new byte[32];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), SkillDamageOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), targetObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), resultFlags);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(16, 4), damage);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), skillId);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(24, 4), targetX);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), targetZ);
+        return packet;
+    }
 
-        if (clientSkillCastPacket.Length >= 32)
-        {
-            clientSkillCastPacket.Slice(24, 8).CopyTo(packet.AsSpan(16, 8));
-        }
-
+    public static byte[] PlayerManaUpdate(uint attackerObjectId, int currentMp)
+    {
+        var packet = new byte[12];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerManaUpdateOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, currentMp));
         return packet;
     }
 
@@ -1228,6 +1343,9 @@ internal static class PacketBuilder
     private static byte[] CreateEnterPart1Header(GameCharacter character)
     {
         var packet = ReferencePackets.EnterPart1.ToArray();
+        // This is the persistent character key used by the client for per-character
+        // UI preferences (including Skill.xml hotkeys). It is not a world object ID.
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterPlayerDatabaseIdOffset, 4), character.Id);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(EnterPlayerObjectIdOffset, 4), LocalPlayerObjectId);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(EnterPositionXOffset, 4), character.PositionX);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(EnterPositionYOffset, 4), 0f);
@@ -1734,29 +1852,6 @@ internal static class PacketBuilder
 
     private static readonly short[] HolyStoneFlatLow =
         [60, 90, 130, 170, 210, 250, 350, 500, 700, 950];
-
-    private static void WriteWorldObjectAppearance(
-        Span<byte> packet,
-        uint objectId,
-        string templateKey,
-        float x,
-        float z,
-        float facing)
-    {
-        packet.Clear();
-        BinaryPrimitives.WriteUInt16LittleEndian(packet[..2], WorldObjectAppearanceLength);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(2, 2), 0x2724);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(4, 4), MonsterAppearanceType);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(8, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(12, 4), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(20, 4), 237);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(24, 4), 237);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(28, 4), x);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(32, 4), 0);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(36, 4), z);
-        BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(40, 4), facing);
-        PacketText.WriteFixedAscii(packet.Slice(WorldObjectTemplateOffset, WorldObjectTemplateLength), templateKey);
-    }
 
     private static void WriteNpcWorldObjectAppearance(
         Span<byte> packet,

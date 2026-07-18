@@ -16,6 +16,13 @@ internal interface IGameStore : IAsyncDisposable
         float positionZ,
         CancellationToken cancellationToken = default);
 
+    Task SaveCharacterVitalsAsync(
+        int accountId,
+        int characterId,
+        int currentHp,
+        int currentMp,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);

@@ -128,8 +128,25 @@ internal sealed class PostgresGameStore : IGameStore
             min_level integer,
             max_level integer,
             description text NOT NULL DEFAULT '',
+            target integer NOT NULL DEFAULT 0,
+            affect_obj integer NOT NULL DEFAULT 0,
+            distance numeric NOT NULL DEFAULT 0,
+            effect_range numeric NOT NULL DEFAULT 0,
+            property integer NOT NULL DEFAULT 0,
+            mp integer NOT NULL DEFAULT 0,
+            power1 numeric NOT NULL DEFAULT 0,
+            power2 numeric NOT NULL DEFAULT 0,
             stats jsonb NOT NULL DEFAULT '{}'::jsonb
         );
+
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS target integer NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS affect_obj integer NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS distance numeric NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS effect_range numeric NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS property integer NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS mp integer NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS power1 numeric NOT NULL DEFAULT 0;
+        ALTER TABLE skill_templates ADD COLUMN IF NOT EXISTS power2 numeric NOT NULL DEFAULT 0;
 
         CREATE INDEX IF NOT EXISTS ix_skill_templates_class_ids ON skill_templates USING gin (class_ids);
         CREATE INDEX IF NOT EXISTS ix_skill_templates_base_name ON skill_templates (base_name);
@@ -1895,6 +1912,27 @@ internal sealed class PostgresGameStore : IGameStore
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task SaveCharacterVitalsAsync(
+        int accountId,
+        int characterId,
+        int currentHp,
+        int currentMp,
+        CancellationToken cancellationToken = default)
+    {
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE character_base
+            SET "curHP" = GREATEST(0, @currentHp),
+                "curMP" = GREATEST(0, @currentMp)
+            WHERE id = @characterId
+              AND account_id = @accountId;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("currentHp", currentHp);
+        command.Parameters.AddWithValue("currentMp", currentMp);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default)
     {
         await using var command = _dataSource.CreateCommand($"""
@@ -3190,11 +3228,13 @@ internal sealed class PostgresGameStore : IGameStore
         await using (var command = new NpgsqlCommand("""
             INSERT INTO skill_templates (
                 skill_id, display_name, base_name, skill_level, class_ids, previous_skill_id,
-                min_level, max_level, description, stats
+                min_level, max_level, description, target, affect_obj, distance, effect_range,
+                property, mp, power1, power2, stats
             )
             VALUES (
                 @skillId, @displayName, @baseName, @skillLevel, @classIds, @previousSkillId,
-                @minLevel, @maxLevel, @description, @stats
+                @minLevel, @maxLevel, @description, @target, @affectObj, @distance, @effectRange,
+                @property, @mp, @power1, @power2, @stats
             )
             ON CONFLICT (skill_id) DO UPDATE
             SET display_name = EXCLUDED.display_name,
@@ -3205,6 +3245,14 @@ internal sealed class PostgresGameStore : IGameStore
                 min_level = EXCLUDED.min_level,
                 max_level = EXCLUDED.max_level,
                 description = EXCLUDED.description,
+                target = EXCLUDED.target,
+                affect_obj = EXCLUDED.affect_obj,
+                distance = EXCLUDED.distance,
+                effect_range = EXCLUDED.effect_range,
+                property = EXCLUDED.property,
+                mp = EXCLUDED.mp,
+                power1 = EXCLUDED.power1,
+                power2 = EXCLUDED.power2,
                 stats = EXCLUDED.stats;
             """, connection, transaction))
         {
@@ -3223,6 +3271,14 @@ internal sealed class PostgresGameStore : IGameStore
                 AddNullableIntegerParameter(command, "minLevel", template.MinLevel);
                 AddNullableIntegerParameter(command, "maxLevel", template.MaxLevel);
                 command.Parameters.AddWithValue("description", template.Description);
+                command.Parameters.AddWithValue("target", template.Target);
+                command.Parameters.AddWithValue("affectObj", template.AffectObj);
+                command.Parameters.AddWithValue("distance", template.Distance);
+                command.Parameters.AddWithValue("effectRange", template.Range);
+                command.Parameters.AddWithValue("property", template.Property);
+                command.Parameters.AddWithValue("mp", template.Mp);
+                command.Parameters.AddWithValue("power1", template.Power1);
+                command.Parameters.AddWithValue("power2", template.Power2);
                 command.Parameters.Add(new NpgsqlParameter("stats", NpgsqlDbType.Jsonb)
                 {
                     Value = template.StatsJson

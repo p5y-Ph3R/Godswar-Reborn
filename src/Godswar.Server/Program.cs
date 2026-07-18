@@ -37,4 +37,5 @@ Console.WriteLine($"Game server:  {options.Game.BindHost}:{options.Game.Port} ad
 
 await Task.WhenAll(
     loginServer.RunAsync(shutdown.Token),
-    gameServer.RunAsync(shutdown.Token));
+    gameServer.RunAsync(shutdown.Token),
+    registry.RunMonsterRoamingAsync(shutdown.Token));

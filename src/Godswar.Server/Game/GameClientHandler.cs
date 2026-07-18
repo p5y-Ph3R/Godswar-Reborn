@@ -17,7 +17,6 @@ internal sealed class GameClientHandler : IClientHandler
     private const int HolyStoneRemoveSuccess = 1200;
     private const int HolyStoneInsufficientFunds = 1400;
     private const int HolyStoneDrillSuccess = 1500;
-    private static readonly bool EnableExperimentalMonsterSpawns = false;
     private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan LastItemInfoTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
@@ -35,13 +34,10 @@ internal sealed class GameClientHandler : IClientHandler
     private bool _clientReadyReceived;
     private bool _playerDetailSent;
     private bool _postEnterBootstrapSent;
-    private DateTime _lastMonsterSpawnUtc = DateTime.MinValue;
     private DateTime _lastPositionPersistUtc = DateTime.MinValue;
-    private byte[]? _lastSkillCastPacket;
     private bool _positionDirty;
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
     private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
-    private WorldSectorVisibilityTracker<CapturedMonsterSpawn>? _monsterVisibility;
 
     public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
     {
@@ -150,9 +146,6 @@ internal sealed class GameClientHandler : IClientHandler
                 break;
             case Opcodes.SkillCast:
                 await HandleSkillCastAsync(packet, cancellationToken);
-                break;
-            case Opcodes.SkillCastFinishRequest:
-                await HandleSkillCastFinishRequestAsync(packet, cancellationToken);
                 break;
             case Opcodes.Kitbag:
             case Opcodes.Storage:
@@ -490,36 +483,25 @@ internal sealed class GameClientHandler : IClientHandler
             monsterDefinitions.Add(monster);
         }
 
+        var runtimeMonsterCount = _registry.InitializeMapMonsters(
+            _character.CurrentMap,
+            monsterDefinitions);
+
         _npcVisibility = new WorldSectorVisibilityTracker<NpcSpawnDefinition>(
             npcDefinitions,
             npc => npc.ObjectId,
             npc => npc.X,
             npc => npc.Z,
             "NPC");
-        _monsterVisibility = new WorldSectorVisibilityTracker<CapturedMonsterSpawn>(
-            monsterDefinitions,
-            monster => monster.ObjectId,
-            monster => monster.AppearanceX,
-            monster => monster.AppearanceZ,
-            "monster");
         Console.WriteLine(
             $"[npc] loaded map definitions character={_character.Name} map={_character.CurrentMap} count={npcDefinitions.Count}");
         Console.WriteLine(
-            monsterDefinitions.Count > 0
-                ? $"[mob] loaded captured map definitions character={_character.Name} map={_character.CurrentMap} count={monsterDefinitions.Count}"
+            runtimeMonsterCount > 0
+                ? $"[mob] loaded shared map runtime character={_character.Name} map={_character.CurrentMap} count={runtimeMonsterCount}"
                 : $"[mob] no captured map definitions character={_character.Name} map={_character.CurrentMap}");
         await RefreshNearbyWorldObjectsAsync("initial", cancellationToken);
 
         await SendMapPlayersAsync(cancellationToken);
-
-        if (EnableExperimentalMonsterSpawns)
-        {
-            await SendNearbyMonstersAsync(cancellationToken);
-        }
-        else
-        {
-            Console.WriteLine($"[mob] skipped experimental monster spawns character={_character.Name} map={_character.CurrentMap}");
-        }
     }
 
     private async Task HandleNpcDialogOpenAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -707,18 +689,27 @@ internal sealed class GameClientHandler : IClientHandler
     {
         if (_character is null ||
             _npcVisibility is null ||
-            _monsterVisibility is null ||
             !_npcVisibility.TryCalculate(
                 _character.PositionX,
                 _character.PositionZ,
-                out var npcDelta) ||
-            !_monsterVisibility.TryCalculate(
-                _character.PositionX,
-                _character.PositionZ,
-                out var monsterDelta))
+                out var npcDelta))
         {
             return;
         }
+
+
+        await using var monsterTransition = await _registry.BeginMonsterVisibilityTransitionAsync(
+            _session,
+            _character.CurrentMap,
+            _character.PositionX,
+            _character.PositionZ,
+            cancellationToken);
+        if (monsterTransition is null)
+        {
+            return;
+        }
+
+        var monsterDelta = monsterTransition.Delta;
 
         var leavingObjectIds = npcDelta.Leaving
             .Concat(monsterDelta.Leaving)
@@ -745,16 +736,32 @@ internal sealed class GameClientHandler : IClientHandler
         if (monsterDelta.Entering.Count > 0)
         {
             await _session.SendAsync(
-                PacketBuilder.CapturedMonsterSpawns(monsterDelta.Entering),
+                PacketBuilder.CapturedMonsterSpawns(
+                    monsterDelta.Entering.Select(monster => monster.Appearance).ToArray()),
                 cancellationToken,
                 "NearbyMonsterSpawns",
                 framed: false);
+
+            foreach (var monster in monsterDelta.Entering.Where(monster => monster.IsMoving))
+            {
+                await _session.SendAsync(
+                    PacketBuilder.MonsterMovementStart(
+                        monster.ObjectId,
+                        monster.X,
+                        monster.Y,
+                        monster.Z,
+                        monster.VelocityX,
+                        monster.VelocityY,
+                        monster.VelocityZ),
+                    cancellationToken,
+                    "NearbyMonsterMovementContinuation");
+            }
         }
 
         // Only advance either tracker after the complete remove/spawn transition
         // has been sent, so a failed transition is never recorded as visible.
         _npcVisibility.Commit(npcDelta);
-        _monsterVisibility.Commit(monsterDelta);
+        monsterTransition.Commit();
         if (npcDelta.Entering.Count > 0 ||
             npcDelta.Leaving.Count > 0 ||
             monsterDelta.Entering.Count > 0 ||
@@ -780,10 +787,6 @@ internal sealed class GameClientHandler : IClientHandler
 
         await RefreshNearbyWorldObjectsAsync("walk", cancellationToken);
         await PersistCharacterPositionAsync(force: false, cancellationToken);
-        if (EnableExperimentalMonsterSpawns && (DateTime.UtcNow - _lastMonsterSpawnUtc) >= TimeSpan.FromSeconds(5))
-        {
-            await SendNearbyMonstersAsync(cancellationToken);
-        }
 
         return true;
     }
@@ -796,93 +799,210 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (packet.Payload.Length < 8)
+        if (!SkillCastRequest.TryParse(packet.Buffer, out var cast))
         {
             Console.WriteLine($"[skill] ignored cast payload too short len={packet.Length} hex={packet.ToHexPreview()}");
             return;
         }
 
-        var casterObjectId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
-        var skillId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(4, 4));
-        var targetObjectId = packet.Payload.Length >= 12
-            ? BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(8, 4))
-            : 0;
-        var castX = packet.Payload.Length >= 24
-            ? BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(20, 4))
-            : _character.PositionX;
-        var castZ = packet.Payload.Length >= 28
-            ? BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(24, 4))
-            : _character.PositionZ;
-        var learned = await IsSkillLearnedAsync((int)skillId, cancellationToken);
+        var castX = float.IsFinite(cast.CasterX) ? cast.CasterX : _character.PositionX;
+        var castZ = float.IsFinite(cast.CasterZ) ? cast.CasterZ : _character.PositionZ;
+        var learned = await IsSkillLearnedAsync(cast.SkillId, cancellationToken);
 
         Console.WriteLine(
-            $"[skill] cast character={_character.Name} skill={skillId} learned={learned} caster={casterObjectId} target={targetObjectId} x={castX:F2} z={castZ:F2}");
-        _lastSkillCastPacket = packet.Buffer.ToArray();
+            $"[skill] cast character={_character.Name} skill={cast.SkillId} learned={learned} caster={cast.CasterObjectId} target={cast.TargetObjectId} x={castX:F2} z={castZ:F2}");
+        if (!learned)
+        {
+            Console.WriteLine(
+                $"[skill] rejected unlearned skill character={_character.Name} skill={cast.SkillId}");
+            return;
+        }
 
-        await _session.SendAsync(
-            PacketBuilder.SkillCastVisual(packet.Buffer, LocalPlayerObjectId),
-            cancellationToken,
-            "SkillCastSelf");
-        await _session.SendAsync(
-            PacketBuilder.SkillCastImpact(packet.Buffer, LocalPlayerObjectId),
-            cancellationToken,
-            "SkillCastImpactSelf");
+        if (cast.SkillId > int.MaxValue ||
+            !SkillCombatCatalog.TryGet((int)cast.SkillId, out var combat) ||
+            !SkillCombatResolver.IsHostileMonsterSkill(combat))
+        {
+            Console.WriteLine(
+                $"[skill] rejected unsupported combat skill character={_character.Name} skill={cast.SkillId}");
+            return;
+        }
+
+        if (!_registry.IsMonsterVisibleTo(_session, cast.TargetObjectId) ||
+            !_registry.TryGetMonsterSnapshot(
+                _character.CurrentMap,
+                cast.TargetObjectId,
+                out var target) ||
+            !target.IsSpawned ||
+            !target.IsAlive)
+        {
+            Console.WriteLine(
+                $"[skill] rejected unavailable monster character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
+        if (!SkillCombatResolver.IsWithinRange(
+                _character.PositionX,
+                _character.PositionZ,
+                target.X,
+                target.Z,
+                combat))
+        {
+            Console.WriteLine(
+                $"[skill] rejected out-of-range monster character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} player={_character.PositionX:F2},{_character.PositionZ:F2} monster={target.X:F2},{target.Z:F2} range={combat.Distance:F2}");
+            return;
+        }
+
+        var manaCost = Math.Max(0, combat.Mp);
+        if (_character.CurrentMp < manaCost)
+        {
+            Console.WriteLine(
+                $"[skill] rejected insufficient MP character={_character.Name} skill={cast.SkillId} mp={_character.CurrentMp} cost={manaCost}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, _character.CurrentMp),
+                cancellationToken,
+                "SkillManaRejected");
+            return;
+        }
+
+        var requestedDamage = SkillCombatResolver.CalculateDamage(_character, combat);
+        if (requestedDamage == 0 ||
+            !_registry.TryApplyMonsterDamage(
+                _character.CurrentMap,
+                cast.TargetObjectId,
+                requestedDamage,
+                out var damageResult) ||
+            damageResult.BeforeHealth == damageResult.AfterHealth)
+        {
+            Console.WriteLine(
+                $"[skill] rejected stale monster target character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
+        _character.CurrentMp -= manaCost;
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+
+        var appliedDamage = damageResult.BeforeHealth - damageResult.AfterHealth;
+        // The working server reports the resolved hit amount even when it exceeds
+        // the monster's remaining HP. Shared runtime health is still clamped at 0.
+        var reportedDamage = requestedDamage;
+        var targetX = damageResult.Monster.X;
+        var targetZ = damageResult.Monster.Z;
+        var selfVisual = PacketBuilder.SkillCastVisual(packet.Buffer, LocalPlayerObjectId);
+        var selfDamage = PacketBuilder.SkillDamage(
+            attackerObjectId: LocalPlayerObjectId,
+            targetObjectId: cast.TargetObjectId,
+            resultFlags: 0,
+            damage: reportedDamage,
+            skillId: cast.SkillId,
+            targetX: targetX,
+            targetZ: targetZ);
+        var selfImpact = PacketBuilder.SkillCastImpact(
+            LocalPlayerObjectId,
+            cast.TargetObjectId,
+            cast.SkillId,
+            targetX,
+            targetZ);
+
+        var casterNotified = true;
+        try
+        {
+            await _session.SendAsync(
+                selfVisual,
+                cancellationToken,
+                "SkillCastSelf");
+            await _session.SendAsync(
+                selfDamage,
+                cancellationToken,
+                "SkillDamageSelf");
+            await _session.SendAsync(
+                selfImpact,
+                cancellationToken,
+                "SkillCastImpactSelf");
+            if (manaCost > 0)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, _character.CurrentMp),
+                    cancellationToken,
+                    "SkillManaSelf");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            // The hit already changed shared state. Continue notifying the other
+            // viewers even if the caster disconnected during its own response.
+            casterNotified = false;
+            Console.WriteLine(
+                $"[skill] caster notification failed character={_character.Name} target={cast.TargetObjectId}: {ex.Message}");
+        }
 
         var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
-        var visualRecipients = await _registry.BroadcastToMapAsync(
+        var visualRecipients = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
+            cast.TargetObjectId,
             PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId),
             cancellationToken,
             _session,
             "SkillCastWorld");
-        var impactRecipients = await _registry.BroadcastToMapAsync(
+        var damageRecipients = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
-            PacketBuilder.SkillCastImpact(packet.Buffer, worldObjectId),
+            cast.TargetObjectId,
+            PacketBuilder.SkillDamage(
+                attackerObjectId: worldObjectId,
+                targetObjectId: cast.TargetObjectId,
+                resultFlags: 0,
+                damage: reportedDamage,
+                skillId: cast.SkillId,
+                targetX: targetX,
+                targetZ: targetZ),
+            cancellationToken,
+            _session,
+            "SkillDamageWorld");
+        var impactRecipients = await _registry.BroadcastToMonsterViewersAsync(
+            _character.CurrentMap,
+            cast.TargetObjectId,
+            PacketBuilder.SkillCastImpact(
+                worldObjectId,
+                cast.TargetObjectId,
+                cast.SkillId,
+                targetX,
+                targetZ),
             cancellationToken,
             _session,
             "SkillCastImpactWorld");
 
-        if (visualRecipients > 0 || impactRecipients > 0)
+        if (_account is not null)
         {
-            Console.WriteLine(
-                $"[world] broadcast skill cast map={_character.CurrentMap} character={_character.Name} object={worldObjectId} skill={skillId} visualRecipients={visualRecipients} impactRecipients={impactRecipients}");
+            try
+            {
+                await _store.SaveCharacterVitalsAsync(
+                    _account.Id,
+                    _character.Id,
+                    _character.CurrentHp,
+                    _character.CurrentMp,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Database availability must not suppress an already-authoritative
+                // shared hit. The in-memory session remains correct and can retry.
+                Console.WriteLine(
+                    $"[skill] vitals persistence deferred character={_character.Name}: {ex.Message}");
+            }
         }
+
+        Console.WriteLine(
+            $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={_character.CurrentMp}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
     }
 
-    private async Task HandleSkillCastFinishRequestAsync(GamePacket packet, CancellationToken cancellationToken)
+    private async Task<bool> IsSkillLearnedAsync(uint skillId, CancellationToken cancellationToken)
     {
-        if (_character is null)
-        {
-            Console.WriteLine("[skill] ignored finish request before character enter");
-            return;
-        }
-
-        var objectId = packet.Payload.Length >= 4
-            ? BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4])
-            : 0;
-        if (_lastSkillCastPacket is null)
-        {
-            Console.WriteLine($"[skill] finish request with no active cast character={_character.Name} object={objectId}");
-            await _session.SendAsync(packet.Buffer, cancellationToken, "SkillCastFinishEcho");
-            return;
-        }
-
-        Console.WriteLine($"[skill] finish request character={_character.Name} object={objectId}");
-        await _session.SendAsync(
-            PacketBuilder.SkillCastImpact(_lastSkillCastPacket, LocalPlayerObjectId),
-            cancellationToken,
-            "SkillCastImpactFinish");
-    }
-
-    private async Task<bool> IsSkillLearnedAsync(int skillId, CancellationToken cancellationToken)
-    {
-        if (_account is null || _character is null || skillId <= 0)
+        if (_account is null || _character is null || skillId > int.MaxValue)
         {
             return false;
         }
 
         var skills = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
-        return skills.Any(skill => skill.SkillId == skillId);
+        return skills.Any(skill => skill.SkillId == (int)skillId);
     }
 
     private async Task BroadcastToCurrentMapAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -1178,24 +1298,6 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.PlayerStatusUpdate(player.Character, player.ObjectId),
             cancellationToken,
             "VisiblePlayerStatus");
-    }
-
-    private async Task SendNearbyMonstersAsync(CancellationToken cancellationToken)
-    {
-        if (_character is null)
-        {
-            return;
-        }
-
-        var monsters = PacketBuilder.NearbyMonsterSpawns(_character);
-        if (monsters.Length == 0)
-        {
-            return;
-        }
-
-        _lastMonsterSpawnUtc = DateTime.UtcNow;
-        Console.WriteLine($"[mob] resending nearby monster stream character={_character.Name} map={_character.CurrentMap} x={_character.PositionX:F2} z={_character.PositionZ:F2} bytes={monsters.Length}");
-        await _session.SendAsync(monsters, cancellationToken, "NearbyMonsterSpawns", framed: false);
     }
 
     private async Task HandlePlayerDetailRequestAsync(GamePacket request, CancellationToken cancellationToken)

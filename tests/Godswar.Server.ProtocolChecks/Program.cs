@@ -21,6 +21,12 @@ internal static class Program
         var checks = new (string Name, Func<Task> Run)[]
         {
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
+            ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
+            ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
+            ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),
+            ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
+            ("Skill combat catalog", CheckSkillCombatCatalogAsync),
+            ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
             ("PlayerWorldSpawn full quality/grade extension", CheckPlayerWorldExtendedAppearanceAsync),
@@ -30,6 +36,10 @@ internal static class Program
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
             ("Monster movement-cell visibility and spawn layout", CheckMonsterMovementCellVisibilityAsync),
+            ("Monster movement and lifecycle packet layouts", CheckMonsterMovementPacketLayoutsAsync),
+            ("Monster runtime appearance patch", CheckMonsterRuntimeAppearancePatchAsync),
+            ("Shared bounded monster runtime and lifecycle", CheckSharedBoundedMonsterRuntimeAsync),
+            ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
@@ -88,6 +98,221 @@ internal static class Program
 
         Check.Equal(GameDefaults.AthensCamp, invalid.Camp, "invalid camp uses the safe Athens default");
         Check.Equal(GameDefaults.AthensCapitalMap, invalid.CurrentMap, "invalid camp uses the Athens capital");
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckSavedCharacterLocationPersistenceAsync()
+    {
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-location-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            await using var store = new JsonGameStore(dataPath);
+            await store.EnsureSeedDataAsync();
+            var account = await store.LoginOrCreateAccountAsync("location-check", "");
+            var created = await store.CreateCharacterAsync(
+                account.Id,
+                new GameCharacter
+                {
+                    Name = "LocationHero",
+                    Camp = GameDefaults.SpartaCamp
+                });
+
+            Check.Equal(GameDefaults.SpartaCapitalMap, created.CurrentMap, "camp selects the capital at creation");
+
+            const byte travelledMap = 17;
+            const float travelledX = -412.75f;
+            const float travelledZ = 903.125f;
+            await store.SaveCharacterPositionAsync(
+                account.Id,
+                created.Id,
+                travelledMap,
+                travelledX,
+                travelledZ);
+            await store.SaveCharacterVitalsAsync(
+                account.Id,
+                created.Id,
+                currentHp: 777,
+                currentMp: 123);
+
+            var reloaded = await store.GetFirstCharacterAsync(account.Id)
+                ?? throw new InvalidOperationException("saved character was not reloaded");
+            Check.Equal(GameDefaults.SpartaCamp, reloaded.Camp, "saved camp is retained after travel");
+            Check.Equal(travelledMap, reloaded.CurrentMap, "login loads the saved non-capital map");
+            Check.Equal(travelledX, reloaded.PositionX, "login loads saved X");
+            Check.Equal(travelledZ, reloaded.PositionZ, "login loads saved Z");
+            Check.Equal(777, reloaded.CurrentHp, "login loads saved current HP");
+            Check.Equal(123, reloaded.CurrentMp, "login loads saved current MP");
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
+    private static Task CheckEnterMainCharacterIdentityAsync()
+    {
+        var character = CreateCharacter();
+        var packet = PacketBuilder.EnterMain(character);
+
+        Check.Equal((uint)character.Id, ReadUInt32(packet, 4), "EnterMain persistent character key");
+        Check.Equal(0x00001448u, ReadUInt32(packet, 52), "EnterMain local world object ID");
+        Check.Equal(character.CurrentMap, packet[46], "EnterMain saved map");
+        Check.Equal(character.PositionX, ReadSingle(packet, 56), "EnterMain saved X");
+        Check.Equal(character.PositionZ, ReadSingle(packet, 64), "EnterMain saved Z");
+
+        var secondCharacter = CreateCharacter();
+        secondCharacter.Id = character.Id + 1;
+        var secondPacket = PacketBuilder.EnterMain(secondCharacter);
+        Check.Equal((uint)secondCharacter.Id, ReadUInt32(secondPacket, 4), "second character has an isolated UI key");
+        Check.Equal(0x00001448u, ReadUInt32(secondPacket, 52), "local world object ID remains session-local");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckWarriorStarterSkillPacketsAsync()
+    {
+        SkillState[] warriorSkills = [new() { SkillId = 0, Level = 1 }];
+        var skillList = PacketBuilder.SkillList(warriorSkills);
+        Check.Equal(24, skillList.Length, "single-skill list length");
+        Check.Equal((ushort)10196, ReadUInt16(skillList, 2), "skill-list opcode");
+        Check.Equal(1u, ReadUInt32(skillList, 8), "skill-list count");
+        Check.Equal(0u, ReadUInt32(skillList, 12), "Light Chop skill ID zero remains valid");
+        Check.Equal(0x101u, ReadUInt32(skillList, 16), "Light Chop level flag");
+
+        var unlocks = PacketBuilder.TalentSkillUnlockList(warriorSkills);
+        Check.Equal((ushort)10041, ReadUInt16(unlocks, 2), "skill-unlock opcode");
+        Check.Equal(1u, ReadUInt32(unlocks, 8), "skill-unlock count");
+        Check.Equal(0u, ReadUInt32(unlocks, 12), "skill unlock preserves ID zero");
+        var listedIds = Enumerable.Range(0, (int)ReadUInt32(skillList, 8))
+            .Select(index => ReadUInt32(skillList, 12 + (index * 12)))
+            .ToArray();
+        Check.True(
+            !listedIds.Any(value => value is >= 250 and <= 354),
+            "Warrior skill list does not contain Champion skills");
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckJsonProviderStarterSkillAsync()
+    {
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-skill-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            await using var store = new JsonGameStore(dataPath);
+            await store.EnsureSeedDataAsync();
+            var account = await store.LoginOrCreateAccountAsync("skill-check", "");
+            var warrior = await store.CreateCharacterAsync(
+                account.Id,
+                new GameCharacter
+                {
+                    Name = "JsonWarrior",
+                    Profession = 0,
+                    Camp = GameDefaults.SpartaCamp
+                });
+            var skills = await store.GetSkillStatesAsync(account.Id, warrior.Id);
+            Check.True(
+                skills.Count == 1 && skills[0].SkillId == 0 && skills[0].Level == 1,
+                "JSON warrior learns only Light Chop 1");
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
+    private static Task CheckSkillCombatCatalogAsync()
+    {
+        Check.True(SkillCombatCatalog.TryGet(0, out var lightChop), "Light Chop combat data exists");
+        Check.Equal(44, lightChop.Target, "Light Chop target mode");
+        Check.Equal(28, lightChop.AffectObj, "Light Chop affected-object mode");
+        Check.Equal(3f, lightChop.Distance, "Light Chop distance");
+        Check.Equal(0f, lightChop.Range, "Light Chop single-target range");
+        Check.Equal(0, lightChop.Property, "Light Chop uses physical attack");
+        Check.Equal(12, lightChop.Mp, "Light Chop mana cost");
+        Check.Equal(-0.5m, lightChop.Power1, "Light Chop physical attack multiplier");
+        Check.Equal(250m, lightChop.Power2, "Light Chop flat damage");
+
+        var warrior = CreateCharacter();
+        warrior.CalculatedStats = new CharacterStats { PhysicalAttack = 40 };
+        Check.True(SkillCombatResolver.IsHostileMonsterSkill(lightChop), "Light Chop can target a hostile monster");
+        Check.Equal(270u, SkillCombatResolver.CalculateDamage(warrior, lightChop), "Light Chop damage formula");
+        Check.True(
+            SkillCombatResolver.IsWithinRange(41.15f, 165.53f, 40.8691f, 162.7964f, lightChop),
+            "captured account-13 cast is within Light Chop range");
+        Check.True(
+            !SkillCombatResolver.IsWithinRange(41.15f, 165.53f, 60f, 180f, lightChop),
+            "distant monster cast is rejected");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckSkillCastTargetAndImpactAsync()
+    {
+        const uint localObjectId = 0x1448;
+        const uint remoteCasterId = 0x6002;
+        const uint monsterId = 0x282C;
+        var clientCast = new byte[40];
+        BinaryPrimitives.WriteUInt16LittleEndian(clientCast.AsSpan(0, 2), (ushort)clientCast.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(clientCast.AsSpan(2, 2), 10040);
+        BinaryPrimitives.WriteUInt32LittleEndian(clientCast.AsSpan(4, 4), localObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(clientCast.AsSpan(8, 4), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(clientCast.AsSpan(16, 4), monsterId);
+        BinaryPrimitives.WriteSingleLittleEndian(clientCast.AsSpan(24, 4), 41.15f);
+        BinaryPrimitives.WriteSingleLittleEndian(clientCast.AsSpan(28, 4), 165.53f);
+        BinaryPrimitives.WriteSingleLittleEndian(clientCast.AsSpan(32, 4), 44.75f);
+        BinaryPrimitives.WriteSingleLittleEndian(clientCast.AsSpan(36, 4), 166.25f);
+
+        Check.True(SkillCastRequest.TryParse(clientCast, out var parsed), "client skill cast parses");
+        Check.Equal(localObjectId, parsed.CasterObjectId, "client skill cast caster");
+        Check.Equal(0u, parsed.SkillId, "client skill cast supports skill ID zero");
+        Check.Equal(monsterId, parsed.TargetObjectId, "client skill cast target at absolute offset 16");
+        Check.Equal(41.15f, parsed.CasterX, "client skill cast caster X");
+        Check.Equal(165.53f, parsed.CasterZ, "client skill cast caster Z");
+        Check.Equal(44.75f, parsed.TargetX, "client skill cast target X");
+        Check.Equal(166.25f, parsed.TargetZ, "client skill cast target Z");
+
+        var visual = PacketBuilder.SkillCastVisual(clientCast, remoteCasterId);
+        Check.Equal(remoteCasterId, ReadUInt32(visual, 4), "cast visual patches only the caster identity");
+        Check.Equal(monsterId, ReadUInt32(visual, 16), "cast visual preserves selected monster target");
+        Check.Equal(10u, ReadUInt32(visual, 20), "cast visual advances captured cast state");
+
+        var impact = PacketBuilder.SkillCastImpact(clientCast, remoteCasterId);
+        Check.Equal(24, impact.Length, "skill impact length");
+        Check.Equal((ushort)10046, ReadUInt16(impact, 2), "skill impact opcode");
+        Check.Equal(remoteCasterId, ReadUInt32(impact, 4), "skill impact attacker");
+        Check.Equal(monsterId, ReadUInt32(impact, 8), "skill impact target");
+        Check.Equal(0u, ReadUInt32(impact, 12), "skill impact supports skill ID zero");
+        Check.Equal(44.75f, ReadSingle(impact, 16), "skill impact target X");
+        Check.Equal(166.25f, ReadSingle(impact, 20), "skill impact target Z");
+
+        var damage = PacketBuilder.SkillDamage(
+            remoteCasterId,
+            monsterId,
+            resultFlags: 0,
+            damage: 865,
+            skillId: 0,
+            targetX: 44.75f,
+            targetZ: 166.25f);
+        Check.Equal(32, damage.Length, "skill damage length");
+        Check.Equal((ushort)10045, ReadUInt16(damage, 2), "skill damage opcode");
+        Check.Equal(remoteCasterId, ReadUInt32(damage, 4), "skill damage attacker");
+        Check.Equal(monsterId, ReadUInt32(damage, 8), "skill damage target");
+        Check.Equal(0u, ReadUInt32(damage, 12), "skill damage normal-hit result");
+        Check.Equal(865u, ReadUInt32(damage, 16), "skill damage reports the uncapped resolved amount");
+        Check.Equal(0u, ReadUInt32(damage, 20), "skill damage skill ID zero");
+        Check.Equal(44.75f, ReadSingle(damage, 24), "skill damage target X");
+        Check.Equal(166.25f, ReadSingle(damage, 28), "skill damage target Z");
+
+        var mana = PacketBuilder.PlayerManaUpdate(remoteCasterId, 165);
+        Check.Equal(12, mana.Length, "mana update length");
+        Check.Equal((ushort)10135, ReadUInt16(mana, 2), "mana update opcode");
+        Check.Equal(remoteCasterId, ReadUInt32(mana, 4), "mana update caster");
+        Check.Equal(165u, ReadUInt32(mana, 8), "mana update absolute current MP");
         return Task.CompletedTask;
     }
 
@@ -667,6 +892,387 @@ internal static class Program
             "captured monster coordinate drift outside importer tolerance is rejected");
 
         return Task.CompletedTask;
+    }
+
+    private static Task CheckMonsterMovementPacketLayoutsAsync()
+    {
+        var capturedStart = Convert.FromHexString(
+            "28002027112700000000000001000000E5FA3043000000000E3D89C1CD05A63E0000000047E14ABE");
+        var generatedStart = PacketBuilder.MonsterMovementStart(
+            ReadUInt32(capturedStart, 4),
+            ReadSingle(capturedStart, 16),
+            ReadSingle(capturedStart, 20),
+            ReadSingle(capturedStart, 24),
+            ReadSingle(capturedStart, 28),
+            ReadSingle(capturedStart, 32),
+            ReadSingle(capturedStart, 36));
+        Check.True(
+            generatedStart.SequenceEqual(capturedStart),
+            "opcode-10016 movement start matches the working-server fixture byte-for-byte");
+        Check.Equal((ushort)40, ReadUInt16(generatedStart, 0), "monster movement-start length");
+        Check.Equal((ushort)10016, ReadUInt16(generatedStart, 2), "monster movement-start opcode");
+        Check.Equal(10001u, ReadUInt32(generatedStart, 4), "monster movement-start object ID");
+        Check.Equal(0u, ReadUInt32(generatedStart, 8), "monster movement-start reserved field");
+        Check.Equal(1u, ReadUInt32(generatedStart, 12), "monster idle-roaming movement mode");
+
+        var capturedEnd = Convert.FromHexString(
+            "220021271127000000000000060000002A0B32430000000063D398C1107C2F400000");
+        var generatedEnd = PacketBuilder.MonsterMovementEnd(
+            ReadUInt32(capturedEnd, 4),
+            ReadUInt32(capturedEnd, 12),
+            ReadSingle(capturedEnd, 16),
+            ReadSingle(capturedEnd, 20),
+            ReadSingle(capturedEnd, 24),
+            ReadSingle(capturedEnd, 28));
+        Check.True(
+            generatedEnd.SequenceEqual(capturedEnd),
+            "opcode-10017 movement end matches the working-server fixture byte-for-byte");
+        Check.Equal((ushort)34, ReadUInt16(generatedEnd, 0), "monster movement-end length");
+        Check.Equal((ushort)10017, ReadUInt16(generatedEnd, 2), "monster movement-end opcode");
+        Check.Equal(6u, ReadUInt32(generatedEnd, 12), "monster movement-end tick count");
+        Check.Equal((ushort)0, ReadUInt16(generatedEnd, 32), "monster movement-end trailing field");
+
+        var capturedLifecycleMarker = Convert.FromHexString("0800272734270000");
+        Check.True(
+            PacketBuilder.MonsterLifecycleMarker(10036).SequenceEqual(capturedLifecycleMarker),
+            "opcode-10023 corpse/respawn marker matches the working-server fixture byte-for-byte");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckMonsterRuntimeAppearancePatchAsync()
+    {
+        var monster = CreateCapturedMonster(
+            10038,
+            143.051132f,
+            -6.025902f,
+            "A_normal_stub_001");
+        monster.Packet[16] = 0xA5;
+        monster.Packet[17] = 0x5A;
+        monster.Packet[107] = 0xC3;
+        BinaryPrimitives.WriteSingleLittleEndian(monster.Packet.AsSpan(32, 4), 7.25f);
+        var original = monster.Packet.ToArray();
+        var state = new CapturedMonsterAppearanceState(
+            monster,
+            150.25f,
+            -12.5f,
+            -2.25f,
+            123,
+            456);
+
+        var patched = PacketBuilder.CapturedMonsterAppearance(state);
+        Check.Equal(123u, ReadUInt32(patched, 20), "runtime appearance current HP");
+        Check.Equal(456u, ReadUInt32(patched, 24), "runtime appearance maximum HP");
+        Check.Equal(state.X, ReadSingle(patched, 28), "runtime appearance X");
+        Check.Equal(7.25f, ReadSingle(patched, 32), "runtime appearance preserves captured Y");
+        Check.Equal(state.Z, ReadSingle(patched, 36), "runtime appearance Z");
+        Check.Equal(state.Facing, ReadSingle(patched, 40), "runtime appearance facing");
+        Check.True(monster.Packet.SequenceEqual(original), "runtime appearance does not mutate the capture template");
+
+        for (var offset = 0; offset < original.Length; offset++)
+        {
+            var patchedField = offset is >= 20 and < 32 or >= 36 and < 44;
+            if (!patchedField)
+            {
+                Check.Equal(original[offset], patched[offset], $"runtime appearance preserves byte {offset}");
+            }
+        }
+
+        var stream = PacketBuilder.CapturedMonsterSpawns([state, state]);
+        Check.Equal(patched.Length * 2, stream.Length, "runtime appearance stream length");
+        Check.True(
+            stream.AsSpan(0, patched.Length).SequenceEqual(patched) &&
+            stream.AsSpan(patched.Length, patched.Length).SequenceEqual(patched),
+            "runtime appearance stream contains patched packets in order");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckSharedBoundedMonsterRuntimeAsync()
+    {
+        var initializedAt = new DateTimeOffset(2026, 5, 12, 17, 56, 0, TimeSpan.FromHours(12));
+        var definition = CreateCapturedMonster(
+            10001,
+            176.979568f,
+            -17.154812f,
+            "A_normal_stub_001");
+        var runtimeA = new MonsterMapRuntime(0, [definition], initializedAt);
+        var runtimeB = new MonsterMapRuntime(0, [definition], initializedAt);
+        var now = initializedAt;
+        var starts = 0;
+        var arrivals = 0;
+
+        for (var tickIndex = 0; tickIndex < 8_000; tickIndex++)
+        {
+            now += MonsterMapRuntime.TickInterval;
+            var tickA = runtimeA.Advance(now);
+            var tickB = runtimeB.Advance(now);
+            Check.Equal(tickA.PositionsChanged, tickB.PositionsChanged, "deterministic runtime movement flag");
+            Check.Equal(tickA.Updates.Count, tickB.Updates.Count, "deterministic runtime update count");
+
+            for (var updateIndex = 0; updateIndex < tickA.Updates.Count; updateIndex++)
+            {
+                var updateA = tickA.Updates[updateIndex];
+                var updateB = tickB.Updates[updateIndex];
+                Check.True(updateA.Kind == updateB.Kind, "deterministic runtime update kind");
+                Check.Equal(updateA.Monster.X, updateB.Monster.X, "deterministic runtime update X");
+                Check.Equal(updateA.Monster.Z, updateB.Monster.Z, "deterministic runtime update Z");
+
+                if (updateA.Kind == MonsterRuntimeUpdateKind.Started)
+                {
+                    starts++;
+                    var speed = MathF.Sqrt(
+                        (updateA.Monster.VelocityX * updateA.Monster.VelocityX) +
+                        (updateA.Monster.VelocityZ * updateA.Monster.VelocityZ));
+                    Check.True(
+                        MathF.Abs(speed - MonsterMapRuntime.MovementStep) < 0.00001f,
+                        "roaming step magnitude is the captured 0.38 units");
+                    Check.True(
+                        updateA.Monster.MovementTicks is >= MonsterMapRuntime.MinimumMovementTicks and
+                            <= MonsterMapRuntime.MaximumMovementTicks,
+                        "roaming leg uses one to twenty-one captured ticks");
+                }
+                else if (updateA.Kind == MonsterRuntimeUpdateKind.Arrived)
+                {
+                    arrivals++;
+                    var idleSeconds = (updateA.Monster.NextMovementAt - now).TotalSeconds;
+                    Check.True(
+                        idleSeconds >= 15 && idleSeconds <= 20.001,
+                        "arrival schedules the next deterministic roam within 15-20 seconds");
+                    var expectedFacing = MathF.Atan2(
+                        updateA.Monster.VelocityX,
+                        updateA.Monster.VelocityZ);
+                    Check.True(
+                        MathF.Abs(expectedFacing - updateA.Monster.Facing) < 0.00001f,
+                        "arrival facing is atan2(dx,dz)");
+                }
+            }
+
+            var snapshotA = runtimeA.Snapshot().Single();
+            var snapshotB = runtimeB.Snapshot().Single();
+            Check.Equal(snapshotA.X, snapshotB.X, "deterministic current X");
+            Check.Equal(snapshotA.Z, snapshotB.Z, "deterministic current Z");
+            var homeDistance = Math.Sqrt(
+                Math.Pow(snapshotA.X - snapshotA.HomeX, 2) +
+                Math.Pow(snapshotA.Z - snapshotA.HomeZ, 2));
+            Check.True(
+                homeDistance <= MonsterMapRuntime.MaximumRoamRadius + 0.0001,
+                "every interpolated roaming position remains within eight units of home");
+        }
+
+        Check.True(starts >= 20 && arrivals >= 20, "bounded simulation exercises repeated roaming legs");
+        Check.True(
+            runtimeA.TryGetSnapshot(definition.ObjectId, out var current) && current.IsAlive && current.IsSpawned,
+            "runtime exposes the current live monster snapshot");
+        Check.True(
+            !runtimeA.TryGetSnapshot(99999, out _),
+            "runtime rejects an unknown monster snapshot");
+
+        var map = new MapInstance(0);
+        var sharedRuntime = map.InitializeMonsters([definition], initializedAt);
+        var ignoredDefinition = CreateCapturedMonster(
+            10002,
+            definition.X + 10,
+            definition.Z + 10,
+            "A_normal_stub_003");
+        var sameRuntime = map.InitializeMonsters([ignoredDefinition], initializedAt + TimeSpan.FromMinutes(1));
+        Check.True(ReferenceEquals(sharedRuntime, sameRuntime), "map monster runtime initializes exactly once");
+        Check.True(
+            map.TryGetMonsterSnapshot(definition.ObjectId, out _) &&
+            !map.TryGetMonsterSnapshot(ignoredDefinition.ObjectId, out _),
+            "all viewers share the first authoritative map monster set");
+
+        var lifecycle = new MonsterMapRuntime(0, [definition], initializedAt);
+        var lethalAt = initializedAt + TimeSpan.FromSeconds(21);
+        var movementStart = lifecycle.Advance(lethalAt);
+        Check.True(
+            movementStart.Updates.Any(update => update.Kind == MonsterRuntimeUpdateKind.Started),
+            "lifecycle fixture kills a monster during an active roaming leg");
+        Check.True(
+            lifecycle.TryApplyDamage(
+                definition.ObjectId,
+                1_000,
+                lethalAt,
+                out var damageResult),
+            "atomic damage resolves a known monster");
+        Check.Equal(237u, damageResult.BeforeHealth, "lethal damage before HP");
+        Check.Equal(0u, damageResult.AfterHealth, "lethal damage after HP");
+        var lethalPacket = PacketBuilder.SkillDamage(1, definition.ObjectId, 0, 1_000, 0, definition.X, definition.Z);
+        Check.Equal(1_000u, ReadUInt32(lethalPacket, 16), "lethal packet keeps raw damage above remaining HP");
+        Check.True(
+            damageResult.Killed &&
+            !damageResult.Monster.IsAlive &&
+            damageResult.Monster.IsSpawned &&
+            !damageResult.Monster.IsMoving,
+            "death atomically stops roaming but retains the corpse");
+
+        var deathTick = lifecycle.Advance(lethalAt);
+        Check.True(
+            deathTick.Updates.Select(update => update.Kind).SequenceEqual([MonsterRuntimeUpdateKind.Died]),
+            "death emits exactly one immediate state event");
+        lifecycle.Advance(lethalAt + TimeSpan.FromMilliseconds(4_999));
+        Check.True(
+            lifecycle.TryGetSnapshot(definition.ObjectId, out var corpse) && corpse.IsSpawned && !corpse.IsAlive,
+            "corpse remains spawned until five seconds");
+        var despawnTick = lifecycle.Advance(lethalAt + TimeSpan.FromSeconds(5));
+        Check.True(
+            despawnTick.Updates.Select(update => update.Kind).SequenceEqual([MonsterRuntimeUpdateKind.Despawned]),
+            "corpse emits a despawn event at five seconds");
+        Check.True(
+            lifecycle.TryGetSnapshot(definition.ObjectId, out var despawned) && !despawned.IsSpawned,
+            "despawned corpse leaves monster visibility");
+        lifecycle.Advance(lethalAt + TimeSpan.FromMilliseconds(9_999));
+        Check.True(
+            lifecycle.TryGetSnapshot(definition.ObjectId, out var waiting) && !waiting.IsSpawned,
+            "monster remains absent before the ten-second respawn");
+        var respawnTick = lifecycle.Advance(lethalAt + TimeSpan.FromSeconds(10));
+        Check.True(
+            respawnTick.Updates.Select(update => update.Kind).SequenceEqual([MonsterRuntimeUpdateKind.Respawned]),
+            "monster emits a respawn event at ten seconds");
+        var respawned = respawnTick.Updates.Single().Monster;
+        Check.True(respawned.IsAlive && respawned.IsSpawned, "respawn restores live spawned state");
+        Check.Equal(respawned.MaximumHealth, respawned.CurrentHealth, "respawn restores full HP");
+        Check.Equal(respawned.HomeX, respawned.X, "respawn returns to home X");
+        Check.Equal(respawned.HomeZ, respawned.Z, "respawn returns to home Z");
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckMonsterViewerRegistryAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+
+        try
+        {
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var nearOutbound = new TcpClient();
+            var nearAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
+            await nearOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
+            using var nearInbound = await nearAcceptTask;
+            await using var nearSession = new ClientSession(nearOutbound);
+
+            using var farOutbound = new TcpClient();
+            var farAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
+            await farOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
+            using var farInbound = await farAcceptTask;
+            await using var farSession = new ClientSession(farOutbound);
+
+            var nearCharacter = CreateCharacter();
+            nearCharacter.CurrentMap = 0;
+            nearCharacter.PositionX = 100;
+            nearCharacter.PositionZ = 100;
+            var farCharacter = CreateCharacter();
+            farCharacter.Id += 1;
+            farCharacter.AccountId += 1;
+            farCharacter.Name = "FarViewer";
+            farCharacter.CurrentMap = 0;
+            farCharacter.PositionX = 500;
+            farCharacter.PositionZ = 500;
+
+            var monster = CreateCapturedMonster(
+                10038,
+                nearCharacter.PositionX + 1,
+                nearCharacter.PositionZ + 1,
+                "A_normal_stub_001");
+            var registry = new GameSessionRegistry();
+            registry.InitializeMapMonsters(
+                nearCharacter.CurrentMap,
+                [monster],
+                new DateTimeOffset(2026, 5, 12, 17, 56, 0, TimeSpan.FromHours(12)));
+            registry.JoinMap(
+                nearSession,
+                nearCharacter.AccountId,
+                nearCharacter,
+                WorldObjectIds.ForPlayer(nearCharacter.Id));
+            registry.JoinMap(
+                farSession,
+                farCharacter.AccountId,
+                farCharacter,
+                WorldObjectIds.ForPlayer(farCharacter.Id));
+
+            await using (var nearTransition =
+                         await registry.BeginMonsterVisibilityTransitionAsync(
+                             nearSession,
+                             nearCharacter.CurrentMap,
+                             nearCharacter.PositionX,
+                             nearCharacter.PositionZ,
+                             timeout.Token)
+                         ?? throw new InvalidOperationException("near monster transition was unavailable"))
+            {
+                Check.True(
+                    nearTransition.Delta.Entering.Select(entry => entry.ObjectId).SequenceEqual([monster.ObjectId]),
+                    "near viewer receives the monster AOI entry");
+                Check.True(
+                    !registry.IsMonsterVisibleTo(nearSession, monster.ObjectId),
+                    "monster AOI is uncommitted before its appearance send");
+                nearTransition.Commit();
+            }
+
+            await using (var farTransition =
+                         await registry.BeginMonsterVisibilityTransitionAsync(
+                             farSession,
+                             farCharacter.CurrentMap,
+                             farCharacter.PositionX,
+                             farCharacter.PositionZ,
+                             timeout.Token)
+                         ?? throw new InvalidOperationException("far monster transition was unavailable"))
+            {
+                Check.Equal(0, farTransition.Delta.Entering.Count, "far viewer receives no monster AOI entry");
+                farTransition.Commit();
+            }
+
+            Check.True(
+                registry.IsMonsterVisibleTo(nearSession, monster.ObjectId) &&
+                !registry.IsMonsterVisibleTo(farSession, monster.ObjectId),
+                "committed monster visibility differs per viewer");
+            var marker = PacketBuilder.MonsterLifecycleMarker(monster.ObjectId);
+            var recipients = await registry.BroadcastToMonsterViewersAsync(
+                nearCharacter.CurrentMap,
+                monster.ObjectId,
+                marker,
+                timeout.Token,
+                label: "MonsterViewerScopeCheck");
+            Check.Equal(1, recipients, "monster broadcast reaches only committed AOI viewers");
+            var received = new byte[marker.Length];
+            await nearInbound.GetStream().ReadExactlyAsync(received, timeout.Token);
+            Check.Equal(0, farInbound.Available, "far viewer receives no monster broadcast bytes");
+            Check.Equal(
+                0,
+                await registry.BroadcastToMonsterViewersAsync(
+                    nearCharacter.CurrentMap,
+                    monster.ObjectId,
+                    marker,
+                    timeout.Token,
+                    excludeSession: nearSession),
+                "monster broadcast exclusion can omit the only visible viewer");
+
+            await using (var leavingTransition =
+                         await registry.BeginMonsterVisibilityTransitionAsync(
+                             nearSession,
+                             nearCharacter.CurrentMap,
+                             nearCharacter.PositionX + 200,
+                             nearCharacter.PositionZ + 200,
+                             timeout.Token)
+                         ?? throw new InvalidOperationException("leaving monster transition was unavailable"))
+            {
+                Check.True(
+                    leavingTransition.Delta.Leaving.SequenceEqual([monster.ObjectId]),
+                    "viewer movement produces the monster AOI leave");
+                Check.True(
+                    registry.IsMonsterVisibleTo(nearSession, monster.ObjectId),
+                    "monster remains visible until its removal send commits");
+                leavingTransition.Commit();
+            }
+
+            Check.True(
+                !registry.IsMonsterVisibleTo(nearSession, monster.ObjectId),
+                "monster removal commit updates combat AOI scope");
+            registry.Remove(nearSession);
+            registry.Remove(farSession);
+        }
+        finally
+        {
+            listener.Stop();
+        }
     }
 
     private static NpcSpawnDefinition CreateNpcDefinition(uint objectId, float x, float z)
