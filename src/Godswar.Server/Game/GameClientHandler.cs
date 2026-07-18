@@ -40,6 +40,7 @@ internal sealed class GameClientHandler : IClientHandler
     private byte[]? _lastSkillCastPacket;
     private bool _positionDirty;
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
+    private NpcVisibilityTracker? _npcVisibility;
 
     public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
     {
@@ -134,7 +135,10 @@ internal sealed class GameClientHandler : IClientHandler
             case Opcodes.Walk:
                 if (packet.Opcode == Opcodes.Walk)
                 {
-                    await HandleWalkAsync(packet, cancellationToken);
+                    if (!await HandleWalkAsync(packet, cancellationToken))
+                    {
+                        break;
+                    }
                 }
                 else if (packet.Opcode == Opcodes.WalkEnd)
                 {
@@ -423,17 +427,10 @@ internal sealed class GameClientHandler : IClientHandler
             _mapNpcsByInteractionId[npc.InteractionId] = npc;
         }
 
-        var packet = PacketBuilder.NpcSpawns(npcDefinitions);
-
-        if (packet.Length > 0)
-        {
-            Console.WriteLine($"[npc] sending authoritative NPC stream character={_character.Name} map={_character.CurrentMap} count={npcDefinitions.Count} bytes={packet.Length}");
-            await _session.SendAsync(packet, cancellationToken, "MapNpcSpawns", framed: false);
-        }
-        else
-        {
-            Console.WriteLine($"[npc] no NPC stream available character={_character.Name} map={_character.CurrentMap}");
-        }
+        _npcVisibility = new NpcVisibilityTracker(npcDefinitions);
+        Console.WriteLine(
+            $"[npc] loaded map definitions character={_character.Name} map={_character.CurrentMap} count={npcDefinitions.Count}");
+        await RefreshNearbyNpcsAsync("initial", cancellationToken);
 
         await SendCapturedMonstersAsync(cancellationToken);
         await SendMapPlayersAsync(cancellationToken);
@@ -615,7 +612,9 @@ internal sealed class GameClientHandler : IClientHandler
     {
         if (_character is not null &&
             _mapNpcsByInteractionId.TryGetValue(interactionId, out var candidate) &&
-            candidate.MapId == _character.CurrentMap)
+            candidate.MapId == _character.CurrentMap &&
+            _npcVisibility is not null &&
+            _npcVisibility.IsVisible(candidate.ObjectId))
         {
             npc = candidate;
             return true;
@@ -623,6 +622,45 @@ internal sealed class GameClientHandler : IClientHandler
 
         npc = default!;
         return false;
+    }
+
+    private async Task RefreshNearbyNpcsAsync(
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null ||
+            _npcVisibility is null ||
+            !_npcVisibility.TryCalculate(
+                _character.PositionX,
+                _character.PositionZ,
+                out var delta))
+        {
+            return;
+        }
+
+        if (delta.Leaving.Count > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.RemoveWorldObjects(delta.Leaving.ToArray()),
+                cancellationToken,
+                "NearbyNpcRemovals");
+        }
+
+        if (delta.Entering.Count > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcSpawns(delta.Entering),
+                cancellationToken,
+                "NearbyNpcSpawns",
+                framed: false);
+        }
+
+        _npcVisibility.Commit(delta);
+        if (delta.Entering.Count > 0 || delta.Leaving.Count > 0 || reason == "initial")
+        {
+            Console.WriteLine(
+                $"[npc] visibility reason={reason} character={_character.Name} map={_character.CurrentMap} cell={delta.PlayerCell.X},{delta.PlayerCell.Z} x={_character.PositionX:F2} z={_character.PositionZ:F2} entered={delta.Entering.Count} left={delta.Leaving.Count}");
+        }
     }
 
     private static bool IsHolyStoneArtisan(NpcSpawnDefinition npc)
@@ -649,19 +687,21 @@ internal sealed class GameClientHandler : IClientHandler
         await _session.SendAsync(packet, cancellationToken, "CapturedMonsterSpawns", framed: false);
     }
 
-    private async Task HandleWalkAsync(GamePacket packet, CancellationToken cancellationToken)
+    private async Task<bool> HandleWalkAsync(GamePacket packet, CancellationToken cancellationToken)
     {
-        if (_character is null)
+        if (_character is null || !UpdateCharacterPositionFromWalk(packet))
         {
-            return;
+            return false;
         }
 
-        UpdateCharacterPositionFromWalk(packet);
+        await RefreshNearbyNpcsAsync("walk", cancellationToken);
         await PersistCharacterPositionAsync(force: false, cancellationToken);
         if (EnableExperimentalMonsterSpawns && (DateTime.UtcNow - _lastMonsterSpawnUtc) >= TimeSpan.FromSeconds(5))
         {
             await SendNearbyMonstersAsync(cancellationToken);
         }
+
+        return true;
     }
 
     private async Task HandleSkillCastAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -1281,17 +1321,27 @@ internal sealed class GameClientHandler : IClientHandler
         Console.WriteLine($"[stats] refreshed reason={reason} character={character.Name} {stats.ToLogSummary()}");
     }
 
-    private void UpdateCharacterPositionFromWalk(GamePacket packet)
+    private bool UpdateCharacterPositionFromWalk(GamePacket packet)
     {
         if (_character is null || packet.Payload.Length < 12)
         {
-            return;
+            return false;
         }
 
-        _character.PositionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
-        _character.PositionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
+        var positionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
+        var positionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
+        if (!NpcVisibilityTracker.TryGetCell(positionX, positionZ, out _))
+        {
+            Console.WriteLine(
+                $"[world] ignored invalid walk position character={_character.Name} x={positionX} z={positionZ}");
+            return false;
+        }
+
+        _character.PositionX = positionX;
+        _character.PositionZ = positionZ;
         _positionDirty = true;
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        return true;
     }
 
     private async Task PersistCharacterPositionAsync(bool force, CancellationToken cancellationToken)

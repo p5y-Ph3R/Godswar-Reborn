@@ -51,6 +51,7 @@ Implemented:
 - Two-client world synchronization using server-built remote-player spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets
 - World presence registration only after both the client-ready signal and the player-detail exchange have completed, so other sessions do not see a partially initialized character
 - Server-built static NPC definitions assembled from validated captured spawns, normalized NPC appearance/position references, and same-number capital-city fallbacks when a reference has no position
+- Movement-driven NPC visibility matching the working server's `32x32` world sectors: each client receives only its current sector and the eight neighboring sectors, with remove/spawn diffs when crossing a boundary
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
 
 The multiplayer and NPC synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.

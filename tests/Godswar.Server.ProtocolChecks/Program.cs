@@ -26,6 +26,7 @@ internal static class Program
             ("PlayerInspectEquipment extended slots", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
+            ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
@@ -260,6 +261,93 @@ internal static class Program
             "detail 10080 follows captured NPC appearance");
         CheckNpcSpawnFrame(stream, athensOffset, athensArtisan);
         return Task.CompletedTask;
+    }
+
+    private static Task CheckNpcMovementCellVisibilityAsync()
+    {
+        var nearEast = CreateNpcDefinition(6001, 124.5f, -149f);
+        var nextSouthRow = CreateNpcDefinition(6002, 64f, -165f);
+        var oldNorthRow = CreateNpcDefinition(6003, 85f, -116f);
+        var farAway = CreateNpcDefinition(6004, 10f, 10f);
+        var tracker = new NpcVisibilityTracker(
+            [nearEast, nextSouthRow, oldNorthRow, farAway]);
+
+        Check.True(
+            NpcVisibilityTracker.TryGetCell(-0.1f, -32f, out var negativeCell),
+            "negative coordinates produce a valid NPC cell");
+        Check.Equal(new NpcGridCell(-1, -1), negativeCell, "NPC cells use floor for negatives");
+        Check.True(
+            !NpcVisibilityTracker.TryGetCell(float.NaN, 0f, out _),
+            "non-finite positions are rejected");
+        Check.True(
+            !NpcVisibilityTracker.TryGetCell(float.MaxValue, 0f, out _),
+            "finite positions outside the grid range are rejected");
+
+        Check.True(
+            tracker.TryCalculate(85f, -119f, out var initial),
+            "initial captured position resolves a visibility cell");
+        Check.Equal(new NpcGridCell(2, -4), initial.PlayerCell, "initial captured player cell");
+        Check.True(
+            initial.Entering.Select(npc => npc.ObjectId).SequenceEqual([6001u, 6003u]),
+            "initial 3x3 cell window contains only nearby NPCs");
+        Check.Equal(0, initial.Leaving.Count, "initial visibility removes nothing");
+        Check.True(!tracker.IsVisible(6001), "visibility is not committed before packets are sent");
+        tracker.Commit(initial);
+        Check.True(tracker.IsVisible(6001) && tracker.IsVisible(6003), "initial NPCs commit as visible");
+        Check.True(!tracker.IsVisible(6002) && !tracker.IsVisible(6004), "outside NPCs remain hidden");
+
+        Check.True(
+            tracker.TryCalculate(92f, -127.9f, out var sameCell),
+            "movement inside one cell is accepted");
+        Check.Equal(0, sameCell.Entering.Count, "same-cell movement spawns nothing");
+        Check.Equal(0, sameCell.Leaving.Count, "same-cell movement removes nothing");
+
+        Check.True(
+            tracker.TryCalculate(92f, -129f, out var southCrossing),
+            "south cell crossing is accepted");
+        Check.Equal(new NpcGridCell(2, -5), southCrossing.PlayerCell, "south crossing player cell");
+        Check.True(
+            southCrossing.Entering.Select(npc => npc.ObjectId).SequenceEqual([6002u]),
+            "new southern NPC row enters after crossing z=-128");
+        Check.Equal(0, southCrossing.Leaving.Count, "first south crossing keeps overlapping rows");
+        Check.True(!tracker.IsVisible(6002), "new row waits for successful spawn send");
+        tracker.Commit(southCrossing);
+
+        Check.True(
+            tracker.TryCalculate(92f, -161f, out var secondSouthCrossing),
+            "second south cell crossing is accepted");
+        Check.True(
+            secondSouthCrossing.Leaving.SequenceEqual([6003u]),
+            "old northern NPC row leaves after crossing z=-160");
+        Check.Equal(0, secondSouthCrossing.Entering.Count, "second crossing has no synthetic entries");
+        Check.True(tracker.IsVisible(6003), "old row waits for successful remove send");
+
+        var removePacket = PacketBuilder.RemoveWorldObjects(secondSouthCrossing.Leaving.ToArray());
+        Check.Equal((ushort)12, ReadUInt16(removePacket, 0), "single NPC remove packet length");
+        Check.Equal((ushort)10024, ReadUInt16(removePacket, 2), "NPC remove opcode");
+        Check.Equal(1u, ReadUInt32(removePacket, 4), "NPC remove count");
+        Check.Equal(6003u, ReadUInt32(removePacket, 8), "NPC remove uses object ID");
+        tracker.Commit(secondSouthCrossing);
+        Check.True(!tracker.IsVisible(6003), "old row commits as hidden");
+
+        return Task.CompletedTask;
+    }
+
+    private static NpcSpawnDefinition CreateNpcDefinition(uint objectId, float x, float z)
+    {
+        return new NpcSpawnDefinition(
+            0,
+            "Sparta",
+            $"Sparta_Test_{objectId}",
+            $"Sparta_Test_{objectId}_Male1",
+            objectId,
+            x,
+            z,
+            objectId,
+            NpcSpawnDefinitionFactory.DefaultAppearanceType,
+            NpcSpawnDefinitionFactory.DefaultFacing,
+            [],
+            []);
     }
 
     private static async Task CheckMapRegistryWorldReadinessAsync()
