@@ -7,7 +7,7 @@ internal static class PacketBuilder
 {
     private const int EnterPlayerDatabaseIdOffset = 4;
     private const int CharacterNameOffsetInEnterTemplate = 8;
-    private const int EnterLevelOffset = 96;
+    private const int EnterTalentExperienceOffset = 96;
     private const int EnterTalentPointsOffset = 92;
     private const int EnterPlayerObjectIdOffset = 52;
     private const int EnterPositionXOffset = 56;
@@ -60,11 +60,13 @@ internal static class PacketBuilder
     private const ushort SkillDamageOpcode = 0x273D;
     private const ushort SkillCastImpactOpcode = 0x273E;
     private const ushort PhysicalDamageOpcode = 0x272A;
+    private const ushort MonsterDeathRewardOpcode = 0x272B;
     private const ushort PlayerDeathOpcode = 0x2722;
     private const ushort PlayerLevelUpOpcode = 0x272E;
     private const ushort ExperienceGainOpcode = 0x272F;
     private const ushort AttributeGainOpcode = 0x2845;
     private const ushort PlayerManaUpdateOpcode = 0x2797;
+    private const ushort PlayerVitalsUpdateOpcode = 0x2771;
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
@@ -906,11 +908,38 @@ internal static class PacketBuilder
         var packet = new byte[13];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), ExperienceGainOpcode);
-        // The client displays +8 as the gained delta. +4 is the resulting
-        // fighter EXP total; both happened to be 80 in the first-kill capture.
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), Math.Max(0, currentExperience));
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, gainedExperience));
+        // This client reads +4 only for its "Get EXP" toast. The first working
+        // capture had equal gained/current values, which previously hid this.
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), Math.Max(0, gainedExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, currentExperience));
         packet[12] = result;
+        return packet;
+    }
+
+    public static byte[] MonsterDeathReward(
+        uint monsterObjectId,
+        uint playerObjectId,
+        int currentExperience,
+        int currentTalentExperience,
+        int currentTalentPoints)
+    {
+        const int partySlots = 5;
+        var packet = new byte[116];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), MonsterDeathRewardOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), monsterObjectId);
+
+        for (var index = 0; index < partySlots; index++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(8 + (index * sizeof(int)), sizeof(int)),
+                index == 0 ? unchecked((int)playerObjectId) : -1);
+        }
+
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(48, 4), Math.Max(0, currentExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(68, 4), Math.Max(0, currentTalentExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(88, 4), Math.Max(0, currentTalentPoints));
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(108, 4), monsterObjectId);
         return packet;
     }
 
@@ -956,6 +985,17 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerManaUpdateOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, currentMp));
+        return packet;
+    }
+
+    public static byte[] PlayerVitalsUpdate(uint playerObjectId, int currentHp, int currentMp)
+    {
+        var packet = new byte[16];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerVitalsUpdateOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), playerObjectId);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, currentHp));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(12, 4), Math.Max(0, currentMp));
         return packet;
     }
 
@@ -1457,7 +1497,9 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(EnterNextLevelExperienceOffset, 4),
             PlayerExperienceCatalog.GetNextLevelExperience(character.Level));
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterLevelOffset, 4), character.Level);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(EnterTalentExperienceOffset, 4),
+            character.TalentExperience);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterTalentPointsOffset, 4), character.TalentPoints);
         PacketText.WriteFixedAscii(packet.AsSpan(CharacterNameOffsetInEnterTemplate, 32), character.Name);
 
@@ -2085,6 +2127,11 @@ internal static class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 52, 4), ToClientProfessionByte(character.Profession));
         }
 
+        if (packet.Length >= fieldBase + 60)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 56, 4), character.Experience);
+        }
+
         if (packet.Length >= fieldBase + 64)
         {
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 60, 4), character.Level);
@@ -2104,8 +2151,12 @@ internal static class PacketBuilder
 
         if (packet.Length >= fieldBase + 152 && character.CalculatedStats is { } stats)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 112, 4), stats.PhysicalAttack);
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 116, 4), stats.PhysicalDefense);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(fieldBase + 112, 4),
+                PlayerRecoveryCatalog.GetTotalHp(character));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(fieldBase + 116, 4),
+                PlayerRecoveryCatalog.GetTotalMp(character));
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 120, 4), stats.PhysicalAttack);
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 124, 4), stats.PhysicalDefense);
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 128, 4), stats.MagicAttack);

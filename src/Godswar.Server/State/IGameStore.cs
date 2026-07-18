@@ -21,6 +21,7 @@ internal interface IGameStore : IAsyncDisposable
         int characterId,
         int currentHp,
         int currentMp,
+        long vitalsRevision,
         CancellationToken cancellationToken = default);
 
     Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(

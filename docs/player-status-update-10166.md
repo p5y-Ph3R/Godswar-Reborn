@@ -24,10 +24,10 @@ Known fields:
 108-111 i32   current_mp                 11732
 144-147 i32   max_hp                     43023
 148-151 i32   max_mp                     11732
-152-155 i32   physical_attack            7624
-156-159 i32   physical_defense           3344
-160-163 i32   physical_attack_duplicate  7624
-164-167 i32   physical_defense_duplicate 3344
+152-155 i32   hp_recovery                7624
+156-159 i32   mp_recovery                3344
+160-163 i32   physical_attack            7624
+164-167 i32   physical_defense           3344
 168-171 i32   magic_attack               1965
 172-175 i32   magic_defense              1290
 176-179 i32   hit                        751

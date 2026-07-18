@@ -4,6 +4,9 @@ namespace Godswar.Server.State;
 
 internal sealed class GameCharacter
 {
+    [JsonIgnore]
+    internal object VitalsSync { get; } = new();
+
     public int Id { get; set; }
 
     public int AccountId { get; set; }
@@ -36,6 +39,8 @@ internal sealed class GameCharacter
 
     public int CurrentMp { get; set; } = 177;
 
+    public long VitalsRevision { get; set; }
+
     public int TalentPoints { get; set; } = 10;
 
     public int TalentExperience { get; set; }
@@ -62,4 +67,10 @@ internal sealed class GameCharacter
 
     [JsonIgnore]
     public CharacterStats? CalculatedStats { get; set; }
+
+    internal long MarkVitalsChanged()
+    {
+        VitalsRevision = checked(VitalsRevision + 1);
+        return VitalsRevision;
+    }
 }

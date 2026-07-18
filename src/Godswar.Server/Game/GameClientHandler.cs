@@ -865,8 +865,12 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         GameDefaults.InitializeStartingLocation(_character);
-        _character.CurrentHp = Math.Max(1, _character.MaxHp / 10);
-        _character.CurrentMp = Math.Max(0, _character.MaxMp / 10);
+        lock (_character.VitalsSync)
+        {
+            _character.CurrentHp = Math.Max(1, _character.MaxHp / 10);
+            _character.CurrentMp = Math.Max(0, _character.MaxMp / 10);
+            _character.MarkVitalsChanged();
+        }
         _positionDirty = false;
         _lastPositionPersistUtc = DateTime.UtcNow;
 
@@ -878,11 +882,22 @@ internal sealed class GameClientHandler : IClientHandler
             _character.PositionX,
             _character.PositionZ,
             cancellationToken);
+        int revivedHp;
+        int revivedMp;
+        long revivedVitalsRevision;
+        lock (_character.VitalsSync)
+        {
+            revivedHp = _character.CurrentHp;
+            revivedMp = _character.CurrentMp;
+            revivedVitalsRevision = _character.VitalsRevision;
+        }
+
         await _store.SaveCharacterVitalsAsync(
             accountId,
             _character.Id,
-            _character.CurrentHp,
-            _character.CurrentMp,
+            revivedHp,
+            revivedMp,
+            revivedVitalsRevision,
             cancellationToken);
     }
 
@@ -1069,12 +1084,29 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var manaCost = Math.Max(0, combat.Mp);
-        if (_character.CurrentMp < manaCost)
+        int currentMana;
+        var manaReserved = false;
+        lock (_character.VitalsSync)
+        {
+            currentMana = _character.CurrentMp;
+            if (currentMana >= manaCost)
+            {
+                _character.CurrentMp = currentMana - manaCost;
+                currentMana = _character.CurrentMp;
+                if (manaCost > 0)
+                {
+                    _character.MarkVitalsChanged();
+                }
+                manaReserved = true;
+            }
+        }
+
+        if (!manaReserved)
         {
             Console.WriteLine(
-                $"[skill] rejected insufficient MP character={_character.Name} skill={cast.SkillId} mp={_character.CurrentMp} cost={manaCost}");
+                $"[skill] rejected insufficient MP character={_character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
             await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, _character.CurrentMp),
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
                 cancellationToken,
                 "SkillManaRejected");
             return;
@@ -1090,12 +1122,48 @@ internal sealed class GameClientHandler : IClientHandler
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
+            if (manaCost > 0)
+            {
+                int refundedHp;
+                long refundedVitalsRevision;
+                lock (_character.VitalsSync)
+                {
+                    _character.CurrentMp = Math.Min(
+                        Math.Max(0, _character.MaxMp),
+                        (int)Math.Min(int.MaxValue, (long)_character.CurrentMp + manaCost));
+                    _character.MarkVitalsChanged();
+                    refundedHp = _character.CurrentHp;
+                    currentMana = _character.CurrentMp;
+                    refundedVitalsRevision = _character.VitalsRevision;
+                }
+
+                try
+                {
+                    await _store.SaveCharacterVitalsAsync(
+                        _account?.Id ?? _character.AccountId,
+                        _character.Id,
+                        refundedHp,
+                        currentMana,
+                        refundedVitalsRevision,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Console.WriteLine(
+                        $"[skill] refunded vitals persistence deferred character={_character.Name}: {ex.Message}");
+                }
+
+                await _session.SendAsync(
+                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                    cancellationToken,
+                    "SkillManaRefund");
+            }
+
             Console.WriteLine(
                 $"[skill] rejected stale monster target character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
             return;
         }
 
-        _character.CurrentMp -= manaCost;
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
 
         var appliedDamage = damageResult.BeforeHealth - damageResult.AfterHealth;
@@ -1137,8 +1205,13 @@ internal sealed class GameClientHandler : IClientHandler
                 "SkillCastImpactSelf");
             if (manaCost > 0)
             {
+                lock (_character.VitalsSync)
+                {
+                    currentMana = _character.CurrentMp;
+                }
+
                 await _session.SendAsync(
-                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, _character.CurrentMp),
+                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
                     cancellationToken,
                     "SkillManaSelf");
             }
@@ -1196,11 +1269,22 @@ internal sealed class GameClientHandler : IClientHandler
         {
             try
             {
+                int currentHp;
+                int currentMp;
+                long vitalsRevision;
+                lock (_character.VitalsSync)
+                {
+                    currentHp = _character.CurrentHp;
+                    currentMp = _character.CurrentMp;
+                    vitalsRevision = _character.VitalsRevision;
+                }
+
                 await _store.SaveCharacterVitalsAsync(
                     _account.Id,
                     _character.Id,
-                    _character.CurrentHp,
-                    _character.CurrentMp,
+                    currentHp,
+                    currentMp,
+                    vitalsRevision,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1212,8 +1296,13 @@ internal sealed class GameClientHandler : IClientHandler
             }
         }
 
+        lock (_character.VitalsSync)
+        {
+            currentMana = _character.CurrentMp;
+        }
+
         Console.WriteLine(
-            $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={_character.CurrentMp}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+            $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
     }
 
     private async Task AwardMonsterKillAsync(
@@ -1228,6 +1317,12 @@ internal sealed class GameClientHandler : IClientHandler
         var reward = MonsterRewardCatalog.Resolve(damageResult.Monster, _character.Level);
         if (reward.Experience == 0 && reward.TalentExperience == 0)
         {
+            await SendMonsterDeathProgressionAsync(
+                damageResult.ObjectId,
+                _character.Experience,
+                _character.TalentExperience,
+                _character.TalentPoints,
+                cancellationToken);
             Console.WriteLine(
                 $"[reward] no eligible reward character={_character.Name} level={_character.Level} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier}");
             return;
@@ -1275,11 +1370,15 @@ internal sealed class GameClientHandler : IClientHandler
                     // The killing skill's MP cost is persisted after this reward
                     // sequence. Refresh derived maxima without restoring the
                     // older database vitals and accidentally refunding that cost.
-                    var currentHp = _character.CurrentHp;
-                    var currentMp = _character.CurrentMp;
-                    refreshedStats.ApplyTo(_character);
-                    _character.CurrentHp = Math.Clamp(currentHp, 0, _character.MaxHp);
-                    _character.CurrentMp = Math.Clamp(currentMp, 0, _character.MaxMp);
+                    lock (_character.VitalsSync)
+                    {
+                        var currentHp = _character.CurrentHp;
+                        var currentMp = _character.CurrentMp;
+                        refreshedStats.ApplyTo(_character);
+                        _character.CurrentHp = Math.Clamp(currentHp, 0, _character.MaxHp);
+                        _character.CurrentMp = Math.Clamp(currentMp, 0, _character.MaxMp);
+                        _character.MarkVitalsChanged();
+                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1329,6 +1428,10 @@ internal sealed class GameClientHandler : IClientHandler
                     progression.CurrentExperience),
                 cancellationToken,
                 "MonsterKillExperience");
+            await _session.SendAsync(
+                PacketBuilder.PlayerStatusUpdate(_character),
+                cancellationToken,
+                "MonsterKillProgressionStatus");
         }
 
         if (progression.TalentExperienceGained > 0)
@@ -1338,6 +1441,13 @@ internal sealed class GameClientHandler : IClientHandler
                 cancellationToken,
                 "MonsterKillTalentExperience");
         }
+
+        await SendMonsterDeathProgressionAsync(
+            damageResult.ObjectId,
+            progression.CurrentExperience,
+            progression.CurrentTalentExperience,
+            progression.CurrentTalentPoints,
+            cancellationToken);
 
         if (progression.TalentPointsGained > 0)
         {
@@ -1349,6 +1459,42 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier} level={progression.PreviousLevel}->{progression.CurrentLevel} exp=+{progression.ExperienceGained}->{progression.CurrentExperience}/{progression.NextLevelExperience} talent-exp=+{progression.TalentExperienceGained}->{progression.CurrentTalentExperience} talent-points=+{progression.TalentPointsGained}->{progression.CurrentTalentPoints}");
+    }
+
+    private async Task SendMonsterDeathProgressionAsync(
+        uint monsterObjectId,
+        int currentExperience,
+        int currentTalentExperience,
+        int currentTalentPoints,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.MonsterDeathReward(
+                monsterObjectId,
+                LocalPlayerObjectId,
+                currentExperience,
+                currentTalentExperience,
+                currentTalentPoints),
+            cancellationToken,
+            "MonsterKillProgressionRefresh");
+
+        await _registry.BroadcastToMonsterViewersAsync(
+            _character.CurrentMap,
+            monsterObjectId,
+            PacketBuilder.MonsterDeathReward(
+                monsterObjectId,
+                WorldObjectIds.ForPlayer(_character.Id),
+                currentExperience,
+                currentTalentExperience,
+                currentTalentPoints),
+            cancellationToken,
+            _session,
+            "MonsterKillProgressionRefreshWorld");
     }
 
     private async Task<bool> IsSkillLearnedAsync(uint skillId, CancellationToken cancellationToken)
@@ -2635,7 +2781,7 @@ internal sealed class GameClientHandler : IClientHandler
         return sourceSlot is >= 0 and < 96 && itemId != 0;
     }
 
-    private static bool TryReadTalentUpgrade(
+    internal static bool TryReadTalentUpgrade(
         ReadOnlySpan<byte> payload,
         out int talentId,
         out int clientRank,
@@ -2653,7 +2799,7 @@ internal sealed class GameClientHandler : IClientHandler
         talentId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
         clientRank = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(8, 4));
         clientTalentPoints = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16, 4));
-        return talentId > 0 && clientRank >= 0 && clientTalentPoints >= 0;
+        return talentId >= 0 && clientRank >= 0 && clientTalentPoints >= 0;
     }
 
     private static bool TryReadItemInfoRequest(

@@ -8,10 +8,13 @@ namespace Godswar.Server.Game;
 internal sealed class GameSessionRegistry
 {
     private const uint LocalPlayerObjectId = 0x00001448;
+    internal static readonly TimeSpan PlayerRecoveryInterval = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan PlayerRecoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
     private readonly ConcurrentDictionary<int, ClientSession> _accountSessions = [];
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
+    private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
     private readonly IGameStore? _store;
 
     public GameSessionRegistry(IGameStore? store = null)
@@ -47,6 +50,7 @@ internal sealed class GameSessionRegistry
 
             _sessions[session] = context;
             AddToMap(context);
+            _nextPlayerRecoveryAt[character.Id] = DateTimeOffset.UtcNow + PlayerRecoveryInterval;
         }
 
         if (previous is null)
@@ -70,6 +74,7 @@ internal sealed class GameSessionRegistry
             }
 
             RemoveFromMap(context);
+            _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
         }
 
         if (context is null)
@@ -467,6 +472,119 @@ internal sealed class GameSessionRegistry
         }
     }
 
+    public async Task RunPlayerRecoveryAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(PlayerRecoveryPollInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await AdvancePlayerRecoveryOnceAsync(DateTimeOffset.UtcNow, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal async Task AdvancePlayerRecoveryOnceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var recovered = new List<GameSessionContext>();
+        foreach (var snapshot in _sessions.Values)
+        {
+            lock (_gate)
+            {
+                if (!_sessions.TryGetValue(snapshot.Session, out var current) ||
+                    !current.WorldReady ||
+                    !_nextPlayerRecoveryAt.TryGetValue(current.CharacterId, out var nextRecoveryAt) ||
+                    now < nextRecoveryAt)
+                {
+                    continue;
+                }
+
+                _nextPlayerRecoveryAt[current.CharacterId] = now + PlayerRecoveryInterval;
+                if (PlayerRecoveryCatalog.TryApply(current.Character))
+                {
+                    recovered.Add(current);
+                }
+            }
+        }
+
+        foreach (var context in recovered)
+        {
+            var character = context.Character;
+            int currentHp;
+            int currentMp;
+            long vitalsRevision;
+            lock (character.VitalsSync)
+            {
+                currentHp = character.CurrentHp;
+                currentMp = character.CurrentMp;
+            }
+
+            try
+            {
+                await context.Session.SendAsync(
+                    PacketBuilder.PlayerVitalsUpdate(
+                        LocalPlayerObjectId,
+                        currentHp,
+                        currentMp),
+                    cancellationToken,
+                    "PlayerPassiveRecoverySelf");
+                await BroadcastToMapAsync(
+                    character.CurrentMap,
+                    PacketBuilder.PlayerVitalsUpdate(
+                        context.ObjectId,
+                        currentHp,
+                        currentMp),
+                    cancellationToken,
+                    context.Session,
+                    "PlayerPassiveRecoveryWorld");
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                Remove(context.Session);
+            }
+
+            if (_store is not null)
+            {
+                try
+                {
+                    lock (character.VitalsSync)
+                    {
+                        currentHp = character.CurrentHp;
+                        currentMp = character.CurrentMp;
+                        vitalsRevision = character.VitalsRevision;
+                    }
+
+                    await _store.SaveCharacterVitalsAsync(
+                        context.AccountId,
+                        context.CharacterId,
+                        currentHp,
+                        currentMp,
+                        vitalsRevision,
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Console.WriteLine(
+                        $"[recovery] vitals persistence deferred character={context.DisplayName}: {ex.Message}");
+                }
+            }
+
+            lock (character.VitalsSync)
+            {
+                currentHp = character.CurrentHp;
+                currentMp = character.CurrentMp;
+            }
+
+            Console.WriteLine(
+                $"[recovery] character={context.DisplayName} hp={currentHp}/{character.MaxHp} mp={currentMp}/{character.MaxMp}");
+        }
+    }
+
     internal async Task AdvanceMonsterWorldOnceAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -661,21 +779,32 @@ internal sealed class GameSessionRegistry
         {
             targetContext = map.Snapshot().FirstOrDefault(context =>
                 context.WorldReady && context.CharacterId == targetCharacterId);
-            if (targetContext is null || targetContext.Character.CurrentHp <= 0)
+            if (targetContext is null)
             {
-                targetContext = null;
                 damage = 0;
             }
             else
             {
-                damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
-                    attack.Monster.Definition.Tier,
-                    targetContext.Character);
-                var beforeHealth = targetContext.Character.CurrentHp;
-                targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
-                    ? 0
-                    : beforeHealth - (int)damage;
-                killed = targetContext.Character.CurrentHp == 0;
+                lock (targetContext.Character.VitalsSync)
+                {
+                    if (targetContext.Character.CurrentHp <= 0)
+                    {
+                        targetContext = null;
+                        damage = 0;
+                    }
+                    else
+                    {
+                        damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                            attack.Monster.Definition.Tier,
+                            targetContext.Character);
+                        var beforeHealth = targetContext.Character.CurrentHp;
+                        targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
+                            ? 0
+                            : beforeHealth - (int)damage;
+                        targetContext.Character.MarkVitalsChanged();
+                        killed = targetContext.Character.CurrentHp == 0;
+                    }
+                }
             }
         }
 
@@ -787,11 +916,22 @@ internal sealed class GameSessionRegistry
         {
             try
             {
+                int currentHp;
+                int currentMp;
+                long vitalsRevision;
+                lock (target.VitalsSync)
+                {
+                    currentHp = target.CurrentHp;
+                    currentMp = target.CurrentMp;
+                    vitalsRevision = target.VitalsRevision;
+                }
+
                 await _store.SaveCharacterVitalsAsync(
                     targetContext.AccountId,
                     targetContext.CharacterId,
-                    target.CurrentHp,
-                    target.CurrentMp,
+                    currentHp,
+                    currentMp,
+                    vitalsRevision,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

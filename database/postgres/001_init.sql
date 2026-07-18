@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS character_base (
     scholar_job_exp integer NOT NULL DEFAULT 0,
     "curHP" integer NOT NULL DEFAULT 1500,
     "curMP" integer NOT NULL DEFAULT 177,
+    vitals_revision bigint NOT NULL DEFAULT 0,
     status smallint NOT NULL DEFAULT 0,
     belief smallint NOT NULL DEFAULT 1,
     prestige integer NOT NULL DEFAULT 0,
@@ -212,6 +213,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_character_base_name ON character_base (name
 CREATE INDEX IF NOT EXISTS ix_character_base_account ON character_base (account_id);
 CREATE INDEX IF NOT EXISTS ix_character_base_server ON character_base (server_id);
 ALTER TABLE character_base ADD COLUMN IF NOT EXISTS holy_suit_points integer NOT NULL DEFAULT 0;
+ALTER TABLE character_base ADD COLUMN IF NOT EXISTS vitals_revision bigint NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS character_kitbag (
     user_id integer PRIMARY KEY REFERENCES character_base(id) ON DELETE CASCADE,

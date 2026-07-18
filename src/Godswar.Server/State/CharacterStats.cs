@@ -76,15 +76,19 @@ internal sealed class CharacterStats
 
     public void ApplyTo(GameCharacter character)
     {
-        character.MaxHp = Math.Max(1, MaxHp);
-        character.MaxMp = Math.Max(0, MaxMp);
-        character.CurrentHp = Math.Clamp(CurrentHp, 0, character.MaxHp);
-        character.CurrentMp = Math.Clamp(CurrentMp, 0, Math.Max(1, character.MaxMp));
-        character.WeaponRank = WeaponRank;
-        character.WeaponAuraEffect = WeaponAuraEffect;
-        character.ArmorRank = ArmorRank;
-        character.ArmorAuraEffect = ArmorAuraEffect;
-        character.CalculatedStats = this;
+        lock (character.VitalsSync)
+        {
+            character.MaxHp = Math.Max(1, MaxHp);
+            character.MaxMp = Math.Max(0, MaxMp);
+            character.CurrentHp = Math.Clamp(CurrentHp, 0, character.MaxHp);
+            character.CurrentMp = Math.Clamp(CurrentMp, 0, Math.Max(1, character.MaxMp));
+            character.WeaponRank = WeaponRank;
+            character.WeaponAuraEffect = WeaponAuraEffect;
+            character.ArmorRank = ArmorRank;
+            character.ArmorAuraEffect = ArmorAuraEffect;
+            character.CalculatedStats = this;
+            character.MarkVitalsChanged();
+        }
     }
 
     public string ToLogSummary()

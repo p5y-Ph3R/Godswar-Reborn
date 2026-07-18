@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -512,6 +513,7 @@ internal sealed class PostgresGameStore : IGameStore
             scholar_job_exp integer NOT NULL DEFAULT 0,
             "curHP" integer NOT NULL DEFAULT 1500,
             "curMP" integer NOT NULL DEFAULT 177,
+            vitals_revision bigint NOT NULL DEFAULT 0,
             status smallint NOT NULL DEFAULT 0,
             belief smallint NOT NULL DEFAULT 1,
             prestige integer NOT NULL DEFAULT 0,
@@ -542,6 +544,7 @@ internal sealed class PostgresGameStore : IGameStore
         CREATE INDEX IF NOT EXISTS ix_character_base_account ON character_base (account_id);
         CREATE INDEX IF NOT EXISTS ix_character_base_server ON character_base (server_id);
         ALTER TABLE character_base ADD COLUMN IF NOT EXISTS holy_suit_points integer NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS vitals_revision bigint NOT NULL DEFAULT 0;
 
         CREATE TABLE IF NOT EXISTS character_kitbag (
             user_id integer PRIMARY KEY REFERENCES character_base(id) ON DELETE CASCADE,
@@ -1803,10 +1806,11 @@ internal sealed class PostgresGameStore : IGameStore
         COALESCE((SELECT cr.weapon_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
         COALESCE((SELECT cr.armor_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
         COALESCE((SELECT cr.armor_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
-        cb.fighter_job_exp
+        cb.fighter_job_exp, cb.vitals_revision
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly ConcurrentDictionary<int, SemaphoreSlim> _vitalsPersistenceLocks = [];
 
     public PostgresGameStore(string connectionString)
     {
@@ -1918,20 +1922,35 @@ internal sealed class PostgresGameStore : IGameStore
         int characterId,
         int currentHp,
         int currentMp,
+        long vitalsRevision,
         CancellationToken cancellationToken = default)
     {
-        await using var command = _dataSource.CreateCommand("""
-            UPDATE character_base
-            SET "curHP" = GREATEST(0, @currentHp),
-                "curMP" = GREATEST(0, @currentMp)
-            WHERE id = @characterId
-              AND account_id = @accountId;
-            """);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("currentHp", currentHp);
-        command.Parameters.AddWithValue("currentMp", currentMp);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var persistenceLock = _vitalsPersistenceLocks.GetOrAdd(
+            characterId,
+            static _ => new SemaphoreSlim(1, 1));
+        await persistenceLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _dataSource.CreateCommand("""
+                UPDATE character_base
+                SET "curHP" = GREATEST(0, @currentHp),
+                    "curMP" = GREATEST(0, @currentMp),
+                    vitals_revision = @vitalsRevision
+                WHERE id = @characterId
+                  AND account_id = @accountId
+                  AND vitals_revision < @vitalsRevision;
+                """);
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("currentHp", currentHp);
+            command.Parameters.AddWithValue("currentMp", currentMp);
+            command.Parameters.AddWithValue("vitalsRevision", vitalsRevision);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            persistenceLock.Release();
+        }
     }
 
     public async Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(
@@ -2564,7 +2583,8 @@ internal sealed class PostgresGameStore : IGameStore
             JOIN talent_templates tt ON tt.id = @talentId
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
-              AND tt.class_id = cb.profession;
+              AND tt.class_id = cb.profession
+            FOR UPDATE OF cb;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
@@ -2598,7 +2618,9 @@ internal sealed class PostgresGameStore : IGameStore
             }
         }
 
-        var currentRank = Math.Max(baseRank, Math.Max(0, clientRank));
+        // Rank and cost are server-owned. The client rank is only an echo of
+        // its UI state and must never be allowed to skip persisted ranks.
+        var currentRank = baseRank;
         if (currentRank >= TalentProgression.RankCap)
         {
             return null;
@@ -4392,7 +4414,8 @@ internal sealed class PostgresGameStore : IGameStore
             WeaponAuraEffect = reader.GetInt32(24),
             ArmorRank = reader.GetInt16(25),
             ArmorAuraEffect = reader.GetInt32(26),
-            Experience = reader.GetInt32(27)
+            Experience = reader.GetInt32(27),
+            VitalsRevision = reader.GetInt64(28)
         };
     }
 

@@ -70,8 +70,9 @@ Not complete yet:
 - Full world simulation
 - NPC coverage beyond the current static city baseline: the current PostgreSQL data resolves 100 Sparta and 95 Athens NPC identities (including 48 direct normalized references in each city), while most NPC dialog scripts and quests remain unimplemented
 - Monster coverage beyond the current 270 static captured appearances on Sparta/map 0; Athens and other maps do not yet have captured monster baselines
-- Full NPC/monster AI, movement, combat, death, respawn, and drop simulation; captured monster positions are frozen snapshots until map-instance monster state exists
-- Complete inventory, skill, and talent gameplay and packet coverage
+- Monster simulation currently covers local roaming, chase/retaliation, normal and learned-skill damage, death, and timed revival; aggro/leash fidelity, parties, drops, and broader skill effects remain incomplete
+- Kill progression now persists carried fighter levels, fighter EXP, talent EXP, and talent points and refreshes the client through the captured monster-death/EXP/level packets; passive HP/MP recovery uses the captured six-second absolute-vitals update
+- Talent upgrades now support each class's full ID range (including warrior node `0`) with server-owned persisted rank/cost validation; complete inventory, skill, and talent gameplay is still unfinished
 - Packet coverage outside the mapped reference opcodes
 
 ## Current Reverse Engineering Notes

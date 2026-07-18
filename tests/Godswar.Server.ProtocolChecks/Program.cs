@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json.Nodes;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -24,11 +25,14 @@ internal static class Program
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
             ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
+            ("Warrior talent ID-zero upgrade protocol", CheckWarriorTalentIdZeroUpgradeAsync),
+            ("JSON warrior talent persistence", CheckJsonWarriorTalentPersistenceAsync),
             ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),
             ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
             ("Skill combat catalog", CheckSkillCombatCatalogAsync),
             ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
             ("Basic and monster attack packet layouts", CheckAttackPacketLayoutsAsync),
+            ("Player passive recovery protocol", CheckPlayerRecoveryProtocolAsync),
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
             ("PlayerWorldSpawn full quality/grade extension", CheckPlayerWorldExtendedAppearanceAsync),
@@ -139,7 +143,14 @@ internal static class Program
                 account.Id,
                 created.Id,
                 currentHp: 777,
-                currentMp: 123);
+                currentMp: 123,
+                vitalsRevision: 2);
+            await store.SaveCharacterVitalsAsync(
+                account.Id,
+                created.Id,
+                currentHp: 1,
+                currentMp: 2,
+                vitalsRevision: 1);
 
             var reloaded = await store.GetFirstCharacterAsync(account.Id)
                 ?? throw new InvalidOperationException("saved character was not reloaded");
@@ -149,6 +160,7 @@ internal static class Program
             Check.Equal(travelledZ, reloaded.PositionZ, "login loads saved Z");
             Check.Equal(777, reloaded.CurrentHp, "login loads saved current HP");
             Check.Equal(123, reloaded.CurrentMp, "login loads saved current MP");
+            Check.Equal(2L, reloaded.VitalsRevision, "stale vitals snapshots cannot overwrite newer state");
         }
         finally
         {
@@ -171,6 +183,8 @@ internal static class Program
             PlayerExperienceCatalog.GetNextLevelExperience(character.Level),
             ReadInt32(packet, 88),
             "EnterMain next-level EXP threshold");
+        Check.Equal(character.TalentPoints, ReadInt32(packet, 92), "EnterMain saved Talent Points");
+        Check.Equal(character.TalentExperience, ReadInt32(packet, 96), "EnterMain saved Talent EXP");
 
         var secondCharacter = CreateCharacter();
         secondCharacter.Id = character.Id + 1;
@@ -178,6 +192,119 @@ internal static class Program
         Check.Equal((uint)secondCharacter.Id, ReadUInt32(secondPacket, 4), "second character has an isolated UI key");
         Check.Equal(0x00001448u, ReadUInt32(secondPacket, 52), "local world object ID remains session-local");
         return Task.CompletedTask;
+    }
+
+    private static Task CheckWarriorTalentIdZeroUpgradeAsync()
+    {
+        var request = Convert.FromHexString(
+            "1C004127481400000000000000000000000000000A00000000000000");
+        Check.True(
+            GameClientHandler.TryReadTalentUpgrade(
+                request.AsSpan(4),
+                out var talentId,
+                out var clientRank,
+                out var clientTalentPoints),
+            "live warrior talent ID zero request parses");
+        Check.Equal(0, talentId, "warrior talent ID zero is valid");
+        Check.Equal(0, clientRank, "warrior talent request rank");
+        Check.Equal(10, clientTalentPoints, "warrior talent request point echo");
+
+        var character = CreateCharacter();
+        character.TalentPoints = 9;
+        var acknowledgement = PacketBuilder.TalentUpgradeAck(new TalentUpgradeResult
+        {
+            Character = character,
+            TalentId = 0,
+            NewRank = 1,
+            Cost = 1,
+            RemainingTalentPoints = 9,
+            DisplayValue = 4
+        });
+        Check.True(
+            acknowledgement.SequenceEqual(
+                Convert.FromHexString("1C004127481400000000000001000000010000000900000004000000")),
+            "live warrior talent ID zero acknowledgement");
+        return Task.CompletedTask;
+    }
+
+    private static async Task CheckJsonWarriorTalentPersistenceAsync()
+    {
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-talent-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            int accountId;
+            int characterId;
+            await using (var store = new JsonGameStore(dataPath))
+            {
+                await store.EnsureSeedDataAsync();
+                var account = await store.LoginOrCreateAccountAsync("talent-check", "");
+                var character = await store.CreateCharacterAsync(
+                    account.Id,
+                    new GameCharacter
+                    {
+                        Name = "JsonTalentWarrior",
+                        Profession = 0,
+                        TalentPoints = 10
+                    });
+                accountId = account.Id;
+                characterId = character.Id;
+            }
+
+            // Existing JSON saves predate characterTalents. Removing the new
+            // collection verifies that those files still load as rank zero.
+            var statePath = Path.Combine(dataPath, "state.json");
+            var legacyState = JsonNode.Parse(await File.ReadAllTextAsync(statePath))?.AsObject()
+                ?? throw new InvalidOperationException("JSON talent test could not parse state.json");
+            legacyState.Remove("characterTalents");
+            await File.WriteAllTextAsync(statePath, legacyState.ToJsonString(JsonDefaults.Indented));
+
+            await using (var store = new JsonGameStore(dataPath))
+            {
+                var legacyTalents = await store.GetTalentStatesAsync(accountId, characterId);
+                var healthy = legacyTalents.Single(talent => talent.TalentId == 0);
+                Check.Equal(0, healthy.Rank, "legacy JSON defaults warrior talent ID zero to rank zero");
+
+                var wrongClass = await store.UpgradeTalentAsync(
+                    accountId,
+                    characterId,
+                    talentId: 50,
+                    clientRank: 0,
+                    clientTalentPoints: 10);
+                Check.True(wrongClass is null, "warrior cannot upgrade a Champion talent");
+
+                var upgraded = await store.UpgradeTalentAsync(
+                    accountId,
+                    characterId,
+                    talentId: 0,
+                    clientRank: 99,
+                    clientTalentPoints: int.MaxValue)
+                    ?? throw new InvalidOperationException("JSON warrior talent ID zero was not upgraded");
+                Check.Equal(1, upgraded.NewRank, "JSON upgrade derives rank from saved state");
+                Check.Equal(1, upgraded.Cost, "JSON rank-one upgrade uses server-owned cost");
+                Check.Equal(9, upgraded.RemainingTalentPoints, "JSON upgrade spends server-owned points");
+            }
+
+            await using (var reloadedStore = new JsonGameStore(dataPath))
+            {
+                var reloadedCharacter = await reloadedStore.GetFirstCharacterAsync(accountId)
+                    ?? throw new InvalidOperationException("JSON talent character did not reload");
+                Check.Equal(9, reloadedCharacter.TalentPoints, "talent points survive JSON store reload");
+
+                var reloadedTalents = await reloadedStore.GetTalentStatesAsync(accountId, characterId);
+                var healthy = reloadedTalents.Single(talent => talent.TalentId == 0);
+                Check.Equal(1, healthy.Rank, "warrior talent ID zero rank survives JSON store reload");
+                Check.Equal(4, healthy.DisplayValue, "reloaded warrior talent has its rank-one display value");
+                Check.Equal(2, healthy.NextCost, "reloaded warrior talent has its server-owned next cost");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
     }
 
     private static async Task CheckMonsterKillProgressionAsync()
@@ -461,8 +588,8 @@ internal static class Program
             firstExperience.SequenceEqual(Convert.FromHexString("0D002F27500000005000000000")),
             "first-kill EXP notice matches capture byte-for-byte");
         var laterExperience = PacketBuilder.ExperienceGain(80, 160);
-        Check.Equal(160, ReadInt32(laterExperience, 4), "EXP notice carries resulting total at +4");
-        Check.Equal(80, ReadInt32(laterExperience, 8), "EXP notice displays gained delta at +8");
+        Check.Equal(80, ReadInt32(laterExperience, 4), "EXP notice displays gained delta at +4");
+        Check.Equal(160, ReadInt32(laterExperience, 8), "EXP notice carries resulting total at +8");
         Check.True(
             PacketBuilder.TalentExperienceGain(2).SequenceEqual(
                 Convert.FromHexString("0C0045280400000002000000")),
@@ -480,6 +607,11 @@ internal static class Program
                 Convert.FromHexString(
                     "24002E276604000002000000FC000000000000004705000033050000820100007C010000")),
             "fighter level-up notice matches capture byte-for-byte");
+        Check.True(
+            PacketBuilder.MonsterDeathReward(10013, 0x49F, 80, 2, 0).SequenceEqual(
+                Convert.FromHexString(
+                    "74002B271D2700009F040000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000000000005000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000001D27000000000000")),
+            "monster-death progression refresh matches capture byte-for-byte");
 
         var physical = CreateCharacter();
         physical.Profession = 0;
@@ -503,6 +635,52 @@ internal static class Program
         Check.Equal(2u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(1, undefended), "physical defense reduces monster damage");
         undefended.CalculatedStats = new CharacterStats { PhysicalDefense = 999 };
         Check.Equal(1u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(1, undefended), "monster damage floors at one");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckPlayerRecoveryProtocolAsync()
+    {
+        Check.Equal(TimeSpan.FromSeconds(6), GameSessionRegistry.PlayerRecoveryInterval, "modern recovery cadence");
+        Check.Equal(63, PlayerRecoveryCatalog.GetBaseHp(1, 0), "level-one warrior base HP recovery");
+        Check.Equal(38, PlayerRecoveryCatalog.GetBaseMp(1, 0), "level-one warrior base MP recovery");
+        Check.Equal(496, PlayerRecoveryCatalog.GetBaseHp(200, 0), "level-cap warrior base HP recovery");
+        Check.Equal(496, PlayerRecoveryCatalog.GetBaseMp(200, 3), "level-cap mage base MP recovery");
+
+        var character = new GameCharacter
+        {
+            Level = 4,
+            Profession = 0,
+            CurrentHp = 1_000,
+            MaxHp = 1_500,
+            CurrentMp = 9,
+            MaxMp = 177,
+            CalculatedStats = new CharacterStats
+            {
+                HpRecovery = 10,
+                MpRecovery = 5
+            }
+        };
+        Check.True(PlayerRecoveryCatalog.TryApply(character), "living damaged character recovers");
+        Check.Equal(1L, character.VitalsRevision, "recovery advances the vitals revision");
+        Check.Equal(1_076, character.CurrentHp, "base and bonus HP recovery are added");
+        Check.Equal(53, character.CurrentMp, "base and bonus MP recovery are added");
+        Check.True(
+            PacketBuilder.PlayerVitalsUpdate(0x00001448, character.CurrentHp, character.CurrentMp)
+                .SequenceEqual(Convert.FromHexString("10007127481400003404000035000000")),
+            "modern absolute HP/MP recovery packet");
+
+        character.CurrentHp = 1_499;
+        character.CurrentMp = 176;
+        Check.True(PlayerRecoveryCatalog.TryApply(character), "near-full character recovers");
+        Check.Equal(2L, character.VitalsRevision, "each changed recovery advances the vitals revision");
+        Check.Equal(1_500, character.CurrentHp, "HP recovery clamps to max");
+        Check.Equal(177, character.CurrentMp, "MP recovery clamps to max");
+        Check.True(!PlayerRecoveryCatalog.TryApply(character), "full character does not produce an update");
+        Check.Equal(2L, character.VitalsRevision, "unchanged recovery does not advance the vitals revision");
+
+        character.CurrentHp = 0;
+        character.CurrentMp = 1;
+        Check.True(!PlayerRecoveryCatalog.TryApply(character), "dead character cannot passively recover");
         return Task.CompletedTask;
     }
 
@@ -789,13 +967,16 @@ internal static class Program
         Check.Equal(character.PositionZ, ReadSingle(packet, 52), "PlayerStatusUpdate Z at offset 52");
         Check.Equal(1f, ReadSingle(packet, 56), "PlayerStatusUpdate facing at offset 56");
         Check.Equal((int)character.Profession, ReadInt32(packet, 92), "PlayerStatusUpdate profession");
+        Check.Equal(character.Experience, ReadInt32(packet, 96), "PlayerStatusUpdate fighter EXP");
         Check.Equal(character.Level, ReadInt32(packet, 100), "PlayerStatusUpdate level");
         Check.Equal(character.CurrentHp, ReadInt32(packet, 104), "PlayerStatusUpdate current HP");
         Check.Equal(character.CurrentMp, ReadInt32(packet, 108), "PlayerStatusUpdate current MP");
         Check.Equal(character.MaxHp, ReadInt32(packet, 144), "PlayerStatusUpdate max HP");
         Check.Equal(character.MaxMp, ReadInt32(packet, 148), "PlayerStatusUpdate max MP");
-        Check.Equal(character.CalculatedStats!.PhysicalAttack, ReadInt32(packet, 152), "PlayerStatusUpdate physical attack");
-        Check.Equal(character.CalculatedStats.PhysicalDefense, ReadInt32(packet, 156), "PlayerStatusUpdate physical defense");
+        Check.Equal(PlayerRecoveryCatalog.GetTotalHp(character), ReadInt32(packet, 152), "PlayerStatusUpdate HP recovery");
+        Check.Equal(PlayerRecoveryCatalog.GetTotalMp(character), ReadInt32(packet, 156), "PlayerStatusUpdate MP recovery");
+        Check.Equal(character.CalculatedStats!.PhysicalAttack, ReadInt32(packet, 160), "PlayerStatusUpdate physical attack");
+        Check.Equal(character.CalculatedStats.PhysicalDefense, ReadInt32(packet, 164), "PlayerStatusUpdate physical defense");
         Check.Equal(character.CalculatedStats.MagicAttack, ReadInt32(packet, 168), "PlayerStatusUpdate magic attack");
         Check.Equal(character.CalculatedStats.MagicDefense, ReadInt32(packet, 172), "PlayerStatusUpdate magic defense");
         Check.Equal(character.CalculatedStats.Hit, ReadInt32(packet, 176), "PlayerStatusUpdate hit");
@@ -1814,11 +1995,13 @@ internal static class Program
             Hair = 7,
             CurrentMap = 2,
             Level = 177,
+            Experience = 123_987,
             CurrentHp = 123_456,
             CurrentMp = 23_456,
             MaxHp = 234_567,
             MaxMp = 34_567,
             TalentPoints = 456_789,
+            TalentExperience = 67,
             PositionX = 321.125f,
             PositionZ = -654.75f,
             CalculatedStats = new CharacterStats

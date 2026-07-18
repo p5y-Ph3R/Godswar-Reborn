@@ -106,6 +106,7 @@ internal sealed class JsonGameStore : IGameStore
         int characterId,
         int currentHp,
         int currentMp,
+        long vitalsRevision,
         CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -118,8 +119,14 @@ internal sealed class JsonGameStore : IGameStore
                 return;
             }
 
+            if (vitalsRevision <= character.VitalsRevision)
+            {
+                return;
+            }
+
             character.CurrentHp = Math.Clamp(currentHp, 0, Math.Max(1, character.MaxHp));
             character.CurrentMp = Math.Clamp(currentMp, 0, Math.Max(0, character.MaxMp));
+            character.VitalsRevision = vitalsRevision;
             await SaveUnsafeAsync(db, cancellationToken);
         }
         finally
@@ -256,12 +263,19 @@ internal sealed class JsonGameStore : IGameStore
         try
         {
             var db = await LoadUnsafeAsync(cancellationToken);
+            var removedCharacterIds = db.Characters
+                .Where(character =>
+                    character.AccountId == accountId &&
+                    string.Equals(character.Name, characterName, StringComparison.OrdinalIgnoreCase))
+                .Select(character => character.Id)
+                .ToHashSet();
             var removed = db.Characters.RemoveAll(c =>
                 c.AccountId == accountId &&
                 string.Equals(c.Name, characterName, StringComparison.OrdinalIgnoreCase)) > 0;
 
             if (removed)
             {
+                db.CharacterTalents.RemoveAll(talent => removedCharacterIds.Contains(talent.CharacterId));
                 await SaveUnsafeAsync(db, cancellationToken);
             }
 
@@ -453,7 +467,20 @@ internal sealed class JsonGameStore : IGameStore
                 return null;
             }
 
-            var currentRank = Math.Max(0, clientRank);
+            if (!SkillTalentSeeds.Talents.Any(talent =>
+                    talent.Id == talentId &&
+                    talent.ClassId == character.Profession))
+            {
+                return null;
+            }
+
+            var savedTalent = db.CharacterTalents.FirstOrDefault(talent =>
+                talent.CharacterId == character.Id &&
+                talent.TalentId == talentId);
+
+            // The client values are UI echoes. Rank, cost, and spendable points
+            // are all derived from the state held under this store's lock.
+            var currentRank = Math.Clamp(savedTalent?.Rank ?? 0, 0, TalentProgression.RankCap);
             if (currentRank >= TalentProgression.RankCap)
             {
                 return null;
@@ -473,6 +500,19 @@ internal sealed class JsonGameStore : IGameStore
 
             var newRank = currentRank + 1;
             character.TalentPoints -= cost;
+            if (savedTalent is null)
+            {
+                db.CharacterTalents.Add(new GameCharacterTalent
+                {
+                    CharacterId = character.Id,
+                    TalentId = talentId,
+                    Rank = newRank
+                });
+            }
+            else
+            {
+                savedTalent.Rank = newRank;
+            }
 
             await SaveUnsafeAsync(db, cancellationToken);
             return new TalentUpgradeResult
@@ -491,12 +531,54 @@ internal sealed class JsonGameStore : IGameStore
         }
     }
 
-    public Task<IReadOnlyList<TalentState>> GetTalentStatesAsync(
+    public async Task<IReadOnlyList<TalentState>> GetTalentStatesAsync(
         int accountId,
         int characterId,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult<IReadOnlyList<TalentState>>([]);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null)
+            {
+                return [];
+            }
+
+            var savedRanks = db.CharacterTalents
+                .Where(talent => talent.CharacterId == character.Id)
+                .GroupBy(talent => talent.TalentId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => Math.Clamp(
+                        group.Max(talent => talent.Rank),
+                        0,
+                        TalentProgression.RankCap));
+
+            return SkillTalentSeeds.Talents
+                .Where(talent => talent.ClassId == character.Profession)
+                .OrderBy(talent => talent.TreeOrder)
+                .ThenBy(talent => talent.Id)
+                .Select(talent =>
+                {
+                    var rank = savedRanks.GetValueOrDefault(talent.Id);
+                    return new TalentState
+                    {
+                        TalentId = talent.Id,
+                        Rank = rank,
+                        DisplayValue = TalentProgression.CalculateDisplayValue(rank),
+                        NextCost = TalentProgression.CalculateUpgradeCost(rank)
+                    };
+                })
+                .ToArray();
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task<IReadOnlyList<SkillState>> GetSkillStatesAsync(
@@ -579,8 +661,12 @@ internal sealed class JsonGameStore : IGameStore
         }
 
         await using var stream = File.OpenRead(_statePath);
-        return await JsonSerializer.DeserializeAsync<GameDatabase>(stream, JsonDefaults.Indented, cancellationToken)
+        var db = await JsonSerializer.DeserializeAsync<GameDatabase>(stream, JsonDefaults.Indented, cancellationToken)
             ?? new GameDatabase();
+        db.Accounts ??= [];
+        db.Characters ??= [];
+        db.CharacterTalents ??= [];
+        return db;
     }
 
     private async Task SaveUnsafeAsync(GameDatabase db, CancellationToken cancellationToken)
@@ -656,6 +742,7 @@ internal sealed class JsonGameStore : IGameStore
             MaxMp = character.MaxMp,
             CurrentHp = character.CurrentHp,
             CurrentMp = character.CurrentMp,
+            VitalsRevision = character.VitalsRevision,
             TalentPoints = character.TalentPoints,
             TalentExperience = character.TalentExperience,
             HolySuitPoints = character.HolySuitPoints,
