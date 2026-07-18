@@ -21,6 +21,8 @@ internal sealed record CapturedMonsterSpawn(
 
     public float AppearanceZ => BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(36, 4));
 
+    public uint Tier => BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(12, 4));
+
     public void Validate(short expectedMapId)
     {
         if (Packet is null)

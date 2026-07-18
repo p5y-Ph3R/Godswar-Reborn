@@ -1802,7 +1802,8 @@ internal sealed class PostgresGameStore : IGameStore
         COALESCE((SELECT cr.weapon_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
         COALESCE((SELECT cr.weapon_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
         COALESCE((SELECT cr.armor_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
-        COALESCE((SELECT cr.armor_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0)
+        COALESCE((SELECT cr.armor_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
+        cb.fighter_job_exp
         """;
 
     private readonly NpgsqlDataSource _dataSource;
@@ -1931,6 +1932,88 @@ internal sealed class PostgresGameStore : IGameStore
         command.Parameters.AddWithValue("currentHp", currentHp);
         command.Parameters.AddWithValue("currentMp", currentMp);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(
+        int accountId,
+        int characterId,
+        int experience,
+        int talentExperience,
+        CancellationToken cancellationToken = default)
+    {
+        experience = Math.Max(0, experience);
+        talentExperience = Math.Max(0, talentExperience);
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        int previousLevel;
+        int previousExperience;
+        int previousTalentExperience;
+        int previousTalentPoints;
+        await using (var command = new NpgsqlCommand("""
+            SELECT fighter_job_lv, fighter_job_exp, "SkillExp", "SkillPoint"
+            FROM character_base
+            WHERE id = @characterId
+              AND account_id = @accountId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            previousLevel = reader.GetInt32(0);
+            previousExperience = reader.GetInt32(1);
+            previousTalentExperience = reader.GetInt32(2);
+            previousTalentPoints = reader.GetInt32(3);
+        }
+
+        var fighterProgression = PlayerExperienceCatalog.Apply(
+            previousLevel,
+            previousExperience,
+            experience);
+        var accumulatedTalentExperience = checked(previousTalentExperience + talentExperience);
+        var talentPointsGained = accumulatedTalentExperience / 100;
+        var currentTalentExperience = accumulatedTalentExperience % 100;
+        var currentTalentPoints = checked(previousTalentPoints + talentPointsGained);
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE character_base
+            SET fighter_job_lv = @level,
+                fighter_job_exp = @experience,
+                "SkillPoint" = @talentPoints,
+                "SkillExp" = @talentExperience
+            WHERE id = @characterId
+              AND account_id = @accountId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("level", fighterProgression.Level);
+            command.Parameters.AddWithValue("experience", fighterProgression.Experience);
+            command.Parameters.AddWithValue("talentPoints", currentTalentPoints);
+            command.Parameters.AddWithValue("talentExperience", currentTalentExperience);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return new CharacterProgressionResult(
+            fighterProgression.ExperienceGained,
+            previousLevel,
+            fighterProgression.Level,
+            fighterProgression.Experience,
+            PlayerExperienceCatalog.GetNextLevelExperience(fighterProgression.Level),
+            fighterProgression.LevelUps,
+            talentExperience,
+            currentTalentExperience,
+            talentPointsGained,
+            currentTalentPoints);
     }
 
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default)
@@ -4177,7 +4260,7 @@ internal sealed class PostgresGameStore : IGameStore
             )
             VALUES (
                 @accountId, 1, @name, @gender, 0, @camp, @profession, @level,
-                0, 0, 0, @currentHp, @currentMp, 0, @faith, 0, 0, 0, 0, 0,
+                0, @experience, 0, @currentHp, @currentMp, 0, @faith, 0, 0, 0, 0, 0,
                 10, 1, @hair, @face, @currentMap, @positionX, @positionZ, 10000,
                 10, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0
             )
@@ -4190,6 +4273,7 @@ internal sealed class PostgresGameStore : IGameStore
             command.Parameters.AddWithValue("camp", (short)character.Camp);
             command.Parameters.AddWithValue("profession", (short)character.Profession);
             command.Parameters.AddWithValue("level", character.Level);
+            command.Parameters.AddWithValue("experience", character.Experience);
             command.Parameters.AddWithValue("currentHp", character.CurrentHp);
             command.Parameters.AddWithValue("currentMp", character.CurrentMp);
             command.Parameters.AddWithValue("faith", (short)character.Faith);
@@ -4307,7 +4391,8 @@ internal sealed class PostgresGameStore : IGameStore
             WeaponRank = reader.GetInt16(23),
             WeaponAuraEffect = reader.GetInt32(24),
             ArmorRank = reader.GetInt16(25),
-            ArmorAuraEffect = reader.GetInt32(26)
+            ArmorAuraEffect = reader.GetInt32(26),
+            Experience = reader.GetInt32(27)
         };
     }
 

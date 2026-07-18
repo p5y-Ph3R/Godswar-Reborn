@@ -75,10 +75,20 @@ internal sealed class MapInstance
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
+        return TryApplyMonsterDamage(objectId, damage, attackerCharacterId: null, now, out result);
+    }
+
+    public bool TryApplyMonsterDamage(
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
         lock (_monsterRuntimeGate)
         {
             if (_monsterRuntime is not null &&
-                _monsterRuntime.TryApplyDamage(objectId, damage, now, out result))
+                _monsterRuntime.TryApplyDamage(objectId, damage, attackerCharacterId, now, out result))
             {
                 return true;
             }
@@ -90,9 +100,25 @@ internal sealed class MapInstance
 
     public MonsterRuntimeTick AdvanceMonsters(DateTimeOffset now)
     {
+        var combatTargets = Snapshot()
+            .Where(context => context.WorldReady)
+            .Select(context => new MonsterCombatTarget(
+                context.CharacterId,
+                context.Character.PositionX,
+                context.Character.PositionZ,
+                context.Character.CurrentHp > 0))
+            .ToArray();
         lock (_monsterRuntimeGate)
         {
-            return _monsterRuntime?.Advance(now) ?? new MonsterRuntimeTick(false, []);
+            return _monsterRuntime?.Advance(now, combatTargets) ?? new MonsterRuntimeTick(false, []);
+        }
+    }
+
+    public void ClearMonsterAggroForCharacter(int characterId, DateTimeOffset now)
+    {
+        lock (_monsterRuntimeGate)
+        {
+            _monsterRuntime?.ClearAggroForCharacter(characterId, now);
         }
     }
 

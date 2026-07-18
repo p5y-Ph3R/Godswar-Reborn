@@ -20,6 +20,9 @@ internal sealed class GameClientHandler : IClientHandler
     private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan LastItemInfoTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
+    // The client cadence is 1500 ms. A 25 ms allowance prevents a legitimate
+    // swing from being discarded by timer/socket scheduling jitter.
+    private static readonly TimeSpan BasicAttackCooldown = TimeSpan.FromMilliseconds(1475);
 
     private readonly ClientSession _session;
     private readonly IGameStore _store;
@@ -35,6 +38,7 @@ internal sealed class GameClientHandler : IClientHandler
     private bool _playerDetailSent;
     private bool _postEnterBootstrapSent;
     private DateTime _lastPositionPersistUtc = DateTime.MinValue;
+    private DateTimeOffset _nextBasicAttackAt = DateTimeOffset.MinValue;
     private bool _positionDirty;
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
     private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
@@ -146,6 +150,12 @@ internal sealed class GameClientHandler : IClientHandler
                 break;
             case Opcodes.SkillCast:
                 await HandleSkillCastAsync(packet, cancellationToken);
+                break;
+            case Opcodes.BasicAttack:
+                await HandleBasicAttackAsync(packet, cancellationToken);
+                break;
+            case Opcodes.Revive:
+                await HandleReviveAsync(packet, cancellationToken);
                 break;
             case Opcodes.Kitbag:
             case Opcodes.Storage:
@@ -301,6 +311,13 @@ internal sealed class GameClientHandler : IClientHandler
         {
             await _session.SendAsync(PacketBuilder.BlankUser(), cancellationToken, "BlankUser");
             return;
+        }
+
+        if (_character.CurrentHp <= 0)
+        {
+            await RestoreFreeRevivalStateAsync(cancellationToken);
+            Console.WriteLine(
+                $"[revive] restored dead character during enter character={_character.Name} map={_character.CurrentMap} hp={_character.CurrentHp}/{_character.MaxHp}");
         }
 
         await RefreshActiveCharacterStatsAsync("enter", cancellationToken);
@@ -791,11 +808,210 @@ internal sealed class GameClientHandler : IClientHandler
         return true;
     }
 
+    private async Task HandleReviveAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[revive] ignored request before character enter");
+            return;
+        }
+
+        if (!ReviveRequest.TryParse(packet.Buffer, out var request))
+        {
+            Console.WriteLine($"[revive] ignored malformed request len={packet.Length} hex={packet.ToHexPreview()}");
+            return;
+        }
+
+        if (_character.CurrentHp > 0)
+        {
+            Console.WriteLine($"[revive] ignored request for living character={_character.Name}");
+            return;
+        }
+
+        var previousMap = _character.CurrentMap;
+        if (_worldPresenceAnnounced)
+        {
+            await BroadcastPlayerLeaveAsync(cancellationToken);
+        }
+
+        if (_registered)
+        {
+            _registry.Remove(_session);
+            _registered = false;
+        }
+
+        _worldPresenceAnnounced = false;
+        _clientReadyReceived = false;
+        _playerDetailSent = false;
+        _postEnterBootstrapSent = false;
+        _npcVisibility = null;
+        _mapNpcsByInteractionId.Clear();
+        _nextBasicAttackAt = DateTimeOffset.MinValue;
+
+        // Currency-backed in-place revival is not implemented yet. Every valid
+        // revive button therefore takes the original free-revival path instead
+        // of accepting an unpaid premium revive or leaving the player stuck.
+        await RestoreFreeRevivalStateAsync(cancellationToken);
+        await HandleEnterGameAsync(cancellationToken);
+        Console.WriteLine(
+            $"[revive] free revival character={_character.Name} request-object={request.PlayerObjectId} requested-type={request.ReviveType} map={previousMap}->{_character.CurrentMap} hp={_character.CurrentHp}/{_character.MaxHp} mp={_character.CurrentMp}/{_character.MaxMp}");
+    }
+
+    private async Task RestoreFreeRevivalStateAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        GameDefaults.InitializeStartingLocation(_character);
+        _character.CurrentHp = Math.Max(1, _character.MaxHp / 10);
+        _character.CurrentMp = Math.Max(0, _character.MaxMp / 10);
+        _positionDirty = false;
+        _lastPositionPersistUtc = DateTime.UtcNow;
+
+        var accountId = _account?.Id ?? _character.AccountId;
+        await _store.SaveCharacterPositionAsync(
+            accountId,
+            _character.Id,
+            _character.CurrentMap,
+            _character.PositionX,
+            _character.PositionZ,
+            cancellationToken);
+        await _store.SaveCharacterVitalsAsync(
+            accountId,
+            _character.Id,
+            _character.CurrentHp,
+            _character.CurrentMp,
+            cancellationToken);
+    }
+
+    private async Task HandleBasicAttackAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[attack] ignored basic attack before character enter");
+            return;
+        }
+
+        if (_character.CurrentHp <= 0)
+        {
+            Console.WriteLine($"[attack] ignored basic attack from dead character={_character.Name}");
+            return;
+        }
+
+        if (!BasicAttackRequest.TryParse(packet.Buffer, out var attack))
+        {
+            Console.WriteLine($"[attack] ignored malformed basic attack len={packet.Length} hex={packet.ToHexPreview()}");
+            return;
+        }
+
+        if (attack.AttackerObjectId != LocalPlayerObjectId)
+        {
+            Console.WriteLine(
+                $"[attack] rejected spoofed attacker character={_character.Name} supplied={attack.AttackerObjectId} expected={LocalPlayerObjectId}");
+            return;
+        }
+
+        if (!_registry.IsMonsterVisibleTo(_session, attack.TargetObjectId) ||
+            !_registry.TryGetMonsterSnapshot(_character.CurrentMap, attack.TargetObjectId, out var target) ||
+            !target.IsSpawned ||
+            !target.IsAlive)
+        {
+            Console.WriteLine($"[attack] rejected unavailable monster character={_character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        if (!MonsterCombatResolver.IsWithinBasicAttackRange(
+                _character.PositionX,
+                _character.PositionZ,
+                target.X,
+                target.Z,
+                MonsterCombatResolver.ResolvePlayerBasicAttackRange(target.Definition)))
+        {
+            Console.WriteLine(
+                $"[attack] rejected out-of-range monster character={_character.Name} target={attack.TargetObjectId} player={_character.PositionX:F2},{_character.PositionZ:F2} monster={target.X:F2},{target.Z:F2}");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now < _nextBasicAttackAt)
+        {
+            Console.WriteLine($"[attack] rejected cooldown character={_character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        var requestedDamage = MonsterCombatResolver.CalculatePlayerBasicAttack(_character);
+        if (!_registry.TryApplyMonsterDamage(
+                _character.CurrentMap,
+                attack.TargetObjectId,
+                requestedDamage,
+                _character.Id,
+                out var damageResult) ||
+            damageResult.BeforeHealth == damageResult.AfterHealth)
+        {
+            Console.WriteLine($"[attack] rejected stale monster character={_character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        _nextBasicAttackAt = now + BasicAttackCooldown;
+        var attackSelector = _character.Profession is 2 or 3 ? (byte)5 : (byte)3;
+        var selfPacket = PacketBuilder.PhysicalDamage(
+            LocalPlayerObjectId,
+            0f,
+            0f,
+            0f,
+            attack.TargetObjectId,
+            requestedDamage,
+            result: attackSelector);
+        var casterNotified = true;
+        try
+        {
+            await _session.SendAsync(selfPacket, cancellationToken, "BasicAttackSelf");
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            casterNotified = false;
+            Console.WriteLine(
+                $"[attack] caster notification failed character={_character.Name} target={attack.TargetObjectId}: {ex.Message}");
+        }
+
+        var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
+        var viewers = await _registry.BroadcastToMonsterViewersAsync(
+            _character.CurrentMap,
+            attack.TargetObjectId,
+            PacketBuilder.PhysicalDamage(
+                worldObjectId,
+                0f,
+                0f,
+                0f,
+                attack.TargetObjectId,
+                requestedDamage,
+                result: attackSelector),
+            cancellationToken,
+            _session,
+            "BasicAttackWorld");
+
+        if (damageResult.Killed)
+        {
+            await AwardMonsterKillAsync(damageResult, cancellationToken);
+        }
+
+        Console.WriteLine(
+            $"[attack] damage character={_character.Name} target={attack.TargetObjectId} resolved={requestedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} caster-notified={casterNotified} viewers={viewers}");
+    }
+
     private async Task HandleSkillCastAsync(GamePacket packet, CancellationToken cancellationToken)
     {
         if (_character is null)
         {
             Console.WriteLine("[skill] ignored cast before character enter");
+            return;
+        }
+
+        if (_character.CurrentHp <= 0)
+        {
+            Console.WriteLine($"[skill] ignored cast from dead character={_character.Name}");
             return;
         }
 
@@ -870,6 +1086,7 @@ internal sealed class GameClientHandler : IClientHandler
                 _character.CurrentMap,
                 cast.TargetObjectId,
                 requestedDamage,
+                _character.Id,
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
@@ -891,7 +1108,7 @@ internal sealed class GameClientHandler : IClientHandler
         var selfDamage = PacketBuilder.SkillDamage(
             attackerObjectId: LocalPlayerObjectId,
             targetObjectId: cast.TargetObjectId,
-            resultFlags: 0,
+            resultFlags: 1,
             damage: reportedDamage,
             skillId: cast.SkillId,
             targetX: targetX,
@@ -949,7 +1166,7 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.SkillDamage(
                 attackerObjectId: worldObjectId,
                 targetObjectId: cast.TargetObjectId,
-                resultFlags: 0,
+                resultFlags: 1,
                 damage: reportedDamage,
                 skillId: cast.SkillId,
                 targetX: targetX,
@@ -969,6 +1186,11 @@ internal sealed class GameClientHandler : IClientHandler
             cancellationToken,
             _session,
             "SkillCastImpactWorld");
+
+        if (damageResult.Killed)
+        {
+            await AwardMonsterKillAsync(damageResult, cancellationToken);
+        }
 
         if (_account is not null)
         {
@@ -992,6 +1214,141 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={_character.CurrentMp}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+    }
+
+    private async Task AwardMonsterKillAsync(
+        MonsterDamageResult damageResult,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null || !damageResult.Killed)
+        {
+            return;
+        }
+
+        var reward = MonsterRewardCatalog.Resolve(damageResult.Monster, _character.Level);
+        if (reward.Experience == 0 && reward.TalentExperience == 0)
+        {
+            Console.WriteLine(
+                $"[reward] no eligible reward character={_character.Name} level={_character.Level} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier}");
+            return;
+        }
+
+        CharacterProgressionResult? progression;
+        try
+        {
+            progression = await _store.ApplyMonsterKillRewardAsync(
+                _account.Id,
+                _character.Id,
+                reward.Experience,
+                reward.TalentExperience,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[reward] persistence failed character={_character.Name} monster={damageResult.ObjectId}: {ex.Message}");
+            return;
+        }
+
+        if (progression is null)
+        {
+            Console.WriteLine(
+                $"[reward] character missing account={_account.Id} character={_character.Id} monster={damageResult.ObjectId}");
+            return;
+        }
+
+        _character.Level = progression.CurrentLevel;
+        _character.Experience = progression.CurrentExperience;
+        _character.TalentExperience = progression.CurrentTalentExperience;
+        _character.TalentPoints = progression.CurrentTalentPoints;
+
+        if (progression.LevelUps.Count > 0)
+        {
+            try
+            {
+                var refreshedStats = await _store.GetCharacterStatsAsync(
+                    _account.Id,
+                    _character.Id,
+                    cancellationToken);
+                if (refreshedStats is not null)
+                {
+                    // The killing skill's MP cost is persisted after this reward
+                    // sequence. Refresh derived maxima without restoring the
+                    // older database vitals and accidentally refunding that cost.
+                    var currentHp = _character.CurrentHp;
+                    var currentMp = _character.CurrentMp;
+                    refreshedStats.ApplyTo(_character);
+                    _character.CurrentHp = Math.Clamp(currentHp, 0, _character.MaxHp);
+                    _character.CurrentMp = Math.Clamp(currentMp, 0, _character.MaxMp);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[reward] level-up stat refresh deferred character={_character.Name}: {ex.Message}");
+            }
+        }
+
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+
+        foreach (var levelUp in progression.LevelUps)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PlayerLevelUp(
+                    LocalPlayerObjectId,
+                    levelUp.Level,
+                    levelUp.NextLevelExperience,
+                    levelUp.CurrentExperience,
+                    _character.MaxHp,
+                    _character.CurrentHp,
+                    _character.MaxMp,
+                    _character.CurrentMp),
+                cancellationToken,
+                "MonsterKillLevelUp");
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.PlayerLevelUp(
+                    WorldObjectIds.ForPlayer(_character.Id),
+                    levelUp.Level,
+                    levelUp.NextLevelExperience,
+                    levelUp.CurrentExperience,
+                    _character.MaxHp,
+                    _character.CurrentHp,
+                    _character.MaxMp,
+                    _character.CurrentMp),
+                cancellationToken,
+                _session,
+                "MonsterKillLevelUpWorld");
+        }
+
+        if (progression.ExperienceGained > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.ExperienceGain(
+                    progression.ExperienceGained,
+                    progression.CurrentExperience),
+                cancellationToken,
+                "MonsterKillExperience");
+        }
+
+        if (progression.TalentExperienceGained > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.TalentExperienceGain(progression.TalentExperienceGained),
+                cancellationToken,
+                "MonsterKillTalentExperience");
+        }
+
+        if (progression.TalentPointsGained > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PlayerStatusUpdate(_character),
+                cancellationToken,
+                "MonsterKillTalentPointCarry");
+        }
+
+        Console.WriteLine(
+            $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier} level={progression.PreviousLevel}->{progression.CurrentLevel} exp=+{progression.ExperienceGained}->{progression.CurrentExperience}/{progression.NextLevelExperience} talent-exp=+{progression.TalentExperienceGained}->{progression.CurrentTalentExperience} talent-points=+{progression.TalentPointsGained}->{progression.CurrentTalentPoints}");
     }
 
     private async Task<bool> IsSkillLearnedAsync(uint skillId, CancellationToken cancellationToken)

@@ -12,7 +12,10 @@ internal sealed class MonsterMapRuntime
     internal const int MaximumMovementTicks = 21;
     internal const int MinimumIdleTicks = 15 * TicksPerSecond;
     internal const int MaximumIdleTicks = 20 * TicksPerSecond;
+    internal const float CombatRange = 3f;
+    internal const int AttackCooldownTicks = 21;
     internal static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1d / TicksPerSecond);
+    internal static readonly TimeSpan AttackCooldown = TimeSpan.FromTicks(TickInterval.Ticks * AttackCooldownTicks);
     internal static readonly TimeSpan DefaultCorpseDespawnDelay = TimeSpan.FromSeconds(5);
     internal static readonly TimeSpan DefaultRespawnDelay = TimeSpan.FromSeconds(10);
 
@@ -90,6 +93,16 @@ internal sealed class MonsterMapRuntime
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
+        return TryApplyDamage(objectId, damage, attackerCharacterId: null, now, out result);
+    }
+
+    public bool TryApplyDamage(
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
         lock (_gate)
         {
             if (!_monsters.TryGetValue(objectId, out var monster))
@@ -116,6 +129,7 @@ internal sealed class MonsterMapRuntime
             var killed = monster.CurrentHealth == 0;
             if (killed)
             {
+                ClearAggro(monster, now);
                 monster.IsAlive = false;
                 monster.IsMoving = false;
                 monster.VelocityX = 0;
@@ -128,6 +142,19 @@ internal sealed class MonsterMapRuntime
                     MonsterRuntimeUpdateKind.Died,
                     CreateSnapshot(monster)));
             }
+            else if (attackerCharacterId is > 0 &&
+                     monster.AggroCharacterId != attackerCharacterId)
+            {
+                monster.AggroCharacterId = attackerCharacterId;
+                monster.CombatPhase = MonsterCombatPhase.None;
+                monster.HasSentInitialChase = false;
+                monster.IsMoving = false;
+                monster.VelocityX = 0;
+                monster.VelocityZ = 0;
+                monster.MovementTicks = 0;
+                monster.RemainingMovementTicks = 0;
+                monster.NextAttackAt = now + TickInterval;
+            }
 
             result = new MonsterDamageResult(
                 objectId,
@@ -139,10 +166,26 @@ internal sealed class MonsterMapRuntime
         }
     }
 
-    public MonsterRuntimeTick Advance(DateTimeOffset now)
+    public void ClearAggroForCharacter(int characterId, DateTimeOffset now)
     {
         lock (_gate)
         {
+            foreach (var monster in _monsters.Values.Where(monster => monster.AggroCharacterId == characterId))
+            {
+                ClearAggro(monster, now);
+            }
+        }
+    }
+
+    public MonsterRuntimeTick Advance(
+        DateTimeOffset now,
+        IReadOnlyList<MonsterCombatTarget>? combatTargets = null)
+    {
+        lock (_gate)
+        {
+            var targetsByCharacterId = (combatTargets ?? [])
+                .GroupBy(target => target.CharacterId)
+                .ToDictionary(group => group.Key, group => group.Last());
             var updates = new List<MonsterRuntimeUpdate>(_pendingUpdates.Count + 4);
             var deathsAnnouncedThisTick = new HashSet<uint>();
             while (_pendingUpdates.TryDequeue(out var pendingUpdate))
@@ -189,6 +232,20 @@ internal sealed class MonsterMapRuntime
                     continue;
                 }
 
+                if (monster.AggroCharacterId is { } aggroCharacterId)
+                {
+                    if (targetsByCharacterId.TryGetValue(aggroCharacterId, out var combatTarget) &&
+                        combatTarget.IsAlive &&
+                        DistanceSquared(monster.HomeX, monster.HomeZ, combatTarget.X, combatTarget.Z) <=
+                        (MaximumRoamRadius + CombatRange) * (MaximumRoamRadius + CombatRange))
+                    {
+                        positionsChanged |= AdvanceCombat(monster, combatTarget, now, updates);
+                        continue;
+                    }
+
+                    ClearAggro(monster, now);
+                }
+
                 if (monster.IsMoving)
                 {
                     while (monster.IsMoving && now >= monster.NextMovementStepAt)
@@ -232,6 +289,160 @@ internal sealed class MonsterMapRuntime
 
             return new MonsterRuntimeTick(positionsChanged, updates);
         }
+    }
+
+    private static bool AdvanceCombat(
+        MonsterRuntimeState monster,
+        MonsterCombatTarget target,
+        DateTimeOffset now,
+        List<MonsterRuntimeUpdate> updates)
+    {
+        var positionsChanged = false;
+        var distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
+        if (distance <= CombatRange)
+        {
+            if (monster.CombatPhase == MonsterCombatPhase.Chasing || monster.IsMoving)
+            {
+                StopCombatMovement(monster);
+                monster.CombatPhase = MonsterCombatPhase.Attacking;
+                monster.NextAttackAt = now + TickInterval;
+                updates.Add(new MonsterRuntimeUpdate(
+                    MonsterRuntimeUpdateKind.Arrived,
+                    CreateSnapshot(monster),
+                    MovementEndField: 1));
+                return false;
+            }
+
+            if (monster.CombatPhase != MonsterCombatPhase.Attacking)
+            {
+                monster.CombatPhase = MonsterCombatPhase.Attacking;
+                monster.NextAttackAt = now + TickInterval;
+                return false;
+            }
+
+            if (now >= monster.NextAttackAt)
+            {
+                monster.NextAttackAt = now + AttackCooldown;
+                updates.Add(new MonsterRuntimeUpdate(
+                    MonsterRuntimeUpdateKind.Attacked,
+                    CreateSnapshot(monster),
+                    TargetCharacterId: target.CharacterId,
+                    TargetX: target.X,
+                    TargetZ: target.Z));
+            }
+
+            return false;
+        }
+
+        if (monster.CombatPhase != MonsterCombatPhase.Chasing)
+        {
+            monster.CombatPhase = MonsterCombatPhase.Chasing;
+            monster.HasSentInitialChase = true;
+            monster.IsMoving = true;
+            monster.MovementTicks = 1;
+            monster.RemainingMovementTicks = 1;
+            SetCombatVelocity(monster, target);
+            monster.NextMovementStepAt = now + TickInterval;
+            updates.Add(new MonsterRuntimeUpdate(
+                MonsterRuntimeUpdateKind.Started,
+                CreateSnapshot(monster),
+                MovementMode: 0));
+            return false;
+        }
+
+        while (now >= monster.NextMovementStepAt)
+        {
+            var stepAt = monster.NextMovementStepAt;
+            distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
+            var remainingDistance = Math.Max(0d, distance - CombatRange);
+            if (remainingDistance <= double.Epsilon)
+            {
+                StopCombatMovement(monster);
+                monster.CombatPhase = MonsterCombatPhase.Attacking;
+                monster.NextAttackAt = stepAt + TickInterval;
+                updates.Add(new MonsterRuntimeUpdate(
+                    MonsterRuntimeUpdateKind.Arrived,
+                    CreateSnapshot(monster),
+                    MovementEndField: 1));
+                break;
+            }
+
+            SetCombatVelocity(monster, target, Math.Min(MovementStep, (float)remainingDistance));
+            var nextX = monster.CurrentX + monster.VelocityX;
+            var nextZ = monster.CurrentZ + monster.VelocityZ;
+            if (DistanceSquared(monster.HomeX, monster.HomeZ, nextX, nextZ) >
+                MaximumRoamRadius * MaximumRoamRadius)
+            {
+                ClearAggro(monster, stepAt);
+                break;
+            }
+
+            monster.CurrentX = nextX;
+            monster.CurrentZ = nextZ;
+            monster.NextMovementStepAt += TickInterval;
+            positionsChanged = true;
+
+            distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
+            if (distance <= CombatRange + 0.0001d)
+            {
+                StopCombatMovement(monster);
+                monster.CombatPhase = MonsterCombatPhase.Attacking;
+                monster.NextAttackAt = stepAt + TickInterval;
+                updates.Add(new MonsterRuntimeUpdate(
+                    MonsterRuntimeUpdateKind.Arrived,
+                    CreateSnapshot(monster),
+                    MovementEndField: 1));
+                break;
+            }
+
+            SetCombatVelocity(monster, target);
+            updates.Add(new MonsterRuntimeUpdate(
+                MonsterRuntimeUpdateKind.Started,
+                CreateSnapshot(monster),
+                MovementMode: 1));
+        }
+
+        return positionsChanged;
+    }
+
+    private static void SetCombatVelocity(
+        MonsterRuntimeState monster,
+        MonsterCombatTarget target,
+        float step = MovementStep)
+    {
+        var deltaX = target.X - monster.CurrentX;
+        var deltaZ = target.Z - monster.CurrentZ;
+        var distance = Math.Sqrt((deltaX * deltaX) + (deltaZ * deltaZ));
+        if (distance <= double.Epsilon)
+        {
+            monster.VelocityX = 0;
+            monster.VelocityZ = 0;
+            return;
+        }
+
+        monster.VelocityX = (float)((deltaX / distance) * step);
+        monster.VelocityZ = (float)((deltaZ / distance) * step);
+        monster.Facing = MathF.Atan2(monster.VelocityX, monster.VelocityZ);
+    }
+
+    private static void StopCombatMovement(MonsterRuntimeState monster)
+    {
+        monster.IsMoving = false;
+        monster.VelocityX = 0;
+        monster.VelocityZ = 0;
+        monster.MovementTicks = 1;
+        monster.RemainingMovementTicks = 0;
+    }
+
+    private static void ClearAggro(MonsterRuntimeState monster, DateTimeOffset now)
+    {
+        monster.AggroCharacterId = null;
+        monster.CombatPhase = MonsterCombatPhase.None;
+        monster.HasSentInitialChase = false;
+        StopCombatMovement(monster);
+        monster.MovementTicks = 0;
+        monster.NextAttackAt = default;
+        monster.NextMovementAt = now + NextIdleDelay(monster);
     }
 
     private static MonsterRuntimeState CreateState(
@@ -339,6 +550,7 @@ internal sealed class MonsterMapRuntime
 
     private static void Respawn(MonsterRuntimeState monster, DateTimeOffset now)
     {
+        ClearAggro(monster, now);
         monster.IsAlive = true;
         monster.IsSpawned = true;
         monster.CurrentHealth = monster.MaximumHealth;
@@ -465,7 +677,24 @@ internal sealed class MonsterMapRuntime
         public DateTimeOffset? DespawnAt { get; set; }
         public DateTimeOffset? RespawnAt { get; set; }
         public uint RandomState { get; set; }
+        public int? AggroCharacterId { get; set; }
+        public MonsterCombatPhase CombatPhase { get; set; }
+        public bool HasSentInitialChase { get; set; }
+        public DateTimeOffset NextAttackAt { get; set; }
     }
+}
+
+internal readonly record struct MonsterCombatTarget(
+    int CharacterId,
+    float X,
+    float Z,
+    bool IsAlive);
+
+internal enum MonsterCombatPhase
+{
+    None,
+    Chasing,
+    Attacking
 }
 
 internal sealed record MonsterRuntimeSnapshot(
@@ -505,6 +734,7 @@ internal enum MonsterRuntimeUpdateKind
 {
     Started,
     Arrived,
+    Attacked,
     Died,
     Despawned,
     Respawned
@@ -512,7 +742,12 @@ internal enum MonsterRuntimeUpdateKind
 
 internal sealed record MonsterRuntimeUpdate(
     MonsterRuntimeUpdateKind Kind,
-    MonsterRuntimeSnapshot Monster);
+    MonsterRuntimeSnapshot Monster,
+    uint MovementMode = 1,
+    uint? MovementEndField = null,
+    int? TargetCharacterId = null,
+    float TargetX = 0,
+    float TargetZ = 0);
 
 internal sealed record MonsterRuntimeTick(
     bool PositionsChanged,

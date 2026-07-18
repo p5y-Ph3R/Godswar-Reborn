@@ -26,6 +26,8 @@ internal sealed class GameCharacter
 
     public int Level { get; set; } = 1;
 
+    public int Experience { get; set; }
+
     public int MaxHp { get; set; } = 1500;
 
     public int MaxMp { get; set; } = 177;

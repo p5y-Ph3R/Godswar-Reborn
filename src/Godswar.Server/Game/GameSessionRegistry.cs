@@ -7,10 +7,17 @@ namespace Godswar.Server.Game;
 
 internal sealed class GameSessionRegistry
 {
+    private const uint LocalPlayerObjectId = 0x00001448;
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
     private readonly ConcurrentDictionary<int, ClientSession> _accountSessions = [];
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
+    private readonly IGameStore? _store;
+
+    public GameSessionRegistry(IGameStore? store = null)
+    {
+        _store = store;
+    }
 
     public void JoinMap(
         ClientSession session,
@@ -340,6 +347,22 @@ internal sealed class GameSessionRegistry
             out result);
     }
 
+    public bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        int attackerCharacterId,
+        out MonsterDamageResult result)
+    {
+        return TryApplyMonsterDamage(
+            mapId,
+            objectId,
+            damage,
+            attackerCharacterId,
+            DateTimeOffset.UtcNow,
+            out result);
+    }
+
     internal bool TryApplyMonsterDamage(
         byte mapId,
         uint objectId,
@@ -347,8 +370,19 @@ internal sealed class GameSessionRegistry
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
+        return TryApplyMonsterDamage(mapId, objectId, damage, null, now, out result);
+    }
+
+    internal bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
         if (_maps.TryGetValue(mapId, out var map) &&
-            map.TryApplyMonsterDamage(objectId, damage, now, out result))
+            map.TryApplyMonsterDamage(objectId, damage, attackerCharacterId, now, out result))
         {
             return true;
         }
@@ -443,6 +477,11 @@ internal sealed class GameSessionRegistry
             if (!tick.PositionsChanged && tick.Updates.Count == 0)
             {
                 continue;
+            }
+
+            foreach (var attack in tick.Updates.Where(update => update.Kind == MonsterRuntimeUpdateKind.Attacked))
+            {
+                await ProcessMonsterAttackAsync(map, attack, cancellationToken);
             }
 
             foreach (var context in map.Snapshot())
@@ -581,10 +620,11 @@ internal sealed class GameSessionRegistry
                     monster.Z,
                     monster.VelocityX,
                     monster.VelocityY,
-                    monster.VelocityZ),
+                    monster.VelocityZ,
+                    update.MovementMode),
                 MonsterRuntimeUpdateKind.Arrived => PacketBuilder.MonsterMovementEnd(
                     monster.ObjectId,
-                    monster.MovementTicks,
+                    update.MovementEndField ?? monster.MovementTicks,
                     monster.X,
                     monster.Y,
                     monster.Z,
@@ -602,6 +642,166 @@ internal sealed class GameSessionRegistry
 
         // Commit only after the complete remove/spawn/movement handoff succeeds.
         transition.Commit();
+    }
+
+    private async Task ProcessMonsterAttackAsync(
+        MapInstance map,
+        MonsterRuntimeUpdate attack,
+        CancellationToken cancellationToken)
+    {
+        if (attack.TargetCharacterId is not { } targetCharacterId)
+        {
+            return;
+        }
+
+        GameSessionContext? targetContext;
+        uint damage;
+        var killed = false;
+        lock (_gate)
+        {
+            targetContext = map.Snapshot().FirstOrDefault(context =>
+                context.WorldReady && context.CharacterId == targetCharacterId);
+            if (targetContext is null || targetContext.Character.CurrentHp <= 0)
+            {
+                targetContext = null;
+                damage = 0;
+            }
+            else
+            {
+                damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                    attack.Monster.Definition.Tier,
+                    targetContext.Character);
+                var beforeHealth = targetContext.Character.CurrentHp;
+                targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
+                    ? 0
+                    : beforeHealth - (int)damage;
+                killed = targetContext.Character.CurrentHp == 0;
+            }
+        }
+
+        if (targetContext is null || damage == 0)
+        {
+            map.ClearMonsterAggroForCharacter(targetCharacterId, DateTimeOffset.UtcNow);
+            return;
+        }
+
+        var monster = attack.Monster;
+        var target = targetContext.Character;
+        var worldTargetObjectId = WorldObjectIds.ForPlayer(target.Id);
+        try
+        {
+            await targetContext.Session.SendAsync(
+                PacketBuilder.SkillCastImpact(
+                    monster.ObjectId,
+                    LocalPlayerObjectId,
+                    2000,
+                    attack.TargetX,
+                    attack.TargetZ),
+                cancellationToken,
+                "MonsterAttackImpactSelf");
+            await targetContext.Session.SendAsync(
+                PacketBuilder.PhysicalDamage(
+                    monster.ObjectId,
+                    monster.X,
+                    monster.Y,
+                    monster.Z,
+                    LocalPlayerObjectId,
+                    damage,
+                    result: 0),
+                cancellationToken,
+                "MonsterAttackDamageSelf");
+            if (killed)
+            {
+                await targetContext.Session.SendAsync(
+                    PacketBuilder.PlayerDeath(
+                        LocalPlayerObjectId,
+                        target.PositionX,
+                        0f,
+                        target.PositionZ,
+                        target.CurrentMap),
+                    cancellationToken,
+                    "MonsterKillPlayerSelf");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            Remove(targetContext.Session);
+        }
+
+        foreach (var observer in map.Snapshot())
+        {
+            if (!observer.WorldReady ||
+                ReferenceEquals(observer.Session, targetContext.Session) ||
+                !map.IsMonsterVisibleTo(observer.Session, monster.ObjectId))
+            {
+                continue;
+            }
+
+            try
+            {
+                await observer.Session.SendAsync(
+                    PacketBuilder.SkillCastImpact(
+                        monster.ObjectId,
+                        worldTargetObjectId,
+                        2000,
+                        attack.TargetX,
+                        attack.TargetZ),
+                    cancellationToken,
+                    "MonsterAttackImpactWorld");
+                await observer.Session.SendAsync(
+                    PacketBuilder.PhysicalDamage(
+                        monster.ObjectId,
+                        monster.X,
+                        monster.Y,
+                        monster.Z,
+                        worldTargetObjectId,
+                        damage,
+                        result: 0),
+                    cancellationToken,
+                    "MonsterAttackDamageWorld");
+                if (killed)
+                {
+                    await observer.Session.SendAsync(
+                        PacketBuilder.PlayerDeath(
+                            worldTargetObjectId,
+                            target.PositionX,
+                            0f,
+                            target.PositionZ,
+                            target.CurrentMap),
+                        cancellationToken,
+                        "MonsterKillPlayerWorld");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                Remove(observer.Session);
+            }
+        }
+
+        if (killed)
+        {
+            map.ClearMonsterAggroForCharacter(targetCharacterId, DateTimeOffset.UtcNow);
+        }
+
+        if (_store is not null)
+        {
+            try
+            {
+                await _store.SaveCharacterVitalsAsync(
+                    targetContext.AccountId,
+                    targetContext.CharacterId,
+                    target.CurrentHp,
+                    target.CurrentMp,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine($"[monster] victim vitals persistence deferred character={targetContext.DisplayName}: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[monster] attack monster={monster.ObjectId} tier={monster.Definition.Tier} target={targetContext.DisplayName} damage={damage} hp={target.CurrentHp}/{target.MaxHp} killed={killed}");
     }
 
     private void AddToMap(GameSessionContext context)
@@ -633,6 +833,7 @@ internal sealed class GameSessionRegistry
         if (_maps.TryGetValue(context.MapId, out var map))
         {
             map.Remove(context.Session, out _);
+            map.ClearMonsterAggroForCharacter(context.CharacterId, DateTimeOffset.UtcNow);
         }
     }
 }

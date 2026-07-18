@@ -22,11 +22,13 @@ internal static class Program
         {
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
+            ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
             ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
             ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),
             ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
             ("Skill combat catalog", CheckSkillCombatCatalogAsync),
             ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
+            ("Basic and monster attack packet layouts", CheckAttackPacketLayoutsAsync),
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
             ("PlayerWorldSpawn full quality/grade extension", CheckPlayerWorldExtendedAppearanceAsync),
@@ -39,6 +41,7 @@ internal static class Program
             ("Monster movement and lifecycle packet layouts", CheckMonsterMovementPacketLayoutsAsync),
             ("Monster runtime appearance patch", CheckMonsterRuntimeAppearancePatchAsync),
             ("Shared bounded monster runtime and lifecycle", CheckSharedBoundedMonsterRuntimeAsync),
+            ("Passive monster retaliation state machine", CheckMonsterRetaliationRuntimeAsync),
             ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
@@ -163,6 +166,11 @@ internal static class Program
         Check.Equal(character.CurrentMap, packet[46], "EnterMain saved map");
         Check.Equal(character.PositionX, ReadSingle(packet, 56), "EnterMain saved X");
         Check.Equal(character.PositionZ, ReadSingle(packet, 64), "EnterMain saved Z");
+        Check.Equal(character.Experience, ReadInt32(packet, 84), "EnterMain saved fighter EXP");
+        Check.Equal(
+            PlayerExperienceCatalog.GetNextLevelExperience(character.Level),
+            ReadInt32(packet, 88),
+            "EnterMain next-level EXP threshold");
 
         var secondCharacter = CreateCharacter();
         secondCharacter.Id = character.Id + 1;
@@ -170,6 +178,78 @@ internal static class Program
         Check.Equal((uint)secondCharacter.Id, ReadUInt32(secondPacket, 4), "second character has an isolated UI key");
         Check.Equal(0x00001448u, ReadUInt32(secondPacket, 52), "local world object ID remains session-local");
         return Task.CompletedTask;
+    }
+
+    private static async Task CheckMonsterKillProgressionAsync()
+    {
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-progression-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            await using var store = new JsonGameStore(dataPath);
+            await store.EnsureSeedDataAsync();
+            var account = await store.LoginOrCreateAccountAsync("progression-check", "");
+            var character = await store.CreateCharacterAsync(
+                account.Id,
+                new GameCharacter
+                {
+                    Name = "ProgressionHero",
+                    Camp = GameDefaults.SpartaCamp,
+                    TalentPoints = 10,
+                    TalentExperience = 0
+                });
+
+            var first = await store.ApplyMonsterKillRewardAsync(
+                account.Id,
+                character.Id,
+                experience: 80,
+                talentExperience: 2)
+                ?? throw new InvalidOperationException("first progression update returned no character");
+            Check.Equal(80, first.CurrentExperience, "first kill persists fighter EXP");
+            Check.Equal(1, first.CurrentLevel, "first kill remains below the level-one threshold");
+            Check.Equal(2, first.CurrentTalentExperience, "first kill persists Talent EXP");
+            Check.Equal(0, first.TalentPointsGained, "first kill does not prematurely create a Talent Point");
+            Check.Equal(10, first.CurrentTalentPoints, "first kill retains spendable Talent Points");
+
+            var carry = await store.ApplyMonsterKillRewardAsync(
+                account.Id,
+                character.Id,
+                experience: 160,
+                talentExperience: 99)
+                ?? throw new InvalidOperationException("carry progression update returned no character");
+            Check.Equal(2, carry.CurrentLevel, "fighter EXP advances a level at the original threshold");
+            Check.Equal(40, carry.CurrentExperience, "fighter EXP carries its remainder into the next level");
+            Check.Equal(252, carry.NextLevelExperience, "level two uses the original next-level threshold");
+            Check.Equal(1, carry.LevelUps.Count, "progression reports every crossed level");
+            Check.Equal(40, carry.LevelUps[0].CurrentExperience, "level-up packet receives carried fighter EXP");
+            Check.Equal(1, carry.CurrentTalentExperience, "Talent EXP carries its remainder at 100");
+            Check.Equal(1, carry.TalentPointsGained, "Talent EXP carry creates one Talent Point");
+            Check.Equal(11, carry.CurrentTalentPoints, "spendable Talent Point total increments");
+
+            var reloaded = await store.GetFirstCharacterAsync(account.Id)
+                ?? throw new InvalidOperationException("progression character was not reloaded");
+            Check.Equal(2, reloaded.Level, "fighter level survives relogin");
+            Check.Equal(40, reloaded.Experience, "carried fighter EXP survives relogin");
+            Check.Equal(1, reloaded.TalentExperience, "Talent EXP remainder survives relogin");
+            Check.Equal(11, reloaded.TalentPoints, "converted Talent Point survives relogin");
+
+            Check.Equal(200, PlayerExperienceCatalog.GetNextLevelExperience(1), "level-one EXP threshold");
+            Check.Equal(252, PlayerExperienceCatalog.GetNextLevelExperience(2), "level-two EXP threshold");
+            Check.Equal(584435250, PlayerExperienceCatalog.GetNextLevelExperience(200), "level-cap EXP table entry");
+            Check.Equal(80, MonsterRewardCatalog.Resolve(1, 1).Experience, "captured tier-one reward");
+            Check.Equal(120, MonsterRewardCatalog.Resolve(11, 1).Experience, "tier-eleven reward follows original curve");
+            Check.Equal(8, MonsterRewardCatalog.Resolve(1, 10).Experience, "level-difference reward scales deterministically");
+            Check.Equal(0, MonsterRewardCatalog.Resolve(1, 11).Experience, "ten-level reward falloff reaches zero");
+            Check.Equal(0, MonsterRewardCatalog.Resolve(1, 12).TalentExperience, "over-level kills do not award Talent EXP");
+            Check.Equal(0, MonsterRewardCatalog.Resolve(200, 200).TalentExperience, "level-cap kills award no progression");
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
     }
 
     private static Task CheckWarriorStarterSkillPacketsAsync()
@@ -293,7 +373,7 @@ internal static class Program
         var damage = PacketBuilder.SkillDamage(
             remoteCasterId,
             monsterId,
-            resultFlags: 0,
+            resultFlags: 1,
             damage: 865,
             skillId: 0,
             targetX: 44.75f,
@@ -302,7 +382,7 @@ internal static class Program
         Check.Equal((ushort)10045, ReadUInt16(damage, 2), "skill damage opcode");
         Check.Equal(remoteCasterId, ReadUInt32(damage, 4), "skill damage attacker");
         Check.Equal(monsterId, ReadUInt32(damage, 8), "skill damage target");
-        Check.Equal(0u, ReadUInt32(damage, 12), "skill damage normal-hit result");
+        Check.Equal(1u, ReadUInt32(damage, 12), "skill damage normal-hit result");
         Check.Equal(865u, ReadUInt32(damage, 16), "skill damage reports the uncapped resolved amount");
         Check.Equal(0u, ReadUInt32(damage, 20), "skill damage skill ID zero");
         Check.Equal(44.75f, ReadSingle(damage, 24), "skill damage target X");
@@ -313,6 +393,116 @@ internal static class Program
         Check.Equal((ushort)10135, ReadUInt16(mana, 2), "mana update opcode");
         Check.Equal(remoteCasterId, ReadUInt32(mana, 4), "mana update caster");
         Check.Equal(165u, ReadUInt32(mana, 8), "mana update absolute current MP");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckAttackPacketLayoutsAsync()
+    {
+        var clientAttack = Convert.FromHexString(
+            "20002A279F0400009AC83043000000007B4731401D270000AED27D007F007F00");
+        Check.True(BasicAttackRequest.TryParse(clientAttack, out var parsed), "captured basic attack parses");
+        Check.Equal(0x49Fu, parsed.AttackerObjectId, "basic attack attacker");
+        Check.Equal(ReadSingle(clientAttack, 8), parsed.AttackerX, "basic attack X");
+        Check.Equal(ReadSingle(clientAttack, 12), parsed.AttackerY, "basic attack Y");
+        Check.Equal(ReadSingle(clientAttack, 16), parsed.AttackerZ, "basic attack Z");
+        Check.Equal(10013u, parsed.TargetObjectId, "basic attack target");
+
+        var freeRevive = Convert.FromHexString("0C0023274814000002000000");
+        Check.True(ReviveRequest.TryParse(freeRevive, out var revive), "original free-revive request parses");
+        Check.Equal(0x1448u, revive.PlayerObjectId, "revive request player object");
+        Check.Equal(2, revive.ReviveType, "revive request free-revival type");
+
+        var capturedPlayerDamage = Convert.FromHexString(
+            "1E002A279F0400000000000000000000000000001D270000370000000301");
+        var playerDamage = PacketBuilder.PhysicalDamage(
+            0x49F,
+            0f,
+            0f,
+            0f,
+            10013,
+            55,
+            result: 3);
+        Check.True(playerDamage.SequenceEqual(capturedPlayerDamage), "player normal damage matches capture byte-for-byte");
+
+        var capturedMonsterImpact = Convert.FromHexString(
+            "18003E271D2700009F040000D007000078BD3043873C2C40");
+        var monsterImpact = PacketBuilder.SkillCastImpact(
+            10013,
+            0x49F,
+            2000,
+            ReadSingle(capturedMonsterImpact, 16),
+            ReadSingle(capturedMonsterImpact, 20));
+        Check.True(monsterImpact.SequenceEqual(capturedMonsterImpact), "monster attack impact matches capture byte-for-byte");
+
+        var capturedMonsterDamage = Convert.FromHexString(
+            "1E002A271D270000F227324300000000A5064F409F040000180000000001");
+        var monsterDamage = PacketBuilder.PhysicalDamage(
+            10013,
+            ReadSingle(capturedMonsterDamage, 8),
+            ReadSingle(capturedMonsterDamage, 12),
+            ReadSingle(capturedMonsterDamage, 16),
+            0x49F,
+            24,
+            result: 0);
+        Check.True(monsterDamage.SequenceEqual(capturedMonsterDamage), "monster physical damage matches capture byte-for-byte");
+
+        var capturedDeath = Convert.FromHexString(
+            "1C0022274F0200000000164300000000000012C30000000001000000");
+        var death = PacketBuilder.PlayerDeath(
+            0x24F,
+            ReadSingle(capturedDeath, 8),
+            ReadSingle(capturedDeath, 12),
+            ReadSingle(capturedDeath, 16),
+            0);
+        Check.True(death.SequenceEqual(capturedDeath), "player death matches capture byte-for-byte");
+
+        var firstExperience = PacketBuilder.ExperienceGain(80, 80);
+        Check.True(
+            firstExperience.SequenceEqual(Convert.FromHexString("0D002F27500000005000000000")),
+            "first-kill EXP notice matches capture byte-for-byte");
+        var laterExperience = PacketBuilder.ExperienceGain(80, 160);
+        Check.Equal(160, ReadInt32(laterExperience, 4), "EXP notice carries resulting total at +4");
+        Check.Equal(80, ReadInt32(laterExperience, 8), "EXP notice displays gained delta at +8");
+        Check.True(
+            PacketBuilder.TalentExperienceGain(2).SequenceEqual(
+                Convert.FromHexString("0C0045280400000002000000")),
+            "Talent EXP notice matches capture byte-for-byte");
+        Check.True(
+            PacketBuilder.PlayerLevelUp(
+                0x466,
+                2,
+                252,
+                0,
+                1351,
+                1331,
+                386,
+                380).SequenceEqual(
+                Convert.FromHexString(
+                    "24002E276604000002000000FC000000000000004705000033050000820100007C010000")),
+            "fighter level-up notice matches capture byte-for-byte");
+
+        var physical = CreateCharacter();
+        physical.Profession = 0;
+        physical.CalculatedStats = new CharacterStats { PhysicalAttack = 55, MagicAttack = 99 };
+        Check.Equal(55u, MonsterCombatResolver.CalculatePlayerBasicAttack(physical), "physical class basic damage");
+        physical.Profession = 3;
+        Check.Equal(99u, MonsterCombatResolver.CalculatePlayerBasicAttack(physical), "caster class basic damage");
+        Check.True(
+            MonsterCombatResolver.IsWithinBasicAttackRange(0, 0, 2.49f, 0),
+            "normal attack accepts a target inside 2.5 units");
+        Check.True(
+            !MonsterCombatResolver.IsWithinBasicAttackRange(0, 0, 2.5f, 0),
+            "normal attack rejects the strict 2.5-unit boundary");
+
+        var undefended = CreateCharacter();
+        undefended.CalculatedStats = new CharacterStats { PhysicalDefense = 0 };
+        Check.Equal(24u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(1, undefended), "tier-one monster attack");
+        Check.Equal(27u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(2, undefended), "tier-two monster attack");
+        Check.Equal(31u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(3, undefended), "tier-three monster attack");
+        undefended.CalculatedStats = new CharacterStats { PhysicalDefense = 22 };
+        Check.Equal(2u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(1, undefended), "physical defense reduces monster damage");
+        undefended.CalculatedStats = new CharacterStats { PhysicalDefense = 999 };
+        Check.Equal(1u, MonsterCombatResolver.CalculateMonsterPhysicalAttack(1, undefended), "monster damage floors at one");
         return Task.CompletedTask;
     }
 
@@ -1135,6 +1325,135 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task CheckMonsterRetaliationRuntimeAsync()
+    {
+        var start = new DateTimeOffset(2026, 5, 12, 17, 59, 50, TimeSpan.FromHours(12));
+        var definition = CreateCapturedMonster(
+            10013,
+            100f,
+            50f,
+            "A_normal_stub_001",
+            tier: 1,
+            maximumHealth: 237);
+        var target = new MonsterCombatTarget(
+            CharacterId: 731,
+            X: definition.X + 8.68f,
+            Z: definition.Z,
+            IsAlive: true);
+
+        var passive = new MonsterMapRuntime(0, [definition], start);
+        var passiveTick = passive.Advance(start + MonsterMapRuntime.TickInterval, [target]);
+        Check.True(
+            passiveTick.Updates.All(update => update.Kind != MonsterRuntimeUpdateKind.Attacked),
+            "nearby players do not proximity-aggro passive monsters");
+
+        var runtime = new MonsterMapRuntime(0, [definition], start);
+        Check.True(
+            runtime.TryApplyDamage(
+                definition.ObjectId,
+                damage: 1,
+                attackerCharacterId: target.CharacterId,
+                now: start,
+                out var hit) &&
+            !hit.Killed,
+            "a nonlethal hit attaches retaliation aggro");
+
+        var chaseStart = runtime.Advance(start, [target]);
+        var initialMovement = chaseStart.Updates.Single(update => update.Kind == MonsterRuntimeUpdateKind.Started);
+        Check.Equal(0u, initialMovement.MovementMode, "initial combat chase uses movement mode zero");
+
+        var now = start;
+        var movementSteps = 0;
+        MonsterRuntimeTick arrivalTick = new(false, []);
+        while (movementSteps < 30)
+        {
+            now += MonsterMapRuntime.TickInterval;
+            var tick = runtime.Advance(now, [target]);
+            movementSteps++;
+            if (tick.Updates.Any(update => update.Kind == MonsterRuntimeUpdateKind.Arrived))
+            {
+                arrivalTick = tick;
+                break;
+            }
+
+            var continuation = tick.Updates.Single(update => update.Kind == MonsterRuntimeUpdateKind.Started);
+            Check.Equal(1u, continuation.MovementMode, "combat chase continuation uses movement mode one");
+            if (movementSteps == 5)
+            {
+                Check.True(
+                    runtime.TryApplyDamage(
+                        definition.ObjectId,
+                        damage: 1,
+                        attackerCharacterId: target.CharacterId,
+                        now,
+                        out var repeatedChaseHit) &&
+                    !repeatedChaseHit.Killed,
+                    "a repeated hit from the aggro target preserves an active chase");
+            }
+        }
+
+        Check.Equal(15, movementSteps, "8.68-unit chase reaches three-unit attack range in fifteen steps");
+        var arrival = arrivalTick.Updates.Single(update => update.Kind == MonsterRuntimeUpdateKind.Arrived);
+        Check.Equal(1u, arrival.MovementEndField ?? 0, "combat movement end carries field one");
+        var distance = Math.Sqrt(
+            Math.Pow(arrival.Monster.X - target.X, 2) +
+            Math.Pow(arrival.Monster.Z - target.Z, 2));
+        Check.True(distance <= MonsterMapRuntime.CombatRange + 0.0001, "combat chase stops within three units");
+
+        now += MonsterMapRuntime.TickInterval;
+        var firstAttack = runtime.Advance(now, [target]);
+        var attack = firstAttack.Updates.Single(update => update.Kind == MonsterRuntimeUpdateKind.Attacked);
+        Check.Equal(target.CharacterId, attack.TargetCharacterId ?? 0, "monster attacks the character who hit it");
+        Check.Equal(target.X, attack.TargetX, "monster attack captures target X");
+        Check.Equal(target.Z, attack.TargetZ, "monster attack captures target Z");
+
+        for (var cooldownTick = 1; cooldownTick < MonsterMapRuntime.AttackCooldownTicks; cooldownTick++)
+        {
+            now += MonsterMapRuntime.TickInterval;
+            if (cooldownTick == 5)
+            {
+                Check.True(
+                    runtime.TryApplyDamage(
+                        definition.ObjectId,
+                        damage: 1,
+                        attackerCharacterId: target.CharacterId,
+                        now,
+                        out var repeatedAttackHit) &&
+                    !repeatedAttackHit.Killed,
+                    "a repeated hit from the aggro target preserves the attack cooldown");
+            }
+
+            Check.True(
+                runtime.Advance(now, [target]).Updates.All(update => update.Kind != MonsterRuntimeUpdateKind.Attacked),
+                $"monster does not attack early at cooldown tick {cooldownTick}");
+        }
+
+        now += MonsterMapRuntime.TickInterval;
+        Check.True(
+            runtime.Advance(now, [target]).Updates.Any(update => update.Kind == MonsterRuntimeUpdateKind.Attacked),
+            "monster repeats its attack exactly twenty-one ticks later");
+
+        runtime.ClearAggroForCharacter(target.CharacterId, now);
+        now += MonsterMapRuntime.AttackCooldown;
+        Check.True(
+            runtime.Advance(now, [target]).Updates.All(update => update.Kind != MonsterRuntimeUpdateKind.Attacked),
+            "clearing a disconnected/dead target stops retaliation");
+
+        var lethal = new MonsterMapRuntime(0, [definition], start);
+        Check.True(
+            lethal.TryApplyDamage(
+                definition.ObjectId,
+                damage: 1_000,
+                attackerCharacterId: target.CharacterId,
+                now: start,
+                out var lethalHit) && lethalHit.Killed,
+            "lethal player damage resolves without retaliation");
+        Check.True(
+            lethal.Advance(start, [target]).Updates.All(update => update.Kind != MonsterRuntimeUpdateKind.Attacked),
+            "dead monsters never attack their killer");
+        return Task.CompletedTask;
+    }
+
     private static async Task CheckMonsterViewerRegistryAsync()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -1297,16 +1616,18 @@ internal static class Program
         float x,
         float z,
         string templateKey,
-        uint objectType = 0x00000212)
+        uint objectType = 0x00000212,
+        uint tier = 1,
+        uint maximumHealth = 237)
     {
         var packet = new byte[108];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 10020);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectType);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), 1);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), 237);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), 237);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), tier);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), maximumHealth);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), maximumHealth);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), x);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(36, 4), z);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(40, 4), 1f);

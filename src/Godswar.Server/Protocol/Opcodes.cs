@@ -17,8 +17,10 @@ internal static class Opcodes
     public const ushort GameServerInfo = 10008;
     public const ushort WalkBegin = 10013;
     public const ushort WalkEnd = 10014;
+    public const ushort Revive = 10019;
     public const ushort Kitbag = 10022;
     public const ushort Storage = 10023;
+    public const ushort BasicAttack = 10026;
     public const ushort Talk = 10035;
     public const ushort SkillCast = 10040;
     public const ushort PickupDrops = 10048;
@@ -64,8 +66,10 @@ internal static class Opcodes
             GameServerInfo => nameof(GameServerInfo),
             WalkBegin => nameof(WalkBegin),
             WalkEnd => nameof(WalkEnd),
+            Revive => nameof(Revive),
             Kitbag => nameof(Kitbag),
             Storage => nameof(Storage),
+            BasicAttack => nameof(BasicAttack),
             Ping => nameof(Ping),
             Talk => nameof(Talk),
             SkillCast => nameof(SkillCast),

@@ -17,7 +17,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     shutdown.Cancel();
 };
 
-var registry = new GameSessionRegistry();
+var registry = new GameSessionRegistry(store);
 var loginServer = new TcpEndpointServer(
     "login",
     options.Login.BindHost,

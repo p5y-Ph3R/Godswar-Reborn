@@ -23,6 +23,13 @@ internal interface IGameStore : IAsyncDisposable
         int currentMp,
         CancellationToken cancellationToken = default);
 
+    Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(
+        int accountId,
+        int characterId,
+        int experience,
+        int talentExperience,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);

@@ -128,6 +128,57 @@ internal sealed class JsonGameStore : IGameStore
         }
     }
 
+    public async Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(
+        int accountId,
+        int characterId,
+        int experience,
+        int talentExperience,
+        CancellationToken cancellationToken = default)
+    {
+        experience = Math.Max(0, experience);
+        talentExperience = Math.Max(0, talentExperience);
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return null;
+            }
+
+            var previousLevel = character.Level;
+            var fighterProgression = PlayerExperienceCatalog.Apply(
+                character.Level,
+                character.Experience,
+                experience);
+            character.Level = fighterProgression.Level;
+            character.Experience = fighterProgression.Experience;
+            var accumulatedTalentExperience = checked(character.TalentExperience + talentExperience);
+            var gainedTalentPoints = accumulatedTalentExperience / 100;
+            character.TalentExperience = accumulatedTalentExperience % 100;
+            character.TalentPoints = checked(character.TalentPoints + gainedTalentPoints);
+            await SaveUnsafeAsync(db, cancellationToken);
+
+            return new CharacterProgressionResult(
+                fighterProgression.ExperienceGained,
+                previousLevel,
+                character.Level,
+                character.Experience,
+                PlayerExperienceCatalog.GetNextLevelExperience(character.Level),
+                fighterProgression.LevelUps,
+                talentExperience,
+                character.TalentExperience,
+                gainedTalentPoints,
+                character.TalentPoints);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -600,6 +651,7 @@ internal sealed class JsonGameStore : IGameStore
             Faith = character.Faith,
             CurrentMap = character.CurrentMap,
             Level = character.Level,
+            Experience = character.Experience,
             MaxHp = character.MaxHp,
             MaxMp = character.MaxMp,
             CurrentHp = character.CurrentHp,

@@ -17,6 +17,8 @@ internal static class PacketBuilder
     private const int EnterMaxMpOffset = 72;
     private const int EnterCurrentHpOffset = 76;
     private const int EnterCurrentMpOffset = 80;
+    private const int EnterExperienceOffset = 84;
+    private const int EnterNextLevelExperienceOffset = 88;
     private const int EnterEquipmentMaskOffset = 48;
     private const int EnterEquipmentOffset = 104;
     private const int EnterItemRecordLength = 72;
@@ -57,6 +59,11 @@ internal static class PacketBuilder
     private const ushort SkillListOpcode = 0x27D4;
     private const ushort SkillDamageOpcode = 0x273D;
     private const ushort SkillCastImpactOpcode = 0x273E;
+    private const ushort PhysicalDamageOpcode = 0x272A;
+    private const ushort PlayerDeathOpcode = 0x2722;
+    private const ushort PlayerLevelUpOpcode = 0x272E;
+    private const ushort ExperienceGainOpcode = 0x272F;
+    private const ushort AttributeGainOpcode = 0x2845;
     private const ushort PlayerManaUpdateOpcode = 0x2797;
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
@@ -851,6 +858,97 @@ internal static class PacketBuilder
         return packet;
     }
 
+    public static byte[] PhysicalDamage(
+        uint attackerObjectId,
+        float attackerX,
+        float attackerY,
+        float attackerZ,
+        uint targetObjectId,
+        uint damage,
+        byte result,
+        byte damageType = 1)
+    {
+        var packet = new byte[30];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PhysicalDamageOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(8, 4), attackerX);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(12, 4), attackerY);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(16, 4), attackerZ);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), targetObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), damage);
+        packet[28] = result;
+        packet[29] = damageType;
+        return packet;
+    }
+
+    public static byte[] PlayerDeath(
+        uint playerObjectId,
+        float x,
+        float y,
+        float z,
+        uint mapId)
+    {
+        var packet = new byte[28];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerDeathOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), playerObjectId);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(8, 4), x);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(12, 4), y);
+        BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(16, 4), z);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), mapId);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(24, 4), 1);
+        return packet;
+    }
+
+    public static byte[] ExperienceGain(int gainedExperience, int currentExperience, byte result = 0)
+    {
+        var packet = new byte[13];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), ExperienceGainOpcode);
+        // The client displays +8 as the gained delta. +4 is the resulting
+        // fighter EXP total; both happened to be 80 in the first-kill capture.
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), Math.Max(0, currentExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, gainedExperience));
+        packet[12] = result;
+        return packet;
+    }
+
+    public static byte[] PlayerLevelUp(
+        uint playerObjectId,
+        int level,
+        int nextLevelExperience,
+        int currentExperience,
+        int maxHp,
+        int currentHp,
+        int maxMp,
+        int currentMp)
+    {
+        var packet = new byte[36];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerLevelUpOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), playerObjectId);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(1, level));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(12, 4), Math.Max(0, nextLevelExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(16, 4), Math.Max(0, currentExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(20, 4), Math.Max(1, maxHp));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(24, 4), Math.Clamp(currentHp, 0, Math.Max(1, maxHp)));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(28, 4), Math.Max(0, maxMp));
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(32, 4), Math.Clamp(currentMp, 0, Math.Max(0, maxMp)));
+        return packet;
+    }
+
+    public static byte[] TalentExperienceGain(int gainedTalentExperience)
+    {
+        var packet = new byte[12];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), AttributeGainOpcode);
+        // Attribute-note type 4 is "Talent Exp" in the shipped client data.
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), 4);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, gainedTalentExperience));
+        return packet;
+    }
+
     public static byte[] PlayerManaUpdate(uint attackerObjectId, int currentMp)
     {
         var packet = new byte[12];
@@ -1355,6 +1453,10 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterMaxMpOffset, 4), character.MaxMp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterCurrentHpOffset, 4), character.CurrentHp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterCurrentMpOffset, 4), character.CurrentMp);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterExperienceOffset, 4), character.Experience);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(EnterNextLevelExperienceOffset, 4),
+            PlayerExperienceCatalog.GetNextLevelExperience(character.Level));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterLevelOffset, 4), character.Level);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterTalentPointsOffset, 4), character.TalentPoints);
         PacketText.WriteFixedAscii(packet.AsSpan(CharacterNameOffsetInEnterTemplate, 32), character.Name);
