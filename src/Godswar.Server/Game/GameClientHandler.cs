@@ -40,6 +40,7 @@ internal sealed class GameClientHandler : IClientHandler
     private bool _postEnterBootstrapSent;
     private DateTime _lastPositionPersistUtc = DateTime.MinValue;
     private DateTimeOffset _nextBasicAttackAt = DateTimeOffset.MinValue;
+    private readonly Dictionary<uint, DateTimeOffset> _nextSkillCastAt = [];
     private bool _positionDirty;
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
     private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
@@ -91,6 +92,10 @@ internal sealed class GameClientHandler : IClientHandler
                 _registry.Remove(_session);
                 _registered = false;
             }
+
+            // Also clears a status state preserved across a revive if re-entry
+            // failed before the session could rejoin the world registry.
+            _registry.RemovePlayerStatusState(_session);
 
             if (_account is not null && _accountSessionRegistered)
             {
@@ -380,25 +385,18 @@ internal sealed class GameClientHandler : IClientHandler
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            boosts = ExperienceBoostState.Empty;
             Console.WriteLine(
                 $"[status] EXP boost sync failed character={_character.Name} reason={reason}: {ex.Message}");
-            return;
         }
 
-        var effects = boosts.ActiveBoosts
-            .Select(boost => new ClientStatusEffect(
-                checked((uint)boost.StatusId),
-                boost.RemainingSeconds(now)))
-            .ToArray();
-        await _session.SendAsync(
-            PacketBuilder.PlayerStatusEffects(
-                effects,
-                boosts.TotalBonusBasisPoints / 10_000f),
-            cancellationToken,
-            "PlayerStatusEffects");
-        _registry.RememberExperienceBoostStatus(_session, boosts);
+        await _registry.RefreshExperienceStatusesAndPublishAsync(
+            _session,
+            boosts,
+            reason,
+            cancellationToken);
         Console.WriteLine(
-            $"[status] EXP boost sync character={_character.Name} reason={reason} count={effects.Length} bonus-bps={boosts.TotalBonusBasisPoints}");
+            $"[status] EXP boost sync character={_character.Name} reason={reason} count={boosts.ActiveBoosts.Count} bonus-bps={boosts.TotalBonusBasisPoints}");
     }
 
     private async Task SendCurrentTalentBootstrapAsync(string reason, CancellationToken cancellationToken)
@@ -911,7 +909,7 @@ internal sealed class GameClientHandler : IClientHandler
 
         if (_registered)
         {
-            _registry.Remove(_session);
+            _registry.Remove(_session, preservePlayerStatus: true);
             _registered = false;
         }
 
@@ -1122,6 +1120,17 @@ internal sealed class GameClientHandler : IClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected unlearned skill character={_character.Name} skill={cast.SkillId}");
+            return;
+        }
+
+        if (cast.SkillId <= int.MaxValue &&
+            SkillStatusEffectCatalog.TryGet((int)cast.SkillId, out var statusEffect))
+        {
+            await HandleSelfStatusSkillCastAsync(
+                packet,
+                cast,
+                statusEffect,
+                cancellationToken);
             return;
         }
 
@@ -1389,6 +1398,159 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+    }
+
+    private async Task HandleSelfStatusSkillCastAsync(
+        GamePacket packet,
+        SkillCastRequest cast,
+        SkillStatusEffectDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var character = _character;
+        if (character is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (_nextSkillCastAt.TryGetValue(cast.SkillId, out var nextCastAt) &&
+            nextCastAt > now)
+        {
+            Console.WriteLine(
+                $"[skill] rejected cooldown character={character.Name} skill={cast.SkillId} remaining={(nextCastAt - now).TotalSeconds:F2}");
+            return;
+        }
+
+        if (!SkillCombatCatalog.TryGet(definition.SkillId, out var combat))
+        {
+            Console.WriteLine(
+                $"[skill] rejected missing self-status combat data character={character.Name} skill={cast.SkillId}");
+            return;
+        }
+
+        var manaCost = Math.Max(0, combat.Mp);
+        int currentMana;
+        var manaReserved = false;
+        lock (character.VitalsSync)
+        {
+            currentMana = character.CurrentMp;
+            if (currentMana >= manaCost)
+            {
+                character.CurrentMp = currentMana - manaCost;
+                currentMana = character.CurrentMp;
+                if (manaCost > 0)
+                {
+                    character.MarkVitalsChanged();
+                }
+
+                manaReserved = true;
+            }
+        }
+
+        if (!manaReserved)
+        {
+            Console.WriteLine(
+                $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                cancellationToken,
+                "StatusSkillManaRejected");
+            return;
+        }
+
+        _nextSkillCastAt[cast.SkillId] = now + definition.Cooldown;
+        _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+
+        var targetX = float.IsFinite(cast.TargetX) ? cast.TargetX : character.PositionX;
+        var targetZ = float.IsFinite(cast.TargetZ) ? cast.TargetZ : character.PositionZ;
+        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+
+        await _session.SendAsync(
+            PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, LocalPlayerObjectId),
+            cancellationToken,
+            "StatusSkillCastSelf");
+        var visualRecipients = await _registry.BroadcastToMapAsync(
+            character.CurrentMap,
+            PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, worldObjectId),
+            cancellationToken,
+            _session,
+            "StatusSkillCastWorld");
+
+        // AddStatus on the working server publishes the complete MSG_STATUS map
+        // before MAGIC_PERFORM. The registry composer preserves every active EXP
+        // source while adding/replacing this skill's same-kind runtime status.
+        var statusApplied = await _registry.ApplyRuntimeStatusAndPublishAsync(
+            _session,
+            definition,
+            now,
+            $"skill-{definition.SkillId}",
+            cancellationToken);
+
+        await _session.SendAsync(
+            PacketBuilder.SkillCastImpact(
+                LocalPlayerObjectId,
+                LocalPlayerObjectId,
+                cast.SkillId,
+                targetX,
+                targetZ),
+            cancellationToken,
+            "StatusSkillImpactSelf");
+        var impactRecipients = await _registry.BroadcastToMapAsync(
+            character.CurrentMap,
+            PacketBuilder.SkillCastImpact(
+                worldObjectId,
+                worldObjectId,
+                cast.SkillId,
+                targetX,
+                targetZ),
+            cancellationToken,
+            _session,
+            "StatusSkillImpactWorld");
+
+        if (manaCost > 0)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                cancellationToken,
+                "StatusSkillManaSelf");
+            await _registry.BroadcastToMapAsync(
+                character.CurrentMap,
+                PacketBuilder.PlayerManaUpdate(worldObjectId, currentMana),
+                cancellationToken,
+                _session,
+                "StatusSkillManaWorld");
+        }
+
+        if (_account is not null)
+        {
+            try
+            {
+                int currentHp;
+                long vitalsRevision;
+                lock (character.VitalsSync)
+                {
+                    currentHp = character.CurrentHp;
+                    currentMana = character.CurrentMp;
+                    vitalsRevision = character.VitalsRevision;
+                }
+
+                await _store.SaveCharacterVitalsAsync(
+                    _account.Id,
+                    character.Id,
+                    currentHp,
+                    currentMana,
+                    vitalsRevision,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[skill] self-status vitals persistence deferred character={character.Name}: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[skill] self status character={character.Name} skill={cast.SkillId} status={definition.StatusId} applied={statusApplied} duration={definition.Duration.TotalSeconds:F0} mp={currentMana}/{character.MaxMp} viewers={Math.Max(visualRecipients, impactRecipients)}");
     }
 
     private async Task HandleHostileMonsterAreaSkillCastAsync(
@@ -2152,6 +2314,10 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.PlayerStatusUpdate(player.Character, player.ObjectId),
             cancellationToken,
             "VisiblePlayerStatus");
+        await _registry.SendStatusSnapshotToViewerAsync(
+            player,
+            _session,
+            cancellationToken);
     }
 
     private async Task HandlePlayerDetailRequestAsync(GamePacket request, CancellationToken cancellationToken)
@@ -2214,7 +2380,6 @@ internal sealed class GameClientHandler : IClientHandler
         var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
         await _session.SendAsync(PacketBuilder.PlayerStatusUpdate(_character), cancellationToken, "PlayerStatusUpdate");
         await SendTalentRankPacketsAsync(skillStates, talentStates, "post-enter", cancellationToken);
-        await _session.SendAsync(PacketBuilder.PlayerExtendedStatus(_character), cancellationToken, "PlayerExtendedStatus");
         await _session.SendAsync(PacketBuilder.PlayerUnknown10098(0), cancellationToken, "PlayerUnknown10098");
         await _session.SendAsync(PacketBuilder.PlayerUnknown10098(1), cancellationToken, "PlayerUnknown10098");
         var skillList = PacketBuilder.SkillList(skillStates);
@@ -2223,9 +2388,8 @@ internal sealed class GameClientHandler : IClientHandler
             await _session.SendAsync(skillList, cancellationToken, "SkillList");
         }
 
-        // Opcode 10357 is the final enter/UI-ready boundary. In the original
-        // protocol the post-enter responses follow it; status opcode 10120 is
-        // discarded when sent even immediately before this signal.
+        // Opcode 10357 is the final enter/UI-ready boundary. Publish exactly one
+        // complete 10167 snapshot here, after both the local object and UI exist.
         await SendExperienceBoostStatusAsync("post-enter", cancellationToken);
     }
 

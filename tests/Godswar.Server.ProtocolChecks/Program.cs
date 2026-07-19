@@ -25,12 +25,14 @@ internal static class Program
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
             ("Additive fighter EXP boost stacking", CheckExperienceBoostStackingAsync),
+            ("Working-original character preview layout", CheckCharacterPreviewAsync),
             ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
             ("Warrior talent ID-zero upgrade protocol", CheckWarriorTalentIdZeroUpgradeAsync),
             ("JSON warrior talent persistence", CheckJsonWarriorTalentPersistenceAsync),
             ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),
             ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
             ("Skill combat catalog", CheckSkillCombatCatalogAsync),
+            ("Sacred Zeal runtime-status composition", CheckSacredZealStatusCompositionAsync),
             ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
             ("Basic and monster attack packet layouts", CheckAttackPacketLayoutsAsync),
             ("Player passive recovery protocol", CheckPlayerRecoveryProtocolAsync),
@@ -173,6 +175,29 @@ internal static class Program
         {
             Directory.Delete(dataPath, recursive: true);
         }
+    }
+
+    private static Task CheckCharacterPreviewAsync()
+    {
+        var character = CreateCharacter();
+        character.Profession = 0;
+        character.Faith = 0;
+        character.Equipment = GameDefaults.DefaultEquipment(character.Profession);
+
+        var packet = PacketBuilder.CharacterPreview(character);
+        Check.Equal(188, packet.Length, "character preview packet length");
+        Check.Equal((ushort)188, ReadUInt16(packet, 0), "character preview declared length");
+        Check.Equal((ushort)10002, ReadUInt16(packet, 2), "character preview opcode");
+        Check.Equal((byte)1, packet[4], "character preview record count");
+        Check.Equal((byte)1, packet[43], "character preview final metadata control byte");
+        Check.Equal(2100u, ReadUInt32(packet, 56), "character preview armor slot");
+        Check.Equal(2900u, ReadUInt32(packet, 68), "character preview shoes slot");
+        Check.Equal(1000u, ReadUInt32(packet, 84), "character preview weapon slot");
+        Check.Equal(2000u, ReadUInt32(packet, 88), "character preview shield slot");
+        Check.True(
+            packet.AsSpan(140, 48).IndexOfAnyExcept((byte)0) < 0,
+            "character preview reserved tail remains zero");
+        return Task.CompletedTask;
     }
 
     private static Task CheckEnterMainCharacterIdentityAsync()
@@ -525,6 +550,107 @@ internal static class Program
         Check.True(
             !SkillCombatResolver.IsWithinArea(10f, 10f, 20f, 10f, meteorBlast),
             "Meteor Blast excludes monsters on its strict area boundary");
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckSacredZealStatusCompositionAsync()
+    {
+        var expected = new[]
+        {
+            (SkillId: 340, StatusId: 200u, Priority: 1, Mp: 50, Hit: 10, Critical: 4),
+            (SkillId: 341, StatusId: 201u, Priority: 2, Mp: 90, Hit: 20, Critical: 8),
+            (SkillId: 342, StatusId: 202u, Priority: 3, Mp: 130, Hit: 30, Critical: 12),
+            (SkillId: 343, StatusId: 203u, Priority: 4, Mp: 200, Hit: 45, Critical: 18),
+            (SkillId: 344, StatusId: 204u, Priority: 5, Mp: 300, Hit: 60, Critical: 24)
+        };
+        foreach (var item in expected)
+        {
+            Check.True(
+                SkillStatusEffectCatalog.TryGet(item.SkillId, out var definition),
+                $"Sacred Zeal {item.SkillId} status definition exists");
+            Check.Equal(item.StatusId, definition.StatusId, $"Sacred Zeal {item.SkillId} status ID");
+            Check.Equal(7, definition.Kind, $"Sacred Zeal {item.SkillId} status kind");
+            Check.Equal(item.Priority, definition.Priority, $"Sacred Zeal {item.SkillId} priority");
+            Check.True(definition.Beneficial, $"Sacred Zeal {item.SkillId} is beneficial");
+            Check.Equal(TimeSpan.FromSeconds(600), definition.Duration, $"Sacred Zeal {item.SkillId} duration");
+            Check.Equal(TimeSpan.FromSeconds(10), definition.Cooldown, $"Sacred Zeal {item.SkillId} cooldown");
+            Check.Equal(item.Hit, definition.HitBonus, $"Sacred Zeal {item.SkillId} Hit bonus");
+            Check.Equal(item.Critical, definition.CriticalAppendBonus, $"Sacred Zeal {item.SkillId} Critical bonus");
+            Check.True(
+                SkillCombatCatalog.TryGet(item.SkillId, out var combat),
+                $"Sacred Zeal {item.SkillId} combat definition exists");
+            Check.Equal(item.Mp, combat.Mp, $"Sacred Zeal {item.SkillId} MP cost");
+            Check.Equal(1, combat.Target, $"Sacred Zeal {item.SkillId} targets self");
+            Check.Equal(1, combat.AffectObj, $"Sacred Zeal {item.SkillId} affects self");
+        }
+
+        var now = new DateTimeOffset(2026, 7, 19, 12, 0, 0, TimeSpan.Zero);
+        var boosts = new ExperienceBoostState(
+        [
+            new ActiveExperienceBoost(
+                ExperienceStatusIds.Weekend,
+                ExperienceBoostKinds.Weekend,
+                20_000,
+                1,
+                now.AddHours(8),
+                "weekend"),
+            new ActiveExperienceBoost(
+                ExperienceStatusIds.VipPlatinum,
+                ExperienceBoostKinds.Vip,
+                2_000,
+                4,
+                null,
+                "vip:platinum")
+        ]);
+        var runtime = new ActiveRuntimeStatus(
+            204,
+            7,
+            5,
+            true,
+            now.AddSeconds(600),
+            new ClientStatusAggregate(60, 24, 0f),
+            1);
+        var snapshot = PlayerStatusComposer.Compose(boosts, [runtime], now);
+
+        Check.Equal(3, snapshot.Effects.Count, "EXP and Sacred Zeal status count");
+        Check.Equal(204u, snapshot.Effects[0].StatusId, "Sacred Zeal remains in sorted full snapshot");
+        Check.Equal(600u, snapshot.Effects[0].RemainingSeconds, "Sacred Zeal timer starts at 600 seconds");
+        Check.Equal(511u, snapshot.Effects[1].StatusId, "weekend EXP status is preserved");
+        Check.Equal(1503u, snapshot.Effects[2].StatusId, "VIP EXP status is preserved");
+        Check.Equal(60, snapshot.Aggregate.Hit, "Sacred Zeal aggregate Hit bonus");
+        Check.Equal(24, snapshot.Aggregate.CriticalAppend, "Sacred Zeal aggregate Critical bonus");
+        Check.Equal(2.2f, snapshot.Aggregate.ExperienceBonus, "EXP aggregate is preserved");
+
+        var character = CreateCharacter();
+        var packet = PacketBuilder.PlayerStatusEffects(
+            character,
+            snapshot.Effects,
+            snapshot.Aggregate);
+        Check.Equal(204u, ReadUInt32(packet, 12), "Sacred Zeal status packet ID");
+        Check.Equal(600u, ReadUInt32(packet, 92), "Sacred Zeal status packet timer");
+        Check.Equal(
+            character.CalculatedStats!.Hit + 60,
+            ReadInt32(packet, 204),
+            "StatusData includes base and Sacred Zeal Hit");
+        Check.Equal(
+            character.CalculatedStats.Critical + 24,
+            ReadInt32(packet, 212),
+            "StatusData includes base and Sacred Zeal Critical");
+        Check.Equal(2.2f, ReadSingle(packet, 300), "StatusData EXP wire offset");
+
+        var oneSecondLater = PlayerStatusComposer.Compose(boosts, [runtime], now.AddSeconds(1));
+        Check.Equal(
+            snapshot.Fingerprint,
+            oneSecondLater.Fingerprint,
+            "status fingerprint excludes the changing countdown");
+        Check.Equal(599u, oneSecondLater.Effects[0].RemainingSeconds, "status countdown still updates when republished");
+
+        var expired = PlayerStatusComposer.Compose(boosts, [runtime], now.AddSeconds(601));
+        Check.Equal(2, expired.Effects.Count, "Sacred Zeal expires without removing EXP statuses");
+        Check.Equal(0, expired.Aggregate.Hit, "expired Sacred Zeal removes aggregate Hit");
+        Check.Equal(0, expired.Aggregate.CriticalAppend, "expired Sacred Zeal removes aggregate Critical");
+        Check.Equal(2.2f, expired.Aggregate.ExperienceBonus, "expired Sacred Zeal preserves aggregate EXP");
+
         return Task.CompletedTask;
     }
 
@@ -1106,6 +1232,7 @@ internal static class Program
 
     private static Task CheckPlayerStatusEffectsAsync()
     {
+        var character = CreateCharacter();
         const uint objectId = 0x7135B24E;
         var effects = new ClientStatusEffect[]
         {
@@ -1114,11 +1241,15 @@ internal static class Program
             new(1503, uint.MaxValue),
             new(586, 28_800)
         };
-        var packet = PacketBuilder.PlayerStatusEffects(objectId, effects, 6.2f);
+        var packet = PacketBuilder.PlayerStatusEffects(
+            character,
+            objectId,
+            effects,
+            new ClientStatusAggregate(0, 0, 6.2f));
 
         Check.Equal(340, packet.Length, "status-effect packet length");
         Check.Equal((ushort)packet.Length, ReadUInt16(packet, 0), "status-effect declared length");
-        Check.Equal((ushort)10120, ReadUInt16(packet, 2), "status-effect opcode");
+        Check.Equal((ushort)10167, ReadUInt16(packet, 2), "status-effect opcode");
         Check.Equal(objectId, ReadUInt32(packet, 4), "status-effect object id");
         Check.Equal(4u, ReadUInt32(packet, 8), "status-effect count");
 
@@ -1133,23 +1264,53 @@ internal static class Program
         Check.Equal(43_200u, ReadUInt32(packet, 104), "area status remaining time");
         Check.Equal(0u, ReadUInt32(packet, 28), "unused status ID slot remains zero");
         Check.Equal(0u, ReadUInt32(packet, 108), "unused status time slot remains zero");
-        Check.Equal(0u, ReadUInt32(packet, 172), "unused first StatusData field remains zero");
+        Check.Equal(character.MaxHp, ReadInt32(packet, 172), "full StatusData max HP");
+        Check.Equal(character.MaxMp, ReadInt32(packet, 176), "full StatusData max MP");
+        Check.Equal(PlayerRecoveryCatalog.GetTotalHp(character), ReadInt32(packet, 180), "full StatusData HP recovery");
+        Check.Equal(PlayerRecoveryCatalog.GetTotalMp(character), ReadInt32(packet, 184), "full StatusData MP recovery");
+        Check.Equal(character.CalculatedStats!.PhysicalAttack, ReadInt32(packet, 188), "full StatusData physical attack");
+        Check.Equal(character.CalculatedStats.PhysicalDefense, ReadInt32(packet, 192), "full StatusData physical defense");
+        Check.Equal(character.CalculatedStats.MagicAttack, ReadInt32(packet, 196), "full StatusData magic attack");
+        Check.Equal(character.CalculatedStats.MagicDefense, ReadInt32(packet, 200), "full StatusData magic defense");
+        Check.Equal(character.CalculatedStats.Hit, ReadInt32(packet, 204), "full StatusData hit");
+        Check.Equal(character.CalculatedStats.Dodge, ReadInt32(packet, 208), "full StatusData dodge");
+        Check.Equal(character.CalculatedStats.Critical, ReadInt32(packet, 212), "full StatusData critical");
+        Check.Equal(character.CalculatedStats.CriticalResistance, ReadInt32(packet, 216), "full StatusData critical resistance");
+        Check.Equal(0.1234f, ReadSingle(packet, 220), "full StatusData physical damage bonus");
+        Check.Equal(0.2345f, ReadSingle(packet, 224), "full StatusData magic damage bonus");
+        Check.Equal(character.CalculatedStats.DamageAbsorb, ReadInt32(packet, 228), "full StatusData damage absorb");
+        Check.Equal(0.3456f, ReadSingle(packet, 232), "full StatusData received-cure bonus");
+        Check.Equal(0.4567f, ReadSingle(packet, 236), "full StatusData cure bonus");
+        Check.Equal(0u, ReadUInt32(packet, 240), "unimplemented status-hit field remains zero");
         Check.Equal(6.2f, ReadSingle(packet, 300), "status aggregate fighter-EXP bonus");
+        Check.Equal(1f, ReadSingle(packet, 324), "status movement-speed baseline");
         Check.Equal(0u, ReadUInt32(packet, 336), "unused final StatusData field remains zero");
 
-        var localPacket = PacketBuilder.PlayerStatusEffects([], 0f);
+        var localPacket = PacketBuilder.PlayerStatusEffects(
+            character,
+            [],
+            ClientStatusAggregate.Empty);
         Check.Equal(0x1448u, ReadUInt32(localPacket, 4), "status-effect local player object ID");
         Check.Equal(0u, ReadUInt32(localPacket, 8), "empty status-effect count");
 
+        var bootstrapPacket = PacketBuilder.PlayerExtendedStatus(character);
+        Check.Equal(340, bootstrapPacket.Length, "legacy extended-status entry point uses canonical length");
+        Check.Equal((ushort)10167, ReadUInt16(bootstrapPacket, 2), "legacy extended-status entry point uses canonical opcode");
+        Check.Equal(character.MaxHp, ReadInt32(bootstrapPacket, 172), "legacy extended-status entry point includes full data");
+
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PlayerStatusEffects(
+                character,
                 Enumerable.Range(1, 21)
                     .Select(static id => new ClientStatusEffect((uint)id, 1))
                     .ToArray(),
-                0f),
+                ClientStatusAggregate.Empty),
             "status-effect packet rejects more than twenty entries");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PacketBuilder.PlayerStatusEffects([], float.NaN),
+            () => PacketBuilder.PlayerStatusEffects(
+                character,
+                [],
+                new ClientStatusAggregate(0, 0, float.NaN)),
             "status-effect packet rejects non-finite aggregate EXP");
 
         return Task.CompletedTask;
@@ -2436,7 +2597,12 @@ internal static class Program
                 Hit = 55_005,
                 Dodge = 46_006,
                 Critical = 37_007,
-                CriticalResistance = 28_008
+                CriticalResistance = 28_008,
+                PhysicalDamageBonus = 1_234,
+                MagicDamageBonus = 2_345,
+                DamageAbsorb = 19_009,
+                BeCureBonus = 3_456,
+                CureBonus = 4_567
             }
         };
     }

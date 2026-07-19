@@ -69,7 +69,6 @@ internal static class PacketBuilder
     private const ushort PlayerManaUpdateOpcode = 0x2797;
     private const ushort PlayerVitalsUpdateOpcode = 0x2771;
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
-    private const ushort PlayerStatusEffectsOpcode = 0x2788;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
     private const int PlayerStatusTalentPointsOffset = 228;
@@ -80,7 +79,25 @@ internal static class PacketBuilder
     private const int PlayerStatusEffectsTimesOffset = 92;
     private const int PlayerStatusEffectsStatusDataOffset = 172;
     private const int PlayerStatusEffectsStatusDataLength = 168;
+    private const int PlayerStatusEffectsMaximumHpOffset = 172;
+    private const int PlayerStatusEffectsMaximumMpOffset = 176;
+    private const int PlayerStatusEffectsHpRecoveryOffset = 180;
+    private const int PlayerStatusEffectsMpRecoveryOffset = 184;
+    private const int PlayerStatusEffectsPhysicalAttackOffset = 188;
+    private const int PlayerStatusEffectsPhysicalDefenseOffset = 192;
+    private const int PlayerStatusEffectsMagicAttackOffset = 196;
+    private const int PlayerStatusEffectsMagicDefenseOffset = 200;
+    private const int PlayerStatusEffectsHitBonusOffset = 204;
+    private const int PlayerStatusEffectsDodgeOffset = 208;
+    private const int PlayerStatusEffectsCriticalAppendBonusOffset = 212;
+    private const int PlayerStatusEffectsCriticalResistanceOffset = 216;
+    private const int PlayerStatusEffectsPhysicalDamageBonusOffset = 220;
+    private const int PlayerStatusEffectsMagicDamageBonusOffset = 224;
+    private const int PlayerStatusEffectsDamageAbsorbOffset = 228;
+    private const int PlayerStatusEffectsBeCureBonusOffset = 232;
+    private const int PlayerStatusEffectsCureBonusOffset = 236;
     private const int PlayerStatusEffectsExperienceBonusOffset = 300;
+    private const int PlayerStatusEffectsMovementSpeedMultiplierOffset = 324;
     private const ushort PlayerDetailAckOpcode = 0x27DA;
     private const int PlayerWorldVisualFlagsOffset = 81;
     private const int PlayerWorldVisualFlagsLength = 18;
@@ -126,15 +143,6 @@ internal static class PacketBuilder
         "000000000000000000000000000000000000000000000000330500007C010000320000002F000000" +
         "14000000220000000F00000006000000140000001D00000000000000000000000000000000000000" +
         "000000000000000000000000000000000000000001000000DC0500000000000005000000");
-    private static readonly byte[] PlayerExtendedStatusTemplate = Convert.FromHexString(
-        "5401B727280500000000000000000000000000000000000000000000000000000000000000000000" +
-        "000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-        "000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-        "000000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-        "0000000000000000330500007C010000320000002F00000046000000220000000F00000006000000" +
-        "140000001D0000000000000000000000000000000000000000000000000000000000000000000000" +
-        "00000000000000000000000000000000000000000000000000000000000000000000000000000000" +
-        "000000000000000000000000000000000000000000000000000000000803F000000000000000000000000");
     private static readonly byte[] PlayerWorldSpawnTemplate = Convert.FromHexString(
         "04012527c5030000ed0f000054545454545454540000000000000000000000000000000000000000" +
         "000000008d1900008d190000010066000000033538b53f43fbf79440aa209d400000803f0080bb44" +
@@ -1341,29 +1349,34 @@ internal static class PacketBuilder
 
     public static byte[] PlayerExtendedStatus(GameCharacter character)
     {
-        var packet = PlayerExtendedStatusTemplate.ToArray();
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerExtendedStatusOpcode);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
-        return packet;
+        ArgumentNullException.ThrowIfNull(character);
+        return PlayerStatusEffects(
+            character,
+            LocalPlayerObjectId,
+            [],
+            ClientStatusAggregate.Empty);
     }
 
     /// <summary>
-    /// Builds this client revision's MSG_STATUS packet (10120 / 0x2788). Its
-    /// 32-bit timers and expanded StatusData differ from the preserved R3 server.
+    /// Builds this client revision's complete status snapshot (10167 / 0x27B7).
+    /// Its 32-bit timers and expanded StatusData differ from the preserved R3
+    /// server declaration.
     /// </summary>
     public static byte[] PlayerStatusEffects(
+        GameCharacter character,
         IReadOnlyList<ClientStatusEffect> effects,
-        float totalExperienceBonus)
+        ClientStatusAggregate aggregate)
     {
-        return PlayerStatusEffects(LocalPlayerObjectId, effects, totalExperienceBonus);
+        return PlayerStatusEffects(character, LocalPlayerObjectId, effects, aggregate);
     }
 
     public static byte[] PlayerStatusEffects(
+        GameCharacter character,
         uint objectId,
         IReadOnlyList<ClientStatusEffect> effects,
-        float totalExperienceBonus)
+        ClientStatusAggregate aggregate)
     {
+        ArgumentNullException.ThrowIfNull(character);
         ArgumentNullException.ThrowIfNull(effects);
         if (effects.Count > PlayerStatusEffectsMaximumCount)
         {
@@ -1373,17 +1386,17 @@ internal static class PacketBuilder
                 $"The client status packet supports at most {PlayerStatusEffectsMaximumCount} entries.");
         }
 
-        if (!float.IsFinite(totalExperienceBonus))
+        if (!float.IsFinite(aggregate.ExperienceBonus))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(totalExperienceBonus),
-                totalExperienceBonus,
+                nameof(aggregate),
+                aggregate.ExperienceBonus,
                 "The total experience bonus must be finite.");
         }
 
         var packet = new byte[PlayerStatusEffectsLength];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerStatusEffectsOpcode);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerExtendedStatusOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsCountOffset, 4),
@@ -1403,14 +1416,82 @@ internal static class PacketBuilder
                 effect.RemainingSeconds);
         }
 
-        // StatusData occupies exactly 42 dwords in the bundled client. The
-        // zero-initialized packet is intentional: EXP is the only aggregate
-        // status stat currently implemented server-side. m_GetEXP retains its
-        // legacy relative offset (128) inside the expanded data block.
+        // StatusData occupies exactly 42 dwords in the bundled client. Working
+        // captures show that opcode 10167 carries the complete derived data,
+        // not merely each status's delta. Keep the unimplemented tail zeroed,
+        // while preserving the stock 1.0 movement-speed multiplier.
         packet.AsSpan(PlayerStatusEffectsStatusDataOffset, PlayerStatusEffectsStatusDataLength).Clear();
         BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMovementSpeedMultiplierOffset, sizeof(float)),
+            1f);
+
+        var stats = character.CalculatedStats ?? CharacterStats.FromCharacter(character);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMaximumHpOffset, sizeof(int)),
+            character.MaxHp);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMaximumMpOffset, sizeof(int)),
+            character.MaxMp);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsHpRecoveryOffset, sizeof(int)),
+            PlayerRecoveryCatalog.GetTotalHp(character));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMpRecoveryOffset, sizeof(int)),
+            PlayerRecoveryCatalog.GetTotalMp(character));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsPhysicalAttackOffset, sizeof(int)),
+            stats.PhysicalAttack);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsPhysicalDefenseOffset, sizeof(int)),
+            stats.PhysicalDefense);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMagicAttackOffset, sizeof(int)),
+            stats.MagicAttack);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMagicDefenseOffset, sizeof(int)),
+            stats.MagicDefense);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsDodgeOffset, sizeof(int)),
+            stats.Dodge);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsCriticalResistanceOffset, sizeof(int)),
+            stats.CriticalResistance);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsPhysicalDamageBonusOffset, sizeof(float)),
+            ToClientPercent(stats.PhysicalDamageBonus));
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMagicDamageBonusOffset, sizeof(float)),
+            ToClientPercent(stats.MagicDamageBonus));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsDamageAbsorbOffset, sizeof(int)),
+            stats.DamageAbsorb);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsBeCureBonusOffset, sizeof(float)),
+            ToClientPercent(stats.BeCureBonus));
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsCureBonusOffset, sizeof(float)),
+            ToClientPercent(stats.CureBonus));
+        aggregate = aggregate with
+        {
+            Hit = (int)Math.Clamp(
+                (long)stats.Hit + aggregate.Hit,
+                int.MinValue,
+                int.MaxValue),
+            CriticalAppend = (int)Math.Clamp(
+                (long)stats.Critical + aggregate.CriticalAppend,
+                int.MinValue,
+                int.MaxValue)
+        };
+
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsHitBonusOffset, sizeof(int)),
+            aggregate.Hit);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsCriticalAppendBonusOffset, sizeof(int)),
+            aggregate.CriticalAppend);
+        BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusEffectsExperienceBonusOffset, sizeof(float)),
-            totalExperienceBonus);
+            aggregate.ExperienceBonus);
         return packet;
     }
 
@@ -1486,7 +1567,10 @@ internal static class PacketBuilder
         packet[offset++] = character.Gender;
         packet[offset++] = character.Hair;
         packet[offset++] = character.Face;
-        packet[offset++] = 0;
+        // All working-original character previews carry a nonzero faith/control
+        // value. Legacy imported rows can contain zero; normalize those rows so
+        // the client does not dereference an invalid preview particle state.
+        packet[offset++] = character.Faith == 0 ? (byte)1 : character.Faith;
 
         foreach (var itemId in equipmentIds)
         {

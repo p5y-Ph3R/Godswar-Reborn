@@ -16,7 +16,7 @@ internal sealed class GameSessionRegistry
     private readonly ConcurrentDictionary<int, ClientSession> _accountSessions = [];
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
     private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
-    private readonly ConcurrentDictionary<ClientSession, string> _experienceBoostStatusFingerprints = [];
+    private readonly ConcurrentDictionary<ClientSession, PlayerStatusState> _playerStatusStates = [];
     private readonly IGameStore? _store;
 
     public GameSessionRegistry(IGameStore? store = null)
@@ -65,7 +65,7 @@ internal sealed class GameSessionRegistry
         }
     }
 
-    public void Remove(ClientSession session)
+    public void Remove(ClientSession session, bool preservePlayerStatus = false)
     {
         GameSessionContext? context;
         lock (_gate)
@@ -77,7 +77,11 @@ internal sealed class GameSessionRegistry
 
             RemoveFromMap(context);
             _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
-            _experienceBoostStatusFingerprints.TryRemove(session, out _);
+            if (!preservePlayerStatus &&
+                _playerStatusStates.TryRemove(session, out var statusState))
+            {
+                statusState.Lifetime.Cancel();
+            }
         }
 
         if (context is null)
@@ -86,6 +90,14 @@ internal sealed class GameSessionRegistry
         }
 
         Console.WriteLine($"[world] left map={context.MapId} character={context.DisplayName} account={context.AccountId} population={GetMapPopulation(context.MapId)}");
+    }
+
+    public void RemovePlayerStatusState(ClientSession session)
+    {
+        if (_playerStatusStates.TryRemove(session, out var statusState))
+        {
+            statusState.Lifetime.Cancel();
+        }
     }
 
     public void UpdateCharacter(
@@ -347,19 +359,17 @@ internal sealed class GameSessionRegistry
                     context.MapId,
                     now,
                     cancellationToken);
-                var effects = boosts.ActiveBoosts
-                    .Select(boost => new ClientStatusEffect(
-                        checked((uint)boost.StatusId),
-                        boost.RemainingSeconds(now)))
-                    .ToArray();
-                await context.Session.SendAsync(
-                    PacketBuilder.PlayerStatusEffects(
-                        effects,
-                        boosts.TotalBonusBasisPoints / 10_000f),
-                    cancellationToken,
-                    "PlayerStatusEffects");
-                RememberExperienceBoostStatus(context.Session, boosts);
-                sent++;
+                if (await RefreshExperienceStatusesAndPublishAsync(
+                        context.Session,
+                        boosts,
+                        now,
+                        reason,
+                        force: true,
+                        broadcast: true,
+                        cancellationToken))
+                {
+                    sent++;
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -373,11 +383,181 @@ internal sealed class GameSessionRegistry
         return sent;
     }
 
-    public void RememberExperienceBoostStatus(
+    public Task<bool> RefreshExperienceStatusesAndPublishAsync(
         ClientSession session,
-        ExperienceBoostState boosts)
+        ExperienceBoostState boosts,
+        string reason,
+        CancellationToken cancellationToken)
     {
-        _experienceBoostStatusFingerprints[session] = BuildExperienceBoostStatusFingerprint(boosts);
+        return RefreshExperienceStatusesAndPublishAsync(
+            session,
+            boosts,
+            DateTimeOffset.UtcNow,
+            reason,
+            force: true,
+            broadcast: true,
+            cancellationToken);
+    }
+
+    internal async Task<bool> RefreshExperienceStatusesAndPublishAsync(
+        ClientSession session,
+        ExperienceBoostState boosts,
+        DateTimeOffset now,
+        string reason,
+        bool force,
+        bool broadcast,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(boosts);
+
+        if (!TryGetOrCreatePlayerStatusState(session, out var state))
+        {
+            return false;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            state.ExperienceBoosts = boosts;
+            return await PublishStatusSnapshotLockedAsync(
+                session,
+                state,
+                now,
+                reason,
+                force,
+                broadcast,
+                cancellationToken);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    public async Task<bool> ApplyRuntimeStatusAndPublishAsync(
+        ClientSession session,
+        SkillStatusEffectDefinition definition,
+        DateTimeOffset now,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (!TryGetOrCreatePlayerStatusState(session, out var state))
+        {
+            return false;
+        }
+
+        ActiveRuntimeStatus? appliedStatus = null;
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (state.RuntimeStatuses.TryGetValue(definition.Kind, out var existing) &&
+                existing.ExpiresAt > now &&
+                existing.Priority > definition.Priority)
+            {
+                return false;
+            }
+
+            appliedStatus = new ActiveRuntimeStatus(
+                definition.StatusId,
+                definition.Kind,
+                definition.Priority,
+                definition.Beneficial,
+                now + definition.Duration,
+                new ClientStatusAggregate(
+                    definition.HitBonus,
+                    definition.CriticalAppendBonus,
+                    0f),
+                checked(++state.Revision));
+            state.RuntimeStatuses[definition.Kind] = appliedStatus;
+            await PublishStatusSnapshotLockedAsync(
+                session,
+                state,
+                now,
+                reason,
+                force: true,
+                broadcast: true,
+                cancellationToken);
+            return true;
+        }
+        finally
+        {
+            state.Gate.Release();
+            if (appliedStatus is not null)
+            {
+                ScheduleRuntimeStatusExpiry(session, state, appliedStatus);
+            }
+        }
+    }
+
+    internal ClientStatusAggregate GetRuntimeStatusAggregate(
+        ClientSession session,
+        DateTimeOffset now)
+    {
+        if (!_playerStatusStates.TryGetValue(session, out var state))
+        {
+            return ClientStatusAggregate.Empty;
+        }
+
+        state.Gate.Wait();
+        try
+        {
+            var active = state.RuntimeStatuses.Values
+                .Where(status => status.ExpiresAt > now)
+                .ToArray();
+            return new ClientStatusAggregate(
+                active.Sum(static status => status.Modifiers.Hit),
+                active.Sum(static status => status.Modifiers.CriticalAppend),
+                0f);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    public async Task SendStatusSnapshotToViewerAsync(
+        GameSessionContext player,
+        ClientSession viewer,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(player);
+        ArgumentNullException.ThrowIfNull(viewer);
+
+        PlayerStatusSnapshot snapshot;
+        if (_playerStatusStates.TryGetValue(player.Session, out var state))
+        {
+            await state.Gate.WaitAsync(cancellationToken);
+            try
+            {
+                snapshot = PlayerStatusComposer.Compose(
+                    state.ExperienceBoosts,
+                    state.RuntimeStatuses.Values,
+                    DateTimeOffset.UtcNow);
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+        }
+        else
+        {
+            snapshot = PlayerStatusComposer.Compose(
+                ExperienceBoostState.Empty,
+                [],
+                DateTimeOffset.UtcNow);
+        }
+
+        await viewer.SendAsync(
+            PacketBuilder.PlayerStatusEffects(
+                player.Character,
+                player.ObjectId,
+                snapshot.Effects,
+                snapshot.Aggregate),
+            cancellationToken,
+            "VisiblePlayerStatusEffects");
     }
 
     public async Task RunExperienceBoostStatusReconciliationAsync(
@@ -419,28 +599,17 @@ internal sealed class GameSessionRegistry
                     context.MapId,
                     now,
                     cancellationToken);
-                var fingerprint = BuildExperienceBoostStatusFingerprint(boosts);
-                if (_experienceBoostStatusFingerprints.TryGetValue(
+                if (await RefreshExperienceStatusesAndPublishAsync(
                         context.Session,
-                        out var previousFingerprint) &&
-                    string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+                        boosts,
+                        now,
+                        "reconcile",
+                        force: false,
+                        broadcast: true,
+                        cancellationToken))
                 {
-                    continue;
+                    sent++;
                 }
-
-                var effects = boosts.ActiveBoosts
-                    .Select(boost => new ClientStatusEffect(
-                        checked((uint)boost.StatusId),
-                        boost.RemainingSeconds(now)))
-                    .ToArray();
-                await context.Session.SendAsync(
-                    PacketBuilder.PlayerStatusEffects(
-                        effects,
-                        boosts.TotalBonusBasisPoints / 10_000f),
-                    cancellationToken,
-                    "PlayerStatusEffectsReconcile");
-                _experienceBoostStatusFingerprints[context.Session] = fingerprint;
-                sent++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -457,16 +626,142 @@ internal sealed class GameSessionRegistry
         return sent;
     }
 
-    private static string BuildExperienceBoostStatusFingerprint(ExperienceBoostState boosts)
+    private async Task<bool> PublishStatusSnapshotLockedAsync(
+        ClientSession session,
+        PlayerStatusState state,
+        DateTimeOffset now,
+        string reason,
+        bool force,
+        bool broadcast,
+        CancellationToken cancellationToken)
     {
-        return string.Join(
-            '|',
-            boosts.ActiveBoosts
-                .OrderBy(static boost => boost.Kind)
-                .ThenBy(static boost => boost.StatusId)
-                .Select(static boost =>
-                    $"{boost.StatusId}:{boost.Kind}:{boost.BonusBasisPoints}:{boost.Priority}:" +
-                    $"{boost.ExpiresAt?.UtcTicks ?? long.MaxValue}:{boost.Source}"));
+        if (!_sessions.TryGetValue(session, out var context))
+        {
+            return false;
+        }
+
+        foreach (var expiredKind in state.RuntimeStatuses
+                     .Where(pair => pair.Value.ExpiresAt <= now)
+                     .Select(static pair => pair.Key)
+                     .ToArray())
+        {
+            state.RuntimeStatuses.Remove(expiredKind);
+        }
+
+        var snapshot = PlayerStatusComposer.Compose(
+            state.ExperienceBoosts,
+            state.RuntimeStatuses.Values,
+            now);
+        if (!force && string.Equals(
+                state.LastFingerprint,
+                snapshot.Fingerprint,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        await session.SendAsync(
+            PacketBuilder.PlayerStatusEffects(
+                context.Character,
+                snapshot.Effects,
+                snapshot.Aggregate),
+            cancellationToken,
+            "PlayerStatusEffects");
+
+        if (broadcast && context.WorldReady)
+        {
+            await BroadcastToMapAsync(
+                context.MapId,
+                PacketBuilder.PlayerStatusEffects(
+                    context.Character,
+                    context.ObjectId,
+                    snapshot.Effects,
+                    snapshot.Aggregate),
+                cancellationToken,
+                session,
+                "PlayerStatusEffectsWorld");
+        }
+
+        state.LastFingerprint = snapshot.Fingerprint;
+        Console.WriteLine(
+            $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} exp={snapshot.Aggregate.ExperienceBonus:R}");
+        return true;
+    }
+
+    private bool TryGetOrCreatePlayerStatusState(
+        ClientSession session,
+        out PlayerStatusState state)
+    {
+        lock (_gate)
+        {
+            if (!_sessions.ContainsKey(session))
+            {
+                state = null!;
+                return false;
+            }
+
+            state = _playerStatusStates.GetOrAdd(
+                session,
+                static _ => new PlayerStatusState());
+            return true;
+        }
+    }
+
+    private void ScheduleRuntimeStatusExpiry(
+        ClientSession session,
+        PlayerStatusState state,
+        ActiveRuntimeStatus expected)
+    {
+        _ = ExpireRuntimeStatusAsync(session, state, expected);
+    }
+
+    private async Task ExpireRuntimeStatusAsync(
+        ClientSession session,
+        PlayerStatusState state,
+        ActiveRuntimeStatus expected)
+    {
+        try
+        {
+            var delay = expected.ExpiresAt - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, state.Lifetime.Token);
+            }
+
+            await state.Gate.WaitAsync(state.Lifetime.Token);
+            try
+            {
+                if (!state.RuntimeStatuses.TryGetValue(expected.Kind, out var current) ||
+                    current.Revision != expected.Revision ||
+                    current.StatusId != expected.StatusId ||
+                    current.ExpiresAt != expected.ExpiresAt)
+                {
+                    return;
+                }
+
+                state.RuntimeStatuses.Remove(expected.Kind);
+                await PublishStatusSnapshotLockedAsync(
+                    session,
+                    state,
+                    DateTimeOffset.UtcNow,
+                    $"status-{expected.StatusId}-expired",
+                    force: true,
+                    broadcast: true,
+                    state.Lifetime.Token);
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+        }
+        catch (OperationCanceledException) when (state.Lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[status] expiry publish failed status={expected.StatusId}: {ex.Message}");
+        }
     }
 
     public IReadOnlyList<MonsterRuntimeSnapshot> GetMapMonsterSnapshots(byte mapId)
@@ -1128,5 +1423,20 @@ internal sealed class GameSessionRegistry
             map.Remove(context.Session, out _);
             map.ClearMonsterAggroForCharacter(context.CharacterId, DateTimeOffset.UtcNow);
         }
+    }
+
+    private sealed class PlayerStatusState
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public Dictionary<int, ActiveRuntimeStatus> RuntimeStatuses { get; } = [];
+
+        public ExperienceBoostState ExperienceBoosts { get; set; } = ExperienceBoostState.Empty;
+
+        public string? LastFingerprint { get; set; }
+
+        public long Revision { get; set; }
+
+        public CancellationTokenSource Lifetime { get; } = new();
     }
 }
