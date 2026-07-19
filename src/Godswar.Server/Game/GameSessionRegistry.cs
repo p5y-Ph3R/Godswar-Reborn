@@ -350,7 +350,7 @@ internal sealed class GameSessionRegistry
                 var effects = boosts.ActiveBoosts
                     .Select(boost => new ClientStatusEffect(
                         checked((uint)boost.StatusId),
-                        checked((ushort)boost.RemainingSeconds(now))))
+                        boost.RemainingSeconds(now)))
                     .ToArray();
                 await context.Session.SendAsync(
                     PacketBuilder.PlayerStatusEffects(
@@ -431,7 +431,7 @@ internal sealed class GameSessionRegistry
                 var effects = boosts.ActiveBoosts
                     .Select(boost => new ClientStatusEffect(
                         checked((uint)boost.StatusId),
-                        checked((ushort)boost.RemainingSeconds(now))))
+                        boost.RemainingSeconds(now)))
                     .ToArray();
                 await context.Session.SendAsync(
                     PacketBuilder.PlayerStatusEffects(

@@ -46,6 +46,7 @@ internal static class Opcodes
     public const ushort ServerTimeRequest = 10311;
     public const ushort UiHeartbeat = 10312;
     public const ushort PlayerInspectFollowup = 10342;
+    public const ushort EnterUiReady = 10357;
     public const ushort Ping = 10015;
 
     public static string Name(ushort opcode)
@@ -96,8 +97,8 @@ internal static class Opcodes
             ServerTimeRequest => nameof(ServerTimeRequest),
             UiHeartbeat => nameof(UiHeartbeat),
             PlayerInspectFollowup => nameof(PlayerInspectFollowup),
+            EnterUiReady => nameof(EnterUiReady),
             10192 => "ClientMovementOrLoad",
-            10357 => "EnterUnknown10357",
             _ => "Unknown"
         };
     }

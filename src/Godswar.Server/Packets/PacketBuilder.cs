@@ -72,12 +72,14 @@ internal static class PacketBuilder
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
     private const int PlayerStatusTalentPointsOffset = 228;
-    private const int PlayerStatusEffectsLength = 280;
+    private const int PlayerStatusEffectsLength = 340;
     private const int PlayerStatusEffectsMaximumCount = 20;
     private const int PlayerStatusEffectsCountOffset = 8;
     private const int PlayerStatusEffectsIdsOffset = 12;
     private const int PlayerStatusEffectsTimesOffset = 92;
-    private const int PlayerStatusEffectsExperienceBonusOffset = 260;
+    private const int PlayerStatusEffectsStatusDataOffset = 172;
+    private const int PlayerStatusEffectsStatusDataLength = 168;
+    private const int PlayerStatusEffectsExperienceBonusOffset = 300;
     private const ushort PlayerDetailAckOpcode = 0x27DA;
     private const int PlayerWorldVisualFlagsOffset = 81;
     private const int PlayerWorldVisualFlagsLength = 18;
@@ -1292,8 +1294,8 @@ internal static class PacketBuilder
     }
 
     /// <summary>
-    /// Builds the original MSG_STATUS packet (10120 / 0x2788). The client uses
-    /// the status IDs and remaining times to populate its native buff/status bar.
+    /// Builds this client revision's MSG_STATUS packet (10120 / 0x2788). Its
+    /// 32-bit timers and expanded StatusData differ from the preserved R3 server.
     /// </summary>
     public static byte[] PlayerStatusEffects(
         IReadOnlyList<ClientStatusEffect> effects,
@@ -1341,11 +1343,16 @@ internal static class PacketBuilder
             BinaryPrimitives.WriteUInt32LittleEndian(
                 packet.AsSpan(PlayerStatusEffectsIdsOffset + (index * sizeof(uint)), sizeof(uint)),
                 effect.StatusId);
-            BinaryPrimitives.WriteUInt16LittleEndian(
-                packet.AsSpan(PlayerStatusEffectsTimesOffset + (index * sizeof(ushort)), sizeof(ushort)),
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(PlayerStatusEffectsTimesOffset + (index * sizeof(uint)), sizeof(uint)),
                 effect.RemainingSeconds);
         }
 
+        // StatusData occupies exactly 42 dwords in the bundled client. The
+        // zero-initialized packet is intentional: EXP is the only aggregate
+        // status stat currently implemented server-side. m_GetEXP retains its
+        // legacy relative offset (128) inside the expanded data block.
+        packet.AsSpan(PlayerStatusEffectsStatusDataOffset, PlayerStatusEffectsStatusDataLength).Clear();
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusEffectsExperienceBonusOffset, sizeof(float)),
             totalExperienceBonus);

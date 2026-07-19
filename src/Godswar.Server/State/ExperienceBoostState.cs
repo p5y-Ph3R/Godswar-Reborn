@@ -61,20 +61,20 @@ internal sealed record ActiveExperienceBoost(
     DateTimeOffset? ExpiresAt,
     string Source)
 {
-    public int RemainingSeconds(DateTimeOffset now)
+    public uint RemainingSeconds(DateTimeOffset now)
     {
-        // VIP membership can last longer than the protocol's 16-bit timer.
+        // VIP membership can last longer than a practical countdown timer.
         // Its client definitions are permanent while present; periodic server
         // reconciliation removes the icon when the entitlement expires.
         if (Kind == ExperienceBoostKinds.Vip || ExpiresAt is null)
         {
-            return ushort.MaxValue;
+            return uint.MaxValue;
         }
 
-        return Math.Clamp(
-            (int)Math.Ceiling((ExpiresAt.Value - now).TotalSeconds),
-            0,
-            ushort.MaxValue);
+        return (uint)Math.Clamp(
+            (long)Math.Ceiling((ExpiresAt.Value - now).TotalSeconds),
+            0L,
+            uint.MaxValue);
     }
 }
 

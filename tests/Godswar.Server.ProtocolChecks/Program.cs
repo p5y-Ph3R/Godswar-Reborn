@@ -41,6 +41,7 @@ internal static class Program
             ("PlayerInspectEquipment packed slots and details", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
             ("Native status-effect sync layout", CheckPlayerStatusEffectsAsync),
+            ("Post-enter UI-ready bootstrap gate", CheckPostEnterBootstrapGateAsync),
             ("Guarded bag-to-equipment persistence and snapshot", CheckGuardedEquipmentMoveAsync),
             ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
@@ -411,7 +412,7 @@ internal static class Program
             expiresAt.AddDays(30),
             "vip:gold");
         Check.Equal(
-            (int)ushort.MaxValue,
+            uint.MaxValue,
             finiteVip.RemainingSeconds(DateTimeOffset.UtcNow),
             "finite VIP status remains permanent-looking until server reconciliation removes it");
         return Task.CompletedTask;
@@ -1033,12 +1034,12 @@ internal static class Program
         {
             new(1504, 43_200),
             new(511, 28_800),
-            new(1503, ushort.MaxValue),
+            new(1503, uint.MaxValue),
             new(586, 28_800)
         };
         var packet = PacketBuilder.PlayerStatusEffects(objectId, effects, 6.2f);
 
-        Check.Equal(280, packet.Length, "status-effect packet length");
+        Check.Equal(340, packet.Length, "status-effect packet length");
         Check.Equal((ushort)packet.Length, ReadUInt16(packet, 0), "status-effect declared length");
         Check.Equal((ushort)10120, ReadUInt16(packet, 2), "status-effect opcode");
         Check.Equal(objectId, ReadUInt32(packet, 4), "status-effect object id");
@@ -1049,13 +1050,15 @@ internal static class Program
         Check.Equal(586u, ReadUInt32(packet, 16), "second sorted status ID");
         Check.Equal(1503u, ReadUInt32(packet, 20), "third sorted status ID");
         Check.Equal(1504u, ReadUInt32(packet, 24), "fourth sorted status ID");
-        Check.Equal((ushort)28_800, ReadUInt16(packet, 92), "first status remaining time");
-        Check.Equal((ushort)28_800, ReadUInt16(packet, 94), "second status remaining time");
-        Check.Equal(ushort.MaxValue, ReadUInt16(packet, 96), "permanent status remaining-time sentinel");
-        Check.Equal((ushort)43_200, ReadUInt16(packet, 98), "area status remaining time");
+        Check.Equal(28_800u, ReadUInt32(packet, 92), "first status remaining time");
+        Check.Equal(28_800u, ReadUInt32(packet, 96), "second status remaining time");
+        Check.Equal(uint.MaxValue, ReadUInt32(packet, 100), "permanent status remaining-time sentinel");
+        Check.Equal(43_200u, ReadUInt32(packet, 104), "area status remaining time");
         Check.Equal(0u, ReadUInt32(packet, 28), "unused status ID slot remains zero");
-        Check.Equal((ushort)0, ReadUInt16(packet, 100), "unused status time slot remains zero");
-        Check.Equal(6.2f, ReadSingle(packet, 260), "status aggregate fighter-EXP bonus");
+        Check.Equal(0u, ReadUInt32(packet, 108), "unused status time slot remains zero");
+        Check.Equal(0u, ReadUInt32(packet, 172), "unused first StatusData field remains zero");
+        Check.Equal(6.2f, ReadSingle(packet, 300), "status aggregate fighter-EXP bonus");
+        Check.Equal(0u, ReadUInt32(packet, 336), "unused final StatusData field remains zero");
 
         var localPacket = PacketBuilder.PlayerStatusEffects([], 0f);
         Check.Equal(0x1448u, ReadUInt32(localPacket, 4), "status-effect local player object ID");
@@ -1071,6 +1074,38 @@ internal static class Program
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PlayerStatusEffects([], float.NaN),
             "status-effect packet rejects non-finite aggregate EXP");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task CheckPostEnterBootstrapGateAsync()
+    {
+        Check.Equal((ushort)10357, Opcodes.EnterUiReady, "final enter/UI-ready opcode");
+        Check.Equal(nameof(Opcodes.EnterUiReady), Opcodes.Name(Opcodes.EnterUiReady), "final enter/UI-ready opcode name");
+        Check.True(
+            !GameClientHandler.CanSendPostEnterBootstrap(
+                clientReadyReceived: false,
+                playerDetailSent: true,
+                enterUiReadyReceived: true),
+            "bootstrap waits for ClientReady");
+        Check.True(
+            !GameClientHandler.CanSendPostEnterBootstrap(
+                clientReadyReceived: true,
+                playerDetailSent: false,
+                enterUiReadyReceived: true),
+            "bootstrap waits for PlayerDetail");
+        Check.True(
+            !GameClientHandler.CanSendPostEnterBootstrap(
+                clientReadyReceived: true,
+                playerDetailSent: true,
+                enterUiReadyReceived: false),
+            "bootstrap waits for the final UI-ready signal");
+        Check.True(
+            GameClientHandler.CanSendPostEnterBootstrap(
+                clientReadyReceived: true,
+                playerDetailSent: true,
+                enterUiReadyReceived: true),
+            "bootstrap starts after every enter signal");
 
         return Task.CompletedTask;
     }

@@ -36,6 +36,7 @@ internal sealed class GameClientHandler : IClientHandler
     private bool _worldPresenceAnnounced;
     private bool _clientReadyReceived;
     private bool _playerDetailSent;
+    private bool _enterUiReadyReceived;
     private bool _postEnterBootstrapSent;
     private DateTime _lastPositionPersistUtc = DateTime.MinValue;
     private DateTimeOffset _nextBasicAttackAt = DateTimeOffset.MinValue;
@@ -211,12 +212,16 @@ internal sealed class GameClientHandler : IClientHandler
             case Opcodes.PlayerDetailAckRequest:
                 await _session.SendAsync(PacketBuilder.PlayerDetailAck(packet.Payload), cancellationToken, "PlayerDetailAck");
                 break;
+            case Opcodes.EnterUiReady:
+                _enterUiReadyReceived = true;
+                Console.WriteLine($"[game] EnterUiReady character={_character?.Name ?? "<none>"}");
+                await SendPostEnterBootstrapAsync(cancellationToken);
+                break;
             case Opcodes.GameServerReady:
             case Opcodes.GameServerInfo:
             case Opcodes.Forge:
             case Opcodes.PlayerInspectFollowup:
             case 10192:
-            case 10357:
                 Console.WriteLine($"[game] ignored {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode}");
                 break;
             default:
@@ -383,7 +388,7 @@ internal sealed class GameClientHandler : IClientHandler
         var effects = boosts.ActiveBoosts
             .Select(boost => new ClientStatusEffect(
                 checked((uint)boost.StatusId),
-                checked((ushort)boost.RemainingSeconds(now))))
+                boost.RemainingSeconds(now)))
             .ToArray();
         await _session.SendAsync(
             PacketBuilder.PlayerStatusEffects(
@@ -913,6 +918,7 @@ internal sealed class GameClientHandler : IClientHandler
         _worldPresenceAnnounced = false;
         _clientReadyReceived = false;
         _playerDetailSent = false;
+        _enterUiReadyReceived = false;
         _postEnterBootstrapSent = false;
         _npcVisibility = null;
         _mapNpcsByInteractionId.Clear();
@@ -1984,8 +1990,10 @@ internal sealed class GameClientHandler : IClientHandler
     private async Task SendPostEnterBootstrapAsync(CancellationToken cancellationToken)
     {
         if (_postEnterBootstrapSent
-            || !_clientReadyReceived
-            || !_playerDetailSent
+            || !CanSendPostEnterBootstrap(
+                _clientReadyReceived,
+                _playerDetailSent,
+                _enterUiReadyReceived)
             || _account is null
             || _character is null)
         {
@@ -2015,9 +2023,18 @@ internal sealed class GameClientHandler : IClientHandler
             await _session.SendAsync(skillList, cancellationToken, "SkillList");
         }
 
-        // The client only creates the local status owner after both ClientReady
-        // and PlayerDetail. Sending opcode 10120 before this point is discarded.
+        // Opcode 10357 is the final enter/UI-ready boundary. In the original
+        // protocol the post-enter responses follow it; status opcode 10120 is
+        // discarded when sent even immediately before this signal.
         await SendExperienceBoostStatusAsync("post-enter", cancellationToken);
+    }
+
+    internal static bool CanSendPostEnterBootstrap(
+        bool clientReadyReceived,
+        bool playerDetailSent,
+        bool enterUiReadyReceived)
+    {
+        return clientReadyReceived && playerDetailSent && enterUiReadyReceived;
     }
 
     private async Task HandlePlayerInspectRequestAsync(GamePacket request, CancellationToken cancellationToken)
