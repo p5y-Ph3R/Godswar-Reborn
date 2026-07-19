@@ -487,20 +487,29 @@ internal sealed class JsonGameStore : IGameStore
 
             var kitBagEntry = KitBagSlots.GetEntry(character.KitBag, kitBagSlot);
             var item = CompactItemEntry.Parse(kitBagEntry);
-            if (!item.IsEmpty && kitBagEntry != "[]")
+            if (item.IsEmpty
+                || kitBagEntry == "[]"
+                || !EquipmentSlots.TryGetAuthoritativeSlot(item.Id, out var defaultEquipmentSlot))
             {
-                var equipmentSlot = EquipmentSlots.ResolveSlotForItem(
-                    item.Id,
-                    requestedEquipmentSlot,
-                    character.Equipment,
-                    character.Profession,
-                    EquipmentSlots.ResolveSlotForItem(item.Id, requestedEquipmentSlot));
-                var previousEquipmentEntry = EquipmentSlots.GetEntry(character.Equipment, character.Profession, equipmentSlot);
-                character.Equipment = EquipmentSlots.SetSlot(character.Equipment, character.Profession, equipmentSlot, kitBagEntry);
-                character.KitBag = previousEquipmentEntry == "[]"
-                    ? KitBagSlots.ClearSlot(character.KitBag, kitBagSlot)
-                    : KitBagSlots.SetSlot(character.KitBag, kitBagSlot, previousEquipmentEntry);
+                return null;
             }
+
+            var equipmentSlot = EquipmentSlots.ResolveSlotForItem(
+                item.Id,
+                requestedEquipmentSlot,
+                character.Equipment,
+                character.Profession,
+                defaultEquipmentSlot);
+            if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot))
+            {
+                return null;
+            }
+
+            var previousEquipmentEntry = EquipmentSlots.GetEntry(character.Equipment, character.Profession, equipmentSlot);
+            character.Equipment = EquipmentSlots.SetSlot(character.Equipment, character.Profession, equipmentSlot, kitBagEntry);
+            character.KitBag = previousEquipmentEntry == "[]"
+                ? KitBagSlots.ClearSlot(character.KitBag, kitBagSlot)
+                : KitBagSlots.SetSlot(character.KitBag, kitBagSlot, previousEquipmentEntry);
 
             await SaveUnsafeAsync(db, cancellationToken);
             return Clone(character);

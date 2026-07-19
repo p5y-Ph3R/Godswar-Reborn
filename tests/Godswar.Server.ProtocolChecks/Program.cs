@@ -41,6 +41,7 @@ internal static class Program
             ("PlayerInspectEquipment packed slots and details", CheckPlayerInspectExtendedSlotsAsync),
             ("PlayerStatusUpdate layout", CheckPlayerStatusUpdateAsync),
             ("Native status-effect sync layout", CheckPlayerStatusEffectsAsync),
+            ("Guarded bag-to-equipment persistence and snapshot", CheckGuardedEquipmentMoveAsync),
             ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),
@@ -1138,6 +1139,123 @@ internal static class Program
                 ?? throw new InvalidOperationException("bag deletion fixture was not reloaded");
             Check.Equal(0u, KitBagSlots.GetItemId(reloaded.KitBag, 0), "bag deletion persists after reload");
             Check.Equal(4030u, KitBagSlots.GetItemId(reloaded.KitBag, 1), "unauthorized deletion did not remove neighbor");
+        }
+        finally
+        {
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
+    private static async Task CheckGuardedEquipmentMoveAsync()
+    {
+        Check.True(
+            EquipmentSlots.TryGetAuthoritativeSlot(1000, out var weaponSlot),
+            "starter sword is present in the authoritative equipment catalog");
+        Check.Equal(EquipmentSlots.Weapon, weaponSlot, "starter sword resolves to the weapon slot");
+        Check.True(
+            !EquipmentSlots.TryGetAuthoritativeSlot(4030, out _),
+            "MP potion is absent from the authoritative equipment catalog");
+        Check.Equal(-1, EquipmentSlots.ResolveSlotForItem(4030, -1), "unknown item has no weapon fallback");
+
+        var matchingCharacter = new GameCharacter { KitBag = GameDefaults.DefaultKitBag };
+        Check.True(
+            GameClientHandler.MatchesCurrentKitBagItem(matchingCharacter, 0, 4000),
+            "current bag item matches its authoritative slot");
+        Check.True(
+            !GameClientHandler.MatchesCurrentKitBagItem(matchingCharacter, 0, 0xFFFFFFFC),
+            "client sentinel item ID cannot be cached as an equip source");
+
+        var priorRingEquipment = GameDefaults.DefaultEquipment(0);
+        priorRingEquipment = EquipmentSlots.SetSlot(
+            priorRingEquipment,
+            0,
+            EquipmentSlots.Ring1,
+            "[3200,,,,,,1,1,1,1,0]");
+        var duplicateRingCharacter = new GameCharacter
+        {
+            Profession = 0,
+            Equipment = EquipmentSlots.SetSlot(
+                priorRingEquipment,
+                0,
+                EquipmentSlots.Ring2,
+                "[3200,,,,,,10,12,1,1,0]")
+        };
+        Check.Equal(
+            EquipmentSlots.Ring2,
+            GameClientHandler.ResolveEquippedSlotForAck(
+                duplicateRingCharacter,
+                priorRingEquipment,
+                requestedEquipmentSlot: -1,
+                itemIdHint: 3200),
+            "inferred duplicate ring resolves to the slot changed by the equip");
+
+        var dataPath = Path.Combine(
+            Path.GetTempPath(),
+            $"godswar-equipment-guard-check-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            await using var store = new JsonGameStore(dataPath);
+            await store.EnsureSeedDataAsync();
+            var owner = await store.LoginOrCreateAccountAsync("equipment-guard-owner", "");
+            var character = await store.CreateCharacterAsync(
+                owner.Id,
+                new GameCharacter { Name = "EquipmentGuardHero", Profession = 0 });
+
+            var rejectedPotion = await store.MoveKitBagToEquipmentAsync(
+                owner.Id,
+                character.Id,
+                kitBagSlot: 1,
+                requestedEquipmentSlot: -1);
+            Check.True(rejectedPotion is null, "consumable cannot be moved into equipment");
+
+            var afterRejectedPotion = await store.GetFirstCharacterAsync(owner.Id)
+                ?? throw new InvalidOperationException("equipment guard fixture was not reloaded");
+            Check.Equal(
+                1000u,
+                EquipmentSlots.GetItemId(afterRejectedPotion.Equipment, afterRejectedPotion.Profession, EquipmentSlots.Weapon),
+                "rejected consumable does not displace the equipped weapon");
+            Check.Equal(4030u, KitBagSlots.GetItemId(afterRejectedPotion.KitBag, 1), "rejected consumable remains in bag");
+
+            var rejectedEmptySlot = await store.MoveKitBagToEquipmentAsync(
+                owner.Id,
+                character.Id,
+                kitBagSlot: 23,
+                requestedEquipmentSlot: -1);
+            Check.True(rejectedEmptySlot is null, "empty bag slot is not reported as a successful equip");
+
+            var unequipped = await store.MoveEquipmentToKitBagAsync(
+                owner.Id,
+                character.Id,
+                EquipmentSlots.Weapon,
+                kitBagSlot: 2)
+                ?? throw new InvalidOperationException("starter sword could not be moved into the bag");
+            Check.Equal(1000u, KitBagSlots.GetItemId(unequipped.KitBag, 2), "starter sword moved into bag");
+
+            var equipped = await store.MoveKitBagToEquipmentAsync(
+                owner.Id,
+                character.Id,
+                kitBagSlot: 2,
+                requestedEquipmentSlot: -1)
+                ?? throw new InvalidOperationException("starter sword could not be equipped again");
+            Check.Equal(
+                1000u,
+                EquipmentSlots.GetItemId(equipped.Equipment, equipped.Profession, EquipmentSlots.Weapon),
+                "starter sword is equipped authoritatively");
+            Check.Equal(0u, KitBagSlots.GetItemId(equipped.KitBag, 2), "source bag slot is cleared after equip");
+
+            var snapshot = PacketBuilder.EquipmentItemEquipSnapshot(
+                equipped,
+                sourceSlot: 2,
+                EquipmentSlots.Weapon);
+            Check.Equal(92, snapshot.Length, "equip snapshot length");
+            Check.Equal((ushort)10051, ReadUInt16(snapshot, 2), "equip snapshot opcode");
+            Check.Equal(0x1448u, ReadUInt32(snapshot, 4), "equip snapshot local player object ID");
+            Check.Equal(0u, ReadUInt32(snapshot, 8), "equip snapshot bag operation marker");
+            Check.Equal((ushort)0, ReadUInt16(snapshot, 12), "equip snapshot source page");
+            Check.Equal((ushort)2, ReadUInt16(snapshot, 14), "equip snapshot source index");
+            Check.Equal(1000u, ReadUInt32(snapshot, 20), "equip snapshot describes the equipped sword");
         }
         finally
         {

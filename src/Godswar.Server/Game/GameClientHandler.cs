@@ -350,7 +350,6 @@ internal sealed class GameClientHandler : IClientHandler
         await _session.SendAsync(PacketBuilder.SkillUiState(), cancellationToken, "SkillUiState");
         await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
-        await SendExperienceBoostStatusAsync("enter", cancellationToken);
     }
 
     private async Task SendExperienceBoostStatusAsync(
@@ -2015,6 +2014,10 @@ internal sealed class GameClientHandler : IClientHandler
         {
             await _session.SendAsync(skillList, cancellationToken, "SkillList");
         }
+
+        // The client only creates the local status owner after both ClientReady
+        // and PlayerDetail. Sending opcode 10120 before this point is discarded.
+        await SendExperienceBoostStatusAsync("post-enter", cancellationToken);
     }
 
     private async Task HandlePlayerInspectRequestAsync(GamePacket request, CancellationToken cancellationToken)
@@ -2349,8 +2352,17 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
-        Console.WriteLine($"[equip-re] BagItemAction remembered pending equip source character={_character.Name} sourceSlot={sourceSlot} item={itemId}");
+        if (MatchesCurrentKitBagItem(_character, sourceSlot, itemId))
+        {
+            _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
+            Console.WriteLine($"[equip-re] BagItemAction remembered pending equip source character={_character.Name} sourceSlot={sourceSlot} item={itemId}");
+        }
+        else
+        {
+            _lastItemInfo = null;
+            Console.WriteLine($"[equip-re] BagItemAction did not cache stale item sourceSlot={sourceSlot} item={itemId}");
+        }
+
         await _session.SendAsync(
             PacketBuilder.BagItemActionAck(packet.Buffer),
             cancellationToken,
@@ -2361,14 +2373,16 @@ internal sealed class GameClientHandler : IClientHandler
     {
         LogInventoryPacket(packet);
 
-        if (TryReadItemInfoRequest(packet.Payload, out var sourceSlot, out var itemId))
+        if (TryReadItemInfoRequest(packet.Payload, out var sourceSlot, out var itemId)
+            && MatchesCurrentKitBagItem(_character, sourceSlot, itemId))
         {
             _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
             Console.WriteLine($"[equip-re] ItemInfoRequest sourceSlot={sourceSlot} item={itemId}");
             return;
         }
 
-        Console.WriteLine("[equip-re] ItemInfoRequest ignored: payload does not match captured kitbag item-info shape");
+        _lastItemInfo = null;
+        Console.WriteLine("[equip-re] ItemInfoRequest ignored: payload does not match the authoritative kitbag item");
     }
 
     private async Task HandleUnequipItemAsync(int equipmentSlot, int destinationSlot, CancellationToken cancellationToken)
@@ -2504,8 +2518,28 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
+        if (sourceSlot is < 0 or >= 96)
+        {
+            Console.WriteLine($"[equip-re] StorageItem equip ignored: unsupported sourceSlot={sourceSlot}");
+            return;
+        }
+
+        var previousEquipment = _character.Equipment;
         var kitBagItemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
-        var effectiveItemIdHint = itemIdHint != 0 ? itemIdHint : kitBagItemId;
+        if (kitBagItemId == 0)
+        {
+            Console.WriteLine($"[equip-re] StorageItem equip ignored: empty sourceSlot={sourceSlot}");
+            return;
+        }
+
+        if (itemIdHint != 0 && itemIdHint != kitBagItemId)
+        {
+            Console.WriteLine(
+                $"[equip-re] StorageItem equip ignored: stale item sourceSlot={sourceSlot} hint={itemIdHint} actual={kitBagItemId}");
+            return;
+        }
+
+        var effectiveItemIdHint = kitBagItemId;
         var updatedCharacter = await _store.MoveKitBagToEquipmentAsync(
             _account.Id,
             _character.Id,
@@ -2524,7 +2558,11 @@ internal sealed class GameClientHandler : IClientHandler
         await RefreshActiveCharacterStatsAsync("equip", cancellationToken);
         _registry.UpdateCharacter(_session, _character);
         _lastItemInfo = null;
-        var equippedSlot = ResolveEquippedSlotForAck(_character, requestedEquipmentSlot, effectiveItemIdHint);
+        var equippedSlot = ResolveEquippedSlotForAck(
+            _character,
+            previousEquipment,
+            requestedEquipmentSlot,
+            effectiveItemIdHint);
         Console.WriteLine(
             $"[equip-re] equipped character={_character.Name} sourceSlot={sourceSlot} requestedTarget={requestedEquipmentSlot} equippedSlot={equippedSlot} itemHint={effectiveItemIdHint} equipment={PacketBuilder.EnterEquipmentSummary(_character)}");
 
@@ -2540,7 +2578,7 @@ internal sealed class GameClientHandler : IClientHandler
                 "StorageItemEquipAck");
         }
 
-        var snapshot = PacketBuilder.KitBagItemSnapshot(_character, sourceSlot);
+        var snapshot = PacketBuilder.EquipmentItemEquipSnapshot(_character, sourceSlot, equippedSlot);
         if (snapshot.Length > 0)
         {
             await _session.SendAsync(
@@ -2657,6 +2695,12 @@ internal sealed class GameClientHandler : IClientHandler
             return false;
         }
 
+        if (!MatchesCurrentKitBagItem(_character, itemInfo.SourceSlot, itemInfo.ItemId))
+        {
+            _lastItemInfo = null;
+            return false;
+        }
+
         sourceSlot = itemInfo.SourceSlot;
         itemId = itemInfo.ItemId;
         return true;
@@ -2766,9 +2810,14 @@ internal sealed class GameClientHandler : IClientHandler
             $"[equip-re] {Opcodes.Name(packet.Opcode)} payloadLen={payload.Length} bytes={FormatBytes(payload)} u16={FormatUInt16(payload)} u32={FormatUInt32(payload)}");
     }
 
-    private static int ResolveEquippedSlotForAck(GameCharacter character, int requestedEquipmentSlot, uint itemIdHint)
+    internal static int ResolveEquippedSlotForAck(
+        GameCharacter character,
+        string previousEquipment,
+        int requestedEquipmentSlot,
+        uint itemIdHint)
     {
-        if (EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+        if (EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot)
+            && EquipmentSlots.GetItemId(character.Equipment, character.Profession, requestedEquipmentSlot) == itemIdHint)
         {
             return requestedEquipmentSlot;
         }
@@ -2776,6 +2825,18 @@ internal sealed class GameClientHandler : IClientHandler
         if (itemIdHint == 0)
         {
             return -1;
+        }
+
+        for (var slot = EquipmentSlots.Head; slot <= EquipmentSlots.Stylish; slot++)
+        {
+            if (EquipmentSlots.GetItemId(character.Equipment, character.Profession, slot) == itemIdHint
+                && !string.Equals(
+                    EquipmentSlots.GetEntry(previousEquipment, character.Profession, slot),
+                    EquipmentSlots.GetEntry(character.Equipment, character.Profession, slot),
+                    StringComparison.Ordinal))
+            {
+                return slot;
+            }
         }
 
         for (var slot = EquipmentSlots.Head; slot <= EquipmentSlots.Stylish; slot++)
@@ -3039,6 +3100,14 @@ internal sealed class GameClientHandler : IClientHandler
         sourceSlot = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
         itemId = BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(8, 4));
         return sourceSlot is >= 0 and < 96 && itemId != 0;
+    }
+
+    internal static bool MatchesCurrentKitBagItem(GameCharacter? character, int sourceSlot, uint itemId)
+    {
+        return character is not null
+            && sourceSlot is >= 0 and < 96
+            && itemId != 0
+            && KitBagSlots.GetItemId(character.KitBag, sourceSlot) == itemId;
     }
 
     private static byte ReadByte(ReadOnlySpan<byte> buffer, int offset, byte fallback)

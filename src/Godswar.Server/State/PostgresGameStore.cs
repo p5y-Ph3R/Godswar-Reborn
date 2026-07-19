@@ -2536,13 +2536,13 @@ internal sealed class PostgresGameStore : IGameStore
         if (kitBagRowId is null)
         {
             await transaction.CommitAsync(cancellationToken);
-            return await GetCharacterByIdAsync(characterId, cancellationToken);
+            return null;
         }
 
         if (itemId == 0)
         {
             await transaction.CommitAsync(cancellationToken);
-            return await GetCharacterByIdAsync(characterId, cancellationToken);
+            return null;
         }
 
         var defaultEquipmentSlot = await ResolveEquipmentSlotAsync(
@@ -2551,12 +2551,23 @@ internal sealed class PostgresGameStore : IGameStore
             itemId,
             requestedEquipmentSlot,
             cancellationToken);
+        if (defaultEquipmentSlot is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
         var equipmentSlot = EquipmentSlots.ResolveSlotForItem(
             itemId,
             requestedEquipmentSlot,
             equipment,
             profession,
-            defaultEquipmentSlot);
+            defaultEquipmentSlot.Value);
+        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
 
         long? previousEquipmentRowId = null;
         await using (var command = new NpgsqlCommand("""
@@ -4560,7 +4571,7 @@ internal sealed class PostgresGameStore : IGameStore
         });
     }
 
-    private static async Task<int> ResolveEquipmentSlotAsync(
+    private static async Task<int?> ResolveEquipmentSlotAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         uint itemId,
@@ -4579,6 +4590,11 @@ internal sealed class PostgresGameStore : IGameStore
         {
             var kind = reader.GetString(0);
             var slot = reader.GetInt16(1);
+            if (!EquipmentSlots.IsEquipmentSlot(slot))
+            {
+                return null;
+            }
+
             if (kind.Equals("ring", StringComparison.OrdinalIgnoreCase) &&
                 requestedSlot is EquipmentSlots.Ring1 or EquipmentSlots.Ring2)
             {
@@ -4588,7 +4604,7 @@ internal sealed class PostgresGameStore : IGameStore
             return slot;
         }
 
-        return EquipmentSlots.ResolveSlotForItem(itemId, requestedSlot);
+        return null;
     }
 
     private async Task<GameCharacter> InsertCharacterAsync(GameCharacter character, CancellationToken cancellationToken)

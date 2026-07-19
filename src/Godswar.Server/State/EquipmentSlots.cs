@@ -18,6 +18,10 @@ internal static class EquipmentSlots
 
     private const string Empty = "[]";
 
+    private static readonly IReadOnlyDictionary<uint, int> AuthoritativeSlots = ItemTemplateSeeds.All
+        .Where(static template => template.Id > 0 && IsEquipmentSlot(template.EquipmentSlot))
+        .ToDictionary(static template => (uint)template.Id, static template => (int)template.EquipmentSlot);
+
     public static string ClearSlot(string equipment, byte profession, int slot)
     {
         return SetSlot(equipment, profession, slot, Empty);
@@ -66,69 +70,24 @@ internal static class EquipmentSlots
         return slot is >= Head and <= Stylish;
     }
 
+    public static bool TryGetAuthoritativeSlot(uint itemId, out int slot)
+    {
+        return AuthoritativeSlots.TryGetValue(itemId, out slot);
+    }
+
     public static int ResolveSlotForItem(uint itemId, int requestedSlot)
     {
-        if (itemId is >= 1000 and < 2000)
+        if (!TryGetAuthoritativeSlot(itemId, out var slot))
         {
-            return Weapon;
+            return -1;
         }
 
-        if (itemId is >= 2000 and < 2100)
+        if (slot is Ring1 or Ring2 && requestedSlot is Ring1 or Ring2)
         {
-            return Shield;
+            return requestedSlot;
         }
 
-        if (itemId is >= 2100 and < 2300)
-        {
-            return Armor;
-        }
-
-        if (itemId is >= 2300 and < 2600)
-        {
-            return Head;
-        }
-
-        if (itemId is >= 2600 and < 2700)
-        {
-            return Cuff;
-        }
-
-        if (itemId is >= 2700 and < 2800)
-        {
-            return Leggings;
-        }
-
-        if (itemId is >= 2800 and < 2900)
-        {
-            return Glove;
-        }
-
-        if (itemId is >= 2900 and < 3000)
-        {
-            return Shoes;
-        }
-
-        if (itemId is >= 3000 and < 3100)
-        {
-            return Girdle;
-        }
-
-        if (itemId is >= 3100 and < 3200)
-        {
-            return Amulet;
-        }
-
-        if (itemId is >= 3200 and < 3300)
-        {
-            return requestedSlot is Ring1 or Ring2 ? requestedSlot : Ring1;
-        }
-
-        if (itemId is >= 8000 and < 9000)
-        {
-            return Stylish;
-        }
-
-        return requestedSlot >= 0 ? requestedSlot : Weapon;
+        return slot;
     }
 
     public static int ResolveSlotForItem(
@@ -138,7 +97,7 @@ internal static class EquipmentSlots
         byte profession,
         int defaultSlot)
     {
-        if (itemId is >= 3200 and < 3300)
+        if (defaultSlot is Ring1 or Ring2)
         {
             if (requestedSlot is Ring1 or Ring2)
             {
@@ -158,9 +117,7 @@ internal static class EquipmentSlots
             return defaultSlot is Ring1 or Ring2 ? defaultSlot : Ring1;
         }
 
-        return IsEquipmentSlot(defaultSlot)
-            ? defaultSlot
-            : ResolveSlotForItem(itemId, requestedSlot);
+        return IsEquipmentSlot(defaultSlot) ? defaultSlot : -1;
     }
 
     private static List<string> Normalize(string equipment, byte profession)
