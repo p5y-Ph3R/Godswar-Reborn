@@ -494,6 +494,29 @@ internal static class Program
         Check.True(
             !SkillCombatResolver.IsWithinRange(41.15f, 165.53f, 60f, 180f, lightChop),
             "distant monster cast is rejected");
+
+        Check.True(SkillCombatCatalog.TryGet(334, out var meteorBlast), "Meteor Blast 5 combat data exists");
+        Check.Equal(1, meteorBlast.Target, "Meteor Blast targets the caster");
+        Check.Equal(28, meteorBlast.AffectObj, "Meteor Blast affected-object mode");
+        Check.Equal(0f, meteorBlast.Distance, "Meteor Blast has no selected-target distance");
+        Check.Equal(10f, meteorBlast.Range, "Meteor Blast area radius");
+        Check.Equal(0, meteorBlast.Property, "Meteor Blast uses physical attack");
+        Check.Equal(900, meteorBlast.Mp, "Meteor Blast mana cost");
+        Check.Equal(0.88m, meteorBlast.Power1, "Meteor Blast physical attack multiplier");
+        Check.Equal(1980m, meteorBlast.Power2, "Meteor Blast flat damage");
+        Check.True(
+            SkillCombatResolver.IsHostileMonsterAreaSkill(meteorBlast),
+            "Meteor Blast is admitted as a hostile self-centred area skill");
+        Check.Equal(
+            2055u,
+            SkillCombatResolver.CalculateDamage(warrior, meteorBlast),
+            "Meteor Blast damage formula");
+        Check.True(
+            SkillCombatResolver.IsWithinArea(10f, 10f, 19.99f, 10f, meteorBlast),
+            "Meteor Blast includes monsters strictly inside its area");
+        Check.True(
+            !SkillCombatResolver.IsWithinArea(10f, 10f, 20f, 10f, meteorBlast),
+            "Meteor Blast excludes monsters on its strict area boundary");
         return Task.CompletedTask;
     }
 
@@ -553,6 +576,52 @@ internal static class Program
         Check.Equal(0u, ReadUInt32(damage, 20), "skill damage skill ID zero");
         Check.Equal(44.75f, ReadSingle(damage, 24), "skill damage target X");
         Check.Equal(166.25f, ReadSingle(damage, 28), "skill damage target Z");
+
+        var areaCast = clientCast.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(areaCast.AsSpan(8, 4), 334);
+        BinaryPrimitives.WriteUInt32LittleEndian(areaCast.AsSpan(16, 4), localObjectId);
+        var areaVisual = PacketBuilder.SelfTargetSkillCastVisual(areaCast, remoteCasterId);
+        Check.Equal(remoteCasterId, ReadUInt32(areaVisual, 4), "area cast visual patches caster identity");
+        Check.Equal(remoteCasterId, ReadUInt32(areaVisual, 16), "area cast visual patches self-target identity");
+
+        var emptyCluster = PacketBuilder.SkillClusterDamage(
+            localObjectId,
+            334,
+            Array.Empty<SkillClusterDamageEntry>());
+        Check.Equal(17, emptyCluster.Length, "empty area damage packet length");
+        Check.Equal((ushort)10047, ReadUInt16(emptyCluster, 2), "area damage opcode");
+        Check.Equal(localObjectId, ReadUInt32(emptyCluster, 4), "area damage caster");
+        Check.Equal(0u, ReadUInt32(emptyCluster, 8), "empty area damage count");
+        Check.Equal(334u, ReadUInt32(emptyCluster, 12), "area damage skill");
+        Check.Equal((byte)0, emptyCluster[16], "area damage aggregate status flag");
+
+        var cluster = PacketBuilder.SkillClusterDamage(
+            remoteCasterId,
+            334,
+            [
+                new SkillClusterDamageEntry(monsterId, 2055),
+                new SkillClusterDamageEntry(monsterId + 1, 1200)
+            ]);
+        Check.Equal(41, cluster.Length, "two-target area damage packet length");
+        Check.Equal(2u, ReadUInt32(cluster, 8), "area damage hit count");
+        Check.Equal(monsterId, ReadUInt32(cluster, 17), "first area damage target");
+        Check.Equal((byte)1, cluster[21], "first area damage hit result");
+        Check.Equal((byte)0, cluster[22], "first area damage affects HP");
+        Check.Equal((byte)0, cluster[23], "first area damage alignment byte one");
+        Check.Equal((byte)0, cluster[24], "first area damage alignment byte two");
+        Check.Equal(2055u, ReadUInt32(cluster, 25), "first area damage amount");
+        Check.Equal(monsterId + 1, ReadUInt32(cluster, 29), "second area damage target");
+        Check.Equal(1200u, ReadUInt32(cluster, 37), "second area damage amount");
+
+        var capturedMeteorBlastCluster = Convert.FromHexString(
+            "1D003F276B020000010000004D01000000A42800000100000001000000");
+        var reproducedMeteorBlastCluster = PacketBuilder.SkillClusterDamage(
+            0x26B,
+            333,
+            [new SkillClusterDamageEntry(0x28A4, 1)]);
+        Check.True(
+            reproducedMeteorBlastCluster.SequenceEqual(capturedMeteorBlastCluster),
+            "Meteor Blast area damage matches the original capture byte-for-byte");
 
         var mana = PacketBuilder.PlayerManaUpdate(remoteCasterId, 165);
         Check.Equal(12, mana.Length, "mana update length");

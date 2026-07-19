@@ -59,6 +59,7 @@ internal static class PacketBuilder
     private const ushort SkillListOpcode = 0x27D4;
     private const ushort SkillDamageOpcode = 0x273D;
     private const ushort SkillCastImpactOpcode = 0x273E;
+    private const ushort SkillClusterDamageOpcode = 0x273F;
     private const ushort PhysicalDamageOpcode = 0x272A;
     private const ushort MonsterDeathRewardOpcode = 0x272B;
     private const ushort PlayerDeathOpcode = 0x2722;
@@ -820,6 +821,18 @@ internal static class PacketBuilder
         return packet;
     }
 
+    public static byte[] SelfTargetSkillCastVisual(
+        ReadOnlySpan<byte> clientSkillCastPacket,
+        uint objectId)
+    {
+        var packet = SkillCastVisual(clientSkillCastPacket, objectId);
+        // A self-targeted cast arrives with the client's fixed local player ID at
+        // offset 16. Remote viewers need both identities translated to the
+        // caster's world object ID.
+        PatchSkillCastObjectId(packet, 16, objectId);
+        return packet;
+    }
+
     public static byte[] SkillCastImpact(ReadOnlySpan<byte> clientSkillCastPacket, uint objectId)
     {
         var targetObjectId = clientSkillCastPacket.Length >= 20
@@ -881,6 +894,48 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(20, 4), skillId);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(24, 4), targetX);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(28, 4), targetZ);
+        return packet;
+    }
+
+    public static byte[] SkillClusterDamage(
+        uint attackerObjectId,
+        uint skillId,
+        IReadOnlyList<SkillClusterDamageEntry> hits)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+
+        const int headerLength = 17;
+        const int hitLength = 12;
+        var maximumHits = (ushort.MaxValue - headerLength) / hitLength;
+        if (hits.Count > maximumHits)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(hits),
+                hits.Count,
+                $"A skill cluster packet supports at most {maximumHits} hits.");
+        }
+
+        var packet = new byte[headerLength + (hits.Count * hitLength)];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), SkillClusterDamageOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), attackerObjectId);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), hits.Count);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), skillId);
+        // Offset 16 is the aggregate status-hit flag. Status application is not
+        // modeled yet, so report no status while preserving the captured layout.
+        packet[16] = 0;
+
+        for (var index = 0; index < hits.Count; index++)
+        {
+            var hit = hits[index];
+            var offset = headerLength + (index * hitLength);
+            BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(offset, 4), hit.TargetObjectId);
+            packet[offset + 4] = hit.AttackType;
+            packet[offset + 5] = hit.DamageType;
+            // Offsets +6 and +7 are the captured alignment padding and remain 0.
+            BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(offset + 8, 4), hit.Damage);
+        }
+
         return packet;
     }
 
@@ -2317,3 +2372,9 @@ internal static class PacketBuilder
         }
     }
 }
+
+internal readonly record struct SkillClusterDamageEntry(
+    uint TargetObjectId,
+    uint Damage,
+    byte AttackType = 1,
+    byte DamageType = 0);

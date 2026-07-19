@@ -1134,6 +1134,16 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
+        if (SkillCombatResolver.IsHostileMonsterAreaSkill(combat))
+        {
+            await HandleHostileMonsterAreaSkillCastAsync(
+                packet,
+                cast,
+                combat,
+                cancellationToken);
+            return;
+        }
+
         if (!_registry.IsMonsterVisibleTo(_session, cast.TargetObjectId) ||
             !_registry.TryGetMonsterSnapshot(
                 _character.CurrentMap,
@@ -1379,6 +1389,196 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+    }
+
+    private async Task HandleHostileMonsterAreaSkillCastAsync(
+        GamePacket packet,
+        SkillCastRequest cast,
+        SkillCombatDefinition combat,
+        CancellationToken cancellationToken)
+    {
+        var character = _character;
+        if (character is null)
+        {
+            return;
+        }
+
+        var manaCost = Math.Max(0, combat.Mp);
+        int currentMana;
+        var manaReserved = false;
+        lock (character.VitalsSync)
+        {
+            currentMana = character.CurrentMp;
+            if (currentMana >= manaCost)
+            {
+                character.CurrentMp = currentMana - manaCost;
+                currentMana = character.CurrentMp;
+                if (manaCost > 0)
+                {
+                    character.MarkVitalsChanged();
+                }
+
+                manaReserved = true;
+            }
+        }
+
+        if (!manaReserved)
+        {
+            Console.WriteLine(
+                $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                cancellationToken,
+                "AreaSkillManaRejected");
+            return;
+        }
+
+        var requestedDamage = SkillCombatResolver.CalculateDamage(character, combat);
+        var candidates = _registry.GetMapMonsterSnapshots(character.CurrentMap)
+            .Where(monster =>
+                monster.IsSpawned &&
+                monster.IsAlive &&
+                _registry.IsMonsterVisibleTo(_session, monster.ObjectId) &&
+                SkillCombatResolver.IsWithinArea(
+                    character.PositionX,
+                    character.PositionZ,
+                    monster.X,
+                    monster.Z,
+                    combat))
+            .OrderBy(static monster => monster.ObjectId)
+            .ToArray();
+        var hits = new List<(MonsterDamageResult Result, uint ReportedDamage)>(candidates.Length);
+        if (requestedDamage > 0)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (_registry.TryApplyMonsterDamage(
+                        character.CurrentMap,
+                        candidate.ObjectId,
+                        requestedDamage,
+                        character.Id,
+                        out var damageResult) &&
+                    damageResult.BeforeHealth != damageResult.AfterHealth)
+                {
+                    // The original protocol reports resolved damage, even if the
+                    // target had less health remaining.
+                    hits.Add((damageResult, requestedDamage));
+                }
+            }
+        }
+
+        _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+
+        var selfVisual = PacketBuilder.SelfTargetSkillCastVisual(
+            packet.Buffer,
+            LocalPlayerObjectId);
+        var selfImpact = PacketBuilder.SkillCastImpact(
+            LocalPlayerObjectId,
+            uint.MaxValue,
+            cast.SkillId,
+            character.PositionX,
+            character.PositionZ);
+        var selfCluster = PacketBuilder.SkillClusterDamage(
+            LocalPlayerObjectId,
+            cast.SkillId,
+            hits.Select(static hit => new SkillClusterDamageEntry(
+                    hit.Result.ObjectId,
+                    hit.ReportedDamage))
+                .ToArray());
+
+        var casterNotified = true;
+        try
+        {
+            await _session.SendAsync(selfVisual, cancellationToken, "AreaSkillCastSelf");
+            await _session.SendAsync(selfImpact, cancellationToken, "AreaSkillImpactSelf");
+            await _session.SendAsync(selfCluster, cancellationToken, "AreaSkillDamageSelf");
+            if (manaCost > 0)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                    cancellationToken,
+                    "AreaSkillManaSelf");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            casterNotified = false;
+            Console.WriteLine(
+                $"[skill] area caster notification failed character={character.Name} skill={cast.SkillId}: {ex.Message}");
+        }
+
+        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var visualRecipients = await _registry.BroadcastToMapAsync(
+            character.CurrentMap,
+            PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, worldObjectId),
+            cancellationToken,
+            _session,
+            "AreaSkillCastWorld");
+        var impactRecipients = await _registry.BroadcastToMapAsync(
+            character.CurrentMap,
+            PacketBuilder.SkillCastImpact(
+                worldObjectId,
+                uint.MaxValue,
+                cast.SkillId,
+                character.PositionX,
+                character.PositionZ),
+            cancellationToken,
+            _session,
+            "AreaSkillImpactWorld");
+        var damageRecipients = await _registry.BroadcastToMapAsync(
+            character.CurrentMap,
+            PacketBuilder.SkillClusterDamage(
+                worldObjectId,
+                cast.SkillId,
+                hits.Select(static hit => new SkillClusterDamageEntry(
+                        hit.Result.ObjectId,
+                        hit.ReportedDamage))
+                    .ToArray()),
+            cancellationToken,
+            _session,
+            "AreaSkillDamageWorld");
+
+        foreach (var hit in hits)
+        {
+            if (hit.Result.Killed)
+            {
+                await AwardMonsterKillAsync(hit.Result, cancellationToken);
+            }
+        }
+
+        if (_account is not null)
+        {
+            try
+            {
+                int currentHp;
+                long vitalsRevision;
+                lock (character.VitalsSync)
+                {
+                    currentHp = character.CurrentHp;
+                    currentMana = character.CurrentMp;
+                    vitalsRevision = character.VitalsRevision;
+                }
+
+                await _store.SaveCharacterVitalsAsync(
+                    _account.Id,
+                    character.Id,
+                    currentHp,
+                    currentMana,
+                    vitalsRevision,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[skill] area vitals persistence deferred character={character.Name}: {ex.Message}");
+            }
+        }
+
+        var appliedDamage = hits.Aggregate(
+            0UL,
+            static (total, hit) => total + hit.Result.BeforeHealth - hit.Result.AfterHealth);
+        Console.WriteLine(
+            $"[skill] area damage character={character.Name} skill={cast.SkillId} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(impactRecipients, damageRecipients))}");
     }
 
     private async Task AwardMonsterKillAsync(
