@@ -507,6 +507,14 @@ internal static class Program
         Check.True(
             SkillCombatResolver.IsHostileMonsterAreaSkill(meteorBlast),
             "Meteor Blast is admitted as a hostile self-centred area skill");
+        foreach (var championAreaSkillId in new[] { 304, 314, 324, 334 })
+        {
+            Check.True(
+                SkillCombatCatalog.TryGet(championAreaSkillId, out var championAreaSkill) &&
+                SkillCombatResolver.IsHostileMonsterAreaSkill(championAreaSkill),
+                $"Champion area skill {championAreaSkillId} uses the shared AOE path");
+        }
+
         Check.Equal(
             2055u,
             SkillCombatResolver.CalculateDamage(warrior, meteorBlast),
