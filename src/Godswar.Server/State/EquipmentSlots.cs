@@ -18,8 +18,28 @@ internal static class EquipmentSlots
 
     private const string Empty = "[]";
 
+    private static readonly HashSet<string> EquipmentKinds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "head",
+        "amulet",
+        "glove",
+        "armor",
+        "cloth",
+        "cuff",
+        "girdle",
+        "shoes",
+        "leggins",
+        "ring",
+        "weapon",
+        "shield",
+        "stylish"
+    };
+
     private static readonly IReadOnlyDictionary<uint, int> AuthoritativeSlots = ItemTemplateSeeds.All
-        .Where(static template => template.Id > 0 && IsEquipmentSlot(template.EquipmentSlot))
+        .Where(static template =>
+            template.Id > 0 &&
+            IsEquipmentKind(template.Kind) &&
+            IsEquipmentSlot(template.EquipmentSlot))
         .ToDictionary(static template => (uint)template.Id, static template => (int)template.EquipmentSlot);
 
     public static string ClearSlot(string equipment, byte profession, int slot)
@@ -70,6 +90,11 @@ internal static class EquipmentSlots
         return slot is >= Head and <= Stylish;
     }
 
+    public static bool IsEquipmentKind(string? kind)
+    {
+        return kind is not null && EquipmentKinds.Contains(kind);
+    }
+
     public static bool TryGetAuthoritativeSlot(uint itemId, out int slot)
     {
         return AuthoritativeSlots.TryGetValue(itemId, out slot);
@@ -82,12 +107,17 @@ internal static class EquipmentSlots
             return -1;
         }
 
-        if (slot is Ring1 or Ring2 && requestedSlot is Ring1 or Ring2)
+        if (requestedSlot < 0)
         {
-            return requestedSlot;
+            return slot;
         }
 
-        return slot;
+        if (slot is Ring1 or Ring2)
+        {
+            return requestedSlot is Ring1 or Ring2 ? requestedSlot : -1;
+        }
+
+        return requestedSlot == slot ? slot : -1;
     }
 
     public static int ResolveSlotForItem(
@@ -97,13 +127,18 @@ internal static class EquipmentSlots
         byte profession,
         int defaultSlot)
     {
-        if (defaultSlot is Ring1 or Ring2)
+        if (requestedSlot >= 0)
         {
-            if (requestedSlot is Ring1 or Ring2)
+            if (defaultSlot is Ring1 or Ring2)
             {
-                return requestedSlot;
+                return requestedSlot is Ring1 or Ring2 ? requestedSlot : -1;
             }
 
+            return requestedSlot == defaultSlot ? defaultSlot : -1;
+        }
+
+        if (defaultSlot is Ring1 or Ring2)
+        {
             if (GetItemId(equipment, profession, Ring1) == 0)
             {
                 return Ring1;
@@ -187,7 +222,7 @@ internal static class KitBagSlots
     private static List<string> Normalize(string kitBag)
     {
         var source = string.IsNullOrWhiteSpace(kitBag)
-            ? GameDefaults.DefaultKitBag
+            ? GameDefaults.EmptyKitBag
             : kitBag;
 
         var slots = source.Split('#', StringSplitOptions.None).ToList();

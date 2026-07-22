@@ -8,20 +8,51 @@ highest-priority status within one kind is active.
 awarded EXP = truncate(base EXP * max(0, 1 + sum(active bonus rates)))
 ```
 
+Talent EXP uses the same calculation with only kind `20` statuses. Talent
+bonuses never enter the fighter-EXP aggregate or its wire field.
+
 ## Supported families
 
 | Family | Kind | Maximum configured bonus | Notes |
 |---|---:|---:|---|
 | Potion, mooncake, or Passion Rose | 14 | +300% | Exactly one consumable status |
+| Talent Potion or Talent EXP Boost | 20 | +400% | Exactly one Talent-only status |
 | Weekend | 22 | +200% | Stock status 511 |
 | Trick or Treat | 23 | +10% | Stock status 512 |
 | Guild | 100 | +100% | One duration variant |
 | VIP | 1008 | +5/10/15/20% | One account-wide tier; statuses 1500-1503 |
 | Faction area control | 1009 | +25% | Status 1504; matching faction and current map only |
 
-With the strongest status from all six families, the bonus sum is `+655%`
+With the strongest status from all six fighter families, the bonus sum is `+655%`
 and the total multiplier is `7.55x`. Party distribution is a separate reward
-calculation and Talent EXP is not modified by these families.
+calculation. The strongest Talent status grants `+400%`, for a `5x` Talent EXP
+multiplier.
+
+## Online-only duration
+
+Every timed row in `character_experience_modifiers` is a character-owned grant.
+Its authoritative `remaining_online_ticks` budget starts only after the
+character enters the world, checkpoints every status-reconciliation cycle and
+when a reward resolves, and saves its final partial interval on logout or
+session replacement. Merely logging into an account, remaining at character
+selection, being disconnected, or restarting the server consumes no duration.
+The status packet derives its displayed remaining seconds from this same
+persisted budget.
+
+Legacy `expires_at` rows migrate to the complete originally granted duration
+(`expires_at - activated_at`). Historical online usage cannot be reconstructed,
+so this restores rows that expired under the old offline-burning behavior. The
+old field remains only as migration input.
+
+The client-defined Talent statuses supported by this model are IDs `580`,
+`587`, `581`, `509`, `582`, `588`, `583`, `589`, `584`, and `590` (kind `20`,
+50–400%, one- or eight-hour variants).
+
+VIP expiration and faction world-boss area control are external calendar
+entitlements, not character-owned duration rows, so their clocks continue while
+the character is offline. A future server-wide weekend schedule should use the
+same calendar-entitlement path; an explicitly granted per-character weekend
+row remains an online-only personal duration.
 
 ## World-boss area control
 

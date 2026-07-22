@@ -1,5 +1,23 @@
 namespace Godswar.Server.State;
 
+internal sealed record GearEnhancementTransactionResult(
+    GearEnhancementResult? Enhancement,
+    GameCharacter? Character)
+{
+    public bool CharacterFound => Character is not null;
+
+    public bool Committed => Enhancement?.Committed == true;
+}
+
+internal sealed record GearMentorTransactionResult(
+    GearMentorResult? Result,
+    GameCharacter? Character)
+{
+    public bool CharacterFound => Character is not null;
+
+    public bool Committed => Result?.Committed == true;
+}
+
 internal interface IGameStore : IAsyncDisposable
 {
     Task EnsureSeedDataAsync(CancellationToken cancellationToken = default);
@@ -31,12 +49,34 @@ internal interface IGameStore : IAsyncDisposable
         int talentExperience,
         CancellationToken cancellationToken = default);
 
+    Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
+        int accountId,
+        int characterId,
+        int experienceGainX100,
+        int talentExperienceGainX100,
+        CancellationToken cancellationToken = default);
+
+    Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
+        ZodiacEnergyPolicy policy,
+        CancellationToken cancellationToken = default);
+
     Task<ExperienceBoostState> GetExperienceBoostStateAsync(
         int accountId,
         int characterId,
         byte camp,
         byte mapId,
         DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task ConsumeCharacterBoostOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
         CancellationToken cancellationToken = default);
 
     Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
@@ -77,7 +117,8 @@ internal interface IGameStore : IAsyncDisposable
         int characterId,
         int kitBagSlot,
         int requestedEquipmentSlot,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool requireEmptyEquipmentSlot = false);
 
     Task<GameCharacter?> MoveKitBagItemAsync(
         int accountId,
@@ -90,6 +131,36 @@ internal interface IGameStore : IAsyncDisposable
         int accountId,
         int characterId,
         int kitBagSlot,
+        CancellationToken cancellationToken = default);
+
+    Task<GameCharacter?> ClearKitBagAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default);
+
+    Task<KitBagItemGrantResult> AddForgingMaterialAsync(
+        int accountId,
+        int characterId,
+        uint itemId,
+        int quantity,
+        CancellationToken cancellationToken = default);
+
+    Task<ForgeTransactionResult> ForgeEquipmentAsync(
+        int accountId,
+        int characterId,
+        ForgeTransactionRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<GearEnhancementTransactionResult> EnhanceGearAsync(
+        int accountId,
+        int characterId,
+        GearEnhancementRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<GearMentorTransactionResult> ProcessGearMentorAsync(
+        int accountId,
+        int characterId,
+        GearMentorRequest request,
         CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> ApplyWeaponHolyStoneAsync(

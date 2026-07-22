@@ -45,6 +45,7 @@ Implemented:
 - Stream XOR cipher and packet framing
 - Account auto-create
 - Character list, create, delete, and preview
+- Working-server-compatible 63-record post-login bootstrap manifest, including the trailing client version record; the separate native avatar-resource lifecycle crash is handled by the guarded client patch documented below
 - Camp-aware character starts: Sparta/camp 0 enters map 0 and Athens/camp 1 enters map 1 at the captured `(165, -97)` starting position
 - PostgreSQL-backed accounts and characters under Docker
 - Enter-game packet stream based on the Go reference
@@ -54,9 +55,13 @@ Implemented:
 - Server-built static NPC definitions assembled from validated captured spawns, normalized NPC appearance/position references, and same-number capital-city fallbacks when a reference has no position
 - Movement-driven NPC visibility matching the working server's `32x32` world sectors: each client receives only its current sector and the eight neighboring sectors, with remove/spawn diffs when crossing a boundary
 - Movement-driven captured-monster visibility on the same `32x32`/`3x3` sector model, using the raw appearance packet's coordinates as authoritative, validating captured metadata at map load, and sending removals before newly visible monsters
+- Server-owned monster roaming, retaliation, extended chase, authoritative leash despawn/fresh full-health replacement at home, ordinary attacks, learned-skill damage, death, revival, and persisted fighter/talent rewards
+- Live server time plus full Zodiac state synchronization and persistent five-minute continuous-login energy accounting across reconnects
+- Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
+- Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
 
-The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The client patches documented below are for separate extended-grade, rank, aura, and talent experiments.
+The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 
 Remote-player equipment inspection now follows the captured packed-record plus
 source-slot-mask layout, preserves detailed Q20/G25 values, and uses stable
@@ -70,15 +75,21 @@ Not complete yet:
 - Full world simulation
 - NPC coverage beyond the current static city baseline: the current PostgreSQL data resolves 100 Sparta and 95 Athens NPC identities (including 48 direct normalized references in each city), while most NPC dialog scripts and quests remain unimplemented
 - Monster coverage beyond the current 270 static captured appearances on Sparta/map 0; Athens and other maps do not yet have captured monster baselines
-- Monster simulation currently covers local roaming, chase/retaliation, normal and learned-skill damage, death, and timed revival; aggro/leash fidelity, parties, drops, and broader skill effects remain incomplete
+- Monster simulation currently covers local roaming, chase/retaliation, leash replacement at home, normal and learned-skill damage, death, and timed revival; parties, drops, multi-player threat selection, and broader skill effects remain incomplete
 - Kill progression now persists carried fighter levels, fighter EXP, talent EXP, and talent points and refreshes the client through the captured monster-death/EXP/level packets; passive HP/MP recovery uses the captured six-second absolute-vitals update
 - Talent upgrades now support each class's full ID range (including warrior node `0`) with server-owned persisted rank/cost validation; complete inventory, skill, and talent gameplay is still unfinished
+- Ordinary equipment forging is implemented. Material combination and equipment combination (forge modes 1 and 2) remain unsupported. Level-5 Sapphire, Emerald, and Crystal are local extensions and require the matching patched client data.
 - Packet coverage outside the mapped reference opcodes
 
 ## Current Reverse Engineering Notes
 
 Grade/quality/rank support for local testing has been extended beyond the original client limits:
 
+- Ordinary Sapphire and Emerald forging now share the local Q20/Boundless and G25 ceilings. `tools/PatchClientForgeBoundlessGrade25.ps1` is the authoritative idempotent client patch: it synchronizes both locales, all eleven native progression/candidate gates, the 22 quality/base constructor counts plus the one `AppFraction` count, material rules, tooltips, and the true forge-indexed item vectors. It deliberately preserves `MainAttribute` and every `ArmEff*`/`Defend*` rank table byte-for-byte. The older Q13 and G18 scripts are historical stepping stones and must not be rerun over the higher ceiling. `tools/GenerateEquipmentForgeCatalog.ps1` and `tools/GenerateItemTemplates.ps1` regenerate the matching authoritative server data.
+- The apparent Warrior WR7 cap was an item-tier mismatch, not a profession cap: account 13 used starter sword `1000`, whose legacy client rank curve ended after the `600` threshold, while the Champion comparison used endgame spear `1435`. `tools/PatchClientGlobalEquipmentRanks.ps1` intentionally normalizes rank-score and rank-effect tables for every ordinary forgeable item in both locales. All ordinary weapons except special GM Spear `1499` use one Q20/G25 score profile: five append attributes produce `1700 + (5 * 1270) = 8050`/WR10, while four produce `6780`/WR9. Warrior/Champion retain the physical effect family, Priest the `201` family, and Mage the `51` family.
+- The same global rank patch gives every ordinary forgeable `armor`/`cloth` carrier the AR14 curve through score `25300`. Nonweapon Q1..Q10 and G1..G12 score prefixes stay unchanged; their tails end at Q20=`3 * Q10` and G25=`4 * G12`. A complete five-attribute no-shield set scores `25350`; the normalized shield contributes `650`, so complete Warrior/Priest equipment scores `26000`, below the client's signed-16-bit boundary. Custom GM Armor `2190` remains untouched. Regenerate `ItemTemplateSeed.Generated.cs` and `002_item_templates.sql` after applying the client patch.
+- Level-4 material ranges stay native/local-compatible: Sapphire `4213` applies to current Q8..Q12 and Emerald `4223` to current G10..G17. Local Level-5 Sapphire `4215` gives `+32` across Q8..Q19, Level-5 Emerald `4225` gives `+32` across G10..G24, and Level-5 Crystal `4234` gives `+25` per selected crystal, with at most 25 selected.
+- The added quality probability tail for current Q13..Q19 is `-255,-265,-275,-285,-295,-305,-315`, followed by the Q20 zero terminal; its silver-cost multipliers are `35,40,45,50,55,60,65`. The added grade tail for current G18..G24 is `-395,-420,-445,-470,-495,-520,-545`, followed by the G25 zero terminal; its multipliers are `55,60,65,70,75,80,85`. At G24, 24 Level-5 Crystals give a raw `87%`; 25 give raw `112%`, clamped to `100%`. The dedicated Level-5 sprites remain in `Icon4.gwo` at Crystal `0,0`, Sapphire `36,0`, and Emerald `72,0`; their piece sprites use `108,0`, `144,0`, and `180,0`. The shared stock `Icon2.gwo` atlas remains untouched.
 - `ItemAppendAttribute.xml` is extended to `L25` for all append attributes in both `en_us` and `zh_cn`.
 - `item_attribute_templates` is regenerated from the patched client XML; all 193 rows have `max_level = 25` and 25 `level_values`.
 - `tools/GenerateItemAttributeTemplates.ps1` now derives the legacy `character_equip.type*/quality*/value*` mirror from `character_items`, not `character_kitbag`, so `character_items` remains the source of truth.
@@ -90,7 +101,8 @@ Grade/quality/rank support for local testing has been extended beyond the origin
 - Talent milestone bonuses are intentionally parked for now. The current talent system only has progressive base scaling through `talent_effective_rank(rank)` and the client tooltip compatibility patch above. There is no separate milestone-attribute layer yet. Future implementation should add a `talent_milestone_effects` table, include those effects in `character_stat_summary`, and then patch/discover the client tooltip path so rank milestones like `40/60/80/100` can show their bonus text separately from the base stat line.
 - `Origin.exe` has a weapon rank item-score cap patch in the single-item score path at file offsets `0xA70AA` and `0xA70B3`: quality is capped at `0x14`/20 and grade is capped at `0x19`/25. The original client compared against quality `10` and grade `12`, so future weapon quality/grade upgrades must revisit this path.
 - `Origin.exe` has a separate armor rank aggregate-score cap patch at file offsets `0xA7505` and `0xA750E`: quality now rejects only `>= 21` and grade now rejects only `>= 26`. The original client skipped armor contribution for quality `>= 11` or grade `>= 13`, which is why G13 gloves showed `0` contribution until this was patched. Backup is `C:\Reborn\backups\origin-armor-rank-q20-g25-20260518\Origin.exe`.
-- Remote-player opcode `0x2725` now retains its native Q10/G12 nibble projection and appends a versioned `GWX1` full-byte Q/G tail. `tools/PatchRemoteWorldEquipmentExtension.ps1` installs or reverts the guarded `Origin.exe` decoder. This lets nearby-player weapon/armor rank and aura calculations use Q20/G25 while unextended 260-byte packets keep the original decoder. The wire extension supports bytes through Q255/G255; future ceilings must still extend client template arrays and the score checks at `0xA70AA`, `0xA70B3`, `0xA7505`, and `0xA750E`.
+- Remote-player opcode `0x2725` now retains a native Q13/G12 nibble projection and appends a versioned `GWX1` full-byte Q/G tail. `tools/PatchRemoteWorldEquipmentExtension.ps1` installs or reverts the guarded `Origin.exe` decoder. This lets nearby-player weapon/armor rank and aura calculations use Q20/G25 while unextended 260-byte packets keep the original decoder. The wire extension supports bytes through Q255/G255; future ceilings must still extend client template arrays and the score checks at `0xA70AA`, `0xA70B3`, `0xA7505`, and `0xA750E`.
+- `tools/PatchClientAvatarPreviewGuard.ps1` repairs the stale LOGIN avatar-initialization flag and guards both known native selection-avatar builders. The installed client changes exactly 169 bytes, has SHA-256 `1BBD41D4E148E040B363D2A83D36CD326A2C2CFE1EA44E08DA6B2680CA1BB329`, and can be restored from `C:\Reborn\backups\origin-avatar-preview-guard-Apply-20260722-135817166\Origin.exe`. Root-cause addresses, safety checks, and the runtime acceptance sequence are in [`docs/client-avatar-preview-crash-fix.md`](docs/client-avatar-preview-crash-fix.md).
 - Body armor rows (`armor` and `cloth`) need an extra final `DefendFraction`/`DefendEff` sentinel after the highest armor rank. For AR14 testing, use `DefendFraction="330,475,750,950,1350,1720,2225,3860,5250,8000,12000,17000,22000,25300,-1"` and `DefendEff="1,2,3,4,5,6,7,8,9,10,11,12,13,14,14"`; otherwise the client displays the wrong next threshold for the current armor rank.
 - Armor/weapon rank labels are translated through `Localization\<locale>\Text\EquipDescription.dat` keys `EffLv*`. The stock English client mapped higher ranks back to `9`, so `tools/PatchEquipDescriptionRankLabels.ps1` changes `EffLv10..EffLv14` to `10..14`.
 - Armor ranks `11`, `12`, `13`, and `14` are now reserved at scores `12000`, `17000`, `22000`, and `25300`. AR14 is currently the max server/client rank cap.
@@ -111,9 +123,10 @@ Grade/quality/rank support for local testing has been extended beyond the origin
 - Holy-stone weapon sockets are capped back to the native four-slot model in server logic and active stat calculations. Socket 5/6 DB columns remain only as dormant compatibility fields and are cleared by `database/postgres/045_holy_stone_socket_cap_4.sql`.
 - The previous six-socket client patch tooling remains under `tools/PatchSixSocketItemRecord.ps1` and `tools/PatchSixSocketLayoutCap.ps1` for reference, but it is not part of the active local server behavior.
 - Equipment/kitbag persistence no longer does a section-wide `DELETE` before reinserting compact item strings. `ReplaceCharacterItemsFromCompactAsync` now applies per-slot upserts/deletes and writes deleted rows to `character_item_audit`; this prevents unrelated equipment slots from being dropped during item moves.
-- Grade 13+ item rows need matching `BaseFraction`, `AppFraction`, `MainAttribute`, and base stat arrays; otherwise the client may render the color but fail rank/stat lookup or close while entering the scene.
-- Weapon rows with `PlayLv` minimum `135+` are patched by `tools/PatchLevel135WeaponCaps.ps1` to support quality 20 and grade 25. Current English/server-source IDs are `1034`, `1035`, `1434`, `1435`, `1734`, `1735`, `1799`, `1834`, `1835`, and `1899`.
-- Non-body gear rows (`head`, `amulet`, `glove`, `cuff`, `girdle`, `shoes`, `leggins`, `ring`, `shield`) with `PlayLv` minimum `135+` are patched by `tools/PatchLevel135GearCaps.ps1` to support quality 20 and grade 25. Existing quality 10 and grade 12 scores are preserved; the max score profile is intentionally capped so a full maxed set stays below the client's apparent signed 16-bit armor-rank limit.
+- Starter HP/MP potions (`4000`/`4030`) are granted only when a character is created. Empty inventory fallbacks remain empty, and the legacy `character_kitbag` projection is imported into authoritative `character_items` once under the `20260721_legacy_character_kitbag_import` data-migration marker so deleted items cannot return after a restart.
+- Extended item rows need their core numeric quality vectors and `BaseFraction` through Q20, plus `AppFraction` through G25; otherwise the client may render the color but fail stat lookup or close while entering the scene. `MainAttribute` is an allowed-attribute list, while `ArmEffFraction`/`ArmEff` and `DefendFraction`/`DefendEff` are independent rank tables, so ordinary-forge ceiling patches must not pad them.
+- `tools/PatchLevel135WeaponCaps.ps1`, `tools/PatchLevel135ArmorRankThresholds.ps1`, and the per-slot level-135 scripts record the earlier endgame-only experiment. Their `PlayLv >= 135` selection is why starter and mid-tier items retained short rank curves. Use `tools/PatchClientGlobalEquipmentRanks.ps1` for the class-neutral, all-tier rank model; do not use a level-gated script to reconstruct the authoritative rank data.
+- The global rank patch covers non-body gear rows (`head`, `amulet`, `glove`, `cuff`, `girdle`, `shoes`, `leggins`, `ring`, `shield`) at every forgeable item tier. It preserves native Q1..Q10/G1..G12 score data and normalizes only the extended tails, keeping a full Warrior/Priest set safely below `32767`.
 - Ring rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135RingCaps.ps1`. The current local test character uses two `Celestial Vigor Ring` (`3246`) rows at Boundless/G25 with append attributes `AttackF`, `PhysicalDamage`, `IgnorePhyPer`, `FuryAkAdd`, and `MaxHPF`, all at level 5.
 - Chest (`armor`/`cloth`) and amulet rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135ChestAmuletCaps.ps1`. The current local test character uses Boundless/G25 chest attributes `DefenceF`, `AddMagicRecF`, `Miss`, `FuryAkRec`, `MaxHPF`; amulet attributes `Miss`, `FuryAkRec`, `InjureImbibeF`, `StateImmunity`, `MPRestoreF`; all at level 5.
 - Boots (`shoes`) and girdle rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135BootsGirdleCaps.ps1`. The current local test character keeps the existing boots/girdle attributes and upgrades both equipped slots to Boundless/G25 with `database/postgres/053_test_character_boundless_g25_boots_girdle.sql`.
@@ -135,8 +148,12 @@ Important client-side files touched while allowing grade 25 / Boundless quality 
 - `C:\Godswar Origin\Localization\zh_cn\UI\Base\font.lua`
 - `C:\Godswar Origin\Localization\en_us\Settings\Sys\EquipForge.xml`
 - `C:\Godswar Origin\Localization\zh_cn\Settings\Sys\EquipForge.xml`
+- `C:\Godswar Origin\Localization\en_us\Settings\Sys\BijouForge.xml`
+- `C:\Godswar Origin\Localization\zh_cn\Settings\Sys\BijouForge.xml`
 - `C:\Godswar Origin\Localization\en_us\Settings\Sys\ItemAppendAttribute.xml`
 - `C:\Godswar Origin\Localization\zh_cn\Settings\Sys\ItemAppendAttribute.xml`
+- `C:\Godswar Origin\Localization\en_us\UI\Texture\Icon4.gwo`
+- `C:\Godswar Origin\Localization\zh_cn\UI\Texture\Icon4.gwo`
 - `C:\Godswar Origin\Localization\zh_cn\Text\EquipName.dat`
 - `C:\Godswar Origin\Localization\en_us\Text\EquipDescription.dat`
 - `C:\Godswar Origin\Localization\zh_cn\Text\EquipDescription.dat`
@@ -154,9 +171,13 @@ Important server/database files for the same work:
 - `src/Godswar.Server/Packets/PacketBuilder.cs`
 - `tools/GenerateItemTemplates.ps1`
 - `tools/GenerateItemAttributeTemplates.ps1`
+- `tools/GenerateEquipmentForgeCatalog.ps1`
+- `tools/PatchClientForgeBoundlessGrade25.ps1`
+- `tools/PatchClientGlobalEquipmentRanks.ps1`
 - `tools/PatchLevel135GearCaps.ps1`
 - `tools/PatchEquipDescriptionRankLabels.ps1`
 - `tools/PatchRemoteWorldEquipmentExtension.ps1`
+- `tools/PatchClientAvatarPreviewGuard.ps1`
 - `tools/RecolorArmorRank10Effect.py`
 - `tools/RecolorArmorRank10Crimson.py`
 - `tools/RecolorArmorRank10Gold.py`
@@ -166,7 +187,8 @@ Rank reference points:
 - The inventory UI labels are in `C:\Godswar Origin\Localization\en_us\UI\XML\ItemBagsUI.xml` and `zh_cn\UI\XML\ItemBagsUI.xml`.
 - Armor rank text/value widgets are `EquipEff` and `EquipEffV`.
 - Weapon rank text/value widgets are `WepenEff` and `WepenEffV`.
-- Weapon rank/aura for item `1435` is driven by `ItemBaseAttribute.xml` fields `ArmEffFraction` and `ArmEff`.
+- Weapon rank/aura is driven per template by `ItemBaseAttribute.xml` fields `BaseFraction`, `AppFraction`, `ArmEffFraction`, and `ArmEff`; it is not selected from a separate profession cap.
 - Local weapon rank `9` is mapped as score `4000 -> effect 8`; rank `10` is mapped as score `8000 -> effect 9`; client backups include `ItemBaseAttribute.xml.pre-weapon-rank10-effect8.bak` and `ItemBaseAttribute.xml.pre-weapon-rank9-4000-rank10-effect9.bak`.
+- Every ordinary forgeable weapon can reach WR10 at Q20/G25 with five append attributes. Four attributes intentionally stop at score `6780`/WR9. GM Spear `1499` and GM Armor `2190` retain their authored score and rank arrays exactly.
 - Server-side rank mirrors are `equipment_rank_rules`, `character_equipment_scores`, and `character_rank_summary`.
 - Current server weapon rules include ranks `8`, `9`, and `10`.

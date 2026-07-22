@@ -9,7 +9,9 @@ internal sealed record ActiveRuntimeStatus(
     bool Beneficial,
     DateTimeOffset ExpiresAt,
     ClientStatusAggregate Modifiers,
-    long Revision)
+    long Revision,
+    decimal PhysicalDamageReduction = 0m,
+    decimal MagicDamageReduction = 0m)
 {
     public uint RemainingSeconds(DateTimeOffset now) =>
         (uint)Math.Clamp(
@@ -75,9 +77,11 @@ internal static class PlayerStatusComposer
             .OrderBy(static effect => effect.StatusId)
             .ToArray();
 
-        var experienceBonusBasisPoints = activeExperience.Aggregate(
-            0L,
-            static (sum, boost) => sum + boost.BonusBasisPoints);
+        var experienceBonusBasisPoints = activeExperience
+            .Where(static boost => boost.Kind != ExperienceBoostKinds.Talent)
+            .Aggregate(
+                0L,
+                static (sum, boost) => sum + boost.BonusBasisPoints);
         var hit = activeRuntime.Aggregate(
             0L,
             static (sum, status) => sum + status.Modifiers.Hit);
@@ -95,13 +99,14 @@ internal static class PlayerStatusComposer
             '|',
             activeExperience.Select(static boost =>
                 $"exp:{boost.StatusId}:{boost.Kind}:{boost.BonusBasisPoints}:{boost.Priority}:" +
-                $"{boost.ExpiresAt?.UtcTicks ?? long.MaxValue}:{boost.Source}"));
+                boost.Source));
         var runtimeFingerprint = string.Join(
             '|',
             activeRuntime.Select(static status =>
                 $"runtime:{status.StatusId}:{status.Kind}:{status.Priority}:{status.Beneficial}:" +
                 $"{status.ExpiresAt.UtcTicks}:{status.Modifiers.Hit}:" +
-                $"{status.Modifiers.CriticalAppend}:{status.Revision}"));
+                $"{status.Modifiers.CriticalAppend}:{status.PhysicalDamageReduction}:" +
+                $"{status.MagicDamageReduction}:{status.Revision}"));
         var fingerprint = $"{experienceFingerprint}#{runtimeFingerprint}#" +
             $"{aggregate.Hit}:{aggregate.CriticalAppend}:{aggregate.ExperienceBonus:R}";
 

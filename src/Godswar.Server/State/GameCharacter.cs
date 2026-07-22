@@ -7,6 +7,9 @@ internal sealed class GameCharacter
     [JsonIgnore]
     internal object VitalsSync { get; } = new();
 
+    [JsonIgnore]
+    internal object ZodiacSync { get; } = new();
+
     public int Id { get; set; }
 
     public int AccountId { get; set; }
@@ -25,11 +28,41 @@ internal sealed class GameCharacter
 
     public byte Faith { get; set; } = 1;
 
+    public byte ZodiacType { get; set; }
+
+    public int ZodiacLuckyStatus { get; set; }
+
+    public DateTimeOffset? ZodiacLuckyExpiresAt { get; set; }
+
+    public byte ZodiacLevel { get; set; } = 1;
+
+    public int ZodiacEnergy { get; set; }
+
+    public int ZodiacEnergyRemainderX100 { get; set; }
+
+    public DateOnly? ZodiacOnlineDay { get; set; }
+
+    public long ZodiacOnlineDurationTicksToday { get; set; }
+
+    public DateTimeOffset? ZodiacLastOnlineAt { get; set; }
+
+    public DateOnly? ZodiacLastCompensationDay { get; set; }
+
+    public int ZodiacAccumulatedExperienceX100 { get; set; }
+
+    public int ZodiacAccumulatedTalentExperienceX100 { get; set; }
+
     public byte CurrentMap { get; set; } = GameDefaults.AthensCapitalMap;
 
     public int Level { get; set; } = 1;
 
     public int Experience { get; set; }
+
+    public int Silver { get; set; } = 10_000;
+
+    // The legacy database calls premium gold "Stone". Keep the game-facing
+    // name here and translate it at the PostgreSQL boundary.
+    public int Gold { get; set; } = 10;
 
     public int MaxHp { get; set; } = 1500;
 

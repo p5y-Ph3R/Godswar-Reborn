@@ -14,6 +14,16 @@ internal static class ExperienceStatusIds
     public const int Weekend = 511;
     public const int TrickOrTreat = 512;
     public const int MaxExperiencePotion = 586;
+    public const int TalentExperience50Percent = 580;
+    public const int TalentPotion50Percent = 587;
+    public const int TalentExperience100Percent = 581;
+    public const int HighTalentBoost100Percent = 509;
+    public const int TalentExperience200Percent = 582;
+    public const int SuperTalentPotion200Percent = 588;
+    public const int TalentExperience300Percent = 583;
+    public const int IncredibleTalentPotion300Percent = 589;
+    public const int TalentExperience400Percent = 584;
+    public const int MaxTalentPotion400Percent = 590;
     public const int GuildDoubleExperience16Hours = 1007;
     public const int VipBronze = 1500;
     public const int VipSilver = 1501;
@@ -25,6 +35,7 @@ internal static class ExperienceStatusIds
 internal static class ExperienceBoostKinds
 {
     public const int Consumable = 14;
+    public const int Talent = 20;
     public const int Weekend = 22;
     public const int TrickOrTreat = 23;
     public const int Guild = 100;
@@ -87,21 +98,46 @@ internal sealed record ExperienceBoostState(
     {
         get
         {
-            var total = ActiveBoosts.Aggregate(
-                0L,
-                static (sum, boost) => sum + boost.BonusBasisPoints);
+            var total = ActiveBoosts
+                .Where(static boost => boost.Kind != ExperienceBoostKinds.Talent)
+                .Aggregate(
+                    0L,
+                    static (sum, boost) => sum + boost.BonusBasisPoints);
+            return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
+        }
+    }
+
+    public int TotalTalentBonusBasisPoints
+    {
+        get
+        {
+            var total = ActiveBoosts
+                .Where(static boost => boost.Kind == ExperienceBoostKinds.Talent)
+                .Aggregate(
+                    0L,
+                    static (sum, boost) => sum + boost.BonusBasisPoints);
             return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
         }
     }
 
     public int ApplyTo(int baseExperience)
     {
+        return ApplyBonus(baseExperience, TotalBonusBasisPoints);
+    }
+
+    public int ApplyToTalent(int baseTalentExperience)
+    {
+        return ApplyBonus(baseTalentExperience, TotalTalentBonusBasisPoints);
+    }
+
+    private static int ApplyBonus(int baseExperience, int bonusBasisPoints)
+    {
         if (baseExperience <= 0)
         {
             return 0;
         }
 
-        var multiplierBasisPoints = Math.Max(0L, 10_000L + TotalBonusBasisPoints);
+        var multiplierBasisPoints = Math.Max(0L, 10_000L + bonusBasisPoints);
         var adjusted = ((long)baseExperience * multiplierBasisPoints) / 10_000L;
         return (int)Math.Min(adjusted, int.MaxValue);
     }

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Godswar.Server.Game;
 
@@ -5,13 +6,17 @@ namespace Godswar.Server.State;
 
 internal sealed class JsonGameStore : IGameStore
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PathLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _statePath;
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _lock;
 
     public JsonGameStore(string dataPath)
     {
         Directory.CreateDirectory(dataPath);
-        _statePath = Path.Combine(dataPath, "state.json");
+        _statePath = Path.GetFullPath(Path.Combine(dataPath, "state.json"));
+        _lock = PathLocks.GetOrAdd(_statePath, static _ => new SemaphoreSlim(1, 1));
     }
 
     public async Task EnsureSeedDataAsync(CancellationToken cancellationToken = default)
@@ -19,12 +24,14 @@ internal sealed class JsonGameStore : IGameStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            if (File.Exists(_statePath))
+            var db = File.Exists(_statePath)
+                ? await LoadUnsafeAsync(cancellationToken)
+                : new GameDatabase();
+            foreach (var boost in db.CharacterExperienceBoosts)
             {
-                return;
+                CharacterBoostOnlineDuration.RestoreLegacyGrant(boost);
             }
 
-            var db = new GameDatabase();
             await SaveUnsafeAsync(db, cancellationToken);
         }
         finally
@@ -187,6 +194,80 @@ internal sealed class JsonGameStore : IGameStore
         }
     }
 
+    public async Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
+        int accountId,
+        int characterId,
+        int experienceGainX100,
+        int talentExperienceGainX100,
+        CancellationToken cancellationToken = default)
+    {
+        experienceGainX100 = Math.Max(0, experienceGainX100);
+        talentExperienceGainX100 = Math.Max(0, talentExperienceGainX100);
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null)
+            {
+                return null;
+            }
+
+            character.ZodiacAccumulatedExperienceX100 = checked(
+                character.ZodiacAccumulatedExperienceX100 + experienceGainX100);
+            character.ZodiacAccumulatedTalentExperienceX100 = checked(
+                character.ZodiacAccumulatedTalentExperienceX100 + talentExperienceGainX100);
+            await SaveUnsafeAsync(db, cancellationToken);
+
+            return new ZodiacAccumulationResult(
+                experienceGainX100,
+                talentExperienceGainX100,
+                character.ZodiacAccumulatedExperienceX100,
+                character.ZodiacAccumulatedTalentExperienceX100);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
+        ZodiacEnergyPolicy policy,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null)
+            {
+                return null;
+            }
+
+            var result = ZodiacEnergyAccrual.Apply(
+                character,
+                onlineFrom,
+                onlineUntil,
+                policy);
+            await SaveUnsafeAsync(db, cancellationToken);
+            return result;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task<ExperienceBoostState> GetExperienceBoostStateAsync(
         int accountId,
         int characterId,
@@ -206,11 +287,17 @@ internal sealed class JsonGameStore : IGameStore
                 return ExperienceBoostState.Empty;
             }
 
+            foreach (var boost in db.CharacterExperienceBoosts)
+            {
+                CharacterBoostOnlineDuration.RestoreLegacyGrant(boost);
+            }
+
             var boosts = db.CharacterExperienceBoosts
                 .Where(boost =>
                     boost.CharacterId == characterId &&
                     boost.ActivatedAt <= now &&
-                    (boost.ExpiresAt is null || boost.ExpiresAt > now))
+                    (!boost.RemainingOnlineTicks.HasValue ||
+                     CharacterBoostOnlineDuration.RemainingTicks(boost) > 0))
                 .GroupBy(boost => boost.Kind)
                 .Select(group => group
                     .OrderByDescending(boost => boost.Priority)
@@ -221,7 +308,7 @@ internal sealed class JsonGameStore : IGameStore
                     boost.Kind,
                     boost.BonusBasisPoints,
                     boost.Priority,
-                    boost.ExpiresAt,
+                    CharacterBoostOnlineDuration.EffectiveExpiry(boost, now),
                     boost.Source))
                 .ToList();
 
@@ -257,6 +344,46 @@ internal sealed class JsonGameStore : IGameStore
             }
 
             return new ExperienceBoostState(boosts.OrderBy(boost => boost.Kind).ToArray());
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task ConsumeCharacterBoostOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
+        CancellationToken cancellationToken = default)
+    {
+        if (onlineUntil <= onlineFrom)
+        {
+            return;
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            if (!db.Characters.Any(character =>
+                    character.Id == characterId &&
+                    character.AccountId == accountId))
+            {
+                return;
+            }
+
+            foreach (var boost in db.CharacterExperienceBoosts.Where(candidate =>
+                         candidate.CharacterId == characterId))
+            {
+                CharacterBoostOnlineDuration.Consume(
+                    boost,
+                    onlineFrom,
+                    onlineUntil);
+            }
+
+            await SaveUnsafeAsync(db, cancellationToken);
         }
         finally
         {
@@ -389,7 +516,7 @@ internal sealed class JsonGameStore : IGameStore
                 ? GameDefaults.DefaultEquipment(character.Profession)
                 : character.Equipment;
             character.KitBag = string.IsNullOrWhiteSpace(character.KitBag)
-                ? GameDefaults.DefaultKitBag
+                ? GameDefaults.StarterKitBag
                 : character.KitBag;
             character.CreatedUtc = DateTime.UtcNow;
             db.Characters.Add(character);
@@ -453,11 +580,15 @@ internal sealed class JsonGameStore : IGameStore
             }
 
             var equipmentEntry = EquipmentSlots.GetEntry(character.Equipment, character.Profession, equipmentSlot);
-            character.Equipment = EquipmentSlots.ClearSlot(character.Equipment, character.Profession, equipmentSlot);
-            if (equipmentEntry != "[]")
+            if (equipmentEntry == "[]"
+                || kitBagSlot is < 0 or >= 96
+                || !KitBagSlots.GetItem(character.KitBag, kitBagSlot).IsEmpty)
             {
-                character.KitBag = KitBagSlots.SetSlot(character.KitBag, kitBagSlot, equipmentEntry);
+                return Clone(character);
             }
+
+            character.Equipment = EquipmentSlots.ClearSlot(character.Equipment, character.Profession, equipmentSlot);
+            character.KitBag = KitBagSlots.SetSlot(character.KitBag, kitBagSlot, equipmentEntry);
 
             await SaveUnsafeAsync(db, cancellationToken);
             return Clone(character);
@@ -473,7 +604,8 @@ internal sealed class JsonGameStore : IGameStore
         int characterId,
         int kitBagSlot,
         int requestedEquipmentSlot,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool requireEmptyEquipmentSlot = false)
     {
         await _lock.WaitAsync(cancellationToken);
         try
@@ -506,6 +638,11 @@ internal sealed class JsonGameStore : IGameStore
             }
 
             var previousEquipmentEntry = EquipmentSlots.GetEntry(character.Equipment, character.Profession, equipmentSlot);
+            if (requireEmptyEquipmentSlot && previousEquipmentEntry != "[]")
+            {
+                return Clone(character);
+            }
+
             character.Equipment = EquipmentSlots.SetSlot(character.Equipment, character.Profession, equipmentSlot, kitBagEntry);
             character.KitBag = previousEquipmentEntry == "[]"
                 ? KitBagSlots.ClearSlot(character.KitBag, kitBagSlot)
@@ -578,6 +715,231 @@ internal sealed class JsonGameStore : IGameStore
             character.KitBag = KitBagSlots.ClearSlot(character.KitBag, kitBagSlot);
             await SaveUnsafeAsync(db, cancellationToken);
             return Clone(character);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<GameCharacter?> ClearKitBagAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null)
+            {
+                return null;
+            }
+
+            character.KitBag = GameDefaults.EmptyKitBag;
+            await SaveUnsafeAsync(db, cancellationToken);
+            return Clone(character);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<KitBagItemGrantResult> AddForgingMaterialAsync(
+        int accountId,
+        int characterId,
+        uint itemId,
+        int quantity,
+        CancellationToken cancellationToken = default)
+    {
+        if (!DeveloperGrantMaterialCatalog.TryResolve(itemId, out var material))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(itemId),
+                "Item is not in the developer material allowlist.");
+        }
+
+        if (quantity is < 1 or > KitBagItemGrantPlanner.MaximumQuantity)
+        {
+            throw new ArgumentOutOfRangeException(nameof(quantity));
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return new KitBagItemGrantResult(KitBagItemGrantStatus.CharacterNotFound, null);
+            }
+
+            if (!KitBagItemGrantPlanner.TryAdd(
+                    character.KitBag,
+                    itemId,
+                    quantity,
+                    material.StackCap,
+                    material.GrantedBound,
+                    out var updatedKitBag))
+            {
+                return new KitBagItemGrantResult(
+                    KitBagItemGrantStatus.InsufficientCapacity,
+                    Clone(character));
+            }
+
+            character.KitBag = updatedKitBag;
+            await SaveUnsafeAsync(db, cancellationToken);
+            return new KitBagItemGrantResult(KitBagItemGrantStatus.Added, Clone(character));
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<ForgeTransactionResult> ForgeEquipmentAsync(
+        int accountId,
+        int characterId,
+        ForgeTransactionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c =>
+                c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return new ForgeTransactionResult(
+                    ForgeTransactionStatus.CharacterNotFound,
+                    null,
+                    0,
+                    0,
+                    0,
+                    CompactItemEntry.Empty,
+                    CompactItemEntry.Empty,
+                    "Character was not found.");
+            }
+
+            var equipmentBefore = request is not null &&
+                                  request.Equipment.KitBagSlot is >= 0 and < 96
+                ? KitBagSlots.GetItem(character.KitBag, request.Equipment.KitBagSlot)
+                : CompactItemEntry.Empty;
+            if (!ForgePersistencePlanner.TryCreate(
+                    character.KitBag,
+                    character.Silver,
+                    request,
+                    System.Security.Cryptography.RandomNumberGenerator.GetInt32(100),
+                    out var plan,
+                    out var rejectionStatus,
+                    out var rejectionReason))
+            {
+                return new ForgeTransactionResult(
+                    rejectionStatus,
+                    Clone(character),
+                    0,
+                    0,
+                    0,
+                    equipmentBefore,
+                    equipmentBefore,
+                    rejectionReason);
+            }
+
+            character.KitBag = plan!.UpdatedKitBag;
+            character.Silver = plan.UpdatedSilver;
+            await SaveUnsafeAsync(db, cancellationToken);
+
+            return new ForgeTransactionResult(
+                plan.Succeeded
+                    ? ForgeTransactionStatus.Succeeded
+                    : ForgeTransactionStatus.FailedRoll,
+                Clone(character),
+                (int)plan.Calculation.Operation,
+                plan.Calculation.SuccessProbability,
+                plan.Calculation.SilverCost,
+                equipmentBefore,
+                plan.Succeeded
+                    ? plan.Calculation.SuccessEquipment
+                    : plan.Calculation.FailureEquipment);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<GearEnhancementTransactionResult> EnhanceGearAsync(
+        int accountId,
+        int characterId,
+        GearEnhancementRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c =>
+                c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return new GearEnhancementTransactionResult(null, null);
+            }
+
+            var enhancement = GearEnhancementPlanner.Create(character.KitBag, request);
+            if (!enhancement.Committed)
+            {
+                return new GearEnhancementTransactionResult(
+                    enhancement,
+                    Clone(character));
+            }
+
+            character.KitBag = enhancement.UpdatedKitBag;
+            await SaveUnsafeAsync(db, cancellationToken);
+
+            return new GearEnhancementTransactionResult(
+                enhancement,
+                Clone(character));
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<GearMentorTransactionResult> ProcessGearMentorAsync(
+        int accountId,
+        int characterId,
+        GearMentorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(c =>
+                c.AccountId == accountId && c.Id == characterId);
+            if (character is null)
+            {
+                return new GearMentorTransactionResult(null, null);
+            }
+
+            var result = GearMentorPlanner.Create(
+                character.KitBag,
+                character.Level,
+                request);
+            if (!result.Committed)
+            {
+                return new GearMentorTransactionResult(result, Clone(character));
+            }
+
+            character.KitBag = result.UpdatedKitBag;
+            await SaveUnsafeAsync(db, cancellationToken);
+            return new GearMentorTransactionResult(result, Clone(character));
         }
         finally
         {
@@ -832,7 +1194,9 @@ internal sealed class JsonGameStore : IGameStore
 
     public ValueTask DisposeAsync()
     {
-        _lock.Dispose();
+        // The semaphore is shared by every store instance addressing this
+        // path. It intentionally lives for the process lifetime so disposing
+        // one instance cannot invalidate another active store.
         return ValueTask.CompletedTask;
     }
 
@@ -849,6 +1213,8 @@ internal sealed class JsonGameStore : IGameStore
         db.Accounts ??= [];
         db.Characters ??= [];
         db.CharacterTalents ??= [];
+        db.CharacterExperienceBoosts ??= [];
+        db.FactionAreaExperienceControls ??= [];
         return db;
     }
 
@@ -920,9 +1286,23 @@ internal sealed class JsonGameStore : IGameStore
             Hair = character.Hair,
             Face = character.Face,
             Faith = character.Faith,
+            ZodiacType = character.ZodiacType,
+            ZodiacLuckyStatus = character.ZodiacLuckyStatus,
+            ZodiacLuckyExpiresAt = character.ZodiacLuckyExpiresAt,
+            ZodiacLevel = character.ZodiacLevel,
+            ZodiacEnergy = character.ZodiacEnergy,
+            ZodiacEnergyRemainderX100 = character.ZodiacEnergyRemainderX100,
+            ZodiacOnlineDay = character.ZodiacOnlineDay,
+            ZodiacOnlineDurationTicksToday = character.ZodiacOnlineDurationTicksToday,
+            ZodiacLastOnlineAt = character.ZodiacLastOnlineAt,
+            ZodiacLastCompensationDay = character.ZodiacLastCompensationDay,
+            ZodiacAccumulatedExperienceX100 = character.ZodiacAccumulatedExperienceX100,
+            ZodiacAccumulatedTalentExperienceX100 = character.ZodiacAccumulatedTalentExperienceX100,
             CurrentMap = character.CurrentMap,
             Level = character.Level,
             Experience = character.Experience,
+            Silver = character.Silver,
+            Gold = character.Gold,
             MaxHp = character.MaxHp,
             MaxMp = character.MaxMp,
             CurrentHp = character.CurrentHp,
@@ -941,7 +1321,7 @@ internal sealed class JsonGameStore : IGameStore
                 ? GameDefaults.DefaultEquipment(character.Profession)
                 : character.Equipment,
             KitBag = string.IsNullOrWhiteSpace(character.KitBag)
-                ? GameDefaults.DefaultKitBag
+                ? GameDefaults.EmptyKitBag
                 : character.KitBag,
             CreatedUtc = character.CreatedUtc,
             CalculatedStats = character.CalculatedStats

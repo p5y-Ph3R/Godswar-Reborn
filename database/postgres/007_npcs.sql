@@ -981,7 +981,7 @@ VALUES
     ('SYS_NPC_37', 'SYS_NPC', '', '|cffFFFF00Class Suit|cffffffff'),
     ('SYS_NPC_38', 'SYS_NPC', '', '|cffFFFF00Holy Stone Package details|cffffffff'),
     ('SYS_NPC_39', 'SYS_NPC', '', '|cffFFFF00Exchange for Holy Stone Package(s)|cffffffff'),
-    ('SYS_NPC_4', 'SYS_NPC', '', '|cffFFFF00Salary|cffffffff'),
+    ('SYS_NPC_4', 'SYS_NPC', '', '|cffFFFF00Gear Enhancement|cffffffff'),
     ('SYS_NPC_40', 'SYS_NPC', '', '|cffFFFF00Return Holy Stone Package Voucher(s)|cffffffff'),
     ('SYS_NPC_41', 'SYS_NPC', '', '|cffFFFF00Get married|cffffffff'),
     ('SYS_NPC_42', 'SYS_NPC', '', '|cffFFFF00Add fun|cffffffff'),

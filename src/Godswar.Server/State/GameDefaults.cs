@@ -14,7 +14,10 @@ internal static class GameDefaults
 
     public const float StartingPositionZ = -97.0f;
 
-    public const string DefaultKitBag =
+    public const string EmptyKitBag =
+        "[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#";
+
+    public const string StarterKitBag =
         "[4000,,,,,,0,10,1,1,0]#[4030,,,,,,0,10,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#";
 
     public static void InitializeStartingLocation(GameCharacter character)

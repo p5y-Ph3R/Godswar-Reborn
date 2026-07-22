@@ -39,11 +39,54 @@ internal sealed class ServerOptions
 
     private ServerOptions ApplyEnvironment()
     {
+        Game.DeveloperCommands ??= new DeveloperCommandOptions();
+        Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
         Game.Port = ReadInt("GODSWAR_GAME_PORT", Game.Port);
         Game.PublicHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_PUBLIC_HOST") ?? Game.PublicHost;
+        Game.DeveloperCommands.Enabled = ReadBool(
+            "GODSWAR_DEVELOPER_COMMANDS_ENABLED",
+            Game.DeveloperCommands.Enabled);
+        Game.ZodiacEnergy.Enabled = ReadBool(
+            "GODSWAR_ZODIAC_ENERGY_ENABLED",
+            Game.ZodiacEnergy.Enabled);
+        Game.ZodiacEnergy.TickSeconds = ReadInt(
+            "GODSWAR_ZODIAC_ENERGY_TICK_SECONDS",
+            Game.ZodiacEnergy.TickSeconds);
+        Game.ZodiacEnergy.BoostedDailySeconds = ReadInt(
+            "GODSWAR_ZODIAC_BOOSTED_DAILY_SECONDS",
+            Game.ZodiacEnergy.BoostedDailySeconds);
+        Game.ZodiacEnergy.EmulatorBoostedEnergyPerTickX100 = ReadInt(
+            "GODSWAR_ZODIAC_EMULATOR_BOOSTED_ENERGY_PER_TICK_X100",
+            Game.ZodiacEnergy.EmulatorBoostedEnergyPerTickX100);
+        Game.ZodiacEnergy.EmulatorNormalEnergyPerTickX100 = ReadInt(
+            "GODSWAR_ZODIAC_EMULATOR_NORMAL_ENERGY_PER_TICK_X100",
+            Game.ZodiacEnergy.EmulatorNormalEnergyPerTickX100);
+        Game.ZodiacEnergy.CompensationOnlineThresholdSeconds = ReadInt(
+            "GODSWAR_ZODIAC_COMPENSATION_ONLINE_THRESHOLD_SECONDS",
+            Game.ZodiacEnergy.CompensationOnlineThresholdSeconds);
+        Game.ZodiacEnergy.CompensationSeconds = ReadInt(
+            "GODSWAR_ZODIAC_COMPENSATION_SECONDS",
+            Game.ZodiacEnergy.CompensationSeconds);
+        Game.ZodiacEnergy.ServerUtcOffsetMinutes = ReadInt(
+            "GODSWAR_ZODIAC_SERVER_UTC_OFFSET_MINUTES",
+            Game.ZodiacEnergy.ServerUtcOffsetMinutes);
+        Game.ZodiacEnergy.PersistenceIntervalSeconds = ReadInt(
+            "GODSWAR_ZODIAC_PERSISTENCE_INTERVAL_SECONDS",
+            Game.ZodiacEnergy.PersistenceIntervalSeconds);
+        var developerAccountIds = Environment.GetEnvironmentVariable("GODSWAR_DEVELOPER_ACCOUNT_IDS");
+        if (!string.IsNullOrWhiteSpace(developerAccountIds))
+        {
+            Game.DeveloperCommands.AllowedAccountIds = developerAccountIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(value => int.TryParse(value, out var accountId) ? accountId : 0)
+                .Where(accountId => accountId > 0)
+                .Distinct()
+                .ToArray();
+        }
+
         DataPath = Environment.GetEnvironmentVariable("GODSWAR_DATA_PATH") ?? DataPath;
         Storage.Provider = Environment.GetEnvironmentVariable("GODSWAR_STORAGE_PROVIDER") ?? Storage.Provider;
         Storage.PostgresConnectionString = Environment.GetEnvironmentVariable("GODSWAR_POSTGRES_CONNECTION_STRING")
@@ -70,12 +113,25 @@ internal sealed class ServerOptions
             Storage.Provider = "json";
         }
 
+        Game.DeveloperCommands ??= new DeveloperCommandOptions();
+        Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
+        Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
+            .Where(accountId => accountId > 0)
+            .Distinct()
+            .ToArray();
+        Game.ZodiacEnergy.Normalize();
+
         return this;
     }
 
     private static int ReadInt(string name, int fallback)
     {
         return int.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
+    }
+
+    private static bool ReadBool(string name, bool fallback)
+    {
+        return bool.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
     }
 }
 
@@ -89,6 +145,75 @@ internal class EndpointOptions
 internal sealed class GameEndpointOptions : EndpointOptions
 {
     public string PublicHost { get; set; } = "127.1.1.110";
+
+    public DeveloperCommandOptions DeveloperCommands { get; set; } = new();
+
+    public ZodiacEnergyOptions ZodiacEnergy { get; set; } = new();
+}
+
+internal sealed class ZodiacEnergyOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    public int TickSeconds { get; set; } = 5 * 60;
+
+    public int BoostedDailySeconds { get; set; } = 3 * 60 * 60;
+
+    // The cadence is sourced, but retail captures have not established these
+    // numeric awards. Keep both values explicit emulator policy.
+    public int EmulatorBoostedEnergyPerTickX100 { get; set; } = 20 * 100;
+
+    public int EmulatorNormalEnergyPerTickX100 { get; set; } = 10 * 100;
+
+    public int CompensationOnlineThresholdSeconds { get; set; } = 60 * 60;
+
+    public int CompensationSeconds { get; set; } = 60 * 60;
+
+    // PacketBuilder.ServerTime advertises the original fixed UTC-8 clock.
+    public int ServerUtcOffsetMinutes { get; set; } = -8 * 60;
+
+    public int PersistenceIntervalSeconds { get; set; } = 30;
+
+    public State.ZodiacEnergyPolicy Snapshot()
+    {
+        var policy = new State.ZodiacEnergyPolicy(
+            Enabled,
+            TickSeconds,
+            BoostedDailySeconds,
+            EmulatorBoostedEnergyPerTickX100,
+            EmulatorNormalEnergyPerTickX100,
+            CompensationOnlineThresholdSeconds,
+            CompensationSeconds,
+            ServerUtcOffsetMinutes);
+        policy.Validate();
+        return policy;
+    }
+
+    public void Normalize()
+    {
+        TickSeconds = Math.Max(1, TickSeconds);
+        BoostedDailySeconds = Math.Max(0, BoostedDailySeconds);
+        BoostedDailySeconds -= BoostedDailySeconds % TickSeconds;
+        EmulatorBoostedEnergyPerTickX100 = Math.Max(0, EmulatorBoostedEnergyPerTickX100);
+        EmulatorNormalEnergyPerTickX100 = Math.Max(0, EmulatorNormalEnergyPerTickX100);
+        CompensationOnlineThresholdSeconds = Math.Max(0, CompensationOnlineThresholdSeconds);
+        CompensationSeconds = Math.Max(0, CompensationSeconds);
+        CompensationSeconds -= CompensationSeconds % TickSeconds;
+        ServerUtcOffsetMinutes = Math.Clamp(ServerUtcOffsetMinutes, -14 * 60, 14 * 60);
+        PersistenceIntervalSeconds = Math.Max(1, PersistenceIntervalSeconds);
+    }
+}
+
+internal sealed class DeveloperCommandOptions
+{
+    public bool Enabled { get; set; }
+
+    public int[] AllowedAccountIds { get; set; } = [];
+
+    public bool Allows(int accountId)
+    {
+        return Enabled && accountId > 0 && (AllowedAccountIds ?? []).Contains(accountId);
+    }
 }
 
 internal sealed class StorageOptions

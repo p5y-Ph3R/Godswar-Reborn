@@ -1,10 +1,12 @@
 using System.Buffers.Binary;
+using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Packets;
 
 internal static class PacketBuilder
 {
+    private const int OriginalServerUtcOffsetSeconds = -8 * 60 * 60;
     private const int EnterPlayerDatabaseIdOffset = 4;
     private const int CharacterNameOffsetInEnterTemplate = 8;
     private const int EnterTalentExperienceOffset = 96;
@@ -36,11 +38,12 @@ internal static class PacketBuilder
     private const int PlayerInspectEquipmentLength =
         PlayerInspectEquipmentMaskOffset + PlayerInspectEquipmentMaskLength;
     private const ushort EquipmentItemSnapshotOpcode = 0x2743;
+    private const ushort AfterLoginOpcode = 0x2876;
     private const ushort PlayerInspectEquipmentOpcode = 0x2726;
     private const ushort PlayerInspectProfileOpcode = 0x2772;
     private const ushort PlayerInspectCompleteOpcode = 0x2826;
     private const int PlayerInspectProfileLength = 336;
-    private const short CapturedWorldVisualQualityCap = 10;
+    private const short CapturedWorldVisualQualityCap = 13;
     private const short CapturedWorldVisualGradeCap = 12;
     private const ushort EnterMainOpcode = 0x2723;
     private const ushort KitBagDetailOpcode = 0x2731;
@@ -54,6 +57,12 @@ internal static class PacketBuilder
     private const ushort PlayerWorldSpawnOpcode = 0x2725;
     private const ushort WorldObjectRemoveOpcode = 0x2728;
     private const ushort PlayerDetailOpcode = 0x273B;
+    private const int PlayerDetailMaxHpOffset = 100;
+    private const int PlayerDetailMaxMpOffset = 104;
+    private const int PlayerDetailCurrentHpOffset = 108;
+    private const int PlayerDetailCurrentMpOffset = 112;
+    private const int PlayerDetailSilverOffset = 116;
+    private const int PlayerDetailGoldOffset = 120;
     private const ushort TalentRankListOpcode = 0x273A;
     private const ushort TalentSkillUnlockListOpcode = 0x2739;
     private const ushort SkillListOpcode = 0x27D4;
@@ -71,6 +80,8 @@ internal static class PacketBuilder
     private const ushort PlayerExtendedStatusOpcode = 0x27B7;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
+    private const int PlayerStatusSilverOffset = 120;
+    private const int PlayerStatusGoldOffset = 124;
     private const int PlayerStatusTalentPointsOffset = 228;
     private const int PlayerStatusEffectsLength = 340;
     private const int PlayerStatusEffectsMaximumCount = 20;
@@ -124,6 +135,76 @@ internal static class PacketBuilder
     private static readonly byte[] AthensTemplatePrefix = [(byte)'A', (byte)'t', (byte)'h', (byte)'e', (byte)'n', (byte)'s', (byte)'_'];
     private static readonly byte[] SpartaTemplatePrefix = [(byte)'S', (byte)'p', (byte)'a', (byte)'r', (byte)'t', (byte)'a', (byte)'_'];
     private static readonly byte[] ReferencePlayerName = [(byte)'s', (byte)'u', (byte)'s', (byte)'h', (byte)'1'];
+    // This manifest is byte-for-byte stable across nine working-original login
+    // captures. The trailing "88" is part of every 44-byte record; omitting it,
+    // record 69, or the repeated final record leaves the legacy client bootstrap
+    // incomplete and can race character-preview resource initialization.
+    private static readonly (int Id, string Hash)[] AfterLoginManifest =
+    [
+        (0, "246ac788338515372d951d4eabe0e252"),
+        (1, "246ac788338515372d951d4eabe0e252"),
+        (2, "a5edc85cff0c55bc297eef2c19dcb3bf"),
+        (3, "8bdf99407ef38cb94b2c93aa45eedae1"),
+        (4, "a5edc85cff0c55bc297eef2c19dcb3bf"),
+        (5, "5b829bd9c1da8a306b6c2ae989806fa8"),
+        (6, "cf9d92b17936ba6218c0734d094e77fd"),
+        (7, "70ae92d57ef3b9544729ba53fd52a3fb"),
+        (8, "6a8117051b7c213667c805d1f6340345"),
+        (9, "04105589fa800caaed7a6e41c6b05597"),
+        (10, "938ba89425a4c1ff514cef8a35ecaa6c"),
+        (11, "140a860899e858352ee9b7a3daa54725"),
+        (12, "36da28bce4861a5d778653d34b2ff9eb"),
+        (13, "9d345aaac44ca4e2d6b4f4af83633ab9"),
+        (14, "c272ff740b5d41d974bb4d498284239e"),
+        (15, "3e0201d94dc2f7d658ad6f37bb0ae53b"),
+        (16, "1cd714aa1aac559e2bc5471bc879294e"),
+        (17, "6a8f244543c22447be78fcfa1afe836b"),
+        (18, "198d10dcbaa73e15f756d73b9e76527a"),
+        (19, "9330df8bfe7a0ddba11a1a89583077c5"),
+        (20, "2fa8490b013f6bfea9a5cfc3e15cdf43"),
+        (21, "e52c576f0fca41b8950ecdae0504ac2a"),
+        (22, "44befdd3bb5e2f3dc0d93ebb4f8865f8"),
+        (23, "74f8fe256549638920f635404228e17b"),
+        (24, "3ded766739589dbdf9dd329e26dac9c7"),
+        (25, "49b83e2e9cc3d8e27b328f705c8ebfcd"),
+        (26, "eb6561d0ab648f79dd6b917515d90c04"),
+        (27, "fe5d48cfcbc86314add7229635f9f6af"),
+        (28, "3ded766739589dbdf9dd329e26dac9c7"),
+        (29, "2c6ef021a5a0600b4e241aaaafe8ff26"),
+        (30, "370382b5021b778dd879cb1df900cb25"),
+        (31, "370382b5021b778dd879cb1df900cb25"),
+        (32, "57ee44bb3ac0cae48ff30833904c2067"),
+        (33, "b8ef14a908ff9716df53fb8e54e0a55a"),
+        (34, "fe5d48cfcbc86314add7229635f9f6af"),
+        (35, "307d1665f359d20932245433ccad58fa"),
+        (36, "307d1665f359d20932245433ccad58fa"),
+        (37, "307d1665f359d20932245433ccad58fa"),
+        (38, "431a9578b218ef804c03d7e7a6eb0d90"),
+        (39, "d004300f7c9c97f7ffd23b4dfd4b205c"),
+        (40, "5374ee745ea6f10e50aee2da29e75b50"),
+        (41, "cb39f985fa69a9aacadbdd399c251805"),
+        (42, "b599e41d1950710f6e06675b3a9b6540"),
+        (43, "0e2c21e07f4c89c03a408819821cad8f"),
+        (44, "4822aa76a4ec1aba9315f5f133078f53"),
+        (45, "09d7a12b378edd30bbd2c2e6d029bfc9"),
+        (46, "4365451ac5933c2a947a2756a11e6554"),
+        (56, "cb39f985fa69a9aacadbdd399c251805"),
+        (57, "ef4c7faa4a8ad773e5496321cd9408e0"),
+        (68, "95aec19ac717133cf3c4a47bb52025a5"),
+        (69, "2dff1b2d27dd1975eeedf5e031d9fc81"),
+        (200, "c5ed09ab822f6d54f9909783485358c4"),
+        (201, "19882a36ee8a2aa29e92c0d4c27f5c37"),
+        (202, "19882a36ee8a2aa29e92c0d4c27f5c37"),
+        (203, "19882a36ee8a2aa29e92c0d4c27f5c37"),
+        (204, "c5ed09ab822f6d54f9909783485358c4"),
+        (205, "fbbed743004757397681e2cad81b10dd"),
+        (206, "19882a36ee8a2aa29e92c0d4c27f5c37"),
+        (207, "7a885c86f58fd3aa1ab976a5554fce3c"),
+        (208, "ee391fac52295f20f89e096bda2c1cd7"),
+        (209, "ee391fac52295f20f89e096bda2c1cd7"),
+        (210, "6e0b41b9c05479d3e1d21b9c4f438167"),
+        (210, "6e0b41b9c05479d3e1d21b9c4f438167")
+    ];
     private static readonly byte[] PlayerDetailTemplate =
     [
         0x88, 0x00, 0x3B, 0x27, 0x74, 0x65, 0x73, 0x74, 0x69, 0x6E, 0x67, 0x39, 0x00, 0x00, 0x00, 0x00,
@@ -206,12 +287,174 @@ internal static class PacketBuilder
 
     public static byte[] AfterLogin()
     {
-        return ReferencePackets.AfterLogin.ToArray();
+        const int recordLength = 44;
+        var packet = new byte[AfterLoginManifest.Length * recordLength];
+
+        for (var recordIndex = 0; recordIndex < AfterLoginManifest.Length; recordIndex++)
+        {
+            var record = packet.AsSpan(recordIndex * recordLength, recordLength);
+            var (id, hash) = AfterLoginManifest[recordIndex];
+            BinaryPrimitives.WriteUInt16LittleEndian(record.Slice(0, 2), recordLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(record.Slice(2, 2), AfterLoginOpcode);
+            BinaryPrimitives.WriteInt32LittleEndian(record.Slice(4, 4), id);
+            PacketText.WriteFixedAscii(record.Slice(8, 32), hash);
+            record[40] = 0;
+            record[41] = (byte)'8';
+            record[42] = (byte)'8';
+            record[43] = 0;
+        }
+
+        return packet;
     }
 
     public static byte[] ServerTime()
     {
-        return ReferencePackets.ServerTime.ToArray();
+        return ServerTime(DateTimeOffset.UtcNow);
+    }
+
+    public static byte[] ServerTime(DateTimeOffset now)
+    {
+        var unixSeconds = now.ToUnixTimeSeconds();
+        if (unixSeconds is < 0 or > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(now));
+        }
+
+        // Working-server captures use a fixed UTC-8 game-server offset even
+        // during daylight-saving months, followed by the current Unix time.
+        var packet = new byte[14];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), Opcodes.ServerTimeRequest);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), OriginalServerUtcOffsetSeconds);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), (uint)unixSeconds);
+        return packet;
+    }
+
+    public static byte[] ForgeResult(bool success, int resultKind)
+    {
+        const int packetLength = 40;
+        var packet = new byte[packetLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), packetLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), Opcodes.ForgeStart);
+        // Client object offsets include a four-byte transport prefix that is
+        // absent from the wire. Its object +8 success field is packet +4, and
+        // object +12 result kind is packet +8.
+        packet[4] = success ? (byte)1 : (byte)0;
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), resultKind);
+        return packet;
+    }
+
+    public static byte[] ZodiacFullSync(GameCharacter character)
+    {
+        return ZodiacFullSync(character, DateTimeOffset.UtcNow);
+    }
+
+    public static byte[] ZodiacFullSync(GameCharacter character, DateTimeOffset now)
+    {
+        const int headerLength = 24;
+        const int stateLength = 304;
+        const ushort fullSyncSid = 1;
+        var packet = new byte[headerLength + stateLength];
+        var experienceX100 = Math.Max(0, character.ZodiacAccumulatedExperienceX100);
+        var talentExperienceX100 = Math.Max(0, character.ZodiacAccumulatedTalentExperienceX100);
+
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            fullSyncSid,
+            experienceX100,
+            talentExperienceX100,
+            value3: 1);
+
+        var state = packet.AsSpan(headerLength, stateLength);
+        var zodiacType = character.ZodiacType <= 11 ? character.ZodiacType : (byte)0;
+        var luckyStatus = character.ZodiacLuckyStatus > 0 &&
+            (character.ZodiacLuckyExpiresAt is null || character.ZodiacLuckyExpiresAt > now)
+                ? 1
+                : 0;
+        var zodiacLevel = Math.Clamp((int)character.ZodiacLevel, 1, 30);
+
+        BinaryPrimitives.WriteInt32LittleEndian(state.Slice(0, 4), zodiacType);
+        BinaryPrimitives.WriteInt32LittleEndian(state.Slice(4, 4), luckyStatus);
+        state[8] = checked((byte)zodiacLevel);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            state.Slice(12, 4),
+            ZodiacEnergyCatalog.ClampToStorageLimit(zodiacLevel, character.ZodiacEnergy));
+
+        // The client copies the whole state first and then replaces these two
+        // floats with header v1/v2. Keeping both representations aligned makes
+        // the packet safe for clients that read either location directly.
+        BinaryPrimitives.WriteSingleLittleEndian(state.Slice(40, 4), experienceX100);
+        BinaryPrimitives.WriteSingleLittleEndian(state.Slice(44, 4), talentExperienceX100);
+
+        // Empty stones use the working-server -1 ID sentinel.
+        for (var stoneIndex = 0; stoneIndex < 3; stoneIndex++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(
+                state.Slice(68 + (stoneIndex * 16), 4),
+                -1);
+        }
+
+        // Each group of four skill-training grids has a fixed row marker in
+        // the high byte; a low byte of zero is level zero. The second field is
+        // the selected skill ID, where -1 means no skill is assigned. The
+        // captured client layout intentionally starts this array at +112,
+        // overlapping the last dword of the third 16-byte stone record.
+        for (var gridIndex = 0; gridIndex < 12; gridIndex++)
+        {
+            var grid = state.Slice(112 + (gridIndex * 16), 16);
+            BinaryPrimitives.WriteInt32LittleEndian(grid.Slice(0, 4), ((gridIndex / 4) + 1) << 8);
+            BinaryPrimitives.WriteInt32LittleEndian(grid.Slice(4, 4), -1);
+        }
+
+        return packet;
+    }
+
+    public static byte[] ZodiacAccumulationGain(
+        GameCharacter character,
+        int experience,
+        int talentExperience)
+    {
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 7,
+            Math.Max(0, experience),
+            Math.Max(0, talentExperience),
+            value3: 0);
+        return packet;
+    }
+
+    public static byte[] ZodiacEnergyIncrease(int currentEnergy, int gainedEnergyX100)
+    {
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 5,
+            Math.Max(0, currentEnergy),
+            Math.Max(0, gainedEnergyX100),
+            value3: 0);
+        return packet;
+    }
+
+    private static void WriteZodiacHeader(
+        Span<byte> packet,
+        uint playerId,
+        ushort sid,
+        int value1,
+        int value2,
+        int value3)
+    {
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(0, 2), checked((ushort)packet.Length));
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(2, 2), Opcodes.Zodiac);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(4, 4), playerId);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(8, 2), 0);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(10, 2), sid);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.Slice(12, 4), value1);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.Slice(16, 4), value2);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.Slice(20, 4), value3);
     }
 
     public static byte[] AthensNpc(GameCharacter character)
@@ -495,36 +738,20 @@ internal static class PacketBuilder
         return [0x0C, 0x00, 0xB4, 0x27, 0x14, 0x27, 0xA4, 0x75, 0x08, 0x00, 0x00, 0x00];
     }
 
-    public static byte[] StorageItemUnequipToKitBag(int equipmentSlot, int destinationSlot)
+    public static byte[] StorageItemEquipmentBagTransfer(int equipmentSlot, int bagSlot)
     {
         var packet = new byte[42];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2744);
 
-        // Captured working service ack for equipment -> kitbag unequip.
-        // Do not use MSG_MOVE_ITEM here; this client closes when it receives that path.
-        var destinationPage = Math.DivRem(destinationSlot, 24, out var destinationIndex);
+        // Native opcode 10052 always places the equipment descriptor first and
+        // the bag descriptor second, regardless of transfer direction.
+        var bagPage = Math.DivRem(bagSlot, 24, out var bagIndex);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(8, 2), (ushort)equipmentSlot);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(10, 2), ushort.MaxValue);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), (ushort)destinationPage);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), (ushort)destinationIndex);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(16, 4), -1);
-        return packet;
-    }
-
-    public static byte[] StorageItemEquipFromKitBag(int sourceSlot, int clientEquipmentSlot)
-    {
-        var packet = new byte[42];
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2744);
-
-        var sourcePage = Math.DivRem(sourceSlot, 24, out var sourceIndex);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(8, 2), (ushort)sourcePage);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(10, 2), (ushort)sourceIndex);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), 0);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), (ushort)clientEquipmentSlot);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), (ushort)bagPage);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), (ushort)bagIndex);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(16, 4), -1);
         return packet;
     }
@@ -1259,6 +1486,10 @@ internal static class PacketBuilder
         var sourcePage = Math.DivRem(Math.Max(sourceSlot, 0), 24, out var sourceIndex);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(12, 2), (ushort)sourcePage);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(14, 2), (ushort)sourceIndex);
+        // The working service uses these two bytes as move-event flags in this
+        // response, not as the equipped item's persisted bound/stack values.
+        packet[46] = 0;
+        packet[47] = 0;
         return packet;
     }
 
@@ -1270,7 +1501,7 @@ internal static class PacketBuilder
         }
 
         var item = KitBagSlots.GetItem(
-            string.IsNullOrWhiteSpace(character.KitBag) ? GameDefaults.DefaultKitBag : character.KitBag,
+            string.IsNullOrWhiteSpace(character.KitBag) ? GameDefaults.EmptyKitBag : character.KitBag,
             sourceSlot);
         var packet = EquipmentItemSnapshot(sourceSlot, item, LocalPlayerObjectId);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), 0);
@@ -1324,6 +1555,19 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerDetailOpcode);
         PatchReferencePlayerPacket(packet, character, nameOffset: 4);
+        // MSG_PLAYERDETAIL copies wire offset 4 onward directly into the
+        // client's local GameData structure. These six consecutive fields
+        // are MaxHP, MaxMP, HP, MP, Money, and Stone in the original layout.
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailMaxHpOffset, 4), character.MaxHp);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailMaxMpOffset, 4), character.MaxMp);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailCurrentHpOffset, 4), character.CurrentHp);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailCurrentMpOffset, 4), character.CurrentMp);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerDetailSilverOffset, 4),
+            Math.Max(0, character.Silver));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerDetailGoldOffset, 4),
+            Math.Max(0, character.Gold));
         return packet;
     }
 
@@ -1339,6 +1583,18 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerStatusUpdateOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
         PatchReferencePlayerPacket(packet, character, nameOffset: 8);
+        if (objectId == LocalPlayerObjectId)
+        {
+            // MSG_SYN_GAMEDATA copies these wire fields into the local
+            // GameData Money/Stone values that drive the wallet UI.
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(PlayerStatusSilverOffset, 4),
+                Math.Max(0, character.Silver));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(PlayerStatusGoldOffset, 4),
+                Math.Max(0, character.Gold));
+        }
+
         if (packet.Length >= PlayerStatusTalentPointsOffset + 4)
         {
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerStatusTalentPointsOffset, 4), character.TalentPoints);
@@ -1492,6 +1748,59 @@ internal static class PacketBuilder
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusEffectsExperienceBonusOffset, sizeof(float)),
             aggregate.ExperienceBonus);
+        return packet;
+    }
+
+    /// <summary>
+    /// Builds the same complete status-map envelope for a non-player world
+    /// object. Monsters do not expose player-derived StatusData, so that block
+    /// remains zeroed apart from the protocol's baseline movement multiplier.
+    /// </summary>
+    public static byte[] WorldObjectStatusEffects(
+        uint objectId,
+        IReadOnlyList<ClientStatusEffect> effects)
+    {
+        ArgumentNullException.ThrowIfNull(effects);
+        if (objectId == 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(objectId),
+                objectId,
+                "A status snapshot requires a non-zero world object ID.");
+        }
+
+        if (effects.Count > PlayerStatusEffectsMaximumCount)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(effects),
+                effects.Count,
+                $"The client status packet supports at most {PlayerStatusEffectsMaximumCount} entries.");
+        }
+
+        var packet = new byte[PlayerStatusEffectsLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerExtendedStatusOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerStatusEffectsCountOffset, 4),
+            (uint)effects.Count);
+
+        var orderedEffects = effects.OrderBy(static effect => effect.StatusId).ToArray();
+        for (var index = 0; index < orderedEffects.Length; index++)
+        {
+            var effect = orderedEffects[index];
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(PlayerStatusEffectsIdsOffset + (index * sizeof(uint)), sizeof(uint)),
+                effect.StatusId);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(PlayerStatusEffectsTimesOffset + (index * sizeof(uint)), sizeof(uint)),
+                effect.RemainingSeconds);
+        }
+
+        packet.AsSpan(PlayerStatusEffectsStatusDataOffset, PlayerStatusEffectsStatusDataLength).Clear();
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(PlayerStatusEffectsMovementSpeedMultiplierOffset, sizeof(float)),
+            1f);
         return packet;
     }
 
@@ -1656,7 +1965,6 @@ internal static class PacketBuilder
 
     public static byte[][] KitBagSlotIndexes(GameCharacter character)
     {
-        const int packetLength = 40;
         var kitBag = KitBagItems(character);
         var packets = new List<byte[]>(KitBagPageCount * KitBagSlotsPerPage);
 
@@ -1666,19 +1974,53 @@ internal static class PacketBuilder
             {
                 var slot = (page * KitBagSlotsPerPage) + index;
                 var item = slot < kitBag.Length ? kitBag[slot] : default;
-                var packet = new byte[packetLength];
-                BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), packetLength);
-                BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), BagItemActionOpcode);
-                BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), -1);
-                BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), 1);
-                BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), (uint)page);
-                BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(16, 4), (uint)index);
-                BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(20, 4), item.IsEmpty ? -1 : unchecked((int)item.Id));
-                packets.Add(packet);
+                packets.Add(KitBagSlotIndex(slot, item));
             }
         }
 
         return packets.ToArray();
+    }
+
+    public static byte[][] KitBagDeletionAcknowledgements(GameCharacter character)
+    {
+        var kitBag = KitBagItems(character);
+        var packets = new List<byte[]>();
+        for (var slot = 0; slot < KitBagPageCount * KitBagSlotsPerPage; slot++)
+        {
+            if (slot < kitBag.Length && !kitBag[slot].IsEmpty)
+            {
+                packets.Add(StorageItemKitBagDelete(slot));
+            }
+        }
+
+        return packets.ToArray();
+    }
+
+    public static byte[] KitBagSlotIndex(GameCharacter character, int slot)
+    {
+        if (slot is < 0 or >= KitBagPageCount * KitBagSlotsPerPage)
+        {
+            return [];
+        }
+
+        var kitBag = KitBagItems(character);
+        var item = slot < kitBag.Length ? kitBag[slot] : default;
+        return KitBagSlotIndex(slot, item);
+    }
+
+    private static byte[] KitBagSlotIndex(int slot, CompactItemEntry item)
+    {
+        const int packetLength = 40;
+        var packet = new byte[packetLength];
+        var page = Math.DivRem(slot, KitBagSlotsPerPage, out var index);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), packetLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), BagItemActionOpcode);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), -1);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), (uint)page);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(16, 4), (uint)index);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(20, 4), item.IsEmpty ? -1 : unchecked((int)item.Id));
+        return packet;
     }
 
     public static byte[] EnterComplete()
@@ -1897,8 +2239,9 @@ internal static class PacketBuilder
 
     private static byte PackWorldItemVisual(CompactItemEntry item)
     {
-        // Captures pair each equipment id with (grade << 4) | quality. In
-        // particular, every captured G12/Q10 item is 0xCA regardless of slot.
+        // Captures pair each equipment id with (grade << 4) | quality. The
+        // packed quality nibble safely carries the supported Q13 forge ceiling;
+        // the GWX1 tail still carries the uncapped full-byte visual values.
         var grade = (int)Math.Clamp(item.Grade, (short)0, CapturedWorldVisualGradeCap);
         var quality = (int)Math.Clamp(item.Quality, (short)0, CapturedWorldVisualQualityCap);
         return (byte)((grade << 4) | quality);
@@ -1924,7 +2267,7 @@ internal static class PacketBuilder
     private static CompactItemEntry[] KitBagItems(GameCharacter character)
     {
         var kitBag = string.IsNullOrWhiteSpace(character.KitBag)
-            ? GameDefaults.DefaultKitBag
+            ? GameDefaults.EmptyKitBag
             : character.KitBag;
 
         var slots = kitBag

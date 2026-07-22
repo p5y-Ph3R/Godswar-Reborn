@@ -521,6 +521,18 @@ internal sealed class PostgresGameStore : IGameStore
             vitals_revision bigint NOT NULL DEFAULT 0,
             status smallint NOT NULL DEFAULT 0,
             belief smallint NOT NULL DEFAULT 1,
+            zodiac_type smallint NOT NULL DEFAULT 0,
+            zodiac_lucky_status integer NOT NULL DEFAULT 0,
+            zodiac_lucky_expires_at timestamptz,
+            zodiac_level smallint NOT NULL DEFAULT 1,
+            zodiac_energy integer NOT NULL DEFAULT 0,
+            zodiac_energy_remainder_x100 integer NOT NULL DEFAULT 0,
+            zodiac_online_day date,
+            zodiac_online_duration_ticks bigint NOT NULL DEFAULT 0,
+            zodiac_last_online_at timestamptz,
+            zodiac_last_compensation_day date,
+            zodiac_accumulated_exp_x100 integer NOT NULL DEFAULT 0,
+            zodiac_accumulated_talent_exp_x100 integer NOT NULL DEFAULT 0,
             prestige integer NOT NULL DEFAULT 0,
             earl_rank smallint NOT NULL DEFAULT 0,
             consortia integer NOT NULL DEFAULT 0,
@@ -550,6 +562,18 @@ internal sealed class PostgresGameStore : IGameStore
         CREATE INDEX IF NOT EXISTS ix_character_base_server ON character_base (server_id);
         ALTER TABLE character_base ADD COLUMN IF NOT EXISTS holy_suit_points integer NOT NULL DEFAULT 0;
         ALTER TABLE character_base ADD COLUMN IF NOT EXISTS vitals_revision bigint NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_type smallint NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_lucky_status integer NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_lucky_expires_at timestamptz;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_level smallint NOT NULL DEFAULT 1;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_energy integer NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_energy_remainder_x100 integer NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_online_day date;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_online_duration_ticks bigint NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_last_online_at timestamptz;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_last_compensation_day date;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_accumulated_exp_x100 integer NOT NULL DEFAULT 0;
+        ALTER TABLE character_base ADD COLUMN IF NOT EXISTS zodiac_accumulated_talent_exp_x100 integer NOT NULL DEFAULT 0;
 
         CREATE TABLE IF NOT EXISTS character_experience_modifiers (
             character_id integer NOT NULL REFERENCES character_base(id) ON DELETE CASCADE,
@@ -560,11 +584,67 @@ internal sealed class PostgresGameStore : IGameStore
             source varchar(64) NOT NULL DEFAULT '',
             activated_at timestamptz NOT NULL DEFAULT now(),
             expires_at timestamptz,
+            remaining_online_ticks bigint,
             PRIMARY KEY (character_id, kind)
         );
 
+        ALTER TABLE character_experience_modifiers
+            ADD COLUMN IF NOT EXISTS remaining_online_ticks bigint;
+
+        -- Legacy grants used wall-clock expiry. Historical online intervals
+        -- cannot be reconstructed, so preserve the originally granted
+        -- duration as the fair migration baseline instead of importing an
+        -- already-expired wall-clock remainder.
+        UPDATE character_experience_modifiers
+        SET remaining_online_ticks = GREATEST(
+            0,
+            ROUND(EXTRACT(EPOCH FROM (expires_at - activated_at)) * 10000000)::bigint)
+        WHERE remaining_online_ticks IS NULL
+          AND expires_at IS NOT NULL;
+
+        CREATE OR REPLACE FUNCTION set_character_progression_boost_online_duration()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $function$
+        BEGIN
+            IF TG_OP = 'UPDATE'
+               AND (
+                   NEW.activated_at IS DISTINCT FROM OLD.activated_at
+                   OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+               )
+               AND NEW.remaining_online_ticks IS NOT DISTINCT FROM OLD.remaining_online_ticks THEN
+                NEW.remaining_online_ticks := CASE
+                    WHEN NEW.expires_at IS NULL THEN NULL
+                    ELSE GREATEST(
+                        0,
+                        ROUND(EXTRACT(EPOCH FROM (
+                            NEW.expires_at - NEW.activated_at
+                        )) * 10000000)::bigint)
+                END;
+            ELSIF NEW.remaining_online_ticks IS NULL AND NEW.expires_at IS NOT NULL THEN
+                NEW.remaining_online_ticks := GREATEST(
+                    0,
+                    ROUND(EXTRACT(EPOCH FROM (
+                        NEW.expires_at - NEW.activated_at
+                    )) * 10000000)::bigint);
+            END IF;
+            RETURN NEW;
+        END;
+        $function$;
+
+        DROP TRIGGER IF EXISTS trg_character_progression_boost_online_duration
+            ON character_experience_modifiers;
+        CREATE TRIGGER trg_character_progression_boost_online_duration
+        BEFORE INSERT OR UPDATE OF activated_at, expires_at, remaining_online_ticks
+            ON character_experience_modifiers
+        FOR EACH ROW
+        EXECUTE FUNCTION set_character_progression_boost_online_duration();
+
         CREATE INDEX IF NOT EXISTS ix_character_experience_modifiers_expiry
             ON character_experience_modifiers (character_id, expires_at);
+
+        CREATE INDEX IF NOT EXISTS ix_character_experience_modifiers_online_duration
+            ON character_experience_modifiers (character_id, remaining_online_ticks);
 
         CREATE TABLE IF NOT EXISTS world_boss_areas (
             map_id smallint PRIMARY KEY REFERENCES map_templates(map_id) ON DELETE CASCADE,
@@ -597,6 +677,21 @@ internal sealed class PostgresGameStore : IGameStore
             storage varchar(4000),
             equip varchar(2000)
         );
+
+        CREATE TABLE IF NOT EXISTS server_data_migrations (
+            migration_key varchar(128) PRIMARY KEY,
+            applied_at timestamptz NOT NULL DEFAULT now(),
+            affected_rows integer NOT NULL DEFAULT 0
+        );
+
+        -- Existing installations created this projection only after the legacy
+        -- character_kitbag data had been copied into character_items. Record
+        -- that completed state before recreating any inventory schema objects,
+        -- so deleted authoritative slots are never repopulated from stale data.
+        INSERT INTO server_data_migrations (migration_key, affected_rows)
+        SELECT '20260721_legacy_character_kitbag_import', 0
+        WHERE to_regclass('public.character_item_loadout') IS NOT NULL
+        ON CONFLICT (migration_key) DO NOTHING;
 
         CREATE TABLE IF NOT EXISTS character_items (
             id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -673,20 +768,6 @@ internal sealed class PostgresGameStore : IGameStore
         ALTER TABLE character_items ADD COLUMN IF NOT EXISTS holy_socket5_level smallint;
         ALTER TABLE character_items ADD COLUMN IF NOT EXISTS holy_socket6_effect_id smallint;
         ALTER TABLE character_items ADD COLUMN IF NOT EXISTS holy_socket6_level smallint;
-
-        INSERT INTO character_kitbag (user_id, kitbag_1, equip)
-        SELECT
-            cb.id,
-            $kitbag$[4000,,,,,,0,10,1,1,0]#[4030,,,,,,0,10,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$kitbag$,
-            CASE cb.profession
-                WHEN 0 THEN $equip$[]#[]#[]#[2100,,,,,,1,1,1,1,0]#[]#[]#[2900,,,,,,1,1,1,1,0]#[]#[]#[]#[1000,,,,,,1,1,1,1,0]#[2000,,,,,,1,1,1,1,0]#[]#[8040,,,,,,1,1,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$equip$
-                WHEN 1 THEN $equip$[]#[]#[]#[2100,,,,,,1,1,1,1,0]#[]#[]#[2900,,,,,,1,1,1,1,0]#[]#[]#[]#[1400,,,,,,1,1,1,1,0]#[]#[8040,,,,,,1,1,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$equip$
-                WHEN 2 THEN $equip$[]#[]#[]#[2100,,,,,,1,1,1,1,0]#[]#[]#[2900,,,,,,1,1,1,1,0]#[]#[]#[]#[1700,,,,,,1,1,1,1,0]#[2000,,,,,,1,1,1,1,0]#[]#[8040,,,,,,1,1,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$equip$
-                WHEN 3 THEN $equip$[]#[]#[]#[2100,,,,,,1,1,1,1,0]#[]#[]#[2900,,,,,,1,1,1,1,0]#[]#[]#[]#[1800,,,,,,1,1,1,1,0]#[]#[8040,,,,,,1,1,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$equip$
-                ELSE $equip$[]#[]#[]#[2100,,,,,,1,1,1,1,0]#[]#[]#[2900,,,,,,1,1,1,1,0]#[]#[]#[]#[1000,,,,,,1,1,1,1,0]#[2000,,,,,,1,1,1,1,0]#[]#[8040,,,,,,1,1,1,1,0]#[]#[]#[]#[]#[]#[]#[]#[]#[]#[]#$equip$
-            END
-        FROM character_base cb
-        ON CONFLICT (user_id) DO NOTHING;
 
         DO $$
         DECLARE
@@ -857,6 +938,9 @@ internal sealed class PostgresGameStore : IGameStore
         FROM character_equip ce
         ON CONFLICT (user_id, item_location, slot_index) DO NOTHING;
 
+        -- Import legacy compact bag rows once. character_items is authoritative
+        -- after this point; replaying character_kitbag would resurrect items
+        -- that a player consumed, moved, or deleted.
         WITH entries AS (
             SELECT
                 ck.user_id,
@@ -866,53 +950,66 @@ internal sealed class PostgresGameStore : IGameStore
             CROSS JOIN LATERAL regexp_split_to_table(COALESCE(ck.kitbag_1, ''), '#') WITH ORDINALITY AS item(entry, ordinality)
             WHERE item.entry <> ''
               AND item.entry <> '[]'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM server_data_migrations
+                  WHERE migration_key = '20260721_legacy_character_kitbag_import'
+              )
+        ), imported AS (
+            INSERT INTO character_items (
+                user_id, item_location, slot_index, prop_id,
+                attribute1, attribute2, attribute3, attribute4, attribute5,
+                attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
+                item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
+                holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
+                holy_socket3_effect_id, holy_socket3_level, holy_socket4_effect_id, holy_socket4_level,
+                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level
+            )
+            SELECT
+                user_id,
+                1,
+                slot_index,
+                NULLIF(item_parts[1], '')::integer,
+                CASE WHEN NULLIF(item_parts[2], '') IS NOT NULL AND NULLIF(item_parts[2], '')::integer >= 0 THEN NULLIF(item_parts[2], '')::smallint END,
+                CASE WHEN NULLIF(item_parts[3], '') IS NOT NULL AND NULLIF(item_parts[3], '')::integer >= 0 THEN NULLIF(item_parts[3], '')::smallint END,
+                CASE WHEN NULLIF(item_parts[4], '') IS NOT NULL AND NULLIF(item_parts[4], '')::integer >= 0 THEN NULLIF(item_parts[4], '')::smallint END,
+                CASE WHEN NULLIF(item_parts[5], '') IS NOT NULL AND NULLIF(item_parts[5], '')::integer >= 0 THEN NULLIF(item_parts[5], '')::smallint END,
+                CASE WHEN NULLIF(item_parts[6], '') IS NOT NULL AND NULLIF(item_parts[6], '')::integer >= 0 THEN NULLIF(item_parts[6], '')::smallint END,
+                NULLIF(item_parts[13], '')::smallint,
+                NULLIF(item_parts[14], '')::smallint,
+                NULLIF(item_parts[15], '')::smallint,
+                NULLIF(item_parts[16], '')::smallint,
+                NULLIF(item_parts[17], '')::smallint,
+                COALESCE(NULLIF(item_parts[7], '')::smallint, 1),
+                COALESCE(NULLIF(item_parts[8], '')::smallint, 1),
+                COALESCE(NULLIF(item_parts[9], '')::smallint, 0),
+                COALESCE(NULLIF(item_parts[10], '')::smallint, 1),
+                COALESCE(NULLIF(item_parts[11], '')::integer, 0),
+                COALESCE(NULLIF(item_parts[12], '')::integer, 0),
+                COALESCE(NULLIF(item_parts[18], '')::smallint, 0),
+                NULLIF(item_parts[19], '')::smallint,
+                NULLIF(item_parts[20], '')::smallint,
+                NULLIF(item_parts[21], '')::smallint,
+                NULLIF(item_parts[22], '')::smallint,
+                NULLIF(item_parts[23], '')::smallint,
+                NULLIF(item_parts[24], '')::smallint,
+                NULLIF(item_parts[25], '')::smallint,
+                NULLIF(item_parts[26], '')::smallint,
+                NULLIF(item_parts[27], '')::smallint,
+                NULLIF(item_parts[28], '')::smallint,
+                NULLIF(item_parts[29], '')::smallint,
+                NULLIF(item_parts[30], '')::smallint
+            FROM entries
+            WHERE NULLIF(item_parts[1], '') IS NOT NULL
+            ON CONFLICT (user_id, item_location, slot_index) DO NOTHING
+            RETURNING 1
         )
-        INSERT INTO character_items (
-            user_id, item_location, slot_index, prop_id,
-            attribute1, attribute2, attribute3, attribute4, attribute5,
-            attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
-            item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
-            holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
-            holy_socket3_effect_id, holy_socket3_level, holy_socket4_effect_id, holy_socket4_level,
-            holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level
-        )
+        INSERT INTO server_data_migrations (migration_key, affected_rows)
         SELECT
-            user_id,
-            1,
-            slot_index,
-            NULLIF(item_parts[1], '')::integer,
-            CASE WHEN NULLIF(item_parts[2], '') IS NOT NULL AND NULLIF(item_parts[2], '')::integer >= 0 THEN NULLIF(item_parts[2], '')::smallint END,
-            CASE WHEN NULLIF(item_parts[3], '') IS NOT NULL AND NULLIF(item_parts[3], '')::integer >= 0 THEN NULLIF(item_parts[3], '')::smallint END,
-            CASE WHEN NULLIF(item_parts[4], '') IS NOT NULL AND NULLIF(item_parts[4], '')::integer >= 0 THEN NULLIF(item_parts[4], '')::smallint END,
-            CASE WHEN NULLIF(item_parts[5], '') IS NOT NULL AND NULLIF(item_parts[5], '')::integer >= 0 THEN NULLIF(item_parts[5], '')::smallint END,
-            CASE WHEN NULLIF(item_parts[6], '') IS NOT NULL AND NULLIF(item_parts[6], '')::integer >= 0 THEN NULLIF(item_parts[6], '')::smallint END,
-            NULLIF(item_parts[13], '')::smallint,
-            NULLIF(item_parts[14], '')::smallint,
-            NULLIF(item_parts[15], '')::smallint,
-            NULLIF(item_parts[16], '')::smallint,
-            NULLIF(item_parts[17], '')::smallint,
-            COALESCE(NULLIF(item_parts[7], '')::smallint, 1),
-            COALESCE(NULLIF(item_parts[8], '')::smallint, 1),
-            COALESCE(NULLIF(item_parts[9], '')::smallint, 0),
-            COALESCE(NULLIF(item_parts[10], '')::smallint, 1),
-            COALESCE(NULLIF(item_parts[11], '')::integer, 0),
-            COALESCE(NULLIF(item_parts[12], '')::integer, 0),
-            COALESCE(NULLIF(item_parts[18], '')::smallint, 0),
-            NULLIF(item_parts[19], '')::smallint,
-            NULLIF(item_parts[20], '')::smallint,
-            NULLIF(item_parts[21], '')::smallint,
-            NULLIF(item_parts[22], '')::smallint,
-            NULLIF(item_parts[23], '')::smallint,
-            NULLIF(item_parts[24], '')::smallint,
-            NULLIF(item_parts[25], '')::smallint,
-            NULLIF(item_parts[26], '')::smallint,
-            NULLIF(item_parts[27], '')::smallint,
-            NULLIF(item_parts[28], '')::smallint,
-            NULLIF(item_parts[29], '')::smallint,
-            NULLIF(item_parts[30], '')::smallint
-        FROM entries
-        WHERE NULLIF(item_parts[1], '') IS NOT NULL
-        ON CONFLICT (user_id, item_location, slot_index) DO NOTHING;
+            '20260721_legacy_character_kitbag_import',
+            COUNT(*)::integer
+        FROM imported
+        ON CONFLICT (migration_key) DO NOTHING;
 
         CREATE OR REPLACE VIEW character_item_compact_entries AS
         SELECT
@@ -1848,7 +1945,12 @@ internal sealed class PostgresGameStore : IGameStore
         COALESCE((SELECT cr.weapon_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
         COALESCE((SELECT cr.armor_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
         COALESCE((SELECT cr.armor_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
-        cb.fighter_job_exp, cb.vitals_revision
+        cb.fighter_job_exp, cb.vitals_revision,
+        cb.zodiac_type, cb.zodiac_lucky_status, cb.zodiac_lucky_expires_at,
+        cb.zodiac_level, cb.zodiac_energy, cb.zodiac_accumulated_exp_x100,
+        cb.zodiac_accumulated_talent_exp_x100, cb.zodiac_energy_remainder_x100,
+        cb.zodiac_online_day, cb.zodiac_online_duration_ticks, cb.zodiac_last_online_at,
+        cb.zodiac_last_compensation_day, cb."Money", cb."Stone"
         """;
 
     private readonly NpgsqlDataSource _dataSource;
@@ -2078,6 +2180,136 @@ internal sealed class PostgresGameStore : IGameStore
             currentTalentPoints);
     }
 
+    public async Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
+        int accountId,
+        int characterId,
+        int experienceGainX100,
+        int talentExperienceGainX100,
+        CancellationToken cancellationToken = default)
+    {
+        experienceGainX100 = Math.Max(0, experienceGainX100);
+        talentExperienceGainX100 = Math.Max(0, talentExperienceGainX100);
+
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE character_base
+            SET zodiac_accumulated_exp_x100 = zodiac_accumulated_exp_x100 + @experienceGainX100,
+                zodiac_accumulated_talent_exp_x100 =
+                    zodiac_accumulated_talent_exp_x100 + @talentExperienceGainX100
+            WHERE id = @characterId
+              AND account_id = @accountId
+            RETURNING zodiac_accumulated_exp_x100, zodiac_accumulated_talent_exp_x100;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("experienceGainX100", experienceGainX100);
+        command.Parameters.AddWithValue("talentExperienceGainX100", talentExperienceGainX100);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new ZodiacAccumulationResult(
+            experienceGainX100,
+            talentExperienceGainX100,
+            reader.GetInt32(0),
+            reader.GetInt32(1));
+    }
+
+    public async Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
+        ZodiacEnergyPolicy policy,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        GameCharacter character;
+        await using (var command = new NpgsqlCommand("""
+            SELECT zodiac_level, zodiac_energy, zodiac_energy_remainder_x100,
+                   zodiac_online_day, zodiac_online_duration_ticks,
+                   zodiac_last_online_at, zodiac_last_compensation_day
+            FROM character_base
+            WHERE id = @characterId
+              AND account_id = @accountId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            character = new GameCharacter
+            {
+                ZodiacLevel = (byte)reader.GetInt16(0),
+                ZodiacEnergy = reader.GetInt32(1),
+                ZodiacEnergyRemainderX100 = reader.GetInt32(2),
+                ZodiacOnlineDay = reader.IsDBNull(3)
+                    ? null
+                    : reader.GetFieldValue<DateOnly>(3),
+                ZodiacOnlineDurationTicksToday = reader.GetInt64(4),
+                ZodiacLastOnlineAt = reader.IsDBNull(5)
+                    ? null
+                    : new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime()),
+                ZodiacLastCompensationDay = reader.IsDBNull(6)
+                    ? null
+                    : reader.GetFieldValue<DateOnly>(6)
+            };
+        }
+
+        var result = ZodiacEnergyAccrual.Apply(
+            character,
+            onlineFrom,
+            onlineUntil,
+            policy);
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE character_base
+            SET zodiac_energy = @energy,
+                zodiac_energy_remainder_x100 = @energyRemainderX100,
+                zodiac_online_day = @onlineDay,
+                zodiac_online_duration_ticks = @onlineDurationTicks,
+                zodiac_last_online_at = @lastOnlineAt,
+                zodiac_last_compensation_day = @lastCompensationDay
+            WHERE id = @characterId
+              AND account_id = @accountId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("energy", result.CurrentEnergy);
+            command.Parameters.AddWithValue("energyRemainderX100", result.CurrentEnergyRemainderX100);
+            command.Parameters.Add(new NpgsqlParameter("onlineDay", NpgsqlDbType.Date)
+            {
+                Value = result.OnlineDay
+            });
+            command.Parameters.AddWithValue("onlineDurationTicks", result.OnlineDurationTicksToday);
+            command.Parameters.Add(new NpgsqlParameter("lastOnlineAt", NpgsqlDbType.TimestampTz)
+            {
+                Value = result.LastOnlineAt.UtcDateTime
+            });
+            command.Parameters.Add(new NpgsqlParameter("lastCompensationDay", NpgsqlDbType.Date)
+            {
+                Value = result.LastCompensationDay.HasValue
+                    ? result.LastCompensationDay.Value
+                    : DBNull.Value
+            });
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
     public async Task<ExperienceBoostState> GetExperienceBoostStateAsync(
         int accountId,
         int characterId,
@@ -2096,17 +2328,35 @@ internal sealed class PostgresGameStore : IGameStore
                     modifier.kind,
                     modifier.bonus_basis_points,
                     modifier.priority,
-                    modifier.expires_at,
+                    COALESCE(
+                        modifier.remaining_online_ticks,
+                        CASE WHEN modifier.expires_at IS NULL THEN NULL
+                             ELSE GREATEST(
+                                 0,
+                                 ROUND(EXTRACT(EPOCH FROM (
+                                     modifier.expires_at - modifier.activated_at
+                                 )) * 10000000)::bigint)
+                        END) AS remaining_online_ticks,
                     modifier.source
                 FROM character_experience_modifiers modifier
                 JOIN character_base character ON character.id = modifier.character_id
                 WHERE modifier.character_id = @characterId
                   AND character.account_id = @accountId
                   AND modifier.activated_at <= @now
-                  AND (modifier.expires_at IS NULL OR modifier.expires_at > @now)
+                  AND (
+                      modifier.expires_at IS NULL AND modifier.remaining_online_ticks IS NULL
+                      OR COALESCE(
+                          modifier.remaining_online_ticks,
+                          GREATEST(
+                              0,
+                              ROUND(EXTRACT(EPOCH FROM (
+                                  modifier.expires_at - modifier.activated_at
+                              )) * 10000000)::bigint)
+                      ) > 0
+                  )
                 ORDER BY modifier.kind, modifier.priority DESC, modifier.bonus_basis_points DESC
             )
-            SELECT status_id, kind, bonus_basis_points, priority, expires_at, source
+            SELECT status_id, kind, bonus_basis_points, priority, remaining_online_ticks, source
             FROM personal
             UNION ALL
             SELECT
@@ -2114,7 +2364,7 @@ internal sealed class PostgresGameStore : IGameStore
                 1009,
                 control.bonus_basis_points,
                 1,
-                control.expires_at,
+                ROUND(EXTRACT(EPOCH FROM (control.expires_at - @now)) * 10000000)::bigint,
                 'world-boss:' || control.boss_template_key
             FROM faction_area_experience_control control
             JOIN world_boss_areas area
@@ -2143,7 +2393,7 @@ internal sealed class PostgresGameStore : IGameStore
                     reader.GetInt32(3),
                     reader.IsDBNull(4)
                         ? null
-                        : new DateTimeOffset(reader.GetDateTime(4).ToUniversalTime()),
+                        : now + TimeSpan.FromTicks(Math.Max(0L, reader.GetInt64(4))),
                     reader.GetString(5)));
             }
         }
@@ -2176,6 +2426,55 @@ internal sealed class PostgresGameStore : IGameStore
         }
 
         return new ExperienceBoostState(boosts.OrderBy(boost => boost.Kind).ToArray());
+    }
+
+    public async Task ConsumeCharacterBoostOnlineTimeAsync(
+        int accountId,
+        int characterId,
+        DateTimeOffset onlineFrom,
+        DateTimeOffset onlineUntil,
+        CancellationToken cancellationToken = default)
+    {
+        if (onlineUntil <= onlineFrom)
+        {
+            return;
+        }
+
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE character_experience_modifiers modifier
+            SET remaining_online_ticks = GREATEST(
+                0,
+                COALESCE(
+                    modifier.remaining_online_ticks,
+                    GREATEST(
+                        0,
+                        ROUND(EXTRACT(EPOCH FROM (
+                            modifier.expires_at - modifier.activated_at
+                        )) * 10000000)::bigint)
+                ) - GREATEST(
+                    0,
+                    ROUND(EXTRACT(EPOCH FROM (
+                        @onlineUntil - GREATEST(@onlineFrom, modifier.activated_at)
+                    )) * 10000000)::bigint
+                )
+            )
+            FROM character_base character
+            WHERE modifier.character_id = @characterId
+              AND character.id = modifier.character_id
+              AND character.account_id = @accountId
+              AND (
+                  modifier.remaining_online_ticks > 0
+                  OR modifier.remaining_online_ticks IS NULL
+                     AND modifier.expires_at IS NOT NULL
+                     AND modifier.expires_at > modifier.activated_at
+              )
+              AND modifier.activated_at < @onlineUntil;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("onlineFrom", onlineFrom);
+        command.Parameters.AddWithValue("onlineUntil", onlineUntil);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
@@ -2428,7 +2727,7 @@ internal sealed class PostgresGameStore : IGameStore
               AND cb.id = @characterId
               AND ci.item_location = @equipmentLocation
               AND ci.slot_index = @equipmentSlot
-            FOR UPDATE OF ci;
+            FOR UPDATE OF cb, ci;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
@@ -2449,7 +2748,7 @@ internal sealed class PostgresGameStore : IGameStore
             return await GetCharacterByIdAsync(characterId, cancellationToken);
         }
 
-        var destinationSlot = await ResolveWritableKitBagSlotAsync(
+        var destinationSlot = await ResolveRequestedEmptyKitBagSlotAsync(
             connection,
             transaction,
             characterId,
@@ -2479,7 +2778,8 @@ internal sealed class PostgresGameStore : IGameStore
         int characterId,
         int kitBagSlot,
         int requestedEquipmentSlot,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool requireEmptyEquipmentSlot = false)
     {
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -2490,7 +2790,8 @@ internal sealed class PostgresGameStore : IGameStore
             SELECT cb.profession, COALESCE(ck.equip, '')
             FROM character_base cb
             LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
-            WHERE cb.account_id = @accountId AND cb.id = @characterId;
+            WHERE cb.account_id = @accountId AND cb.id = @characterId
+            FOR UPDATE OF cb;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
@@ -2590,6 +2891,12 @@ internal sealed class PostgresGameStore : IGameStore
             }
         }
 
+        if (requireEmptyEquipmentSlot && previousEquipmentRowId is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return await GetCharacterByIdAsync(characterId, cancellationToken);
+        }
+
         if (previousEquipmentRowId is null)
         {
             await UpdateCharacterItemSlotAsync(
@@ -2644,7 +2951,8 @@ internal sealed class PostgresGameStore : IGameStore
         await using (var command = new NpgsqlCommand("""
             SELECT true
             FROM character_base cb
-            WHERE cb.account_id = @accountId AND cb.id = @characterId;
+            WHERE cb.account_id = @accountId AND cb.id = @characterId
+            FOR UPDATE OF cb;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
@@ -2784,6 +3092,486 @@ internal sealed class PostgresGameStore : IGameStore
         return await GetCharacterByIdAsync(characterId, cancellationToken);
     }
 
+    public async Task<GameCharacter?> ClearKitBagAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT true
+            FROM character_base
+            WHERE account_id = @accountId AND id = @characterId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null)
+            {
+                return null;
+            }
+        }
+
+        // Delete and audit only the authoritative kit-bag location. Equipment,
+        // warehouse/storage rows, currency, and all other character state are
+        // outside this predicate.
+        await using (var command = new NpgsqlCommand("""
+            WITH deleted AS (
+                DELETE FROM character_items
+                WHERE user_id = @characterId
+                  AND item_location = @kitBagLocation
+                RETURNING *
+            )
+            INSERT INTO character_item_audit (
+                source, action, user_id, item_location, slot_index,
+                prop_id, item_quality, item_grade, item_exp, old_item
+            )
+            SELECT
+                'developer-clearbag',
+                'delete',
+                user_id,
+                item_location,
+                slot_index,
+                prop_id,
+                item_quality,
+                item_grade,
+                item_exp,
+                to_jsonb(deleted)
+            FROM deleted;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("kitBagLocation", ItemLocationKitBag);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return await GetCharacterByIdAsync(characterId, cancellationToken);
+    }
+
+    public async Task<KitBagItemGrantResult> AddForgingMaterialAsync(
+        int accountId,
+        int characterId,
+        uint itemId,
+        int quantity,
+        CancellationToken cancellationToken = default)
+    {
+        if (!DeveloperGrantMaterialCatalog.TryResolve(itemId, out var material))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(itemId),
+                "Item is not in the developer material allowlist.");
+        }
+
+        if (quantity is < 1 or > KitBagItemGrantPlanner.MaximumQuantity)
+        {
+            throw new ArgumentOutOfRangeException(nameof(quantity));
+        }
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT true
+            FROM character_base
+            WHERE account_id = @accountId AND id = @characterId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null)
+            {
+                return new KitBagItemGrantResult(KitBagItemGrantStatus.CharacterNotFound, null);
+            }
+        }
+
+        // Read and lock the authoritative rows directly. Do not round-trip the
+        // character_item_loadout compatibility view here: that view deliberately
+        // projects client-capped quality/grade values and rewriting it would
+        // permanently lower unrelated high-ceiling bag items.
+        var occupiedSlots = new HashSet<int>();
+        var fillableStacks = new List<(long RowId, short Stack)>();
+        await using (var command = new NpgsqlCommand("""
+            SELECT id, slot_index, prop_id, bound, stack
+            FROM character_items
+            WHERE user_id = @characterId AND item_location = @kitBagLocation
+            ORDER BY slot_index
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("kitBagLocation", ItemLocationKitBag);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var rowId = reader.GetInt64(0);
+                var slot = reader.GetInt16(1);
+                var propId = reader.GetInt32(2);
+                var bound = reader.GetInt16(3);
+                var stack = reader.GetInt16(4);
+                if (slot is < 0 or >= KitBagItemGrantPlanner.SlotCount)
+                {
+                    continue;
+                }
+
+                occupiedSlots.Add(slot);
+                if (propId == checked((int)itemId) &&
+                    bound == material.GrantedBound &&
+                    stack < material.StackCap)
+                {
+                    fillableStacks.Add((rowId, stack));
+                }
+            }
+        }
+
+        var emptySlots = Enumerable.Range(0, KitBagItemGrantPlanner.SlotCount)
+            .Where(slot => !occupiedSlots.Contains(slot))
+            .ToArray();
+        var capacity = fillableStacks.Sum(stack =>
+            Math.Max(0, material.StackCap - stack.Stack)) +
+            ((long)emptySlots.Length * material.StackCap);
+        if (capacity < quantity)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new KitBagItemGrantResult(
+                KitBagItemGrantStatus.InsufficientCapacity,
+                await GetCharacterByIdAsync(characterId, cancellationToken));
+        }
+
+        var remaining = quantity;
+        await using (var updateStack = new NpgsqlCommand("""
+            UPDATE character_items
+            SET stack = @stack,
+                updated_at = now()
+            WHERE id = @rowId;
+            """, connection, transaction))
+        {
+            foreach (var existing in fillableStacks)
+            {
+                if (remaining == 0)
+                {
+                    break;
+                }
+
+                var added = Math.Min(remaining, material.StackCap - existing.Stack);
+                var updatedStack = checked((short)(existing.Stack + added));
+                updateStack.Parameters.Clear();
+                updateStack.Parameters.AddWithValue("stack", updatedStack);
+                updateStack.Parameters.AddWithValue("rowId", existing.RowId);
+                var updated = await updateStack.ExecuteNonQueryAsync(cancellationToken);
+                if (updated != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Kit-bag stack row {existing.RowId} changed while granting a developer material.");
+                }
+
+                remaining -= added;
+            }
+        }
+
+        await using var insertItem = new NpgsqlCommand("""
+            INSERT INTO character_items (
+                user_id, item_location, slot_index, prop_id,
+                item_quality, item_grade, bound, stack, item_exp, holy_suit_code
+            )
+            VALUES (
+                @characterId, @itemLocation, @slotIndex, @itemId,
+                1, 1, @bound, @stack, 0, 0
+            )
+            ON CONFLICT (user_id, item_location, slot_index) DO NOTHING;
+            """, connection, transaction);
+        foreach (var slot in emptySlots)
+        {
+            if (remaining == 0)
+            {
+                break;
+            }
+
+            var stack = Math.Min(remaining, material.StackCap);
+            insertItem.Parameters.Clear();
+            insertItem.Parameters.AddWithValue("characterId", characterId);
+            insertItem.Parameters.AddWithValue("itemLocation", ItemLocationKitBag);
+            insertItem.Parameters.AddWithValue("slotIndex", (short)slot);
+            insertItem.Parameters.AddWithValue("itemId", checked((int)itemId));
+            insertItem.Parameters.AddWithValue("bound", material.GrantedBound);
+            insertItem.Parameters.AddWithValue("stack", checked((short)stack));
+            var inserted = await insertItem.ExecuteNonQueryAsync(cancellationToken);
+            if (inserted != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Kit-bag slot {slot} changed while granting a developer material.");
+            }
+
+            remaining -= stack;
+        }
+
+        if (remaining != 0)
+        {
+            throw new InvalidOperationException("Validated developer-material capacity was not fully consumed.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+
+        return new KitBagItemGrantResult(
+            KitBagItemGrantStatus.Added,
+            await GetCharacterByIdAsync(characterId, cancellationToken));
+    }
+
+    public async Task<ForgeTransactionResult> ForgeEquipmentAsync(
+        int accountId,
+        int characterId,
+        ForgeTransactionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        int silver;
+        await using (var command = new NpgsqlCommand("""
+            SELECT "Money"
+            FROM character_base
+            WHERE account_id = @accountId AND id = @characterId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null || scalar is DBNull)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new ForgeTransactionResult(
+                    ForgeTransactionStatus.CharacterNotFound,
+                    null,
+                    0,
+                    0,
+                    0,
+                    CompactItemEntry.Empty,
+                    CompactItemEntry.Empty,
+                    "Character was not found.");
+            }
+
+            silver = Convert.ToInt32(scalar);
+        }
+
+        // Lock and read the uncapped source rows. The compatibility loadout view
+        // intentionally clamps client-visible quality/grade and must never be
+        // used as the source of a persistent forge mutation.
+        var (_, kitBag) = await LoadAuthoritativeItemProjectionsForUpdateAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
+        var equipmentBefore = request is not null &&
+                              request.Equipment.KitBagSlot is >= 0 and < KitBagProjectionSlots
+            ? KitBagSlots.GetItem(kitBag, request.Equipment.KitBagSlot)
+            : CompactItemEntry.Empty;
+
+        if (!ForgePersistencePlanner.TryCreate(
+                kitBag,
+                silver,
+                request,
+                System.Security.Cryptography.RandomNumberGenerator.GetInt32(100),
+                out var plan,
+                out var rejectionStatus,
+                out var rejectionReason))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new ForgeTransactionResult(
+                rejectionStatus,
+                await GetCharacterByIdAsync(characterId, cancellationToken),
+                0,
+                0,
+                0,
+                equipmentBefore,
+                equipmentBefore,
+                rejectionReason);
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE character_base
+            SET "Money" = "Money" - @silverCost
+            WHERE account_id = @accountId
+              AND id = @characterId
+              AND "Money" >= @silverCost
+            RETURNING "Money";
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("silverCost", plan!.Calculation.SilverCost);
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var updatedSilver = await command.ExecuteScalarAsync(cancellationToken);
+            if (updatedSilver is null ||
+                updatedSilver is DBNull ||
+                Convert.ToInt32(updatedSilver) != plan.UpdatedSilver)
+            {
+                throw new InvalidOperationException(
+                    $"Forge wallet for character {characterId} changed after it was locked.");
+            }
+        }
+
+        foreach (var mutation in plan!.Mutations)
+        {
+            await ApplyForgeSlotMutationAsync(
+                connection,
+                transaction,
+                characterId,
+                mutation,
+                cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        var refreshedCharacter = await GetCharacterByIdAsync(characterId, cancellationToken);
+        return new ForgeTransactionResult(
+            plan.Succeeded
+                ? ForgeTransactionStatus.Succeeded
+                : ForgeTransactionStatus.FailedRoll,
+            refreshedCharacter,
+            (int)plan.Calculation.Operation,
+            plan.Calculation.SuccessProbability,
+            plan.Calculation.SilverCost,
+            equipmentBefore,
+            plan.Succeeded
+                ? plan.Calculation.SuccessEquipment
+                : plan.Calculation.FailureEquipment);
+    }
+
+    public async Task<GearEnhancementTransactionResult> EnhanceGearAsync(
+        int accountId,
+        int characterId,
+        GearEnhancementRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var command = new NpgsqlCommand("""
+            SELECT id
+            FROM character_base
+            WHERE account_id = @accountId AND id = @characterId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null || scalar is DBNull)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new GearEnhancementTransactionResult(null, null);
+            }
+        }
+
+        // Build the plan only from the uncapped, authoritative item rows while
+        // both the character and its inventory are locked in this transaction.
+        var (_, kitBag) = await LoadAuthoritativeItemProjectionsForUpdateAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
+        var enhancement = GearEnhancementPlanner.Create(kitBag, request);
+        if (!enhancement.Committed)
+        {
+            // Rejected plans never write or commit inventory state.
+            await transaction.RollbackAsync(cancellationToken);
+            return new GearEnhancementTransactionResult(
+                enhancement,
+                await GetCharacterByIdAsync(characterId, cancellationToken));
+        }
+
+        foreach (var mutation in enhancement.Mutations)
+        {
+            await ApplyGearEnhancementSlotMutationAsync(
+                connection,
+                transaction,
+                characterId,
+                mutation,
+                cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new GearEnhancementTransactionResult(
+            enhancement,
+            await GetCharacterByIdAsync(characterId, cancellationToken));
+    }
+
+    public async Task<GearMentorTransactionResult> ProcessGearMentorAsync(
+        int accountId,
+        int characterId,
+        GearMentorRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        int playerLevel;
+        await using (var command = new NpgsqlCommand("""
+            SELECT fighter_job_lv
+            FROM character_base
+            WHERE account_id = @accountId AND id = @characterId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            if (scalar is null || scalar is DBNull)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return new GearMentorTransactionResult(null, null);
+            }
+
+            playerLevel = Convert.ToInt32(scalar);
+        }
+
+        // Lock and plan against the uncapped authoritative rows. Client-visible
+        // loadout projections clamp high qualities/grades and are never a safe
+        // source for a destructive decomposition transaction.
+        var (_, kitBag) = await LoadAuthoritativeItemProjectionsForUpdateAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
+        var result = GearMentorPlanner.Create(kitBag, playerLevel, request);
+        if (!result.Committed)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new GearMentorTransactionResult(
+                result,
+                await GetCharacterByIdAsync(characterId, cancellationToken));
+        }
+
+        foreach (var mutation in result.Mutations)
+        {
+            await ApplyGearMentorSlotMutationAsync(
+                connection,
+                transaction,
+                characterId,
+                mutation,
+                cancellationToken);
+        }
+
+        // Read the refreshed projection on the same connection before commit.
+        // A failed read therefore rolls the mutation back instead of allowing a
+        // committed recipe to surface to the caller as a failed/stale request.
+        var refreshedCharacter = await GetCharacterByIdAsync(
+                connection,
+                transaction,
+                characterId,
+                cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Committed Gear Mentor character could not be reloaded inside its transaction.");
+
+        await transaction.CommitAsync(cancellationToken);
+        return new GearMentorTransactionResult(result, refreshedCharacter);
+    }
+
     public async Task<GameCharacter?> ApplyWeaponHolyStoneAsync(
         int accountId,
         int characterId,
@@ -2797,14 +3585,12 @@ internal sealed class PostgresGameStore : IGameStore
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        string equipment;
-        string kitBag;
         byte profession;
         await using (var command = new NpgsqlCommand("""
-            SELECT cb.profession, COALESCE(ck.equip, ''), COALESCE(ck.kitbag_1, '')
+            SELECT cb.profession
             FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
-            WHERE cb.account_id = @accountId AND cb.id = @characterId;
+            WHERE cb.account_id = @accountId AND cb.id = @characterId
+            FOR UPDATE;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
@@ -2817,11 +3603,15 @@ internal sealed class PostgresGameStore : IGameStore
             }
 
             profession = (byte)reader.GetInt16(0);
-            equipment = reader.GetString(1);
-            kitBag = reader.GetString(2);
         }
 
-        if (!HolyStoneItemMutator.TryApply(
+        var (equipment, kitBag) = await LoadAuthoritativeItemProjectionsForUpdateAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
+
+        if (!HolyStonePersistencePlanner.TryCreate(
                 equipment,
                 kitBag,
                 profession,
@@ -2830,8 +3620,7 @@ internal sealed class PostgresGameStore : IGameStore
                 socketIndex,
                 stoneKitBagSlot,
                 destinationKitBagSlot,
-                out var updatedEquipment,
-                out var updatedKitBag,
+                out var plan,
                 out var summary))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -2840,13 +3629,15 @@ internal sealed class PostgresGameStore : IGameStore
             return null;
         }
 
-        await ReplaceCharacterItemsFromCompactAsync(
-            connection,
-            transaction,
-            characterId,
-            updatedEquipment,
-            updatedKitBag,
-            cancellationToken);
+        foreach (var mutation in plan!.Mutations)
+        {
+            await ApplyHolyStoneSlotMutationAsync(
+                connection,
+                transaction,
+                characterId,
+                mutation,
+                cancellationToken);
+        }
 
         await transaction.CommitAsync(cancellationToken);
         Console.WriteLine(
@@ -3343,7 +4134,11 @@ internal sealed class PostgresGameStore : IGameStore
                 stats = EXCLUDED.stats;
             """, connection, transaction);
 
-        foreach (var template in ItemTemplateSeeds.All)
+        var templates = ItemTemplateSeeds.All
+            .Concat(ForgingMaterialCatalog.All.Select(material => material.ToItemTemplateSeed()))
+            .Concat(GearEnhancementMaterialCatalog.All.Select(material => material.ToItemTemplateSeed()))
+            .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(material => material.ToItemTemplateSeed()));
+        foreach (var template in templates)
         {
             command.Parameters.Clear();
             command.Parameters.AddWithValue("id", template.Id);
@@ -3391,24 +4186,20 @@ internal sealed class PostgresGameStore : IGameStore
             SET stats = jsonb_set(
                 jsonb_set(
                     jsonb_set(
-                        jsonb_set(
-                            stats,
-                            '{Hit}',
-                            to_jsonb(CASE id
-                                WHEN 2834 THEN '197,213,229,245,262,278,294,310,326,342'
-                                WHEN 2844 THEN '207,225,242,259,277,294,311,328,345,362'
-                                WHEN 2854 THEN '200,216,232,248,265,281,297,313,329,345'
-                                WHEN 2864 THEN '202,218,234,251,268,284,300,317,333,350'
-                            END::text)
-                        ),
-                        '{MainAttribute}',
-                        to_jsonb('0,1,20,21,40,60,80,90,110,180,240,250'::text)
+                        stats,
+                        '{Hit}',
+                        to_jsonb(CASE id
+                            WHEN 2834 THEN '197,213,229,245,262,278,294,310,326,342,358,374,390,406,422,438,454,470,486,502'
+                            WHEN 2844 THEN '207,225,242,259,277,294,311,328,345,362'
+                            WHEN 2854 THEN '200,216,232,248,265,281,297,313,329,345,361,377,393,409,425,441,457,473,489,505'
+                            WHEN 2864 THEN '202,218,234,251,268,284,300,317,333,350,367,384,401,418,435,452,469,486,503,520'
+                        END::text)
                     ),
-                    '{BaseFraction}',
-                    to_jsonb('0,8,18,28,40,54,74,100,140,200'::text)
+                    '{MainAttribute}',
+                    to_jsonb('0,1,20,21,40,60,80,90,110,180,240,250,250,250,250,250,250,250,250,250,250,250,250,250,250'::text)
                 ),
-                '{AppFraction}',
-                to_jsonb('10,13,16,20,24,28,32,40,50,60,80,100'::text)
+                '{BaseFraction}',
+                to_jsonb('0,8,18,28,40,54,74,100,140,200,230,260,295,330,370,410,455,500,550,600'::text)
             )
             WHERE id IN (2834, 2854, 2864);
 
@@ -4163,7 +4954,7 @@ internal sealed class PostgresGameStore : IGameStore
         await Task.CompletedTask;
     }
 
-    private static async Task<int?> ResolveWritableKitBagSlotAsync(
+    private static async Task<int?> ResolveRequestedEmptyKitBagSlotAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
@@ -4171,25 +4962,15 @@ internal sealed class PostgresGameStore : IGameStore
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            SELECT candidate.slot_index
-            FROM (
-                SELECT @requestedSlot::integer AS slot_index
-                WHERE @requestedSlot BETWEEN 0 AND @maxSlot
-                UNION ALL
-                SELECT generated.slot_index
-                FROM generate_series(0, @maxSlot) AS generated(slot_index)
-            ) candidate
-            WHERE NOT EXISTS (
+            SELECT @requestedSlot::integer
+            WHERE @requestedSlot BETWEEN 0 AND @maxSlot
+              AND NOT EXISTS (
                 SELECT 1
                 FROM character_items ci
                 WHERE ci.user_id = @characterId
                   AND ci.item_location = @kitBagLocation
-                  AND ci.slot_index = candidate.slot_index
-            )
-            ORDER BY
-                CASE WHEN candidate.slot_index = @requestedSlot THEN 0 ELSE 1 END,
-                candidate.slot_index
-            LIMIT 1;
+                  AND ci.slot_index = @requestedSlot
+              );
             """, connection, transaction);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("requestedSlot", requestedSlot);
@@ -4250,6 +5031,389 @@ internal sealed class PostgresGameStore : IGameStore
         command.Parameters.AddWithValue("itemLocation", itemLocation);
         command.Parameters.AddWithValue("slotIndex", (short)slotIndex);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<(string Equipment, string KitBag)> LoadAuthoritativeItemProjectionsForUpdateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        var equipment = new CompactItemEntry[EquipmentProjectionSlots];
+        var kitBag = new CompactItemEntry[KitBagProjectionSlots];
+
+        await using var command = new NpgsqlCommand("""
+            SELECT
+                item_location, slot_index, prop_id,
+                attribute1, attribute2, attribute3, attribute4, attribute5,
+                attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
+                item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
+                holy_socket_count,
+                holy_socket1_effect_id, holy_socket1_level,
+                holy_socket2_effect_id, holy_socket2_level,
+                holy_socket3_effect_id, holy_socket3_level,
+                holy_socket4_effect_id, holy_socket4_level,
+                holy_socket5_effect_id, holy_socket5_level,
+                holy_socket6_effect_id, holy_socket6_level
+            FROM character_items
+            WHERE user_id = @characterId
+              AND item_location IN (@equipmentLocation, @kitBagLocation)
+            ORDER BY item_location, slot_index
+            FOR UPDATE;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("equipmentLocation", ItemLocationEquipment);
+        command.Parameters.AddWithValue("kitBagLocation", ItemLocationKitBag);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var location = reader.GetInt16(0);
+            var slot = reader.GetInt16(1);
+            var item = ReadAuthoritativeCompactItem(reader);
+            if (location == ItemLocationEquipment && slot is >= 0 and < EquipmentProjectionSlots)
+            {
+                equipment[slot] = item;
+            }
+            else if (location == ItemLocationKitBag && slot is >= 0 and < KitBagProjectionSlots)
+            {
+                kitBag[slot] = item;
+            }
+        }
+
+        return (BuildCompactItemProjection(equipment), BuildCompactItemProjection(kitBag));
+    }
+
+    private static CompactItemEntry ReadAuthoritativeCompactItem(NpgsqlDataReader reader)
+    {
+        return new CompactItemEntry(
+            checked((uint)reader.GetInt32(2)),
+            ReadNullableAttribute(reader, 3),
+            ReadNullableAttribute(reader, 4),
+            ReadNullableAttribute(reader, 5),
+            ReadNullableAttribute(reader, 6),
+            ReadNullableAttribute(reader, 7),
+            reader.GetInt16(13),
+            reader.GetInt16(14),
+            reader.GetInt16(15),
+            reader.GetInt16(16),
+            reader.GetInt32(17),
+            reader.GetInt32(18),
+            ReadNullableSmallint(reader, 8),
+            ReadNullableSmallint(reader, 9),
+            ReadNullableSmallint(reader, 10),
+            ReadNullableSmallint(reader, 11),
+            ReadNullableSmallint(reader, 12),
+            reader.GetInt16(19),
+            ReadNullableSmallint(reader, 20),
+            ReadNullableSmallint(reader, 21),
+            ReadNullableSmallint(reader, 22),
+            ReadNullableSmallint(reader, 23),
+            ReadNullableSmallint(reader, 24),
+            ReadNullableSmallint(reader, 25),
+            ReadNullableSmallint(reader, 26),
+            ReadNullableSmallint(reader, 27),
+            ReadNullableSmallint(reader, 28),
+            ReadNullableSmallint(reader, 29),
+            ReadNullableSmallint(reader, 30),
+            ReadNullableSmallint(reader, 31));
+    }
+
+    private static int? ReadNullableAttribute(NpgsqlDataReader reader, int ordinal)
+    {
+        return reader.IsDBNull(ordinal) ? null : reader.GetInt16(ordinal);
+    }
+
+    private static short? ReadNullableSmallint(NpgsqlDataReader reader, int ordinal)
+    {
+        return reader.IsDBNull(ordinal) ? null : reader.GetInt16(ordinal);
+    }
+
+    private static string BuildCompactItemProjection(IEnumerable<CompactItemEntry> items)
+    {
+        return string.Join('#', items.Select(static item => item.ToCompactString())) + '#';
+    }
+
+    private static Task ApplyForgeSlotMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        ForgeSlotMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        return ApplyKitBagSlotMutationAsync(
+            connection,
+            transaction,
+            characterId,
+            mutation.Slot,
+            mutation.Before,
+            mutation.After,
+            "Forge",
+            "forge-consume",
+            cancellationToken);
+    }
+
+    private static Task ApplyGearEnhancementSlotMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        GearEnhancementSlotMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        return ApplyKitBagSlotMutationAsync(
+            connection,
+            transaction,
+            characterId,
+            mutation.KitBagSlot,
+            mutation.Before,
+            mutation.After,
+            "Gear-enhancement",
+            "gear-enhancement-consume",
+            cancellationToken);
+    }
+
+    private static Task ApplyGearMentorSlotMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        GearMentorSlotMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        return ApplyKitBagSlotMutationAsync(
+            connection,
+            transaction,
+            characterId,
+            mutation.KitBagSlot,
+            mutation.Before,
+            mutation.After,
+            "Gear Mentor",
+            "gear-mentor-consume",
+            cancellationToken);
+    }
+
+    private static async Task ApplyKitBagSlotMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        int slot,
+        CompactItemEntry before,
+        CompactItemEntry after,
+        string operationName,
+        string consumeAuditSource,
+        CancellationToken cancellationToken)
+    {
+        if (before.IsEmpty)
+        {
+            if (after.IsEmpty)
+            {
+                throw new InvalidOperationException(
+                    $"{operationName} plan contains an empty-to-empty kit-bag mutation at slot {slot}.");
+            }
+
+            await InsertCharacterItemIntoEmptySlotAsync(
+                connection,
+                transaction,
+                characterId,
+                ItemLocationKitBag,
+                slot,
+                after,
+                cancellationToken);
+            return;
+        }
+
+        if (before == after)
+        {
+            return;
+        }
+
+        if (after.IsEmpty)
+        {
+            var deleted = await DeleteCharacterItemSlotAsync(
+                connection,
+                transaction,
+                characterId,
+                ItemLocationKitBag,
+                slot,
+                consumeAuditSource,
+                cancellationToken);
+            if (deleted != 1)
+            {
+                throw new InvalidOperationException(
+                    $"{operationName} kit-bag slot {slot} disappeared after it was locked.");
+            }
+
+            return;
+        }
+
+        await using var command = new NpgsqlCommand("""
+            UPDATE character_items
+            SET prop_id = @itemId,
+                attribute1 = @attribute1,
+                attribute2 = @attribute2,
+                attribute3 = @attribute3,
+                attribute4 = @attribute4,
+                attribute5 = @attribute5,
+                attribute_level1 = @attributeLevel1,
+                attribute_level2 = @attributeLevel2,
+                attribute_level3 = @attributeLevel3,
+                attribute_level4 = @attributeLevel4,
+                attribute_level5 = @attributeLevel5,
+                item_quality = @itemQuality,
+                item_grade = @itemGrade,
+                bound = @bound,
+                stack = @stack,
+                item_exp = @itemExp,
+                holy_suit_code = @holySuitCode,
+                holy_socket_count = @holySocketCount,
+                holy_socket1_effect_id = @holySocket1EffectId,
+                holy_socket1_level = @holySocket1Level,
+                holy_socket2_effect_id = @holySocket2EffectId,
+                holy_socket2_level = @holySocket2Level,
+                holy_socket3_effect_id = @holySocket3EffectId,
+                holy_socket3_level = @holySocket3Level,
+                holy_socket4_effect_id = @holySocket4EffectId,
+                holy_socket4_level = @holySocket4Level,
+                holy_socket5_effect_id = @holySocket5EffectId,
+                holy_socket5_level = @holySocket5Level,
+                holy_socket6_effect_id = @holySocket6EffectId,
+                holy_socket6_level = @holySocket6Level,
+                updated_at = now()
+            WHERE user_id = @characterId
+              AND item_location = @itemLocation
+              AND slot_index = @slotIndex;
+            """, connection, transaction);
+        AddCharacterItemParameters(
+            command,
+            characterId,
+            ItemLocationKitBag,
+            slot,
+            after);
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(
+                $"{operationName} kit-bag slot {slot} changed after it was locked.");
+        }
+    }
+
+    private static async Task ApplyHolyStoneSlotMutationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        HolyStoneSlotMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        var itemLocation = mutation.IsKitBag ? ItemLocationKitBag : ItemLocationEquipment;
+        if (mutation.Before.IsEmpty)
+        {
+            if (mutation.After.IsEmpty)
+            {
+                throw new InvalidOperationException("Holy-stone plan contains an empty-to-empty mutation.");
+            }
+
+            await InsertCharacterItemIntoEmptySlotAsync(
+                connection,
+                transaction,
+                characterId,
+                itemLocation,
+                mutation.Slot,
+                mutation.After,
+                cancellationToken);
+            return;
+        }
+
+        if (mutation.After.IsEmpty)
+        {
+            await DeleteCharacterItemSlotAsync(
+                connection,
+                transaction,
+                characterId,
+                itemLocation,
+                mutation.Slot,
+                "holy-stone-consume",
+                cancellationToken);
+            return;
+        }
+
+        if (WithoutHolyStoneSocketState(mutation.Before) != WithoutHolyStoneSocketState(mutation.After))
+        {
+            throw new InvalidOperationException(
+                $"Holy-stone plan attempted to change non-socket item data at location {itemLocation}, slot {mutation.Slot}.");
+        }
+
+        await UpdateHolyStoneSocketStateAsync(
+            connection,
+            transaction,
+            characterId,
+            itemLocation,
+            mutation.Slot,
+            mutation.Before.Id,
+            mutation.After,
+            cancellationToken);
+    }
+
+    private static CompactItemEntry WithoutHolyStoneSocketState(CompactItemEntry item)
+    {
+        return item with
+        {
+            SocketCount = 0,
+            Socket1EffectId = null,
+            Socket1Level = null,
+            Socket2EffectId = null,
+            Socket2Level = null,
+            Socket3EffectId = null,
+            Socket3Level = null,
+            Socket4EffectId = null,
+            Socket4Level = null,
+            Socket5EffectId = null,
+            Socket5Level = null,
+            Socket6EffectId = null,
+            Socket6Level = null
+        };
+    }
+
+    private static async Task UpdateHolyStoneSocketStateAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        short itemLocation,
+        int slotIndex,
+        uint expectedItemId,
+        CompactItemEntry item,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            UPDATE character_items
+            SET holy_socket_count = @holySocketCount,
+                holy_socket1_effect_id = @holySocket1EffectId,
+                holy_socket1_level = @holySocket1Level,
+                holy_socket2_effect_id = @holySocket2EffectId,
+                holy_socket2_level = @holySocket2Level,
+                holy_socket3_effect_id = @holySocket3EffectId,
+                holy_socket3_level = @holySocket3Level,
+                holy_socket4_effect_id = @holySocket4EffectId,
+                holy_socket4_level = @holySocket4Level,
+                holy_socket5_effect_id = @holySocket5EffectId,
+                holy_socket5_level = @holySocket5Level,
+                holy_socket6_effect_id = @holySocket6EffectId,
+                holy_socket6_level = @holySocket6Level,
+                updated_at = now()
+            WHERE user_id = @characterId
+              AND item_location = @itemLocation
+              AND slot_index = @slotIndex
+              AND prop_id = @expectedItemId;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("itemLocation", itemLocation);
+        command.Parameters.AddWithValue("slotIndex", (short)slotIndex);
+        command.Parameters.AddWithValue("expectedItemId", checked((int)expectedItemId));
+        AddHolyStoneParameters(command, item);
+
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(
+                $"Holy-stone target changed at location {itemLocation}, slot {slotIndex}.");
+        }
     }
 
     private static async Task ReplaceCharacterItemsFromCompactAsync(
@@ -4399,6 +5563,55 @@ internal sealed class PostgresGameStore : IGameStore
                 holy_socket6_level = EXCLUDED.holy_socket6_level,
                 updated_at = now();
             """, connection, transaction);
+        AddCharacterItemParameters(command, characterId, itemLocation, slotIndex, item);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task InsertCharacterItemIntoEmptySlotAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        short itemLocation,
+        int slotIndex,
+        CompactItemEntry item,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO character_items (
+                user_id, item_location, slot_index, prop_id,
+                attribute1, attribute2, attribute3, attribute4, attribute5,
+                attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
+                item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
+                holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
+                holy_socket3_effect_id, holy_socket3_level, holy_socket4_effect_id, holy_socket4_level,
+                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level
+            )
+            VALUES (
+                @characterId, @itemLocation, @slotIndex, @itemId,
+                @attribute1, @attribute2, @attribute3, @attribute4, @attribute5,
+                @attributeLevel1, @attributeLevel2, @attributeLevel3, @attributeLevel4, @attributeLevel5,
+                @itemQuality, @itemGrade, @bound, @stack, @itemExp, @holySuitCode,
+                @holySocketCount, @holySocket1EffectId, @holySocket1Level, @holySocket2EffectId, @holySocket2Level,
+                @holySocket3EffectId, @holySocket3Level, @holySocket4EffectId, @holySocket4Level,
+                @holySocket5EffectId, @holySocket5Level, @holySocket6EffectId, @holySocket6Level
+            )
+            ON CONFLICT (user_id, item_location, slot_index) DO NOTHING;
+            """, connection, transaction);
+        AddCharacterItemParameters(command, characterId, itemLocation, slotIndex, item);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(
+                $"Holy-stone destination changed at location {itemLocation}, slot {slotIndex}.");
+        }
+    }
+
+    private static void AddCharacterItemParameters(
+        NpgsqlCommand command,
+        int characterId,
+        short itemLocation,
+        int slotIndex,
+        CompactItemEntry item)
+    {
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("itemLocation", itemLocation);
         command.Parameters.AddWithValue("slotIndex", (short)slotIndex);
@@ -4419,7 +5632,14 @@ internal sealed class PostgresGameStore : IGameStore
         command.Parameters.AddWithValue("stack", item.Stack);
         command.Parameters.AddWithValue("itemExp", item.Exp);
         command.Parameters.AddWithValue("holySuitCode", item.HolySuitCode);
-        command.Parameters.AddWithValue("holySocketCount", Math.Clamp(item.SocketCount, (short)0, (short)HolyStoneItemMutator.MaxSockets));
+        AddHolyStoneParameters(command, item);
+    }
+
+    private static void AddHolyStoneParameters(NpgsqlCommand command, CompactItemEntry item)
+    {
+        command.Parameters.AddWithValue(
+            "holySocketCount",
+            Math.Clamp(item.SocketCount, (short)0, (short)HolyStoneItemMutator.MaxSockets));
         AddNullableSmallintParameter(command, "holySocket1EffectId", item.Socket1EffectId);
         AddNullableSmallintParameter(command, "holySocket1Level", item.Socket1Level);
         AddNullableSmallintParameter(command, "holySocket2EffectId", item.Socket2EffectId);
@@ -4432,10 +5652,9 @@ internal sealed class PostgresGameStore : IGameStore
         AddNullableSmallintParameter(command, "holySocket5Level", item.Socket5Level);
         AddNullableSmallintParameter(command, "holySocket6EffectId", item.Socket6EffectId);
         AddNullableSmallintParameter(command, "holySocket6Level", item.Socket6Level);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task DeleteCharacterItemSlotAsync(
+    private static async Task<int> DeleteCharacterItemSlotAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
@@ -4474,7 +5693,7 @@ internal sealed class PostgresGameStore : IGameStore
         command.Parameters.AddWithValue("itemLocation", itemLocation);
         command.Parameters.AddWithValue("slotIndex", (short)slotIndex);
         command.Parameters.AddWithValue("source", source);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task SyncCharacterStarterSkillsAsync(CancellationToken cancellationToken)
@@ -4590,7 +5809,8 @@ internal sealed class PostgresGameStore : IGameStore
         {
             var kind = reader.GetString(0);
             var slot = reader.GetInt16(1);
-            if (!EquipmentSlots.IsEquipmentSlot(slot))
+            if (!EquipmentSlots.IsEquipmentKind(kind) ||
+                !EquipmentSlots.IsEquipmentSlot(slot))
             {
                 return null;
             }
@@ -4617,16 +5837,25 @@ internal sealed class PostgresGameStore : IGameStore
             INSERT INTO character_base (
                 account_id, server_id, name, gender, "GM", camp, profession, fighter_job_lv,
                 scholar_job_lv, fighter_job_exp, scholar_job_exp, "curHP", "curMP", status,
-                belief, prestige, earl_rank, consortia, consortia_job, consortia_contribute,
+                belief, zodiac_type, zodiac_lucky_status, zodiac_lucky_expires_at, zodiac_level,
+                zodiac_energy, zodiac_energy_remainder_x100, zodiac_online_day,
+                zodiac_online_duration_ticks, zodiac_last_online_at, zodiac_last_compensation_day,
+                zodiac_accumulated_exp_x100, zodiac_accumulated_talent_exp_x100,
+                prestige, earl_rank, consortia, consortia_job, consortia_contribute,
                 store_num, bag_num, hair_style, face_shap, "Map", "Pos_X", "Pos_Z", "Money",
                 "Stone", "SkillPoint", "SkillExp", holy_suit_points, "MaxHP", "MaxMP", "Register_time",
                 "LastLogin_time", mutetime
             )
             VALUES (
                 @accountId, 1, @name, @gender, 0, @camp, @profession, @level,
-                0, @experience, 0, @currentHp, @currentMp, 0, @faith, 0, 0, 0, 0, 0,
-                10, 1, @hair, @face, @currentMap, @positionX, @positionZ, 10000,
-                10, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0
+                0, @experience, 0, @currentHp, @currentMp, 0, @faith, @zodiacType,
+                @zodiacLuckyStatus, @zodiacLuckyExpiresAt, @zodiacLevel, @zodiacEnergy,
+                @zodiacEnergyRemainderX100, @zodiacOnlineDay, @zodiacOnlineDurationTicks,
+                @zodiacLastOnlineAt, @zodiacLastCompensationDay,
+                @zodiacAccumulatedExperienceX100, @zodiacAccumulatedTalentExperienceX100,
+                0, 0, 0, 0, 0,
+                10, 1, @hair, @face, @currentMap, @positionX, @positionZ, @silver,
+                @gold, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0
             )
             RETURNING id;
             """, connection, transaction))
@@ -4638,9 +5867,51 @@ internal sealed class PostgresGameStore : IGameStore
             command.Parameters.AddWithValue("profession", (short)character.Profession);
             command.Parameters.AddWithValue("level", character.Level);
             command.Parameters.AddWithValue("experience", character.Experience);
+            command.Parameters.AddWithValue("silver", Math.Max(0, character.Silver));
+            command.Parameters.AddWithValue("gold", Math.Max(0, character.Gold));
             command.Parameters.AddWithValue("currentHp", character.CurrentHp);
             command.Parameters.AddWithValue("currentMp", character.CurrentMp);
             command.Parameters.AddWithValue("faith", (short)character.Faith);
+            command.Parameters.AddWithValue("zodiacType", (short)character.ZodiacType);
+            command.Parameters.AddWithValue("zodiacLuckyStatus", character.ZodiacLuckyStatus);
+            command.Parameters.Add(new NpgsqlParameter("zodiacLuckyExpiresAt", NpgsqlDbType.TimestampTz)
+            {
+                Value = character.ZodiacLuckyExpiresAt.HasValue
+                    ? character.ZodiacLuckyExpiresAt.Value.UtcDateTime
+                    : DBNull.Value
+            });
+            command.Parameters.AddWithValue("zodiacLevel", (short)character.ZodiacLevel);
+            command.Parameters.AddWithValue("zodiacEnergy", character.ZodiacEnergy);
+            command.Parameters.AddWithValue(
+                "zodiacEnergyRemainderX100",
+                character.ZodiacEnergyRemainderX100);
+            command.Parameters.Add(new NpgsqlParameter("zodiacOnlineDay", NpgsqlDbType.Date)
+            {
+                Value = character.ZodiacOnlineDay.HasValue
+                    ? character.ZodiacOnlineDay.Value
+                    : DBNull.Value
+            });
+            command.Parameters.AddWithValue(
+                "zodiacOnlineDurationTicks",
+                character.ZodiacOnlineDurationTicksToday);
+            command.Parameters.Add(new NpgsqlParameter("zodiacLastOnlineAt", NpgsqlDbType.TimestampTz)
+            {
+                Value = character.ZodiacLastOnlineAt.HasValue
+                    ? character.ZodiacLastOnlineAt.Value.UtcDateTime
+                    : DBNull.Value
+            });
+            command.Parameters.Add(new NpgsqlParameter("zodiacLastCompensationDay", NpgsqlDbType.Date)
+            {
+                Value = character.ZodiacLastCompensationDay.HasValue
+                    ? character.ZodiacLastCompensationDay.Value
+                    : DBNull.Value
+            });
+            command.Parameters.AddWithValue(
+                "zodiacAccumulatedExperienceX100",
+                character.ZodiacAccumulatedExperienceX100);
+            command.Parameters.AddWithValue(
+                "zodiacAccumulatedTalentExperienceX100",
+                character.ZodiacAccumulatedTalentExperienceX100);
             command.Parameters.AddWithValue("hair", (short)character.Hair);
             command.Parameters.AddWithValue("face", (short)character.Face);
             command.Parameters.AddWithValue("currentMap", (short)character.CurrentMap);
@@ -4662,7 +5933,7 @@ internal sealed class PostgresGameStore : IGameStore
             transaction,
             characterId,
             character.Equipment,
-            GameDefaults.DefaultKitBag,
+            GameDefaults.StarterKitBag,
             cancellationToken);
 
         await using (var command = new NpgsqlCommand("""
@@ -4708,6 +5979,24 @@ internal sealed class PostgresGameStore : IGameStore
             LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
             WHERE cb.id = @id;
             """);
+        command.Parameters.AddWithValue("id", id);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadCharacter(reader) : null;
+    }
+
+    private static async Task<GameCharacter?> GetCharacterByIdAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand($"""
+            SELECT {CharacterColumns}
+            FROM character_base cb
+            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+            WHERE cb.id = @id;
+            """, connection, transaction);
         command.Parameters.AddWithValue("id", id);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -4761,7 +6050,29 @@ internal sealed class PostgresGameStore : IGameStore
             ArmorRank = reader.GetInt16(25),
             ArmorAuraEffect = reader.GetInt32(26),
             Experience = reader.GetInt32(27),
-            VitalsRevision = reader.GetInt64(28)
+            VitalsRevision = reader.GetInt64(28),
+            ZodiacType = (byte)reader.GetInt16(29),
+            ZodiacLuckyStatus = reader.GetInt32(30),
+            ZodiacLuckyExpiresAt = reader.IsDBNull(31)
+                ? null
+                : new DateTimeOffset(reader.GetDateTime(31).ToUniversalTime()),
+            ZodiacLevel = (byte)reader.GetInt16(32),
+            ZodiacEnergy = reader.GetInt32(33),
+            ZodiacAccumulatedExperienceX100 = reader.GetInt32(34),
+            ZodiacAccumulatedTalentExperienceX100 = reader.GetInt32(35),
+            ZodiacEnergyRemainderX100 = reader.GetInt32(36),
+            ZodiacOnlineDay = reader.IsDBNull(37)
+                ? null
+                : reader.GetFieldValue<DateOnly>(37),
+            ZodiacOnlineDurationTicksToday = reader.GetInt64(38),
+            ZodiacLastOnlineAt = reader.IsDBNull(39)
+                ? null
+                : new DateTimeOffset(reader.GetDateTime(39).ToUniversalTime()),
+            ZodiacLastCompensationDay = reader.IsDBNull(40)
+                ? null
+                : reader.GetFieldValue<DateOnly>(40),
+            Silver = reader.GetInt32(41),
+            Gold = reader.GetInt32(42)
         };
     }
 

@@ -5,6 +5,10 @@ namespace Godswar.Server.Game;
 internal static class MonsterCombatResolver
 {
     internal const float DefaultPlayerBasicAttackRange = 2.5f;
+    // A basic-attack request carries the client's final auto-approach position.
+    // It can differ from the last Walk sample due to client interpolation, so
+    // accept a bounded correction instead of testing reach from a stale point.
+    internal const float MaximumBasicAttackPositionCorrection = 0.5f;
 
     public static uint CalculatePlayerBasicAttack(GameCharacter character)
     {
@@ -15,14 +19,21 @@ internal static class MonsterCombatResolver
         return (uint)Math.Max(1, attack);
     }
 
-    public static uint CalculateMonsterPhysicalAttack(uint tier, GameCharacter target)
+    public static uint CalculateMonsterPhysicalAttack(
+        uint tier,
+        GameCharacter target,
+        decimal receivedDamageReduction = 0m)
     {
         var boundedTier = (int)Math.Clamp(tier, 1u, 10_000u);
         // Captures establish tier 1/2/3 base attacks of 24/27/31. Keep the
         // extrapolation isolated here until higher-tier combat data is captured.
         var baseAttack = 21 + (3 * boundedTier) + (boundedTier / 3);
         var stats = target.CalculatedStats ?? CharacterStats.FromCharacter(target);
-        return (uint)Math.Max(1, baseAttack - Math.Max(0, stats.PhysicalDefense));
+        var damageAfterDefense = Math.Max(1, baseAttack - Math.Max(0, stats.PhysicalDefense));
+        var boundedReduction = Math.Clamp(receivedDamageReduction, 0m, 1m);
+        var reducedDamage = decimal.ToInt32(decimal.Truncate(
+            damageAfterDefense * (1m - boundedReduction)));
+        return (uint)Math.Max(1, reducedDamage);
     }
 
     public static bool IsWithinBasicAttackRange(
@@ -41,8 +52,33 @@ internal static class MonsterCombatResolver
         var deltaX = (double)targetX - attackerX;
         var deltaZ = (double)targetZ - attackerZ;
         var boundedRange = Math.Max(0f, attackRange);
-        return (deltaX * deltaX) + (deltaZ * deltaZ) <
+        return (deltaX * deltaX) + (deltaZ * deltaZ) <=
                boundedRange * boundedRange;
+    }
+
+    public static bool TryResolvePlayerBasicAttackPosition(
+        float serverX,
+        float serverZ,
+        float reportedX,
+        float reportedZ,
+        out float resolvedX,
+        out float resolvedZ)
+    {
+        resolvedX = serverX;
+        resolvedZ = serverZ;
+        if (!IsWithinBasicAttackRange(
+                serverX,
+                serverZ,
+                reportedX,
+                reportedZ,
+                MaximumBasicAttackPositionCorrection))
+        {
+            return false;
+        }
+
+        resolvedX = reportedX;
+        resolvedZ = reportedZ;
+        return true;
     }
 
     public static float ResolvePlayerBasicAttackRange(CapturedMonsterSpawn target)

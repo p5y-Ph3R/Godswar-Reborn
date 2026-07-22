@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Text;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -18,7 +20,7 @@ internal sealed class GameClientHandler : IClientHandler
     private const int HolyStoneInsufficientFunds = 1400;
     private const int HolyStoneDrillSuccess = 1500;
     private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan LastItemInfoTtl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ForgeSelectionTtl = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
     // The client cadence is 1500 ms. A 25 ms allowance prevents a legitimate
     // swing from being discarded by timer/socket scheduling jitter.
@@ -27,10 +29,18 @@ internal sealed class GameClientHandler : IClientHandler
     private readonly ClientSession _session;
     private readonly IGameStore _store;
     private readonly GameSessionRegistry _registry;
+    private readonly DeveloperCommandOptions _developerCommands;
     private GameAccount? _account;
     private GameCharacter? _character;
     private PendingUnequipFollowup? _pendingUnequipFollowup;
-    private PendingItemInfo? _lastItemInfo;
+    private GearEnhancerSelectionContext? _gearEnhancerSelectionContext;
+    private int? _gearMentorOperationPageSubId;
+    private ForgeSlotSelection? _forgeEquipment;
+    private ForgeSlotSelection? _forgePrimaryMaterial;
+    private readonly ForgeOddsReservationSet _forgeOddsMaterials = new();
+    private int? _forgeAccountId;
+    private int? _forgeCharacterId;
+    private long _forgeSelectionStartedTimestamp;
     private bool _registered;
     private bool _accountSessionRegistered;
     private bool _worldPresenceAnnounced;
@@ -45,11 +55,16 @@ internal sealed class GameClientHandler : IClientHandler
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
     private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
 
-    public GameClientHandler(ClientSession session, IGameStore store, GameSessionRegistry registry)
+    public GameClientHandler(
+        ClientSession session,
+        IGameStore store,
+        GameSessionRegistry registry,
+        DeveloperCommandOptions? developerCommands = null)
     {
         _session = session;
         _store = store;
         _registry = registry;
+        _developerCommands = developerCommands ?? new DeveloperCommandOptions();
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -69,6 +84,31 @@ internal sealed class GameClientHandler : IClientHandler
         }
         finally
         {
+            ClearGearEnhancerSelection();
+            try
+            {
+                await _registry.FinishProgressionBoostOnlineSessionAsync(
+                    _session,
+                    DateTimeOffset.UtcNow,
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[status] failed saving final online boost interval: {ex.Message}");
+            }
+
+            try
+            {
+                await _registry.FinishZodiacOnlineSessionAsync(
+                    _session,
+                    DateTimeOffset.UtcNow,
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[zodiac] failed saving final online interval: {ex.Message}");
+            }
+
             try
             {
                 await PersistCharacterPositionAsync(force: true, CancellationToken.None);
@@ -137,6 +177,12 @@ internal sealed class GameClientHandler : IClientHandler
                 await _session.SendAsync(packet.Buffer, cancellationToken, "UiHeartbeatEcho");
                 break;
             case Opcodes.Talk:
+                if (!await HandleDeveloperItemCommandAsync(packet, cancellationToken))
+                {
+                    await BroadcastToCurrentMapAsync(packet, cancellationToken);
+                }
+
+                break;
             case Opcodes.WalkBegin:
             case Opcodes.WalkEnd:
             case Opcodes.Walk:
@@ -179,14 +225,39 @@ internal sealed class GameClientHandler : IClientHandler
             case Opcodes.ItemInfoRequest:
                 HandleItemInfoRequest(packet);
                 break;
+            case Opcodes.ForgeSelection:
+                HandleForgeSelection(packet);
+                break;
+            case Opcodes.ForgeStart:
+                await HandleForgeStartAsync(packet, cancellationToken);
+                break;
+            case Opcodes.ForgeCancel:
+                // The stock Gear Mentor emits this ordinary-forge cancel when
+                // gear is unequipped into the bag while its dialog is open.
+                // Its subsequent 10193 item selections still belong to the
+                // active Gear Mentor workflow, so only ordinary forge state is
+                // invalidated here.
+                ClearForgeSelection();
+                break;
+            case Opcodes.ForgeReplacementSelection:
+            case Opcodes.ForgeReplacementAction:
+                // Replacement mode is not implemented. It shares the forge UI,
+                // so entering it must invalidate any ordinary-forge batch.
+                ClearForgeSelection();
+                Console.WriteLine(
+                    $"[forge] ignored unsupported {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode}");
+                break;
             case Opcodes.NpcDialogOpen:
                 await HandleNpcDialogOpenAsync(packet, cancellationToken);
                 break;
             case Opcodes.NpcDialogPageRequest:
-                HandleNpcDialogPageRequest(packet);
+                await HandleNpcDialogPageRequestAsync(packet, cancellationToken);
                 break;
             case Opcodes.NpcFunctionAction:
                 await HandleNpcFunctionActionAsync(packet, cancellationToken);
+                break;
+            case Opcodes.GearEnhancerItemSelection:
+                HandleGearEnhancerItemSelection(packet);
                 break;
             case Opcodes.PlayerNameInspectRequest:
                 await _session.SendAsync(packet.Buffer, cancellationToken, "PlayerNameInspectAck");
@@ -196,6 +267,9 @@ internal sealed class GameClientHandler : IClientHandler
                 break;
             case Opcodes.PlayerInspectVisualRequest:
                 await HandlePlayerInspectVisualRequestAsync(packet, cancellationToken);
+                break;
+            case Opcodes.Zodiac:
+                await HandleZodiacAsync(packet, cancellationToken);
                 break;
             case Opcodes.BreakItem:
                 await HandleBreakItemAsync(packet, cancellationToken);
@@ -224,7 +298,6 @@ internal sealed class GameClientHandler : IClientHandler
                 break;
             case Opcodes.GameServerReady:
             case Opcodes.GameServerInfo:
-            case Opcodes.Forge:
             case Opcodes.PlayerInspectFollowup:
             case 10192:
                 Console.WriteLine($"[game] ignored {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode}");
@@ -236,8 +309,425 @@ internal sealed class GameClientHandler : IClientHandler
         }
     }
 
+    private void HandleForgeSelection(GamePacket packet)
+    {
+        if (_account is null ||
+            _character is null ||
+            !ForgeItemSelectionPacket.TryParse(packet.Payload, out var selection) ||
+            selection.RequestMode != ForgeItemSelectionPacket.OrdinaryForgeMode)
+        {
+            Console.WriteLine(
+                $"[forge] ignored malformed/unsupported selection character={_character?.Name ?? "<none>"} len={packet.Length}");
+            return;
+        }
+
+        if (selection.IsOddsMaterialIncrement)
+        {
+            HandleForgeOddsIncrement(selection);
+            return;
+        }
+
+        var item = KitBagSlots.GetItem(_character.KitBag, selection.KitBagSlot);
+        if (!selection.Matches(item))
+        {
+            // Some client builds emit a second descriptor containing stale
+            // scratch-buffer data. Never let that overwrite a valid staged
+            // selection; only current authoritative bag contents are accepted.
+            Console.WriteLine(
+                $"[forge] ignored stale selection character={_character.Name} slot={selection.KitBagSlot} item={selection.ItemId}");
+            return;
+        }
+
+        if (ForgingMaterialRuleCatalog.TryGet(item.Id, out var materialRule))
+        {
+            if (materialRule.MaterialType is >= 1 and <= 3)
+            {
+                if (selection.DestinationSlot != ForgeItemSelectionPacket.PrimaryMaterialDestinationSlot)
+                {
+                    Console.WriteLine(
+                        $"[forge] ignored primary in invalid destination character={_character.Name} destination={selection.DestinationSlot}");
+                    return;
+                }
+
+                EnsureForgeSelectionBatch();
+                _forgePrimaryMaterial = new ForgeSlotSelection(
+                    selection.KitBagSlot,
+                    item,
+                    1);
+            }
+            else if (materialRule.MaterialType == 4)
+            {
+                if (selection.DestinationSlot != ForgeItemSelectionPacket.OddsMaterialDestinationSlot)
+                {
+                    Console.WriteLine(
+                        $"[forge] ignored crystal in invalid destination character={_character.Name} destination={selection.DestinationSlot}");
+                    return;
+                }
+
+                EnsureForgeSelectionBatch();
+                // Destination 5 is the trustworthy item descriptor paired
+                // with action 88. It validates the source but does not add a
+                // crystal by itself (important when the client is at cap 25).
+                _forgeOddsMaterials.ValidateDescriptor(selection.KitBagSlot, item);
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"[forge] ignored non-ordinary material character={_character.Name} item={item.Id} type={materialRule.MaterialType}");
+                return;
+            }
+        }
+        else
+        {
+            if (selection.DestinationSlot != ForgeItemSelectionPacket.EquipmentDestinationSlot ||
+                !EquipmentForgeCatalog.TryGet(item.Id, out _))
+            {
+                Console.WriteLine(
+                    $"[forge] ignored non-forgeable equipment character={_character.Name} item={item.Id} destination={selection.DestinationSlot}");
+                return;
+            }
+
+            EnsureForgeSelectionBatch();
+            _forgeEquipment = new ForgeSlotSelection(selection.KitBagSlot, item, 1);
+        }
+
+        Console.WriteLine(
+            $"[forge] staged character={_character.Name} bagSlot={selection.KitBagSlot} item={item.Id} destination={selection.DestinationSlot} reserved={GetForgeReservedQuantity(selection.DestinationSlot)}");
+    }
+
+    private void HandleForgeOddsIncrement(ForgeItemSelectionPacket selection)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        // Action 88 intentionally has no valid item descriptor. Resolve its
+        // trustworthy bag coordinates against the current server inventory.
+        var item = KitBagSlots.GetItem(_character.KitBag, selection.KitBagSlot);
+        if (item.IsEmpty ||
+            !ForgingMaterialRuleCatalog.TryGet(item.Id, out var materialRule) ||
+            materialRule.MaterialType != 4)
+        {
+            Console.WriteLine(
+                $"[forge] ignored crystal increment character={_character.Name} bagSlot={selection.KitBagSlot} item={item.Id}");
+            return;
+        }
+
+        EnsureForgeSelectionBatch();
+        if (!_forgeOddsMaterials.TryIncrement(selection.KitBagSlot, item))
+        {
+            Console.WriteLine(
+                $"[forge] ignored excess/stale crystal character={_character.Name} bagSlot={selection.KitBagSlot} item={item.Id} reserved={_forgeOddsMaterials.TotalQuantity} stack={item.Stack}");
+            return;
+        }
+
+        Console.WriteLine(
+            $"[forge] staged character={_character.Name} bagSlot={selection.KitBagSlot} item={item.Id} destination={selection.DestinationSlot} reserved={_forgeOddsMaterials.TotalQuantity}");
+    }
+
+    private async Task HandleForgeStartAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken)
+    {
+        const int expectedPayloadLength = 36;
+        const int modeOffset = 4;
+        if (_account is null ||
+            _character is null ||
+            packet.Payload.Length != expectedPayloadLength ||
+            BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(modeOffset, 4)) !=
+                ForgeItemSelectionPacket.OrdinaryForgeMode ||
+            !HasCurrentForgeIdentity() ||
+            _forgeEquipment is null ||
+            _forgePrimaryMaterial is null ||
+            (_forgeOddsMaterials.TotalQuantity > 0 && !_forgeOddsMaterials.IsFullyLinked) ||
+            IsForgeSelectionExpired())
+        {
+            ClearForgeSelection();
+            await _session.SendAsync(
+                PacketBuilder.ForgeResult(success: false, resultKind: 0),
+                cancellationToken,
+                "ForgeRejected");
+            Console.WriteLine(
+                $"[forge] rejected incomplete/expired start character={_character?.Name ?? "<none>"} len={packet.Length}");
+            return;
+        }
+
+        var oddsMaterials = _forgeOddsMaterials.CaptureSelections();
+        var request = new ForgeTransactionRequest(
+            _forgeEquipment,
+            _forgePrimaryMaterial,
+            oddsMaterials.FirstOrDefault(),
+            oddsMaterials.Skip(1).ToArray());
+
+        // Clear before awaiting persistence so a duplicated Start packet can
+        // never consume the same reservation twice.
+        ClearForgeSelection();
+
+        ForgeTransactionResult result;
+        try
+        {
+            result = await _store.ForgeEquipmentAsync(
+                _account.Id,
+                _character.Id,
+                request,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[forge] persistence failure account={_account.Id} character={_character.Name}: {ex.Message}");
+            await _session.SendAsync(
+                PacketBuilder.ForgeResult(success: false, resultKind: 0),
+                cancellationToken,
+                "ForgeRejected");
+            return;
+        }
+
+        if (!result.Committed || result.Character is null)
+        {
+            await _session.SendAsync(
+                PacketBuilder.ForgeResult(success: false, resultKind: 0),
+                cancellationToken,
+                "ForgeRejected");
+            Console.WriteLine(
+                $"[forge] rejected account={_account.Id} character={_character.Name} status={result.Status} reason={result.RejectionReason}");
+            return;
+        }
+
+        _character = result.Character;
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+
+        // The result must arrive before authoritative bag/status refreshes:
+        // the legacy client releases its forge wait flag and applies its local
+        // animation/result transition while processing this packet.
+        await _session.SendAsync(
+            PacketBuilder.ForgeResult(result.Succeeded, resultKind: 1),
+            cancellationToken,
+            "ForgeResult");
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(_character),
+            cancellationToken,
+            "ForgePlayerStatus");
+        await SendKitBagRefreshAsync(cancellationToken);
+
+        Console.WriteLine(
+            $"[forge] committed account={_account.Id} character={_character.Name} status={result.Status} operation={result.MaterialType} chance={result.Probability} silver={result.SilverSpent} equipment={result.EquipmentBefore.Id}->{result.EquipmentAfter.Id} quality={result.EquipmentBefore.Quality}->{result.EquipmentAfter.Quality} grade={result.EquipmentBefore.Grade}->{result.EquipmentAfter.Grade}");
+    }
+
+    private void ClearForgeSelection()
+    {
+        _forgeEquipment = null;
+        _forgePrimaryMaterial = null;
+        _forgeOddsMaterials.Clear();
+        _forgeAccountId = null;
+        _forgeCharacterId = null;
+        _forgeSelectionStartedTimestamp = 0;
+    }
+
+    private void EnsureForgeSelectionBatch()
+    {
+        if (HasCurrentForgeIdentity() && !IsForgeSelectionExpired())
+        {
+            return;
+        }
+
+        ClearForgeSelection();
+        _forgeAccountId = _account!.Id;
+        _forgeCharacterId = _character!.Id;
+        _forgeSelectionStartedTimestamp = Stopwatch.GetTimestamp();
+    }
+
+    private int GetForgeReservedQuantity(int destinationSlot)
+    {
+        return destinationSlot switch
+        {
+            ForgeItemSelectionPacket.EquipmentDestinationSlot => _forgeEquipment?.Quantity ?? 0,
+            ForgeItemSelectionPacket.PrimaryMaterialDestinationSlot => _forgePrimaryMaterial?.Quantity ?? 0,
+            ForgeItemSelectionPacket.OddsMaterialDestinationSlot or
+                ForgeItemSelectionPacket.OddsMaterialIncrementAction => _forgeOddsMaterials.TotalQuantity,
+            _ => 0
+        };
+    }
+
+    private bool HasCurrentForgeIdentity()
+    {
+        return ForgeSelectionMatchesIdentity(
+            _forgeAccountId,
+            _forgeCharacterId,
+            _account,
+            _character);
+    }
+
+    internal static bool ForgeSelectionMatchesIdentity(
+        int? stagedAccountId,
+        int? stagedCharacterId,
+        GameAccount? account,
+        GameCharacter? character)
+    {
+        return account is not null &&
+               character is not null &&
+               character.AccountId == account.Id &&
+               stagedAccountId == account.Id &&
+               stagedCharacterId == character.Id;
+    }
+
+    private bool IsForgeSelectionExpired()
+    {
+        return _forgeAccountId.HasValue &&
+               Stopwatch.GetElapsedTime(_forgeSelectionStartedTimestamp) > ForgeSelectionTtl;
+    }
+
+    private async Task<bool> HandleDeveloperItemCommandAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken)
+    {
+        if (!TryReadTalkText(packet.Payload, out var text) ||
+            !DeveloperItemCommand.TryParse(text, out var request, out var error))
+        {
+            return false;
+        }
+
+        // A recognized developer command is always consumed locally. It must
+        // never be echoed into public map chat, including on denied attempts.
+        if (_account is null || _character is null)
+        {
+            Console.WriteLine("[developer-item] denied before account/character enter");
+            return true;
+        }
+
+        if (!_developerCommands.Allows(_account.Id))
+        {
+            Console.WriteLine(
+                $"[developer-item] denied account={_account.Id} character={_character.Name}");
+            return true;
+        }
+
+        if (request is null)
+        {
+            Console.WriteLine(
+                $"[developer-item] invalid account={_account.Id} character={_character.Name}: {error}");
+            return true;
+        }
+
+        if (request.Operation == DeveloperItemOperation.ClearBag)
+        {
+            // Opcode 10033 detail pages and opcode 10056 slot-index packets do
+            // not evict an icon already instantiated by this client. Capture
+            // the occupied slots so the successful clear can use the native
+            // source-to-FFFF deletion acknowledgement for every old icon.
+            var deletionAcknowledgements =
+                PacketBuilder.KitBagDeletionAcknowledgements(_character);
+
+            var cleared = await _store.ClearKitBagAsync(
+                _account.Id,
+                _character.Id,
+                cancellationToken);
+            if (cleared is null)
+            {
+                Console.WriteLine(
+                    $"[developer-item] clear bag failed account={_account.Id} character={_character.Name}");
+                return true;
+            }
+
+            _character = cleared;
+            _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+            _pendingUnequipFollowup = null;
+            ClearForgeSelection();
+            ClearGearEnhancerSelection();
+            foreach (var acknowledgement in deletionAcknowledgements)
+            {
+                await _session.SendAsync(
+                    acknowledgement,
+                    cancellationToken,
+                    "DeveloperItemClearBagDeleteAck");
+            }
+
+            Console.WriteLine(
+                $"[developer-item] cleared bag account={_account.Id} character={_character.Name} removed={deletionAcknowledgements.Length}");
+            return true;
+        }
+
+        if (request.Operation != DeveloperItemOperation.Add || request.Material is null)
+        {
+            Console.WriteLine(
+                $"[developer-item] invalid operation account={_account.Id} character={_character.Name}");
+            return true;
+        }
+
+        var material = request.Material;
+
+        var result = await _store.AddForgingMaterialAsync(
+            _account.Id,
+            _character.Id,
+            material.ItemId,
+            request.Quantity,
+            cancellationToken);
+        if (!result.Added || result.Character is null)
+        {
+            Console.WriteLine(
+                $"[developer-item] grant failed account={_account.Id} character={_character.Name} item={material.ItemId} quantity={request.Quantity} status={result.Status}");
+            return true;
+        }
+
+        _character = result.Character;
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        await SendKitBagRefreshAsync(cancellationToken);
+        Console.WriteLine(
+            $"[developer-item] granted account={_account.Id} character={_character.Name} item={material.ItemId} name=\"{material.DisplayName}\" quantity={request.Quantity}");
+        return true;
+    }
+
+    private async Task SendKitBagRefreshAsync(CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        foreach (var packet in PacketBuilder.KitBagDetailPages(_character))
+        {
+            await _session.SendAsync(packet, cancellationToken, "DeveloperItemKitBagDetail");
+        }
+
+        foreach (var packet in PacketBuilder.KitBagSlotIndexes(_character))
+        {
+            await _session.SendAsync(packet, cancellationToken, "DeveloperItemKitBagSlotIndex");
+        }
+    }
+
+    internal static bool TryReadTalkText(ReadOnlySpan<byte> payload, out string text)
+    {
+        const int textLengthOffset = 4;
+        const int textOffset = 12;
+        text = string.Empty;
+        if (payload.Length < textOffset)
+        {
+            return false;
+        }
+
+        var lengthWithTerminator = BinaryPrimitives.ReadUInt32LittleEndian(
+            payload.Slice(textLengthOffset, sizeof(uint)));
+        if (lengthWithTerminator < sizeof(ushort) ||
+            (lengthWithTerminator & 1) != 0 ||
+            lengthWithTerminator - sizeof(ushort) > payload.Length - textOffset)
+        {
+            return false;
+        }
+
+        var textLength = checked((int)lengthWithTerminator - sizeof(ushort));
+        text = Encoding.Unicode.GetString(payload.Slice(textOffset, textLength)).TrimEnd('\0');
+        return text.Length > 0;
+    }
+
     private async Task HandleGameLoginAsync(GamePacket packet, CancellationToken cancellationToken)
     {
+        ClearForgeSelection();
+        ClearGearEnhancerSelection();
         var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
         _account = await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
         _accountSessionRegistered = true;
@@ -246,6 +736,22 @@ internal sealed class GameClientHandler : IClientHandler
         if (replacedSession is not null)
         {
             Console.WriteLine($"[game] replacing stale session account={_account.Username}");
+            try
+            {
+                await _registry.FinishProgressionBoostOnlineSessionAsync(
+                    replacedSession,
+                    DateTimeOffset.UtcNow,
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // A reconciliation checkpoint bounds any lost duration. A
+                // transient persistence failure must never reject the new
+                // account session or reproduce the switch-login crash.
+                Console.WriteLine(
+                    $"[status] stale-session boost tail deferred account={_account.Username}: {ex.Message}");
+            }
+
             _registry.Remove(replacedSession);
             replacedSession.Disconnect();
         }
@@ -258,6 +764,8 @@ internal sealed class GameClientHandler : IClientHandler
 
     private async Task SendCharacterPreviewAsync(CancellationToken cancellationToken)
     {
+        ClearForgeSelection();
+        ClearGearEnhancerSelection();
         if (_account is null)
         {
             await _session.SendAsync(PacketBuilder.BlankUser(), cancellationToken, "BlankUser");
@@ -273,6 +781,8 @@ internal sealed class GameClientHandler : IClientHandler
 
     private async Task HandleCreateRoleAsync(GamePacket packet, CancellationToken cancellationToken)
     {
+        ClearForgeSelection();
+        ClearGearEnhancerSelection();
         _account ??= await _store.LoginOrCreateAccountAsync("player", string.Empty, cancellationToken);
 
         var payload = packet.Payload;
@@ -282,6 +792,7 @@ internal sealed class GameClientHandler : IClientHandler
             Gender = ReadByte(payload, 32, 1),
             Camp = ReadByte(payload, 33, 1),
             Profession = ReadByte(payload, 34, 0),
+            ZodiacType = ReadZodiacTypeFromCreationPayload(payload),
             Hair = ReadByte(payload, 36, 0),
             Face = ReadByte(payload, 37, 0),
             Faith = ReadByte(payload, 70, 1),
@@ -297,8 +808,32 @@ internal sealed class GameClientHandler : IClientHandler
         await _session.SendAsync(PacketBuilder.CreateRoleSuccess(), cancellationToken, "CreateRoleSuccess");
     }
 
+    private async Task HandleZodiacAsync(GamePacket packet, CancellationToken cancellationToken)
+    {
+        if (_character is null ||
+            !ZodiacSyncRequest.TryParse(packet.Buffer, out var request))
+        {
+            Console.WriteLine($"[zodiac] rejected malformed sync request len={packet.Buffer.Length}");
+            return;
+        }
+
+        if (!request.IsFullSync)
+        {
+            Console.WriteLine(
+                $"[zodiac] ignored unsupported request character={_character.Name} module={request.Module} sid={request.Sid}");
+            return;
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.ZodiacFullSync(_character),
+            cancellationToken,
+            "ZodiacFullSync");
+    }
+
     private async Task HandleDeleteRoleAsync(GamePacket packet, CancellationToken cancellationToken)
     {
+        ClearForgeSelection();
+        ClearGearEnhancerSelection();
         var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
         _account ??= await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
 
@@ -312,6 +847,8 @@ internal sealed class GameClientHandler : IClientHandler
 
     private async Task HandleEnterGameAsync(CancellationToken cancellationToken)
     {
+        ClearForgeSelection();
+        ClearGearEnhancerSelection();
         if (_account is not null && _character is null)
         {
             _character = await _store.GetFirstCharacterAsync(_account.Id, cancellationToken);
@@ -375,7 +912,8 @@ internal sealed class GameClientHandler : IClientHandler
         ExperienceBoostState boosts;
         try
         {
-            boosts = await _store.GetExperienceBoostStateAsync(
+            boosts = await _registry.GetExperienceBoostStateAsync(
+                _session,
                 _account.Id,
                 _character.Id,
                 _character.Camp,
@@ -589,6 +1127,21 @@ internal sealed class GameClientHandler : IClientHandler
             runtimeMonsterCount > 0
                 ? $"[mob] loaded shared map runtime character={_character.Name} map={_character.CurrentMap} count={runtimeMonsterCount}"
                 : $"[mob] no captured map definitions character={_character.Name} map={_character.CurrentMap}");
+
+        // Monster visibility state is map-owned. Register as non-ready before
+        // the initial NPC/monster snapshot so the transition can commit while
+        // this player remains hidden from all live world broadcasts.
+        if (!_registered)
+        {
+            _registry.JoinMap(
+                _session,
+                _account?.Id ?? _character.AccountId,
+                _character,
+                WorldObjectIds.ForPlayer(_character.Id),
+                worldReady: false);
+            _registered = true;
+        }
+
         await RefreshNearbyWorldObjectsAsync("initial", cancellationToken);
 
         await SendMapPlayersAsync(cancellationToken);
@@ -602,10 +1155,52 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
+        ClearGearEnhancerSelection();
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
+
         if (!TryResolveMapNpc(npcId, out var npc))
         {
             Console.WriteLine($"[npc] dialog open ignored: unknown npc={npcId} map={_character?.CurrentMap.ToString() ?? "<none>"}");
+            return;
+        }
+
+        if (GearEnhancerProtocol.IsEnhancerNpcKey(npc.NpcKey))
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcDialogOpenAck(
+                    npc.InteractionId,
+                    GearEnhancerProtocol.DialogIndex,
+                    npc.NpcKey),
+                cancellationToken,
+                "NpcDialogOpenAck");
+            Console.WriteLine($"[gear-enhancer] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
+            return;
+        }
+
+        if (GearEnhancerProtocol.IsOriginEnhancerNpcKey(npc.NpcKey))
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcDialogOpenAck(
+                    npc.InteractionId,
+                    GearEnhancerProtocol.OriginDialogIndex,
+                    npc.NpcKey),
+                cancellationToken,
+                "NpcDialogOpenAck");
+            Console.WriteLine($"[origin-enhancer] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
+            return;
+        }
+
+        if (HolySuitDesignProtocol.IsNpcKey(npc.NpcKey))
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcDialogOpenAck(
+                    npc.InteractionId,
+                    HolySuitDesignProtocol.DialogIndex,
+                    npc.NpcKey),
+                cancellationToken,
+                "NpcDialogOpenAck");
+            Console.WriteLine(
+                $"[holy-suit-design] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
             return;
         }
 
@@ -622,7 +1217,9 @@ internal sealed class GameClientHandler : IClientHandler
         Console.WriteLine($"[holy-stone] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
     }
 
-    private void HandleNpcDialogPageRequest(GamePacket packet)
+    private async Task HandleNpcDialogPageRequestAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken)
     {
         if (packet.Payload.Length < 4)
         {
@@ -631,6 +1228,7 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
+
         Console.WriteLine(
             TryResolveMapNpc(npcId, out var npc)
                 ? $"[npc] page request npc={npcId} key={npc.NpcKey}"
@@ -641,17 +1239,178 @@ internal sealed class GameClientHandler : IClientHandler
     {
         if (_account is null || _character is null)
         {
-            Console.WriteLine("[holy-stone] action ignored: no active character");
+            Console.WriteLine("[npc] function action ignored: no active character");
             return;
         }
 
         if (!TryReadNpcFunctionAction(packet.Payload, out var npcId, out var dialogIndex, out var subId, out var args))
         {
-            Console.WriteLine("[holy-stone] action ignored: payload does not match captured NPC function shape");
+            Console.WriteLine("[npc] function action ignored: payload does not match captured NPC function shape");
             return;
         }
 
-        if (!TryResolveMapNpc(npcId, out var npc) || !IsHolyStoneArtisan(npc))
+        if (!TryResolveMapNpc(npcId, out var npc))
+        {
+            Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
+            return;
+        }
+
+        if (GearEnhancerProtocol.IsEnhancerNpcKey(npc.NpcKey))
+        {
+            if (GearEnhancerProtocol.TryBuildInitialMenuResponse(
+                    npc.NpcKey,
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    out var gearMentorResponse))
+            {
+                ClearGearEnhancerSelection();
+                // Stock NpcFunBreak changes from its menu to Enhance/Add/Delete
+                // entirely client-side. Start an operation-unbound staging
+                // context here so the following native 10193 selections are
+                // retained until final 10069 identifies operation 2/3/6.
+                _gearEnhancerSelectionContext = new GearEnhancerSelectionContext(
+                    _account.Id,
+                    _character.Id,
+                    npcId,
+                    dialogIndex,
+                    operation: null,
+                    expiresAt: DateTimeOffset.UtcNow + GearEnhancerProtocol.SelectionContextLifetime);
+                await _session.SendAsync(
+                    gearMentorResponse,
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine($"[gear-mentor] original initial menu npc={npcId} items=1,2,3,4,5,6,7,8,9");
+                return;
+            }
+
+            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+                GearEnhancerProtocol.IsOperationSubId(subId))
+            {
+                await HandleGearEnhancerOperationAsync(
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    args,
+                    cancellationToken);
+                return;
+            }
+
+            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+                subId == GearEnhancerProtocol.CombineGemPiecesMenuSubId)
+            {
+                ClearGearEnhancerSelection();
+                _gearEnhancerSelectionContext = new GearEnhancerSelectionContext(
+                    _account.Id,
+                    _character.Id,
+                    npcId,
+                    dialogIndex,
+                    operation: null,
+                    expiresAt: DateTimeOffset.UtcNow + GearEnhancerProtocol.SelectionContextLifetime);
+                _gearMentorOperationPageSubId = GearEnhancerProtocol.CombineGemPiecesActionSubId;
+                await _session.SendAsync(
+                    GearEnhancerProtocol.BuildGemPieceCombinationPageResponse(npcId),
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine(
+                    $"[gear-mentor] gem-piece combination page character={_character.Name} npc={npcId}");
+                return;
+            }
+
+            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+                GearEnhancerProtocol.IsGearMentorTransactionSubId(subId))
+            {
+                await HandleGearMentorTransactionAsync(
+                    npcId,
+                    subId,
+                    args,
+                    cancellationToken);
+                return;
+            }
+
+            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+                GearEnhancerProtocol.IsUnavailableGearMentorMenuSubId(subId))
+            {
+                ClearGearEnhancerSelection();
+                await _session.SendAsync(
+                    PacketBuilder.NpcFunctionActionResponse(
+                        npcId,
+                        dialogIndex,
+                        GearEnhancerProtocol.TemporarilyDisabledResultSubId),
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine(
+                    $"[gear-mentor] unsupported original operation npc={npcId} subId={subId} response={GearEnhancerProtocol.TemporarilyDisabledResultSubId}");
+            }
+            return;
+        }
+
+        if (GearEnhancerProtocol.IsOriginEnhancerNpcKey(npc.NpcKey))
+        {
+            if (GearEnhancerProtocol.TryBuildOriginInitialMenuResponse(
+                    npc.NpcKey,
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    out var originResponse))
+            {
+                ClearGearEnhancerSelection();
+                await _session.SendAsync(
+                    originResponse,
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine($"[origin-enhancer] initial menu npc={npcId} items=2,3,6");
+                return;
+            }
+
+            if (dialogIndex == GearEnhancerProtocol.OriginDialogIndex &&
+                GearEnhancerProtocol.IsOperationSubId(subId))
+            {
+                await HandleGearEnhancerOperationAsync(
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    args,
+                    cancellationToken);
+            }
+            return;
+        }
+
+        if (HolySuitDesignProtocol.IsNpcKey(npc.NpcKey))
+        {
+            if (HolySuitDesignProtocol.TryBuildInitialMenuResponse(
+                    npc.NpcKey,
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    out var holySuitResponse))
+            {
+                await _session.SendAsync(
+                    holySuitResponse,
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine(
+                    $"[holy-suit-design] original initial menu npc={npcId} items=101,201,301,401");
+                return;
+            }
+
+            if (dialogIndex == HolySuitDesignProtocol.DialogIndex &&
+                HolySuitDesignProtocol.IsMenuSubId(subId))
+            {
+                await _session.SendAsync(
+                    PacketBuilder.NpcFunctionActionResponse(
+                        npcId,
+                        dialogIndex,
+                        HolySuitDesignProtocol.TemporarilyDisabledResultSubId),
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                Console.WriteLine(
+                    $"[holy-suit-design] unsupported original operation npc={npcId} subId={subId} response={HolySuitDesignProtocol.TemporarilyDisabledResultSubId}");
+            }
+            return;
+        }
+
+        if (!IsHolyStoneArtisan(npc))
         {
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
@@ -757,6 +1516,427 @@ internal sealed class GameClientHandler : IClientHandler
         await BroadcastEquipmentRefreshAsync($"holy-stone-{operation.Value}", cancellationToken);
     }
 
+    private void HandleGearEnhancerItemSelection(GamePacket packet)
+    {
+        if (_account is null ||
+            _character is null ||
+            !GearEnhancerItemSelectionPacket.TryParse(packet.Payload, out var selection))
+        {
+            Console.WriteLine(
+                $"[gear-enhancer] ignored malformed/inactive item selection len={packet.Payload.Length}");
+            return;
+        }
+
+        var context = _gearEnhancerSelectionContext;
+        if (context is null ||
+            !context.IsActiveForSelection(
+                _account.Id,
+                _character.Id,
+                DateTimeOffset.UtcNow))
+        {
+            ClearGearEnhancerSelection();
+            Console.WriteLine(
+                $"[gear-enhancer] ignored item selection without active operation character={_character.Name} bagSlot={selection.KitBagSlot} selected={selection.Selected}");
+            return;
+        }
+
+        var staged = context.Apply(selection, _character.KitBag);
+        Console.WriteLine(
+            $"[gear-enhancer] item selection character={_character.Name} npc={context.NpcId} dialog={context.DialogIndex} operation={context.Operation?.ToString() ?? "pending-final-action"} selected={selection.Selected} bagSlot={staged.KitBagSlot} item={staged.Item.Id} stack={staged.Item.Stack} role={staged.Role?.ToString() ?? "none"} status={staged.Status}");
+    }
+
+    private async Task HandleGearEnhancerOperationAsync(
+        uint npcId,
+        int dialogIndex,
+        int subId,
+        IReadOnlyList<int> args,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var operation = (GearEnhancementOperation)subId;
+        var now = DateTimeOffset.UtcNow;
+        var stagedContext = _gearEnhancerSelectionContext;
+        var contextIsActive = GearEnhancerCommitContextMatches(
+            stagedContext,
+            _gearMentorOperationPageSubId,
+            _account.Id,
+            _character.Id,
+            npcId,
+            dialogIndex,
+            operation,
+            now);
+        GearEnhancerSelectionTriplet? nativeSelections = null;
+        var selectionShape = GearEnhancerProtocol.ReadSelection(
+            args,
+            out var gearKitBagSlot,
+            out var catalystKitBagSlot,
+            out var attributeStoneKitBagSlot);
+        if (selectionShape is GearEnhancerSelectionShape.MenuSelection or
+            GearEnhancerSelectionShape.MalformedCommit)
+        {
+            if (contextIsActive &&
+                stagedContext!.TryResolveNativeCommit(
+                    selectionShape,
+                    out var stagedSelections))
+            {
+                nativeSelections = stagedSelections;
+                gearKitBagSlot = stagedSelections.GearKitBagSlot;
+                catalystKitBagSlot = stagedSelections.CatalystKitBagSlot;
+                attributeStoneKitBagSlot = stagedSelections.AttributeStoneKitBagSlot;
+                selectionShape = GearEnhancerSelectionShape.Commit;
+            }
+        }
+
+        if (selectionShape == GearEnhancerSelectionShape.MenuSelection)
+        {
+            ClearGearEnhancerSelection();
+            _gearEnhancerSelectionContext = new GearEnhancerSelectionContext(
+                _account.Id,
+                _character.Id,
+                npcId,
+                dialogIndex,
+                operation,
+                DateTimeOffset.UtcNow + GearEnhancerProtocol.SelectionContextLifetime);
+            var workflow = dialogIndex == GearEnhancerProtocol.DialogIndex
+                ? "gear-mentor"
+                : "origin-enhancer";
+            await _session.SendAsync(
+                GearEnhancerProtocol.BuildOperationPageResponse(npcId, dialogIndex, subId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            Console.WriteLine(
+                $"[{workflow}] operation page character={_character.Name} npc={npcId} dialog={dialogIndex} operation={operation}");
+            return;
+        }
+
+        // Consume the staged workflow before awaiting persistence. A replayed
+        // confirmation cannot reuse the same three native selections.
+        ClearGearEnhancerSelection();
+
+        var responseSubId = GearEnhancerProtocol.InvalidSelectionResultSubId;
+        GearEnhancementRequest? request = null;
+        GearEnhancementTransactionResult? transaction = null;
+        var selectionSummary =
+            $"gear={DescribeGearEnhancerSelection(_character.KitBag, gearKitBagSlot)} " +
+            $"catalyst={DescribeGearEnhancerSelection(_character.KitBag, catalystKitBagSlot)} " +
+            $"stone={DescribeGearEnhancerSelection(_character.KitBag, attributeStoneKitBagSlot)}";
+
+        if (selectionShape == GearEnhancerSelectionShape.Commit && contextIsActive)
+        {
+            if (gearKitBagSlot < 0)
+            {
+                responseSubId = GearEnhancerProtocol.MissingGearResultSubId;
+            }
+            else if (catalystKitBagSlot < 0)
+            {
+                responseSubId = GearEnhancerProtocol.MissingCatalystResultSubId(operation);
+            }
+            else if (attributeStoneKitBagSlot < 0)
+            {
+                responseSubId = GearEnhancerProtocol.MissingAttributeStoneResultSubId;
+            }
+            else
+            {
+                var selections = nativeSelections ?? new GearEnhancerSelectionTriplet(
+                    CaptureGearEnhancerSelection(_character.KitBag, gearKitBagSlot),
+                    CaptureGearEnhancerSelection(_character.KitBag, catalystKitBagSlot),
+                    CaptureGearEnhancerSelection(_character.KitBag, attributeStoneKitBagSlot));
+                request = new GearEnhancementRequest(
+                    operation,
+                    ToGearEnhancementSelection(selections.Gear),
+                    ToGearEnhancementSelection(selections.AttributeStone),
+                    ToGearEnhancementSelection(selections.Catalyst));
+
+                try
+                {
+                    transaction = await _store.EnhanceGearAsync(
+                        _account.Id,
+                        _character.Id,
+                        request,
+                        cancellationToken);
+                    responseSubId = GearEnhancerProtocol.ResolveResultSubId(
+                        operation,
+                        transaction.Enhancement,
+                        request);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"[gear-enhancer] persistence failure account={_account.Id} character={_character.Name} operation={operation}: {ex.Message}");
+                }
+            }
+        }
+
+        if (transaction?.Character is not null)
+        {
+            _character = transaction.Character;
+            _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        }
+
+        var authoritativeBagChanged = transaction?.Committed == true;
+        var staleSelection = transaction?.Enhancement?.Status ==
+            GearEnhancementStatus.StaleSelection;
+        if (authoritativeBagChanged || staleSelection)
+        {
+            ClearForgeSelection();
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.NpcFunctionActionResponse(
+                npcId,
+                dialogIndex,
+                responseSubId),
+            cancellationToken,
+            "NpcFunctionActionResponse");
+
+        if (authoritativeBagChanged || staleSelection)
+        {
+            // The native result must release the dialog's pending state before
+            // authoritative inventory packets replace its staged client view.
+            await SendKitBagRefreshAsync(cancellationToken);
+        }
+
+        var resultWorkflow = dialogIndex == GearEnhancerProtocol.DialogIndex
+            ? "gear-mentor"
+            : "origin-enhancer";
+        Console.WriteLine(
+            $"[{resultWorkflow}] result account={_account.Id} character={_character.Name} npc={npcId} dialog={dialogIndex} operation={operation} status={transaction?.Enhancement?.Status.ToString() ?? selectionShape.ToString()} response={responseSubId} committed={transaction?.Committed == true} selections=({selectionSummary}) reason=\"{transaction?.Enhancement?.RejectionReason ?? "none"}\"");
+    }
+
+    private async Task HandleGearMentorTransactionAsync(
+        uint npcId,
+        int subId,
+        IReadOnlyList<int> args,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return;
+        }
+
+        var operation = (GearMentorOperation)subId;
+        var maximumSelections = operation == GearMentorOperation.Decompose ? 3 : 1;
+        var now = DateTimeOffset.UtcNow;
+        var stagedContext = _gearEnhancerSelectionContext;
+        var contextIsActive = GearMentorCommitContextMatches(
+            stagedContext,
+            _gearMentorOperationPageSubId,
+            _account.Id,
+            _character.Id,
+            npcId,
+            subId,
+            now);
+        var operationPageMatches = _gearMentorOperationPageSubId == subId;
+        var selectionShape = GearEnhancerProtocol.ReadSelection(
+            args,
+            out var firstSlot,
+            out var secondSlot,
+            out var thirdSlot);
+        IReadOnlyList<GearEnhancerSelectionSnapshot> selectedSelections =
+            selectionShape == GearEnhancerSelectionShape.Commit
+            ? new[] { firstSlot, secondSlot, thirdSlot }
+                .Where(static slot => slot >= 0)
+                .Select(slot => CaptureGearEnhancerSelection(_character.KitBag, slot))
+                .ToArray()
+            : [];
+
+        if (selectionShape is GearEnhancerSelectionShape.MenuSelection or
+            GearEnhancerSelectionShape.MalformedCommit)
+        {
+            if (contextIsActive &&
+                operationPageMatches &&
+                stagedContext!.TryResolveNativeSlots(
+                    selectionShape,
+                    minimumCount: 1,
+                    maximumSelections,
+                    out var stagedSelections))
+            {
+                selectedSelections = stagedSelections;
+                selectionShape = GearEnhancerSelectionShape.Commit;
+            }
+        }
+
+        if (selectedSelections.Count == 0 &&
+            selectionShape == GearEnhancerSelectionShape.MenuSelection &&
+            subId != GearEnhancerProtocol.CombineGemPiecesActionSubId &&
+            !operationPageMatches)
+        {
+            ClearGearEnhancerSelection();
+            _gearEnhancerSelectionContext = new GearEnhancerSelectionContext(
+                _account.Id,
+                _character.Id,
+                npcId,
+                GearEnhancerProtocol.DialogIndex,
+                operation: null,
+                expiresAt: DateTimeOffset.UtcNow + GearEnhancerProtocol.SelectionContextLifetime);
+            _gearMentorOperationPageSubId = subId;
+            await _session.SendAsync(
+                GearEnhancerProtocol.BuildGearMentorOperationPageResponse(npcId, subId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            Console.WriteLine(
+                $"[gear-mentor] operation page character={_character.Name} npc={npcId} operation={operation}");
+            return;
+        }
+
+        var canCommit = contextIsActive && operationPageMatches;
+        var request = new GearMentorRequest(
+            operation,
+            canCommit
+                ? selectedSelections.Select(ToGearMentorSelection).ToArray()
+                : []);
+        var selectionSummary = selectedSelections.Count == 0
+            ? "none"
+            : string.Join(
+                ',',
+                selectedSelections.Select(selection =>
+                    DescribeGearEnhancerSelection(_character.KitBag, selection.KitBagSlot)));
+
+        // A final action consumes the session-scoped selection before any
+        // persistence await so it cannot be replayed.
+        ClearGearEnhancerSelection();
+
+        GearMentorTransactionResult? transaction = null;
+        var responseSubId = GearEnhancerProtocol.SelectedItemMissingResultSubId;
+        try
+        {
+            if (canCommit)
+            {
+                transaction = await _store.ProcessGearMentorAsync(
+                    _account.Id,
+                    _character.Id,
+                    request,
+                    cancellationToken);
+                responseSubId = GearEnhancerProtocol.ResolveGearMentorResultSubId(transaction.Result);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[gear-mentor] persistence failure account={_account.Id} character={_character.Name} operation={operation}: {ex.Message}");
+        }
+
+        if (transaction?.Character is not null)
+        {
+            _character = transaction.Character;
+            _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        }
+
+        var staleSelection = transaction?.Result?.Status == GearMentorStatus.StaleSelection;
+        if (transaction?.Committed == true || staleSelection)
+        {
+            ClearForgeSelection();
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.NpcFunctionActionResponse(
+                npcId,
+                GearEnhancerProtocol.DialogIndex,
+                responseSubId),
+            cancellationToken,
+            "NpcFunctionActionResponse");
+
+        if (transaction?.Committed == true || staleSelection)
+        {
+            await SendKitBagRefreshAsync(cancellationToken);
+        }
+
+        var outputs = transaction?.Result?.Outputs.Count > 0
+            ? string.Join(
+                ',',
+                transaction.Result.Outputs.Select(output =>
+                    $"{output.ItemId}x{output.Quantity}/bound:{output.Bound}"))
+            : "none";
+        Console.WriteLine(
+            $"[gear-mentor] result account={_account.Id} character={_character.Name} npc={npcId} operation={operation} status={transaction?.Result?.Status.ToString() ?? selectionShape.ToString()} response={responseSubId} committed={transaction?.Committed == true} selections=({selectionSummary}) outputs=({outputs}) reason=\"{transaction?.Result?.RejectionReason ?? "none"}\"");
+    }
+
+    internal static bool GearEnhancerCommitContextMatches(
+        GearEnhancerSelectionContext? context,
+        int? gearMentorOperationPageSubId,
+        int accountId,
+        int characterId,
+        uint npcId,
+        int dialogIndex,
+        GearEnhancementOperation operation,
+        DateTimeOffset now)
+    {
+        return (dialogIndex != GearEnhancerProtocol.DialogIndex ||
+                !gearMentorOperationPageSubId.HasValue) &&
+               context is not null &&
+               context.IsActiveFor(
+                   accountId,
+                   characterId,
+                   npcId,
+                   dialogIndex,
+                   operation,
+                   now);
+    }
+
+    internal static bool GearMentorCommitContextMatches(
+        GearEnhancerSelectionContext? context,
+        int? operationPageSubId,
+        int accountId,
+        int characterId,
+        uint npcId,
+        int actionSubId,
+        DateTimeOffset now)
+    {
+        return operationPageSubId == actionSubId &&
+               context is not null &&
+               context.NpcId == npcId &&
+               context.DialogIndex == GearEnhancerProtocol.DialogIndex &&
+               context.IsActiveForSelection(accountId, characterId, now);
+    }
+
+    private static GearEnhancerSelectionSnapshot CaptureGearEnhancerSelection(
+        string kitBag,
+        int kitBagSlot)
+    {
+        return new GearEnhancerSelectionSnapshot(
+            kitBagSlot,
+            KitBagSlots.GetItem(kitBag, kitBagSlot));
+    }
+
+    private static GearEnhancementSlotSelection ToGearEnhancementSelection(
+        GearEnhancerSelectionSnapshot selection)
+    {
+        return new GearEnhancementSlotSelection(
+            selection.KitBagSlot,
+            selection.ExpectedItem);
+    }
+
+    private static GearMentorSlotSelection ToGearMentorSelection(
+        GearEnhancerSelectionSnapshot selection)
+    {
+        return new GearMentorSlotSelection(
+            selection.KitBagSlot,
+            selection.ExpectedItem);
+    }
+
+    private static string DescribeGearEnhancerSelection(string kitBag, int kitBagSlot)
+    {
+        if (kitBagSlot < 0)
+        {
+            return "missing";
+        }
+
+        var item = KitBagSlots.GetItem(kitBag, kitBagSlot);
+        return $"slot:{kitBagSlot}/item:{item.Id}/stack:{item.Stack}";
+    }
+
     private bool TryResolveMapNpc(uint interactionId, out NpcSpawnDefinition npc)
     {
         if (_character is not null &&
@@ -773,9 +1953,16 @@ internal sealed class GameClientHandler : IClientHandler
         return false;
     }
 
+    private void ClearGearEnhancerSelection()
+    {
+        _gearEnhancerSelectionContext = null;
+        _gearMentorOperationPageSubId = null;
+    }
+
     private async Task RefreshNearbyWorldObjectsAsync(
         string reason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceMonsterRefresh = false)
     {
         if (_character is null ||
             _npcVisibility is null ||
@@ -793,7 +1980,8 @@ internal sealed class GameClientHandler : IClientHandler
             _character.CurrentMap,
             _character.PositionX,
             _character.PositionZ,
-            cancellationToken);
+            cancellationToken,
+            forceMonsterRefresh);
         if (monsterTransition is null)
         {
             return;
@@ -1002,8 +2190,14 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (!_registry.IsMonsterVisibleTo(_session, attack.TargetObjectId) ||
-            !_registry.TryGetMonsterSnapshot(_character.CurrentMap, attack.TargetObjectId, out var target) ||
+        if (!_registry.TryGetMonsterSnapshot(
+                _character.CurrentMap,
+                attack.TargetObjectId,
+                out var target) ||
+            !_registry.IsMonsterVisibleTo(
+                _session,
+                attack.TargetObjectId,
+                target.SpawnGeneration) ||
             !target.IsSpawned ||
             !target.IsAlive)
         {
@@ -1011,15 +2205,28 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (!MonsterCombatResolver.IsWithinBasicAttackRange(
+        if (!MonsterCombatResolver.TryResolvePlayerBasicAttackPosition(
                 _character.PositionX,
                 _character.PositionZ,
+                attack.AttackerX,
+                attack.AttackerZ,
+                out var attackX,
+                out var attackZ))
+        {
+            Console.WriteLine(
+                $"[attack] rejected mismatched position character={_character.Name} server={_character.PositionX:F2},{_character.PositionZ:F2} reported={attack.AttackerX:F2},{attack.AttackerZ:F2}");
+            return;
+        }
+
+        if (!MonsterCombatResolver.IsWithinBasicAttackRange(
+                attackX,
+                attackZ,
                 target.X,
                 target.Z,
                 MonsterCombatResolver.ResolvePlayerBasicAttackRange(target.Definition)))
         {
             Console.WriteLine(
-                $"[attack] rejected out-of-range monster character={_character.Name} target={attack.TargetObjectId} player={_character.PositionX:F2},{_character.PositionZ:F2} monster={target.X:F2},{target.Z:F2}");
+                $"[attack] rejected out-of-range monster character={_character.Name} target={attack.TargetObjectId} player={attackX:F2},{attackZ:F2} monster={target.X:F2},{target.Z:F2}");
             return;
         }
 
@@ -1036,6 +2243,7 @@ internal sealed class GameClientHandler : IClientHandler
                 attack.TargetObjectId,
                 requestedDamage,
                 _character.Id,
+                target.SpawnGeneration,
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
@@ -1056,7 +2264,14 @@ internal sealed class GameClientHandler : IClientHandler
         var casterNotified = true;
         try
         {
-            await _session.SendAsync(selfPacket, cancellationToken, "BasicAttackSelf");
+            await _registry.DeliverMonsterHealthPacketToViewerAsync(
+                _session,
+                _character.CurrentMap,
+                attack.TargetObjectId,
+                selfPacket,
+                damageResult.HealthMutation!.Value,
+                cancellationToken,
+                "BasicAttackSelf");
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
@@ -1079,7 +2294,8 @@ internal sealed class GameClientHandler : IClientHandler
                 result: attackSelector),
             cancellationToken,
             _session,
-            "BasicAttackWorld");
+            "BasicAttackWorld",
+            healthMutation: damageResult.HealthMutation);
 
         if (damageResult.Killed)
         {
@@ -1153,11 +2369,14 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (!_registry.IsMonsterVisibleTo(_session, cast.TargetObjectId) ||
-            !_registry.TryGetMonsterSnapshot(
+        if (!_registry.TryGetMonsterSnapshot(
                 _character.CurrentMap,
                 cast.TargetObjectId,
                 out var target) ||
+            !_registry.IsMonsterVisibleTo(
+                _session,
+                cast.TargetObjectId,
+                target.SpawnGeneration) ||
             !target.IsSpawned ||
             !target.IsAlive)
         {
@@ -1175,6 +2394,19 @@ internal sealed class GameClientHandler : IClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected out-of-range monster character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} player={_character.PositionX:F2},{_character.PositionZ:F2} monster={target.X:F2},{target.Z:F2} range={combat.Distance:F2}");
+            return;
+        }
+
+        if (cast.SkillId <= int.MaxValue &&
+            MonsterStunSkillCatalog.TryGet((int)cast.SkillId, out var stun))
+        {
+            await HandleHostileMonsterStunSkillCastAsync(
+                packet,
+                cast,
+                combat,
+                stun,
+                target.SpawnGeneration,
+                cancellationToken);
             return;
         }
 
@@ -1214,6 +2446,7 @@ internal sealed class GameClientHandler : IClientHandler
                 cast.TargetObjectId,
                 requestedDamage,
                 _character.Id,
+                target.SpawnGeneration,
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
@@ -1286,16 +2519,28 @@ internal sealed class GameClientHandler : IClientHandler
         var casterNotified = true;
         try
         {
-            await _session.SendAsync(
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                _character.CurrentMap,
+                cast.TargetObjectId,
                 selfVisual,
+                damageResult.Monster.SpawnGeneration,
                 cancellationToken,
                 "SkillCastSelf");
-            await _session.SendAsync(
+            await _registry.DeliverMonsterHealthPacketToViewerAsync(
+                _session,
+                _character.CurrentMap,
+                cast.TargetObjectId,
                 selfDamage,
+                damageResult.HealthMutation!.Value,
                 cancellationToken,
                 "SkillDamageSelf");
-            await _session.SendAsync(
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                _character.CurrentMap,
+                cast.TargetObjectId,
                 selfImpact,
+                damageResult.Monster.SpawnGeneration,
                 cancellationToken,
                 "SkillCastImpactSelf");
             if (manaCost > 0)
@@ -1327,7 +2572,8 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId),
             cancellationToken,
             _session,
-            "SkillCastWorld");
+            "SkillCastWorld",
+            expectedSpawnGeneration: damageResult.Monster.SpawnGeneration);
         var damageRecipients = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
             cast.TargetObjectId,
@@ -1341,7 +2587,8 @@ internal sealed class GameClientHandler : IClientHandler
                 targetZ: targetZ),
             cancellationToken,
             _session,
-            "SkillDamageWorld");
+            "SkillDamageWorld",
+            healthMutation: damageResult.HealthMutation);
         var impactRecipients = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
             cast.TargetObjectId,
@@ -1353,7 +2600,8 @@ internal sealed class GameClientHandler : IClientHandler
                 targetZ),
             cancellationToken,
             _session,
-            "SkillCastImpactWorld");
+            "SkillCastImpactWorld",
+            expectedSpawnGeneration: damageResult.Monster.SpawnGeneration);
 
         if (damageResult.Killed)
         {
@@ -1398,6 +2646,210 @@ internal sealed class GameClientHandler : IClientHandler
 
         Console.WriteLine(
             $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+    }
+
+    private async Task HandleHostileMonsterStunSkillCastAsync(
+        GamePacket packet,
+        SkillCastRequest cast,
+        SkillCombatDefinition combat,
+        MonsterStunSkillDefinition definition,
+        uint expectedSpawnGeneration,
+        CancellationToken cancellationToken)
+    {
+        var character = _character;
+        if (character is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (_nextSkillCastAt.TryGetValue(cast.SkillId, out var nextCastAt) &&
+            nextCastAt > now)
+        {
+            Console.WriteLine(
+                $"[skill] rejected cooldown character={character.Name} skill={cast.SkillId} remaining={(nextCastAt - now).TotalSeconds:F2}");
+            return;
+        }
+
+        var manaCost = Math.Max(0, combat.Mp);
+        int currentMana;
+        var manaReserved = false;
+        lock (character.VitalsSync)
+        {
+            currentMana = character.CurrentMp;
+            if (currentMana >= manaCost)
+            {
+                character.CurrentMp = currentMana - manaCost;
+                currentMana = character.CurrentMp;
+                if (manaCost > 0)
+                {
+                    character.MarkVitalsChanged();
+                }
+
+                manaReserved = true;
+            }
+        }
+
+        if (!manaReserved)
+        {
+            Console.WriteLine(
+                $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                cancellationToken,
+                "StunSkillManaRejected");
+            return;
+        }
+
+        if (!_registry.TryApplyMonsterStun(
+                character.CurrentMap,
+                cast.TargetObjectId,
+                character.Id,
+                definition.Duration,
+                expectedSpawnGeneration,
+                now,
+                out var stunResult) ||
+            !stunResult.Applied)
+        {
+            lock (character.VitalsSync)
+            {
+                character.CurrentMp = Math.Min(
+                    Math.Max(0, character.MaxMp),
+                    (int)Math.Min(int.MaxValue, (long)character.CurrentMp + manaCost));
+                if (manaCost > 0)
+                {
+                    character.MarkVitalsChanged();
+                }
+
+                currentMana = character.CurrentMp;
+            }
+
+            _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                cancellationToken,
+                "StunSkillManaRefund");
+            Console.WriteLine(
+                $"[skill] rejected stale stun target character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
+        _nextSkillCastAt[cast.SkillId] = now + definition.Cooldown;
+        _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+
+        var monster = stunResult.Monster;
+        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var statusSeconds = checked((uint)Math.Max(1d, Math.Ceiling(definition.Duration.TotalSeconds)));
+        var statusPacket = PacketBuilder.WorldObjectStatusEffects(
+            cast.TargetObjectId,
+            [new ClientStatusEffect(definition.StatusId, statusSeconds)]);
+        var casterNotified = true;
+        try
+        {
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                character.CurrentMap,
+                cast.TargetObjectId,
+                PacketBuilder.SkillCastVisual(packet.Buffer, LocalPlayerObjectId),
+                monster.SpawnGeneration,
+                cancellationToken,
+                "StunSkillCastSelf");
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                character.CurrentMap,
+                cast.TargetObjectId,
+                statusPacket,
+                monster.SpawnGeneration,
+                cancellationToken,
+                "StunStatusSelf");
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                character.CurrentMap,
+                cast.TargetObjectId,
+                PacketBuilder.SkillCastImpact(
+                    LocalPlayerObjectId,
+                    cast.TargetObjectId,
+                    cast.SkillId,
+                    monster.X,
+                    monster.Z),
+                monster.SpawnGeneration,
+                cancellationToken,
+                "StunSkillImpactSelf");
+            if (manaCost > 0)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+                    cancellationToken,
+                    "StunSkillManaSelf");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            casterNotified = false;
+            Console.WriteLine(
+                $"[skill] stun caster notification failed character={character.Name} target={cast.TargetObjectId}: {ex.Message}");
+        }
+
+        var visualRecipients = await _registry.BroadcastToMonsterViewersAsync(
+            character.CurrentMap,
+            cast.TargetObjectId,
+            PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId),
+            cancellationToken,
+            _session,
+            "StunSkillCastWorld",
+            expectedSpawnGeneration: monster.SpawnGeneration);
+        var statusRecipients = await _registry.BroadcastToMonsterViewersAsync(
+            character.CurrentMap,
+            cast.TargetObjectId,
+            statusPacket,
+            cancellationToken,
+            _session,
+            "StunStatusWorld",
+            expectedSpawnGeneration: monster.SpawnGeneration);
+        var impactRecipients = await _registry.BroadcastToMonsterViewersAsync(
+            character.CurrentMap,
+            cast.TargetObjectId,
+            PacketBuilder.SkillCastImpact(
+                worldObjectId,
+                cast.TargetObjectId,
+                cast.SkillId,
+                monster.X,
+                monster.Z),
+            cancellationToken,
+            _session,
+            "StunSkillImpactWorld",
+            expectedSpawnGeneration: monster.SpawnGeneration);
+
+        if (_account is not null)
+        {
+            try
+            {
+                int currentHp;
+                long vitalsRevision;
+                lock (character.VitalsSync)
+                {
+                    currentHp = character.CurrentHp;
+                    currentMana = character.CurrentMp;
+                    vitalsRevision = character.VitalsRevision;
+                }
+
+                await _store.SaveCharacterVitalsAsync(
+                    _account.Id,
+                    character.Id,
+                    currentHp,
+                    currentMana,
+                    vitalsRevision,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[skill] stun vitals persistence deferred character={character.Name}: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine(
+            $"[skill] stun character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId} status={definition.StatusId} duration={definition.Duration.TotalSeconds:F0} cooldown={definition.Cooldown.TotalSeconds:F0} status-odds={definition.StatusOdds} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(statusRecipients, impactRecipients))}");
     }
 
     private async Task HandleSelfStatusSkillCastAsync(
@@ -1600,7 +3052,10 @@ internal sealed class GameClientHandler : IClientHandler
             .Where(monster =>
                 monster.IsSpawned &&
                 monster.IsAlive &&
-                _registry.IsMonsterVisibleTo(_session, monster.ObjectId) &&
+                _registry.IsMonsterVisibleTo(
+                    _session,
+                    monster.ObjectId,
+                    monster.SpawnGeneration) &&
                 SkillCombatResolver.IsWithinArea(
                     character.PositionX,
                     character.PositionZ,
@@ -1619,6 +3074,7 @@ internal sealed class GameClientHandler : IClientHandler
                         candidate.ObjectId,
                         requestedDamage,
                         character.Id,
+                        candidate.SpawnGeneration,
                         out var damageResult) &&
                     damageResult.BeforeHealth != damageResult.AfterHealth)
                 {
@@ -1653,7 +3109,24 @@ internal sealed class GameClientHandler : IClientHandler
         {
             await _session.SendAsync(selfVisual, cancellationToken, "AreaSkillCastSelf");
             await _session.SendAsync(selfImpact, cancellationToken, "AreaSkillImpactSelf");
-            await _session.SendAsync(selfCluster, cancellationToken, "AreaSkillDamageSelf");
+            if (hits.Count == 0)
+            {
+                await _session.SendAsync(selfCluster, cancellationToken, "AreaSkillDamageSelf");
+            }
+            else
+            {
+                await _registry.DeliverMonsterAreaDamageToViewerAsync(
+                    _session,
+                    character.CurrentMap,
+                    LocalPlayerObjectId,
+                    cast.SkillId,
+                    hits.Select(static hit => new MonsterAreaDamageBroadcastHit(
+                            hit.Result.HealthMutation!.Value,
+                            hit.ReportedDamage))
+                        .ToArray(),
+                    cancellationToken,
+                    "AreaSkillSelf");
+            }
             if (manaCost > 0)
             {
                 await _session.SendAsync(
@@ -1670,35 +3143,24 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
-        var visualRecipients = await _registry.BroadcastToMapAsync(
+        var areaRecipients = await _registry.BroadcastMonsterAreaDamageToViewersAsync(
             character.CurrentMap,
             PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, worldObjectId),
-            cancellationToken,
-            _session,
-            "AreaSkillCastWorld");
-        var impactRecipients = await _registry.BroadcastToMapAsync(
-            character.CurrentMap,
             PacketBuilder.SkillCastImpact(
                 worldObjectId,
                 uint.MaxValue,
                 cast.SkillId,
                 character.PositionX,
                 character.PositionZ),
+            worldObjectId,
+            cast.SkillId,
+            hits.Select(static hit => new MonsterAreaDamageBroadcastHit(
+                    hit.Result.HealthMutation!.Value,
+                    hit.ReportedDamage))
+                .ToArray(),
             cancellationToken,
             _session,
-            "AreaSkillImpactWorld");
-        var damageRecipients = await _registry.BroadcastToMapAsync(
-            character.CurrentMap,
-            PacketBuilder.SkillClusterDamage(
-                worldObjectId,
-                cast.SkillId,
-                hits.Select(static hit => new SkillClusterDamageEntry(
-                        hit.Result.ObjectId,
-                        hit.ReportedDamage))
-                    .ToArray()),
-            cancellationToken,
-            _session,
-            "AreaSkillDamageWorld");
+            "AreaSkill");
 
         foreach (var hit in hits)
         {
@@ -1740,7 +3202,7 @@ internal sealed class GameClientHandler : IClientHandler
             0UL,
             static (total, hit) => total + hit.Result.BeforeHealth - hit.Result.AfterHealth);
         Console.WriteLine(
-            $"[skill] area damage character={character.Name} skill={cast.SkillId} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(impactRecipients, damageRecipients))}");
+            $"[skill] area damage character={character.Name} skill={cast.SkillId} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
     }
 
     private async Task AwardMonsterKillAsync(
@@ -1761,6 +3223,7 @@ internal sealed class GameClientHandler : IClientHandler
                 cancellationToken);
             await SendMonsterDeathProgressionAsync(
                 damageResult.ObjectId,
+                damageResult.Monster.SpawnGeneration,
                 _character.Experience,
                 _character.TalentExperience,
                 _character.TalentPoints,
@@ -1774,7 +3237,8 @@ internal sealed class GameClientHandler : IClientHandler
         ExperienceBoostState experienceBoosts;
         try
         {
-            experienceBoosts = await _store.GetExperienceBoostStateAsync(
+            experienceBoosts = await _registry.GetExperienceBoostStateAsync(
+                _session,
                 _account.Id,
                 _character.Id,
                 _character.Camp,
@@ -1790,6 +3254,7 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var awardedExperience = experienceBoosts.ApplyTo(reward.Experience);
+        var awardedTalentExperience = experienceBoosts.ApplyToTalent(reward.TalentExperience);
         await ActivateWorldBossAreaIfApplicableAsync(
             damageResult,
             rewardTime,
@@ -1802,7 +3267,7 @@ internal sealed class GameClientHandler : IClientHandler
                 _account.Id,
                 _character.Id,
                 awardedExperience,
-                reward.TalentExperience,
+                awardedTalentExperience,
                 cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1820,7 +3285,7 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         Console.WriteLine(
-            $"[reward] character={_character.Name} base-exp={reward.Experience} awarded-exp={awardedExperience} bonus-bps={experienceBoosts.TotalBonusBasisPoints} boosts={string.Join(',', experienceBoosts.ActiveBoosts.Select(boost => boost.StatusId))}");
+            $"[reward] character={_character.Name} base-exp={reward.Experience} awarded-exp={awardedExperience} exp-bonus-bps={experienceBoosts.TotalBonusBasisPoints} base-talent-exp={reward.TalentExperience} awarded-talent-exp={awardedTalentExperience} talent-bonus-bps={experienceBoosts.TotalTalentBonusBasisPoints} boosts={string.Join(',', experienceBoosts.ActiveBoosts.Select(boost => boost.StatusId))}");
 
         _character.Level = progression.CurrentLevel;
         _character.Experience = progression.CurrentExperience;
@@ -1914,6 +3379,7 @@ internal sealed class GameClientHandler : IClientHandler
 
         await SendMonsterDeathProgressionAsync(
             damageResult.ObjectId,
+            damageResult.Monster.SpawnGeneration,
             progression.CurrentExperience,
             progression.CurrentTalentExperience,
             progression.CurrentTalentPoints,
@@ -1976,6 +3442,7 @@ internal sealed class GameClientHandler : IClientHandler
 
     private async Task SendMonsterDeathProgressionAsync(
         uint monsterObjectId,
+        uint monsterSpawnGeneration,
         int currentExperience,
         int currentTalentExperience,
         int currentTalentPoints,
@@ -1986,13 +3453,17 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        await _session.SendAsync(
+        await _registry.DeliverMonsterPacketToViewerAsync(
+            _session,
+            _character.CurrentMap,
+            monsterObjectId,
             PacketBuilder.MonsterDeathReward(
                 monsterObjectId,
                 LocalPlayerObjectId,
                 currentExperience,
                 currentTalentExperience,
                 currentTalentPoints),
+            monsterSpawnGeneration,
             cancellationToken,
             "MonsterKillProgressionRefresh");
 
@@ -2007,7 +3478,8 @@ internal sealed class GameClientHandler : IClientHandler
                 currentTalentPoints),
             cancellationToken,
             _session,
-            "MonsterKillProgressionRefreshWorld");
+            "MonsterKillProgressionRefreshWorld",
+            expectedSpawnGeneration: monsterSpawnGeneration);
     }
 
     private async Task<bool> IsSkillLearnedAsync(uint skillId, CancellationToken cancellationToken)
@@ -2198,6 +3670,15 @@ internal sealed class GameClientHandler : IClientHandler
             }
         }
 
+        // The initial monster snapshot is committed before this session becomes
+        // WorldReady, so its generation or runtime health/state may drift during
+        // bootstrap without a live broadcast. Force one ordered remove + fresh
+        // appearance at activation; normal AOI updates remain incremental after it.
+        await RefreshNearbyWorldObjectsAsync(
+            "activation-reconcile",
+            cancellationToken,
+            forceMonsterRefresh: true);
+
         // Position changes deliberately do not invalidate the durable-state
         // barrier. Send one current position after activation so movement that
         // occurred while this session was hidden is not lost. Subsequent movement
@@ -2369,9 +3850,23 @@ internal sealed class GameClientHandler : IClientHandler
         _postEnterBootstrapSent = true;
 
         var enterSyncPackets = await _store.GetEnterSyncPacketsAsync(cancellationToken);
+        var suppressedEnterSyncPackets = 0;
         foreach (var packet in enterSyncPackets)
         {
+            if (!CanReplayCapturedPostEnterPacket(packet))
+            {
+                suppressedEnterSyncPackets++;
+                continue;
+            }
+
             await _session.SendAsync(packet, cancellationToken, "SynGameData");
+        }
+
+        if (suppressedEnterSyncPackets > 0)
+        {
+            Console.WriteLine(
+                $"[game] suppressed unsafe captured enter packets count={suppressedEnterSyncPackets} " +
+                "reason=accepted-quest snapshots are character-specific");
         }
 
         await SendMapWorldObjectsAsync(cancellationToken);
@@ -2399,6 +3894,19 @@ internal sealed class GameClientHandler : IClientHandler
         bool enterUiReadyReceived)
     {
         return clientReadyReceived && playerDetailSent && enterUiReadyReceived;
+    }
+
+    internal static bool CanReplayCapturedPostEnterPacket(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 4)
+        {
+            return false;
+        }
+
+        var declaredLength = BinaryPrimitives.ReadUInt16LittleEndian(packet);
+        var opcode = BinaryPrimitives.ReadUInt16LittleEndian(packet[2..]);
+        return declaredLength == packet.Length
+            && opcode != Opcodes.PlayerAcceptedQuests;
     }
 
     private async Task HandlePlayerInspectRequestAsync(GamePacket request, CancellationToken cancellationToken)
@@ -2606,9 +4114,9 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (TryReadStorageItemUnequip(packet.Payload, out var equipmentSlot, out var destinationSlot))
+        if (TryReadStorageItemEquipmentBagTransfer(packet.Payload, out var equipmentSlot, out var bagSlot))
         {
-            await HandleUnequipItemAsync(equipmentSlot, destinationSlot, cancellationToken);
+            await HandleEquipmentBagTransferAsync(equipmentSlot, bagSlot, cancellationToken);
             return;
         }
 
@@ -2624,13 +4132,115 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (TryReadStorageItemEquip(packet.Payload, out var sourceSlot, out var clientEquipmentSlot))
+        Console.WriteLine("[equip-re] StorageItem ignored: payload does not match known equip/unequip shapes");
+    }
+
+    private async Task HandleEquipmentBagTransferAsync(
+        int equipmentSlot,
+        int bagSlot,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
         {
-            await HandleEquipItemAsync(sourceSlot, clientEquipmentSlot, itemIdHint: 0, cancellationToken);
             return;
         }
 
-        Console.WriteLine("[equip-re] StorageItem ignored: payload does not match known equip/unequip shapes");
+        var action = ResolveEquipmentBagTransferAction(_character, equipmentSlot, bagSlot);
+        if (action == EquipmentBagTransferAction.Unequip)
+        {
+            await HandleUnequipItemAsync(equipmentSlot, bagSlot, cancellationToken);
+            return;
+        }
+
+        var equippedItem = EquipmentSlots.GetItem(
+            _character.Equipment,
+            _character.Profession,
+            equipmentSlot);
+        var bagItem = KitBagSlots.GetItem(_character.KitBag, bagSlot);
+        if (action == EquipmentBagTransferAction.Equip)
+        {
+            await HandleEquipItemAsync(
+                bagSlot,
+                requestedEquipmentSlot: equipmentSlot,
+                itemIdHint: bagItem.Id,
+                cancellationToken,
+                sendStorageTransferAck: true);
+            return;
+        }
+
+        // Opcode 10052 has no direction bit. The native client treats a pair of
+        // occupied locations as a swap, but this server deliberately rejects it so
+        // dropping equipped gear onto an occupied bag slot cannot unequip it.
+        Console.WriteLine(
+            $"[equip-re] StorageItem transfer ignored: equipmentSlot={equipmentSlot} equipmentItem={equippedItem.Id} bagSlot={bagSlot} bagItem={bagItem.Id}");
+        await SendEquipmentBagTransferRejectionRefreshAsync(
+            equipmentSlot,
+            bagSlot,
+            cancellationToken);
+    }
+
+    private async Task SendEquipmentBagTransferRejectionRefreshAsync(
+        int equipmentSlot,
+        int bagSlot,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var equipmentRefresh = PacketBuilder.EquipmentItemSnapshot(_character, equipmentSlot);
+        if (equipmentRefresh.Length == 0)
+        {
+            equipmentRefresh = PacketBuilder.EquipmentItemClearSnapshot(equipmentSlot);
+        }
+
+        await _session.SendAsync(
+            equipmentRefresh,
+            cancellationToken,
+            "RejectedStorageEquipmentRefresh");
+        await _session.SendAsync(
+            PacketBuilder.KitBagSlotIndex(_character, bagSlot),
+            cancellationToken,
+            "RejectedStorageKitBagIndexRefresh");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(_character),
+            cancellationToken,
+            "RejectedStorageEquipmentVisualRefresh");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(),
+            cancellationToken,
+            "RejectedStoragePlayerDetailRefreshAck");
+    }
+
+    internal static EquipmentBagTransferAction ResolveEquipmentBagTransferAction(
+        GameCharacter character,
+        int equipmentSlot,
+        int bagSlot)
+    {
+        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot) || bagSlot is < 0 or >= 96)
+        {
+            return EquipmentBagTransferAction.Reject;
+        }
+
+        var equippedItem = EquipmentSlots.GetItem(
+            character.Equipment,
+            character.Profession,
+            equipmentSlot);
+        var bagItem = KitBagSlots.GetItem(character.KitBag, bagSlot);
+        if (!equippedItem.IsEmpty && bagItem.IsEmpty)
+        {
+            return EquipmentBagTransferAction.Unequip;
+        }
+
+        if (equippedItem.IsEmpty
+            && !bagItem.IsEmpty
+            && EquipmentSlots.ResolveSlotForItem(bagItem.Id, equipmentSlot) == equipmentSlot)
+        {
+            return EquipmentBagTransferAction.Equip;
+        }
+
+        return EquipmentBagTransferAction.Reject;
     }
 
     private async Task HandleBreakItemAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -2645,14 +4255,15 @@ internal sealed class GameClientHandler : IClientHandler
 
         if (!TryReadBreakItemEquip(packet.Payload, out var sourceSlot))
         {
-            if (!TryResolveEquipSourceFromLastItemInfo(out sourceSlot, out var itemIdHint))
-            {
-                Console.WriteLine("[equip-re] BreakItem ignored: payload does not match captured bag-to-equipment shape and no recent item info is available");
-                return;
-            }
+            Console.WriteLine("[equip-re] BreakItem ignored: payload does not contain a valid bag page/index");
+            return;
+        }
 
-            Console.WriteLine($"[equip-re] BreakItem equip resolved from recent item info sourceSlot={sourceSlot} item={itemIdHint}");
-            await HandleEquipItemAsync(sourceSlot, requestedEquipmentSlot: -1, itemIdHint: itemIdHint, cancellationToken);
+        var itemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
+        if (!EquipmentSlots.TryGetAuthoritativeSlot(itemId, out _))
+        {
+            Console.WriteLine(
+                $"[equip-re] BreakItem ignored: sourceSlot={sourceSlot} item={itemId} is not genuine equipment");
             return;
         }
 
@@ -2733,16 +4344,10 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        if (MatchesCurrentKitBagItem(_character, sourceSlot, itemId))
-        {
-            _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
-            Console.WriteLine($"[equip-re] BagItemAction remembered pending equip source character={_character.Name} sourceSlot={sourceSlot} item={itemId}");
-        }
-        else
-        {
-            _lastItemInfo = null;
-            Console.WriteLine($"[equip-re] BagItemAction did not cache stale item sourceSlot={sourceSlot} item={itemId}");
-        }
+        Console.WriteLine(
+            MatchesCurrentKitBagItem(_character, sourceSlot, itemId)
+                ? $"[equip-re] BagItemAction acknowledged character={_character.Name} sourceSlot={sourceSlot} item={itemId}"
+                : $"[equip-re] BagItemAction acknowledged without matching authoritative item sourceSlot={sourceSlot} item={itemId}");
 
         await _session.SendAsync(
             PacketBuilder.BagItemActionAck(packet.Buffer),
@@ -2754,21 +4359,16 @@ internal sealed class GameClientHandler : IClientHandler
     {
         LogInventoryPacket(packet);
 
-        if (TryReadItemInfoRequest(packet.Payload, out var sourceSlot, out var itemId)
-            && MatchesCurrentKitBagItem(_character, sourceSlot, itemId))
-        {
-            _lastItemInfo = new PendingItemInfo(sourceSlot, itemId, DateTime.UtcNow);
-            Console.WriteLine($"[equip-re] ItemInfoRequest sourceSlot={sourceSlot} item={itemId}");
-            return;
-        }
-
-        _lastItemInfo = null;
-        Console.WriteLine("[equip-re] ItemInfoRequest ignored: payload does not match the authoritative kitbag item");
+        Console.WriteLine(
+            TryReadItemInfoRequest(packet.Payload, out var sourceSlot, out var itemId)
+            && MatchesCurrentKitBagItem(_character, sourceSlot, itemId)
+                ? $"[equip-re] ItemInfoRequest sourceSlot={sourceSlot} item={itemId}"
+                : "[equip-re] ItemInfoRequest ignored: payload does not match the authoritative kitbag item");
     }
 
     private async Task HandleUnequipItemAsync(int equipmentSlot, int destinationSlot, CancellationToken cancellationToken)
     {
-        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot))
+        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot) || destinationSlot is < 0 or >= 96)
         {
             Console.WriteLine($"[equip-re] StorageItem unequip ignored: unsupported slot={equipmentSlot} destination={destinationSlot}");
             return;
@@ -2779,18 +4379,38 @@ internal sealed class GameClientHandler : IClientHandler
             return;
         }
 
-        var previousItemId = EquipmentSlots.GetItemId(_character.Equipment, _character.Profession, equipmentSlot);
+        var previousEquipmentEntry = EquipmentSlots.GetEntry(
+            _character.Equipment,
+            _character.Profession,
+            equipmentSlot);
+        var previousItemId = CompactItemEntry.Parse(previousEquipmentEntry).Id;
+        if (previousItemId == 0)
+        {
+            Console.WriteLine(
+                $"[equip-re] StorageItem unequip ignored: empty equipment slot={equipmentSlot} destination={destinationSlot}");
+            await SendEquipmentBagTransferRejectionRefreshAsync(
+                equipmentSlot,
+                destinationSlot,
+                cancellationToken);
+            return;
+        }
+
+        var previousKitBag = _character.KitBag;
         var updatedCharacter = await _store.MoveEquipmentToKitBagAsync(
             _account.Id,
             _character.Id,
             equipmentSlot,
-            destinationSlot,
-            cancellationToken);
+            kitBagSlot: destinationSlot,
+            cancellationToken: cancellationToken);
 
         if (updatedCharacter is null)
         {
             Console.WriteLine(
                 $"[equip-re] StorageItem unequip failed: character={_character.Name} id={_character.Id} slot={equipmentSlot}");
+            await SendEquipmentBagTransferRejectionRefreshAsync(
+                equipmentSlot,
+                destinationSlot,
+                cancellationToken);
             return;
         }
 
@@ -2800,10 +4420,42 @@ internal sealed class GameClientHandler : IClientHandler
             _character = updatedCharacter;
             Console.WriteLine(
                 $"[equip-re] StorageItem unequip did not move item: character={_character.Name} slot={equipmentSlot} item={previousItemId} destination={destinationSlot}");
+            await SendEquipmentBagTransferRejectionRefreshAsync(
+                equipmentSlot,
+                destinationSlot,
+                cancellationToken);
             return;
         }
 
-        var actualDestinationSlot = ResolveMovedKitBagDestination(updatedCharacter, destinationSlot, previousItemId);
+        var actualDestinationSlot = ResolveMovedKitBagDestination(
+            previousKitBag,
+            updatedCharacter.KitBag,
+            previousEquipmentEntry);
+        if (actualDestinationSlot != destinationSlot)
+        {
+            _character = updatedCharacter;
+            await RefreshActiveCharacterStatsAsync("unequip-destination-mismatch", cancellationToken);
+            _registry.UpdateCharacter(_session, _character);
+            Console.WriteLine(
+                $"[equip-re] StorageItem unequip destination mismatch: character={_character.Name} slot={equipmentSlot} item={previousItemId} actualDestination={actualDestinationSlot} requestedDestination={destinationSlot}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerStatusUpdate(_character),
+                cancellationToken,
+                "PlayerStatusUpdate");
+            await SendEquipmentBagTransferRejectionRefreshAsync(
+                equipmentSlot,
+                destinationSlot,
+                cancellationToken);
+            if (actualDestinationSlot is >= 0 and < 96)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.KitBagSlotIndex(_character, actualDestinationSlot),
+                    cancellationToken,
+                    "RejectedStorageActualKitBagIndexRefresh");
+            }
+            return;
+        }
+
         _character = updatedCharacter;
         await RefreshActiveCharacterStatsAsync("unequip", cancellationToken);
         _registry.UpdateCharacter(_session, _character);
@@ -2820,16 +4472,9 @@ internal sealed class GameClientHandler : IClientHandler
             cancellationToken,
             "PlayerStatusUpdate");
         await _session.SendAsync(
-            PacketBuilder.StorageItemUnequipToKitBag(clientEquipmentSlot, actualDestinationSlot),
+            PacketBuilder.StorageItemEquipmentBagTransfer(clientEquipmentSlot, actualDestinationSlot),
             cancellationToken,
             "StorageItemUnequipAck");
-        if (equipmentSlot is not (EquipmentSlots.Ring1 or EquipmentSlots.Ring2))
-        {
-            await _session.SendAsync(
-                PacketBuilder.EquipmentItemClearSnapshot(equipmentSlot),
-                cancellationToken,
-                "EquipmentItemClearSnapshot");
-        }
 
         await _session.SendAsync(
             PacketBuilder.EquipmentVisualRefresh(_character),
@@ -2842,28 +4487,28 @@ internal sealed class GameClientHandler : IClientHandler
         await BroadcastEquipmentRefreshAsync("unequip", cancellationToken);
     }
 
-    private static int ResolveMovedKitBagDestination(GameCharacter character, int requestedDestinationSlot, uint itemId)
+    internal static int ResolveMovedKitBagDestination(
+        string previousKitBag,
+        string updatedKitBag,
+        string movedEquipmentEntry)
     {
-        if (itemId == 0)
+        var movedItem = CompactItemEntry.Parse(movedEquipmentEntry);
+        if (movedItem.IsEmpty)
         {
-            return requestedDestinationSlot;
-        }
-
-        if (requestedDestinationSlot is >= 0 and < 96
-            && KitBagSlots.GetItemId(character.KitBag, requestedDestinationSlot) == itemId)
-        {
-            return requestedDestinationSlot;
+            return -1;
         }
 
         for (var slot = 0; slot < 96; slot++)
         {
-            if (KitBagSlots.GetItemId(character.KitBag, slot) == itemId)
+            var before = KitBagSlots.GetItem(previousKitBag, slot);
+            var after = KitBagSlots.GetItem(updatedKitBag, slot);
+            if (before.IsEmpty && after == movedItem)
             {
                 return slot;
             }
         }
 
-        return requestedDestinationSlot;
+        return -1;
     }
 
     private bool TryConsumeUnequipFollowup(int sourceSlot, uint itemId)
@@ -2892,7 +4537,8 @@ internal sealed class GameClientHandler : IClientHandler
         int sourceSlot,
         int requestedEquipmentSlot,
         uint itemIdHint,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool sendStorageTransferAck = false)
     {
         if (_account is null || _character is null)
         {
@@ -2906,10 +4552,18 @@ internal sealed class GameClientHandler : IClientHandler
         }
 
         var previousEquipment = _character.Equipment;
+        var previousKitBagEntry = KitBagSlots.GetEntry(_character.KitBag, sourceSlot);
         var kitBagItemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
         if (kitBagItemId == 0)
         {
             Console.WriteLine($"[equip-re] StorageItem equip ignored: empty sourceSlot={sourceSlot}");
+            if (sendStorageTransferAck && EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+            {
+                await SendEquipmentBagTransferRejectionRefreshAsync(
+                    requestedEquipmentSlot,
+                    sourceSlot,
+                    cancellationToken);
+            }
             return;
         }
 
@@ -2917,6 +4571,13 @@ internal sealed class GameClientHandler : IClientHandler
         {
             Console.WriteLine(
                 $"[equip-re] StorageItem equip ignored: stale item sourceSlot={sourceSlot} hint={itemIdHint} actual={kitBagItemId}");
+            if (sendStorageTransferAck && EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+            {
+                await SendEquipmentBagTransferRejectionRefreshAsync(
+                    requestedEquipmentSlot,
+                    sourceSlot,
+                    cancellationToken);
+            }
             return;
         }
 
@@ -2926,19 +4587,45 @@ internal sealed class GameClientHandler : IClientHandler
             _character.Id,
             sourceSlot,
             requestedEquipmentSlot,
-            cancellationToken);
+            cancellationToken,
+            requireEmptyEquipmentSlot: sendStorageTransferAck);
 
         if (updatedCharacter is null)
         {
             Console.WriteLine(
                 $"[equip-re] StorageItem equip failed: character={_character.Name} id={_character.Id} sourceSlot={sourceSlot}");
+            if (sendStorageTransferAck && EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+            {
+                await SendEquipmentBagTransferRejectionRefreshAsync(
+                    requestedEquipmentSlot,
+                    sourceSlot,
+                    cancellationToken);
+            }
+            return;
+        }
+
+        if (string.Equals(
+                KitBagSlots.GetEntry(updatedCharacter.KitBag, sourceSlot),
+                previousKitBagEntry,
+                StringComparison.Ordinal))
+        {
+            _character = updatedCharacter;
+            Console.WriteLine(
+                $"[equip-re] StorageItem equip did not move item: character={_character.Name} sourceSlot={sourceSlot} requestedTarget={requestedEquipmentSlot} item={kitBagItemId}");
+            if (sendStorageTransferAck && EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot))
+            {
+                await SendEquipmentBagTransferRejectionRefreshAsync(
+                    requestedEquipmentSlot,
+                    sourceSlot,
+                    cancellationToken);
+            }
+
             return;
         }
 
         _character = updatedCharacter;
         await RefreshActiveCharacterStatsAsync("equip", cancellationToken);
         _registry.UpdateCharacter(_session, _character);
-        _lastItemInfo = null;
         var equippedSlot = ResolveEquippedSlotForAck(
             _character,
             previousEquipment,
@@ -2951,21 +4638,26 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.PlayerStatusUpdate(_character),
             cancellationToken,
             "PlayerStatusUpdate");
-        if (EquipmentSlots.IsEquipmentSlot(requestedEquipmentSlot) && EquipmentSlots.IsEquipmentSlot(equippedSlot))
+        if (sendStorageTransferAck && EquipmentSlots.IsEquipmentSlot(equippedSlot))
         {
             await _session.SendAsync(
-                PacketBuilder.StorageItemEquipFromKitBag(sourceSlot, PacketBuilder.ToClientEquipmentSlot(equippedSlot)),
+                PacketBuilder.StorageItemEquipmentBagTransfer(
+                    PacketBuilder.ToClientEquipmentSlot(equippedSlot),
+                    sourceSlot),
                 cancellationToken,
-                "StorageItemEquipAck");
+                "StorageItemEquipmentBagTransferAck");
         }
 
-        var snapshot = PacketBuilder.EquipmentItemEquipSnapshot(_character, sourceSlot, equippedSlot);
-        if (snapshot.Length > 0)
+        if (!sendStorageTransferAck)
         {
-            await _session.SendAsync(
-                snapshot,
-                cancellationToken,
-                "EquipmentItemSnapshot");
+            var snapshot = PacketBuilder.EquipmentItemEquipSnapshot(_character, sourceSlot, equippedSlot);
+            if (snapshot.Length > 0)
+            {
+                await _session.SendAsync(
+                    snapshot,
+                    cancellationToken,
+                    "EquipmentItemSnapshot");
+            }
         }
 
         await _session.SendAsync(
@@ -3015,6 +4707,18 @@ internal sealed class GameClientHandler : IClientHandler
             PacketBuilder.StorageItemKitBagMove(sourceSlot, destinationSlot),
             cancellationToken,
             "StorageItemKitBagMoveAck");
+
+        await _session.SendAsync(
+            PacketBuilder.KitBagSlotIndex(_character, sourceSlot),
+            cancellationToken,
+            "StorageItemKitBagSourceRefresh");
+        if (destinationSlot != sourceSlot)
+        {
+            await _session.SendAsync(
+                PacketBuilder.KitBagSlotIndex(_character, destinationSlot),
+                cancellationToken,
+                "StorageItemKitBagDestinationRefresh");
+        }
     }
 
     private async Task HandleDeleteKitBagItemAsync(int sourceSlot, CancellationToken cancellationToken)
@@ -3047,44 +4751,12 @@ internal sealed class GameClientHandler : IClientHandler
 
         _character = updatedCharacter;
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
-        if (_lastItemInfo is { SourceSlot: var rememberedSlot } && rememberedSlot == sourceSlot)
-        {
-            _lastItemInfo = null;
-        }
-
         Console.WriteLine(
             $"[inventory] deleted kitbag item character={_character.Name} source={sourceSlot} item={itemId}");
         await _session.SendAsync(
             PacketBuilder.StorageItemKitBagDelete(sourceSlot),
             cancellationToken,
             "StorageItemKitBagDeleteAck");
-    }
-
-    private bool TryResolveEquipSourceFromLastItemInfo(out int sourceSlot, out uint itemId)
-    {
-        sourceSlot = 0;
-        itemId = 0;
-
-        if (_lastItemInfo is not { } itemInfo)
-        {
-            return false;
-        }
-
-        if (DateTime.UtcNow - itemInfo.CreatedUtc > LastItemInfoTtl)
-        {
-            _lastItemInfo = null;
-            return false;
-        }
-
-        if (!MatchesCurrentKitBagItem(_character, itemInfo.SourceSlot, itemInfo.ItemId))
-        {
-            _lastItemInfo = null;
-            return false;
-        }
-
-        sourceSlot = itemInfo.SourceSlot;
-        itemId = itemInfo.ItemId;
-        return true;
     }
 
     private static bool TryReadNpcFunctionAction(
@@ -3268,13 +4940,13 @@ internal sealed class GameClientHandler : IClientHandler
         return "[" + string.Join(",", values) + "]";
     }
 
-    private static bool TryReadStorageItemUnequip(
+    internal static bool TryReadStorageItemEquipmentBagTransfer(
         ReadOnlySpan<byte> payload,
         out int equipmentSlot,
-        out int destinationSlot)
+        out int bagSlot)
     {
         equipmentSlot = 0;
-        destinationSlot = 0;
+        bagSlot = 0;
 
         if (payload.Length < 12)
         {
@@ -3285,11 +4957,19 @@ internal sealed class GameClientHandler : IClientHandler
         var emptyMarker = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
         var destinationPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
         var destinationIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
-        destinationSlot = (destinationPage * 24) + destinationIndex;
-        return emptyMarker == ushort.MaxValue;
+        if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot)
+            || emptyMarker != ushort.MaxValue
+            || destinationPage >= 4
+            || destinationIndex >= 24)
+        {
+            return false;
+        }
+
+        bagSlot = (destinationPage * 24) + destinationIndex;
+        return true;
     }
 
-    private static bool TryReadStorageItemKitBagMove(
+    internal static bool TryReadStorageItemKitBagMove(
         ReadOnlySpan<byte> payload,
         out int sourceSlot,
         out int destinationSlot)
@@ -3309,7 +4989,10 @@ internal sealed class GameClientHandler : IClientHandler
         var marker1 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(12, 2));
         var marker2 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(14, 2));
 
-        if (marker1 != ushort.MaxValue || marker2 != ushort.MaxValue)
+        const int fullStorageItemRequestPayloadLength = 76;
+        var hasStrictEmptyMarkers = marker1 == ushort.MaxValue && marker2 == ushort.MaxValue;
+        var isFullStorageItemRequest = payload.Length == fullStorageItemRequestPayloadLength;
+        if (!hasStrictEmptyMarkers && !isFullStorageItemRequest)
         {
             return false;
         }
@@ -3350,36 +5033,7 @@ internal sealed class GameClientHandler : IClientHandler
         return true;
     }
 
-    private static bool TryReadStorageItemEquip(
-        ReadOnlySpan<byte> payload,
-        out int sourceSlot,
-        out int clientEquipmentSlot)
-    {
-        sourceSlot = 0;
-        clientEquipmentSlot = 0;
-
-        if (payload.Length < 16)
-        {
-            return false;
-        }
-
-        var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(4, 2));
-        var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(6, 2));
-        var targetPage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
-        clientEquipmentSlot = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
-        var marker1 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(12, 2));
-        var marker2 = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(14, 2));
-
-        if (marker1 != ushort.MaxValue || marker2 != ushort.MaxValue || targetPage != 0)
-        {
-            return false;
-        }
-
-        sourceSlot = (sourcePage * 24) + sourceIndex;
-        return sourcePage < 4 && sourceIndex < 24;
-    }
-
-    private static bool TryReadBreakItemEquip(
+    internal static bool TryReadBreakItemEquip(
         ReadOnlySpan<byte> payload,
         out int sourceSlot)
     {
@@ -3390,33 +5044,12 @@ internal sealed class GameClientHandler : IClientHandler
             return false;
         }
 
-        var marker = BinaryPrimitives.ReadUInt32LittleEndian(payload[..4]);
-        if (marker == 0xFFFFFF00 || BinaryPrimitives.ReadUInt32LittleEndian(payload.Slice(4, 4)) == LocalPlayerObjectId)
-        {
-            var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
-            var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
-            if (sourcePage >= 4 || sourceIndex >= 24)
-            {
-                return false;
-            }
-
-            sourceSlot = (sourcePage * 24) + sourceIndex;
-            return true;
-        }
-
-        if (!TryResolvePackedBagSlot(marker, out sourceSlot))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool TryResolvePackedBagSlot(uint marker, out int sourceSlot)
-    {
-        sourceSlot = 0;
-        var sourcePage = (int)(marker & 0xFFFF);
-        var sourceIndex = (int)((marker >> 16) & 0xFFFF);
+        // The dword at offset 4 is the currently selected world object. It may
+        // be the player, a monster, or an NPC, so it cannot be used to decide
+        // whether this is an equip request. Captured clients consistently put
+        // the authoritative bag page/index at offsets 8 and 10.
+        var sourcePage = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(8, 2));
+        var sourceIndex = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(10, 2));
         if (sourcePage >= 4 || sourceIndex >= 24)
         {
             return false;
@@ -3491,6 +5124,12 @@ internal sealed class GameClientHandler : IClientHandler
             && KitBagSlots.GetItemId(character.KitBag, sourceSlot) == itemId;
     }
 
+    internal static byte ReadZodiacTypeFromCreationPayload(ReadOnlySpan<byte> payload)
+    {
+        var zodiacType = ReadByte(payload, 35, 0);
+        return zodiacType <= 11 ? zodiacType : (byte)0;
+    }
+
     private static byte ReadByte(ReadOnlySpan<byte> buffer, int offset, byte fallback)
     {
         return offset >= 0 && offset < buffer.Length ? buffer[offset] : fallback;
@@ -3498,5 +5137,11 @@ internal sealed class GameClientHandler : IClientHandler
 
     private sealed record PendingUnequipFollowup(int DestinationSlot, uint ItemId, DateTime CreatedUtc);
 
-    private sealed record PendingItemInfo(int SourceSlot, uint ItemId, DateTime CreatedUtc);
+}
+
+internal enum EquipmentBagTransferAction
+{
+    Reject,
+    Unequip,
+    Equip
 }

@@ -17,11 +17,23 @@ internal sealed class GameSessionRegistry
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
     private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
     private readonly ConcurrentDictionary<ClientSession, PlayerStatusState> _playerStatusStates = [];
+    private readonly ConcurrentDictionary<ClientSession, ZodiacOnlineSessionState> _zodiacOnlineSessions = [];
+    private readonly ConcurrentDictionary<ClientSession, ProgressionBoostOnlineSessionState> _progressionBoostOnlineSessions = [];
+    private readonly ConcurrentDictionary<int, ClientSession> _progressionBoostCharacterOwners = [];
     private readonly IGameStore? _store;
+    private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
+    private readonly TimeSpan _zodiacPersistenceInterval;
 
-    public GameSessionRegistry(IGameStore? store = null)
+    public GameSessionRegistry(
+        IGameStore? store = null,
+        ZodiacEnergyOptions? zodiacEnergyOptions = null)
     {
         _store = store;
+        zodiacEnergyOptions ??= new ZodiacEnergyOptions();
+        zodiacEnergyOptions.Normalize();
+        _zodiacEnergyPolicy = zodiacEnergyOptions.Snapshot();
+        _zodiacPersistenceInterval = TimeSpan.FromSeconds(
+            zodiacEnergyOptions.PersistenceIntervalSeconds);
     }
 
     public void JoinMap(
@@ -29,8 +41,10 @@ internal sealed class GameSessionRegistry
         int accountId,
         GameCharacter character,
         uint objectId,
-        bool worldReady = true)
+        bool worldReady = true,
+        DateTimeOffset? joinedAt = null)
     {
+        var onlineStartedAt = joinedAt ?? DateTimeOffset.UtcNow;
         var context = new GameSessionContext(
             session,
             accountId,
@@ -53,6 +67,36 @@ internal sealed class GameSessionRegistry
             _sessions[session] = context;
             AddToMap(context);
             _nextPlayerRecoveryAt[character.Id] = DateTimeOffset.UtcNow + PlayerRecoveryInterval;
+            _zodiacOnlineSessions.AddOrUpdate(
+                session,
+                _ => new ZodiacOnlineSessionState(
+                    accountId,
+                    character.Id,
+                    character,
+                    onlineStartedAt),
+                (_, existing) =>
+                {
+                    if (existing.CharacterId == character.Id)
+                    {
+                        existing.Character = character;
+                        return existing;
+                    }
+
+                    return new ZodiacOnlineSessionState(
+                        accountId,
+                        character.Id,
+                        character,
+                        onlineStartedAt);
+                });
+            if (worldReady)
+            {
+                StartProgressionBoostOnlineSession(
+                    session,
+                    accountId,
+                    character.Id,
+                    previous?.CharacterId,
+                    onlineStartedAt);
+            }
         }
 
         if (previous is null)
@@ -132,13 +176,19 @@ internal sealed class GameSessionRegistry
 
             _sessions[session] = updated;
             AddToMap(updated);
+            if (_zodiacOnlineSessions.TryGetValue(session, out var zodiacState) &&
+                zodiacState.CharacterId == character.Id)
+            {
+                zodiacState.Character = character;
+            }
         }
     }
 
     public bool TryMarkWorldReady(
         ClientSession session,
         IReadOnlyDictionary<uint, long> knownWorldRevisions,
-        out IReadOnlyList<GameSessionContext> unseenPlayers)
+        out IReadOnlyList<GameSessionContext> unseenPlayers,
+        DateTimeOffset? worldReadyAt = null)
     {
         lock (_gate)
         {
@@ -171,8 +221,43 @@ internal sealed class GameSessionRegistry
             var updated = existing with { WorldReady = true };
             _sessions[session] = updated;
             AddToMap(updated);
+            StartProgressionBoostOnlineSession(
+                session,
+                updated.AccountId,
+                updated.CharacterId,
+                existing.CharacterId,
+                worldReadyAt ?? DateTimeOffset.UtcNow);
             return true;
         }
+    }
+
+    private void StartProgressionBoostOnlineSession(
+        ClientSession session,
+        int accountId,
+        int characterId,
+        int? previousCharacterId,
+        DateTimeOffset onlineStartedAt)
+    {
+        var boostState = _progressionBoostOnlineSessions.AddOrUpdate(
+            session,
+            _ => new ProgressionBoostOnlineSessionState(
+                accountId,
+                characterId,
+                onlineStartedAt),
+            (_, existing) => existing.CharacterId == characterId
+                ? existing
+                : new ProgressionBoostOnlineSessionState(
+                    accountId,
+                    characterId,
+                    onlineStartedAt));
+        if (previousCharacterId.HasValue &&
+            previousCharacterId.Value != boostState.CharacterId)
+        {
+            _progressionBoostCharacterOwners.TryRemove(
+                new KeyValuePair<int, ClientSession>(previousCharacterId.Value, session));
+        }
+
+        _progressionBoostCharacterOwners[characterId] = session;
     }
 
     public ClientSession? ReplaceAccountSession(int accountId, ClientSession session)
@@ -352,7 +437,8 @@ internal sealed class GameSessionRegistry
         {
             try
             {
-                var boosts = await _store.GetExperienceBoostStateAsync(
+                var boosts = await GetExperienceBoostStateAsync(
+                    context.Session,
                     context.AccountId,
                     context.CharacterId,
                     context.Character.Camp,
@@ -470,7 +556,9 @@ internal sealed class GameSessionRegistry
                     definition.HitBonus,
                     definition.CriticalAppendBonus,
                     0f),
-                checked(++state.Revision));
+                checked(++state.Revision),
+                definition.PhysicalDamageReduction,
+                definition.MagicDamageReduction);
             state.RuntimeStatuses[definition.Kind] = appliedStatus;
             await PublishStatusSnapshotLockedAsync(
                 session,
@@ -511,6 +599,31 @@ internal sealed class GameSessionRegistry
                 active.Sum(static status => status.Modifiers.Hit),
                 active.Sum(static status => status.Modifiers.CriticalAppend),
                 0f);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    internal decimal GetRuntimePhysicalDamageReduction(
+        ClientSession session,
+        DateTimeOffset now)
+    {
+        if (!_playerStatusStates.TryGetValue(session, out var state))
+        {
+            return 0m;
+        }
+
+        state.Gate.Wait();
+        try
+        {
+            return Math.Clamp(
+                state.RuntimeStatuses.Values
+                    .Where(status => status.ExpiresAt > now)
+                    .Sum(static status => status.PhysicalDamageReduction),
+                0m,
+                1m);
         }
         finally
         {
@@ -578,6 +691,262 @@ internal sealed class GameSessionRegistry
         }
     }
 
+    public async Task<ExperienceBoostState> GetExperienceBoostStateAsync(
+        ClientSession session,
+        int accountId,
+        int characterId,
+        byte camp,
+        byte mapId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null)
+        {
+            return ExperienceBoostState.Empty;
+        }
+
+        await CheckpointProgressionBoostOnlineTimeAsync(
+            session,
+            now,
+            cancellationToken);
+        return await _store.GetExperienceBoostStateAsync(
+            accountId,
+            characterId,
+            camp,
+            mapId,
+            now,
+            cancellationToken);
+    }
+
+    public async Task FinishProgressionBoostOnlineSessionAsync(
+        ClientSession session,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!_progressionBoostOnlineSessions.TryRemove(session, out var state))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_progressionBoostCharacterOwners.TryGetValue(state.CharacterId, out var owner) &&
+                ReferenceEquals(owner, session))
+            {
+                await ConsumeProgressionBoostOnlineTimeAsync(
+                    state,
+                    now,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            // Never leak ownership after a failed persistence attempt. The
+            // periodic checkpoint limits the unpersisted tail to one cycle,
+            // and a replacement session must always be able to take ownership.
+            _progressionBoostCharacterOwners.TryRemove(
+                new KeyValuePair<int, ClientSession>(state.CharacterId, session));
+        }
+    }
+
+    private async Task CheckpointProgressionBoostOnlineTimeAsync(
+        ClientSession session,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null ||
+            !_progressionBoostOnlineSessions.TryGetValue(session, out var state) ||
+            !_progressionBoostCharacterOwners.TryGetValue(state.CharacterId, out var owner) ||
+            !ReferenceEquals(owner, session))
+        {
+            return;
+        }
+
+        await ConsumeProgressionBoostOnlineTimeAsync(
+            state,
+            now,
+            cancellationToken);
+    }
+
+    private async Task ConsumeProgressionBoostOnlineTimeAsync(
+        ProgressionBoostOnlineSessionState state,
+        DateTimeOffset onlineUntil,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null)
+        {
+            return;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (onlineUntil <= state.LastAccountedAt)
+            {
+                return;
+            }
+
+            await _store.ConsumeCharacterBoostOnlineTimeAsync(
+                state.AccountId,
+                state.CharacterId,
+                state.LastAccountedAt,
+                onlineUntil,
+                cancellationToken);
+            state.LastAccountedAt = onlineUntil;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    public async Task RunZodiacEnergyAccrualAsync(CancellationToken cancellationToken)
+    {
+        if (!_zodiacEnergyPolicy.Enabled || _store is null)
+        {
+            return;
+        }
+
+        using var timer = new PeriodicTimer(_zodiacPersistenceInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await AdvanceZodiacEnergyAccrualOnceAsync(
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal async Task<int> AdvanceZodiacEnergyAccrualOnceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!_zodiacEnergyPolicy.Enabled || _store is null)
+        {
+            return 0;
+        }
+
+        var notifications = 0;
+        foreach (var context in _sessions.Values.Where(static context => context.WorldReady))
+        {
+            if (!_zodiacOnlineSessions.TryGetValue(context.Session, out var state))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (await PersistZodiacOnlineTimeAsync(
+                        context.Session,
+                        state,
+                        now,
+                        sendNotification: true,
+                        cancellationToken))
+                {
+                    notifications++;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[zodiac] online accrual deferred character={state.Character.Name}: {ex.Message}");
+            }
+        }
+
+        return notifications;
+    }
+
+    public async Task FinishZodiacOnlineSessionAsync(
+        ClientSession session,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!_zodiacOnlineSessions.TryRemove(session, out var state) ||
+            !_zodiacEnergyPolicy.Enabled ||
+            _store is null)
+        {
+            return;
+        }
+
+        await PersistZodiacOnlineTimeAsync(
+            session,
+            state,
+            now,
+            sendNotification: false,
+            cancellationToken);
+    }
+
+    private async Task<bool> PersistZodiacOnlineTimeAsync(
+        ClientSession session,
+        ZodiacOnlineSessionState state,
+        DateTimeOffset onlineUntil,
+        bool sendNotification,
+        CancellationToken cancellationToken)
+    {
+        if (_store is null)
+        {
+            return false;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (onlineUntil <= state.LastAccountedAt)
+            {
+                return false;
+            }
+
+            var result = await _store.ApplyZodiacOnlineTimeAsync(
+                state.AccountId,
+                state.CharacterId,
+                state.LastAccountedAt,
+                onlineUntil,
+                _zodiacEnergyPolicy,
+                cancellationToken);
+            if (result is null)
+            {
+                return false;
+            }
+
+            state.LastAccountedAt = result.LastOnlineAt;
+            lock (state.Character.ZodiacSync)
+            {
+                state.Character.ZodiacEnergy = result.CurrentEnergy;
+                state.Character.ZodiacEnergyRemainderX100 = result.CurrentEnergyRemainderX100;
+                state.Character.ZodiacOnlineDay = result.OnlineDay;
+                state.Character.ZodiacOnlineDurationTicksToday = result.OnlineDurationTicksToday;
+                state.Character.ZodiacLastOnlineAt = result.LastOnlineAt;
+                state.Character.ZodiacLastCompensationDay = result.LastCompensationDay;
+            }
+
+            if (!sendNotification || result.GainedEnergyX100 <= 0)
+            {
+                return false;
+            }
+
+            await session.SendAsync(
+                PacketBuilder.ZodiacEnergyIncrease(
+                    result.CurrentEnergy,
+                    result.GainedEnergyX100),
+                cancellationToken,
+                result.CompensationApplied
+                    ? "ZodiacEnergyCompensation"
+                    : "ZodiacEnergyIncrease");
+            Console.WriteLine(
+                $"[zodiac] energy character={state.Character.Name} gain={result.GainedEnergyX100 / 100m:0.##} total={result.CurrentEnergy}.{result.CurrentEnergyRemainderX100:00} compensation={result.CompensationApplied}");
+            return true;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
     internal async Task<int> ReconcileExperienceBoostStatusesOnceAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -592,7 +961,8 @@ internal sealed class GameSessionRegistry
         {
             try
             {
-                var boosts = await _store.GetExperienceBoostStateAsync(
+                var boosts = await GetExperienceBoostStateAsync(
+                    context.Session,
                     context.AccountId,
                     context.CharacterId,
                     context.Character.Camp,
@@ -812,6 +1182,25 @@ internal sealed class GameSessionRegistry
             objectId,
             damage,
             attackerCharacterId,
+            expectedSpawnGeneration: null,
+            DateTimeOffset.UtcNow,
+            out result);
+    }
+
+    public bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        int attackerCharacterId,
+        uint expectedSpawnGeneration,
+        out MonsterDamageResult result)
+    {
+        return TryApplyMonsterDamage(
+            mapId,
+            objectId,
+            damage,
+            attackerCharacterId,
+            expectedSpawnGeneration,
             DateTimeOffset.UtcNow,
             out result);
     }
@@ -823,7 +1212,14 @@ internal sealed class GameSessionRegistry
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
-        return TryApplyMonsterDamage(mapId, objectId, damage, null, now, out result);
+        return TryApplyMonsterDamage(
+            mapId,
+            objectId,
+            damage,
+            attackerCharacterId: null,
+            expectedSpawnGeneration: null,
+            now,
+            out result);
     }
 
     internal bool TryApplyMonsterDamage(
@@ -834,8 +1230,76 @@ internal sealed class GameSessionRegistry
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
+        return TryApplyMonsterDamage(
+            mapId,
+            objectId,
+            damage,
+            attackerCharacterId,
+            expectedSpawnGeneration: null,
+            now,
+            out result);
+    }
+
+    internal bool TryApplyMonsterDamage(
+        byte mapId,
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        uint? expectedSpawnGeneration,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
         if (_maps.TryGetValue(mapId, out var map) &&
-            map.TryApplyMonsterDamage(objectId, damage, attackerCharacterId, now, out result))
+            map.TryApplyMonsterDamage(
+                objectId,
+                damage,
+                attackerCharacterId,
+                expectedSpawnGeneration,
+                now,
+                out result))
+        {
+            return true;
+        }
+
+        result = default!;
+        return false;
+    }
+
+    internal bool TryApplyMonsterStun(
+        byte mapId,
+        uint objectId,
+        int attackerCharacterId,
+        TimeSpan duration,
+        DateTimeOffset now,
+        out MonsterStunResult result)
+    {
+        return TryApplyMonsterStun(
+            mapId,
+            objectId,
+            attackerCharacterId,
+            duration,
+            expectedSpawnGeneration: null,
+            now,
+            out result);
+    }
+
+    internal bool TryApplyMonsterStun(
+        byte mapId,
+        uint objectId,
+        int attackerCharacterId,
+        TimeSpan duration,
+        uint? expectedSpawnGeneration,
+        DateTimeOffset now,
+        out MonsterStunResult result)
+    {
+        if (_maps.TryGetValue(mapId, out var map) &&
+            map.TryApplyMonsterStun(
+                objectId,
+                attackerCharacterId,
+                duration,
+                expectedSpawnGeneration,
+                now,
+                out result))
         {
             return true;
         }
@@ -849,14 +1313,16 @@ internal sealed class GameSessionRegistry
         byte mapId,
         float playerX,
         float playerZ,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceRefreshVisible = false)
     {
         return _maps.TryGetValue(mapId, out var map)
             ? map.BeginMonsterVisibilityTransitionAsync(
                 session,
                 playerX,
                 playerZ,
-                cancellationToken)
+                cancellationToken,
+                forceRefreshVisible)
             : ValueTask.FromResult<MonsterVisibilityTransition?>(null);
     }
 
@@ -867,6 +1333,16 @@ internal sealed class GameSessionRegistry
                map.IsMonsterVisibleTo(session, objectId);
     }
 
+    public bool IsMonsterVisibleTo(
+        ClientSession session,
+        uint objectId,
+        uint spawnGeneration)
+    {
+        return _sessions.TryGetValue(session, out var context) &&
+               _maps.TryGetValue(context.MapId, out var map) &&
+               map.IsMonsterVisibleTo(session, objectId, spawnGeneration);
+    }
+
     public async Task<int> BroadcastToMonsterViewersAsync(
         byte mapId,
         uint monsterId,
@@ -874,26 +1350,369 @@ internal sealed class GameSessionRegistry
         CancellationToken cancellationToken,
         ClientSession? excludeSession = null,
         string? label = null,
-        bool framed = true)
+        bool framed = true,
+        MonsterHealthMutation? healthMutation = null,
+        uint? expectedSpawnGeneration = null)
     {
         if (!_maps.TryGetValue(mapId, out var map))
         {
             return 0;
         }
 
+        if (healthMutation is { } mutation && mutation.ObjectId != monsterId)
+        {
+            throw new ArgumentException(
+                $"Health mutation object {mutation.ObjectId} does not match broadcast monster {monsterId}.",
+                nameof(healthMutation));
+        }
+
+        if (healthMutation is { } versionedHealthMutation &&
+            expectedSpawnGeneration is { } expectedGeneration &&
+            versionedHealthMutation.SpawnGeneration != expectedGeneration)
+        {
+            throw new ArgumentException(
+                "Health mutation and ordinary delivery generation do not match.",
+                nameof(expectedSpawnGeneration));
+        }
+
         var sent = 0;
         foreach (var context in map.Snapshot())
         {
             if (!context.WorldReady ||
-                excludeSession is not null && ReferenceEquals(context.Session, excludeSession) ||
-                !map.IsMonsterVisibleTo(context.Session, monsterId))
+                excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
             {
                 continue;
             }
 
             try
             {
-                await context.Session.SendAsync(packet, cancellationToken, label, framed);
+                await using var deliveryLease =
+                    healthMutation is { } versionedMutation
+                        ? await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                            context.Session,
+                            [versionedMutation],
+                            cancellationToken)
+                        : expectedSpawnGeneration is { } versionedGeneration
+                            ? await map.AcquireMonsterViewerDeliveryLeaseAsync(
+                                context.Session,
+                                monsterId,
+                                versionedGeneration,
+                                cancellationToken)
+                            : await map.AcquireMonsterViewerDeliveryLeaseAsync(
+                                context.Session,
+                                monsterId,
+                                cancellationToken);
+                if (deliveryLease is null)
+                {
+                    continue;
+                }
+
+                if (deliveryLease.ReconciliationObjectIds.Count > 0)
+                {
+                    await SendMonsterHealthReconciliationAsync(
+                        context.Session,
+                        deliveryLease,
+                        cancellationToken,
+                        label);
+                }
+                else
+                {
+                    await context.Session.SendAsync(packet, cancellationToken, label, framed);
+                }
+
+                deliveryLease.Commit();
+                sent++;
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                Remove(context.Session);
+            }
+        }
+
+        return sent;
+    }
+
+    private static async Task SendMonsterHealthReconciliationAsync(
+        ClientSession session,
+        MonsterViewerDeliveryLease deliveryLease,
+        CancellationToken cancellationToken,
+        string? label)
+    {
+        await session.SendAsync(
+            PacketBuilder.RemoveWorldObjects(
+                deliveryLease.ReconciliationObjectIds.ToArray()),
+            cancellationToken,
+            $"{label ?? "MonsterHealth"}ReconcileRemove");
+        if (deliveryLease.ReconciliationMonsters.Count == 0)
+        {
+            return;
+        }
+
+        await session.SendAsync(
+            PacketBuilder.CapturedMonsterSpawns(
+                deliveryLease.ReconciliationMonsters
+                    .Select(monster => monster.Appearance)
+                    .ToArray()),
+            cancellationToken,
+            $"{label ?? "MonsterHealth"}ReconcileSpawn",
+            framed: false);
+        foreach (var monster in deliveryLease.ReconciliationMonsters.Where(
+                     monster => monster.IsMoving))
+        {
+            await session.SendAsync(
+                PacketBuilder.MonsterMovementStart(
+                    monster.ObjectId,
+                    monster.X,
+                    monster.Y,
+                    monster.Z,
+                    monster.VelocityX,
+                    monster.VelocityY,
+                    monster.VelocityZ),
+                cancellationToken,
+                $"{label ?? "MonsterHealth"}ReconcileMovement");
+        }
+    }
+
+    public async Task<bool> DeliverMonsterPacketToViewerAsync(
+        ClientSession session,
+        byte mapId,
+        uint monsterId,
+        ReadOnlyMemory<byte> packet,
+        uint expectedSpawnGeneration,
+        CancellationToken cancellationToken,
+        string? label = null,
+        bool framed = true)
+    {
+        if (!_sessions.TryGetValue(session, out var context) ||
+            context.MapId != mapId ||
+            !context.WorldReady ||
+            !_maps.TryGetValue(mapId, out var map))
+        {
+            return false;
+        }
+
+        await using var deliveryLease =
+            await map.AcquireMonsterViewerDeliveryLeaseAsync(
+                session,
+                monsterId,
+                expectedSpawnGeneration,
+                cancellationToken);
+        if (deliveryLease is null)
+        {
+            return false;
+        }
+
+        await session.SendAsync(packet, cancellationToken, label, framed);
+        deliveryLease.Commit();
+        return true;
+    }
+
+    public async Task<bool> DeliverMonsterHealthPacketToViewerAsync(
+        ClientSession session,
+        byte mapId,
+        uint monsterId,
+        ReadOnlyMemory<byte> packet,
+        MonsterHealthMutation healthMutation,
+        CancellationToken cancellationToken,
+        string? label = null,
+        bool framed = true)
+    {
+        if (healthMutation.ObjectId != monsterId)
+        {
+            throw new ArgumentException(
+                $"Health mutation object {healthMutation.ObjectId} does not match delivery monster {monsterId}.",
+                nameof(healthMutation));
+        }
+
+        if (!_sessions.TryGetValue(session, out var context) ||
+            context.MapId != mapId ||
+            !context.WorldReady ||
+            !_maps.TryGetValue(mapId, out var map))
+        {
+            return false;
+        }
+
+        await using var deliveryLease =
+            await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                session,
+                [healthMutation],
+                cancellationToken);
+        if (deliveryLease is null)
+        {
+            return false;
+        }
+
+        if (deliveryLease.ReconciliationObjectIds.Count > 0)
+        {
+            await SendMonsterHealthReconciliationAsync(
+                session,
+                deliveryLease,
+                cancellationToken,
+                label);
+        }
+        else
+        {
+            await session.SendAsync(packet, cancellationToken, label, framed);
+        }
+
+        deliveryLease.Commit();
+        return true;
+    }
+
+    public async Task<bool> DeliverMonsterAreaDamageToViewerAsync(
+        ClientSession session,
+        byte mapId,
+        uint attackerObjectId,
+        uint skillId,
+        IReadOnlyList<MonsterAreaDamageBroadcastHit> hits,
+        CancellationToken cancellationToken,
+        string labelPrefix = "AreaSkillSelf")
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        if (hits.Count == 0 ||
+            !_sessions.TryGetValue(session, out var context) ||
+            context.MapId != mapId ||
+            !context.WorldReady ||
+            !_maps.TryGetValue(mapId, out var map))
+        {
+            return false;
+        }
+
+        var mutations = hits.Select(hit => hit.HealthMutation).ToArray();
+        var hitsByObjectId = hits.ToDictionary(hit => hit.HealthMutation.ObjectId);
+        await using var deliveryLease =
+            await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                session,
+                mutations,
+                cancellationToken);
+        if (deliveryLease is null)
+        {
+            return false;
+        }
+
+        if (deliveryLease.ReconciliationObjectIds.Count > 0)
+        {
+            await SendMonsterHealthReconciliationAsync(
+                session,
+                deliveryLease,
+                cancellationToken,
+                labelPrefix);
+        }
+
+        if (deliveryLease.DirectHealthMutations.Count > 0)
+        {
+            var directHits = deliveryLease.DirectHealthMutations
+                .Select(mutation => hitsByObjectId[mutation.ObjectId])
+                .Select(hit => new SkillClusterDamageEntry(
+                    hit.HealthMutation.ObjectId,
+                    hit.ReportedDamage))
+                .ToArray();
+            await session.SendAsync(
+                PacketBuilder.SkillClusterDamage(
+                    attackerObjectId,
+                    skillId,
+                    directHits),
+                cancellationToken,
+                $"{labelPrefix}Damage");
+        }
+
+        deliveryLease.Commit();
+        return true;
+    }
+
+    public async Task<int> BroadcastMonsterAreaDamageToViewersAsync(
+        byte mapId,
+        ReadOnlyMemory<byte> visualPacket,
+        ReadOnlyMemory<byte> impactPacket,
+        uint attackerObjectId,
+        uint skillId,
+        IReadOnlyList<MonsterAreaDamageBroadcastHit> hits,
+        CancellationToken cancellationToken,
+        ClientSession? excludeSession = null,
+        string labelPrefix = "AreaSkill")
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        if (hits.Count == 0)
+        {
+            var visualRecipients = await BroadcastToMapAsync(
+                mapId,
+                visualPacket,
+                cancellationToken,
+                excludeSession,
+                $"{labelPrefix}CastWorld");
+            var impactRecipients = await BroadcastToMapAsync(
+                mapId,
+                impactPacket,
+                cancellationToken,
+                excludeSession,
+                $"{labelPrefix}ImpactWorld");
+            return Math.Max(visualRecipients, impactRecipients);
+        }
+
+        if (!_maps.TryGetValue(mapId, out var map))
+        {
+            return 0;
+        }
+
+        var mutations = hits.Select(hit => hit.HealthMutation).ToArray();
+        var hitsByObjectId = hits.ToDictionary(
+            hit => hit.HealthMutation.ObjectId);
+        var sent = 0;
+        foreach (var context in map.Snapshot())
+        {
+            if (!context.WorldReady ||
+                excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
+            {
+                continue;
+            }
+
+            try
+            {
+                await using var deliveryLease =
+                    await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                        context.Session,
+                        mutations,
+                        cancellationToken);
+                if (deliveryLease is null)
+                {
+                    continue;
+                }
+
+                if (deliveryLease.ReconciliationObjectIds.Count > 0)
+                {
+                    await SendMonsterHealthReconciliationAsync(
+                        context.Session,
+                        deliveryLease,
+                        cancellationToken,
+                        labelPrefix);
+                }
+
+                if (deliveryLease.DirectHealthMutations.Count > 0)
+                {
+                    var directHits = deliveryLease.DirectHealthMutations
+                        .Select(mutation => hitsByObjectId[mutation.ObjectId])
+                        .Select(hit => new SkillClusterDamageEntry(
+                            hit.HealthMutation.ObjectId,
+                            hit.ReportedDamage))
+                        .ToArray();
+                    await context.Session.SendAsync(
+                        visualPacket,
+                        cancellationToken,
+                        $"{labelPrefix}CastWorld");
+                    await context.Session.SendAsync(
+                        impactPacket,
+                        cancellationToken,
+                        $"{labelPrefix}ImpactWorld");
+                    await context.Session.SendAsync(
+                        PacketBuilder.SkillClusterDamage(
+                            attackerObjectId,
+                            skillId,
+                            directHits),
+                        cancellationToken,
+                        $"{labelPrefix}DamageWorld");
+                }
+
+                deliveryLease.Commit();
                 sent++;
             }
             catch (Exception ex) when (ex is IOException or ObjectDisposedException)
@@ -1094,8 +1913,56 @@ internal sealed class GameSessionRegistry
             .Where(update => update.Kind == MonsterRuntimeUpdateKind.Despawned)
             .Select(update => update.Monster.ObjectId)
             .ToHashSet();
+        var returnedByObjectId = tick.Updates
+            .Where(update => update.Kind == MonsterRuntimeUpdateKind.Returned)
+            .GroupBy(update => update.Monster.ObjectId)
+            .ToDictionary(group => group.Key, group => group.Last());
+        var returnedInsideViewerAoi = new HashSet<uint>();
+        var returnedOutsideViewerAoi = new HashSet<uint>();
+        foreach (var objectId in delta.Leaving.Where(despawnedObjectIds.Contains))
+        {
+            if (!returnedByObjectId.TryGetValue(objectId, out var returned))
+            {
+                continue;
+            }
+
+            if (!WorldSectorVisibilityTracker<CapturedMonsterSpawn>.TryGetCell(
+                    returned.Monster.X,
+                    returned.Monster.Z,
+                    out var returnedCell) ||
+                !WorldSectorVisibilityTracker<CapturedMonsterSpawn>.IsNeighbor(
+                    delta.PlayerCell,
+                    returnedCell))
+            {
+                returnedOutsideViewerAoi.Add(objectId);
+                continue;
+            }
+
+            // The runtime has already retired this object, so the final-state
+            // visibility delta alone would send its marker first and suppress
+            // movement-end. Serialize the immutable home-arrival snapshot
+            // before removing the old client entity.
+            await context.Session.SendAsync(
+                PacketBuilder.MonsterMovementEnd(
+                    objectId,
+                    returned.MovementEndField ?? returned.Monster.MovementTicks,
+                    returned.Monster.X,
+                    returned.Monster.Y,
+                    returned.Monster.Z,
+                    returned.Monster.Facing),
+                cancellationToken,
+                "MonsterLeashReturnEnd");
+            await context.Session.SendAsync(
+                PacketBuilder.MonsterLifecycleMarker(objectId),
+                cancellationToken,
+                "MonsterLeashRetire");
+            returnedInsideViewerAoi.Add(objectId);
+        }
+
         var ordinaryLeaving = delta.Leaving
-            .Where(objectId => !despawnedObjectIds.Contains(objectId))
+            .Where(objectId =>
+                !despawnedObjectIds.Contains(objectId) ||
+                returnedOutsideViewerAoi.Contains(objectId))
             .ToArray();
         if (ordinaryLeaving.Length > 0)
         {
@@ -1105,7 +1972,10 @@ internal sealed class GameSessionRegistry
                 "RoamingMonsterAoiRemovals");
         }
 
-        foreach (var objectId in delta.Leaving.Where(despawnedObjectIds.Contains))
+        foreach (var objectId in delta.Leaving.Where(objectId =>
+                     despawnedObjectIds.Contains(objectId) &&
+                     !returnedInsideViewerAoi.Contains(objectId) &&
+                     !returnedOutsideViewerAoi.Contains(objectId)))
         {
             await context.Session.SendAsync(
                 PacketBuilder.MonsterLifecycleMarker(objectId),
@@ -1165,11 +2035,17 @@ internal sealed class GameSessionRegistry
                 continue;
             }
 
-            if (update.Kind is MonsterRuntimeUpdateKind.Started or MonsterRuntimeUpdateKind.Arrived &&
+            if (update.Kind is (MonsterRuntimeUpdateKind.Started or
+                    MonsterRuntimeUpdateKind.Arrived or
+                    MonsterRuntimeUpdateKind.Returned) &&
                 (!map.TryGetMonsterSnapshot(monster.ObjectId, out var currentMonster) ||
                  !currentMonster.IsAlive ||
                  !currentMonster.IsSpawned ||
-                 update.Kind == MonsterRuntimeUpdateKind.Started && !currentMonster.IsMoving))
+                 currentMonster.SpawnGeneration != monster.SpawnGeneration ||
+                 (update.Kind == MonsterRuntimeUpdateKind.Started && !currentMonster.IsMoving) ||
+                 (update.Kind == MonsterRuntimeUpdateKind.Returned &&
+                  (currentMonster.IsMoving ||
+                   currentMonster.CombatPhase != MonsterCombatPhase.AwaitingRetirement))))
             {
                 // Combat can atomically kill a monster after this world tick was
                 // calculated but before a slower viewer send. Never resurrect a
@@ -1188,13 +2064,14 @@ internal sealed class GameSessionRegistry
                     monster.VelocityY,
                     monster.VelocityZ,
                     update.MovementMode),
-                MonsterRuntimeUpdateKind.Arrived => PacketBuilder.MonsterMovementEnd(
-                    monster.ObjectId,
-                    update.MovementEndField ?? monster.MovementTicks,
-                    monster.X,
-                    monster.Y,
-                    monster.Z,
-                    monster.Facing),
+                MonsterRuntimeUpdateKind.Arrived or MonsterRuntimeUpdateKind.Returned =>
+                    PacketBuilder.MonsterMovementEnd(
+                        monster.ObjectId,
+                        update.MovementEndField ?? monster.MovementTicks,
+                        monster.X,
+                        monster.Y,
+                        monster.Z,
+                        monster.Facing),
                 _ => []
             };
             if (packet.Length > 0)
@@ -1221,6 +2098,15 @@ internal sealed class GameSessionRegistry
         }
 
         GameSessionContext? targetContext;
+        var statusContext = map.Snapshot().FirstOrDefault(context =>
+            context.WorldReady && context.CharacterId == targetCharacterId);
+        var damageResolvedAt = DateTimeOffset.UtcNow;
+        // Runtime statuses have their own gate. Snapshot the mitigation before
+        // taking the registry gate so status publication and a monster attack
+        // cannot acquire those locks in opposite order.
+        var physicalDamageReduction = statusContext is null
+            ? 0m
+            : GetRuntimePhysicalDamageReduction(statusContext.Session, damageResolvedAt);
         uint damage;
         var killed = false;
         lock (_gate)
@@ -1233,6 +2119,12 @@ internal sealed class GameSessionRegistry
             }
             else
             {
+                if (statusContext is null ||
+                    !ReferenceEquals(statusContext.Session, targetContext.Session))
+                {
+                    physicalDamageReduction = 0m;
+                }
+
                 lock (targetContext.Character.VitalsSync)
                 {
                     if (targetContext.Character.CurrentHp <= 0)
@@ -1244,7 +2136,8 @@ internal sealed class GameSessionRegistry
                     {
                         damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
                             attack.Monster.Definition.Tier,
-                            targetContext.Character);
+                            targetContext.Character,
+                            physicalDamageReduction);
                         var beforeHealth = targetContext.Character.CurrentHp;
                         targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
                             ? 0
@@ -1439,4 +2332,39 @@ internal sealed class GameSessionRegistry
 
         public CancellationTokenSource Lifetime { get; } = new();
     }
+
+    private sealed class ZodiacOnlineSessionState(
+        int accountId,
+        int characterId,
+        GameCharacter character,
+        DateTimeOffset lastAccountedAt)
+    {
+        public int AccountId { get; } = accountId;
+
+        public int CharacterId { get; } = characterId;
+
+        public GameCharacter Character { get; set; } = character;
+
+        public DateTimeOffset LastAccountedAt { get; set; } = lastAccountedAt;
+
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+    }
+
+    private sealed class ProgressionBoostOnlineSessionState(
+        int accountId,
+        int characterId,
+        DateTimeOffset lastAccountedAt)
+    {
+        public int AccountId { get; } = accountId;
+
+        public int CharacterId { get; } = characterId;
+
+        public DateTimeOffset LastAccountedAt { get; set; } = lastAccountedAt;
+
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+    }
 }
+
+internal readonly record struct MonsterAreaDamageBroadcastHit(
+    MonsterHealthMutation HealthMutation,
+    uint ReportedDamage);

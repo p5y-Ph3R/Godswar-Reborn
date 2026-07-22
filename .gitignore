@@ -27,6 +27,12 @@ coverage/
 # Generated and captured research output
 artifacts/
 captures/
+.tmp*
+**/__pycache__/
+*.py[cod]
+
+# Retired standalone Gear Enhancement UI experiment
+assets/gear-enhancement/
 
 # Large local research material and restore copies
 backups/

@@ -30,18 +30,33 @@ internal static class Opcodes
     public const ushort StorageItem = 10052;
     public const ushort Sell = 10053;
     public const ushort BagItemAction = 10056;
+    // The installed client dispatch table maps 10090 to
+    // MSG_PLAYER_ACCEPTQUESTS. Quest snapshots are character-specific and
+    // must never be replayed from a captured login session.
+    public const ushort PlayerAcceptedQuests = 10090;
     public const ushort NpcDialogOpen = 10067;
     public const ushort NpcDialogPageRequest = 10068;
     public const ushort NpcFunctionAction = 10069;
     public const ushort NpcFunctionActionResponse = 10070;
+    // Equipment forging uses the same opcode for the client request and the
+    // server result. The selection and cancel packets are separate messages.
+    public const ushort ForgeStart = 10109;
+    public const ushort ForgeSelection = 10110;
+    public const ushort ForgeReplacementSelection = 10111;
+    public const ushort ForgeReplacementAction = 10112;
     public const ushort ItemInfoRequest = 10114;
-    public const ushort Forge = 10117;
+    public const ushort ForgeCancel = 10117;
     public const ushort PlayerNameInspectRequest = 10125;
     public const ushort SkillCastFinishRequest = 10171;
     public const ushort PlayerInspectRequest = 10191;
+    // The native Gear Mentor sends one of these whenever an item is inserted
+    // into or removed from its three operation controls. The 12-byte payload
+    // carries bag page, page slot, and a one-byte selected flag.
+    public const ushort GearEnhancerItemSelection = 10193;
     public const ushort PlayerDetailRequest = 10200;
     public const ushort PlayerDetailAckRequest = 10202;
     public const ushort PlayerInspectVisualRequest = 10279;
+    public const ushort Zodiac = 10297;
     public const ushort Walk = 10194;
     public const ushort ServerTimeRequest = 10311;
     public const ushort UiHeartbeat = 10312;
@@ -81,18 +96,25 @@ internal static class Opcodes
             StorageItem => nameof(StorageItem),
             Sell => nameof(Sell),
             BagItemAction => nameof(BagItemAction),
+            PlayerAcceptedQuests => nameof(PlayerAcceptedQuests),
             NpcDialogOpen => nameof(NpcDialogOpen),
             NpcDialogPageRequest => nameof(NpcDialogPageRequest),
             NpcFunctionAction => nameof(NpcFunctionAction),
             NpcFunctionActionResponse => nameof(NpcFunctionActionResponse),
+            ForgeStart => nameof(ForgeStart),
+            ForgeSelection => nameof(ForgeSelection),
+            ForgeReplacementSelection => nameof(ForgeReplacementSelection),
+            ForgeReplacementAction => nameof(ForgeReplacementAction),
             ItemInfoRequest => nameof(ItemInfoRequest),
-            Forge => nameof(Forge),
+            ForgeCancel => nameof(ForgeCancel),
             PlayerNameInspectRequest => nameof(PlayerNameInspectRequest),
             SkillCastFinishRequest => nameof(SkillCastFinishRequest),
             PlayerInspectRequest => nameof(PlayerInspectRequest),
+            GearEnhancerItemSelection => nameof(GearEnhancerItemSelection),
             PlayerDetailRequest => nameof(PlayerDetailRequest),
             PlayerDetailAckRequest => nameof(PlayerDetailAckRequest),
             PlayerInspectVisualRequest => nameof(PlayerInspectVisualRequest),
+            Zodiac => nameof(Zodiac),
             Walk => nameof(Walk),
             ServerTimeRequest => nameof(ServerTimeRequest),
             UiHeartbeat => nameof(UiHeartbeat),

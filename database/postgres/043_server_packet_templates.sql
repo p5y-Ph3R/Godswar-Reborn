@@ -23,7 +23,7 @@ SELECT
     opcode,
     direction,
     clear_bytes,
-    'Captured working-server SynGameData packet sent after kitbag slots and before EnterComplete.'
+    'Historical accepted-quest snapshot from the working server. Character-specific; retained for protocol research and blocked from login replay.'
 FROM packet_transactions
 WHERE direction = 'S2C'
   AND opcode = 10090
