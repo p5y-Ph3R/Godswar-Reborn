@@ -17,7 +17,11 @@ Console.CancelKeyPress += (_, eventArgs) =>
     shutdown.Cancel();
 };
 
-var registry = new GameSessionRegistry(store, options.Game.ZodiacEnergy);
+var registry = new GameSessionRegistry(
+    store,
+    options.Game.ZodiacEnergy,
+    options.Game.Monsters.Runtime,
+    options.Game.Players.Runtime);
 var loginServer = new TcpEndpointServer(
     "login",
     options.Login.BindHost,
@@ -34,6 +38,8 @@ Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
 Console.WriteLine($"Storage:      {options.Storage.Provider}");
 Console.WriteLine($"Login server: {options.Login.BindHost}:{options.Login.Port}");
 Console.WriteLine($"Game server:  {options.Game.BindHost}:{options.Game.Port} advertised as {options.Game.PublicHost}:{options.Game.Port}");
+Console.WriteLine($"Monsters:     {options.Game.Monsters.Runtime} runtime");
+Console.WriteLine($"Players:      {options.Game.Players.Runtime} runtime");
 
 await Task.WhenAll(
     loginServer.RunAsync(shutdown.Token),

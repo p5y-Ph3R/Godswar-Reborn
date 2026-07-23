@@ -1,0 +1,369 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Text;
+using Godswar.Server.Networking;
+using Godswar.Server.Packets;
+using Godswar.Server.Protocol;
+using Godswar.Server.State;
+
+namespace Godswar.Server.Game;
+
+internal sealed partial class GameClientHandler
+{
+    private async Task SendVisiblePlayerAsync(
+        GameSessionContext player,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        await RefreshCharacterStatsAsync(player.Character, player.AccountId, "visible-player", cancellationToken);
+        var statusSnapshot = await _registry.GetStatusSnapshotAsync(
+            player.Session,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+        Console.WriteLine(
+            $"[world] sending existing player phase={phase} to={_character.Name} existing={player.CharacterName} object={player.ObjectId} x={player.Character.PositionX:F2} z={player.Character.PositionZ:F2} wr={player.Character.WeaponRank}/aura{player.Character.WeaponAuraEffect} ar={player.Character.ArmorRank}/aura{player.Character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(player.Character)}");
+        await _session.SendAsync(
+            PacketBuilder.PlayerWorldSpawn(
+                player.Character,
+                player.ObjectId,
+                statusSnapshot.Effects),
+            cancellationToken,
+            "VisiblePlayerSpawn");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerEquipment");
+        await _session.SendAsync(
+            PacketBuilder.PlayerAppearanceExtras(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerAppearanceExtras");
+        await _session.SendAsync(
+            PacketBuilder.PlayerTitleInfo(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerTitleInfo");
+        await _session.SendAsync(
+            PacketBuilder.PlayerWorldPosition(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerPosition");
+        await _session.SendAsync(
+            PacketBuilder.PlayerStatusUpdate(player.Character, player.ObjectId),
+            cancellationToken,
+            "VisiblePlayerStatus");
+        await _registry.SendStatusSnapshotToViewerAsync(
+            player,
+            _session,
+            cancellationToken);
+    }
+
+    private async Task HandlePlayerDetailRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[game] ignored PlayerDetailRequest: no active character");
+            return;
+        }
+
+        var requestedA = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        var requestedB = request.Payload.Length >= 8
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload.Slice(4, 4))
+            : 0;
+        await RefreshActiveCharacterStatsAsync("player-detail", cancellationToken);
+        var packet = PacketBuilder.PlayerDetail(_character);
+        if (packet.Length == 0)
+        {
+            Console.WriteLine($"[game] ignored PlayerDetailRequest: no detail template character={_character.Name}");
+            return;
+        }
+
+        Console.WriteLine(
+            $"[game] sending self player detail character={_character.Name} requestA={requestedA} requestB={requestedB} level={_character.Level} bytes={packet.Length}");
+        await _session.SendAsync(packet, cancellationToken, "PlayerDetail", framed: false);
+        await _session.SendAsync(
+            BuildLocalPlayerStatusUpdate(),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        _playerDetailSent = true;
+        await SendPostEnterBootstrapAsync(cancellationToken);
+    }
+
+    private async Task SendPostEnterBootstrapAsync(CancellationToken cancellationToken)
+    {
+        if (_postEnterBootstrapSent
+            || !CanSendPostEnterBootstrap(
+                _clientReadyReceived,
+                _playerDetailSent,
+                _enterUiReadyReceived)
+            || _account is null
+            || _character is null)
+        {
+            return;
+        }
+
+        _postEnterBootstrapSent = true;
+
+        var enterSyncPackets = await _store.GetEnterSyncPacketsAsync(cancellationToken);
+        var suppressedEnterSyncPackets = 0;
+        foreach (var packet in enterSyncPackets)
+        {
+            if (!CanReplayCapturedPostEnterPacket(packet))
+            {
+                suppressedEnterSyncPackets++;
+                continue;
+            }
+
+            await _session.SendAsync(packet, cancellationToken, "SynGameData");
+        }
+
+        if (suppressedEnterSyncPackets > 0)
+        {
+            Console.WriteLine(
+                $"[game] suppressed unsafe captured enter packets count={suppressedEnterSyncPackets} " +
+                "reason=accepted-quest snapshots are character-specific");
+        }
+
+        await SendMapWorldObjectsAsync(cancellationToken);
+
+        var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        await _session.SendAsync(
+            BuildLocalPlayerStatusUpdate(),
+            cancellationToken,
+            "PlayerStatusUpdate");
+        await SendTalentRankPacketsAsync(skillStates, talentStates, "post-enter", cancellationToken);
+        await _session.SendAsync(PacketBuilder.PlayerUnknown10098(0), cancellationToken, "PlayerUnknown10098");
+        await _session.SendAsync(PacketBuilder.PlayerUnknown10098(1), cancellationToken, "PlayerUnknown10098");
+        var skillList = PacketBuilder.SkillList(skillStates);
+        if (skillList.Length > 0)
+        {
+            await _session.SendAsync(skillList, cancellationToken, "SkillList");
+        }
+
+        // Opcode 10357 is the final enter/UI-ready boundary. Publish exactly one
+        // complete 10167 snapshot here, after both the local object and UI exist.
+        await SendExperienceBoostStatusAsync("post-enter", cancellationToken);
+    }
+
+    internal static bool CanSendPostEnterBootstrap(
+        bool clientReadyReceived,
+        bool playerDetailSent,
+        bool enterUiReadyReceived)
+    {
+        return clientReadyReceived && playerDetailSent && enterUiReadyReceived;
+    }
+
+    internal static bool CanReplayCapturedPostEnterPacket(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 4)
+        {
+            return false;
+        }
+
+        var declaredLength = BinaryPrimitives.ReadUInt16LittleEndian(packet);
+        var opcode = BinaryPrimitives.ReadUInt16LittleEndian(packet[2..]);
+        return declaredLength == packet.Length
+            && opcode != Opcodes.PlayerAcceptedQuests;
+    }
+
+    private async Task HandlePlayerInspectRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[inspect] ignored PlayerInspectRequest: no active character");
+            return;
+        }
+
+        var requestedObjectId = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        var requestedName = PacketText.ReadFixedAscii(request.Payload, 4, 32);
+        if (!TryResolveMapPlayer(requestedObjectId, requestedName, out var target))
+        {
+            Console.WriteLine(
+                $"[inspect] target not found requester={_character.Name} object={requestedObjectId} name={requestedName}");
+            return;
+        }
+
+        var inspectDetailObjectId = target.ObjectId;
+        await RefreshCharacterStatsAsync(target.Character, target.AccountId, "inspect-target", cancellationToken);
+        Console.WriteLine(
+            $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
+        await _session.SendAsync(
+            PacketBuilder.PlayerInspectEquipmentStatusBundle(target.Character, inspectDetailObjectId),
+            cancellationToken,
+            "PlayerInspectEquipmentStatusBundle",
+            framed: false);
+        await _session.SendAsync(
+            PacketBuilder.PlayerInspectComplete(),
+            cancellationToken,
+            "PlayerInspectComplete");
+    }
+
+    private async Task HandlePlayerInspectVisualRequestAsync(GamePacket request, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            Console.WriteLine("[inspect] ignored PlayerInspectVisualRequest: no active character");
+            return;
+        }
+
+        var requestedObjectId = request.Payload.Length >= 4
+            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
+            : 0;
+        if (!TryResolveMapPlayer(requestedObjectId, string.Empty, out var target))
+        {
+            Console.WriteLine($"[inspect] visual target not found requester={_character.Name} object={requestedObjectId}");
+            return;
+        }
+
+        await SendPlayerVisualBundleAsync(target, cancellationToken, "PlayerInspectVisual");
+    }
+
+    private async Task SendPlayerVisualBundleAsync(
+        GameSessionContext target,
+        CancellationToken cancellationToken,
+        string labelPrefix)
+    {
+        await _session.SendAsync(
+            PacketBuilder.EquipmentVisualRefresh(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}Equipment");
+        await _session.SendAsync(
+            PacketBuilder.PlayerAppearanceExtras(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}AppearanceExtras");
+        await _session.SendAsync(
+            PacketBuilder.PlayerTitleInfo(target.Character, target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}TitleInfo");
+        await _session.SendAsync(
+            PacketBuilder.PlayerDetailRefreshAck(target.ObjectId),
+            cancellationToken,
+            $"{labelPrefix}RefreshAck");
+    }
+
+    private bool TryResolveMapPlayer(uint objectId, string characterName, out GameSessionContext target)
+    {
+        target = default!;
+        if (_character is null)
+        {
+            return false;
+        }
+
+        if (objectId != 0
+            && _registry.TryGetMapSessionByObjectId(_character.CurrentMap, objectId, _session, out target))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(characterName))
+        {
+            foreach (var player in _registry.GetMapSessions(_character.CurrentMap, _session))
+            {
+                if (!string.Equals(player.CharacterName, characterName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                target = player;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Task RefreshActiveCharacterStatsAsync(string reason, CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var accountId = _account?.Id ?? _character.AccountId;
+        return RefreshCharacterStatsAsync(_character, accountId, reason, cancellationToken);
+    }
+
+    private async Task RefreshCharacterStatsAsync(
+        GameCharacter character,
+        int accountId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var stats = accountId > 0
+            ? await _store.GetCharacterStatsAsync(accountId, character.Id, cancellationToken)
+            : CharacterStats.FromCharacter(character);
+
+        if (stats is null)
+        {
+            Console.WriteLine($"[stats] missing character={character.Name} id={character.Id} account={accountId} reason={reason}");
+            return;
+        }
+
+        stats.ApplyTo(character);
+        Console.WriteLine($"[stats] refreshed reason={reason} character={character.Name} {stats.ToLogSummary()}");
+    }
+
+    private bool UpdateCharacterPositionFromWalk(GamePacket packet)
+    {
+        if (_character is null || packet.Payload.Length < 12)
+        {
+            return false;
+        }
+
+        var positionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
+        var positionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
+        if (!WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(positionX, positionZ, out _))
+        {
+            Console.WriteLine(
+                $"[world] ignored invalid walk position character={_character.Name} x={positionX} z={positionZ}");
+            return false;
+        }
+
+        _character.PositionX = positionX;
+        _character.PositionZ = positionZ;
+        _positionDirty = true;
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        return true;
+    }
+
+    private async Task PersistCharacterPositionAsync(bool force, CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null || !_positionDirty)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (!force && now - _lastPositionPersistUtc < PositionPersistInterval)
+        {
+            return;
+        }
+
+        try
+        {
+            await _store.SaveCharacterPositionAsync(
+                _account.Id,
+                _character.Id,
+                _character.CurrentMap,
+                _character.PositionX,
+                _character.PositionZ,
+                cancellationToken);
+            _positionDirty = false;
+            _lastPositionPersistUtc = now;
+            Console.WriteLine(
+                $"[world] saved position character={_character.Name} map={_character.CurrentMap} x={_character.PositionX:F2} z={_character.PositionZ:F2} force={force}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine($"[world] failed to save position character={_character.Name}: {ex.Message}");
+        }
+    }
+
+}

@@ -1,5 +1,9 @@
 # Developer material command
 
+Mount generation uses a separate server-authoritative catalog and command
+namespace; see `docs/developer-mount-command.md`. It does not widen the material
+allowlist described below.
+
 The item command is disabled by default and is authorized by exact account ID.
 It can only grant item IDs present in the server's combined forging and Gear
 Enhancement material catalog; arbitrary item IDs are rejected.

@@ -60,6 +60,10 @@ internal static class Opcodes
     public const ushort Walk = 10194;
     public const ushort ServerTimeRequest = 10311;
     public const ushort UiHeartbeat = 10312;
+    // Mounted reuse of the Riding skill takes this native player-state path
+    // instead of sending a second ordinary SkillCast request. Action 6 is the
+    // Ride cancellation observed in the installed client.
+    public const ushort PlayerStateAction = 10320;
     public const ushort PlayerInspectFollowup = 10342;
     public const ushort EnterUiReady = 10357;
     public const ushort Ping = 10015;
@@ -118,6 +122,7 @@ internal static class Opcodes
             Walk => nameof(Walk),
             ServerTimeRequest => nameof(ServerTimeRequest),
             UiHeartbeat => nameof(UiHeartbeat),
+            PlayerStateAction => nameof(PlayerStateAction),
             PlayerInspectFollowup => nameof(PlayerInspectFollowup),
             EnterUiReady => nameof(EnterUiReady),
             10192 => "ClientMovementOrLoad",

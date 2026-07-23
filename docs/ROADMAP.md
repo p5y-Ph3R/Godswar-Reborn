@@ -45,7 +45,7 @@ This is the current step-by-step plan for moving the local C# server from packet
 - Holy Stone Artisan dialog/action handling covers opcodes `10067`, `10068`, `10069`, and `10070`, including drilling, mounting, removing, validation, item mutation, and post-action item/visual/stat refreshes.
 - PostgreSQL Holy Stone operations must use authoritative `character_items` rows and update only affected slots/socket columns; never round-trip the client-capped loadout view, because doing so can permanently lower unrelated extended quality/grade data.
 - Before treating Holy Stone gameplay as complete, validate native behavior for stacked-stone consumption, invalid stone IDs, occupied sockets, full-bag removal, equipped-weapon argument ordering, and whether mounting may open the first socket without drilling.
-- The current PostgreSQL baseline resolves 100 Sparta and 95 Athens NPC identities, including 48 directly normalized references in each city. Most other NPC dialog scripts and all quest flows still need implementation.
+- The current actor-table baseline resolves 108 Sparta and 111 Athens NPC identities. Sparta is imported from the exact recovered original-server `NPC.INI`; most NPC dialog scripts and all quest flows still need implementation.
 - Add full NPC behavior/AI only after the static spawn and interaction baseline is stable.
 
 ## 5. Mobs, Bosses, And Combat

@@ -5,13 +5,21 @@ namespace Godswar.Server.Game;
 internal enum DeveloperItemOperation
 {
     Add,
-    ClearBag
+    ClearBag,
+    MountAdd,
+    MountList
 }
 
 internal sealed record DeveloperItemRequest(
     DeveloperItemOperation Operation,
     DeveloperGrantMaterialDefinition? Material,
-    int Quantity);
+    int Quantity,
+    DeveloperMountDefinition? Mount = null,
+    DeveloperMountListRequest? MountList = null);
+
+internal sealed record DeveloperMountListRequest(
+    int? Page,
+    DeveloperMountFamilyDefinition? Family);
 
 internal static class DeveloperItemCommand
 {
@@ -43,8 +51,13 @@ internal static class DeveloperItemCommand
         if (tokens.Length < 2 ||
             !tokens[0].Equals(matchedPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            error = "Usage: /item add <item-id|material-alias> [quantity] or /item clearbag confirm.";
+            error = Usage;
             return true;
+        }
+
+        if (tokens[1].Equals("mount", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseMount(tokens, out request, out error);
         }
 
         if (tokens[1].Equals("clearbag", StringComparison.OrdinalIgnoreCase))
@@ -66,7 +79,7 @@ internal static class DeveloperItemCommand
         if (tokens.Length < 3 ||
             !tokens[1].Equals("add", StringComparison.OrdinalIgnoreCase))
         {
-            error = "Usage: /item add <item-id|material-alias> [quantity] or /item clearbag confirm.";
+            error = Usage;
             return true;
         }
 
@@ -114,6 +127,121 @@ internal static class DeveloperItemCommand
             DeveloperItemOperation.Add,
             material,
             quantity);
+        return true;
+    }
+
+    private const string Usage =
+        "Usage: /item add <item-id|material-alias> [quantity], /item mount list [page|family], " +
+        "/item mount add <item-id|family tier|max|special>, or /item clearbag confirm.";
+
+    private static bool TryParseMount(
+        string[] tokens,
+        out DeveloperItemRequest? request,
+        out string error)
+    {
+        request = null;
+        error = string.Empty;
+        if (tokens.Length < 3)
+        {
+            error = "Usage: /item mount list [page|family] or /item mount add <item-id|family tier>.";
+            return true;
+        }
+
+        if (tokens[2].Equals("list", StringComparison.OrdinalIgnoreCase))
+        {
+            if (tokens.Length > 4)
+            {
+                error = "Mount list accepts at most one page number or family alias.";
+                return true;
+            }
+
+            if (tokens.Length == 3)
+            {
+                request = new DeveloperItemRequest(
+                    DeveloperItemOperation.MountList,
+                    Material: null,
+                    Quantity: 0,
+                    MountList: new DeveloperMountListRequest(Page: 1, Family: null));
+                return true;
+            }
+
+            if (int.TryParse(tokens[3], out var page))
+            {
+                if (page is < 1 || page > DeveloperMountCatalog.PageCount)
+                {
+                    error = $"Mount-list page must be from 1 to {DeveloperMountCatalog.PageCount}.";
+                    return true;
+                }
+
+                request = new DeveloperItemRequest(
+                    DeveloperItemOperation.MountList,
+                    Material: null,
+                    Quantity: 0,
+                    MountList: new DeveloperMountListRequest(page, Family: null));
+                return true;
+            }
+
+            if (!DeveloperMountCatalog.TryGetFamily(tokens[3], out var family))
+            {
+                error = $"Unknown mount family alias '{tokens[3]}'.";
+                return true;
+            }
+
+            request = new DeveloperItemRequest(
+                DeveloperItemOperation.MountList,
+                Material: null,
+                Quantity: 0,
+                MountList: new DeveloperMountListRequest(Page: null, family));
+            return true;
+        }
+
+        if (!tokens[2].Equals("add", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Usage: /item mount list [page|family] or /item mount add <item-id|family tier>.";
+            return true;
+        }
+
+        if (tokens.Length == 4 && uint.TryParse(tokens[3], out var itemId))
+        {
+            if (!DeveloperMountCatalog.TryResolveGrantable(itemId, out var numericMount))
+            {
+                error = itemId == DeveloperMountCatalog.OrphanedMountItemId
+                    ? $"Mount item {itemId} is an orphaned client entry and cannot be generated."
+                    : $"Item ID {itemId} is not an allowlisted client mount.";
+                return true;
+            }
+
+            request = new DeveloperItemRequest(
+                DeveloperItemOperation.MountAdd,
+                Material: null,
+                Quantity: 1,
+                Mount: numericMount);
+            return true;
+        }
+
+        if (tokens.Length != 5)
+        {
+            error = "Usage: /item mount add <item-id> or /item mount add <family> <tier|max|special>.";
+            return true;
+        }
+
+        if (!DeveloperMountCatalog.TryGetFamily(tokens[3], out _))
+        {
+            error = $"Unknown mount family alias '{tokens[3]}'.";
+            return true;
+        }
+
+        if (!DeveloperMountCatalog.TryResolveGrantable(tokens[3], tokens[4], out var aliasedMount))
+        {
+            error = $"Mount family '{tokens[3]}' has no grantable tier '{tokens[4]}'.";
+            return true;
+        }
+
+        request = new DeveloperItemRequest(
+            DeveloperItemOperation.MountAdd,
+            Material: null,
+            Quantity: 1,
+            Mount: aliasedMount);
         return true;
     }
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Godswar.Server.Game;
 
 namespace Godswar.Server;
 
@@ -41,11 +42,19 @@ internal sealed class ServerOptions
     {
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
+        Game.Monsters ??= new MonsterRuntimeOptions();
+        Game.Players ??= new PlayerRuntimeOptions();
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
         Game.Port = ReadInt("GODSWAR_GAME_PORT", Game.Port);
         Game.PublicHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_PUBLIC_HOST") ?? Game.PublicHost;
+        Game.Monsters.Runtime = ReadMonsterRuntime(
+            "GODSWAR_MONSTER_RUNTIME",
+            Game.Monsters.Runtime);
+        Game.Players.Runtime = ReadPlayerRuntime(
+            "GODSWAR_PLAYER_RUNTIME",
+            Game.Players.Runtime);
         Game.DeveloperCommands.Enabled = ReadBool(
             "GODSWAR_DEVELOPER_COMMANDS_ENABLED",
             Game.DeveloperCommands.Enabled);
@@ -115,11 +124,15 @@ internal sealed class ServerOptions
 
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
+        Game.Monsters ??= new MonsterRuntimeOptions();
+        Game.Players ??= new PlayerRuntimeOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
             .ToArray();
         Game.ZodiacEnergy.Normalize();
+        Game.Monsters.Validate();
+        Game.Players.Validate();
 
         return this;
     }
@@ -132,6 +145,52 @@ internal sealed class ServerOptions
     private static bool ReadBool(string name, bool fallback)
     {
         return bool.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
+    }
+
+    private static MonsterRuntimeMode ReadMonsterRuntime(
+        string name,
+        MonsterRuntimeMode fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        if (Enum.TryParse<MonsterRuntimeMode>(
+                raw,
+                ignoreCase: true,
+                out var mode) &&
+            Enum.IsDefined(mode))
+        {
+            return mode;
+        }
+
+        throw new InvalidDataException(
+            $"{name} must be 'Legacy' or 'Ecs', but was '{raw}'.");
+    }
+
+    private static PlayerRuntimeMode ReadPlayerRuntime(
+        string name,
+        PlayerRuntimeMode fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        if (Enum.TryParse<PlayerRuntimeMode>(
+                raw,
+                ignoreCase: true,
+                out var mode) &&
+            Enum.IsDefined(mode))
+        {
+            return mode;
+        }
+
+        throw new InvalidDataException(
+            $"{name} must be 'Legacy' or 'Ecs', but was '{raw}'.");
     }
 }
 
@@ -149,6 +208,10 @@ internal sealed class GameEndpointOptions : EndpointOptions
     public DeveloperCommandOptions DeveloperCommands { get; set; } = new();
 
     public ZodiacEnergyOptions ZodiacEnergy { get; set; } = new();
+
+    public MonsterRuntimeOptions Monsters { get; set; } = new();
+
+    public PlayerRuntimeOptions Players { get; set; } = new();
 }
 
 internal sealed class ZodiacEnergyOptions

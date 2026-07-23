@@ -15,6 +15,12 @@ internal static class EquipmentSlots
     public const int Weapon = 10;
     public const int Shield = 11;
     public const int Stylish = 12;
+    public const int MountHead = 15;
+    public const int MountArmor = 16;
+    public const int MountSoul = 17;
+    public const int MountOrnament = 18;
+    public const int MountAmulet = 19;
+    public const int Mount = 20;
 
     private const string Empty = "[]";
 
@@ -32,7 +38,13 @@ internal static class EquipmentSlots
         "ring",
         "weapon",
         "shield",
-        "stylish"
+        "stylish",
+        "mounthead",
+        "mountarmor",
+        "mountsoul",
+        "mountornament",
+        "mountamulet",
+        "mount"
     };
 
     private static readonly IReadOnlyDictionary<uint, int> AuthoritativeSlots = ItemTemplateSeeds.All
@@ -87,7 +99,7 @@ internal static class EquipmentSlots
 
     public static bool IsEquipmentSlot(int slot)
     {
-        return slot is >= Head and <= Stylish;
+        return slot is >= Head and <= Mount;
     }
 
     public static bool IsEquipmentKind(string? kind)

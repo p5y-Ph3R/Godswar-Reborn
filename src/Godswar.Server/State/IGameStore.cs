@@ -145,6 +145,12 @@ internal interface IGameStore : IAsyncDisposable
         int quantity,
         CancellationToken cancellationToken = default);
 
+    Task<KitBagItemGrantResult> AddDeveloperMountAsync(
+        int accountId,
+        int characterId,
+        uint itemId,
+        CancellationToken cancellationToken = default);
+
     Task<ForgeTransactionResult> ForgeEquipmentAsync(
         int accountId,
         int characterId,

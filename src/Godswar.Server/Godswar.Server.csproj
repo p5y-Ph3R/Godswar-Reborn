@@ -11,4 +11,22 @@
     <PackageReference Include="Npgsql" Version="10.0.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.001.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.001.sql" />
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.002.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.002.sql" />
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.003.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.003.sql" />
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.004.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.004.sql" />
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.005.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.005.sql" />
+  </ItemGroup>
+
 </Project>

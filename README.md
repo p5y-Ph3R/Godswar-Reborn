@@ -36,6 +36,13 @@ IP=127.1.1.110
 
 Login is intentionally permissive while protocol coverage is being mapped. Local non-Docker runs default to `data\state.json`; Docker runs use PostgreSQL.
 
+The ECS gameplay architecture, completed cutovers, parity gates, and
+reversible monster/player runtime selectors (both default to `Ecs`) are
+documented in
+[`docs/ecs-migration.md`](docs/ecs-migration.md). Forward-only PostgreSQL
+migrations and the recoverable table-cleanup policy are documented in
+[`docs/database-migrations.md`](docs/database-migrations.md).
+
 ## Current Scope
 
 Implemented:
@@ -52,7 +59,8 @@ Implemented:
 - Ping echo, server time, and map-scoped talk/walk broadcast
 - Two-client world synchronization using server-built remote-player spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets
 - World presence registration only after both the client-ready signal and the player-detail exchange have completed, so other sessions do not see a partially initialized character
-- Server-built static NPC definitions assembled from validated captured spawns, normalized NPC appearance/position references, and same-number capital-city fallbacks when a reference has no position
+- Server-built static NPC definitions assembled from authoritative actor tables first, then validated captured/normalized fallbacks; Sparta uses all 108 unique actors from `C:\Users\Iamc1\Downloads\Sparta\Sparta\NPC.INI` (SHA-256 `A7DFDF9D3C90D27960F730B4B65A7EA37D7F41FC80F7788E584AD80E59BFF340`)
+- Generation-safe ECS gameplay state for monsters, map membership/NPCs, player movement, status/recovery/Ride, outgoing combat, and incoming monster damage; protocol and transactional persistence remain boundary adapters, with restart-level `Legacy` rollback selectors
 - Movement-driven NPC visibility matching the working server's `32x32` world sectors: each client receives only its current sector and the eight neighboring sectors, with remove/spawn diffs when crossing a boundary
 - Movement-driven captured-monster visibility on the same `32x32`/`3x3` sector model, using the raw appearance packet's coordinates as authoritative, validating captured metadata at map load, and sending removals before newly visible monsters
 - Server-owned monster roaming, retaliation, extended chase, authoritative leash despawn/fresh full-health replacement at home, ordinary attacks, learned-skill damage, death, revival, and persisted fighter/talent rewards
@@ -73,7 +81,7 @@ capture evidence, and complete future-ceiling checklist are recorded in
 Not complete yet:
 
 - Full world simulation
-- NPC coverage beyond the current static city baseline: the current PostgreSQL data resolves 100 Sparta and 95 Athens NPC identities (including 48 direct normalized references in each city), while most NPC dialog scripts and quests remain unimplemented
+- NPC coverage beyond the current static city baseline: the authoritative actor tables now place 108 Sparta and 111 Athens NPCs, while most NPC dialog scripts and quests remain unimplemented
 - Monster coverage beyond the current 270 static captured appearances on Sparta/map 0; Athens and other maps do not yet have captured monster baselines
 - Monster simulation currently covers local roaming, chase/retaliation, leash replacement at home, normal and learned-skill damage, death, and timed revival; parties, drops, multi-player threat selection, and broader skill effects remain incomplete
 - Kill progression now persists carried fighter levels, fighter EXP, talent EXP, and talent points and refreshes the client through the captured monster-death/EXP/level packets; passive HP/MP recovery uses the captured six-second absolute-vitals update
@@ -129,12 +137,12 @@ Grade/quality/rank support for local testing has been extended beyond the origin
 - The global rank patch covers non-body gear rows (`head`, `amulet`, `glove`, `cuff`, `girdle`, `shoes`, `leggins`, `ring`, `shield`) at every forgeable item tier. It preserves native Q1..Q10/G1..G12 score data and normalizes only the extended tails, keeping a full Warrior/Priest set safely below `32767`.
 - Ring rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135RingCaps.ps1`. The current local test character uses two `Celestial Vigor Ring` (`3246`) rows at Boundless/G25 with append attributes `AttackF`, `PhysicalDamage`, `IgnorePhyPer`, `FuryAkAdd`, and `MaxHPF`, all at level 5.
 - Chest (`armor`/`cloth`) and amulet rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135ChestAmuletCaps.ps1`. The current local test character uses Boundless/G25 chest attributes `DefenceF`, `AddMagicRecF`, `Miss`, `FuryAkRec`, `MaxHPF`; amulet attributes `Miss`, `FuryAkRec`, `InjureImbibeF`, `StateImmunity`, `MPRestoreF`; all at level 5.
-- Boots (`shoes`) and girdle rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135BootsGirdleCaps.ps1`. The current local test character keeps the existing boots/girdle attributes and upgrades both equipped slots to Boundless/G25 with `database/postgres/053_test_character_boundless_g25_boots_girdle.sql`.
-- Sleeve (`cuff`) rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135SleeveCaps.ps1`. The current local test character keeps the existing sleeve attributes and upgrades the equipped sleeve slot to Boundless/G25 with `database/postgres/055_test_character_boundless_g25_sleeves.sql`.
-- Leggings (`leggins`) rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135LeggingsCaps.ps1`. `database/postgres/056_test_character_sleeves_leggings_attributes.sql` sets sleeve attributes to `DefenceF`, `AddMagicRecF`, `Hit`, `FuryAkAdd`, `State`; and leggings to `DefenceF`, `AddMagicRecF`, `Miss`, `FuryAkRec`, `StateImmunity`, all at level 5, with equipped leggings upgraded to Boundless/G25.
-- `database/postgres/054_test_character_boots_girdle_attributes.sql` changes the current local boots to `Miss`, `FuryAkRec`, `StateImmunity`, `InjureImbibeF`, and `MPRestoreF`; and the girdle to `DefenceF`, `AddMagicRecF`, `MaxHPF`, and `InjureImbibeF`, all at level 5.
-- `database/postgres/057_test_character_girdle_crit_resist.sql` adds `FuryAkRec` as the fifth level-5 girdle attribute for crit resistance.
-- `database/postgres/051_test_character_ring_holy_stones.sql` mirrors the current weapon holy-stone sockets into both equipped ring slots for local testing.
+- Boots (`shoes`) and girdle rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135BootsGirdleCaps.ps1`. The current local test character keeps the existing boots/girdle attributes and upgrades both equipped slots to Boundless/G25 with `database/fixtures/053_test_character_boundless_g25_boots_girdle.sql`.
+- Sleeve (`cuff`) rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135SleeveCaps.ps1`. The current local test character keeps the existing sleeve attributes and upgrades the equipped sleeve slot to Boundless/G25 with `database/fixtures/055_test_character_boundless_g25_sleeves.sql`.
+- Leggings (`leggins`) rows with `PlayLv` minimum `135+` can be patched independently with `tools/PatchLevel135LeggingsCaps.ps1`. `database/fixtures/056_test_character_sleeves_leggings_attributes.sql` sets sleeve attributes to `DefenceF`, `AddMagicRecF`, `Hit`, `FuryAkAdd`, `State`; and leggings to `DefenceF`, `AddMagicRecF`, `Miss`, `FuryAkRec`, `StateImmunity`, all at level 5, with equipped leggings upgraded to Boundless/G25.
+- `database/fixtures/054_test_character_boots_girdle_attributes.sql` changes the current local boots to `Miss`, `FuryAkRec`, `StateImmunity`, `InjureImbibeF`, and `MPRestoreF`; and the girdle to `DefenceF`, `AddMagicRecF`, `MaxHPF`, and `InjureImbibeF`, all at level 5.
+- `database/fixtures/057_test_character_girdle_crit_resist.sql` adds `FuryAkRec` as the fifth level-5 girdle attribute for crit resistance.
+- `database/fixtures/051_test_character_ring_holy_stones.sql` mirrors the current weapon holy-stone sockets into both equipped ring slots for local testing.
 
 Important client-side files touched while allowing grade 25 / Boundless quality / rank testing:
 
@@ -165,10 +173,10 @@ Important server/database files for the same work:
 - `database/postgres/005_item_attributes.sql`
 - `database/postgres/017_patch_item_1435_quality11.sql` through `database/postgres/030_item_grade_levels_25.sql`
 - `database/postgres/046_character_item_audit.sql`
-- `src/Godswar.Server/State/PostgresGameStore.cs`
+- `src/Godswar.Server/State/PostgresGameStore.*.cs`
 - `src/Godswar.Server/State/ItemTemplateSeed.Generated.cs`
 - `src/Godswar.Server/State/ItemAttributeTemplateSeed.Generated.cs`
-- `src/Godswar.Server/Packets/PacketBuilder.cs`
+- `src/Godswar.Server/Packets/PacketBuilder.*.cs`
 - `tools/GenerateItemTemplates.ps1`
 - `tools/GenerateItemAttributeTemplates.ps1`
 - `tools/GenerateEquipmentForgeCatalog.ps1`

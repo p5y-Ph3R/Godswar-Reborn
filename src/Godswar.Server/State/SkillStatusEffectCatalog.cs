@@ -5,9 +5,11 @@ namespace Godswar.Server.State;
 internal readonly record struct ClientStatusAggregate(
     int Hit,
     int CriticalAppend,
-    float ExperienceBonus)
+    float ExperienceBonus,
+    float MovementSpeedMultiplier = 1f,
+    bool IsRiding = false)
 {
-    public static ClientStatusAggregate Empty { get; } = new(0, 0, 0f);
+    public static ClientStatusAggregate Empty { get; } = new(0, 0, 0f, 1f, false);
 }
 
 internal readonly record struct SkillStatusEffectDefinition(

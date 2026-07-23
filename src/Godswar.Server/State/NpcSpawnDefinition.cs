@@ -38,45 +38,6 @@ internal static class NpcSpawnDefinitionFactory
     private const uint StableHashPrime = 16777619;
     private const float SpartaToAthensPositionXOffset = 0f;
     private const float SpartaToAthensPositionZOffset = 0f;
-    private static readonly NpcSpawnReferenceDefinition[] RequiredCityReferences =
-    [
-        // The nearby Class Shifter is present in the original-service actor
-        // stream (object 5041). It has no surviving Quest.xml spawn reference,
-        // so it otherwise disappears from a clean server even though the client
-        // still contains its identity, appearance, and Shift-class dialog.
-        new(0, "Sparta", "Sparta_044", "Sparta_044_Male34", 141f, -174f),
-        new(1, "Athens", "Athens_044", "Athens_044_Male34", 141f, -174f),
-        // NPC actor positions are server-owned; NPC.INI supplies only identity
-        // and appearance. The client's Address.ini target (144,-162) is a nearby
-        // navigation destination, not an actor record. Sparta_070 is recovered
-        // from the original-service world-object packet (object 5067 at
-        // 142,-165.9). No Athens_070 spawn exists in the available captures, so
-        // Athens mirrors the paired city coordinate until a direct Athens
-        // capture can replace that inference.
-        // NPC 143 is the separate Origin Enhancer and must not be repurposed.
-        new(0, "Sparta", "Sparta_070", "Sparta_070_Male22", 142f, -165.9f),
-        new(1, "Athens", "Athens_070", "Athens_070_Male22", 142f, -165.9f),
-        // The original-service stream places the Master Vestment Forger beside
-        // the Gear Mentor. It opens NPC_FLAG_SYS_SANLOAD (dialog 29, "Holy Suit
-        // Design"); it is not the Ingredients Vendor and must remain a distinct
-        // actor. Athens uses the paired city identity and captured Sparta layout
-        // until a direct Athens actor capture is available.
-        new(0, "Sparta", "Sparta_085", "Sparta_085_Male34", 126f, -161.1f),
-        new(1, "Athens", "Athens_085", "Athens_085_Male34", 126f, -161.1f),
-        // Sparta is capture-backed. Matching numbered NPC packets available in the
-        // embedded Athens stream share their positions, so an otherwise unplaced
-        // paired NPC can reuse Sparta's coordinates. Map-specific references still
-        // take priority where they exist.
-        new(0, "Sparta", "Sparta_086", "Sparta_086_Male35", 126f, -169.9f),
-        new(1, "Athens", "Athens_086", "Athens_086_Male35", 126f, -169.9f),
-        // Quest.xml points Ingredients Vendor 122 at 143,-170, but the original
-        // opcode-10020 actor is object 5119 at 97,-174. Keep that actor at its
-        // captured location instead of letting the stale quest marker displace it
-        // into the Gear Mentor group.
-        new(0, "Sparta", "Sparta_122", "Sparta_122_FemVillager3", 97f, -174f),
-        new(1, "Athens", "Athens_122", "Athens_122_FemVillager3", 97f, -174f)
-    ];
-
     public static IReadOnlyList<NpcSpawnDefinition> Create(
         short mapId,
         IReadOnlyList<CapturedNpcSpawn> capturedSpawns,
@@ -98,21 +59,30 @@ internal static class NpcSpawnDefinitionFactory
                 continue;
             }
 
+            if (NpcActorPlacementCatalog.TryGet(mapId, definition.NpcKey, out var actorPlacement))
+            {
+                definition = definition with
+                {
+                    X = actorPlacement.X,
+                    Z = actorPlacement.Z,
+                    Facing = actorPlacement.Facing
+                };
+            }
+
             definitions.Add(definition);
             capturedNpcKeys.Add(definition.NpcKey);
         }
 
         var appearanceHints = BuildAppearanceHints(mapId, capturedSpawns, capturedAppearanceFallbacks);
+        var actorReferences = CreateActorPlacementReferences(mapId);
         var pairedCityFallbacks = CreatePairedCityFallbackReferences(
             mapId,
             capturedAppearanceFallbacks,
             referenceDefinitions);
-        var requiredCityReferences = RequiredCityReferences
-            .Where(reference => reference.MapId == mapId)
-            .ToHashSet();
+        var authoritativeActorReferences = actorReferences.ToHashSet();
         var derivedReferences = referenceDefinitions
             .Concat(pairedCityFallbacks)
-            .Concat(requiredCityReferences)
+            .Concat(actorReferences)
             .Where(reference =>
                 reference.MapId == mapId &&
                 !string.IsNullOrWhiteSpace(reference.SceneKey) &&
@@ -123,10 +93,10 @@ internal static class NpcSpawnDefinitionFactory
                 !capturedNpcKeys.Contains(reference.NpcKey))
             .GroupBy(reference => reference.NpcKey, StringComparer.Ordinal)
             .Select(group => group
-                // Capture-backed corrections must win over stale Quest.xml
-                // navigation references even when the stale coordinate happens
-                // to sort first.
-                .OrderBy(reference => requiredCityReferences.Contains(reference) ? 0 : 1)
+                // Original-server actor coordinates win over capture-backed
+                // corrections, paired-city inference, and Quest.xml targets
+                // even when a stale target happens to sort first.
+                .OrderBy(reference => authoritativeActorReferences.Contains(reference) ? 0 : 1)
                 .ThenBy(reference => reference.TemplateKey, StringComparer.Ordinal)
                 .ThenBy(reference => reference.X)
                 .ThenBy(reference => reference.Z)
@@ -145,6 +115,9 @@ internal static class NpcSpawnDefinitionFactory
             var appearance = appearanceHints.TryGetValue(reference.NpcKey, out var capturedAppearance)
                 ? capturedAppearance
                 : new NpcAppearanceHint(DefaultAppearanceType, DefaultFacing);
+            var facing = NpcActorPlacementCatalog.TryGet(mapId, reference.NpcKey, out var actorPlacement)
+                ? actorPlacement.Facing
+                : appearance.Facing;
 
             definitions.Add(new NpcSpawnDefinition(
                 reference.MapId,
@@ -156,7 +129,7 @@ internal static class NpcSpawnDefinitionFactory
                 reference.Z,
                 objectId,
                 appearance.AppearanceType,
-                appearance.Facing,
+                facing,
                 [],
                 []));
         }
@@ -166,6 +139,69 @@ internal static class NpcSpawnDefinitionFactory
             .ThenBy(definition => definition.TemplateKey, StringComparer.Ordinal)
             .ThenBy(definition => definition.ObjectId)
             .ToArray();
+    }
+
+    private static IReadOnlyList<NpcSpawnReferenceDefinition> CreateActorPlacementReferences(
+        short mapId)
+    {
+        var textScenes = NpcTemplateSeeds.Texts
+            .Where(template => !string.IsNullOrWhiteSpace(template.NpcKey))
+            .GroupBy(template => template.NpcKey, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(template => template.SceneKey)
+                    .FirstOrDefault(scene => !string.IsNullOrWhiteSpace(scene)) ?? string.Empty,
+                StringComparer.Ordinal);
+        var appearances = NpcTemplateSeeds.Appearances
+            .Where(template =>
+                !string.IsNullOrWhiteSpace(template.NpcKey) &&
+                !string.IsNullOrWhiteSpace(template.TemplateKey))
+            .GroupBy(template => template.NpcKey, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+
+        var references = new List<NpcSpawnReferenceDefinition>();
+        foreach (var placement in NpcActorPlacementCatalog.All
+                     .Where(placement => placement.MapId == mapId)
+                     .OrderBy(placement => placement.NpcKey, StringComparer.Ordinal))
+        {
+            if (!appearances.TryGetValue(placement.NpcKey, out var candidates))
+            {
+                continue;
+            }
+
+            textScenes.TryGetValue(placement.NpcKey, out var textScene);
+            var appearance = candidates
+                .OrderBy(template =>
+                    string.Equals(
+                        template.TemplateKey,
+                        placement.TemplateKey,
+                        StringComparison.Ordinal)
+                        ? 0
+                        : 1)
+                .ThenBy(template => SceneRank(template.SceneKey, textScene))
+                .ThenBy(template => template.TemplateKey.Length)
+                .ThenBy(template => template.TemplateKey, StringComparer.Ordinal)
+                .First();
+            var sceneKey = FirstNonEmpty(
+                appearance.SceneKey,
+                textScene,
+                InferSceneKey(placement.NpcKey));
+            if (string.IsNullOrWhiteSpace(sceneKey))
+            {
+                continue;
+            }
+
+            references.Add(new NpcSpawnReferenceDefinition(
+                placement.MapId,
+                sceneKey,
+                placement.NpcKey,
+                appearance.TemplateKey,
+                placement.X,
+                placement.Z));
+        }
+
+        return references;
     }
 
     public static IReadOnlyList<NpcSpawnReferenceDefinition> FromGeneratedSeeds(short mapId)

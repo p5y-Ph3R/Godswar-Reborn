@@ -18,6 +18,9 @@ Known fields:
 04-07  u32    object_id                  0x1448 local player object id
 08-39  ascii  name                       KREI_ARLOTT_KING
 40     u8     gender                     1 male
+44-47  f32   position_x
+52-55  f32   position_z
+56-59  f32   movement_speed_multiplier  1.0 walking; 1 + mount speed bonus
 92-95  i32    profession                 1 Champion
 100-103 i32   level                      200
 104-107 i32   current_hp                 43023
@@ -46,10 +49,7 @@ Unknown/template fields and current local values:
 
 ```text
 41-43   bytes  00 00 00
-44-47   f32    165.0        hex 00002543
 48-51   u32    0            hex 00000000
-52-55   f32    -97.0        hex 0000C2C2
-56-59   f32    1.0          hex 0000803F
 60-83   i32x6  0,0,0,0,0,0  hex 000000000000000000000000000000000000000000000000
 84-87   i32    40           hex 28000000
 88-91   i32    1            hex 01000000
@@ -67,7 +67,8 @@ Unknown/template fields and current local values:
 Working-server comparison target:
 
 ```text
-Capture S2C 10166 / 0x27B6 from the working server while opening character info.
-Compare the unknown offsets above first.
-Confirm whether 44/52 are live X/Z, whether 84/88 are class/status flags, whether 112-119 are packed flags/hair/default HP, and whether 212-235 carries talent/status tail data.
+The working Ride completion sends this packet immediately after opcode 10167.
+Captured walking packets carry `1.0` at offset 56; a 24% mounted character
+carries `1.24`, matching the observed movement-step ratio. Continue comparing
+84/88, 112-119, and 212-235 against working captures.
 ```

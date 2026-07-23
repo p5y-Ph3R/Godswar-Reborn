@@ -1,0 +1,45 @@
+namespace Godswar.Server.World.Components.Players;
+
+/// <summary>
+/// Immutable copy of the calculated-stat projection. The HasValue marker
+/// preserves whether the legacy character had an explicit calculation or
+/// relied on CharacterStats.FromCharacter.
+/// </summary>
+internal readonly record struct PlayerCalculatedStatsComponent(
+    bool HasValue,
+    int CharacterId,
+    int AccountId,
+    string Name,
+    int Level,
+    int MaxHp,
+    int MaxMp,
+    int CurrentHp,
+    int CurrentMp,
+    int PhysicalAttack,
+    int PhysicalDefense,
+    int MagicAttack,
+    int MagicDefense,
+    int Hit,
+    int Dodge,
+    int Critical,
+    int CriticalResistance,
+    int DamageAbsorb,
+    int PhysicalDamageBonus,
+    int MagicDamageBonus,
+    int CureBonus,
+    int BeCureBonus,
+    int HpRecovery,
+    int MpRecovery,
+    int IgnorePhysicalDefense,
+    int IgnoreMagicDefense,
+    int PhysicalAppendDamage,
+    int MagicAppendDamage,
+    int CriticalDamagePercent,
+    int CriticalDamageFlat,
+    int WeaponScore,
+    short WeaponRank,
+    int WeaponAuraEffect,
+    int ArmorScore,
+    short ArmorRank,
+    int ArmorAuraEffect,
+    int LearnedSkillCount);

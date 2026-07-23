@@ -1,0 +1,367 @@
+using System.Collections.Immutable;
+using Godswar.Server.Ecs;
+using Godswar.Server.World.Components.Combat;
+
+namespace Godswar.Server.World.Systems.Combat;
+
+/// <summary>
+/// Validates queued player actions, reserves player-owned resources, and emits
+/// guarded monster-mutation intents. It never mutates monster state directly.
+/// </summary>
+internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
+{
+    public const int SystemOrder = 500;
+
+    public int Order => SystemOrder;
+
+    public void Update(EcsSystemContext context)
+    {
+        foreach (var player in context.World.Query<
+                     PlayerCombatIdentityComponent,
+                     PlayerCombatResourceComponent,
+                     PlayerCombatIntentComponent>())
+        {
+            ref var resources = ref context.World
+                .Get<PlayerCombatResourceComponent>(player);
+            var intent = context.World
+                .Get<PlayerCombatIntentComponent>(player);
+            context.Commands.Remove<PlayerCombatIntentComponent>(player);
+
+            if (!context.World.Has<PlayerCombatTransformComponent>(player) ||
+                !context.World.Has<PlayerCombatOffenseComponent>(player))
+            {
+                Reject(
+                    context,
+                    player,
+                    intent,
+                    ref resources,
+                    PlayerCombatRejectionReason.UnsupportedIntent);
+                continue;
+            }
+
+            if (context.World.Has<PlayerCombatReservationComponent>(player))
+            {
+                Reject(
+                    context,
+                    player,
+                    intent,
+                    ref resources,
+                    PlayerCombatRejectionReason.ReservationPending);
+                continue;
+            }
+
+            if (resources.CurrentHp <= 0)
+            {
+                Reject(
+                    context,
+                    player,
+                    intent,
+                    ref resources,
+                    PlayerCombatRejectionReason.SourceDead);
+                continue;
+            }
+
+            var transform = context.World
+                .Get<PlayerCombatTransformComponent>(player);
+            var offense = context.World
+                .Get<PlayerCombatOffenseComponent>(player);
+
+            switch (intent.Kind)
+            {
+                case PlayerCombatIntentKind.BasicAttack:
+                    ProcessBasicAttack(
+                        context,
+                        player,
+                        intent,
+                        transform,
+                        offense,
+                        ref resources);
+                    break;
+                case PlayerCombatIntentKind.SingleTargetSkill:
+                    ProcessSingleTargetSkill(
+                        context,
+                        player,
+                        intent,
+                        transform,
+                        offense,
+                        ref resources);
+                    break;
+                case PlayerCombatIntentKind.AreaSkill:
+                    ProcessAreaSkill(
+                        context,
+                        player,
+                        intent,
+                        transform,
+                        offense,
+                        ref resources);
+                    break;
+                default:
+                    Reject(
+                        context,
+                        player,
+                        intent,
+                        ref resources,
+                        PlayerCombatRejectionReason.UnsupportedIntent);
+                    break;
+            }
+        }
+    }
+
+    private static void ProcessBasicAttack(
+        EcsSystemContext context,
+        EntityId player,
+        in PlayerCombatIntentComponent intent,
+        in PlayerCombatTransformComponent transform,
+        in PlayerCombatOffenseComponent offense,
+        ref PlayerCombatResourceComponent resources)
+    {
+        if (!TryFindSingleTarget(
+                context.World,
+                transform.MapId,
+                intent.TargetObjectId,
+                out var target))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.TargetUnavailable);
+            return;
+        }
+
+        if (!TryValidateTargetGuard(
+                intent,
+                target,
+                out var guardRejection))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                guardRejection);
+            return;
+        }
+
+        if (!PlayerCombatRules.TryResolveBasicAttackPosition(
+                transform.X,
+                transform.Z,
+                intent.ReportedAttackerX,
+                intent.ReportedAttackerZ,
+                out var attackX,
+                out var attackZ))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.InvalidCoordinates);
+            return;
+        }
+
+        if (!PlayerCombatRules.IsWithinBasicAttackRange(
+                attackX,
+                attackZ,
+                target.X,
+                target.Z,
+                target.BasicAttackRange))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.OutOfRange);
+            return;
+        }
+
+        if (intent.RequestedAt < resources.NextBasicAttackAt)
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.CooldownActive);
+            return;
+        }
+
+        var requestedDamage = PlayerCombatRules.CalculateBasicAttack(offense);
+        var targets = ImmutableArray.Create(new PlayerCombatReservedTarget(
+            TargetOrder: 0,
+            target.ObjectId,
+            target.CurrentHealth,
+            target.SpawnGeneration,
+            target.HealthRevision,
+            requestedDamage));
+        ReserveAndPublish(
+            context,
+            player,
+            intent,
+            ref resources,
+            manaCost: 0,
+            targets,
+            refundOnRejectedTarget: true);
+    }
+
+    private static void ProcessSingleTargetSkill(
+        EcsSystemContext context,
+        EntityId player,
+        in PlayerCombatIntentComponent intent,
+        in PlayerCombatTransformComponent transform,
+        in PlayerCombatOffenseComponent offense,
+        ref PlayerCombatResourceComponent resources)
+    {
+        if (!PlayerCombatRules.IsHostileSingleTargetSkill(intent.Skill))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.UnsupportedIntent);
+            return;
+        }
+
+        if (!TryFindSingleTarget(
+                context.World,
+                transform.MapId,
+                intent.TargetObjectId,
+                out var target))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.TargetUnavailable);
+            return;
+        }
+
+        if (!TryValidateTargetGuard(
+                intent,
+                target,
+                out var guardRejection))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                guardRejection);
+            return;
+        }
+
+        if (!PlayerCombatRules.IsWithinSkillRange(
+                transform.X,
+                transform.Z,
+                target.X,
+                target.Z,
+                intent.Skill))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.OutOfRange);
+            return;
+        }
+
+        var manaCost = Math.Max(0, intent.Skill.ManaCost);
+        if (resources.CurrentMp < manaCost)
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.InsufficientMana);
+            return;
+        }
+
+        var requestedDamage = PlayerCombatRules.CalculateSkillDamage(
+            offense,
+            intent.Skill);
+        if (requestedDamage == 0)
+        {
+            ReserveAndImmediatelyRefundZeroDamage(
+                context,
+                player,
+                intent,
+                ref resources,
+                manaCost,
+                target);
+            return;
+        }
+
+        var targets = ImmutableArray.Create(new PlayerCombatReservedTarget(
+            TargetOrder: 0,
+            target.ObjectId,
+            target.CurrentHealth,
+            target.SpawnGeneration,
+            target.HealthRevision,
+            requestedDamage));
+        ReserveAndPublish(
+            context,
+            player,
+            intent,
+            ref resources,
+            manaCost,
+            targets,
+            refundOnRejectedTarget: true);
+    }
+
+    private static void ProcessAreaSkill(
+        EcsSystemContext context,
+        EntityId player,
+        in PlayerCombatIntentComponent intent,
+        in PlayerCombatTransformComponent transform,
+        in PlayerCombatOffenseComponent offense,
+        ref PlayerCombatResourceComponent resources)
+    {
+        if (!PlayerCombatRules.IsHostileAreaSkill(intent.Skill))
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.UnsupportedIntent);
+            return;
+        }
+
+        var manaCost = Math.Max(0, intent.Skill.ManaCost);
+        if (resources.CurrentMp < manaCost)
+        {
+            Reject(
+                context,
+                player,
+                intent,
+                ref resources,
+                PlayerCombatRejectionReason.InsufficientMana);
+            return;
+        }
+
+        var requestedDamage = PlayerCombatRules.CalculateSkillDamage(
+            offense,
+            intent.Skill);
+        var candidates = requestedDamage == 0
+            ? ImmutableArray<PlayerCombatReservedTarget>.Empty
+            : SelectAreaTargets(
+                context.World,
+                transform,
+                intent.Skill.AreaRadius,
+                requestedDamage);
+        ReserveAndPublish(
+            context,
+            player,
+            intent,
+            ref resources,
+            manaCost,
+            candidates,
+            refundOnRejectedTarget: false);
+    }
+}

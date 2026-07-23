@@ -72,6 +72,12 @@ function Get-EquipmentSlot([string]$type) {
         'weapon' { return 10 }
         'shield' { return 11 }
         'stylish' { return 12 }
+        'mounthead' { return 15 }
+        'mountarmor' { return 16 }
+        'mountsoul' { return 17 }
+        'mountornament' { return 18 }
+        'mountamulet' { return 19 }
+        'mount' { return 20 }
         default { return $null }
     }
 }
@@ -90,7 +96,13 @@ $equipableTypes = [System.Collections.Generic.HashSet[string]]::new([StringCompa
     'girdle',
     'amulet',
     'ring',
-    'stylish'
+    'stylish',
+    'mounthead',
+    'mountarmor',
+    'mountsoul',
+    'mountornament',
+    'mountamulet',
+    'mount'
 ) | ForEach-Object { [void]$equipableTypes.Add($_) }
 
 $displayNames = @{}

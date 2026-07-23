@@ -11,7 +11,8 @@ internal sealed record ActiveRuntimeStatus(
     ClientStatusAggregate Modifiers,
     long Revision,
     decimal PhysicalDamageReduction = 0m,
-    decimal MagicDamageReduction = 0m)
+    decimal MagicDamageReduction = 0m,
+    float MovementSpeedBonus = 0f)
 {
     public uint RemainingSeconds(DateTimeOffset now) =>
         (uint)Math.Clamp(
@@ -88,10 +89,17 @@ internal static class PlayerStatusComposer
         var criticalAppend = activeRuntime.Aggregate(
             0L,
             static (sum, status) => sum + status.Modifiers.CriticalAppend);
+        var movementSpeedBonus = activeRuntime.Aggregate(
+            0d,
+            static (sum, status) => sum + status.MovementSpeedBonus);
+        var isRiding = activeRuntime.Any(
+            static status => status.Kind == MountCatalog.RuntimeStatusKind);
         var aggregate = new ClientStatusAggregate(
             (int)Math.Clamp(hit, int.MinValue, int.MaxValue),
             (int)Math.Clamp(criticalAppend, int.MinValue, int.MaxValue),
-            (float)(experienceBonusBasisPoints / 10_000d));
+            (float)(experienceBonusBasisPoints / 10_000d),
+            (float)Math.Clamp(1d + movementSpeedBonus, 0.1d, 10d),
+            isRiding);
 
         // Remaining seconds intentionally do not participate. Otherwise the
         // periodic reconciliation loop would resend an unchanged status set.
@@ -106,9 +114,11 @@ internal static class PlayerStatusComposer
                 $"runtime:{status.StatusId}:{status.Kind}:{status.Priority}:{status.Beneficial}:" +
                 $"{status.ExpiresAt.UtcTicks}:{status.Modifiers.Hit}:" +
                 $"{status.Modifiers.CriticalAppend}:{status.PhysicalDamageReduction}:" +
-                $"{status.MagicDamageReduction}:{status.Revision}"));
+                $"{status.MagicDamageReduction}:{status.MovementSpeedBonus:R}:" +
+                $"{status.Revision}"));
         var fingerprint = $"{experienceFingerprint}#{runtimeFingerprint}#" +
-            $"{aggregate.Hit}:{aggregate.CriticalAppend}:{aggregate.ExperienceBonus:R}";
+            $"{aggregate.Hit}:{aggregate.CriticalAppend}:{aggregate.ExperienceBonus:R}:" +
+            $"{aggregate.MovementSpeedMultiplier:R}:{aggregate.IsRiding}";
 
         return new PlayerStatusSnapshot(effects, aggregate, fingerprint);
     }

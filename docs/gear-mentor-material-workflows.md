@@ -8,12 +8,12 @@ server decisions.
 
 ## Implemented menu operations
 
-| Menu | Action page | Input | Authoritative result |
+| Menu | Confirmation route | Input | Authoritative result |
 |---:|---:|---|---|
-| `1` | `1` | One to three gear items | Decompose each eligible item into matching Attribute Dust |
-| `4` | `4` | One Attribute Dust stack | Consume 99 dust and create one matching Attribute Stone |
-| `8` | `8` | One Crystal stack | Downgrade one L3 Crystal to four L2, or one L2 to eight L1 |
-| `9` | `201` | One gem-piece stack | Consume 99 matching L4/L5 pieces and create one gem |
+| `1` | Client-local page; final action `1` | One to three gear items | Decompose each eligible item into matching Attribute Dust |
+| `4` | Client-local page; final action `4` | One Attribute Dust stack | Consume 99 dust and create one matching Attribute Stone |
+| `8` | Client-local page; final action `8` | One Crystal stack | Downgrade one L5 Crystal to two L4, one L3 to four L2, or one L2 to eight L1 |
+| `9` | Server page; client confirms with wire action `9`, normalized to authoritative operation `201` | One gem-piece stack | Consume 99 matching L4/L5 pieces and create one gem |
 
 Menu `5` (Instructions) and menu `7` (Wash dust) remain reserved and return
 native result `999` without mutating inventory. Instructions can therefore be
@@ -26,6 +26,16 @@ written. Output binding follows the consumed input, compatible stacks are
 filled before empty slots, and insufficient bag capacity rejects the entire
 operation. The stock client's pre-confirmation control-clear burst is accepted
 only through an exact captured-item snapshot that expires after one second.
+Live emulator logs confirmed the one-slot sequence as opcode `10193` selected,
+opcode `10193` cleared, then the final scratch-tailed opcode `10069`; no
+intermediate page request is sent for actions `1`, `4`, or `8`.
+
+After a successful mutation, the server sends a native source-to-`FFFF`
+deletion acknowledgement for every previously occupied slot whose item or
+stack changed, followed by the complete authoritative bag snapshot. The stock
+client does not evict an instantiated icon from detail/index refresh packets
+alone; omitting these acknowledgements leaves consumed dust or decomposed gear
+visible until relog even though the database transaction succeeded.
 
 ## Make Attribute Stones
 
@@ -71,15 +81,16 @@ bonus-roll probabilities are enabled.
 
 ## Transform high-quality Crystals
 
-The shipped client exposes only two downgrade recipes:
+The shipped client exposes two downgrade recipes. The locally authored Level 5
+tier adds one explicit conversion whose forge contribution is nearly preserved:
 
 | Input consumed | Output created |
 |---|---|
+| `1 x Level 5 Crystal` (`4234`) | `2 x Level 4 Crystal` (`4233`) |
 | `1 x Level 3 Crystal` (`4232`) | `4 x Level 2 Crystal` (`4231`) |
 | `1 x Level 2 Crystal` (`4231`) | `8 x Level 1 Crystal` (`4230`) |
 
-Level 1, Level 4, and local Level 5 Crystals are invalid inputs. Binding is
-preserved.
+Level 1 and Level 4 Crystals are invalid inputs. Binding is preserved.
 
 ## Combine Level 4/5 gem pieces
 

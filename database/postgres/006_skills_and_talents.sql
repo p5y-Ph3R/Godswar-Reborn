@@ -825,3 +825,13 @@ WHERE st.previous_skill_id IS NULL
   AND COALESCE(st.min_level, 1) <= cb.fighter_job_lv
   AND st.skill_level = 1
 ON CONFLICT (user_id, skill_id) DO NOTHING;
+
+-- Temporary compatibility grant while the level-40 quest/book acquisition
+-- flow is not yet implemented by the replacement server.
+INSERT INTO character_skills (user_id, skill_id, skill_level, source)
+SELECT cb.id, st.skill_id, 1, 'mount-compatibility'
+FROM character_base cb
+JOIN skill_templates st
+  ON st.skill_id = 4904
+ AND cb.profession = ANY(st.class_ids)
+ON CONFLICT (user_id, skill_id) DO NOTHING;

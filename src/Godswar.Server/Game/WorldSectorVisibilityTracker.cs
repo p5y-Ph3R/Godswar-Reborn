@@ -105,6 +105,13 @@ internal sealed class WorldSectorVisibilityTracker<TDefinition>
         return _visibleObjectIds.Contains(objectId);
     }
 
+    public IReadOnlyList<uint> SnapshotVisibleObjectIds()
+    {
+        return _visibleObjectIds
+            .OrderBy(static objectId => objectId)
+            .ToArray();
+    }
+
     internal static bool TryGetCell(float x, float z, out WorldGridCell cell)
     {
         cell = default;

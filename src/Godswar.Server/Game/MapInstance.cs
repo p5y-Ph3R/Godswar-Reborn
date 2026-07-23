@@ -1,35 +1,69 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
+using Godswar.Server.World.Maps;
 
 namespace Godswar.Server.Game;
 
-internal sealed class MapInstance
+internal sealed partial class MapInstance
 {
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
     private readonly ConcurrentDictionary<ClientSession, MonsterViewerState> _monsterViewers = [];
+    private readonly object _membershipGate = new();
     private readonly object _monsterRuntimeGate = new();
-    private MonsterMapRuntime? _monsterRuntime;
+    private readonly MonsterRuntimeMode _monsterRuntimeMode;
+    private readonly PlayerRuntimeMode _playerRuntimeMode;
+    private IMonsterMapRuntime? _monsterRuntime;
 
-    public MapInstance(byte mapId)
+    public MapInstance(
+        byte mapId,
+        MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
+        PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs)
     {
         MapId = mapId;
+        _monsterRuntimeMode = monsterRuntimeMode;
+        _playerRuntimeMode = playerRuntimeMode;
+        _ecsShadow = new MapEcsShadow(mapId);
     }
 
     public byte MapId { get; }
 
-    public int Population => _sessions.Count;
+    public int Population => _playerRuntimeMode == PlayerRuntimeMode.Ecs
+        ? _ecsShadow.PlayerCount
+        : _sessions.Count;
 
     public void AddOrUpdate(GameSessionContext context)
     {
-        _sessions[context.Session] = context;
+        lock (_membershipGate)
+        {
+            lock (_monsterRuntimeGate)
+            {
+                EnsurePlayerObjectIdDoesNotCollideWithNpcs(context);
+            }
+
+            if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
+            {
+                if (!_ecsShadow.TryAddOrUpdatePlayer(context))
+                {
+                    _ecsShadow.ClearPlayerFault(context.Session);
+                    throw new InvalidOperationException(
+                        $"ECS rejected player {context.ObjectId} on map {MapId}.");
+                }
+
+                _sessions[context.Session] = context;
+                return;
+            }
+
+            _sessions[context.Session] = context;
+            _ecsShadow.TryAddOrUpdatePlayer(context);
+        }
     }
 
     public bool Remove(ClientSession session, out GameSessionContext? context)
     {
         if (!_monsterViewers.TryGetValue(session, out var viewer))
         {
-            return _sessions.TryRemove(session, out context);
+            return RemoveSessionAndShadow(session, out context);
         }
 
         // Map moves/removal must wait for a leased monster send to finish. The
@@ -39,7 +73,7 @@ internal sealed class MapInstance
         {
             _monsterViewers.TryRemove(
                 new KeyValuePair<ClientSession, MonsterViewerState>(session, viewer));
-            return _sessions.TryRemove(session, out context);
+            return RemoveSessionAndShadow(session, out context);
         }
         finally
         {
@@ -49,21 +83,22 @@ internal sealed class MapInstance
 
     public IReadOnlyList<GameSessionContext> Snapshot()
     {
-        return _sessions.Values.ToArray();
-    }
-
-    public MonsterMapRuntime InitializeMonsters(
-        IReadOnlyList<CapturedMonsterSpawn> definitions,
-        DateTimeOffset initializedAt,
-        WorldBossRespawnState? activeWorldBossRespawn = null)
-    {
-        lock (_monsterRuntimeGate)
+        lock (_membershipGate)
         {
-            return _monsterRuntime ??= new MonsterMapRuntime(
-                MapId,
-                definitions,
-                initializedAt,
-                activeWorldBossRespawn: activeWorldBossRespawn);
+            if (_playerRuntimeMode != PlayerRuntimeMode.Ecs)
+            {
+                return _sessions.Values.ToArray();
+            }
+
+            return _ecsShadow.SnapshotPlayerSessions()
+                .Select(session => _sessions.TryGetValue(
+                    session,
+                    out var context)
+                    ? context
+                    : null)
+                .Where(static context => context is not null)
+                .Select(static context => context!)
+                .ToArray();
         }
     }
 
@@ -142,6 +177,41 @@ internal sealed class MapInstance
         }
     }
 
+    internal bool TryApplyMonsterDamageGuarded(
+        uint objectId,
+        uint damage,
+        int attackerCharacterId,
+        uint expectedSpawnGeneration,
+        ulong expectedHealthRevision,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
+    {
+        lock (_monsterRuntimeGate)
+        {
+            if (_monsterRuntime is not null &&
+                _monsterRuntime.TryGetSnapshot(
+                    objectId,
+                    out var snapshot) &&
+                snapshot.SpawnGeneration ==
+                    expectedSpawnGeneration &&
+                snapshot.HealthRevision ==
+                    expectedHealthRevision &&
+                _monsterRuntime.TryApplyDamage(
+                    objectId,
+                    damage,
+                    attackerCharacterId,
+                    expectedSpawnGeneration,
+                    now,
+                    out result))
+            {
+                return true;
+            }
+
+            result = default!;
+            return false;
+        }
+    }
+
     public bool TryApplyMonsterStun(
         uint objectId,
         int attackerCharacterId,
@@ -185,16 +255,45 @@ internal sealed class MapInstance
         }
     }
 
-    public MonsterRuntimeTick AdvanceMonsters(DateTimeOffset now)
+    public MonsterRuntimeTick AdvanceMonsters(
+        DateTimeOffset now,
+        Func<ClientSession, long>? lifeRevisionResolver = null)
     {
-        var combatTargets = Snapshot()
-            .Where(context => context.WorldReady)
-            .Select(context => new MonsterCombatTarget(
-                context.CharacterId,
-                context.Character.PositionX,
-                context.Character.PositionZ,
-                context.Character.CurrentHp > 0))
-            .ToArray();
+        MonsterCombatTarget[] combatTargets;
+        if (lifeRevisionResolver is null)
+        {
+            // Preserve the original Legacy/runtime-test target projection.
+            combatTargets = Snapshot()
+                .Where(context => context.WorldReady)
+                .Select(context => new MonsterCombatTarget(
+                    context.CharacterId,
+                    context.Character.PositionX,
+                    context.Character.PositionZ,
+                    context.Character.CurrentHp > 0))
+                .ToArray();
+        }
+        else
+        {
+            combatTargets = Snapshot()
+                .Where(context => context.WorldReady)
+                .Select(context =>
+                {
+                    var lifeRevision =
+                        lifeRevisionResolver(context.Session);
+                    lock (context.Character.VitalsSync)
+                    {
+                        return new MonsterCombatTarget(
+                            context.CharacterId,
+                            context.Character.PositionX,
+                            context.Character.PositionZ,
+                            context.Character.CurrentHp > 0,
+                            context.ObjectId,
+                            lifeRevision);
+                    }
+                })
+                .ToArray();
+        }
+
         lock (_monsterRuntimeGate)
         {
             return _monsterRuntime?.Advance(now, combatTargets) ?? new MonsterRuntimeTick(false, []);
@@ -216,7 +315,7 @@ internal sealed class MapInstance
         CancellationToken cancellationToken,
         bool forceRefreshVisible = false)
     {
-        if (!_sessions.ContainsKey(session))
+        if (!ContainsPlayer(session))
         {
             return null;
         }
@@ -225,7 +324,7 @@ internal sealed class MapInstance
         await viewer.TransitionGate.WaitAsync(cancellationToken);
         try
         {
-            if (!_sessions.ContainsKey(session) ||
+            if (!ContainsPlayer(session) ||
                 !_monsterViewers.TryGetValue(session, out var currentViewer) ||
                 !ReferenceEquals(currentViewer, viewer))
             {
@@ -368,7 +467,7 @@ internal sealed class MapInstance
         await viewer.TransitionGate.WaitAsync(cancellationToken);
         if (!_monsterViewers.TryGetValue(session, out var currentViewer) ||
             !ReferenceEquals(currentViewer, viewer) ||
-            !_sessions.ContainsKey(session))
+            !ContainsPlayer(session))
         {
             _monsterViewers.TryRemove(
                 new KeyValuePair<ClientSession, MonsterViewerState>(session, viewer));
@@ -467,129 +566,5 @@ internal sealed class MapInstance
             directMutations,
             reconciliationObjectIds,
             reconciliationMonsters);
-    }
-}
-
-internal sealed record MonsterVisibilityDelta(
-    WorldGridCell PlayerCell,
-    IReadOnlyList<MonsterRuntimeSnapshot> Entering,
-    IReadOnlyList<uint> Leaving);
-
-internal sealed class MonsterVisibilityTransition : IAsyncDisposable
-{
-    private MonsterViewerState? _viewer;
-    private readonly IReadOnlyDictionary<uint, MonsterAppearanceVersion> _desiredVersions;
-
-    public MonsterVisibilityTransition(
-        MonsterViewerState viewer,
-        MonsterVisibilityDelta delta,
-        IReadOnlyDictionary<uint, MonsterAppearanceVersion> desiredVersions)
-    {
-        _viewer = viewer;
-        Delta = delta;
-        _desiredVersions = desiredVersions;
-    }
-
-    public MonsterVisibilityDelta Delta { get; }
-
-    public bool IsDesiredVisible(uint objectId)
-    {
-        return _desiredVersions.ContainsKey(objectId);
-    }
-
-    public void Commit()
-    {
-        var viewer = _viewer ?? throw new ObjectDisposedException(nameof(MonsterVisibilityTransition));
-        foreach (var objectId in viewer.VisibleMonsterVersions.Keys)
-        {
-            if (!_desiredVersions.ContainsKey(objectId))
-            {
-                viewer.VisibleMonsterVersions.TryRemove(objectId, out _);
-            }
-        }
-
-        // Only an appearance actually sent by this transition may advance the
-        // viewer's health revision. Merely observing a newer runtime snapshot
-        // during an unrelated AOI calculation must not suppress a pending delta.
-        foreach (var monster in Delta.Entering)
-        {
-            viewer.VisibleMonsterVersions[monster.ObjectId] = monster.AppearanceVersion;
-        }
-
-        viewer.PlayerCell = Delta.PlayerCell;
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        var viewer = Interlocked.Exchange(ref _viewer, null);
-        viewer?.TransitionGate.Release();
-        return ValueTask.CompletedTask;
-    }
-}
-
-internal sealed class MonsterViewerState
-{
-    public SemaphoreSlim TransitionGate { get; } = new(1, 1);
-
-    public ConcurrentDictionary<uint, MonsterAppearanceVersion> VisibleMonsterVersions { get; } = [];
-
-    public WorldGridCell? PlayerCell { get; set; }
-}
-
-internal sealed class MonsterViewerDeliveryLease : IAsyncDisposable
-{
-    private MonsterViewerState? _viewer;
-    private readonly IReadOnlyList<MonsterHealthMutation> _directHealthMutations;
-    private readonly IReadOnlyList<uint> _reconciliationObjectIds;
-
-    public MonsterViewerDeliveryLease(
-        MonsterViewerState viewer,
-        IReadOnlyList<MonsterHealthMutation> directHealthMutations,
-        IReadOnlyList<uint> reconciliationObjectIds,
-        IReadOnlyList<MonsterRuntimeSnapshot> reconciliationMonsters)
-    {
-        _viewer = viewer;
-        _directHealthMutations = directHealthMutations;
-        _reconciliationObjectIds = reconciliationObjectIds;
-        ReconciliationMonsters = reconciliationMonsters;
-    }
-
-    public IReadOnlyList<MonsterHealthMutation> DirectHealthMutations =>
-        _directHealthMutations;
-
-    public IReadOnlyList<uint> ReconciliationObjectIds =>
-        _reconciliationObjectIds;
-
-    public IReadOnlyList<MonsterRuntimeSnapshot> ReconciliationMonsters { get; }
-
-    public void Commit()
-    {
-        var viewer = _viewer ?? throw new ObjectDisposedException(nameof(MonsterViewerDeliveryLease));
-        var reconciledVersions = ReconciliationMonsters.ToDictionary(
-            monster => monster.ObjectId,
-            monster => monster.AppearanceVersion);
-        foreach (var objectId in _reconciliationObjectIds)
-        {
-            if (reconciledVersions.TryGetValue(objectId, out var version))
-            {
-                viewer.VisibleMonsterVersions[objectId] = version;
-            }
-            else
-            {
-                viewer.VisibleMonsterVersions.TryRemove(objectId, out _);
-            }
-        }
-
-        foreach (var mutation in _directHealthMutations)
-        {
-            viewer.VisibleMonsterVersions[mutation.ObjectId] = mutation.AfterVersion;
-        }
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        var viewer = Interlocked.Exchange(ref _viewer, null);
-        viewer?.TransitionGate.Release();
-        return ValueTask.CompletedTask;
     }
 }

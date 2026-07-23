@@ -188,6 +188,7 @@ foreach ($locale in @('en_us', 'zh_cn')) {
     $luaText = [IO.File]::ReadAllText($luaPath, [Text.Encoding]::UTF8)
     if ($locale -eq 'en_us') {
         $luaText = Set-LuaAssignment $luaText 'NF_L0_FJ90' '|cffFFFF00*Combine pieces into Level 4/5 gems|cffFFFFFF'
+        $luaText = Set-LuaAssignment $luaText 'NF_L0_FJ1824' '  I am able to transform a crystal into several crystals of a lower grade. \n\n    Each Level 5 Crystal     can be transformed into 2 Level 4 Crystals.\n    Each Level 3 Crystal     can be transformed into 4 Level 2 Crystals.\n    Each Level 2 Crystal     can be transformed into 8 Level 1 Crystals.\n\n|cffF14187  Notes: Crystals obtained from a bound higher grade crystal will be bound too.|cffFFFFFF'
         $luaText = Set-LuaAssignment $luaText 'LuaText.NF_Break_T201' 'I can combine 99 matching Level 4 or Level 5 gem pieces into the corresponding gem. Put the pieces below, and leave the rest to me.'
         $luaText = Set-LuaAssignment $luaText 'LuaText.NF_Break_T301' 'Those are not supported Level 4 or Level 5 gem pieces.'
         $luaText = Set-LuaAssignment $luaText 'LuaText.NF_Break_T302' 'You need 99 matching gem pieces.'
@@ -195,6 +196,9 @@ foreach ($locale in @('en_us', 'zh_cn')) {
     else {
         $luaText = Set-LuaAssignment $luaText 'NF_L0_FJ90' (
             Decode-Utf8 'fGNmZkZGRkYwMOKWveeijueJh+WQiOaIkOWbmy/kupTnuqflrp3nn7N8Y2ZmRkZGRkZG'
+        )
+        $luaText = Set-LuaAssignment $luaText 'NF_L0_FJ1824' (
+            Decode-Utf8 'ICDmiJHlj6/ku6XluK7kvaDlsIbpq5jlk4HotKjnmoTmsLTmmbbvvIzliIbop6PmiJDmlbDkuKrkvY7kuIDmoaPmrKHnmoTmsLTmmbblk6bvvIHov5nmmK/kuIDkuKrlvojmo5LnmoTlip/og73lkKfvvJ/miJHog73liIbop6PnmoTmsLTmmbblpoLkuIvvvJpcblxuICAgIOS6lOe6p+awtOaZtiAgICAg5YiG6Kej5oiQMuS4quWbm+e6p+awtOaZtlxuICAgIOS4iee6p+awtOaZtiAgICAg5YiG6Kej5oiQNOS4quS6jOe6p+awtOaZtlxuICAgIOS6jOe6p+awtOaZtiAgICAg5YiG6Kej5oiQOOS4quS4gOe6p+awtOaZtlxuXG5cbnxjZmZGMTQxODcgIOS4jei/h+imgeazqOaEj+eahOaYr++8mue7keWumueahOawtOaZtu+8jOWIhuino+WQjuS5n+aYr+e7keWumueahOWTpu+8gXxjZmZGRkZGRkY='
         )
         $luaText = Set-LuaAssignment $luaText 'LuaText.NF_Break_T201' (
             Decode-Utf8 '5oiR5Y+v5Lul5bCGOTnkuKrnm7jlkIznmoTlm5vnuqfmiJbkupTnuqflrp3nn7Pnoo7niYflkIjmiJDkuIDpopflr7nlupTnrYnnuqfnmoTlrp3nn7PjgII='

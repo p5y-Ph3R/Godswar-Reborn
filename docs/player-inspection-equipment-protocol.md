@@ -146,7 +146,7 @@ not share a ceiling constant.
 | Ordinary Emerald forging | G25 | `EquipmentForgeCalculator.MaximumGrade`; both locales' `EquipForge.xml`, `BijouForge.xml`, and `ItemBaseAttribute.xml`; `tools/PatchClientForgeBoundlessGrade25.ps1`; generated forge/item catalogs | Level-4 Emerald remains G10..G17. Level-5 Emerald covers current G10..G24; every forgeable `AppFraction` must contain the G25 result |
 | Weapon rank | WR10 at score 8000; every ordinary forgeable weapon supports it | `BaseFraction`, `AppFraction`, `ArmEffFraction`, `ArmEff`; `equipment_rank_rules`; `tools/PatchClientGlobalEquipmentRanks.ps1`; generated item templates | Q20/G25 with five append attributes scores 8050/WR10. Four attributes score 6780/WR9. Special GM Spear `1499` keeps its authored arrays |
 | Armor rank | AR14 at score 25300; every ordinary forgeable `armor`/`cloth` carrier supports it | `BaseFraction`, `AppFraction`, `DefendFraction`, `DefendEff`; aggregate score views; `tools/PatchClientGlobalEquipmentRanks.ps1`; generated item templates | Complete no-shield set is 25350. A shield adds 650, keeping Warrior/Priest at 26000 below signed 16-bit. Custom GM Armor `2190` is preserved |
-| Remote world equipment appearance | Native fallback Q13/G12; local `GWX1` extension Q20/G25 | Legacy caps and `PackWorldItemVisual`, plus `PlayerWorldFullVisual*` in `PacketBuilder.cs`; `tools/PatchRemoteWorldEquipmentExtension.ps1`; client score caps/template arrays | Native byte remains `(grade << 4) | quality`. The appended full-byte fields carry through 255; the native fallback deliberately remains Q13/G12 |
+| Remote world equipment appearance | Native fallback Q13/G12; local `GWX1` extension Q20/G25 | Legacy caps and `PackWorldItemVisual`, plus `PlayerWorldFullVisual*` in `PacketBuilder.PlayerWorld.cs` and `PacketBuilder.ItemSerialization.cs`; `tools/PatchRemoteWorldEquipmentExtension.ps1`; client score caps/template arrays | Native byte remains `(grade << 4) | quality`. The appended full-byte fields carry through 255; the native fallback deliberately remains Q13/G12 |
 | Append attributes | Five IDs; local data through L25 | Item record offsets `+4..+20`, DB attribute templates, client `ItemAppendAttribute.xml` and patches below | Attribute levels are not separate fields in captured 72-byte records. The client combines IDs, grade, and its XML. More than five attributes needs protocol/client work |
 | Holy suit | Current semantic type 7, level 10; code `710` | `CompactItemEntry.HolySuitType/HolySuitLevel`, `WriteItemExtension`, embedded schema, migrations `003` and `015`, tier/requirement data, and client holy-suit data | Wire code is a signed 16-bit value. New semantic tiers/levels need client lookup/effect discovery as well as larger server tables |
 | Holy stones | Four sockets, effects at levels 1..10 | `NativeClientHolyStoneSocketCount`, `CompactItemEntry.MaxSockets`, `HolyStoneItemMutator.MaxSockets`, `WriteHolyStoneValueRows`, `HolyStoneEffectCode`, and value tables | Captured/native record has exactly four effect/value pairs. DB columns 5/6 are dormant; six sockets need the reference client patches and a revised packet model |
@@ -156,8 +156,11 @@ not share a ceiling constant.
 When raising quality, grade, attribute, holy-suit, or stone ceilings, audit all of
 these together:
 
-- `src/Godswar.Server/Packets/PacketBuilder.cs`
+- `src/Godswar.Server/Packets/PacketBuilder.EquipmentInspection.cs`
+  - detailed inspection records and identities;
+- `src/Godswar.Server/Packets/PacketBuilder.ItemSerialization.cs`
   - detailed inspection packing, identities, and full-byte serialization;
+- `src/Godswar.Server/Packets/PacketBuilder.PlayerWorld.cs`
   - `PackWorldItemVisual`, its separate nibble fallback, and the `GWX1`
     full-byte world extension;
   - `WriteItemExtension`, socket count, effect-code level clamp, and stone-value
@@ -167,10 +170,11 @@ these together:
   - parsed compact-field types, holy-suit semantic clamps, and four-socket output.
 - `src/Godswar.Server/State/HolyStoneItemMutator.cs`
   - four-socket mutation loops and limits.
-- `src/Godswar.Server/State/PostgresGameStore.cs`
-  - the embedded `character_item_compact_entries` schema clamps quality to the
+- `src/Godswar.Server/State/DatabaseMigrations/LegacySchemaBootstrap.sql`
+  - `character_item_compact_entries` clamps quality to the
     template `BaseFraction` length and grade to both `AppFraction` length and the
     literal `25`;
+- `src/Godswar.Server/State/PostgresGameStore.*.cs`
   - generated loadout, validation, rank/stat, holy-suit, and stone views.
 - SQL definitions that must remain aligned with the embedded schema:
   - `database/postgres/003_item_quality.sql`

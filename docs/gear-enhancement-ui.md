@@ -109,15 +109,19 @@ experiments and are not the supported release path.
 ## Gear Mentor dialog-4 contract
 
 The physical Gear Mentors are `Sparta_070` / `5067` and `Athens_070` / `5209`.
-The original-server Sparta appearance packet places the NPC actor at
-`142,-165.9`; Athens currently mirrors that paired-city actor position because
-no direct Athens `_070` appearance packet exists in the available captures.
+The authoritative Sparta and Athens server actor tables place both NPCs at
+`142,-165` with facing `1.7`.
 The client also contains a navigation destination named `Gear Enhancer` at
 `144,-162` in both cities (`Monster/Sparta/Address.ini` and
 `Monster/Athens/Address.ini`). That is the walk-to marker in front of the NPC,
 not an actor spawn record: NPC actors and their coordinates are streamed by
-the server in opcode `10020`. `NPC.INI` supplies identity and appearance but
-does not own world placement.
+the server in opcode `10020`. The client-side NPC appearance INI does not own
+world placement. Sparta now uses the exact recovered original-server actor
+table at `C:\Users\Iamc1\Downloads\Sparta\Sparta\NPC.INI` (SHA-256
+`A7DFDF9D3C90D27960F730B4B65A7EA37D7F41FC80F7788E584AD80E59BFF340`);
+the server maps file X to protocol X, file Y to protocol Z, and file Z to
+facing. The capital actor tables are authoritative ahead of captured or
+generated fallback positions.
 
 A normal interaction opens NPC function dialog `4`, which the stock client
 dispatches to `NpcFunBreak.lua`. The server accepts Gear Mentor actions only
@@ -136,7 +140,7 @@ so IDs `4` and `5` no longer leave two blank rows between Add and Delete:
 | `6` | Delete attributes | Implemented |
 | `7` | Wash dust | Reserved / no mutation |
 | `8` | Transform crystals | Implemented |
-| `9` | Combine pieces into level-4/5 gems | Implemented through action page `201` |
+| `9` | Combine pieces into level-4/5 gems | Client confirms with action `9`; server normalizes it to authoritative page operation `201` |
 
 Reserved entries `5` and `7` return the stock result `999` (`Temporarily
 Disabled`) and never mutate inventory. `NpcFunBreak.lua` still supplies every
@@ -226,10 +230,12 @@ Gear  ->  operation catalyst  ->  Attribute Stone
 
 The physical Gear Mentor creates an operation-unbound context when its initial
 menu is returned. This is necessary because `NpcFunBreak.lua` changes from the
-menu to Add, Enhance, or Delete entirely on the client; it does not send an
-intermediate opcode `10069` identifying that choice. The final `10069` supplies
-the authoritative operation sub-ID and binds the staged triplet to that
-operation.
+menu to Add, Enhance, Delete, Decompose, Make Attribute Stones, or Transform
+Crystals entirely on the client; it does not send an intermediate opcode
+`10069` identifying that choice. The final `10069` supplies the authoritative
+operation sub-ID and binds the staged selection to that operation. Combine is
+the exception: menu `9` requests the server-backed action page `201` before its
+one-item confirmation.
 
 When Start is clicked, the stock control sends `10193` removal events in role
 order before its final `10069`. Those removals clear the client controls; they
@@ -294,9 +300,10 @@ If any consumed material is bound, the resulting gear is bound. A failed
 operation consumes nothing and does not change the gear.
 
 Decompose, Make Attribute Stones, Transform Crystals, and Combine Pieces use
-the same authoritative persistence boundary with their native operation pages.
-Their exact recipes, eligibility rules, Level-5 piece IDs/icons, and the
-explicit non-retail decomposition yield rule are recorded in
+the same authoritative persistence boundary. The first three use client-local
+operation pages; Combine requires the server-established page `201`. Their
+exact recipes, eligibility rules, Level-5 piece IDs/icons, and the explicit
+non-retail decomposition yield rule are recorded in
 `docs/gear-mentor-material-workflows.md`.
 
 ## Authoritative server transaction
@@ -408,16 +415,29 @@ original-service positions:
 
 | NPC | Object | Position | Stock dialog |
 |---|---:|---:|---|
-| Gear Mentor (`Sparta_070`) | `5067` | `142,-165.9` | `4`, Gear Enhancement |
-| Master Vestment Forger (`Sparta_085`) | `5082` | `126,-161.1` | `29`, Holy Suit Design |
+| Gear Mentor (`Sparta_070`) | `5067` | `142,-165` | `4`, Gear Enhancement |
+| Master Vestment Forger (`Sparta_085`) | `5082` | `126,-162` | `29`, Holy Suit Design |
 | Class Shifter (`Sparta_044`) | `5041` | `141,-174` | Shift class |
 | Ingredients Vendor (`Sparta_122`) | `5119` | `97,-174` | Vendor |
-| Origin Enhancer (`Sparta_143`) | `5140` | `126,-165.9` | `118`, Enhancer |
+| Origin Enhancer (`Sparta_143`) | `5140` | `97,-163` | `118`, Enhancer |
 
 The stale `Quest.xml` reference at `143,-170` for NPC 122 is not an actor
 position and no longer overrides the captured Ingredients Vendor location.
-Paired Athens actors currently mirror these city coordinates where a direct
-Athens actor packet is unavailable.
+Athens no longer mirrors this cluster: all 111 actors are seeded from the
+original server actor table, including orientation.
+
+| NPC | Protocol object | Athens actor position | Facing |
+|---|---:|---:|---:|
+| Gear Mentor (`Athens_070`) | `5209` | `142,-165` | `1.7` |
+| Master Vestment Forger (`Athens_085`) | `5224` | `126,-162` | `4.7` |
+| Class Shifter (`Athens_044`) | `5183` | `141,-174` | `2.3` |
+| Ingredients Vendor (`Athens_122`) | `5261` | `97,-174` | `1.7` |
+| Origin Enhancer (`Athens_143`) | `5282` | `97,-163` | `1.7` |
+
+The actor table used source IDs `6101/6102` and unavailable
+`*_FemVillager3` appearances for Athens 142/143. The emulator retains the
+established protocol-safe city IDs and shipped `*_Hallo` appearances while
+using the authoritative positions and facing.
 
 ## Acceptance criteria
 

@@ -1,0 +1,4 @@
+# The migration identity test hashes these fragments as one byte-exact UTF-8
+# resource. Keep LF boundaries and allow section-separator blank lines at the
+# end of intermediate fragments.
+src/Godswar.Server/State/DatabaseMigrations/LegacySchemaBootstrap.*.sql -text whitespace=cr-at-eol,-blank-at-eof
