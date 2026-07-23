@@ -204,6 +204,62 @@ internal static partial class PostgresGearMentorIntegrationChecks
             await StageMaterialAsync(
                 connectionString,
                 character.Id,
+                TransformSlot,
+                itemId: 4233,
+                stack: 3,
+                bound: 1);
+            persisted = (await storeA.GetCharactersAsync(account.Id))
+                .Single(candidate => candidate.Id == character.Id);
+            var levelFourTransform = await storeA.ProcessGearMentorAsync(
+                account.Id,
+                character.Id,
+                new GearMentorRequest(
+                    GearMentorOperation.TransformCrystal,
+                    [GearMentorSlotSelection.Capture(persisted.KitBag, TransformSlot)]));
+            Check.True(
+                levelFourTransform.Committed,
+                "PostgreSQL Level-4 Crystal transformation commits");
+            Check.Equal(
+                new GearMentorOutput(4232, 2, 1),
+                levelFourTransform.Result!.Outputs.Single(),
+                "one bound Level-4 Crystal produces two bound Level-3 Crystals");
+            Check.Equal(
+                CompactItemEntry.Empty with
+                {
+                    Id = 4233,
+                    Quality = 1,
+                    Grade = 1,
+                    Bound = 1,
+                    Stack = 2
+                },
+                KitBagSlots.GetItem(
+                    levelFourTransform.Character!.KitBag,
+                    TransformSlot),
+                "PostgreSQL Level-4 Crystal transformation consumes one source");
+            Check.Equal(
+                CompactItemEntry.Empty with
+                {
+                    Id = 4232,
+                    Quality = 1,
+                    Grade = 1,
+                    Bound = 1,
+                    Stack = 2
+                },
+                KitBagSlots.GetItem(
+                    levelFourTransform.Character.KitBag,
+                    SingleConnectionRecipeSlot),
+                "PostgreSQL Level-4 Crystal transformation persists two bound outputs in the first empty slot");
+            Check.Equal(
+                gearRowBefore,
+                await ReadItemRowAsync(
+                    connectionString,
+                    character.Id,
+                    PreservedGearSlot),
+                "Level-4 Crystal transformation preserves unrelated gear metadata");
+
+            await StageMaterialAsync(
+                connectionString,
+                character.Id,
                 SingleConnectionRecipeSlot,
                 itemId: 9901,
                 stack: 99,

@@ -94,6 +94,10 @@ internal static partial class GearMentorPlanner
             // Level 5 is a local material tier. Two Level 4 Crystals preserve
             // almost exactly the same forge contribution (25 versus 24).
             [4234] = (4233, 2),
+            // Level 4 was the stock ceiling and had no downgrade recipe.
+            // Extending the ceiling makes its matching upper-tier conversion
+            // one Level 4 Crystal into two Level 3 Crystals.
+            [4233] = (4232, 2),
             [4232] = (4231, 4),
             [4231] = (4230, 8)
         };

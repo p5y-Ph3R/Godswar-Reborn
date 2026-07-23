@@ -82,15 +82,17 @@ bonus-roll probabilities are enabled.
 ## Transform high-quality Crystals
 
 The shipped client exposes two downgrade recipes. The locally authored Level 5
-tier adds one explicit conversion whose forge contribution is nearly preserved:
+tier extends the upper end with Level 5 and Level 4 conversions. The Level 5
+conversion nearly preserves its forge contribution:
 
 | Input consumed | Output created |
 |---|---|
 | `1 x Level 5 Crystal` (`4234`) | `2 x Level 4 Crystal` (`4233`) |
+| `1 x Level 4 Crystal` (`4233`) | `2 x Level 3 Crystal` (`4232`) |
 | `1 x Level 3 Crystal` (`4232`) | `4 x Level 2 Crystal` (`4231`) |
 | `1 x Level 2 Crystal` (`4231`) | `8 x Level 1 Crystal` (`4230`) |
 
-Level 1 and Level 4 Crystals are invalid inputs. Binding is preserved.
+Level 1 Crystals are invalid inputs. Binding is preserved.
 
 ## Combine Level 4/5 gem pieces
 

@@ -252,6 +252,7 @@ internal static partial class GearMentorStateChecks
         var recipes = new[]
         {
             new TransformExpectation(4234, 4233, 2),
+            new TransformExpectation(4233, 4232, 2),
             new TransformExpectation(4232, 4231, 4),
             new TransformExpectation(4231, 4230, 8)
         };
@@ -282,7 +283,7 @@ internal static partial class GearMentorStateChecks
         Check.Equal((short)1, KitBagSlots.GetItem(multiResult.UpdatedKitBag, SingleSelectionSlot).Stack, "one Level 3 Crystal remains");
         Check.Equal(4, QuantityInBag(multiResult.UpdatedKitBag, 4231, bound: 1), "one action adds four Level 2 Crystals");
 
-        foreach (var invalidItemId in new uint[] { 4200, 4213, 4230, 4233, 4235 })
+        foreach (var invalidItemId in new uint[] { 4200, 4213, 4230, 4235 })
         {
             var (kitBag, request) = StageSingle(
                 GearMentorOperation.TransformCrystal,

@@ -141,7 +141,7 @@ internal static partial class GearMentorPlanner
         {
             return Fail(
                 GearMentorStatus.InvalidCrystal,
-                "Only supported Level 2, Level 3, or Level 5 Crystals can be transformed into lower-level Crystals.",
+                "Only supported Level 2, Level 3, Level 4, or Level 5 Crystals can be transformed into lower-level Crystals.",
                 out status,
                 out reason);
         }
