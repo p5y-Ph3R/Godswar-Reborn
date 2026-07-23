@@ -56,7 +56,7 @@ internal static partial class PacketBuilder
         state[8] = checked((byte)zodiacLevel);
         BinaryPrimitives.WriteInt32LittleEndian(
             state.Slice(12, 4),
-            ZodiacEnergyCatalog.ClampToStorageLimit(zodiacLevel, character.ZodiacEnergy));
+            Math.Max(0, character.ZodiacEnergy));
 
         // The client copies the whole state first and then replaces these two
         // floats with header v1/v2. Keeping both representations aligned makes
@@ -64,24 +64,24 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteSingleLittleEndian(state.Slice(40, 4), experienceX100);
         BinaryPrimitives.WriteSingleLittleEndian(state.Slice(44, 4), talentExperienceX100);
 
-        // Empty stones use the working-server -1 ID sentinel.
-        for (var stoneIndex = 0; stoneIndex < 3; stoneIndex++)
+        // Native Origin.exe constructs two zero-filled 12-byte stone records
+        // at +16/+28. The sixteen 16-byte training-grid records start at +48
+        // and fill the remainder of the 304-byte state exactly.
+        for (var gridIndex = 0;
+             gridIndex < ZodiacSkillGridCatalog.GridCount;
+             gridIndex++)
         {
+            var grid = state.Slice(48 + (gridIndex * 16), 16);
             BinaryPrimitives.WriteInt32LittleEndian(
-                state.Slice(68 + (stoneIndex * 16), 4),
-                -1);
-        }
-
-        // Each group of four skill-training grids has a fixed row marker in
-        // the high byte; a low byte of zero is level zero. The second field is
-        // the selected skill ID, where -1 means no skill is assigned. The
-        // captured client layout intentionally starts this array at +112,
-        // overlapping the last dword of the third 16-byte stone record.
-        for (var gridIndex = 0; gridIndex < 12; gridIndex++)
-        {
-            var grid = state.Slice(112 + (gridIndex * 16), 16);
-            BinaryPrimitives.WriteInt32LittleEndian(grid.Slice(0, 4), ((gridIndex / 4) + 1) << 8);
-            BinaryPrimitives.WriteInt32LittleEndian(grid.Slice(4, 4), -1);
+                grid.Slice(0, 4),
+                ZodiacSkillGridCatalog.PackClientLevel(
+                    gridIndex,
+                    ZodiacSkillGridCatalog.GetLevel(character, gridIndex)));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                grid.Slice(4, 4),
+                ZodiacSkillGridCatalog.GetSelectedSkillId(
+                    character,
+                    gridIndex));
         }
 
         return packet;
@@ -96,6 +96,42 @@ internal static partial class PacketBuilder
             sid: 3,
             Math.Clamp((int)currentLevel, 1, 30),
             Math.Max(0, currentEnergy),
+            value3: 0);
+        return packet;
+    }
+
+    public static byte[] ZodiacSkillGridActivated(int gridIndex)
+    {
+        if (!ZodiacSkillGridCatalog.IsValidGrid(gridIndex))
+        {
+            throw new ArgumentOutOfRangeException(nameof(gridIndex));
+        }
+
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 100,
+            gridIndex,
+            value2: 0,
+            value3: 0);
+        return packet;
+    }
+
+    public static byte[] ZodiacSkillGridUpgraded(int gridIndex)
+    {
+        if (!ZodiacSkillGridCatalog.IsValidGrid(gridIndex))
+        {
+            throw new ArgumentOutOfRangeException(nameof(gridIndex));
+        }
+
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 101,
+            gridIndex,
+            value2: 0,
             value3: 0);
         return packet;
     }

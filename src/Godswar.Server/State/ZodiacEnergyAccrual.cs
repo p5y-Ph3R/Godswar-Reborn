@@ -266,7 +266,14 @@ internal static class ZodiacEnergyAccrual
         var currentX100 = checked(
             Math.Max(0L, character.ZodiacEnergy) * 100L +
             Math.Clamp(character.ZodiacEnergyRemainderX100, 0, 99));
-        currentX100 = Math.Min(currentX100, capacityX100);
+        if (currentX100 >= capacityX100)
+        {
+            // Preserve an explicit administrative over-cap test balance. It
+            // earns no automatic energy until spending brings it below the
+            // normal MaxPower ceiling.
+            return 0;
+        }
+
         var updatedX100 = Math.Min(capacityX100, checked(currentX100 + requestedGainX100));
         character.ZodiacEnergy = checked((int)(updatedX100 / 100));
         character.ZodiacEnergyRemainderX100 = checked((int)(updatedX100 % 100));

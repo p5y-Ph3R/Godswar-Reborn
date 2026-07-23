@@ -27,7 +27,23 @@ internal sealed partial class PostgresGameStore : IGameStore
         cb.zodiac_level, cb.zodiac_energy, cb.zodiac_accumulated_exp_x100,
         cb.zodiac_accumulated_talent_exp_x100, cb.zodiac_energy_remainder_x100,
         cb.zodiac_online_day, cb.zodiac_online_duration_ticks, cb.zodiac_last_online_at,
-        cb.zodiac_last_compensation_day, cb."Money", cb."Stone"
+        cb.zodiac_last_compensation_day, cb."Money", cb."Stone",
+        ARRAY(
+            SELECT COALESCE(grid.level, 0)::integer
+            FROM generate_series(0, 15) AS requested_grid(grid_index)
+            LEFT JOIN character_zodiac_skill_grids grid
+              ON grid.user_id = cb.id
+             AND grid.grid_index = requested_grid.grid_index
+            ORDER BY requested_grid.grid_index
+        ),
+        ARRAY(
+            SELECT COALESCE(grid.selected_skill_id, -1)
+            FROM generate_series(0, 15) AS requested_grid(grid_index)
+            LEFT JOIN character_zodiac_skill_grids grid
+              ON grid.user_id = cb.id
+             AND grid.grid_index = requested_grid.grid_index
+            ORDER BY requested_grid.grid_index
+        )
         """;
 
     private readonly NpgsqlDataSource _dataSource;

@@ -132,11 +132,12 @@ internal static class ZodiacLevelUpgrade
         ArgumentNullException.ThrowIfNull(character);
 
         var previousLevel = checked((byte)Math.Clamp((int)character.ZodiacLevel, 1, 30));
-        var currentEnergyX100 = Math.Min(
-            checked((long)ZodiacEnergyCatalog.GetStorageLimit(previousLevel) * 100L),
-            checked(
-                Math.Max(0L, character.ZodiacEnergy) * 100L +
-                Math.Clamp(character.ZodiacEnergyRemainderX100, 0, 99)));
+        // Normal online accrual obeys the per-level MaxPower ceiling. An
+        // explicit administrative test grant may exceed it, however, and must
+        // remain visible and spendable rather than being destroyed here.
+        var currentEnergyX100 = checked(
+            Math.Max(0L, character.ZodiacEnergy) * 100L +
+            Math.Clamp(character.ZodiacEnergyRemainderX100, 0, 99));
 
         if (!ZodiacLevelUpgradeCatalog.TryGetRequirement(
                 previousLevel,

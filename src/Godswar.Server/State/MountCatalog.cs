@@ -1,4 +1,6 @@
 using System.Collections.Frozen;
+using System.Globalization;
+using System.Text.Json;
 
 namespace Godswar.Server.State;
 
@@ -44,6 +46,19 @@ internal static class MountCatalog
                 Math.Max(0f, candidate.Mount.SpeedBonus)))
             .ToFrozenDictionary(static definition => definition.ItemId);
 
+    private static readonly FrozenDictionary<uint, float[]> RideQualitySpeedBonuses =
+        ItemTemplateSeeds.All
+            .Where(static template =>
+                template.Id > 0 &&
+                string.Equals(template.Kind, "mount", StringComparison.OrdinalIgnoreCase))
+            .Select(static template => (
+                ItemId: (uint)template.Id,
+                Values: ReadFloatVector(template.StatsJson, "Speed")))
+            .Where(static candidate => candidate.Values.Length > 0)
+            .ToFrozenDictionary(
+                static candidate => candidate.ItemId,
+                static candidate => candidate.Values);
+
     public static bool TryGetRideDefinition(uint itemId, out MountRideDefinition definition) =>
         RideDefinitions.TryGetValue(itemId, out definition);
 
@@ -52,11 +67,60 @@ internal static class MountCatalog
         out MountRideDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(character);
-        var mountId = EquipmentSlots.GetItemId(
+        var mount = EquipmentSlots.GetItem(
             character.Equipment,
             character.Profession,
             EquipmentSlots.Mount);
-        return TryGetRideDefinition(mountId, out definition);
+        if (!TryGetRideDefinition(mount.Id, out definition))
+        {
+            return false;
+        }
+
+        if (RideQualitySpeedBonuses.TryGetValue(mount.Id, out var speedBonuses))
+        {
+            var qualityIndex = Math.Clamp(
+                Math.Max((int)mount.Quality, 1) - 1,
+                0,
+                speedBonuses.Length - 1);
+            definition = definition with
+            {
+                SpeedBonus = Math.Max(0f, speedBonuses[qualityIndex])
+            };
+        }
+
+        return true;
+    }
+
+    private static float[] ReadFloatVector(string statsJson, string propertyName)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(statsJson);
+            if (!document.RootElement.TryGetProperty(propertyName, out var property))
+            {
+                return [];
+            }
+
+            var values = property.GetString()?
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(static value =>
+                    float.TryParse(
+                        value.Trim(),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var parsed) &&
+                    float.IsFinite(parsed)
+                        ? parsed
+                        : float.NaN)
+                .ToArray() ?? [];
+            return values.All(static value => float.IsFinite(value))
+                ? values
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     private static uint? ResolveStatusId(uint itemId)

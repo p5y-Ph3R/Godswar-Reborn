@@ -148,7 +148,10 @@ internal static partial class Program
             ZodiacEnergy = 5_000
         };
         var overCap = ZodiacLevelUpgrade.Apply(overCapCharacter);
-        Check.Equal(500, overCap.CurrentEnergy, "hidden over-cap energy cannot fund upgrades");
+        Check.Equal(
+            4_500,
+            overCap.CurrentEnergy,
+            "an explicit administrative over-cap balance remains spendable");
 
         return Task.CompletedTask;
     }

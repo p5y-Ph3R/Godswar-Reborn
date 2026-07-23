@@ -236,6 +236,29 @@ internal static partial class EquipmentKindGuardChecks
                 mountedStats.Hit,
                 "equipped Boorish Coronet contributes its authored Hit stat");
 
+            await SetEquippedMountProgressionAsync(
+                connectionString,
+                character.Id,
+                EquipmentSlots.MountHead);
+            var progressedStats = await store.GetCharacterStatsAsync(account.Id, character.Id)
+                ?? throw new InvalidOperationException("PostgreSQL progressed mount stats are missing.");
+            Check.Equal(
+                baselineStats.MaxHp + 2_800,
+                progressedStats.MaxHp,
+                "Q20 mount base HP uses the family-tier quality extension");
+            Check.Equal(
+                baselineStats.Hit + 28,
+                progressedStats.Hit,
+                "Q20 mount-head base Hit uses the extended quality vector");
+            Check.Equal(
+                baselineStats.PhysicalAttack + 128,
+                progressedStats.PhysicalAttack,
+                "G25 mount-head attack contributes through slot 15");
+            Check.Equal(
+                baselineStats.PhysicalDamageBonus + 240,
+                progressedStats.PhysicalDamageBonus,
+                "G25 mount-head physical damage contributes through slot 15");
+
             var blockedMountRemoval = await store.MoveEquipmentToKitBagAsync(
                 account.Id,
                 character.Id,
@@ -280,6 +303,47 @@ internal static partial class EquipmentKindGuardChecks
         command.Parameters.AddWithValue("level", level);
         command.Parameters.AddWithValue("characterId", characterId);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task SetEquippedMountProgressionAsync(
+        string connectionString,
+        int characterId,
+        int equipmentSlot)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            UPDATE character_items
+            SET item_quality = 20
+            WHERE user_id = @characterId
+              AND item_location = 0
+              AND slot_index = 20
+              AND prop_id = 14220;
+
+            UPDATE character_items
+            SET item_quality = 20,
+                item_grade = 25,
+                attribute1 = 340,
+                attribute2 = 360,
+                attribute3 = NULL,
+                attribute4 = NULL,
+                attribute5 = NULL,
+                attribute_level1 = NULL,
+                attribute_level2 = NULL,
+                attribute_level3 = NULL,
+                attribute_level4 = NULL,
+                attribute_level5 = NULL
+            WHERE user_id = @characterId
+              AND item_location = 0
+              AND slot_index = @equipmentSlot
+              AND prop_id = 14500;
+            """, connection);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("equipmentSlot", (short)equipmentSlot);
+        Check.Equal(
+            2,
+            await command.ExecuteNonQueryAsync(),
+            "mount and mount-head progression fixture updates exactly two rows");
     }
 
     private static async Task SeedKitBagItemAsync(

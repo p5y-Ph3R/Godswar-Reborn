@@ -110,6 +110,12 @@ internal sealed partial class JsonGameStore
             ZodiacLastCompensationDay = character.ZodiacLastCompensationDay,
             ZodiacAccumulatedExperienceX100 = character.ZodiacAccumulatedExperienceX100,
             ZodiacAccumulatedTalentExperienceX100 = character.ZodiacAccumulatedTalentExperienceX100,
+            ZodiacSkillGridLevels =
+                ZodiacSkillGridActivation.NormalizeLevels(
+                    character.ZodiacSkillGridLevels),
+            ZodiacSkillGridSkillIds =
+                ZodiacSkillGridActivation.NormalizeSkillIds(
+                    character.ZodiacSkillGridSkillIds),
             CurrentMap = character.CurrentMap,
             Level = character.Level,
             Experience = character.Experience,

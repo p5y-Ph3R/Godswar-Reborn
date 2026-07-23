@@ -258,7 +258,13 @@ internal sealed partial class PostgresGameStore
                 ? null
                 : reader.GetFieldValue<DateOnly>(40),
             Silver = reader.GetInt32(41),
-            Gold = reader.GetInt32(42)
+            Gold = reader.GetInt32(42),
+            ZodiacSkillGridLevels =
+                ZodiacSkillGridActivation.NormalizeLevels(
+                    reader.GetFieldValue<int[]>(43)),
+            ZodiacSkillGridSkillIds =
+                ZodiacSkillGridActivation.NormalizeSkillIds(
+                    reader.GetFieldValue<int[]>(44))
         };
     }
 

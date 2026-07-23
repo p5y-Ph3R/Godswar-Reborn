@@ -52,6 +52,12 @@ internal sealed class GameCharacter
 
     public int ZodiacAccumulatedTalentExperienceX100 { get; set; }
 
+    public int[] ZodiacSkillGridLevels { get; set; } =
+        ZodiacSkillGridCatalog.CreateEmptyLevels();
+
+    public int[] ZodiacSkillGridSkillIds { get; set; } =
+        ZodiacSkillGridCatalog.CreateEmptySkillIds();
+
     public byte CurrentMap { get; set; } = GameDefaults.AthensCapitalMap;
 
     public int Level { get; set; } = 1;

@@ -72,6 +72,22 @@ internal abstract class GameStoreTestStub : IGameStore
             CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
+    public virtual Task<ZodiacSkillGridActivationResult?>
+        ActivateZodiacSkillGridAsync(
+            int accountId,
+            int characterId,
+            int gridIndex,
+            CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<ZodiacSkillGridUpgradeResult?>
+        UpgradeZodiacSkillGridAsync(
+            int accountId,
+            int characterId,
+            int gridIndex,
+            CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
     public virtual Task<ExperienceBoostState>
         GetExperienceBoostStateAsync(
             int accountId,

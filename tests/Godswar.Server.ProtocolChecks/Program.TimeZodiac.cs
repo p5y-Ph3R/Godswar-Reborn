@@ -62,7 +62,21 @@ internal static partial class Program
             ZodiacLevel = 9,
             ZodiacEnergy = 71_419,
             ZodiacAccumulatedExperienceX100 = 132_734,
-            ZodiacAccumulatedTalentExperienceX100 = 728
+            ZodiacAccumulatedTalentExperienceX100 = 728,
+            ZodiacSkillGridLevels =
+            [
+                12, 0, 0, 0,
+                12, 0, 0, 0,
+                9, 0, 0, 0,
+                10, 0, 0, 0
+            ],
+            ZodiacSkillGridSkillIds =
+            [
+                10_057, -1, -1, -1,
+                -1, -1, -1, -1,
+                -1, -1, -1, -1,
+                -1, -1, -1, -1
+            ]
         };
         var packet = PacketBuilder.ZodiacFullSync(character, now);
         Check.Equal(328, packet.Length, "Zodiac full sync uses the captured packet length");
@@ -74,28 +88,31 @@ internal static partial class Program
         Check.Equal(1, ReadInt32(packet, 28), "active lucky-day state");
         Check.Equal(9, ReadInt32(packet, 32), "Zodiac level byte and zero padding");
         Check.Equal(71_419, ReadInt32(packet, 36), "Zodiac energy state");
-        Check.Equal(0, ReadInt32(packet, 48), "safe default stone level");
-        Check.Equal(0, ReadInt32(packet, 56), "safe default secondary stone attribute");
+        Check.Equal(0, ReadInt32(packet, 40), "first native stone record starts zero-filled");
+        Check.Equal(0, ReadInt32(packet, 52), "second native stone record starts zero-filled");
         Check.Equal(132_734f, ReadSingle(packet, 64), "accumulated combat EXP float mirror");
         Check.Equal(728f, ReadSingle(packet, 68), "accumulated talent EXP float mirror");
 
-        foreach (var stoneOffset in new[] { 92, 108, 124 })
+        for (var gridIndex = 0;
+             gridIndex < ZodiacSkillGridCatalog.GridCount;
+             gridIndex++)
         {
-            Check.Equal(-1, ReadInt32(packet, stoneOffset), "empty Zodiac stone uses ID -1");
-        }
-
-        for (var gridIndex = 0; gridIndex < 12; gridIndex++)
-        {
-            var gridOffset = 136 + (gridIndex * 16);
+            var gridOffset = 72 + (gridIndex * 16);
             Check.Equal(
-                ((gridIndex / 4) + 1) << 8,
+                ((gridIndex / 4) << 8) |
+                    character.ZodiacSkillGridLevels[gridIndex],
                 ReadInt32(packet, gridOffset),
-                $"Zodiac grid {gridIndex} keeps its captured row marker at level zero");
+                $"Zodiac grid {gridIndex} uses native row/level packing");
             Check.Equal(
-                -1,
+                character.ZodiacSkillGridSkillIds[gridIndex],
                 ReadInt32(packet, gridOffset + 4),
-                $"Zodiac grid {gridIndex} has no selected skill");
+                $"Zodiac grid {gridIndex} selected skill");
         }
+        Check.Equal(0x0000_000C, ReadInt32(packet, 72), "captured grid 0 is state +48");
+        Check.Equal(0x0000_010C, ReadInt32(packet, 136), "captured grid 4 is state +112");
+        Check.Equal(0x0000_0209, ReadInt32(packet, 200), "captured grid 8 is state +176");
+        Check.Equal(0x0000_030A, ReadInt32(packet, 264), "captured grid 12 is state +240");
+        Check.Equal(10_057, ReadInt32(packet, 76), "captured grid 0 selected skill");
 
         character.ZodiacLuckyExpiresAt = now.AddSeconds(-1);
         var expiredPacket = PacketBuilder.ZodiacFullSync(character, now);
@@ -108,8 +125,11 @@ internal static partial class Program
             () => ZodiacEnergyCatalog.GetStorageLimit(0),
             "Zodiac storage lookup rejects level zero");
         character.ZodiacEnergy = 100_001;
-        var cappedPacket = PacketBuilder.ZodiacFullSync(character, now);
-        Check.Equal(100_000, ReadInt32(cappedPacket, 36), "Zodiac full sync enforces the client storage ceiling");
+        var overCapPacket = PacketBuilder.ZodiacFullSync(character, now);
+        Check.Equal(
+            100_001,
+            ReadInt32(overCapPacket, 36),
+            "explicit administrative over-cap energy remains visible");
 
         var energyPacket = PacketBuilder.ZodiacEnergyIncrease(
             currentEnergy: 71_420,
@@ -203,6 +223,25 @@ internal static partial class Program
         Check.Equal(50, cappedResult.GainedEnergyX100, "cap reports only the actually applied fractional gain");
         Check.Equal(1_000, capped.ZodiacEnergy, "client MaxPower ceiling caps accrued energy");
         Check.Equal(0, capped.ZodiacEnergyRemainderX100, "cap clears impossible fractional overflow");
+
+        var administrativelyOverCap = new GameCharacter
+        {
+            ZodiacLevel = 1,
+            ZodiacEnergy = 10_000_000
+        };
+        var preservedOverCap = ZodiacEnergyAccrual.Apply(
+            administrativelyOverCap,
+            start,
+            start.AddMinutes(5),
+            policy);
+        Check.Equal(
+            0,
+            preservedOverCap.GainedEnergyX100,
+            "an administrative over-cap balance earns no automatic energy");
+        Check.Equal(
+            10_000_000,
+            administrativelyOverCap.ZodiacEnergy,
+            "ordinary accrual never destroys an administrative over-cap balance");
 
         var utcEightMidnight = new DateTimeOffset(2026, 7, 20, 8, 0, 0, TimeSpan.Zero);
         Check.Equal(

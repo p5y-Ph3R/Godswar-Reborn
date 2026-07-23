@@ -83,6 +83,9 @@ internal static partial class Program
             MountCatalog.TryGetEquippedRideDefinition(character, out var equipped) &&
             equipped.ItemId == 14220,
             "equipped slot-20 mount resolves the Ride appearance");
+
+        CheckQualityAwareRideDefinitions(character);
+
         var enter = PacketBuilder.EnterMain(character);
         var enterEquipmentMask = ReadUInt32(enter, 48);
         Check.True(
@@ -346,6 +349,13 @@ internal static partial class Program
                 CancellationToken.None);
             Check.True(stale is null, "stale life generation interrupts Ride before activation");
             Check.Equal(150, character.CurrentMp, "interrupted Ride does not consume MP");
+
+            await CheckRideQualityRecheckAsync(
+                registry,
+                session,
+                character,
+                lifeRevision,
+                mount);
 
             var activated = await registry.TryActivateMountRideAndPublishAsync(
                 session,

@@ -31,14 +31,30 @@ Important state offsets below are relative to the state block at packet `+24`:
 | `+4` | `i32` | Lucky Day active flag |
 | `+8` | `u8` | Zodiac level (`1..30`) |
 | `+12` | `i32` | Zodiac energy |
+| `+16` | 12-byte record | First native Zodiac-stone record; zero-filled when empty |
+| `+28` | 12-byte record | Second native Zodiac-stone record; zero-filled when empty |
 | `+40` | `f32` | Combat EXP mirror overwritten from header `v1` by the client |
 | `+44` | `f32` | Talent EXP mirror overwritten from header `v2` by the client |
-| `+68` | records | Three empty-stone records use ID `-1` |
-| `+112` | records | Twelve 16-byte skill-grid records; row markers are `0x100`, `0x200`, and `0x300`, selected skill ID `-1` |
+| `+48` | 16 records | Sixteen 16-byte skill-training-grid records, ending exactly at state `+304` |
 
-The shipped client layout intentionally begins the grid array at state `+112`, overlapping the last dword of the third nominal 16-byte stone record. Preserve this offset unless client reverse evidence proves a different build layout.
+Each grid record stores `((gridIndex / 4) << 8) | level` in its first
+little-endian dword and the selected skill ID in its second dword. Thus the
+zero-based row markers are `0x000`, `0x100`, `0x200`, and `0x300`; an
+unassigned skill uses `-1`. Captured retail-state anchors are:
 
-The evidence is in `captures/working-enter-20260513-233020.log` around the first request/response pair, and the UI behavior is in the game client's `Constellation.lua` and `ConstellationConfig.lua`.
+| Grid | State offset | Captured packed level |
+|---:|---:|---:|
+| `0` | `+48` | `0x0000000C` (level 12) |
+| `4` | `+112` | `0x0000010C` (level 12) |
+| `8` | `+176` | `0x00000209` (level 9) |
+| `12` | `+240` | `0x0000030A` (level 10) |
+
+This layout is independently confirmed by `Origin.exe`: the constructor
+initializes sixteen 16-byte records at state `+0x30`, SID `1` copies exactly
+`0x130` (304) state bytes, and the SID `100`/`101` handlers write the record's
+low level byte at `state + 0x30 + index * 0x10`. The packet anchors are in
+`captures/working-enter-20260513-233020.log`; UI behavior and costs are in
+`SkillTrainProc.lua` and `SkillTrainConfig.lua`.
 
 ## Character creation
 
@@ -78,6 +94,64 @@ Energy costs and player level gates are server-owned copies of the shipped
 `Constellationlevup_Level1..29` and `Player_Level1..29` tables. PostgreSQL uses a
 row lock and the live session uses the same gate as periodic online-energy
 accrual, preventing double-spend and stale in-memory overwrite.
+
+## Skill-grid activation (SID `100`)
+
+The shipped client requests activation with
+`GameAPI:ConsEventRequest(0, 100, index, -1)`, where `index` is the zero-based
+grid number `0..15`. The server treats only that index as intent. Ownership,
+existing level, and the premium-gold balance are read authoritatively, and the
+server derives the exact `UnlockG` cost from the shipped table:
+
+```text
+grids  0..3: 0, 2300, 7200, 14400
+grids  4..7: 0, 2300, 7200, 14400
+grids 8..11: 0, 0, 920, 920
+grids 12..15: 0, 0, 920, 920
+```
+
+Here “gold” means premium gold: `GameCharacter.Gold`, stored in the legacy
+`character_base."Stone"` column. It is not silver (`"Money"`). PostgreSQL
+locks the owning character row and atomically deducts premium gold plus
+upserts the grid record. JSON uses its serialized store gate. A successful
+activation changes level `0` to `1`, retains selected skill `-1`, sends the
+24-byte SID `100` success response (`v1=gridIndex`, `v2=v3=0`), refreshes the
+wallet, and follows with a full sync.
+
+Invalid, already-active, insufficient-gold, and wrong-owner requests never
+receive SID `100`, because the client treats every SID `100` response as
+success. Rejected requests receive only authoritative state synchronization.
+
+## Skill-grid upgrade (SID `101`)
+
+Native `Origin.exe` sends an ordinary click on an already-active grid as
+module `255`, SID `101`, `v1=gridIndex`, `v2=-1`. Module `0` is also accepted
+for compatibility, but every cost and requirement remains server-owned. The
+server uses the shipped `SkillTrainConfig.lua` arrays:
+
+- `UpdateE[1..49]`: Zodiac-energy cost for level `1 -> 2` through `49 -> 50`;
+- `UpdateS[1..49]`: Talent Point cost (`character_base."SkillPoint"`);
+- `Starlv[1..49]`: required authoritative Zodiac level.
+
+Level `50` is final. One grid costs `827,921` energy and `726,024` Talent
+Points in total from level `1` through `50`. PostgreSQL locks the owning
+character row and commits both balances and the grid row in one transaction;
+JSON uses its serialized store gate. The live-session gate also serializes the
+mutation against Zodiac energy accrual and Zodiac-level changes.
+
+On success the server sends the 24-byte SID `101` response with
+`v1=gridIndex`, refreshes the Player Status Talent Point field, and sends a
+full sync. Inactive, maximum-level, Zodiac-gated, resource-limited, invalid,
+and wrong-owner requests do not receive SID `101`: the native handler blindly
+increments the displayed grid level on every such response. A full sync safely
+repairs rejected or stale UI state.
+
+SID `102` is a separate native skill-selection mode, not part of activation or
+ordinary grid upgrading. It sends module `255`, `v1=gridIndex`, and a selected
+client skill-kind ID. Combat effects remain intentionally unwired until those
+client IDs (captured examples include `10057` and `20053`) are authoritatively
+mapped to server skill templates and the shipped effect/MP rules are covered
+as a separate slice.
 
 ## Captured accumulation event
 
@@ -132,6 +206,13 @@ L05 28,000     L10 125,000    L15 280,000    L20 500,000    L25 785,000    L30 1
 
 These are storage caps, not `Constellationlevup_Level*` level-up thresholds or `Power_Level*` stone/grid upgrade costs.
 
+The caps govern ordinary online accrual. An explicit administrative test grant
+may exceed the current level's cap: full sync exposes that raw nonnegative
+balance, level-up spends and carries it forward, and automatic accrual adds
+nothing while the balance remains at or above the normal cap. This narrowly
+preserves a manually granted test balance without allowing regular play to
+generate over-cap energy or silently destroying the balance on the next tick.
+
 To replace the emulator rates with retail values, capture a below-cap character through at least one tick in the first three daily online hours and one tick after three hours, recording SID `5` `v1/v2`. A capture spanning the UTC-8 day boundary plus the next login after an offline day is also needed to validate compensation delivery timing.
 
 ## Remaining gameplay SIDs
@@ -145,7 +226,10 @@ To replace the emulator rates with retail values, capture a below-cap character 
 - `9`: claim accumulated EXP/Talent EXP
 - `11`: synchronize trained skill
 - `12`: stone/skill-growth action
-- `100`: activate skill grid
-- `101`: upgrade skill grid
+- `100`: activate skill grid (implemented)
+- `101`: upgrade skill grid (implemented)
+- `102`: select the skill assigned to a grid (not implemented)
 
-These mutations require server-side requirements, costs, caps, and atomic persistence. The client tables provide UI requirements but are not sufficient evidence for every authoritative economy rule.
+The unimplemented mutations require server-side requirements, costs, caps, and
+atomic persistence. The client tables provide UI requirements but are not
+sufficient evidence for every authoritative economy rule.

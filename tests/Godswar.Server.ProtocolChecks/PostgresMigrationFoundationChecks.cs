@@ -18,7 +18,7 @@ internal static class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(8, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(9, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -47,7 +47,8 @@ internal static class PostgresMigrationFoundationChecks
                     "20260723_004_remove_redundant_indexes",
                     "20260723_005_starter_consumable_templates",
                     "20260723_006_archive_legacy_character_kitbag",
-                    "20260723_007_character_item_template_foreign_key"
+                    "20260723_007_character_item_template_foreign_key",
+                    "20260723_008_zodiac_skill_grid_state"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(
@@ -193,6 +194,23 @@ internal static class PostgresMigrationFoundationChecks
         Check.True(
             string.CompareOrdinal(consumables.Id, inventoryForeignKey.Id) < 0,
             "missing starter consumable templates are reconciled before inventory validation");
+
+        var zodiacGrids = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id == "20260723_008_zodiac_skill_grid_state");
+        Check.True(
+            zodiacGrids.Sql.Contains(
+                "PRIMARY KEY (user_id, grid_index)",
+                StringComparison.Ordinal) &&
+            zodiacGrids.Sql.Contains(
+                "CHECK (grid_index BETWEEN 0 AND 15)",
+                StringComparison.Ordinal) &&
+            zodiacGrids.Sql.Contains(
+                "REFERENCES character_base(id)",
+                StringComparison.Ordinal) &&
+            zodiacGrids.Sql.Contains(
+                "ON DELETE CASCADE",
+                StringComparison.Ordinal),
+            "Zodiac grid migration bounds all sixteen rows and owns their lifecycle");
 
         foreach (var migration in PostgresSchemaMigrationCatalog.All)
         {

@@ -16,6 +16,11 @@ internal readonly record struct ZodiacSyncRequest(
 
     public bool IsLevelUpgrade => Module == 0 && Sid == 3;
 
+    public bool IsSkillGridActivation => Module == 0 && Sid == 100;
+
+    public bool IsSkillGridUpgrade =>
+        Module is 0 or 0xFF && Sid == 101;
+
     public static bool TryParse(ReadOnlySpan<byte> packet, out ZodiacSyncRequest request)
     {
         request = default;
