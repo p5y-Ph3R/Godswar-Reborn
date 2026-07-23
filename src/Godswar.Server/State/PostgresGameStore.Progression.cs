@@ -278,4 +278,73 @@ internal sealed partial class PostgresGameStore
         return result;
     }
 
+    public async Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        GameCharacter? character = null;
+        await using (var command = new NpgsqlCommand("""
+            SELECT fighter_job_lv, zodiac_level, zodiac_energy,
+                   zodiac_energy_remainder_x100
+            FROM character_base
+            WHERE id = @characterId
+              AND account_id = @accountId
+            FOR UPDATE;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                character = new GameCharacter
+                {
+                    Level = reader.GetInt32(0),
+                    ZodiacLevel = checked((byte)reader.GetInt16(1)),
+                    ZodiacEnergy = reader.GetInt32(2),
+                    ZodiacEnergyRemainderX100 = reader.GetInt32(3)
+                };
+            }
+        }
+
+        if (character is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        var result = ZodiacLevelUpgrade.Apply(character);
+        if (!result.Committed)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return result;
+        }
+
+        await using (var command = new NpgsqlCommand("""
+            UPDATE character_base
+            SET zodiac_level = @zodiacLevel,
+                zodiac_energy = @zodiacEnergy,
+                zodiac_energy_remainder_x100 = @zodiacEnergyRemainderX100
+            WHERE id = @characterId
+              AND account_id = @accountId;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("zodiacLevel", checked((short)result.CurrentLevel));
+            command.Parameters.AddWithValue("zodiacEnergy", result.CurrentEnergy);
+            command.Parameters.AddWithValue(
+                "zodiacEnergyRemainderX100",
+                result.CurrentEnergyRemainderX100);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return result;
+    }
+
 }

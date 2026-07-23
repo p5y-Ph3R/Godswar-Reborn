@@ -52,7 +52,7 @@ def repeated(value: str | int) -> str:
     return ",".join([str(value)] * 20)
 
 
-def mount_element(offset: int) -> str:
+def mount_element(offset: int, main_attribute: str) -> str:
     item_id = ITEM_BASE_ID + offset
     speed = f"{MOUNT_SPEEDS[offset]:.2f}"
     return (
@@ -60,9 +60,27 @@ def mount_element(offset: int) -> str:
         'Texture="./Localization/en_us/UI/Texture/Icon4.gwo" '
         f'Icon="{TARGET_ICON_X},{TARGET_ICON_Y}" Random="0" Distribution="0,0" '
         f'Speed="{repeated(speed)}" MaxHP="{repeated(MOUNT_MAX_HP[offset])}" '
+        f'MainAttribute="{main_attribute}" '
         'Money="0" Overlap="1" Equip="1" Use="1" SkillFlag="20" '
         f'Class="0,1,2,3" PlayLv="{MOUNT_LEVELS[offset]},200" />'
     )
+
+
+def item_main_attribute(text: str, item_id: int) -> str:
+    pattern = re.compile(rf'<[A-Za-z_][\w]*\s+ID="{item_id}"[^<>]*/>')
+    matches = list(pattern.finditer(text))
+    if len(matches) != 1:
+        raise InstallError(
+            f"Expected one ItemBaseAttribute source ID {item_id}; "
+            f"found {len(matches)}"
+        )
+
+    attribute = re.search(r'\bMainAttribute="([^"]+)"', matches[0].group(0))
+    if attribute is None or not attribute.group(1).strip():
+        raise InstallError(
+            f"ItemBaseAttribute source ID {item_id} has no MainAttribute pool"
+        )
+    return attribute.group(1)
 
 
 def set_xml_item(
@@ -178,6 +196,13 @@ def remove_legacy_erebus_status_sections(text: str) -> str:
 
 def patch_item_base(data: bytes) -> bytes:
     text = data.decode("utf-8-sig")
+    # Erebus is the deliberate local exception to native attribute-free
+    # mounts. Each tier copies the same-level mount-head pool, preserving the
+    # shipped relationship between required level and attribute-ID suffix.
+    attribute_pools = [
+        item_main_attribute(text, 14500 + min(offset, 8))
+        for offset in range(ITEM_COUNT)
+    ]
     anchor = 16199
     for offset in range(ITEM_COUNT):
         item_id = ITEM_BASE_ID + offset
@@ -185,7 +210,7 @@ def patch_item_base(data: bytes) -> bytes:
             text,
             item_id,
             anchor,
-            mount_element(offset),
+            mount_element(offset, attribute_pools[offset]),
         )
         anchor = item_id
     return b"\xef\xbb\xbf" + text.encode("utf-8")

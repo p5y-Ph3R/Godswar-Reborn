@@ -13,9 +13,23 @@ vector to 20 entries in both client locales. It repeats the native Q10 endpoint:
 - no existing item ID, model, texture, or append-attribute pool is repurposed.
 
 Mount-gear append attributes already have values through level 25, so G25 is
-functional when a mount-gear item carries valid attributes. Mount items do not
-have a native append-attribute pool, which makes mount grade cosmetic until a
-dedicated, server-authoritative grade design is implemented.
+functional when a mount-gear item carries valid attributes. Grade selects the
+attribute value from `ItemAppendAttribute.xml`; quality does not increase an
+append attribute.
+
+Native mount items do not have an append-attribute pool. The locally authored
+Erebus Lion family is the deliberate exception: every Erebus tier copies the
+`MainAttribute` pool from the same-level Valorheart Coronet (`14500..14508`).
+The special level-120 Erebus item `16209` uses the level-120 `14508` pool.
+This keeps the native level-to-attribute relationship without repurposing a
+stock mount:
+
+- attribute-ID suffixes follow the mount's required-level tier, not quality;
+- level-80 Erebus `16204` permits suffixes 1 through 3, including Warrior
+  offensive attributes `343`, `363`, `403`, and `423`;
+- suffix 7 remains invalid for level 80 even when the mount is Q20/Boundless;
+- G25 drives the permitted attribute values, while Q11 through Q20 retain the
+  repeated native Q10 mount base stat.
 
 ## Future Mount Feeder material
 

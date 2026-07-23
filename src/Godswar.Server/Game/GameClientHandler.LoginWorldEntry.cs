@@ -96,28 +96,6 @@ internal sealed partial class GameClientHandler
         await _session.SendAsync(PacketBuilder.CreateRoleSuccess(), cancellationToken, "CreateRoleSuccess");
     }
 
-    private async Task HandleZodiacAsync(GamePacket packet, CancellationToken cancellationToken)
-    {
-        if (_character is null ||
-            !ZodiacSyncRequest.TryParse(packet.Buffer, out var request))
-        {
-            Console.WriteLine($"[zodiac] rejected malformed sync request len={packet.Buffer.Length}");
-            return;
-        }
-
-        if (!request.IsFullSync)
-        {
-            Console.WriteLine(
-                $"[zodiac] ignored unsupported request character={_character.Name} module={request.Module} sid={request.Sid}");
-            return;
-        }
-
-        await _session.SendAsync(
-            PacketBuilder.ZodiacFullSync(_character),
-            cancellationToken,
-            "ZodiacFullSync");
-    }
-
     private async Task HandleDeleteRoleAsync(GamePacket packet, CancellationToken cancellationToken)
     {
         ClearForgeSelection();

@@ -14,10 +14,12 @@ internal readonly record struct ZodiacSyncRequest(
 
     public bool IsFullSync => Module == 0 && Sid == 1;
 
+    public bool IsLevelUpgrade => Module == 0 && Sid == 3;
+
     public static bool TryParse(ReadOnlySpan<byte> packet, out ZodiacSyncRequest request)
     {
         request = default;
-        if (packet.Length < PacketLength ||
+        if (packet.Length != PacketLength ||
             BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != PacketLength)
         {
             return false;

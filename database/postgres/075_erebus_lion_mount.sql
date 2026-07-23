@@ -1,17 +1,17 @@
 -- Locally authored Erebus Lion family. The matching client assets and
 -- Ride/Status definitions are installed by tools/InstallErebusLionMount.py.
-WITH tiers(id, required_level, speed, max_hp) AS (
+WITH tiers(id, required_level, speed, max_hp, attribute_source_id) AS (
     VALUES
-        (16200,  40, '0.20', '2500'),
-        (16201,  50, '0.21', '2800'),
-        (16202,  60, '0.22', '3100'),
-        (16203,  70, '0.23', '3400'),
-        (16204,  80, '0.24', '3700'),
-        (16205,  90, '0.25', '4000'),
-        (16206, 100, '0.26', '4300'),
-        (16207, 110, '0.27', '4650'),
-        (16208, 120, '0.28', '5000'),
-        (16209, 120, '0.50', '5000')
+        (16200,  40, '0.20', '2500', 14500),
+        (16201,  50, '0.21', '2800', 14501),
+        (16202,  60, '0.22', '3100', 14502),
+        (16203,  70, '0.23', '3400', 14503),
+        (16204,  80, '0.24', '3700', 14504),
+        (16205,  90, '0.25', '4000', 14505),
+        (16206, 100, '0.26', '4300', 14506),
+        (16207, 110, '0.27', '4650', 14507),
+        (16208, 120, '0.28', '5000', 14508),
+        (16209, 120, '0.50', '5000', 14508)
 )
 INSERT INTO item_templates (
     id, kind, name_key, display_name, equipment_slot, class_ids,
@@ -39,6 +39,7 @@ SELECT
         'Distribution', '0,0',
         'Speed', array_to_string(array_fill(speed, ARRAY[20]), ','),
         'MaxHP', array_to_string(array_fill(max_hp, ARRAY[20]), ','),
+        'MainAttribute', attribute_source.stats->>'MainAttribute',
         'Money', '0',
         'Overlap', '1',
         'Equip', '1',
@@ -48,6 +49,7 @@ SELECT
         'PlayLv', required_level::text || ',200'
     )
 FROM tiers
+JOIN item_templates attribute_source ON attribute_source.id = tiers.attribute_source_id
 ON CONFLICT (id) DO UPDATE
 SET kind = EXCLUDED.kind,
     name_key = EXCLUDED.name_key,

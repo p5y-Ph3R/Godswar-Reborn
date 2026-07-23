@@ -71,9 +71,10 @@ This is the current step-by-step plan for moving the local C# server from packet
 
 - Opcode `10311` now returns a live 14-byte server-time packet using current Unix time and the original server's captured fixed UTC-8 offset instead of replaying a frozen 2021 timestamp.
 - Opcode `10297`, module `0`, SID `1` now returns the mandatory 328-byte Zodiac state. Character creation preserves the selected Zodiac independently from Faith, and the core type, Lucky Day state/expiry, level, energy, and accumulated EXP fields persist in JSON and PostgreSQL.
+- SID `3` Zodiac level-up is server-authoritative: client values are treated as intent, shipped level/energy requirements are revalidated, and the level plus energy deduction commit atomically.
 - Empty Zodiac stones and skill grids use the client-compatible sentinel/default layout, preventing the native UI from reading a truncated or uninitialized state block.
 - Continuous-login energy now persists daily online duration across reconnects, awards only on five-minute boundaries, switches rate after the first three daily online hours, enforces the shipped per-level storage ceilings, and pushes client-decoded SID `5`. Daily rollover follows the original fixed UTC-8 clock; one-hour compensation covers a prior sub-hour day or an absence longer than one day. The numeric `20`/`10` tick rates are explicitly configurable emulator defaults because no stored retail SID `5` capture establishes them.
-- The captured SID `7` accumulation frame and an atomic persistence primitive are recorded, but automatic accumulation is deferred until the stone/effect-level rate and cap semantics are confirmed. SID `3` upgrades, Lucky Day activation, stone upgrades, and skill-grid training remain separate gameplay slices rather than guessed economy mutations.
+- The captured SID `7` accumulation frame and an atomic persistence primitive are recorded, but automatic accumulation is deferred until the stone/effect-level rate and cap semantics are confirmed. Lucky Day activation, stone upgrades, and skill-grid training remain separate gameplay slices rather than guessed economy mutations.
 - See `docs/zodiac-sync-10297.md` for the confirmed packet layout, capture evidence, and remaining SID map.
 
 ## 7. Forging Materials And Inventory Tooling

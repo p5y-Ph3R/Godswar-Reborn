@@ -44,6 +44,41 @@ The evidence is in `captures/working-enter-20260513-233020.log` around the first
 
 Creation payload byte `35` is the selected Zodiac (`0..11`). Hair begins at byte `36`; Faith remains the independent byte `70` field. Invalid or missing Zodiac values safely fall back to Aries (`0`).
 
+## Zodiac level up (SID `3`)
+
+The shipped client requests a Zodiac level-up with
+`GameAPI:ConsEventRequest(0, 3, 1, 1)`. The two fixed values are UI mode
+parameters, not trusted levels, costs, or balances. The server derives the
+current character and all requirements from authoritative storage.
+
+On success the server atomically deducts energy and advances one level, then
+sends the 24-byte SID `3` response below. Its field meaning is decoded from the
+shipped `Constellation.lua`; unlike SID `1`, this response has not yet been
+confirmed against a retail-server packet capture:
+
+| Packet offset | Type | Meaning |
+|---:|---|---|
+| `+0` | `u16` | Length (`24`) |
+| `+2` | `u16` | Opcode (`10297`) |
+| `+8` | `u16` | Module (`0`) |
+| `+10` | `u16` | SID (`3`) |
+| `+12` | `i32` | New authoritative Zodiac level |
+| `+16` | `i32` | Remaining integer Zodiac energy |
+| `+20` | `i32` | Unused (`0`) |
+
+An authoritative full sync follows both success and rejection so the native UI
+refreshes its level, balance, and new storage ceiling. Rejections intentionally
+omit SID `3`: the shipped client has no SID `3` failure branch and treats every
+such response as a successful upgrade, so returning it on failure would animate
+a false success. No separate native failure response has been identified; SID
+`1` full sync is therefore the safe rejection behavior until a retail failure
+packet is captured.
+
+Energy costs and player level gates are server-owned copies of the shipped
+`Constellationlevup_Level1..29` and `Player_Level1..29` tables. PostgreSQL uses a
+row lock and the live session uses the same gate as periodic online-energy
+accrual, preventing double-spend and stale in-memory overwrite.
+
 ## Captured accumulation event
 
 A working-server normal-monster kill that awarded `+80` fighter EXP and `+2` Talent EXP also sent SID `7` with `v1=8`, `v2=2`:
@@ -102,7 +137,6 @@ To replace the emulator rates with retail values, capture a below-cap character 
 ## Remaining gameplay SIDs
 
 - `2`: change Zodiac
-- `3`: Zodiac level up
 - `4`: open stone
 - `5`: continuous-login energy increment (implemented; numeric rates remain configurable emulator policy)
 - `6` / `10`: stone upgrade variants

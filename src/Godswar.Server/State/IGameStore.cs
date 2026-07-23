@@ -64,6 +64,11 @@ internal interface IGameStore : IAsyncDisposable
         ZodiacEnergyPolicy policy,
         CancellationToken cancellationToken = default);
 
+    Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default);
+
     Task<ExperienceBoostState> GetExperienceBoostStateAsync(
         int accountId,
         int characterId,

@@ -87,6 +87,19 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] ZodiacLevelUpgrade(byte currentLevel, int currentEnergy)
+    {
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 3,
+            Math.Clamp((int)currentLevel, 1, 30),
+            Math.Max(0, currentEnergy),
+            value3: 0);
+        return packet;
+    }
+
     public static byte[] ZodiacAccumulationGain(
         GameCharacter character,
         int experience,

@@ -228,6 +228,68 @@ internal sealed partial class GameSessionRegistry
             cancellationToken);
     }
 
+    public async Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
+        ClientSession session,
+        int accountId,
+        GameCharacter character,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(character);
+        if (_store is null)
+        {
+            return null;
+        }
+
+        if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
+        {
+            var untrackedResult = await _store.UpgradeZodiacLevelAsync(
+                accountId,
+                character.Id,
+                cancellationToken);
+            if (untrackedResult is not null)
+            {
+                ApplyZodiacLevelUpgradeResult(character, untrackedResult);
+            }
+
+            return untrackedResult;
+        }
+
+        if (state.AccountId != accountId ||
+            state.CharacterId != character.Id)
+        {
+            return null;
+        }
+
+        // The same gate surrounds online-time persistence. Keeping the durable
+        // mutation and both live mirrors inside it prevents a completed accrual
+        // from restoring the pre-upgrade level or energy afterward.
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await _store.UpgradeZodiacLevelAsync(
+                accountId,
+                character.Id,
+                cancellationToken);
+            if (result is null)
+            {
+                return null;
+            }
+
+            ApplyZodiacLevelUpgradeResult(state.Character, result);
+            if (!ReferenceEquals(state.Character, character))
+            {
+                ApplyZodiacLevelUpgradeResult(character, result);
+            }
+
+            return result;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
     private async Task<bool> PersistZodiacOnlineTimeAsync(
         ClientSession session,
         ZodiacOnlineSessionState state,
@@ -301,6 +363,19 @@ internal sealed partial class GameSessionRegistry
         finally
         {
             state.Gate.Release();
+        }
+    }
+
+    private static void ApplyZodiacLevelUpgradeResult(
+        GameCharacter character,
+        ZodiacLevelUpgradeResult result)
+    {
+        lock (character.ZodiacSync)
+        {
+            character.ZodiacLevel = result.CurrentLevel;
+            character.ZodiacEnergy = result.CurrentEnergy;
+            character.ZodiacEnergyRemainderX100 =
+                result.CurrentEnergyRemainderX100;
         }
     }
 

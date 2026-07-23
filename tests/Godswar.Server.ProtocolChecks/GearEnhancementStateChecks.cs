@@ -16,6 +16,7 @@ internal static partial class GearEnhancementStateChecks
         CheckEnhance();
         CheckDeleteAndCompaction();
         CheckLegendaryChainAnchor();
+        CheckErebusAttributePools();
         CheckRejectionsDoNotMutate();
         CheckNativeItemSelection();
         CheckCommitContextGuards();
@@ -278,6 +279,49 @@ internal static partial class GearEnhancementStateChecks
             enhanceBag,
             GearEnhancementStatus.AttributeNotEnhanceable,
             "legendary stones remain add/delete-only");
+    }
+
+    private static void CheckErebusAttributePools()
+    {
+        for (var offset = 0; offset < 10; offset++)
+        {
+            var erebus = ItemTemplateSeeds.All.Single(template => template.Id == 16200 + offset);
+            var source = ItemTemplateSeeds.All.Single(template => template.Id == 14500 + Math.Min(offset, 8));
+            Check.True(
+                MainAttributes(erebus).SequenceEqual(MainAttributes(source)),
+                $"Erebus tier {offset} copies its level-matched mount-gear attribute pool");
+        }
+
+        var levelEightyPool = MainAttributes(
+            ItemTemplateSeeds.All.Single(static template => template.Id == 16204));
+        int[] warriorOffensive = [343, 363, 403, 423];
+        int[] levelOneHundredTwenty = [347, 367, 407, 427];
+        Check.True(
+            warriorOffensive.All(levelEightyPool.Contains),
+            "level-80 Erebus allows the Warrior G25 offensive attribute IDs");
+        Check.True(
+            levelOneHundredTwenty.All(attribute => !levelEightyPool.Contains(attribute)),
+            "level-80 Erebus rejects suffix-7 level-120 attributes even at Q20/G25");
+
+        var (kitBag, request) = Stage(
+            GearEnhancementOperation.Add,
+            Item(16204),
+            Item(9974),
+            Item(9990));
+        var result = GearEnhancementPlanner.Create(kitBag, request);
+        Check.True(result.Committed, $"level-80 Erebus accepts its copied pool ({result.RejectionReason})");
+        Check.Equal(341, result.EquipmentAfter.Attribute1 ?? -1, "Erebus Add starts at its level-80 chain anchor");
+    }
+
+    private static int[] MainAttributes(ItemTemplateSeed template)
+    {
+        using var document = JsonDocument.Parse(template.StatsJson);
+        return document.RootElement
+            .GetProperty("MainAttribute")
+            .GetString()!
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(int.Parse)
+            .ToArray();
     }
 
     private static void CheckRejectionsDoNotMutate()
