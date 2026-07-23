@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Godswar.NetShim", "src\Godswar.NetShim.vcxproj", "{22CE8D23-B3F7-462C-8D98-117919C90CE5}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Godswar.NetShim.Tests", "tests\Godswar.NetShim.Tests.vcxproj", "{ED5EB72A-A7B8-427E-AFD2-A6CE06BE910E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{22CE8D23-B3F7-462C-8D98-117919C90CE5}.Debug|Win32.ActiveCfg = Debug|Win32
+		{22CE8D23-B3F7-462C-8D98-117919C90CE5}.Debug|Win32.Build.0 = Debug|Win32
+		{22CE8D23-B3F7-462C-8D98-117919C90CE5}.Release|Win32.ActiveCfg = Release|Win32
+		{22CE8D23-B3F7-462C-8D98-117919C90CE5}.Release|Win32.Build.0 = Release|Win32
+		{ED5EB72A-A7B8-427E-AFD2-A6CE06BE910E}.Debug|Win32.ActiveCfg = Debug|Win32
+		{ED5EB72A-A7B8-427E-AFD2-A6CE06BE910E}.Debug|Win32.Build.0 = Debug|Win32
+		{ED5EB72A-A7B8-427E-AFD2-A6CE06BE910E}.Release|Win32.ActiveCfg = Release|Win32
+		{ED5EB72A-A7B8-427E-AFD2-A6CE06BE910E}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+EndGlobal

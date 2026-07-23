@@ -2,6 +2,15 @@
 
 This is the current step-by-step plan for moving the local C# server from packet replay toward real MMORPG gameplay.
 
+The long-term secure networking migration is tracked separately in
+[`docs/network-infrastructure-goal.md`](network-infrastructure-goal.md). It
+selects an in-process x86 client shim followed by TLS control traffic,
+authenticated UDP realtime traffic, server authority, bounded overload
+behavior, and upstream DDoS integration. The current networking milestone is a
+reversible, behavior-preserving `Net.dll` compatibility seam; TLS/UDP traffic
+does not begin until its automated ABI, interactive parity, and rollback gates
+pass.
+
 ## 1. Map And Session Foundation — Baseline Implemented
 
 - Logged-in characters are tracked by account, character, and current map.

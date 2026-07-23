@@ -1,0 +1,5 @@
+LIBRARY "Net"
+
+EXPORTS
+    NetClientCreate  @1
+    NetServiceCreate @2
