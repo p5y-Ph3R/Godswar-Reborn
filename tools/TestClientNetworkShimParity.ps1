@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,9 +12,9 @@ $tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
 $module = Join-Path $PSScriptRoot 'ClientNetworkShimParityEvidence.psm1'
 $validationModule = Join-Path `
     $PSScriptRoot 'ClientNetworkShimParityValidation.psm1'
-$expectedToolVersion = '1.3.0'
+$expectedToolVersion = '1.4.0'
 $expectedShimHash =
-    '73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD'
+    '17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1'
 Import-Module $module -Force
 Import-Module $validationModule -Force
 Import-Module (
@@ -204,7 +204,7 @@ try {
     $oldManifestPath = Join-Path $oldVersionRoot 'manifest.json'
     $oldManifest = Get-Content -LiteralPath $oldManifestPath -Raw |
         ConvertFrom-Json
-    $oldManifest.toolVersion = '1.2.0'
+    $oldManifest.toolVersion = '1.3.0'
     $encoding = New-Object Text.UTF8Encoding($false)
     [IO.File]::WriteAllText(
         $oldManifestPath,
@@ -216,7 +216,7 @@ try {
         $encoding)
     Assert-Throws {
         & $tool -Mode Status -EvidencePath $oldVersionRoot | Out-Null
-    } 'V1.2 evidence' 'start a new run with 1\.3\.0'
+    } 'V1.3 evidence' 'start a new run with 1\.4\.0'
 
     $afterHashes = @(
         Get-ParitySha256 $originPath

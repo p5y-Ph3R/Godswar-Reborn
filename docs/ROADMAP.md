@@ -8,9 +8,9 @@ selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
 behavior, and upstream DDoS integration. The current networking milestone is a
 reversible `Net.dll` compatibility seam. Loading-gate v1 failed and was rolled
-back through the network-stable pass-through shim; corrected v2 is installed
-with automated gates passing and live acceptance pending. The next TLS
-phase is specified in
+back; v2 was rejected after its timed unready handoff recreated the blank
+model. Readiness-only v3 is installed with controlled live acceptance pending.
+The next TLS phase is specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
 but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
 parity, and rollback gates pass. The exact operator commands and pending
@@ -29,13 +29,12 @@ evidence record are in
 - The installed Origin patch guards two preview builders, not the later
   `0x005F58BC` state-transition fault. See
   `docs/client-avatar-preview-crash-fix.md`.
-- Loading-gate v1 (`2D8199...`) failed; pass-through `528913...` remains the
-  recovery candidate. Installed v2 (`73E65F...`) keeps processing and preserves
-  pointer identity and order,
-  then returns on readiness or after five seconds. The fallback can stay blank;
-  only lifecycle reset cleans up. Its incident doc also records the rollback
-  baseline: valid preview, connection alive beyond 142 seconds, blank model,
-  and no dump. See `docs/client-avatar-preview-loading-gate.md`.
+- Loading-gate v1 (`2D8199...`) failed by starving native processing. V2
+  (`73E65F...`) fixed scheduling but failed cycle 3 when its five-second
+  unready handoff stayed blank beyond 44 seconds. Installed v3
+  (`17A721...`) keeps processing and order but releases only on readiness.
+  Pass-through `528913...` remains the recovery candidate. See
+  `docs/client-avatar-preview-loading-gate.md`.
 - Captured opcode-10090 pages were identified in the native dispatcher as character-specific `MSG_PLAYER_ACCEPTQUESTS` records, not generic game-data bootstrap. Runtime replay is blocked until quests are implemented authoritatively; the separate dump diagnosis and future packet-order requirement are recorded in `docs/accepted-quest-login-crash-fix.md`.
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.
 - Multiplayer synchronization itself remains server-side and requires no game client change; the avatar patch is a separate native stability correction.

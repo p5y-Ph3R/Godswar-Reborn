@@ -21,10 +21,10 @@ No server or database change is part of this fix.
 
 The later companion `Net.dll` loading gate is documented in
 [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
-Its v1 build failed live validation and was rolled back. V2 is now installed
-with automated gates passing; live account-switch acceptance remains pending.
-It retains the exact preview until readiness or a five-second guarded fallback,
-but cannot guarantee a model if resources remain unavailable.
+V1 failed by suppressing native processing. V2 fixed that scheduling defect but
+was rejected when its five-second unready handoff recreated the blank model.
+Installed V3 retains the exact preview until readiness; automated gates pass
+and controlled live acceptance is pending.
 
 ## Evidence and root cause
 
@@ -76,9 +76,9 @@ transaction:
 Both guards are fail-closed. A packet that still wins a narrow initialization
 race can skip that one preview build instead of dereferencing null. Neither
 guard sleeps, re-enters the loader, or runs initialization from the render
-path. The installed v2 shim attempts to address the consequence of that safe
-skip by retaining only the audited preview message while continuing native
-network processing.
+path. V2 tried to address the safe skip with a timed handoff and failed. The
+installed V3 shim retains only the audited preview message, continues native
+network processing, and releases only when all resources are ready.
 
 The patcher refuses to write unless the client is closed and all of the
 following match the audited build: file size, DOS/PE headers, x86 PE32 machine,
@@ -115,9 +115,8 @@ intermittent:
 2. Leave that session and log in to account 13 without requiring a failed
    first attempt.
 3. If the resource race occurs, confirm the screen remains responsive in its
-   loading state and the model appears automatically before the candidate's
-   five-second fallback. A fallback with a blank model is safe but does not
-   pass the desired loading result.
+   loading state without an unready handoff, then confirm the model appears
+   automatically when resources become ready.
 4. Confirm account 13's preview appears and the client enters the world.
 5. Repeat the account switch at least five times.
 6. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
@@ -125,5 +124,5 @@ intermittent:
    `Error.log`.
 
 The executable's two installed guards have static and disposable-binary
-validation. Loading-gate v1 failed; v2 is installed with automated gates
-passing but remains pending the interactive sequence.
+validation. Loading-gate V1 and V2 are rejected; V3 passes automated gates but
+remains pending the interactive sequence.

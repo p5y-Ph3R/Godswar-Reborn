@@ -97,17 +97,13 @@ persistence notes, and the current avatar-gate status are maintained in
 
 Avatar-preview loading-gate v1 (`2D819908...E2AE0`) failed live validation and
 was rolled back through the network-stable shim `528913E6...D17A6DD`.
-V2 (`73E65FBF...F2902FD`) is now `InstalledExact`; automated gates pass and
-live account-switch acceptance remains pending. It delegates native `Process`,
-preserves the exact preview pointer and message order, and returns that pointer
-on readiness or after a five-second guarded fallback. The fallback does not
-disconnect or dispose the message, but it can still leave a blank model;
-cleanup happens only on explicit lifecycle reset.
-
-A live account-7 baseline under the rollback shim received a valid preview at
-`2026-07-24T03:30:23Z` and kept its TCP session established for more than 142
-seconds while the model stayed blank and no dump appeared. Incident details,
-full hashes, and the pending acceptance contract are in
+V2 (`73E65FBF...F2902FD`) was also rejected after its five-second unready
+handoff recreated the blank model on cycle 3. V3
+(`17A72198...D878D1`) is now `InstalledExact`; it always delegates native
+`Process`, preserves exact pointer identity and order, and releases only when
+avatar resources are ready. Lifecycle reset remains exact-once cleanup.
+Automated gates pass; controlled live acceptance is pending. Current status,
+both immutable incident records, and the acceptance contract are in
 [`docs/client-avatar-preview-loading-gate.md`](docs/client-avatar-preview-loading-gate.md).
 
 Important client-side files touched while allowing grade 25 / Boundless quality / rank testing:

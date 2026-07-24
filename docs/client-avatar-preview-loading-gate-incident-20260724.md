@@ -103,35 +103,38 @@ This is distinct from the V1 incident: a blank model can occur while the
 connection remains healthy because the guarded native builder consumed the
 only preview before its resources were ready.
 
-## Installed V2 follow-up
+## Later candidates
 
-The corrected V2 build has SHA-256:
+V2 had SHA-256:
 
 ```text
 73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD
 ```
 
-It reached `InstalledExact` at `2026-07-24T03:55:57Z`; automated and
-disposable installer gates pass. Its current Apply/stock-restore backup is
+It reached `InstalledExact` at `2026-07-24T03:55:57Z`; its historical
+Apply/stock-restore backup is
 `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
 (manifest SHA-256
 `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`).
-Live account-switch acceptance is still pending. V2:
+V2:
 
 1. always delegates native `Process()` while retaining the preview;
 2. keeps proxy `PickMsg()` from polling past the retained pointer, preserving
    message order;
-3. uses a five-second observed-local compatibility deadline, below the failed
-   14.6-second window;
-4. returns the exact original pointer on readiness or at that deadline rather
+3. used a five-second observed-local compatibility deadline; and
+4. returned the exact original pointer on readiness or at that deadline rather
    than disposing it or calling native disconnect; and
 5. performs exact-once virtual-destructor cleanup only if an explicit
    `Connect`, `DisConnect`, `Release`, or destruction reset still owns a held
    preview.
 
-The five-second value is a conservative local compatibility bound, not a
-universal capacity or timing guarantee. If resources are still absent, the
-guarded fallback can leave the model blank; it must not be described as
-guaranteed automatic loading. A separate third executable guard for
+V2 was later rejected when cycle 3 handed the pointer off while readiness was
+false and the model remained blank for more than 44 seconds. Its immutable
+record is
+[`client-avatar-preview-loading-gate-v2-incident-20260724.md`](client-avatar-preview-loading-gate-v2-incident-20260724.md).
+
+V3 removes the timer handoff and releases only on readiness. Installed V3 has
+SHA-256 `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`;
+controlled live validation is pending. A separate third executable guard for
 `0x005F5810` remains an independently reviewed hardening candidate and is not
 silently folded into the networking shim.

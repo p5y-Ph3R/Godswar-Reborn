@@ -2,24 +2,28 @@
 
 ## Status and ownership
 
-- Protocol version: `1.0`
+- Protocol version: `1.1`
 - Last updated: `2026-07-24`
-- Runtime status: specified only; not enabled; blocked on V2 live acceptance
+- Runtime status: specified only; not enabled; blocked on V3 live acceptance
 - Historical network-stable recovery shim:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
 - Historical failed V1 (rolled back after the 2026-07-24 live incident):
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-- Installed V2 (`InstalledExact`; automated gates pass; live acceptance pending):
+- Rejected V2:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- Current V2 Apply/stock-restore backup:
+- Installed V3 (`InstalledExact`; controlled live acceptance pending):
+  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
+- Current V3 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
+- Historical V2 Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
 - Parent phase:
   [`network-infrastructure-phase2.md`](network-infrastructure-phase2.md)
 
 This is the normative TLS, framing, game-ticket, and x86 client-lifecycle
 contract. All bounds are part of the protocol unless explicitly described as
-an operational default. The failed V1 is not installed. Phase 2 remains
-blocked until installed V2 passes live acceptance.
+an operational default. Failed V1 and V2 are not installed. Phase 2 remains
+blocked until installed V3 passes live acceptance.
 
 ## TLS policy
 
@@ -349,15 +353,13 @@ network objects.
 4. Game `Connect` establishes TLS/preface, sends the claimed bind, and requires
    acceptance before opening the local leg in the same listen/begin-accept/
    stock-connect/accept-complete order. It then wipes the ticket.
-5. `SendMsg` and native `Process()` stay delegated every frame. The V2 gate is
+5. `SendMsg` and native `Process()` stay delegated every frame. The V3 gate is
    the only `PickMsg`/`GetMsgNum` exception: it may hold exactly one audited
    opcode-`10002` native pointer and must not poll past it, preserving order.
-   It returns that exact pointer on readiness or after a guarded five-second
-   fallback. The fallback neither destroys it nor calls native disconnect and
-   may still yield a blank preview if resources never become ready. Only an
-   explicit `Connect`, `DisConnect`, `Release`, or proxy destruction reset
-   invokes the stock virtual destructor for a pointer still held. A bridge
-   failure may close the loopback socket but does not dispose that pointer.
+   It returns that exact pointer only on readiness. An explicit `Connect`,
+   `DisConnect`, `Release`, or proxy destruction reset invokes the stock virtual
+   destructor for a pointer still held. A bridge failure may close the loopback
+   socket but does not dispose that pointer.
 6. `DisConnect` and `Release` are idempotent coordinated shutdowns: signal stop,
    close handles, join workers, wipe secrets, unregister, then call the stock
    method. No detached worker may retain a proxy.

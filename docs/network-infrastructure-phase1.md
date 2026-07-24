@@ -2,8 +2,8 @@
 
 ## Verified state
 
-- Status: loading-gate v1 failed and was rolled back; v2 is `InstalledExact`
-  with automated gates passing and live account-switch acceptance pending
+- Status: loading-gate V1 and V2 are rejected; readiness-only V3 is
+  `InstalledExact` with controlled live acceptance pending
 - Supported `Origin.exe` SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Stock `Net.dll`/installed `NetLegacy.dll` SHA-256:
@@ -14,13 +14,19 @@
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
 - Historical pass-through Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Installed v2 shim SHA-256:
+- Rejected V2 shim SHA-256:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- Installed at: `2026-07-24T03:55:57Z`
-- Current v2 Apply/stock-restore backup:
+- Historical V2 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
-- Current Apply manifest SHA-256:
+- Historical V2 Apply manifest SHA-256:
   `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`
+- Installed V3 shim SHA-256:
+  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
+- V3 Apply time: `2026-07-24T04:24:23.6140096Z`
+- Current V3 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
+- Current Apply manifest SHA-256:
+  `BD139E5D461BEF7B209945F21816E04A5E752F7C0447DB0EDAD5909F2E8CC4D2`
 
 This is the executable verification and rollback contract for Phase 1 of
 [`network-infrastructure-goal.md`](network-infrastructure-goal.md). Exact
@@ -52,8 +58,8 @@ The native suite:
 4. rejects an unbundled Visual C++ runtime;
 5. exercises all nine proxy slots and arguments against a controlled fake;
 6. verifies preview readiness, continuous native `Process`, exact-pointer
-   ordering, malformed-message rejection, explicit lifecycle cleanup, and the
-   five-second exact-pointer fallback;
+   ordering across 4,096 unready scheduling cycles, malformed-message
+   rejection, readiness-only release, and explicit lifecycle cleanup;
 7. invokes a real MSVC scalar-deleting destructor for retained-message
    ownership coverage;
 8. creates/releases 32 real stock client objects through the shim; and
@@ -89,8 +95,8 @@ Reproducible release builds require Visual Studio 2022 MSVC tools
 only for repeated clean builds in that pinned environment; another compiler
 may legitimately produce different reviewed bytes.
 
-The native and disposable installer suites pass for installed v2. Historical
-v1 evidence cannot be relabeled as v2 evidence; live parity requires a fresh
+The native and disposable installer suites pass for installed V3. Historical
+V1/V2 evidence cannot be relabeled as V3 evidence; live parity requires a fresh
 run pinned to the installed hash and current Apply backup.
 
 ## Status, Apply, and Restore
@@ -125,16 +131,16 @@ Restore preserves the installed files in a Revert backup. If stock `Net.dll`
 was restored but `NetLegacy.dll` cleanup was interrupted, Status reports
 `RecoverablePartial`; rerun the same Restore after releasing the file lock.
 
-For the current v2 installation, Restore must use:
+For the current V3 installation, Restore must use:
 
 ```powershell
 .\tools\InstallClientNetworkShim.ps1 `
   -Mode Restore `
-  -ApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621' `
+  -ApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590' `
   -Confirm:$false
 ```
 
-That returns exact stock `Net.dll` hash `1CC3F9...BCA00C`. If v2 fails live
+That returns exact stock `Net.dll` hash `1CC3F9...BCA00C`. If V3 fails live
 acceptance and the historical network-stable pass-through is required, apply
 its separately preserved candidate only after that Restore:
 
@@ -201,11 +207,9 @@ baseline rather than mixing observation schemas.
    fight, chat, and use inventory, equip/unequip, forge, Gear Mentor, and
    Zodiac. Logout cleanly.
 5. During any late preview, confirm the selection UI remains responsive and
-   loading, then shows the 3D character automatically before the five-second
-   fallback. The fallback returns the original pointer without disconnecting,
-   but can still leave a blank model if resources remain absent. A blank model,
-   crash, extra slot click, or required relaunch fails the desired loading
-   result.
+   loading without an unready handoff, then shows the 3D character
+   automatically when resources become ready. A blank model, crash, extra slot
+   click, or required relaunch fails the desired loading result.
 6. Fully close and relaunch the client, alternating account 7 then account 13
    for five complete cycles. Both must enter the world on the first attempt.
 7. Run a longer movement/map-transition soak and repeat the dump/log inventory.
@@ -303,21 +307,29 @@ was blank. No new dump, game-close log, server exception, or container restart
 occurred. This is diagnostic evidence of the native resource race, not a pass
 for the loading gate.
 
-## Installed v2, pending live acceptance
+## Rejected V2 and installed V3
 
-V2 requires a fresh evidence-tool version and a new run; neither v1 nor the
-stable-shim observations can be reused.
+V2 evidence run `20260724T040509293Z-4ce08407` is immutably completed as
+`Fail`. Two cycles passed; on fresh account-7 cycle 3, the five-second unready
+handoff left the model blank beyond 44 seconds while TCP stayed established and
+no dump appeared. See the
+[V2 incident](client-avatar-preview-loading-gate-v2-incident-20260724.md).
 
 | Field | Value |
 | --- | --- |
-| Installed shim hash | `73E65FBF...F2902FD` |
-| Install state/time | `InstalledExact` / `2026-07-24T03:55:57Z` |
-| Automated gates | Pass |
-| Current Apply backup | `...\client-network-shim-v1-Apply-20260724-155531621` |
+| Rejected V2 shim hash | `73E65FBF...F2902FD` |
+| V2 evidence result | `Fail` / two completed cycles |
+| Installed V3 shim hash | `17A72198...D878D1` |
+| V3 install state/time | `InstalledExact` / `2026-07-24T04:24:23.6140096Z` |
+| V3 automated gates | Pass |
+| Current Apply backup | `...\client-network-shim-v1-Apply-20260724-162423590` |
 | Accounts/cycles | `7 <-> 13` / five complete cycles pending |
 | Responsive loading / automatic model | Pending / Pending |
 | Connection beyond old 14.6-second failure | Pending |
-| Five-second guarded fallback | Automated only; native result pending |
+| Readiness-only hold/release | Automated pass; native result pending |
 | Soak / dump and log review | Pending / Pending |
 | Stock rollback / final reapply | Pending / Pending |
 | Result | Pending |
+
+V3 requires a fresh evidence version and run. Neither V1, V2, nor stable-shim
+observations can be reused.

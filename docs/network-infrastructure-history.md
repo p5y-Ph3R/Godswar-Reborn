@@ -44,3 +44,6 @@ This is the version ledger for
 - `1.10` (`2026-07-24`): Recorded v2 as `InstalledExact`, preserved its current
   Apply/stock-restore manifest, and kept Phase 2 blocked until live
   account-switch acceptance.
+- `1.11` (`2026-07-24`): Recorded V2 as rejected after its cycle-3 timed
+  unready handoff recreated the blank model, installed readiness-only V3, and
+  kept Phase 2 blocked pending controlled V3 live acceptance.

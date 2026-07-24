@@ -2,16 +2,15 @@
 
 ## Version and status
 
-- Document version: `1.10`
+- Document version: `1.11`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 1 compatibility shim. Loading-gate v1 failed live
-  validation and was rolled back; v2 is `InstalledExact` with automated gates
-  passing and live acceptance pending. Phase 2 remains blocked and no secure
-  listener or client bridge is enabled.
+- Current milestone: Phase 1 compatibility shim. V1 and V2 are rejected;
+  readiness-only V3 is `InstalledExact` with controlled live acceptance
+  pending. Phase 2 remains blocked and no secure listener or bridge is enabled.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -143,10 +142,10 @@ The selected DLL will eventually host the TLS/UDP bridge in-process. Phase 1
 does not change endpoints, bytes, framing, or transport. Its sole proposed
 delivery-timing exception is the audited one-character preview. Failed v1
 suppressed native `Process`, held the exact opcode-`10002` pointer for up to 30
-seconds, then disposed it and disconnected. Installed v2 always delegates
-`Process`, preserves pointer identity and order, and returns
-the pointer on readiness or after a five-second guarded fallback. That fallback
-can still yield a blank model when resources never become ready.
+seconds, then disposed it and disconnected. V2 delegated `Process` but its
+five-second unready handoff recreated the blank model. Installed V3 preserves
+continuous processing, pointer identity, and order, and releases only on
+readiness.
 
 ### Phase 2 client bridge contract
 
@@ -155,8 +154,8 @@ point the verified `NetLegacy.dll` at that private listener, preserve the stock
 XOR/framing parser and proprietary `CMsg` allocation, and carry the unwrapped
 stream externally over TLS. Once accepted, the Phase 1 preview gate is the only
 approved `PickMsg`-lifetime exception: one exact native pointer may be retained
-until readiness or the five-second fallback. The same pointer is returned to
-Origin in either case. It is destroyed by the shim only if an explicit
+until readiness. The same pointer is then returned to Origin. It is destroyed
+by the shim only if an explicit
 `Connect`, `DisConnect`, `Release`, or destruction reset still owns it. There
 is no launcher or separate gateway process.
 
@@ -251,8 +250,8 @@ or rate limiting alone is not volumetric DDoS protection.
 
 ### Phase 1 — reversible client compatibility seam
 
-Status: not accepted. V1 failed and was rolled back. V2 is `InstalledExact`;
-automated gates pass and fresh live account-switch evidence is pending.
+Status: not accepted. V1 and V2 are rejected. V3 is `InstalledExact`;
+automated gates pass and controlled live evidence is pending.
 
 Recorded local state:
 
@@ -262,28 +261,36 @@ Recorded local state:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
 - Historical pass-through Apply evidence:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Installed v2 shim SHA-256:
+- Rejected V2 shim SHA-256:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- Installed `2026-07-24T03:55:57Z`; current Apply/stock-restore backup:
+- Historical V2 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
+- V2 evidence run `20260724T040509293Z-4ce08407`: `Fail`.
+- Installed V3 shim SHA-256:
+  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
+- Current V3 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
 - Current Apply manifest SHA-256:
-  `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`
+  `BD139E5D461BEF7B209945F21816E04A5E752F7C0447DB0EDAD5909F2E8CC4D2`
 - V1 evidence run `20260724T030417842Z-94e2c5f4`: `Fail`.
 
 V1 passed account 7, then account 13 disconnected after `14.633832034`
 seconds, showed server-full, and dumped at `0x005F58BC`; the server stayed up.
 Under the rollback shim, a later account-7 baseline received a valid preview
 and kept its TCP connection established for more than 142 seconds but still
-showed a blank model with no new dump. See
-[`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
+showed a blank model with no new dump. V2 completed two cycles, then its
+five-second unready handoff left account 7 blank beyond 44 seconds with TCP
+established and no dump. See the
+[V1 incident](client-avatar-preview-loading-gate-incident-20260724.md) and
+[V2 incident](client-avatar-preview-loading-gate-v2-incident-20260724.md).
 
 Deliverables:
 
 - Win32/x86 `Net.dll` with the exact two named exports and ordinals.
 - Nine-slot proxy that delegates to the pinned `NetLegacy.dll`.
 - Installed exact-pointer character-preview loading gate with continuous
-  native processing, preserved order, a five-second handoff, and
-  lifecycle-only cleanup, documented in
+  native processing, preserved order, readiness-only release, and
+  lifecycle-reset cleanup, documented in
   [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
 - Legacy hash verification before loading.
 - No work under `DllMain` beyond recording the module and disabling thread
@@ -302,9 +309,8 @@ Exit gate:
 - Rollback is proven.
 
 Phase 1 intentionally has no TLS, UDP, server, database, `Origin.exe`, config,
-or gameplay-state change. V2 changes only one audited preview's delivery
-timing. It aims to let a late model load automatically, but the bounded
-fallback does not guarantee that outcome.
+or gameplay-state change. V3 changes only one audited preview's delivery
+timing and remains unaccepted until controlled live evidence passes.
 
 ### Phase 2 — framing bridge, TLS, and real authentication
 
