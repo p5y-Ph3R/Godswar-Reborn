@@ -2,7 +2,7 @@
 
 ## Version and status
 
-- Document version: `1.6`
+- Document version: `1.7`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
@@ -384,3 +384,8 @@ Phase 1 remains unaccepted until that record passes.
   five-launch alternation, dump comparison, and enforced stock rollback plus
   final-reapply proof. The audit found no post-install client run, so the gate
   remains pending.
+- `1.7` (`2026-07-24`): Added a fail-closed elevated-client evidence path:
+  limited-information image-path resolution plus per-file Windows Restart
+  Manager file-use evidence bound to PID and creation FILETIME. The fallback is
+  explicitly recorded as file-use evidence and does not claim unavailable
+  module base or memory information.

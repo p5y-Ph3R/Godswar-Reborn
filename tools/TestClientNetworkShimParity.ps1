@@ -186,6 +186,26 @@ try {
         & $tool -Mode Status -EvidencePath $tamperedRoot | Out-Null
     } 'tampered manifest' 'Evidence manifest checksum mismatch'
 
+    $oldVersionRoot = Join-Path $testRoot 'old-tool-version'
+    Copy-Item -LiteralPath $begin.EvidencePath `
+        -Destination $oldVersionRoot -Recurse
+    $oldManifestPath = Join-Path $oldVersionRoot 'manifest.json'
+    $oldManifest = Get-Content -LiteralPath $oldManifestPath -Raw |
+        ConvertFrom-Json
+    $oldManifest.toolVersion = '0.0.0'
+    $encoding = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText(
+        $oldManifestPath,
+        ($oldManifest | ConvertTo-Json -Depth 12),
+        $encoding)
+    [IO.File]::WriteAllText(
+        (Join-Path $oldVersionRoot 'manifest.sha256'),
+        (Get-ParitySha256 $oldManifestPath) + [Environment]::NewLine,
+        $encoding)
+    Assert-Throws {
+        & $tool -Mode Status -EvidencePath $oldVersionRoot | Out-Null
+    } 'old tool version' 'start a new run with 1\.1\.0'
+
     $afterHashes = @(
         Get-ParitySha256 $originPath
         Get-ParitySha256 $netPath
@@ -213,7 +233,12 @@ try {
         process = [ordered]@{
             id = 123
             startedUtc = '2026-07-24T00:00:00Z'
+            startFileTimeUtc = (
+                [DateTimeOffset]'2026-07-24T00:00:00Z'
+            ).UtcDateTime.ToFileTimeUtc()
             path = Join-Path $ClientRoot 'Origin.exe'
+            pathEvidenceSource = 'ProcessApi'
+            pathLocker = $null
         }
         install = [ordered]@{
             originSupported = $true
@@ -224,12 +249,20 @@ try {
             [ordered]@{
                 name = 'Net.dll'
                 path = Join-Path $ClientRoot 'Net.dll'
+                baseAddress = '0x10000000'
+                memorySize = 4096
                 diskSha256 = $beforeHashes[1]
+                evidenceSource = 'ProcessModules'
+                locker = $null
             },
             [ordered]@{
                 name = 'NetLegacy.dll'
                 path = Join-Path $ClientRoot 'NetLegacy.dll'
+                baseAddress = '0x20000000'
+                memorySize = 8192
                 diskSha256 = $beforeHashes[2]
+                evidenceSource = 'ProcessModules'
+                locker = $null
             }
         )
         connections = @(
@@ -253,7 +286,7 @@ try {
     )
     Assert-True (
         $loaded.Count -eq 1 -and $loaded[0].accountId -eq 7
-    ) 'A checksummed observation did not round-trip.'
+    ) 'Observation round-trip failed.'
     $semanticErrors = @(
         Get-ParityObservationValidationErrors `
             $loaded $ClientRoot $beforeHashes[0] $beforeHashes[1] `
@@ -263,7 +296,104 @@ try {
     )
     Assert-True (
         $semanticErrors.Count -eq 0
-    ) 'A valid observation failed semantic revalidation.'
+    ) 'Valid observation rejected.'
+    $invalidDirectMetadata = @(
+        ($loaded | ConvertTo-Json -Depth 12) | ConvertFrom-Json
+    )
+    $invalidDirectMetadata[0].modules[0].baseAddress = $null
+    $semanticErrors = @(
+        Get-ParityObservationValidationErrors `
+            $invalidDirectMetadata $ClientRoot `
+            $beforeHashes[0] $beforeHashes[1] $beforeHashes[2] `
+            '127.1.1.110:7000' '2026-07-24T00:00:00Z' `
+            ([DateTimeOffset]'2026-07-24T01:00:00Z')
+    )
+    Assert-True (
+        ($semanticErrors -join "`n") -match 'invalid Net.dll evidence'
+    ) 'Incomplete Process.Modules metadata was accepted.'
+
+    $restartManagerLoaded = @(
+        ($loaded | ConvertTo-Json -Depth 12) | ConvertFrom-Json
+    )
+    $restartManagerLoaded[0].process.pathEvidenceSource =
+        'QueryFullProcessImageName'
+    $restartManagerLoaded[0].process.pathLocker = $null
+    foreach ($moduleEvidence in $restartManagerLoaded[0].modules) {
+        $locker = [pscustomobject]@{
+            resourcePath = [string]$moduleEvidence.path
+            processId = $restartManagerLoaded[0].process.id
+            processStartFileTimeUtc =
+                $restartManagerLoaded[0].process.startFileTimeUtc
+            applicationName = 'Origin.exe'
+        }
+        $moduleEvidence.evidenceSource = 'RestartManagerFileUse'
+        $moduleEvidence.baseAddress = $null
+        $moduleEvidence.memorySize = $null
+        $moduleEvidence.locker = $locker
+    }
+    $semanticErrors = @(
+        Get-ParityObservationValidationErrors `
+            $restartManagerLoaded $ClientRoot `
+            $beforeHashes[0] $beforeHashes[1] $beforeHashes[2] `
+            '127.1.1.110:7000' '2026-07-24T00:00:00Z' `
+            ([DateTimeOffset]'2026-07-24T01:00:00Z')
+    )
+    Assert-True (
+        $semanticErrors.Count -eq 0
+    ) 'Valid RM file-use evidence was rejected.'
+    $invalidRestartManagerMetadata = @(
+        ($restartManagerLoaded | ConvertTo-Json -Depth 12) |
+            ConvertFrom-Json
+    )
+    $invalidRestartManagerMetadata[0].modules[0].baseAddress =
+        '0x10000000'
+    $semanticErrors = @(
+        Get-ParityObservationValidationErrors `
+            $invalidRestartManagerMetadata $ClientRoot `
+            $beforeHashes[0] $beforeHashes[1] $beforeHashes[2] `
+            '127.1.1.110:7000' '2026-07-24T00:00:00Z' `
+            ([DateTimeOffset]'2026-07-24T01:00:00Z')
+    )
+    Assert-True (
+        ($semanticErrors -join "`n") -match 'invalid Net.dll evidence'
+    ) 'Restart Manager evidence claimed direct-module metadata.'
+    $restartManagerLoaded[0].modules[0].evidenceSource = 'ProcessModules'
+    $restartManagerLoaded[0].modules[0].baseAddress = '0x10000000'
+    $restartManagerLoaded[0].modules[0].memorySize = 4096
+    $restartManagerLoaded[0].modules[0].locker = $null
+    $semanticErrors = @(
+        Get-ParityObservationValidationErrors `
+            $restartManagerLoaded $ClientRoot `
+            $beforeHashes[0] $beforeHashes[1] $beforeHashes[2] `
+            '127.1.1.110:7000' '2026-07-24T00:00:00Z' `
+            ([DateTimeOffset]'2026-07-24T01:00:00Z')
+    )
+    Assert-True (
+        ($semanticErrors -join "`n") -match 'mixes module evidence sources'
+    ) 'Mixed module sources were accepted.'
+    $restartManagerLoaded[0].modules[0].evidenceSource =
+        'RestartManagerFileUse'
+    $restartManagerLoaded[0].modules[0].baseAddress = $null
+    $restartManagerLoaded[0].modules[0].memorySize = $null
+    $restartManagerLoaded[0].modules[0].locker = [pscustomobject]@{
+        resourcePath = [string]$restartManagerLoaded[0].modules[0].path
+        processId = $restartManagerLoaded[0].process.id
+        processStartFileTimeUtc =
+            $restartManagerLoaded[0].process.startFileTimeUtc
+        applicationName = 'Origin.exe'
+    }
+    $restartManagerLoaded[0].modules[0].locker.processId = 999
+    $semanticErrors = @(
+        Get-ParityObservationValidationErrors `
+            $restartManagerLoaded $ClientRoot `
+            $beforeHashes[0] $beforeHashes[1] $beforeHashes[2] `
+            '127.1.1.110:7000' '2026-07-24T00:00:00Z' `
+            ([DateTimeOffset]'2026-07-24T01:00:00Z')
+    )
+    Assert-True (
+        ($semanticErrors -join "`n") -match 'invalid Net.dll evidence'
+    ) 'Wrong RM process was accepted.'
+
     $loaded[0].connections = @()
     Assert-True (
         @(
@@ -273,7 +403,7 @@ try {
                 '2026-07-24T00:00:00Z' `
                 ([DateTimeOffset]'2026-07-24T01:00:00Z')
         ).Count -gt 0
-    ) 'Missing in-world game connection was accepted.'
+    ) 'Missing game connection was accepted.'
     $loaded[0].connections = @(
         [pscustomobject]@{
             remote = '127.1.1.110:7000'
@@ -304,114 +434,8 @@ try {
         ($semanticErrors -join "`n") -match 'invalid timestamps'
     ) 'A future observation timestamp was accepted.'
 
-    $sequenceBase = [DateTimeOffset]'2026-07-24T00:00:00Z'
-    $sequence = @(
-        for ($index = 0; $index -lt 5; $index++) {
-            [pscustomobject]@{
-                stage = 'ShimParity'
-                accountId = if ($index % 2 -eq 0) { 7 } else { 13 }
-                observedUtc = $sequenceBase.AddMinutes(
-                    $index + 1
-                ).ToString('O')
-                process = [pscustomobject]@{
-                    id = 100 + $index
-                    startedUtc = $sequenceBase.AddMinutes(
-                        $index + 1
-                    ).AddSeconds(-30).ToString('O')
-                }
-                passed = $true
-            }
-        }
-    )
-    $sequence += [pscustomobject]@{
-        stage = 'StockRollback'
-        accountId = 7
-        observedUtc = $sequenceBase.AddMinutes(7).ToString('O')
-        process = [pscustomobject]@{
-            id = 200
-            startedUtc = $sequenceBase.AddMinutes(6).ToString('O')
-        }
-        passed = $true
-    }
-    $sequence += [pscustomobject]@{
-        stage = 'FinalReapply'
-        accountId = 7
-        observedUtc = $sequenceBase.AddMinutes(9).ToString('O')
-        process = [pscustomobject]@{
-            id = 201
-            startedUtc = $sequenceBase.AddMinutes(8).ToString('O')
-        }
-        passed = $true
-    }
-    $syntheticBackup = [pscustomobject]@{
-        createdUtc = $sequenceBase.AddMinutes(7).AddSeconds(30).ToString('O')
-    }
-    Assert-True (
-        @(
-            Get-ParitySequenceValidationErrors `
-                $sequence $syntheticBackup
-        ).Count -eq 0
-    ) 'A valid launch/rollback/reapply sequence was rejected.'
-    $sequence[0].accountId = 13
-    $sequenceErrors = @(
-        Get-ParitySequenceValidationErrors `
-            $sequence $syntheticBackup
-    )
-    Assert-True (
-        ($sequenceErrors -join "`n") -match 'must start with account 7'
-    ) 'A launch sequence beginning with account 13 was accepted.'
-    $sequence[0].accountId = 7
-    $syntheticBackup.createdUtc = $sequenceBase.AddMinutes(6).ToString('O')
-    $sequenceErrors = @(
-        Get-ParitySequenceValidationErrors `
-            $sequence $syntheticBackup
-    )
-    Assert-True (
-        ($sequenceErrors -join "`n") -match 'not created after stock rollback'
-    ) 'A final backup predating stock rollback was accepted.'
-    $syntheticBackup.createdUtc = $sequenceBase.AddMinutes(
-        7
-    ).AddSeconds(30).ToString('O')
-
-    $failedMarkdown = New-ParityAcceptanceMarkdown ([pscustomobject]@{
-        result = 'Fail'
-        completedUtc = $sequenceBase.ToString('O')
-        manualAttestation = [pscustomobject]@{
-            operator = 'test'
-            completedCycles = 0
-            soakMinutes = 0
-            logsReviewed = $false
-            notes = ''
-        }
-        observationSummary = [pscustomobject]@{
-            distinctPassingLaunches = 0
-            passingByStage = [pscustomobject]@{
-                StockRollback = 0
-                FinalReapply = 0
-            }
-        }
-        differences = [pscustomobject]@{
-            dumps = [pscustomobject]@{
-                added = @()
-                changed = @()
-                removed = @()
-            }
-        }
-        finalApplyBackup = $null
-        repository = [pscustomobject]@{ head = 'test' }
-        finalInstall = [pscustomobject]@{
-            originSha256 = 'test'
-            netSha256 = 'test'
-        }
-        server = [pscustomobject]@{
-            endpoints = @('test')
-            imageId = 'test'
-        }
-    })
-    Assert-True (
-        $failedMarkdown -match 'missing / missing' -and
-        $failedMarkdown -notmatch 'passed / passed'
-    ) 'Failure Markdown falsely reported rollback/reapply success.'
+    & (Join-Path `
+        $PSScriptRoot 'TestClientNetworkShimParityValidation.ps1')
 
     $completionTestRoot = Join-Path $testRoot 'completion-checksum'
     Copy-Item -LiteralPath $begin.EvidencePath `

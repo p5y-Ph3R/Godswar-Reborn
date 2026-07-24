@@ -42,7 +42,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$toolVersion = '1.0.0'
+$toolVersion = '1.1.0'
 $originHash =
     '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
 $shimHash =
@@ -57,6 +57,9 @@ Import-Module (
 ) -Force
 Import-Module (
     Join-Path $PSScriptRoot 'ClientNetworkShimParityValidation.psm1'
+) -Force
+Import-Module (
+    Join-Path $PSScriptRoot 'ClientNetworkShimWindowsEvidence.psm1'
 ) -Force
 
 if (-not $EvidenceRoot) {
@@ -180,6 +183,12 @@ if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
 $evidence = Read-ParityManifest $EvidencePath
 $runRoot = $evidence.Root
 $manifest = $evidence.Manifest
+if ([string]$manifest.toolVersion -ne $toolVersion) {
+    throw (
+        "Evidence tool version is $($manifest.toolVersion); " +
+        "start a new run with $toolVersion."
+    )
+}
 $actualClientRoot = [string]$manifest.clientRoot
 $observations = @(
     Get-ParityObservations $runRoot ([string]$manifest.runId)
@@ -202,19 +211,12 @@ if ($Mode -eq 'Observe') {
     }
     $process = $processes[0]
     $errors = @()
-    $processPath = $null
-    try {
-        $processPath = [IO.Path]::GetFullPath($process.Path)
-    }
-    catch {
-        $errors += 'Unable to resolve Origin.exe process path.'
-    }
-    $expectedProcessPath = Join-Path $actualClientRoot 'Origin.exe'
-    if ($processPath -and -not $processPath.Equals(
-            $expectedProcessPath,
-            [StringComparison]::OrdinalIgnoreCase)) {
-        $errors += "Origin.exe path mismatch: $processPath"
-    }
+    $runtime = Get-ParityOriginRuntimeEvidence `
+        -Process $process `
+        -ClientRoot $actualClientRoot `
+        -Stage $Stage
+    $processPath = $runtime.processPath
+    $errors += @($runtime.errors)
 
     $client = Get-ParityClientSnapshot `
         $actualClientRoot $originHash $shimHash $legacyHash
@@ -230,24 +232,7 @@ if ($Mode -eq 'Observe') {
         $errors += 'The running client is not the supported Origin.exe build.'
     }
 
-    $modules = @()
-    try {
-        foreach ($module in @($process.Modules)) {
-            if ($module.ModuleName -in @('Net.dll', 'NetLegacy.dll')) {
-                $path = [IO.Path]::GetFullPath($module.FileName)
-                $modules += [pscustomobject][ordered]@{
-                    name = [string]$module.ModuleName
-                    path = $path
-                    baseAddress = '0x{0:X8}' -f $module.BaseAddress.ToInt64()
-                    memorySize = [int]$module.ModuleMemorySize
-                    diskSha256 = Get-ParitySha256 $path
-                }
-            }
-        }
-    }
-    catch {
-        $errors += "Module enumeration failed: $($_.Exception.Message)"
-    }
+    $modules = @($runtime.modules)
     $netModule = @($modules | Where-Object name -ieq 'Net.dll')
     $legacyModule = @($modules | Where-Object name -ieq 'NetLegacy.dll')
     if ($netModule.Count -ne 1) {
@@ -274,15 +259,6 @@ if ($Mode -eq 'Observe') {
             $errors += 'Installed stage loaded the wrong NetLegacy.dll hash.'
         }
     }
-    foreach ($module in $modules) {
-        $expectedModulePath = Join-Path $actualClientRoot $module.name
-        if (-not $module.path.Equals(
-                $expectedModulePath,
-                [StringComparison]::OrdinalIgnoreCase)) {
-            $errors += "Module loaded outside client root: $($module.path)"
-        }
-    }
-
     $startedUtc = $process.StartTime.ToUniversalTime().ToString('O')
     foreach ($existing in $observations) {
         if ($existing.process.id -eq $process.Id -and
@@ -319,17 +295,34 @@ if ($Mode -eq 'Observe') {
         ).Count -lt 1) {
         $errors += "No established game connection to $($serverEndpoints[1])."
     }
+    try {
+        $currentProcess = Get-Process -Id $process.Id -ErrorAction Stop
+        $currentStartFileTime = (
+            $currentProcess.StartTime.ToUniversalTime().ToFileTimeUtc()
+        )
+        if ($currentProcess.HasExited -or
+            $currentStartFileTime -ne $runtime.processStartFileTimeUtc) {
+            $errors += 'Origin.exe changed after connection evidence.'
+        }
+    }
+    catch {
+        $errors += "Final Origin identity check failed: $($_.Exception.Message)"
+    }
 
+    $observedUtc = [DateTime]::UtcNow.ToString('O')
     $observation = [ordered]@{
         schemaVersion = 1
         runId = [string]$manifest.runId
-        observedUtc = [DateTime]::UtcNow.ToString('O')
+        observedUtc = $observedUtc
         stage = $Stage
         accountId = $AccountId
         process = [ordered]@{
             id = $process.Id
             startedUtc = $startedUtc
+            startFileTimeUtc = $runtime.processStartFileTimeUtc
             path = $processPath
+            pathEvidenceSource = $runtime.pathEvidenceSource
+            pathLocker = $runtime.pathLocker
         }
         install = $client
         modules = $modules
@@ -337,6 +330,17 @@ if ($Mode -eq 'Observe') {
         passed = $errors.Count -eq 0
         validationErrors = $errors
     }
+    if ($errors.Count -eq 0) {
+        $errors += @(
+            Get-ParityObservationValidationErrors `
+                @([pscustomobject]$observation) `
+                $actualClientRoot $originHash $shimHash $legacyHash `
+                $serverEndpoints[1] ([string]$manifest.startedUtc) `
+                ([DateTimeOffset]::UtcNow)
+        )
+    }
+    $observation['passed'] = $errors.Count -eq 0
+    $observation['validationErrors'] = @($errors)
     $fileName = (
         [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' +
         [guid]::NewGuid().ToString('N').Substring(0, 8) + '.json'
@@ -365,8 +369,20 @@ if ($Mode -eq 'Status') {
         $runRoot ([string]$manifest.runId)
     $client = Get-ParityClientSnapshot `
         $actualClientRoot $originHash $shimHash $legacyHash
+    $observationErrors = @(
+        Get-ParityObservationValidationErrors `
+            $observations $actualClientRoot $originHash $shimHash $legacyHash `
+            $serverEndpoints[1] ([string]$manifest.startedUtc) `
+            ([DateTimeOffset]::UtcNow)
+    )
     [pscustomobject]@{
-        State = if ($completion) { $completion.result } else { 'Pending' }
+        State = if ($observationErrors.Count -gt 0) {
+            'InvalidEvidence'
+        } elseif ($completion) {
+            $completion.result
+        } else {
+            'Pending'
+        }
         EvidencePath = $runRoot
         StartedUtc = $manifest.startedUtc
         InstallState = $client.state
@@ -374,6 +390,7 @@ if ($Mode -eq 'Status') {
             Get-Process -Name Origin -ErrorAction SilentlyContinue
         ).Count -gt 0
         Observations = Get-ObservationSummary $observations
+        ObservationValidationErrors = $observationErrors
         CompletionPath = if (Test-Path -LiteralPath $completionPath) {
             $completionPath
         } else {

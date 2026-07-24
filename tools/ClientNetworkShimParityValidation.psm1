@@ -46,6 +46,58 @@ function Get-ParityObservationValidationErrors {
     $root = [IO.Path]::GetFullPath($ClientRoot).TrimEnd('\')
     $runStarted = [DateTimeOffset]$RunStartedUtc
     $latest = $NowUtc.AddSeconds(1)
+
+    function Test-RuntimeEvidenceSource {
+        param(
+            [string]$Source,
+            [object]$Locker,
+            [string]$DirectSource,
+            [object]$ProcessEvidence,
+            [string]$ExpectedResourcePath,
+            [bool]$AllowFileUse
+        )
+
+        if ($Source -eq $DirectSource -or
+            ($DirectSource -eq 'ProcessApi' -and
+                $Source -eq 'QueryFullProcessImageName')) {
+            return $null -eq $Locker
+        }
+        if (-not $AllowFileUse -or
+            $Source -ne 'RestartManagerFileUse' -or
+            -not $Locker) {
+            return $false
+        }
+        return (
+            [int]$Locker.processId -eq [int]$ProcessEvidence.id -and
+            [long]$Locker.processStartFileTimeUtc -eq
+                [long]$ProcessEvidence.startFileTimeUtc -and
+            $Locker.applicationName -ieq 'Origin.exe' -and
+            ([string]$Locker.resourcePath).Equals(
+                $ExpectedResourcePath,
+                [StringComparison]::OrdinalIgnoreCase)
+        )
+    }
+
+    function Test-RuntimeModuleMetadata {
+        param([object]$Module)
+
+        if ($Module.evidenceSource -eq 'ProcessModules') {
+            return (
+                $null -eq $Module.locker -and
+                [string]$Module.baseAddress -match
+                    '^0x(?=.*[1-9A-Fa-f])[0-9A-Fa-f]{8,16}$' -and
+                [long]$Module.memorySize -gt 0
+            )
+        }
+        if ($Module.evidenceSource -eq 'RestartManagerFileUse') {
+            return (
+                $null -eq $Module.baseAddress -and
+                $null -eq $Module.memorySize
+            )
+        }
+        return $false
+    }
+
     foreach ($observation in $Observations) {
         $identity = (
             "$($observation.stage)/$($observation.accountId)/" +
@@ -70,7 +122,12 @@ function Get-ParityObservationValidationErrors {
         if ([int]$observation.process.id -le 0 -or
             -not ([string]$observation.process.path).Equals(
                 (Join-Path $root 'Origin.exe'),
-                [StringComparison]::OrdinalIgnoreCase)) {
+                [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-RuntimeEvidenceSource `
+                ([string]$observation.process.pathEvidenceSource) `
+                $observation.process.pathLocker `
+                'ProcessApi' $observation.process `
+                (Join-Path $root 'Origin.exe') $false)) {
             $errors += "Observation has an invalid process: $identity"
         }
         try {
@@ -80,7 +137,9 @@ function Get-ParityObservationValidationErrors {
                 $started -lt $runStarted -or
                 $observed -lt $runStarted -or
                 $started -gt $latest -or
-                $observed -gt $latest) {
+                $observed -gt $latest -or
+                [long]$observation.process.startFileTimeUtc -ne
+                    $started.UtcDateTime.ToFileTimeUtc()) {
                 throw 'Observation timestamp is outside the run.'
             }
         }
@@ -91,6 +150,12 @@ function Get-ParityObservationValidationErrors {
         $modules = @($observation.modules)
         $net = @($modules | Where-Object name -ieq 'Net.dll')
         $legacy = @($modules | Where-Object name -ieq 'NetLegacy.dll')
+        if (@(
+                $modules.evidenceSource |
+                    Select-Object -Unique
+            ).Count -ne 1) {
+            $errors += "Observation mixes module evidence sources: $identity"
+        }
         $expectedNetHash = if ($observation.stage -eq 'StockRollback') {
             $LegacyHash
         } else {
@@ -98,9 +163,14 @@ function Get-ParityObservationValidationErrors {
         }
         if ($net.Count -ne 1 -or
             $net[0].diskSha256 -ne $expectedNetHash -or
+            -not (Test-RuntimeModuleMetadata $net[0]) -or
             -not ([string]$net[0].path).Equals(
                 (Join-Path $root 'Net.dll'),
-                [StringComparison]::OrdinalIgnoreCase)) {
+                [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-RuntimeEvidenceSource `
+                ([string]$net[0].evidenceSource) $net[0].locker `
+                'ProcessModules' $observation.process `
+                (Join-Path $root 'Net.dll') $true)) {
             $errors += "Observation has invalid Net.dll evidence: $identity"
         }
         if ($observation.stage -eq 'StockRollback') {
@@ -109,9 +179,14 @@ function Get-ParityObservationValidationErrors {
             }
         } elseif ($legacy.Count -ne 1 -or
             $legacy[0].diskSha256 -ne $LegacyHash -or
+            -not (Test-RuntimeModuleMetadata $legacy[0]) -or
             -not ([string]$legacy[0].path).Equals(
                 (Join-Path $root 'NetLegacy.dll'),
-                [StringComparison]::OrdinalIgnoreCase)) {
+                [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-RuntimeEvidenceSource `
+                ([string]$legacy[0].evidenceSource) $legacy[0].locker `
+                'ProcessModules' $observation.process `
+                (Join-Path $root 'NetLegacy.dll') $true)) {
             $errors += "Observation has invalid NetLegacy.dll evidence: $identity"
         }
 

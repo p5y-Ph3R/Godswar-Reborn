@@ -62,22 +62,51 @@ function Write-TestObservation {
     )
 
     $isStock = $Stage -eq 'StockRollback'
+    $startFileTime = (
+        [DateTimeOffset]$StartedUtc
+    ).UtcDateTime.ToFileTimeUtc()
+    $netPath = Join-Path $ClientPath 'Net.dll'
     $modules = @(
         [ordered]@{
             name = 'Net.dll'
-            path = Join-Path $ClientPath 'Net.dll'
+            path = $netPath
+            baseAddress = $null
+            memorySize = $null
             diskSha256 = if ($isStock) {
                 $LegacySha256
             } else {
                 $ShimSha256
             }
+            evidenceSource = 'RestartManagerFileUse'
+            locker = [ordered]@{
+                resourcePath = $netPath
+                processId = $ProcessId
+                processStartFileTimeUtc = $startFileTime
+                applicationName = 'Origin.exe'
+                applicationType = 1
+                terminalSessionId = 1
+                restartable = $false
+            }
         }
     )
     if (-not $isStock) {
+        $legacyPath = Join-Path $ClientPath 'NetLegacy.dll'
         $modules += [ordered]@{
             name = 'NetLegacy.dll'
-            path = Join-Path $ClientPath 'NetLegacy.dll'
+            path = $legacyPath
+            baseAddress = $null
+            memorySize = $null
             diskSha256 = $LegacySha256
+            evidenceSource = 'RestartManagerFileUse'
+            locker = [ordered]@{
+                resourcePath = $legacyPath
+                processId = $ProcessId
+                processStartFileTimeUtc = $startFileTime
+                applicationName = 'Origin.exe'
+                applicationType = 1
+                terminalSessionId = 1
+                restartable = $false
+            }
         }
     }
     $path = Join-Path (
@@ -92,7 +121,10 @@ function Write-TestObservation {
         process = [ordered]@{
             id = $ProcessId
             startedUtc = $StartedUtc
+            startFileTimeUtc = $startFileTime
             path = Join-Path $ClientPath 'Origin.exe'
+            pathEvidenceSource = 'ProcessApi'
+            pathLocker = $null
         }
         install = [ordered]@{
             state = if ($isStock) { 'Stock' } else { 'InstalledExact' }

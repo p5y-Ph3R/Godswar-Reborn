@@ -25,6 +25,7 @@ Run the automated suites:
 ```powershell
 .\tools\TestClientNetworkShim.ps1
 .\tools\TestClientNetworkShimInstaller.ps1
+.\tools\TestClientNetworkShimWindowsEvidence.ps1
 .\tools\TestClientNetworkShimParity.ps1
 ```
 
@@ -55,6 +56,15 @@ time bounds, backup chronology, refusal paths, and checksummed completion. On a
 clean worktree it also runs
 `tools\TestClientNetworkShimParityComplete.ps1`, which exercises a successful
 synthetic Begin-to-Complete record against a disposable client copy.
+
+The Windows evidence suite covers the medium-integrity observer used when
+`Origin.exe` runs elevated. It resolves the exact process image with
+`QueryFullProcessImageNameW`, then queries each DLL in a separate Windows
+Restart Manager session and binds its exact file-use result to both process ID
+and creation FILETIME. The DLL is independently hashed. This fallback records
+`RestartManagerFileUse`; it does not claim a module base address, memory size,
+or distinguish a loaded image from another file-use mechanism. Direct
+`Process.Modules` evidence remains preferred whenever Windows permits it.
 
 Reproducible release builds require Visual Studio 2022 MSVC tools
 `14.44.35207` and Windows SDK `10.0.26100.0`. Matching hashes are guaranteed
@@ -121,19 +131,25 @@ still open:
 Fully close and relaunch between observations. Record five complete shim
 launches in the order `7, 13, 7, 13, 7`, changing `-AccountId` accordingly.
 An observation verifies the exact process path, installed hashes, loaded
-`Net.dll` and `NetLegacy.dll` paths/hashes, a distinct process start, and an
-established connection to `127.1.1.110:7000`. It does not infer the logged-in
-account or gameplay result; those remain operator attestations. A failed
-observation fails that evidence run rather than being silently ignored.
+`Net.dll` and `NetLegacy.dll` paths/hashes (or the explicitly labeled,
+PID-and-FILETIME-bound Restart Manager file-use fallback), a distinct process
+start, and an established connection to `127.1.1.110:7000`. It does not infer
+the logged-in account or gameplay result; those remain operator attestations.
+A failed observation fails that evidence run rather than being silently
+ignored.
 The SHA-256 sidecars expose accidental edits; they are not an authenticity
 boundary against a local operator who can rewrite both evidence and checksum.
+Evidence runs are tool-version pinned; after a recorder upgrade, start a new
+baseline rather than mixing observation schemas.
 
 1. Preflight: `docker ps` reports `godswar-server` up; host listeners exist on
    `127.1.1.110:5998` and `:7000`; installer Status is `InstalledExact`.
 2. Record file names, sizes, and timestamps under `C:\Godswar Origin\Dump`,
    `Dump\Error.log`, and `Log`; do not delete them.
-3. Start the normal client. While open, confirm `(Get-Process Origin).Modules`
-   reports `C:\Godswar Origin\Net.dll`; no launcher/extra process is added.
+3. Start the normal client. While open, run the evidence recorder. It prefers
+   direct `Process.Modules` evidence and otherwise records the explicitly
+   labeled, PID-and-FILETIME-bound Restart Manager file-use fallback described
+   above; no launcher/extra process is added.
 4. Login, select a character, enter the world, move continuously, change maps,
    fight, chat, and use inventory, equip/unequip, forge, Gear Mentor, and
    Zodiac. Logout cleanly.
