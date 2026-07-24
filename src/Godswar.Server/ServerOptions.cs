@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Godswar.Server.Game;
+using Godswar.Server.Networking;
 
 namespace Godswar.Server;
 
@@ -21,6 +22,8 @@ internal sealed class ServerOptions
     public string DataPath { get; set; } = "data";
 
     public StorageOptions Storage { get; set; } = new();
+
+    public NetworkRuntimeOptions Network { get; set; } = new();
 
     public static ServerOptions Load(string path)
     {
@@ -44,6 +47,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
+        Network ??= new NetworkRuntimeOptions();
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
@@ -126,6 +130,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
+        Network ??= new NetworkRuntimeOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -133,6 +138,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy.Normalize();
         Game.Monsters.Validate();
         Game.Players.Validate();
+        Network.Validate();
 
         return this;
     }

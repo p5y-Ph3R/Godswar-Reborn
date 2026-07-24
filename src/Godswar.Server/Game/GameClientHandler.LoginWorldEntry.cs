@@ -16,6 +16,7 @@ internal sealed partial class GameClientHandler
         ClearGearEnhancerSelection();
         var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
         _account = await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
+        _session.MarkAuthenticated();
         _accountSessionRegistered = true;
 
         var replacedSession = _registry.ReplaceAccountSession(_account.Id, _session);

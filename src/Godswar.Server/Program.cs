@@ -22,16 +22,25 @@ var registry = new GameSessionRegistry(
     options.Game.ZodiacEnergy,
     options.Game.Monsters.Runtime,
     options.Game.Players.Runtime);
+var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
+    options.Network.MaxActiveConnections,
+    options.Network.MaxUnauthenticatedConnections,
+    options.Network.MaxUnauthenticatedConnectionsPerIp,
+    options.Network.MaxUnauthenticatedConnectionsPerPrefix));
 var loginServer = new TcpEndpointServer(
-    "login",
+    NetworkEndpointRole.Login,
     options.Login.BindHost,
     options.Login.Port,
+    options.Network,
+    admission,
     session => new LoginClientHandler(session, store, options));
 
 var gameServer = new TcpEndpointServer(
-    "game",
+    NetworkEndpointRole.Game,
     options.Game.BindHost,
     options.Game.Port,
+    options.Network,
+    admission,
     session => new GameClientHandler(session, store, registry, options.Game.DeveloperCommands));
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
@@ -40,6 +49,11 @@ Console.WriteLine($"Login server: {options.Login.BindHost}:{options.Login.Port}"
 Console.WriteLine($"Game server:  {options.Game.BindHost}:{options.Game.Port} advertised as {options.Game.PublicHost}:{options.Game.Port}");
 Console.WriteLine($"Monsters:     {options.Game.Monsters.Runtime} runtime");
 Console.WriteLine($"Players:      {options.Game.Players.Runtime} runtime");
+Console.WriteLine(
+    $"Network:      active={options.Network.MaxActiveConnections}, " +
+    $"unauthenticated={options.Network.MaxUnauthenticatedConnections}, " +
+    $"reliable-egress={options.Network.ReliableEgressQueueItems} items/" +
+    $"{options.Network.ReliableEgressQueueBytes} bytes");
 
 await Task.WhenAll(
     loginServer.RunAsync(shutdown.Token),

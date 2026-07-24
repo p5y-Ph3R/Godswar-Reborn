@@ -71,6 +71,7 @@ internal sealed class LoginClientHandler : IClientHandler
         }
 
         await _store.LoginOrCreateAccountAsync(username, password, cancellationToken);
+        _session.MarkAuthenticated();
         Console.WriteLine($"[login] accepted {username}");
         await _session.SendAsync(PacketBuilder.ServerList(), cancellationToken, "ServerList");
     }

@@ -2,15 +2,16 @@
 
 ## Version and status
 
-- Document version: `1.14`
+- Document version: `1.15`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 slice 4 bounded transport lifecycle. Slice 3
-  extracted and parity-tested `ILegacyByteTransport` plus the raw TCP adapter;
-  existing raw listeners are unchanged and no TLS or UDP runtime is enabled.
+- Current milestone: Phase 2 slice 5 native coordinator/pumps. Slice 4 added
+  bounded admission, tracked tasks, per-session reliable egress, absolute
+  deadlines, and finite metrics to raw development listeners. No TLS or UDP
+  runtime is enabled.
   V1–V4 are rejected and Phase 1
   is not accepted. V4 smoke
   `20260724T095739213Z-db16daa7` failed before character selection and was
@@ -316,8 +317,10 @@ Exact wire protocol and client lifecycle:
   captured-clear bootstrap hashes, boundary tests, handler dispatch, loopback,
   and concurrent sends prove raw parity; full credential-bearing capture
   replay remains an uncommitted final Phase 2 gate.
-- Add bounded admission, tracked tasks, queues, deadlines, and metrics next
-  while secure listeners remain disabled.
+- Slice 4 bounded admission, tracked tasks, reliable egress, deadlines, and
+  metrics is implemented; see
+  [`network-infrastructure-phase2-runtime.md`](network-infrastructure-phase2-runtime.md).
+- Add the uninstalled native coordinator and bounded client pumps next.
 - Add separate TLS ports; never sniff raw and TLS on one port.
 - Specify a versioned outer preface, compatibility/error behavior, maximum
   fields, SNI/hostname validation, development trust, and certificate rotation.

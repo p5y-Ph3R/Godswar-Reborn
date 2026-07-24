@@ -2,12 +2,12 @@
 
 ## Status
 
-- Specification version: `1.7`
+- Specification version: `1.8`
 - Last updated: `2026-07-24`
-- Runtime status: slice 3 raw transport seam implemented and tested; existing
-  raw listeners are unchanged and no TLS or UDP runtime is enabled
-- Current next milestone: slice 4, bounded transport admission, tasks, queues,
-  deadlines, and metrics
+- Runtime status: slice 4 bounded admission, tracked tasks, reliable egress,
+  absolute deadlines, and finite metrics implemented on raw development
+  listeners; no TLS or UDP runtime is enabled
+- Current next milestone: slice 5, uninstalled native coordinator and pumps
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Rejected V3 SHA-256:
@@ -18,14 +18,6 @@
   `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
 - Rejected V4 Net SHA-256:
   `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
-- Historical V4 Net Apply/stock-restore backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
-- Historical V4 Origin Apply backup:
-  `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
-- Historical V4 Net Apply manifest SHA-256:
-  `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
-- Historical V3 Apply/stock-restore backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
 - V4 evidence/result:
   `artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7` /
   `Fail`
@@ -34,9 +26,6 @@
 - Current stock Net:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 - Current `NetLegacy.dll`: absent
-- Net/Origin Revert backups:
-  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-221318157` /
-  `C:\Reborn\backups\origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`
 
 Exact V1/V2 and pass-through recovery hashes/backups remain in the
 [Phase 1 runbook](network-infrastructure-phase1.md).
@@ -228,6 +217,7 @@ Initial configurable safety defaults:
 | Unauthenticated connections per IPv4 `/24` or IPv6 `/64` | `32` |
 | Server ingress queue | `128` items and `512 KiB` |
 | Server reliable egress queue | `128` items and `512 KiB` |
+| Reliable egress pending reservations | `512` items and `2 MiB` |
 | Server control queue | `32` items and `64 KiB` |
 | Client queue per direction | `128` items and `512 KiB` |
 | Ticket registry | `1024` records |
@@ -288,9 +278,11 @@ failures before continuing.
    forced boundaries, handler dispatch, loopback, and the existing 512-send
    test prove raw-stream parity. Full credential-bearing capture replay remains
    an open final Phase 2 gate and is not committed.
-4. Current: add bounded admission, tracked connection tasks, queues, deadlines,
-   and metrics while keeping secure listeners disabled.
-5. Add the native loopback coordinator/pumps and lifecycle tests in an
+4. Completed: bounded shared admission, tracked connection tasks, per-session
+   reliable egress, absolute raw-stream deadlines, graceful drain, and finite
+   metrics. Secure listeners remain disabled. Runtime details:
+   [`network-infrastructure-phase2-runtime.md`](network-infrastructure-phase2-runtime.md).
+5. Current: add the native loopback coordinator/pumps and lifecycle tests in an
    uninstalled test build.
 6. Add Schannel/`SslStream`, ALPN, certificate validation, and local test-CA
    automation. Secure ports remain opt-in development endpoints.
@@ -300,10 +292,10 @@ failures before continuing.
    guarded backup, perform original-client parity, then disable raw external
    access in the secure profile.
 
-Focused slice-3 check:
+Focused slice-4 check:
 
 ```powershell
-dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2 legacy transport parity" "ClientSession concurrent send ordering"
+dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2 bounded network lifecycle"
 ```
 
 ## Verification contract

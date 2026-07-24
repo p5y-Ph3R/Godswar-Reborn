@@ -72,3 +72,9 @@ This is the version ledger for
   parity checks.
   Existing raw listeners are unchanged; no TLS, UDP, admission, queue,
   deadline, or security runtime was enabled. Phase 2 slice 4 is next.
+- `1.15` (`2026-07-24`): Added shared bounded connection admission, explicit
+  authentication transitions, tracked accepted tasks and bounded shutdown,
+  per-session item/byte reliable egress with physical-write completion,
+  non-resetting packet/write deadlines, validated configuration, and finite
+  low-cardinality metrics. Raw stream/cipher parity remains intact. TLS, UDP,
+  secure control, and native client pumps remain disabled; slice 5 is next.

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 
@@ -5,71 +6,234 @@ namespace Godswar.Server.Networking;
 
 internal sealed class TcpEndpointServer
 {
-    private readonly string _name;
-    private readonly string _host;
-    private readonly int _port;
+    private readonly ConcurrentDictionary<long, ActiveConnection> _connections = [];
+    private readonly NetworkEndpointRole _endpointRole;
     private readonly Func<ClientSession, IClientHandler> _handlerFactory;
+    private readonly string _host;
+    private readonly IConnectionAdmission _admission;
+    private readonly NetworkRuntimeOptions _runtimeOptions;
+    private readonly TaskCompletionSource<IPEndPoint> _started =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TimeProvider _timeProvider;
+    private long _nextConnectionId;
 
-    public TcpEndpointServer(string name, string host, int port, Func<ClientSession, IClientHandler> handlerFactory)
+    public TcpEndpointServer(
+        NetworkEndpointRole endpointRole,
+        string host,
+        int port,
+        NetworkRuntimeOptions runtimeOptions,
+        IConnectionAdmission admission,
+        Func<ClientSession, IClientHandler> handlerFactory,
+        TimeProvider? timeProvider = null)
     {
-        _name = name;
+        _endpointRole = endpointRole;
         _host = host;
-        _port = port;
-        _handlerFactory = handlerFactory;
+        Port = port;
+        _runtimeOptions = runtimeOptions
+            ?? throw new ArgumentNullException(nameof(runtimeOptions));
+        _admission = admission
+            ?? throw new ArgumentNullException(nameof(admission));
+        _handlerFactory = handlerFactory
+            ?? throw new ArgumentNullException(nameof(handlerFactory));
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _runtimeOptions.Validate();
+    }
+
+    public int Port { get; }
+
+    internal int ActiveConnectionCount => _connections.Count;
+
+    internal Task<IPEndPoint> WaitUntilStartedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _started.Task.WaitAsync(cancellationToken);
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         var address = ResolveAddress(_host);
-        var listener = new TcpListener(address, _port);
-        listener.Start();
-
-        Console.WriteLine($"[{_name}] listening on {address}:{_port}");
+        var listener = new TcpListener(address, Port);
+        using var endpointLifetime =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            listener.Start(_runtimeOptions.ListenBacklog);
+            var localEndPoint = (IPEndPoint)listener.LocalEndpoint;
+            _started.TrySetResult(localEndPoint);
+            Console.WriteLine(
+                $"[{_endpointRole.ToMetricTag()}] listening on {localEndPoint}");
+
+            while (!endpointLifetime.IsCancellationRequested)
             {
-                var client = await listener.AcceptTcpClientAsync(cancellationToken);
-                _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
+                var client = await listener.AcceptTcpClientAsync(
+                    endpointLifetime.Token);
+                AcceptConnection(client, endpointLifetime.Token);
             }
         }
         catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            listener.Stop();
-        }
-    }
-
-    private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
-    {
-        await using var session = new ClientSession(new RawTcpLegacyTransport(client));
-        Console.WriteLine($"[{_name}] connected {session.RemoteEndPoint}");
-
-        try
-        {
-            await _handlerFactory(session).RunAsync(cancellationToken);
-        }
-        catch (IOException ex)
-        {
-            Console.WriteLine($"[{_name}] disconnected {session.RemoteEndPoint}: {ex.Message}");
-        }
-        catch (SocketException ex)
-        {
-            Console.WriteLine($"[{_name}] socket closed {session.RemoteEndPoint}: {ex.Message}");
-        }
-        catch (OperationCanceledException)
+            when (endpointLifetime.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{_name}] error {session.RemoteEndPoint}: {ex}");
+            _started.TrySetException(ex);
+            throw;
         }
         finally
         {
-            Console.WriteLine($"[{_name}] closed {session.RemoteEndPoint}");
+            listener.Stop();
+            endpointLifetime.Cancel();
+            DisconnectAll();
+            await DrainConnectionsAsync();
+        }
+    }
+
+    private void AcceptConnection(
+        TcpClient client,
+        CancellationToken cancellationToken)
+    {
+        var remoteAddress =
+            (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
+        if (!_admission.TryAcquire(
+                _endpointRole,
+                remoteAddress,
+                out var lease,
+                out var rejection))
+        {
+            NetworkRuntimeMetrics.RecordConnectionRejected(
+                _endpointRole,
+                rejection);
+            client.Dispose();
+            return;
+        }
+
+        var connectionId = Interlocked.Increment(ref _nextConnectionId);
+        var connection = new ActiveConnection(client, lease);
+        if (!_connections.TryAdd(connectionId, connection))
+        {
+            lease.Dispose();
+            client.Dispose();
+            throw new InvalidOperationException(
+                "A unique connection tracking ID could not be registered.");
+        }
+
+        NetworkRuntimeMetrics.RecordConnectionAccepted(_endpointRole);
+        NetworkRuntimeMetrics.RecordTrackedTaskStarted(_endpointRole);
+        connection.Task = RunTrackedConnectionAsync(
+            connectionId,
+            connection,
+            cancellationToken);
+    }
+
+    private async Task RunTrackedConnectionAsync(
+        long connectionId,
+        ActiveConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        var disconnectReason = NetworkDisconnectReason.HandlerCompleted;
+
+        try
+        {
+            var transport = new RawTcpLegacyTransport(connection.Client);
+            await using var session = new ClientSession(
+                transport,
+                _runtimeOptions,
+                _endpointRole,
+                _timeProvider,
+                connection.Lease.MarkAuthenticated);
+            connection.Session = session;
+            await _handlerFactory(session).RunAsync(cancellationToken);
+            disconnectReason = cancellationToken.IsCancellationRequested
+                ? NetworkDisconnectReason.ServerShutdown
+                : NetworkDisconnectReason.HandlerCompleted;
+        }
+        catch (NetworkDeadlineException)
+        {
+            disconnectReason = NetworkDisconnectReason.Timeout;
+        }
+        catch (ReliableQueueOverflowException)
+        {
+            disconnectReason = NetworkDisconnectReason.ReliableQueueOverflow;
+        }
+        catch (InvalidDataException)
+        {
+            disconnectReason = NetworkDisconnectReason.ProtocolViolation;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            disconnectReason = NetworkDisconnectReason.ServerShutdown;
+        }
+        catch (OperationCanceledException)
+        {
+            disconnectReason = NetworkDisconnectReason.ApplicationDisconnect;
+        }
+        catch (IOException)
+        {
+            disconnectReason = NetworkDisconnectReason.RemoteClosed;
+        }
+        catch (SocketException)
+        {
+            disconnectReason = NetworkDisconnectReason.TransportError;
+        }
+        catch (Exception)
+        {
+            disconnectReason = NetworkDisconnectReason.HandlerError;
+        }
+        finally
+        {
+            _connections.TryRemove(connectionId, out _);
+            connection.Lease.Dispose();
+            NetworkRuntimeMetrics.RecordTrackedTaskCompleted(_endpointRole);
+            NetworkRuntimeMetrics.RecordConnectionClosed(
+                _endpointRole,
+                disconnectReason);
+        }
+    }
+
+    private void DisconnectAll()
+    {
+        foreach (var connection in _connections.Values)
+        {
+            connection.Disconnect();
+        }
+    }
+
+    private async Task DrainConnectionsAsync()
+    {
+        var tasks = _connections.Values
+            .Select(static connection => connection.Task)
+            .Where(static task => task is not null)
+            .Cast<Task>()
+            .ToArray();
+        if (tasks.Length == 0)
+        {
+            NetworkRuntimeMetrics.RecordDrainOutcome(
+                _endpointRole,
+                NetworkDrainOutcome.Completed);
+            return;
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).WaitAsync(
+                _runtimeOptions.GracefulDrainTimeout,
+                _timeProvider,
+                CancellationToken.None);
+            NetworkRuntimeMetrics.RecordDrainOutcome(
+                _endpointRole,
+                NetworkDrainOutcome.Completed);
+        }
+        catch (TimeoutException)
+        {
+            NetworkRuntimeMetrics.RecordTimeout(
+                _endpointRole,
+                NetworkTimeoutStage.GracefulDrain);
+            NetworkRuntimeMetrics.RecordDrainOutcome(
+                _endpointRole,
+                NetworkDrainOutcome.DeadlineExceeded);
         }
     }
 
@@ -83,5 +247,29 @@ internal sealed class TcpEndpointServer
         return IPAddress.TryParse(host, out var address)
             ? address
             : Dns.GetHostAddresses(host).First();
+    }
+
+    private sealed class ActiveConnection(
+        TcpClient client,
+        ConnectionAdmissionLease lease)
+    {
+        public TcpClient Client { get; } = client;
+
+        public ConnectionAdmissionLease Lease { get; } = lease;
+
+        public ClientSession? Session { get; set; }
+
+        public Task? Task { get; set; }
+
+        public void Disconnect()
+        {
+            if (Session is { } session)
+            {
+                session.Disconnect();
+                return;
+            }
+
+            Client.Dispose();
+        }
     }
 }

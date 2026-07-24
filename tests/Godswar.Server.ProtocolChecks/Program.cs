@@ -130,6 +130,7 @@ internal static partial class Program
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("Secure Phase 2 bounded protocol codecs", SecureProtocolCodecChecks.RunAsync),
             ("Secure Phase 2 legacy transport parity", LegacyByteTransportChecks.RunAsync),
+            ("Secure Phase 2 bounded network lifecycle", NetworkRuntimeLifecycleChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 
