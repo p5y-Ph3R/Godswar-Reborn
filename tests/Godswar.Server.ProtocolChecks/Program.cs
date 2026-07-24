@@ -128,6 +128,7 @@ internal static partial class Program
             ("Monster area-damage AOI revision delivery", CheckMonsterAreaDamageDeliveryAsync),
             ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
+            ("Secure Phase 2 bounded protocol codecs", SecureProtocolCodecChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

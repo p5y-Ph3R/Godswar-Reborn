@@ -6,16 +6,17 @@ The long-term secure networking migration is tracked separately in
 [`docs/network-infrastructure-goal.md`](network-infrastructure-goal.md). It
 selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
-behavior, and upstream DDoS integration. The current networking milestone is a
-reversible Origin/`Net.dll` compatibility seam. V1–V3 are rejected; V3
-reproduced the roughly 15-second `0x005F58BC` timeout/crash. Matched V4 is
-installed with automated gates passing and one cold smoke pending. Phase 2 is
-specified in
+behavior, and upstream DDoS integration. The reversible Origin/`Net.dll`
+compatibility experiments V1–V4 are rejected. V3 reproduced the roughly
+15-second `0x005F58BC` timeout/crash. V4 failed its final pre-selection smoke
+(`20260724T095739213Z-db16daa7` / `Fail`) and was rolled back to predecessor
+Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
+`NetLegacy.dll`. Phase 2 codec slice 2 is implemented and tested without
+enabling a listener, TLS, or UDP. Slice 3 `ILegacyByteTransport` extraction is
+next and specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
-but no TLS/UDP traffic has started. On failure: restore Net while Origin is
-V4, verify stock Net/no `NetLegacy.dll`, then run
-`PatchClientAvatarPreload.ps1 -Mode Revert`; park the issue and continue Phase
-2 without claiming acceptance. Exact commands are in
+but no TLS/UDP traffic has started. The issue is parked; Phase 2 continues
+without Phase 1 acceptance. Records:
 [`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
@@ -27,16 +28,13 @@ V4, verify stock Net/no `NetLegacy.dll`, then run
 - Two-client visibility sends server-built remote spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets in both directions.
 - Same-account relog behavior remains in place: a new login replaces the stale session.
 - The post-login bootstrap now matches the working server's exact 63-record manifest and trailing version record. That server parity is retained, but dump analysis proved the intermittent first-attempt account-switch crash was also a distinct native client lifecycle defect.
-- The installed V4 Origin candidate retains the two preview-builder guards,
-  initializes LOGIN synchronously after state registration, and guards the
-  later `0x005F58BC` state-transition fault. See
-  `docs/client-avatar-preview-crash-fix.md`.
 - Loading-gate v1 (`2D8199...`) failed by starving native processing. V2
   (`73E65F...`) fixed scheduling but failed cycle 3 when its five-second
   unready handoff stayed blank beyond 44 seconds. Readiness-only V3
-  (`17A721...`) still hit the native timeout/crash. Installed V4 schedules
-  state 2 from exact AfterLogin, retains preview order until readiness, and
-  guards the timeout. One cold smoke remains; this is not acceptance. See
+  (`17A721...`) still hit the native timeout/crash. V4 scheduled state 2 from
+  exact AfterLogin, retained preview order until readiness, and guarded the
+  timeout, but its final smoke failed earlier in login and is sealed `Fail`.
+  It is rolled back and not accepted. See
   `docs/client-avatar-preview-loading-gate.md`.
 - Captured opcode-10090 pages were identified in the native dispatcher as character-specific `MSG_PLAYER_ACCEPTQUESTS` records, not generic game-data bootstrap. Runtime replay is blocked until quests are implemented authoritatively; the separate dump diagnosis and future packet-order requirement are recorded in `docs/accepted-quest-login-crash-fix.md`.
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.

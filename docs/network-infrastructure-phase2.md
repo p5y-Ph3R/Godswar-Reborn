@@ -2,28 +2,41 @@
 
 ## Status
 
-- Specification version: `1.4`
+- Specification version: `1.6`
 - Last updated: `2026-07-24`
-- Runtime status: not implemented and not enabled
-- Predecessor status: one final cold V4 smoke pending; if it fails, V4 is
-  restored and this phase proceeds with the avatar issue parked, without a
-  false Phase 1 acceptance
+- Runtime status: slice 2 codecs implemented and tested; no listener, TLS, or
+  UDP runtime is enabled
+- Current next milestone: slice 3, extract `ILegacyByteTransport` and prove raw
+  stream parity
+- Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
+  complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Rejected V3 SHA-256:
   `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
 - V3 failure evidence:
   `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7`
-- Installed V4 Origin SHA-256:
+- Rejected V4 Origin SHA-256:
   `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
-- Installed V4 Net SHA-256:
+- Rejected V4 Net SHA-256:
   `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
-- Current V4 Net Apply/stock-restore backup:
+- Historical V4 Net Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
-- Current V4 Origin Apply backup:
+- Historical V4 Origin Apply backup:
   `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
-- Current V4 Net Apply manifest SHA-256:
+- Historical V4 Net Apply manifest SHA-256:
   `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
 - Historical V3 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
+- V4 evidence/result:
+  `artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7` /
+  `Fail`
+- Current predecessor Origin:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- Current stock Net:
+  `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
+- Current `NetLegacy.dll`: absent
+- Net/Origin Revert backups:
+  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-221318157` /
+  `C:\Reborn\backups\origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`
 
 Exact V1/V2 and pass-through recovery hashes/backups remain in the
 [Phase 1 runbook](network-infrastructure-phase1.md).
@@ -50,15 +63,10 @@ responsible for:
 
 The bridge carries the exact XOR-protected legacy byte stream as opaque
 `LegacyBytes` frames inside TLS. It does not decrypt, parse, or construct a
-legacy `CMsg`. The installed but unaccepted V4 gate is the one narrow ownership
-exception. It delegates native `Process()` every frame, may hold one audited
-opcode-`10002` native pointer while avatar resources load, and prevents polling
-past it so queue order is preserved. It returns that exact pointer only on
-readiness. V4 additionally requests state 2 on exact AfterLogin; its matched
-Origin patch synchronously initializes LOGIN after registration and guards the
-timeout path. A pointer still held is destroyed only on an explicit `Connect`,
-`DisConnect`, `Release`, or proxy-destruction lifecycle reset. TLS supplies
-confidentiality and integrity; XOR remains only to minimize compatibility risk.
+legacy `CMsg`. Phase 2 starts from predecessor Origin plus stock Net and
+preserves stock native-message ownership; the rejected V4 preview gate is not
+part of this phase. TLS supplies confidentiality and integrity; XOR remains
+only to minimize compatibility risk.
 
 This deliberately chooses compatibility over removing redundant obfuscation in
 the first secure phase. A later ADR may remove XOR from secure connections only
@@ -84,9 +92,9 @@ Current repository evidence:
 - Login currently upserts credentials rather than authenticating them.
 - Both stores overwrite an existing password, and game opcode `10000` calls the
   same operation with an empty password.
-- Installed V4 preserves the nine-slot ABI and adds only the documented
-  AfterLogin request and preview gate in Net. Its matched Origin lifecycle
-  hooks are independent of the future bridge.
+- The rejected V4 experiment preserved the nine-slot ABI, but its AfterLogin,
+  preview-gate, and Origin lifecycle hooks were rolled back and are not part of
+  the future bridge.
 
 The secure transport must therefore expose an ordered byte stream to the
 existing `ClientSession`, not replace gameplay handlers or reinterpret packet
@@ -135,6 +143,9 @@ The normative summary is:
 - Separate local ports `6599`/`7443`; future UDP `7444` is reserved but absent.
 - A 72-byte client preface, 40-byte server preface, and bounded 16-byte frame
   header in network byte order.
+- Implemented codecs use caller-owned buffers, tri-state incremental parsing,
+  exact consumed counts, role/direction checks, and disposable secret controls;
+  decoded grants remain syntax-only until signed policy validates them.
 - Opaque legacy XOR stream chunks remain byte-identical inside TLS.
 - An authenticated grant is committed before the legacy redirect is exposed.
 - A 60-second, server-stored, hashed, single-use ticket binds the game channel
@@ -265,15 +276,13 @@ credentials, ticket/cookie/key bytes, or raw packet payloads.
 Each slice is a separate reversible checkpoint. Format, build, test, and fix
 failures before continuing.
 
-1. Resolve the final V4 cold-smoke branch. Failure restores Net while Origin is
-   V4, verifies stock Net/no `NetLegacy.dll`, then runs
-   `PatchClientAvatarPreload.ps1 -Mode Revert` and parks the issue. Capture
-   exact game `SetHost` host/port and stock `GetStatus` transitions without
-   logging credentials or payloads.
-2. Add pure preface/frame/grant codecs, golden vectors, boundary tests, and
-   fuzz entry points. Nothing listens on a new port.
-3. Extract `ILegacyByteTransport`; prove the existing raw protocol tests and
-   captured streams remain byte-identical.
+1. Completed: pin the rolled-back predecessor client. Exact game `SetHost`
+   host/port and stock `GetStatus` capture remains a parked/open evidence item;
+   it is not a blocker for pure-codec work.
+2. Completed: pure preface/frame/grant/bind codecs, golden vectors, boundary
+   and fuzz checks. No listener or runtime transport was added.
+3. Current: extract `ILegacyByteTransport`; prove existing raw protocol tests
+   and captured streams remain byte-identical.
 4. Add bounded admission, tracked connection tasks, queues, deadlines, and
    metrics to the transport layer while keeping secure listeners disabled.
 5. Add the native loopback coordinator/pumps and lifecycle tests in an
@@ -286,29 +295,27 @@ failures before continuing.
    guarded backup, perform original-client parity, then disable raw external
    access in the secure profile.
 
+Focused slice-2 check:
+
+```powershell
+dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2"
+```
+
 ## Verification contract
 
 ### Final loading-gate V4 decision
 
-One cold V4 smoke remains before Phase 2 implementation starts:
+Evidence `20260724T095739213Z-db16daa7` is sealed `Fail`. Origin PID `64928`
+established redirected TCP to `127.1.1.110:7000`, but the server received no
+`LoginGameServer`; CharacterSelection, AfterLogin, and V4 preload never ran.
+No new dump appeared. This does not prove the preload path caused the stall,
+but it fails the agreed acceptance branch.
 
-1. Record installed Origin `E0F5BC95...D22F81C`, Net
-   `EF531F8C...817597`, both current Apply backups, and dump/error inventory.
-2. Start the existing server and launch the client cold.
-3. Confirm the 3D model appears automatically and world entry succeeds without
-   reaching the old roughly 15-second server-unavailable path.
-4. Confirm no new dump, crash, or `0x005F58BC` error.
-
-A pass records the observation but does not retroactively relabel V1/V2/V3.
-On failure, first restore Net while Origin is still V4 with
-`C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`. After Net
-is exact stock and `NetLegacy.dll` is absent, run the Origin patcher's
-`PatchClientAvatarPreload.ps1 -Mode Revert`; its Apply backup is
-`C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`.
-Then seal the failure and proceed with Phase 2 while the avatar issue remains
-parked. Do not implement another avatar iteration. The separately preserved
-pass-through `528913...D17A6DD` remains available if needed; historical Apply
-`...151248244` contains stock, not that candidate.
+The mandatory Net-first rollback completed. Current state is predecessor
+Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
+`NetLegacy.dll`. Phase 1 remains unaccepted. Do not implement another avatar
+iteration; proceed with Phase 2. Pass-through `528913...D17A6DD` remains a
+separate recovery candidate if later needed.
 
 ### Automated Phase 2 gates
 
@@ -328,13 +335,9 @@ pass-through `528913...D17A6DD` remains available if needed; historical Apply
 - Queue item/byte limits, stalled readers/writers, buffer return, reliable
   ordering, graceful overload/recovery, and proof one slow client cannot block
   another.
-- Native lifecycle tests: native `Process()` delegation on every frame, exact
-  opcode-`10002` pointer retention, preserved queue order, exact-pointer return
-  only on readiness, no timer release, and exact-once cleanup only on
-  `Connect`, `DisConnect`, `Release`, or destruction. Also cover repeated/failed
-  connect, double
-  disconnect, release without disconnect, concurrent grant claim, ticket
-  zeroization, no use-after-free, and stock-compatible `CMsg` allocation.
+- Codec ownership tests: caller-owned buffers, coalesced remainder, no generic
+  frame allocation, secret zeroization, disposal refusal, nonzero IDs, canonical
+  rejection fields, role/direction rejection, and syntax-only grant handling.
 - End-to-end login, grant-before-redirect ordering, game bind, world entry,
   account 7/13 switching, map/gameplay actions, clean shutdown, and long soak.
 - Packet capture/ETW proof that external credentials and game bytes are TLS,
@@ -350,12 +353,9 @@ allocation, work, logging, an uncaught exception, or a process crash.
 
 ## Rollback
 
-- Phase 2 begins after the final V4 decision branch. If V4 passes, its installer
-  first backs up the exact observed V4 Origin/Net pair, `NetLegacy.dll`,
-  endpoint manifest, and hashes. Failure restores Net while Origin is V4,
-  verifies stock Net/no `NetLegacy.dll`, then runs
-  `PatchClientAvatarPreload.ps1 -Mode Revert` and pins that predecessor; this
-  does not imply Phase 1 acceptance.
+- Phase 2 begins from the pinned rolled-back predecessor: Origin
+  `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, no `NetLegacy.dll`.
+  The completed V4 rollback does not imply Phase 1 acceptance.
 - Restore must be artifact-independent, idempotent, interruption-recoverable,
   and return the client to the exact predecessor selected by that branch.
 - Pass-through `528913...D17A6DD` remains an avatar-failure recovery
@@ -379,14 +379,13 @@ Phase 2 is accepted only when the original client authenticates over TLS,
 receives and stores a grant before redirect, binds the game connection with a
 single-use ticket, enters the world, completes the parity/soak matrix, fails
 closed without raw downgrade, and can be restored exactly to the pinned
-pre-Phase-2 client state. Runtime implementation is waiting only for the final
-V4 cold-smoke branch; V4 acceptance is not claimed now.
+pre-Phase-2 client state. Runtime implementation may now begin; V4 and Phase 1
+acceptance are not claimed.
 
-Still required before implementation:
+Still required during the transport implementation slices:
 
-- Final V4 cold-smoke result and the resulting exact predecessor/rollback
-  choice; failed V1/V2/V3 records cannot be reused as V4 evidence.
-- Observed game `SetHost` string/port and stock `GetStatus` transitions.
+- Parked/open, non-blocking for slice 3: observed game `SetHost`
+  string/port and stock `GetStatus` transitions.
 - Account password audit and an explicit reset plan for blank credentials.
 - Development CA, signed endpoint-manifest key custody, and certificate
   rotation procedure.

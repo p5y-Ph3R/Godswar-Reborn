@@ -8,6 +8,12 @@ Minimal .NET 10 server-side emulator for the Godswar Origin client protocol.
 dotnet run --project src\Godswar.Server
 ```
 
+Focused Phase 2 codec check:
+
+```powershell
+dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2"
+```
+
 ## Docker
 
 ```powershell
@@ -52,7 +58,7 @@ Implemented:
 - Stream XOR cipher and packet framing
 - Account auto-create
 - Character list, create, delete, and preview
-- Working-server-compatible 63-record post-login bootstrap manifest, including the trailing client version record; the installed V4 client candidate schedules native character-selection initialization, retains the exact preview until readiness, and guards all three audited null-resource sites
+- Working-server-compatible 63-record post-login bootstrap manifest, including the trailing client version record; the V4 avatar-preload experiment was rejected and rolled back after its final cold smoke failed before character selection
 - Camp-aware character starts: Sparta/camp 0 enters map 0 and Athens/camp 1 enters map 1 at the captured `(165, -97)` starting position
 - PostgreSQL-backed accounts and characters under Docker
 - Enter-game packet stream based on the Go reference
@@ -68,6 +74,7 @@ Implemented:
 - Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
+- Phase 2 secure-protocol codec slice: bounded preface/frame/grant/bind syntax and focused tests only; no listener, TLS, or UDP runtime is enabled, and `ILegacyByteTransport` extraction is next
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 
@@ -101,11 +108,14 @@ recreated the blank model. Readiness-only V3 (`17A72198...D878D1`) is also
 rejected: its immutable `20260724T043833399Z-2bd75dd7` run reproduced the
 about-15-second server-unavailable path and `0x005F58BC` null-root crash.
 Matched V4 Origin (`E0F5BC95...D22F81C`) and Net
-(`EF531F8C...817597`) are installed. V4 schedules native state 2 on the exact
-AfterLogin record, synchronously initializes LOGIN after registration, keeps
-the preview readiness-only hold, and guards the timeout path. Automated gates
-pass; one final cold live smoke is pending and acceptance is not claimed.
-Current status, immutable incident records, and the acceptance contract are in
+(`EF531F8C...817597`) passed automated gates but failed the final cold smoke
+before character selection: Origin connected to game TCP `7000`, but the server
+received no `LoginGameServer`, so AfterLogin and the V4 preload never ran. The
+sealed result is `20260724T095739213Z-db16daa7` / `Fail`; no dump was created.
+V4 was rolled back. The client now has predecessor Origin
+`753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`.
+The avatar issue is parked and Phase 2 proceeds without Phase 1 acceptance.
+Current status and immutable incident records are in
 [`docs/client-avatar-preview-loading-gate.md`](docs/client-avatar-preview-loading-gate.md).
 
 Important client-side files touched while allowing grade 25 / Boundless quality / rank testing:

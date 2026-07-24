@@ -2,27 +2,23 @@
 
 ## Status and ownership
 
-- Protocol version: `1.2`
+- Protocol version: `1.3`
 - Last updated: `2026-07-24`
-- Runtime status: specified only; not enabled; one final V4 cold-smoke branch
-  remains before implementation
-- Rejected V3 immutable failure evidence:
-  `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7`
-- Installed V4 Origin:
-  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
-- Installed V4 Net:
-  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+- Runtime status: codec slice 2 implemented and tested; no listener, TLS, or
+  UDP runtime is enabled; slice 3 `ILegacyByteTransport` extraction is next
+- Current predecessor Origin:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- Current stock Net:
+  `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
+- Current `NetLegacy.dll`: absent
 - Parent phase:
   [`network-infrastructure-phase2.md`](network-infrastructure-phase2.md)
 
 Exact V1–V4 rollback references remain in the
 [Phase 1 runbook](network-infrastructure-phase1.md).
 
-This is the normative TLS, framing, ticket, and x86 lifecycle contract. Bounds
-are normative unless labeled operational. V1–V3 are rejected. V4 automated
-gates pass, but acceptance is not claimed. Failure restores Net while Origin
-is V4, verifies stock Net/no `NetLegacy.dll`, then runs
-`PatchClientAvatarPreload.ps1 -Mode Revert` and parks the issue before Phase 2.
+This is the normative TLS, framing, ticket, and x86 lifecycle contract. V1–V4
+are rejected and rolled back; Phase 1 is unaccepted and the avatar issue parked.
 
 ## TLS policy
 
@@ -88,81 +84,9 @@ both protocols on one port. Raw listeners require an explicit development
 profile and loopback/private binding. Production startup fails if raw listeners
 are enabled or if secure certificate/configuration material is absent.
 
-### Signed endpoint manifest
-
-The manifest filename is module-relative `RebornNetwork.gwem`. It is at most
-4096 bytes. The 72-byte header is:
-
-| Offset | Size | Field | Version 1 rule |
-| ---: | ---: | --- | --- |
-| `0` | `4` | Magic | ASCII `GWEM` |
-| `4` | `4` | Total bytes | `146..3258` |
-| `8` | `2` | Header bytes | `72` |
-| `10` | `2` | Format major | `1` |
-| `12` | `2` | Format minor | `0` |
-| `14` | `1` | Environment | `1=dev`, `2=staging`, `3=production` |
-| `15` | `1` | Flags | Bit 0 is dev-only legacy passthrough |
-| `16` | `2` | Signature algorithm | `1=ECDSA-P256-SHA256-P1363` |
-| `18` | `2` | Public-key ID | Embedded current or next key |
-| `20` | `4` | Reserved | Zero |
-| `24` | `8` | Manifest sequence | Nonzero, monotonically increasing |
-| `32` | `8` | Not-before | Unix seconds |
-| `40` | `8` | Not-after | Unix seconds |
-| `48` | `2` | Minimum protocol major | `1` |
-| `50` | `2` | Minimum protocol minor | `0` initially |
-| `52` | `2` | Logical login port | Nonzero |
-| `54` | `2` | TLS login port | Nonzero |
-| `56` | `2` | Logical-host bytes | `1..253` |
-| `58` | `2` | TLS-host bytes | `1..253` |
-| `60` | `1` | Game-suffix count | `1..8` |
-| `61` | `1` | Audience count | `1..8` |
-| `62` | `1` | Server-ID count | `1..16` |
-| `63` | `1` | Reserved | Zero |
-| `64` | `4` | Signed bytes | `total - 64` |
-| `68` | `4` | Reserved | Zero |
-
-The body immediately follows:
-
-1. Exact logical-login host bytes from the header length.
-2. Exact TLS-login DNS host bytes from the header length.
-3. Each game DNS suffix as one length byte (`1..253`) then bytes.
-4. Each audience as one length byte (`1..64`) then bytes.
-5. Each permitted nonzero, unique server ID as a four-byte integer.
-
-Hosts/suffixes are canonical lower-case ASCII DNS names without a trailing dot;
-the logical host may instead be canonical dotted-decimal IPv4. Audiences match
-`[A-Za-z0-9._-]`. Duplicates, NULs, empty labels, unknown flags, and trailing
-body bytes are rejected. Production rejects the legacy-passthrough flag and a
-manifest for any other environment.
-
-Each suffix entry represents both its apex and its subdomains. A grant TLS host
-matches only when it is byte-for-byte equal to the suffix or ends with
-`"." + suffix`; raw `EndsWith(suffix)` is forbidden. Thus `game.example.com`
-and `example.com` match `example.com`, while `evil-example.com` does not.
-
-The final 64 bytes are the IEEE P1363 `r || s` ECDSA signature. SHA-256 and
-signature verification cover bytes `0..SignedBytes-1` exactly; DER signatures
-are not accepted. `SignedBytes + 64` must equal `TotalBytes`. The validity
-interval must contain current UTC, have `not-after > not-before`, and be no
-longer than 31 days.
-
-The shim embeds current and next verification public keys plus a minimum
-sequence per environment. The guarded installer maintains the highest accepted
-sequence in an administrators/SYSTEM-write, users-read registry value under
-`HKLM\Software\Reborn\NetworkManifest`; missing or corrupt state fails closed in
-`SecureRequired`. A manifest sequence below either compiled or installed
-minimum is rejected. Key rotation first ships a shim that trusts current and
-next IDs, then signs a higher-sequence manifest with the next key, and a later
-shim removes the old key and advances its compiled minimum.
-
-The loader opens the module-relative file without write sharing, rejects a
-reparse point or a final path outside the module directory, reads once into a
-fixed 4096-byte buffer, strictly parses, verifies the signature, and only then
-copies endpoints into runtime state. It never hot-reloads. The installer
-verifies a candidate with the same parser, atomically writes/flushes the higher
-registry minimum first, then atomically replaces and flushes the manifest from
-the same directory. An interruption between those steps fails closed and is
-repaired by installer recovery; it cannot reactivate the lower sequence.
+The exact bounded format, signature, rollback protection, loader, and key
+rotation contract is maintained separately in the
+[signed endpoint-manifest specification](network-infrastructure-phase2-endpoint-manifest.md).
 
 ## Encoding rules
 
@@ -171,8 +95,12 @@ copied exactly. Legacy bytes inside a `LegacyBytes` payload retain their current
 XOR state and little-endian framing.
 
 Unknown versions, roles, flags, sizes, reserved fields, payload bounds, or
-direction-specific frame types fail closed. A rejected connection receives no
-attacker-controlled diagnostic text.
+endpoint-role/direction combinations fail closed. Incremental readers return
+`NeedMore`, `Done`, or `Rejected` plus a consumed count; `Done` consumes exactly
+one value and leaves any coalesced remainder, while the other states consume
+zero. Sources and outputs are caller-owned buffers. There is no generic
+owning/copying frame object. Control-ticket temporary/output bytes must be
+cleared, and disposed grant/bind objects refuse secret access or encoding.
 
 ## Client preface
 
@@ -190,7 +118,7 @@ The first TLS application data sent by the shim is exactly 72 bytes:
 | `14` | `2` | Reserved | `0` |
 | `16` | `4` | Capabilities | `0`; UDP is unadvertised |
 | `20` | `4` | Maximum receive payload | `16384` |
-| `24` | `16` | Client-instance ID | Per-process CSPRNG bytes |
+| `24` | `16` | Client-instance ID | Nonzero per-process CSPRNG bytes |
 | `40` | `32` | `Origin.exe` SHA-256 | Compatibility evidence only |
 
 The client-instance ID is generated outside `DllMain`, shared by the login and
@@ -205,18 +133,20 @@ The server replies with exactly 40 bytes:
 | ---: | ---: | --- | --- |
 | `0` | `4` | Magic | ASCII `GWSS` |
 | `4` | `2` | Header size | `40` |
-| `6` | `2` | Selected major | `1` on success |
-| `8` | `2` | Selected minor | `0` on success |
+| `6` | `2` | Selected major | `1` for every status |
+| `8` | `2` | Selected minor | `0` for every status |
 | `10` | `1` | Status | Finite value below |
 | `11` | `1` | Echoed role | Must match listener |
 | `12` | `4` | Capabilities | Intersection; `0` in Phase 2 |
 | `16` | `4` | Maximum receive payload | `16384` |
 | `20` | `2` | Heartbeat seconds | Initially `30` |
 | `22` | `2` | Idle timeout seconds | Initially `90` |
-| `24` | `16` | TLS connection ID | Opaque; zero on rejection |
+| `24` | `16` | TLS connection ID | Nonzero on success; zero on rejection |
 
 Status values are `0=ok`, `1=unsupported-version`, `2=wrong-endpoint`,
 `3=unsupported-build`, `4=server-busy`, and `5=policy-rejected`.
+Every status encodes canonical version `1.0`, capabilities `0`, maximum payload
+`16384`, heartbeat `30`, and idle timeout `90`.
 
 ## Outer frame
 
@@ -272,17 +202,20 @@ login server sends type `0x0200`:
 | `68` | `N` | Route host, then TLS DNS host, then audience |
 
 Both hosts are strict ASCII DNS A-label names. Audience is a strict
-`[A-Za-z0-9._-]` token. None may contain a NUL or trailing bytes, and both ports
-must be nonzero. The total length is exactly
-`68 + route + TLS-host + audience`. The subsequent legacy redirect contains
-the same logical route host and port. The shim stores the authenticated grant
-before forwarding following legacy bytes to `NetLegacy.dll`; if storage fails,
-Origin never sees the redirect.
+`[A-Za-z0-9._-]` token. None may contain a NUL or trailing bytes. Both ports,
+the target server ID, grant ID, and ticket must be nonzero. The total length is
+exactly `68 + route + TLS-host + audience`. The subsequent legacy redirect
+contains the same logical route host and port. The shim stores the
+authenticated grant before forwarding following legacy bytes to
+`NetLegacy.dll`; if storage fails, Origin never sees the redirect.
 
 The route can be a short non-secret synthetic name. `Origin.exe` passes it to a
 new proxy object's `SetHost`; the shim atomically matches it to the pending
 grant and substitutes the process-local listener. Only the authenticated grant
 contains the real TLS DNS endpoint.
+
+A decoded grant is syntax-only. It cannot be used until signed-manifest and
+redirect policy validate its hosts, ports, audience, target, and route match.
 
 ## Game bind
 
@@ -295,10 +228,11 @@ The first game-channel frame after its successful preface is type `0x0201`:
 | `4` | `16` | Game-grant ID |
 | `20` | `32` | Ticket |
 
-The server replies with type `0x0202`: a two-byte finite status followed by two
-zero reserved bytes. Status `0` means accepted. All failure cases use bounded
-generic statuses and close. No `LegacyBytes`, `GameClientHandler`, world state,
-or stale-session replacement is allowed before a successful bind.
+Grant ID and ticket must be nonzero. The server replies with type `0x0202`: a
+two-byte `BindResult` (`0=accepted`, `1=rejected`, `2=server-busy`,
+`3=policy-rejected`) followed by two zero reserved bytes. All failures close.
+The channel-phase gate remains mandatory before any secure listener/legacy
+handler path; this syntax-only slice deliberately does not claim it or runtime.
 
 ## Ticket policy
 
@@ -352,15 +286,10 @@ network objects.
 4. Game `Connect` establishes TLS/preface, sends the claimed bind, and requires
    acceptance before opening the local leg in the same listen/begin-accept/
    stock-connect/accept-complete order. It then wipes the ticket.
-5. `SendMsg` and native `Process()` stay delegated every frame. The V4 gate is
-   the only `PickMsg`/`GetMsgNum` exception: it may request state 2 on exact
-   AfterLogin, hold exactly one audited opcode-`10002` native pointer, and must
-   not poll past it, preserving order. It returns that exact pointer only on
-   readiness. The matched Origin patch synchronously initializes LOGIN after
-   state registration and guards `0x005F58BC`. An explicit `Connect`,
-   `DisConnect`, `Release`, or proxy destruction reset invokes the stock
-   virtual destructor for a pointer still held. A bridge failure may close the
-   loopback socket but does not dispose that pointer.
+5. `SendMsg`, native `Process()`, `PickMsg`, and `GetMsgNum` remain delegated
+   with stock ownership every frame. The rejected V4 preview gate is not part
+   of Phase 2. A bridge failure may close the loopback socket but may not
+   dispose a native message pointer.
 6. `DisConnect` and `Release` are idempotent coordinated shutdowns: signal stop,
    close handles, join workers, wipe secrets, unregister, then call the stock
    method. No detached worker may retain a proxy.

@@ -2,19 +2,20 @@
 
 ## Version and status
 
-- Document version: `1.12`
+- Document version: `1.13`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: final Phase 1 compatibility candidate. V1, V2, and V3 are
-  rejected. Matched V4 Origin/Net is installed with automated gates passing
-  and one cold live smoke pending. No secure listener or bridge is enabled.
-  On failure, restore Net while Origin is V4, verify stock Net/no
-  `NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert` and
-  proceed to Phase 2 with the avatar issue parked; do not relabel Phase 1 as
-  accepted.
+- Current milestone: Phase 2 slice 3 `ILegacyByteTransport` extraction. Slice 2
+  bounded preface/frame/grant/bind codecs and focused tests are complete, but
+  no listener, TLS, or UDP runtime is enabled. V1–V4 are rejected and Phase 1
+  is not accepted. V4 smoke
+  `20260724T095739213Z-db16daa7` failed before character selection and was
+  rolled back to Origin `753BE49F...9ED79`, stock Net
+  `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`. The avatar issue is parked. No
+  secure listener or bridge is enabled.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -61,8 +62,8 @@ has the following pinned contract:
   `Release`, `SetHost`, `Connect`, `DisConnect`, `Process`, `GetStatus`,
   `PickMsg`, `SendMsg`, and `GetMsgNum`
 
-The currently supported V4 `Origin.exe` SHA-256 is
-`E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`.
+The current predecessor `Origin.exe` SHA-256 is
+`753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`.
 An unknown client or legacy DLL is a new compatibility target and must be
 audited instead of forced through the installer.
 
@@ -150,21 +151,22 @@ seconds, then disposed it and disconnected. V2 delegated `Process` but its
 five-second unready handoff recreated the blank model. V3 preserved continuous
 processing, pointer identity, and readiness-only release, but its cold
 account-13 run still reached the native roughly 15-second timeout and
-`0x005F58BC` null-root crash. Installed V4 also schedules state 2 on exact
-AfterLogin, synchronously invokes the native LOGIN initializer after
-registration, and guards the timeout path.
+`0x005F58BC` null-root crash. V4 also scheduled state 2 on exact AfterLogin,
+synchronously invoked the native LOGIN initializer after registration, and
+guarded the timeout path. Its final smoke connected to TCP `7000`, but the
+server received no `LoginGameServer`, so those paths never ran. It was rejected
+and rolled back.
 
 ### Phase 2 client bridge contract
 
 The shim will run a loopback bridge inside the `Origin.exe` process. It will
 point the verified `NetLegacy.dll` at that private listener, preserve the stock
 XOR/framing parser and proprietary `CMsg` allocation, and carry the unwrapped
-stream externally over TLS. Once accepted, the Phase 1 preview gate is the only
-approved `PickMsg`-lifetime exception: one exact native pointer may be retained
-until readiness. The same pointer is then returned to Origin. It is destroyed
-by the shim only if an explicit
-`Connect`, `DisConnect`, `Release`, or destruction reset still owns it. There
-is no launcher or separate gateway process.
+stream externally over TLS. Phase 2 starts from predecessor Origin plus stock
+Net; the rejected V4 `PickMsg` preview gate is not installed or accepted.
+Phase 2 must preserve stock `PickMsg` ownership unless a separately reviewed
+and accepted correction supersedes this parked issue. There is no launcher or
+separate gateway process.
 
 The two client objects used for login and game connections need one
 process-local coordinator. The login TLS connection supplies an account-,
@@ -176,9 +178,8 @@ The initial secure login endpoint comes from guarded local configuration. A
 versioned authenticated redirect selects the game endpoint. Both use a DNS
 certificate name for SNI and platform-root validation; local development uses
 an explicitly installed development CA, never a validation bypass. Certificate
-rotation, endpoint/config signing, and the versioned outer TLS preface/framing
-are blocking Phase 2 protocol decisions. TLS failure cannot downgrade to raw
-TCP.
+rotation and endpoint/config signing remain runtime prerequisites; outer
+preface/framing syntax is implemented. TLS failure cannot downgrade to raw TCP.
 
 ### Server seam
 
@@ -257,23 +258,24 @@ or rate limiting alone is not volumetric DDoS protection.
 
 ### Phase 1 — reversible client compatibility seam
 
-Status: not accepted. V1, V2, and V3 are rejected. Matched V4 is
-`InstalledExact`; automated gates pass and one final cold live smoke is
-pending.
+Status: not accepted; V1–V4 are rejected and rolled back.
 
 The exact V1–V4 hashes, backups, manifests, and evidence IDs live in the
 [Phase 1 runbook](network-infrastructure-phase1.md). V1 starved processing; V2
 released while unready; V3's immutable
 `20260724T043833399Z-2bd75dd7` run reproduced the roughly 15-second
-server-unavailable path and `0x005F58BC` null-root crash. Current V4 is Origin
-`E0F5BC95...D22F81C` plus Net `EF531F8C...817597`; see the
+server-unavailable path and `0x005F58BC` null-root crash. V4's sealed
+`20260724T095739213Z-db16daa7` smoke failed before CharacterSelection,
+AfterLogin, or preload ran. Current state is predecessor Origin
+`753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`; see
+the
 [V3 failure](client-avatar-preview-v3-failure-20260724.md).
 
 Deliverables:
 
 - Win32/x86 `Net.dll` with the exact two named exports and ordinals.
 - Nine-slot proxy that delegates to the pinned `NetLegacy.dll`.
-- Installed exact-pointer character-preview loading gate with continuous
+- Experimental exact-pointer character-preview loading gate with continuous
   native processing, preserved order, readiness-only release, exact AfterLogin
   state-2 scheduling, synchronous native LOGIN initialization, guarded timeout,
   and lifecycle-reset cleanup, documented in
@@ -294,13 +296,10 @@ Exit gate:
 - Installed client completes the manual parity test below.
 - Rollback is proven.
 
-Phase 1 intentionally has no TLS, UDP, server, database, config, or
-gameplay-state change. V4 includes the documented reversible `Origin.exe`
-lifecycle hooks plus the narrow shim scheduling/preview changes. It remains
-unaccepted until the final cold smoke passes. Failure uses the ordered Net
-restore, stock Net/no `NetLegacy.dll` verification, then
-`PatchClientAvatarPreload.ps1 -Mode Revert`; retain the record and continue
-Phase 2 rather than claiming acceptance.
+Phase 1 intentionally made no TLS, UDP, server, database, config, or
+gameplay-state change. Its final smoke is sealed `Fail`; the mandatory Net-first
+rollback completed. Retain the record and continue Phase 2 without claiming
+Phase 1 acceptance.
 
 ### Phase 2 — framing bridge, TLS, and real authentication
 
@@ -310,7 +309,10 @@ Exact wire protocol and client lifecycle:
 [`docs/network-infrastructure-phase2-protocol.md`](network-infrastructure-phase2-protocol.md).
 
 - Golden-test current login/game streams.
-- Add the server transport seam and bounded queues without byte changes.
+- Slice 2 pure codecs are implemented with bounded incremental parsing,
+  caller-owned buffers, secret disposal/clearing, and role/direction checks.
+- Extract `ILegacyByteTransport` next and prove byte-identical raw transport
+  before adding listeners or bounded queues.
 - Add separate TLS ports; never sniff raw and TLS on one port.
 - Specify a versioned outer preface, compatibility/error behavior, maximum
   fields, SNI/hostname validation, development trust, and certificate rotation.
@@ -367,9 +369,9 @@ and incident-response gates pass. Local results are not production guarantees.
 ## Phase 1 verification and rollback
 
 The exact build prerequisites, automated suites, guarded Apply/Restore commands,
-interactive parity checklist, and pending acceptance record live in
+interactive parity checklist, sealed failure, and rollback record live in
 [`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
-Phase 1 remains unaccepted until that record passes.
+Phase 1 is closed as unaccepted; Phase 2 proceeds with the avatar issue parked.
 
 ## Known limitations and unresolved decisions
 
