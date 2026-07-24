@@ -1,0 +1,225 @@
+[CmdletBinding()]
+param(
+    [string]$ClientRoot = 'C:\Godswar Origin',
+
+    [string]$ApplyBackupPath =
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594'
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
+Import-Module (
+    Join-Path $PSScriptRoot 'ClientNetworkShimParityEvidence.psm1'
+) -Force
+
+function New-TestApplyBackup {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ClientPath,
+        [Parameter(Mandatory)][string]$CreatedUtc,
+        [Parameter(Mandatory)][string]$OriginSha256,
+        [Parameter(Mandatory)][string]$ShimSha256,
+        [Parameter(Mandatory)][string]$LegacySha256,
+        [Parameter(Mandatory)][string]$StockSource
+    )
+
+    New-Item -ItemType Directory -Path $Path | Out-Null
+    Copy-Item -LiteralPath $StockSource `
+        -Destination (Join-Path $Path 'Net.dll')
+    Write-ParityJsonNew ([ordered]@{
+        schemaVersion = 1
+        installerVersion = 'test'
+        mode = 'Apply'
+        createdUtc = $CreatedUtc
+        clientRoot = [IO.Path]::GetFullPath($ClientPath).TrimEnd('\')
+        originSha256 = $OriginSha256
+        before = [ordered]@{
+            state = 'Stock'
+            netSha256 = $LegacySha256
+            netLegacySha256 = $null
+        }
+        after = [ordered]@{
+            netSha256 = $ShimSha256
+            netLegacySha256 = $LegacySha256
+        }
+    }) (Join-Path $Path 'manifest.json')
+}
+
+function Write-TestObservation {
+    param(
+        [Parameter(Mandatory)][string]$RunRoot,
+        [Parameter(Mandatory)][string]$RunId,
+        [Parameter(Mandatory)][string]$ClientPath,
+        [Parameter(Mandatory)][string]$Stage,
+        [Parameter(Mandatory)][int]$AccountId,
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][string]$StartedUtc,
+        [Parameter(Mandatory)][string]$ObservedUtc,
+        [Parameter(Mandatory)][string]$OriginSha256,
+        [Parameter(Mandatory)][string]$ShimSha256,
+        [Parameter(Mandatory)][string]$LegacySha256
+    )
+
+    $isStock = $Stage -eq 'StockRollback'
+    $modules = @(
+        [ordered]@{
+            name = 'Net.dll'
+            path = Join-Path $ClientPath 'Net.dll'
+            diskSha256 = if ($isStock) {
+                $LegacySha256
+            } else {
+                $ShimSha256
+            }
+        }
+    )
+    if (-not $isStock) {
+        $modules += [ordered]@{
+            name = 'NetLegacy.dll'
+            path = Join-Path $ClientPath 'NetLegacy.dll'
+            diskSha256 = $LegacySha256
+        }
+    }
+    $path = Join-Path (
+        Join-Path $RunRoot 'observations'
+    ) ("synthetic-$ProcessId.json")
+    Write-ParityJsonNew ([ordered]@{
+        schemaVersion = 1
+        runId = $RunId
+        observedUtc = $ObservedUtc
+        stage = $Stage
+        accountId = $AccountId
+        process = [ordered]@{
+            id = $ProcessId
+            startedUtc = $StartedUtc
+            path = Join-Path $ClientPath 'Origin.exe'
+        }
+        install = [ordered]@{
+            state = if ($isStock) { 'Stock' } else { 'InstalledExact' }
+            originSupported = $true
+            originSha256 = $OriginSha256
+        }
+        modules = $modules
+        connections = @(
+            [ordered]@{
+                remote = '127.1.1.110:7000'
+                state = 'Established'
+            }
+        )
+        passed = $true
+        validationErrors = @()
+    }) $path
+    Write-ParityTextNew (
+        (Get-ParitySha256 $path) + [Environment]::NewLine
+    ) "$path.sha256"
+}
+
+if (@(Get-Process -Name Origin -ErrorAction SilentlyContinue).Count -gt 0) {
+    throw 'Close Origin.exe before running the Complete integration test.'
+}
+$changes = @(& git -C $repoRoot status --porcelain=v1)
+if ($LASTEXITCODE -ne 0 -or $changes.Count -ne 0) {
+    throw 'The Complete integration test requires a clean repository.'
+}
+
+$artifactParent = [IO.Path]::GetFullPath(
+    (Join-Path $repoRoot 'artifacts\network-shim-parity-tests')
+).TrimEnd('\')
+$testRoot = Join-Path $artifactParent (
+    'complete-' + [guid]::NewGuid().ToString('N')
+)
+New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
+
+try {
+    $client = Join-Path $testRoot 'client'
+    New-Item -ItemType Directory -Path $client | Out-Null
+    foreach ($name in @('Origin.exe', 'Net.dll', 'NetLegacy.dll')) {
+        Copy-Item -LiteralPath (Join-Path $ClientRoot $name) `
+            -Destination (Join-Path $client $name)
+    }
+    $hashes = @(
+        Get-ParitySha256 (Join-Path $client 'Origin.exe')
+        Get-ParitySha256 (Join-Path $client 'Net.dll')
+        Get-ParitySha256 (Join-Path $client 'NetLegacy.dll')
+    )
+    $stock = Join-Path $ApplyBackupPath 'Net.dll'
+    $original = Join-Path $testRoot 'original-backup'
+    New-TestApplyBackup `
+        $original $client '2026-07-23T00:00:00Z' `
+        $hashes[0] $hashes[1] $hashes[2] $stock
+    $begin = & $tool `
+        -Mode Begin `
+        -ClientRoot $client `
+        -OriginalApplyBackupPath $original `
+        -EvidenceRoot (Join-Path $testRoot 'evidence') `
+        -Operator 'automated-test'
+    $manifest = Get-Content -LiteralPath (
+        Join-Path $begin.EvidencePath 'manifest.json'
+    ) -Raw | ConvertFrom-Json
+    $base = [DateTimeOffset]$manifest.startedUtc
+    for ($index = 0; $index -lt 5; $index++) {
+        Write-TestObservation `
+            $begin.EvidencePath $manifest.runId $client 'ShimParity' `
+            $(if ($index % 2 -eq 0) { 7 } else { 13 }) `
+            (300 + $index) `
+            $base.AddMilliseconds(($index * 2) + 1).ToString('O') `
+            $base.AddMilliseconds(($index * 2) + 2).ToString('O') `
+            $hashes[0] $hashes[1] $hashes[2]
+    }
+    Write-TestObservation `
+        $begin.EvidencePath $manifest.runId $client 'StockRollback' 7 400 `
+        $base.AddMilliseconds(11).ToString('O') `
+        $base.AddMilliseconds(12).ToString('O') `
+        $hashes[0] $hashes[1] $hashes[2]
+    $final = Join-Path $testRoot 'final-backup'
+    New-TestApplyBackup `
+        $final $client `
+        $base.AddMilliseconds(13).ToString('O') `
+        $hashes[0] $hashes[1] $hashes[2] $stock
+    Write-TestObservation `
+        $begin.EvidencePath $manifest.runId $client 'FinalReapply' 7 401 `
+        $base.AddMilliseconds(14).ToString('O') `
+        $base.AddMilliseconds(15).ToString('O') `
+        $hashes[0] $hashes[1] $hashes[2]
+    Start-Sleep -Milliseconds 25
+    $complete = & $tool `
+        -Mode Complete `
+        -EvidencePath $begin.EvidencePath `
+        -FinalApplyBackupPath $final `
+        -Operator 'automated-test' `
+        -CompletedCycles 5 `
+        -SoakMinutes 10 `
+        -ChecklistPassed `
+        -LogsReviewed `
+        -NoBehaviorDifference
+    if ($complete.Result -ne 'Pass') {
+        throw 'A valid synthetic Complete integration was rejected.'
+    }
+    $status = & $tool -Mode Status -EvidencePath $begin.EvidencePath
+    if ($status.State -ne 'Pass') {
+        throw 'Status did not verify the checksummed completion.'
+    }
+    foreach ($name in @(
+        'completion.json',
+        'completion.sha256',
+        'acceptance.md',
+        'acceptance.sha256'
+    )) {
+        if (-not (Test-Path -LiteralPath (
+                Join-Path $begin.EvidencePath $name
+            ) -PathType Leaf)) {
+            throw "Complete did not create $name."
+        }
+    }
+    Write-Host 'Clean-worktree Complete integration passed.'
+}
+finally {
+    $resolved = [IO.Path]::GetFullPath($testRoot).TrimEnd('\')
+    if ($resolved.StartsWith(
+            $artifactParent + '\',
+            [StringComparison]::OrdinalIgnoreCase) -and
+        $resolved -ne $artifactParent -and
+        (Test-Path -LiteralPath $resolved -PathType Container)) {
+        Remove-Item -LiteralPath $resolved -Recurse -Force
+    }
+}

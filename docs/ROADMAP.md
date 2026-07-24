@@ -11,7 +11,9 @@ reversible, behavior-preserving `Net.dll` compatibility seam; the next TLS
 phase is specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
 but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
-parity, and rollback gates pass.
+parity, and rollback gates pass. The exact operator commands and pending
+evidence record are in
+[`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

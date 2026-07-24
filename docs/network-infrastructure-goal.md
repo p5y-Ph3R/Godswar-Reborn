@@ -2,7 +2,7 @@
 
 ## Version and status
 
-- Document version: `1.5`
+- Document version: `1.6`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
@@ -379,3 +379,8 @@ Phase 1 remains unaccepted until that record passes.
   game-ticket binding, bounded resources/deadlines, credential migration,
   verification slices, and exact rollback target. Runtime remains disabled
   until Phase 1 interactive acceptance.
+- `1.6` (`2026-07-24`): Added a bounded, read-only Phase 1 evidence recorder
+  with checksummed manifests/observations, exact loaded-module verification,
+  five-launch alternation, dump comparison, and enforced stock rollback plus
+  final-reapply proof. The audit found no post-install client run, so the gate
+  remains pending.

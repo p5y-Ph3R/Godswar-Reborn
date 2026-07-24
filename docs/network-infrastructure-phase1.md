@@ -20,11 +20,12 @@ begin.
 
 ## Build and automated verification
 
-Run both suites:
+Run the automated suites:
 
 ```powershell
 .\tools\TestClientNetworkShim.ps1
 .\tools\TestClientNetworkShimInstaller.ps1
+.\tools\TestClientNetworkShimParity.ps1
 ```
 
 The native suite:
@@ -47,6 +48,13 @@ custom-candidate validation, decoy rejection, Stock and RecoverablePartial
 installs, idempotency, artifact-independent Restore, resumable interrupted
 Restore, foreign legacy/unknown state, unsupported `Origin.exe`, and a running-
 client refusal.
+
+The parity-evidence suite covers manifests and checksums, hidden dump/log
+evidence, semantic launch/module/connection validation, account/stage ordering,
+time bounds, backup chronology, refusal paths, and checksummed completion. On a
+clean worktree it also runs
+`tools\TestClientNetworkShimParityComplete.ps1`, which exercises a successful
+synthetic Begin-to-Complete record against a disposable client copy.
 
 Reproducible release builds require Visual Studio 2022 MSVC tools
 `14.44.35207` and Windows SDK `10.0.26100.0`. Matching hashes are guaranteed
@@ -87,6 +95,39 @@ was restored but `NetLegacy.dll` cleanup was interrupted, Status reports
 
 ## Interactive parity acceptance
 
+Use the read-only evidence recorder for this gate. It never launches, stops,
+restores, applies, or otherwise modifies the client or server. It only records
+bounded, checksummed evidence beneath the gitignored `artifacts` directory.
+Start from a clean repository with `Origin.exe` closed:
+
+```powershell
+$run = .\tools\InvokeClientNetworkShimParity.ps1 -Mode Begin
+$evidence = $run.EvidencePath
+$evidence
+```
+
+Copy the exact printed evidence path if testing continues in another
+PowerShell session. For each in-world launch, record it while `Origin.exe` is
+still open:
+
+```powershell
+.\tools\InvokeClientNetworkShimParity.ps1 `
+  -Mode Observe `
+  -EvidencePath $evidence `
+  -Stage ShimParity `
+  -AccountId 7
+```
+
+Fully close and relaunch between observations. Record five complete shim
+launches in the order `7, 13, 7, 13, 7`, changing `-AccountId` accordingly.
+An observation verifies the exact process path, installed hashes, loaded
+`Net.dll` and `NetLegacy.dll` paths/hashes, a distinct process start, and an
+established connection to `127.1.1.110:7000`. It does not infer the logged-in
+account or gameplay result; those remain operator attestations. A failed
+observation fails that evidence run rather than being silently ignored.
+The SHA-256 sidecars expose accidental edits; they are not an authenticity
+boundary against a local operator who can rewrite both evidence and checksum.
+
 1. Preflight: `docker ps` reports `godswar-server` up; host listeners exist on
    `127.1.1.110:5998` and `:7000`; installer Status is `InstalledExact`.
 2. Record file names, sizes, and timestamps under `C:\Godswar Origin\Dump`,
@@ -105,9 +146,44 @@ was restored but `NetLegacy.dll` cleanup was interrupted, Status reports
    smoke. Apply the verified shim again and run one final login/world-entry
    smoke. Record the new Apply backup printed by the final Apply.
 
+Record the stock and reapply launches with `-Stage StockRollback` and
+`-Stage FinalReapply`, respectively. Both use the same `Observe` command and
+the actual account ID. After closing the final client, complete the record:
+
+```powershell
+.\tools\InvokeClientNetworkShimParity.ps1 `
+  -Mode Complete `
+  -EvidencePath $evidence `
+  -FinalApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-...' `
+  -CompletedCycles 5 `
+  -SoakMinutes 10 `
+  -ChecklistPassed `
+  -LogsReviewed `
+  -NoBehaviorDifference `
+  -Notes 'Five alternating launches, rollback, and reapply behaved normally.'
+```
+
+`Complete` fails closed unless the repository and server instance are unchanged,
+all required launches are present in order, the final install is exact, the
+original backup is unchanged, the final Apply produced a new valid backup, no
+dump changed, and the manual checks are attested. A pass writes tool-enforced
+write-once, checksummed `completion.json` and `acceptance.md` files inside the
+evidence path. Inspect progress at any time with:
+
+```powershell
+.\tools\InvokeClientNetworkShimParity.ps1 `
+  -Mode Status `
+  -EvidencePath $evidence
+```
+
 Any difference or crash fails Phase 1 and triggers Restore.
 
 ## Interactive acceptance record
+
+The 2026-07-24 evidence audit found no post-install client run: the latest
+client/server activity preceded the 11:25 NZST shim installation. Therefore
+this record correctly remains pending; pre-install logs are not parity
+evidence.
 
 | Field | Value |
 | --- | --- |
