@@ -2,17 +2,20 @@
 
 ## Status
 
-- Specification version: `1.1`
+- Specification version: `1.2`
 - Last updated: `2026-07-24`
 - Runtime status: not implemented and not enabled
 - Predecessor status: blocked pending avatar-preview loading-gate V2 live
   acceptance
-- Stable installed rollback shim SHA-256:
+- Historical network-stable recovery shim SHA-256:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
-- Stable Apply backup:
+- Historical pass-through Apply evidence:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Current V2 candidate SHA-256 (not installed):
+- Installed V2 SHA-256:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
+- V2 state/time: `InstalledExact` / `2026-07-24T03:55:57Z`
+- Current V2 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
 
 Loading-gate V1
 `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
@@ -34,8 +37,8 @@ responsible for:
 
 The bridge carries the exact XOR-protected legacy byte stream as opaque
 `LegacyBytes` frames inside TLS. It does not decrypt, parse, or construct a
-legacy `CMsg`. The pending V2 loading gate is the one narrow ownership
-exception. It delegates native `Process()` every frame, may hold exactly one
+legacy `CMsg`. The installed but unaccepted V2 loading gate is the one narrow
+ownership exception. It delegates native `Process()` every frame, may hold one
 audited opcode-`10002` native pointer while avatar resources load, and prevents
 polling past it so queue order is preserved. It returns that exact pointer on
 readiness or after a guarded five-second fallback. The fallback does not
@@ -69,10 +72,9 @@ Current repository evidence:
 - Login currently upserts credentials rather than authenticating them.
 - Both stores overwrite an existing password, and game opcode `10000` calls the
   same operation with an empty password.
-- The stable installed pass-through proxy preserves the nine-slot ABI and
-  delegates traffic unchanged. The uninstalled V2 candidate adds only the
-  documented preview loading gate, so the bridge can still be added without
-  patching `Origin.exe` after that candidate passes live acceptance.
+- Installed V2 preserves the nine-slot ABI and adds only the documented preview
+  gate. The bridge can still be added without patching `Origin.exe` after V2
+  passes live acceptance.
 
 The secure transport must therefore expose an ordered byte stream to the
 existing `ClientSession`, not replace gameplay handlers or reinterpret packet
@@ -251,7 +253,7 @@ credentials, ticket/cookie/key bytes, or raw packet payloads.
 Each slice is a separate reversible checkpoint. Format, build, test, and fix
 failures before continuing.
 
-1. Accept the avatar-preview loading-gate V2 candidate manually; capture exact
+1. Accept the installed avatar-preview loading-gate V2 manually; capture exact
    game `SetHost` host/port and stock `GetStatus` transitions without logging
    credentials or payloads.
 2. Add pure preface/frame/grant codecs, golden vectors, boundary tests, and
@@ -274,12 +276,10 @@ failures before continuing.
 
 ### Required loading-gate V2 manual acceptance
 
-Phase 2 remains blocked while the V2 candidate is uninstalled and lacks a live
-acceptance record. After installing it through a guarded backup:
+Phase 2 remains blocked while installed V2 lacks a live acceptance record:
 
-1. Record the starting stable shim hash and backup, the installed candidate
-   hash, and the exact restoration path.
-2. Start the existing server and run the candidate client normally.
+1. Record the installed V2 hash, current Apply backup, and exact recovery path.
+2. Start the existing server and run the V2 client normally.
 3. Log in to account 7, enter the world, move/map-transition, fight, use a
    skill, manipulate inventory/equipment, and exercise one NPC/forge action.
 4. Fully exit `Origin.exe`, log in to account 13, and repeat.
@@ -289,12 +289,17 @@ acceptance record. After installing it through a guarded backup:
    it must return the exact pointer without gate-initiated disposal or
    disconnect, but does not guarantee a model if resources never become ready.
 7. Confirm no new dump, crash, or error-log entry.
-8. Restore the stable pass-through shim, verify its recorded hash, and repeat
-   one world entry.
+8. Restore V2 with Apply backup
+   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`,
+   verify exact stock hash `1CC3F9...BCA00C`, and run one stock login smoke.
+9. On failure, recover pass-through `528913...D17A6DD` by guarded Apply with
+   `-ShimPath C:\Reborn\backups\client-network-shim-v1-Revert-20260724-155518012\Net.dll`.
+   On success, reapply verified V2 and run the final world-entry smoke.
 
 Failure of the intended loading behavior, or any other unintended behavioral
-difference, fails the gate and restores
-`C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`.
+difference, fails the gate and follows the stock Restore plus pass-through
+recovery sequence above. The historical Apply `...151248244` contains stock,
+not the `528913...` candidate.
 
 ### Automated Phase 2 gates
 
@@ -336,11 +341,13 @@ allocation, work, logging, an uncaught exception, or a process crash.
 
 ## Rollback
 
-- Phase 2 installation first backs up the exact installed stable rollback
-  `Net.dll`, `NetLegacy.dll`, endpoint manifest, and hashes.
+- Phase 2 may begin only after V2 acceptance. Its installer first backs up the
+  exact accepted V2 `Net.dll`, `NetLegacy.dll`, endpoint manifest, and hashes.
 - Restore must be artifact-independent, idempotent, interruption-recoverable,
-  and return the shim to
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`.
+  and return the shim to accepted V2 hash
+  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`.
+- Pass-through `528913...D17A6DD` remains the current V2-failure recovery
+  candidate; it is not the future Phase 2 direct rollback target.
 - Restore must never select the historical failed loading-gate V1 hash
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`.
 - `NetLegacy.dll` remains at
@@ -357,7 +364,7 @@ allocation, work, logging, an uncaught exception, or a process crash.
 Phase 2 is accepted only when the original client authenticates over TLS,
 receives and stores a grant before redirect, binds the game connection with a
 single-use ticket, enters the world, completes the parity/soak matrix, fails
-closed without raw downgrade, and can be restored exactly to the stable shim.
+closed without raw downgrade, and can be restored exactly to accepted V2.
 It remains blocked until loading-gate V2 has a successful live acceptance
 record.
 

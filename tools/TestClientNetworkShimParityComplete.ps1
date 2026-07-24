@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244',
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621',
 
     [string]$CandidateShimPath
 )

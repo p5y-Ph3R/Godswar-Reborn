@@ -8,17 +8,23 @@ The first loading-gate build failed live validation and was rolled back:
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 - historical v1 Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083`
-- installed stable pass-through shim SHA-256:
+- historical network-stable pass-through shim SHA-256:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
-- stable rollback Apply backup:
+- historical pass-through Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
 
-The current v2 candidate is not installed and has not passed live validation:
+V2 was installed as `InstalledExact` at `2026-07-24T03:55:57Z`.
+Automated build and disposable installer gates pass; live account-switch
+acceptance remains pending:
 
-- candidate SHA-256:
+- installed `Net.dll` SHA-256:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- state: repository candidate; pending install, account-switch parity, soak,
-  rollback, and reapply evidence
+- current V2 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
+- Apply manifest SHA-256:
+  `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`
+- acceptance state: pending account-switch parity, soak, rollback, and reapply
+  evidence
 
 The immutable v1 failure record and dump evidence are in
 [`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
@@ -76,7 +82,7 @@ Disassembly of Origin's caller rules out a `GetMsgNum` drain-loop spin:
 a null `PickMsg` exits that per-frame call, and the next frame can call
 `Process`. V1 failed because its proxy itself suppressed that delegation.
 
-## V2 candidate contract
+## Installed V2 contract
 
 V2 preserves the stock `CMsg` allocation and ownership:
 
@@ -103,6 +109,26 @@ Documentation and tests must not claim that v2 always makes the model appear.
 A held pointer is disposed exactly once only when an explicit lifecycle reset
 still owns it: `Connect`, `DisConnect`, `Release`, or proxy destruction.
 Timeout alone is not cleanup.
+
+## Rollback and pass-through recovery
+
+The current V2 Apply backup is distinct from the historical pass-through Apply
+backup. Restoring V2 with
+`client-network-shim-v1-Apply-20260724-155531621` returns the client to exact
+stock `Net.dll` hash `1CC3F9...BCA00C` and removes the installed legacy copy.
+
+If V2 fails live acceptance, the pass-through binary remains a separately
+preserved recovery candidate at:
+
+```text
+C:\Reborn\backups\client-network-shim-v1-Revert-20260724-155518012\Net.dll
+```
+
+Its hash is `528913E6...D17A6DD`. Restore V2 to stock first, then use guarded
+Apply with that explicit `-ShimPath`; this creates a new Apply backup. The
+historical `...151248244` Apply backup records the earlier pass-through
+installation and its stock predecessor, but it is not the current V2 rollback
+backup and does not itself contain the pass-through candidate.
 
 ## Compatibility and verification
 

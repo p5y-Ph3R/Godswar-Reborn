@@ -21,10 +21,10 @@ No server or database change is part of this fix.
 
 The later companion `Net.dll` loading gate is documented in
 [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
-Its v1 build failed live validation and was rolled back. The current v2
-candidate is not installed; it retains the exact preview until readiness or a
-five-second guarded fallback, but cannot guarantee a model if resources remain
-unavailable.
+Its v1 build failed live validation and was rolled back. V2 is now installed
+with automated gates passing; live account-switch acceptance remains pending.
+It retains the exact preview until readiness or a five-second guarded fallback,
+but cannot guarantee a model if resources remain unavailable.
 
 ## Evidence and root cause
 
@@ -76,9 +76,9 @@ transaction:
 Both guards are fail-closed. A packet that still wins a narrow initialization
 race can skip that one preview build instead of dereferencing null. Neither
 guard sleeps, re-enters the loader, or runs initialization from the render
-path. The uninstalled v2 shim candidate attempts to address the consequence of
-that safe skip by retaining only the audited preview message while continuing
-native network processing.
+path. The installed v2 shim attempts to address the consequence of that safe
+skip by retaining only the audited preview message while continuing native
+network processing.
 
 The patcher refuses to write unless the client is closed and all of the
 following match the audited build: file size, DOS/PE headers, x86 PE32 machine,
@@ -125,5 +125,5 @@ intermittent:
    `Error.log`.
 
 The executable's two installed guards have static and disposable-binary
-validation. Loading-gate v1 failed; v2 remains uninstalled and pending the
-interactive sequence.
+validation. Loading-gate v1 failed; v2 is installed with automated gates
+passing but remains pending the interactive sequence.

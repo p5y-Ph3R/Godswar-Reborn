@@ -39,5 +39,8 @@ This is the version ledger for
 - `1.9` (`2026-07-24`): Recorded v1 as failed and rolled back after the
   account-13 disconnect/server-full/`0x005F58BC` incident, captured the live
   blank-model baseline under the stable rollback shim, and documented the
-  uninstalled v2 candidate's continuous processing, five-second exact-pointer
-  fallback, and lifecycle-only cleanup contract.
+  then-uninstalled v2 candidate's continuous processing, five-second
+  exact-pointer fallback, and lifecycle-only cleanup contract.
+- `1.10` (`2026-07-24`): Recorded v2 as `InstalledExact`, preserved its current
+  Apply/stock-restore manifest, and kept Phase 2 blocked until live
+  account-switch acceptance.

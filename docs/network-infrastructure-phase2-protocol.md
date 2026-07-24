@@ -5,19 +5,21 @@
 - Protocol version: `1.0`
 - Last updated: `2026-07-24`
 - Runtime status: specified only; not enabled; blocked on V2 live acceptance
-- Stable installed rollback shim:
+- Historical network-stable recovery shim:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
 - Historical failed V1 (rolled back after the 2026-07-24 live incident):
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-- Current V2 candidate (not installed):
+- Installed V2 (`InstalledExact`; automated gates pass; live acceptance pending):
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
+- Current V2 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
 - Parent phase:
   [`network-infrastructure-phase2.md`](network-infrastructure-phase2.md)
 
 This is the normative TLS, framing, game-ticket, and x86 client-lifecycle
 contract. All bounds are part of the protocol unless explicitly described as
-an operational default. The failed V1 is not the installed build or rollback
-target.
+an operational default. The failed V1 is not installed. Phase 2 remains
+blocked until installed V2 passes live acceptance.
 
 ## TLS policy
 

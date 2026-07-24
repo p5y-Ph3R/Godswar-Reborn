@@ -103,15 +103,20 @@ This is distinct from the V1 incident: a blank model can occur while the
 connection remains healthy because the guarded native builder consumed the
 only preview before its resources were ready.
 
-## V2 candidate
+## Installed V2 follow-up
 
-The repository V2 candidate has SHA-256:
+The corrected V2 build has SHA-256:
 
 ```text
 73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD
 ```
 
-It is not installed and has no live acceptance evidence. V2:
+It reached `InstalledExact` at `2026-07-24T03:55:57Z`; automated and
+disposable installer gates pass. Its current Apply/stock-restore backup is
+`C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
+(manifest SHA-256
+`9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`).
+Live account-switch acceptance is still pending. V2:
 
 1. always delegates native `Process()` while retaining the preview;
 2. keeps proxy `PickMsg()` from polling past the retained pointer, preserving

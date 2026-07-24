@@ -8,8 +8,8 @@ selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
 behavior, and upstream DDoS integration. The current networking milestone is a
 reversible `Net.dll` compatibility seam. Loading-gate v1 failed and was rolled
-back to the network-stable pass-through shim; the corrected v2 candidate is
-built but not installed and remains pending live validation. The next TLS
+back through the network-stable pass-through shim; corrected v2 is installed
+with automated gates passing and live acceptance pending. The next TLS
 phase is specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
 but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
@@ -29,8 +29,9 @@ evidence record are in
 - The installed Origin patch guards two preview builders, not the later
   `0x005F58BC` state-transition fault. See
   `docs/client-avatar-preview-crash-fix.md`.
-- Loading-gate v1 (`2D8199...`) failed and was rolled back to `528913...`.
-  Uninstalled v2 (`73E65F...`) keeps processing, pointer identity, and order,
+- Loading-gate v1 (`2D8199...`) failed; pass-through `528913...` remains the
+  recovery candidate. Installed v2 (`73E65F...`) keeps processing and preserves
+  pointer identity and order,
   then returns on readiness or after five seconds. The fallback can stay blank;
   only lifecycle reset cleans up. Its incident doc also records the rollback
   baseline: valid preview, connection alive beyond 142 seconds, blank model,

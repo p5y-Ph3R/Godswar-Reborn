@@ -96,13 +96,13 @@ persistence notes, and the current avatar-gate status are maintained in
 [`docs/client-reverse-engineering-notes.md`](docs/client-reverse-engineering-notes.md).
 
 Avatar-preview loading-gate v1 (`2D819908...E2AE0`) failed live validation and
-was rolled back to the installed network-stable shim
-`528913E6...D17A6DD`. V2 (`73E65FBF...F2902FD`) is not installed and remains
-pending live validation. It always delegates native `Process`, preserves the
-exact preview pointer and message order, and returns that pointer on readiness
-or after a five-second guarded fallback. The fallback does not disconnect or
-dispose the message, but it can still leave a blank model; cleanup happens only
-on explicit lifecycle reset.
+was rolled back through the network-stable shim `528913E6...D17A6DD`.
+V2 (`73E65FBF...F2902FD`) is now `InstalledExact`; automated gates pass and
+live account-switch acceptance remains pending. It delegates native `Process`,
+preserves the exact preview pointer and message order, and returns that pointer
+on readiness or after a five-second guarded fallback. The fallback does not
+disconnect or dispose the message, but it can still leave a blank model;
+cleanup happens only on explicit lifecycle reset.
 
 A live account-7 baseline under the rollback shim received a valid preview at
 `2026-07-24T03:30:23Z` and kept its TCP session established for more than 142

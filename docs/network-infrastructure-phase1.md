@@ -2,26 +2,30 @@
 
 ## Verified state
 
-- Status: loading-gate v1 failed live validation and was rolled back; v2 is
-  built but not installed and remains pending
+- Status: loading-gate v1 failed and was rolled back; v2 is `InstalledExact`
+  with automated gates passing and live account-switch acceptance pending
 - Supported `Origin.exe` SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Stock `Net.dll`/installed `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 - Historical failed v1 shim SHA-256:
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-- Installed stable rollback shim SHA-256:
+- Historical network-stable pass-through shim SHA-256:
   `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
-- Stable rollback Apply backup:
+- Historical pass-through Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Uninstalled v2 candidate SHA-256:
+- Installed v2 shim SHA-256:
   `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
+- Installed at: `2026-07-24T03:55:57Z`
+- Current v2 Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
+- Current Apply manifest SHA-256:
+  `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`
 
 This is the executable verification and rollback contract for Phase 1 of
-[`network-infrastructure-goal.md`](network-infrastructure-goal.md). The current
-installer reports the rollback shim as unknown relative to the uninstalled
-candidate; that does not convert v1 into an accepted build. Phase 1 remains
-unaccepted and TLS/UDP work must not begin.
+[`network-infrastructure-goal.md`](network-infrastructure-goal.md). Exact
+installation and automated success do not prove native rendering. Phase 1
+remains unaccepted and TLS/UDP work must not begin until live parity passes.
 
 The intentional preview-timing exception and its exact native-message
 ownership contract are documented in
@@ -85,9 +89,9 @@ Reproducible release builds require Visual Studio 2022 MSVC tools
 only for repeated clean builds in that pinned environment; another compiler
 may legitimately produce different reviewed bytes.
 
-The native suite currently describes v2. Installer, Windows
-evidence, and parity hash pins must be advanced together before installation;
-historical v1 evidence cannot be relabeled as v2 evidence.
+The native and disposable installer suites pass for installed v2. Historical
+v1 evidence cannot be relabeled as v2 evidence; live parity requires a fresh
+run pinned to the installed hash and current Apply backup.
 
 ## Status, Apply, and Restore
 
@@ -120,6 +124,30 @@ Restore requires the exact Apply backup printed by Apply:
 Restore preserves the installed files in a Revert backup. If stock `Net.dll`
 was restored but `NetLegacy.dll` cleanup was interrupted, Status reports
 `RecoverablePartial`; rerun the same Restore after releasing the file lock.
+
+For the current v2 installation, Restore must use:
+
+```powershell
+.\tools\InstallClientNetworkShim.ps1 `
+  -Mode Restore `
+  -ApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621' `
+  -Confirm:$false
+```
+
+That returns exact stock `Net.dll` hash `1CC3F9...BCA00C`. If v2 fails live
+acceptance and the historical network-stable pass-through is required, apply
+its separately preserved candidate only after that Restore:
+
+```powershell
+.\tools\InstallClientNetworkShim.ps1 `
+  -Mode Apply `
+  -ShimPath 'C:\Reborn\backups\client-network-shim-v1-Revert-20260724-155518012\Net.dll' `
+  -Confirm:$false
+```
+
+The candidate hash is `528913E6...D17A6DD`; guarded Apply creates a new backup.
+The historical `...151248244` Apply backup contains stock `Net.dll`, not the
+pass-through candidate.
 
 ## Interactive parity acceptance
 
@@ -259,14 +287,14 @@ did not crash. V1 was restored to the stable rollback shim.
 | Connection result | closed after `14.633832034` seconds; server stayed up |
 | Client result | server-full UI; new dump at `0x005F58BC` |
 | Evidence result | `Fail` |
-| Installed rollback | `528913E6...D17A6DD` |
-| Stable rollback Apply backup | `...\client-network-shim-v1-Apply-20260724-151248244` |
+| Post-failure installed shim at that time | `528913E6...D17A6DD` |
+| Historical pass-through Apply evidence | `...\client-network-shim-v1-Apply-20260724-151248244` |
 
 See
 [`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md)
 for hashes and fault evidence.
 
-## Stable rollback live baseline
+## Historical stable pass-through live baseline
 
 At `2026-07-24T03:30:23Z`, account 7 received one valid 188-byte preview under
 the `528913E6...D17A6DD` shim. Origin remained responsive and the TCP game
@@ -275,15 +303,17 @@ was blank. No new dump, game-close log, server exception, or container restart
 occurred. This is diagnostic evidence of the native resource race, not a pass
 for the loading gate.
 
-## Pending v2 acceptance record
+## Installed v2, pending live acceptance
 
 V2 requires a fresh evidence-tool version and a new run; neither v1 nor the
 stable-shim observations can be reused.
 
 | Field | Value |
 | --- | --- |
-| Candidate shim hash | `73E65FBF...F2902FD` |
-| Install state | Not installed |
+| Installed shim hash | `73E65FBF...F2902FD` |
+| Install state/time | `InstalledExact` / `2026-07-24T03:55:57Z` |
+| Automated gates | Pass |
+| Current Apply backup | `...\client-network-shim-v1-Apply-20260724-155531621` |
 | Accounts/cycles | `7 <-> 13` / five complete cycles pending |
 | Responsive loading / automatic model | Pending / Pending |
 | Connection beyond old 14.6-second failure | Pending |
