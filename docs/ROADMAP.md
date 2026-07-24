@@ -7,9 +7,11 @@ The long-term secure networking migration is tracked separately in
 selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
 behavior, and upstream DDoS integration. The current networking milestone is a
-reversible, behavior-preserving `Net.dll` compatibility seam; TLS/UDP traffic
-does not begin until its automated ABI, interactive parity, and rollback gates
-pass.
+reversible, behavior-preserving `Net.dll` compatibility seam; the next TLS
+phase is specified in
+[`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
+but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
+parity, and rollback gates pass.
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

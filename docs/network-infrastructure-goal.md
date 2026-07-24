@@ -2,14 +2,15 @@
 
 ## Version and status
 
-- Document version: `1.4`
+- Document version: `1.5`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
 - Current milestone: Phase 1 compatibility shim; automated gates complete,
-  interactive client parity pending
+  interactive client parity pending. The Phase 2 TLS contract is captured but
+  no secure listener or client bridge is enabled.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -277,6 +278,11 @@ or gameplay change.
 
 ### Phase 2 — framing bridge, TLS, and real authentication
 
+Normative design and verification:
+[`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md).
+Exact wire protocol and client lifecycle:
+[`docs/network-infrastructure-phase2-protocol.md`](network-infrastructure-phase2-protocol.md).
+
 - Golden-test current login/game streams.
 - Add the server transport seam and bounded queues without byte changes.
 - Add separate TLS ports; never sniff raw and TLS on one port.
@@ -368,3 +374,8 @@ Phase 1 remains unaccepted until that record passes.
   handoff, made target/current trust explicit, moved decoder security gates
   into their owning phases, pinned the build toolchain, added negative-path
   test coverage, and made interactive acceptance reproducible.
+- `1.5` (`2026-07-24`): Pinned the Phase 2 Schannel/`SslStream` TLS contract,
+  opaque legacy-stream framing, authenticated redirect ordering, single-use
+  game-ticket binding, bounded resources/deadlines, credential migration,
+  verification slices, and exact rollback target. Runtime remains disabled
+  until Phase 1 interactive acceptance.
