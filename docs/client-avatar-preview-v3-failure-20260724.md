@@ -53,7 +53,7 @@ Adding a server delay is rejected. Working-original captures send AfterLogin
 and CharacterPreview nearly back-to-back, and the failed local run already had
 more separation than those captures.
 
-## Final bounded correction
+## Final bounded V4 attempt
 
 The final V4 attempt is a matched, reversible Origin/Net pair:
 
@@ -67,15 +67,23 @@ The final V4 attempt is a matched, reversible Origin/Net pair:
 4. The later `0x005F58BC` path checks all six roots. If one is missing, it
    skips the unsafe avatar calls and schedules a clean state-2 transition.
 
-If the next cold test still reaches the waiting/server-unavailable path, stop
-iterating on this correction. Restore Net first while Origin remains V4, verify
-stock Net with no `NetLegacy.dll`, then run
-`PatchClientAvatarPreload.ps1 -Mode Revert`; continue with the next secure
-network milestone. That boundary is a product decision, not evidence V4 passed.
+The user set one final cold smoke as the stop boundary. That smoke failed
+before character selection and is sealed:
 
-## Installed V4 candidate
+- evidence:
+  `artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7`
+- result: `Fail`
+- observed boundary: Origin PID `64928` established redirected TCP to
+  `127.1.1.110:7000`, but the server received no `LoginGameServer`
+- code-path result: CharacterSelection, AfterLogin, and the V4 preload never ran
+- dump result: no new dump
 
-The matched candidate is installed with automated tests passing:
+This does not prove that the V4 preload caused the pre-selection stall, but it
+does fail the agreed acceptance branch. V4 and Phase 1 are not accepted.
+
+## Rejected V4 candidate and completed rollback
+
+The matched candidate passed automated tests before the failed live smoke:
 
 - Origin SHA-256:
   `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
@@ -89,4 +97,19 @@ The matched candidate is installed with automated tests passing:
   `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
 - Legacy SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
-- live state: one final cold smoke pending; not accepted
+- live state: rejected; final evidence sealed `Fail`
+
+Rollback completed in the enforced order, Net first and then Origin:
+
+- Net Revert backup:
+  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-221318157`
+- Origin Revert backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`
+- current predecessor Origin:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- current stock Net:
+  `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
+- current `NetLegacy.dll`: absent
+
+Per the product boundary, the avatar issue is parked and work advances to
+Phase 2 without claiming Phase 1 acceptance.

@@ -56,3 +56,11 @@ This is the version ledger for
   Origin is V4, verifies stock Net/no `NetLegacy.dll`, then runs
   `PatchClientAvatarPreload.ps1 -Mode Revert` and proceeds to Phase 2 without
   claiming Phase 1 acceptance.
+- `1.13` (`2026-07-24`): Sealed V4 smoke
+  `20260724T095739213Z-db16daa7` as `Fail`. Origin PID `64928` connected to
+  redirected TCP `127.1.1.110:7000`, but the server received no
+  `LoginGameServer`; CharacterSelection, AfterLogin, and V4 preload never ran,
+  and no dump appeared. Completed the enforced Net-first rollback. Current
+  client is predecessor Origin `753BE49F...9ED79`, stock Net
+  `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`. Phase 1 remains unaccepted; the
+  avatar issue is parked and Phase 2 codec slice 2 is next.

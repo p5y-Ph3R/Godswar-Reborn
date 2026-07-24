@@ -39,20 +39,30 @@ rejected:
   `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7` /
   `Fail`
 
-The matched V4 Origin/Net candidate is now installed. Automated tests pass;
-one final cold live smoke is pending, so acceptance is not claimed:
+V4 passed automated tests but failed its final cold smoke before character
+selection and is rejected:
 
-- installed V4 `Origin.exe` SHA-256:
+- rejected V4 `Origin.exe` SHA-256:
   `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
 - V4 Origin Apply backup:
   `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
-- installed V4 `Net.dll` SHA-256:
+- rejected V4 `Net.dll` SHA-256:
   `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
 - V4 Net Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
 - V4 Net Apply manifest SHA-256:
   `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
-- acceptance state: pending one final cold live smoke
+- immutable V4 evidence/result:
+  `artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7` /
+  `Fail`
+- V4 failure boundary: Origin PID `64928` established TCP to
+  `127.1.1.110:7000`, but the server received no `LoginGameServer`;
+  CharacterSelection, AfterLogin, and V4 preload never ran
+- dump result: no new dump
+- Net Revert backup:
+  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-221318157`
+- Origin Revert backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`
 
 The immutable V1 dump record is in
 [`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
@@ -63,12 +73,13 @@ The V3 timeout and crash are in
 No server, packet-format, database, or character-data change is part of these
 loading-gate versions.
 
-Supported host binaries remain:
+The ordered rollback is complete. Current exact predecessor:
 
 - `Origin.exe` SHA-256:
-  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
-- `NetLegacy.dll` SHA-256:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- stock `Net.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
+- `NetLegacy.dll`: absent
 
 ## Problem and live baseline
 
@@ -162,7 +173,7 @@ The x86 access violation was at `0x005F58BC`, with `ECX`/avatar root
 `0x015760A0` null. Native `PickMsg()` returning null exited the LOGIN update
 before the missing selection resources could be initialized.
 
-## Installed V4 contract
+## Historical V4 contract
 
 V4 keeps V3's exact-pointer ownership, queue order, continuous native
 `Process()`, readiness-only release, and lifecycle cleanup, then adds a bounded
@@ -181,9 +192,9 @@ V4 does not add a server delay or change the legacy packet bytes. Working
 captures send AfterLogin and preview nearly back-to-back; timing the server is
 not a deterministic substitute for repairing the client lifecycle.
 
-## Rollback and pass-through recovery
+## Completed rollback and pass-through recovery
 
-Rollback order is mandatory:
+The mandatory rollback completed in this order:
 
 1. While Origin still has V4 hash `E0F5BC95...D22F81C`, restore Net with
    `client-network-shim-v1-Apply-20260724-213354864`.
@@ -194,9 +205,10 @@ Rollback order is mandatory:
 The Origin patcher refuses mutation unless step 2 is true. Its writes are
 staged, hash-verified, and atomically replace the destination.
 
-If V4 fails its final live smoke, restore Net while Origin is V4, verify stock
-Net/no `NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert`;
-record the failure and move to Phase 2 without claiming acceptance.
+The resulting current files are predecessor Origin `753BE49F...9ED79`, stock
+Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`. The Revert backups are
+`client-network-shim-v1-Revert-20260724-221318157` and
+`origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`.
 The pass-through binary remains a separately
 preserved recovery candidate at:
 
@@ -220,10 +232,9 @@ AfterLogin recognition and bounded state-2 requests, exact-pointer ordering,
 readiness-only release, lifecycle cleanup, and guarded binary Apply/Revert;
 they do not prove native UI behavior.
 
-V4 remains pending until one fresh cold launch confirms that character
-selection renders automatically, world entry succeeds, the connection does
-not reach the old roughly 15-second timeout, and no new dump or
-`0x005F58BC` error appears. If it fails, stop iterating on this correction,
-restore Net while Origin is V4, verify stock Net/no `NetLegacy.dll`, then run
-`PatchClientAvatarPreload.ps1 -Mode Revert` and continue the next
-network-infrastructure phase as requested.
+The final fresh cold launch is sealed `Fail` at
+`20260724T095739213Z-db16daa7`. It failed before the gate could execute:
+redirected game TCP connected, but no `LoginGameServer` reached the server.
+This is not evidence that the preload path itself ran or caused the stall, and
+it is not Phase 1 acceptance. Per the user-set stop boundary, the avatar issue
+is parked and work advances to Phase 2 without another preload iteration.

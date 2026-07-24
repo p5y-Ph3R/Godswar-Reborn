@@ -2,11 +2,12 @@
 
 ## Result
 
-The installed V4 candidate at `C:\Godswar Origin\Origin.exe` retains the two
-audited LOGIN/character-preview builder guards, synchronously invokes the
-native LOGIN initializer after state registration, and guards the third
-null-resource path at `0x005F58BC`. Automated binary and shim tests pass; one
-final cold live smoke is pending, so this is not an acceptance claim.
+The V4 candidate passed automated binary/shim tests but failed its final cold
+smoke before character selection and is rejected. Origin PID `64928` connected
+to redirected game TCP `127.1.1.110:7000`, but the server received no
+`LoginGameServer`; CharacterSelection, AfterLogin, and the V4 preload path never
+ran. Evidence `20260724T095739213Z-db16daa7` is sealed `Fail`; no dump appeared.
+V4 was rolled back and the avatar issue is parked without Phase 1 acceptance.
 
 Installed on 2026-07-22 with:
 
@@ -18,7 +19,7 @@ Installed on 2026-07-22 with:
 
 No server or database change is part of this fix.
 
-The V4 extension was installed on 2026-07-24 with:
+The V4 extension was temporarily installed on 2026-07-24 with:
 
 - Before SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
@@ -28,6 +29,18 @@ The V4 extension was installed on 2026-07-24 with:
   `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
 - Companion `Net.dll` SHA-256:
   `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+- Net Revert backup:
+  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-221318157`
+- Origin Revert backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Revert-20260724-221319380-aeb5325a`
+
+Current exact predecessor state:
+
+- `Origin.exe`:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- stock `Net.dll`:
+  `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
+- `NetLegacy.dll`: absent
 
 The later companion `Net.dll` loading gate is documented in
 [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
@@ -35,8 +48,9 @@ V1 failed by suppressing native processing. V2 fixed that scheduling defect but
 was rejected when its five-second unready handoff recreated the blank model.
 V3 retained the exact preview until readiness but is rejected after immutable
 run `20260724T043833399Z-2bd75dd7` reproduced the native timeout and
-`0x005F58BC` crash. Installed V4 couples native initialization and timeout
-guards with the readiness-only hold.
+`0x005F58BC` crash. V4 coupled native initialization and timeout guards with
+the readiness-only hold, but its live acceptance branch failed before those
+paths ran.
 
 ## Evidence and root cause
 
@@ -137,7 +151,7 @@ The revert command also creates a verified backup of the patched executable
 before restoring the audited original bytes. The dated backup above can be
 copied back manually if the patch tool is unavailable.
 
-The installed V4 extension is managed independently with:
+The rejected historical V4 extension is managed independently with:
 
 ```powershell
 .\tools\PatchClientAvatarPreload.ps1 -Mode Status
@@ -152,25 +166,17 @@ sibling `Net.dll` to be exact stock and `NetLegacy.dll` to be absent. Therefore
 V4 rollback must restore Net first while Origin is still V4, verify that clean
 stock state, and only then run `PatchClientAvatarPreload.ps1 -Mode Revert`.
 
-## Runtime acceptance check
+## Final runtime result
 
-The remaining bounded check is one cold launch because the user set an
-explicit stop boundary for this issue:
+The user-set final cold-smoke boundary was reached. The client did not reach
+character selection. Origin PID `64928` established redirected TCP to
+`127.1.1.110:7000`, but the server received no `LoginGameServer`, so no
+CharacterSelection, AfterLogin, preview, or V4 preload code ran. No dump was
+created. The evidence directory
+`artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7` is sealed
+`Fail`.
 
-1. Open the client cold and log in to the account used for the next smoke.
-2. Confirm the character preview appears without requiring a failed first
-   attempt.
-3. If loading is visible, confirm the screen remains responsive without an
-   unready handoff, then confirm the model appears automatically when resources
-   become ready.
-4. Enter the world normally.
-5. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
-   `0x005F4ADD`, `0x005F060E`, or `0x005F58BC` entry is appended to
-   `Error.log`.
-
-The matched V4 Origin/Net pair has static, disposable-binary, ABI, ownership,
-and lifecycle validation. Loading-gate V1, V2, and V3 are rejected. V4 passes
-automated gates but remains pending one final cold model/world-entry smoke. If
-that smoke fails, restore Net while Origin is V4, verify stock Net/no
-`NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert`; park the
-issue and proceed to Phase 2 without claiming acceptance.
+Rollback then completed in the enforced order: Net first, followed by Origin.
+The exact Revert backups and current predecessor hashes are recorded above.
+Loading gates V1–V4 remain unaccepted. Per the explicit product boundary, do
+not iterate on the avatar preload now; continue Phase 2 with the issue parked.
