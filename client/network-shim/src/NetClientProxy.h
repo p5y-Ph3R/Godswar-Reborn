@@ -12,11 +12,7 @@ public:
         ILegacyNetClient* legacyClient,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
-        LegacyMessageDisposer messageDisposer,
-        AvatarMonotonicClock monotonicClock =
-            ReadAvatarMonotonicMilliseconds,
-        std::uint64_t waitTimeoutMilliseconds =
-            AvatarPreviewWaitTimeoutMilliseconds) noexcept;
+        LegacyMessageDisposer messageDisposer) noexcept;
 
     std::uint32_t Release() override;
     void SetHost(const char* host, std::uint16_t port) override;
@@ -33,9 +29,7 @@ private:
         ILegacyNetClient* legacyClient,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
-        LegacyMessageDisposer messageDisposer,
-        AvatarMonotonicClock monotonicClock,
-        std::uint64_t waitTimeoutMilliseconds) noexcept;
+        LegacyMessageDisposer messageDisposer) noexcept;
     ~NetClientProxy() = default;
 
     ILegacyNetClient* legacyClient_;

@@ -182,28 +182,19 @@ AvatarPreviewGate::AvatarPreviewGate() noexcept
     : AvatarPreviewGate(
         IsSupportedOriginAvatarHost(),
         AreOriginAvatarResourcesReady,
-        DestroyLegacyMessage,
-        ReadAvatarMonotonicMilliseconds,
-        AvatarPreviewWaitTimeoutMilliseconds) {
+        DestroyLegacyMessage) {
 }
 
 AvatarPreviewGate::AvatarPreviewGate(
     bool enabled,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer,
-    AvatarMonotonicClock monotonicClock,
-    std::uint64_t waitTimeoutMilliseconds) noexcept
+    LegacyMessageDisposer messageDisposer) noexcept
     : enabled_(
           enabled &&
           readinessProbe != nullptr &&
-          messageDisposer != nullptr &&
-          monotonicClock != nullptr &&
-          waitTimeoutMilliseconds != 0),
+          messageDisposer != nullptr),
       readinessProbe_(readinessProbe),
       messageDisposer_(messageDisposer),
-      monotonicClock_(monotonicClock),
-      waitTimeoutMilliseconds_(waitTimeoutMilliseconds),
-      heldAtMilliseconds_(0),
       heldMessage_(nullptr) {
 }
 
@@ -215,13 +206,6 @@ bool AvatarPreviewGate::IsHolding() const noexcept {
     return heldMessage_ != nullptr;
 }
 
-bool AvatarPreviewGate::HasTimedOut() const noexcept {
-    return heldMessage_ != nullptr &&
-        !readinessProbe_() &&
-        monotonicClock_() - heldAtMilliseconds_ >=
-            waitTimeoutMilliseconds_;
-}
-
 void* AvatarPreviewGate::Filter(void* message) noexcept {
     if (!enabled_ ||
         heldMessage_ != nullptr ||
@@ -230,22 +214,18 @@ void* AvatarPreviewGate::Filter(void* message) noexcept {
         return message;
     }
 
-    heldAtMilliseconds_ = monotonicClock_();
     heldMessage_ = message;
     return nullptr;
 }
 
 void* AvatarPreviewGate::TryRelease() noexcept {
     if (heldMessage_ == nullptr ||
-        (!readinessProbe_() &&
-         monotonicClock_() - heldAtMilliseconds_ <
-             waitTimeoutMilliseconds_)) {
+        !readinessProbe_()) {
         return nullptr;
     }
 
     auto* message = heldMessage_;
     heldMessage_ = nullptr;
-    heldAtMilliseconds_ = 0;
     return message;
 }
 
@@ -262,14 +242,9 @@ long AvatarPreviewGate::AdjustMessageCount(long legacyCount) const noexcept {
 void AvatarPreviewGate::Reset() noexcept {
     auto* message = heldMessage_;
     heldMessage_ = nullptr;
-    heldAtMilliseconds_ = 0;
     if (message != nullptr && messageDisposer_ != nullptr) {
         messageDisposer_(message);
     }
-}
-
-std::uint64_t ReadAvatarMonotonicMilliseconds() noexcept {
-    return GetTickCount64();
 }
 
 bool IsSupportedOriginAvatarHost() noexcept {

@@ -19,7 +19,6 @@ using godswar::network::NetClientProxy;
 
 int Failures = 0;
 bool AvatarResourcesReady = false;
-std::uint64_t AvatarClockMilliseconds = 0;
 int DisposedMessageCount = 0;
 void* LastDisposedMessage = nullptr;
 int DestroyedVirtualMessageCount = 0;
@@ -35,10 +34,6 @@ void Check(bool condition, const char* message) {
 
 bool ProbeAvatarResources() noexcept {
     return AvatarResourcesReady;
-}
-
-std::uint64_t ReadTestAvatarClock() noexcept {
-    return AvatarClockMilliseconds;
 }
 
 void DisposeTestMessage(void* message) noexcept {
@@ -63,8 +58,8 @@ static_assert(
     offsetof(TestLegacyMessage, characterCount) == 8,
     "legacy message payload offset changed");
 static_assert(
-    godswar::network::AvatarPreviewWaitTimeoutMilliseconds == 5'000,
-    "bounded preview fallback contract changed");
+    0x2712 == 10002,
+    "character preview opcode changed");
 
 class TestVirtualMessage {
 public:
@@ -76,6 +71,7 @@ public:
 class FakeLegacyClient final : public ILegacyNetClient {
 public:
     std::uint32_t Release() override {
+        disposedAtRelease = DisposedMessageCount;
         ++releaseCalls;
         return 73;
     }
@@ -84,11 +80,13 @@ public:
     }
 
     bool Connect() override {
+        disposedAtConnect = DisposedMessageCount;
         ++connectCalls;
         return true;
     }
 
     void DisConnect() override {
+        disposedAtDisconnect = DisposedMessageCount;
         ++disconnectCalls;
     }
 
@@ -123,6 +121,9 @@ public:
     int processCalls = 0;
     int pickCalls = 0;
     int messageCountCalls = 0;
+    int disposedAtConnect = -1;
+    int disposedAtDisconnect = -1;
+    int disposedAtRelease = -1;
     void* queuedMessages[4]{};
     int queuedMessageCount = 0;
     int queuedMessageIndex = 0;
@@ -145,7 +146,6 @@ void RunGateChecks() {
     wrongCount.characterCount = 0;
 
     AvatarResourcesReady = false;
-    AvatarClockMilliseconds = 1'000;
     ResetDisposalEvidence();
 
     {
@@ -186,8 +186,21 @@ void RunGateChecks() {
             gate.AdjustMessageCount(LONG_MAX) == LONG_MAX,
             "avatar gate overflowed the retained message count");
         Check(
+            gate.AdjustMessageCount(-1) == -1,
+            "avatar gate changed an invalid legacy message count");
+        Check(
             gate.TryRelease() == nullptr,
             "avatar gate released a preview before readiness");
+        bool retainedUntilReady = true;
+        for (int poll = 0; poll < 4'096; ++poll) {
+            if (gate.TryRelease() != nullptr || !gate.IsHolding()) {
+                retainedUntilReady = false;
+                break;
+            }
+        }
+        Check(
+            retainedUntilReady,
+            "avatar gate released a preview without readiness");
 
         AvatarResourcesReady = true;
         Check(
@@ -206,11 +219,12 @@ void RunGateChecks() {
             gate.Filter(&preview) == nullptr,
             "avatar gate cleanup fixture was not retained");
         gate.Reset();
+        gate.Reset();
         Check(
             !gate.IsHolding() &&
                 DisposedMessageCount == 1 &&
                 LastDisposedMessage == &preview,
-            "avatar gate did not dispose a retained preview exactly once");
+            "avatar gate reset was not idempotent");
     }
     Check(
         DisposedMessageCount == 1,
@@ -225,51 +239,6 @@ void RunGateChecks() {
         Check(
             gate.Filter(&preview) == &preview && !gate.IsHolding(),
             "avatar gate retained an already-ready preview");
-    }
-
-    AvatarResourcesReady = false;
-    AvatarClockMilliseconds = 5'000;
-    ResetDisposalEvidence();
-    {
-        AvatarPreviewGate gate(
-            true,
-            ProbeAvatarResources,
-            DisposeTestMessage,
-            ReadTestAvatarClock,
-            100);
-        Check(
-            gate.Filter(&preview) == nullptr,
-            "timeout fixture did not retain its preview");
-        AvatarClockMilliseconds = 5'099;
-        Check(
-            !gate.HasTimedOut() && gate.TryRelease() == nullptr,
-            "avatar gate released or timed out too early");
-        AvatarClockMilliseconds = 5'100;
-        Check(gate.HasTimedOut(), "avatar gate did not reach its timeout");
-        Check(
-            gate.TryRelease() == &preview && !gate.IsHolding(),
-            "timeout did not return the original preview as a bounded fallback");
-        Check(
-            DisposedMessageCount == 0,
-            "timeout fallback disposed a message owned by Origin");
-    }
-
-    AvatarClockMilliseconds = 6'000;
-    {
-        AvatarPreviewGate gate(
-            true,
-            ProbeAvatarResources,
-            DisposeTestMessage,
-            ReadTestAvatarClock,
-            100);
-        Check(
-            gate.Filter(&preview) == nullptr,
-            "readiness-boundary fixture did not retain its preview");
-        AvatarClockMilliseconds = 6'100;
-        AvatarResourcesReady = true;
-        Check(
-            !gate.HasTimedOut() && gate.TryRelease() == &preview,
-            "readiness did not win at the timeout boundary");
     }
 
     DestroyedVirtualMessageCount = 0;
@@ -337,7 +306,9 @@ void RunOrderingAndLifecycleChecks() {
         client->DisConnect();
         client->Release();
         Check(
-            DisposedMessageCount == 0,
+            DisposedMessageCount == 0 &&
+                legacy.disposedAtDisconnect == 0 &&
+                legacy.disposedAtRelease == 0,
             "proxy disposed a preview already returned to Origin");
     }
 
@@ -354,17 +325,26 @@ void RunOrderingAndLifecycleChecks() {
     if (disconnectClient != nullptr) {
         static_cast<void>(disconnectClient->PickMsg());
         disconnectClient->Process();
+        AvatarResourcesReady = true;
         disconnectClient->DisConnect();
-        disconnectClient->Release();
         Check(
             DisposedMessageCount == 1 &&
                 LastDisposedMessage == &preview &&
-                disconnectLegacy.processCalls == 1,
-            "remote-disconnect cleanup did not dispose exactly once");
+                disconnectLegacy.processCalls == 1 &&
+                disconnectLegacy.disconnectCalls == 1 &&
+                disconnectLegacy.disposedAtDisconnect == 1,
+            "disconnect did not dispose its still-owned preview first");
+        disconnectClient->Release();
+        Check(
+            DisposedMessageCount == 1 &&
+                disconnectLegacy.releaseCalls == 1 &&
+                disconnectLegacy.disposedAtRelease == 1,
+            "release disposed a disconnect-reset preview twice");
     }
 
     FakeLegacyClient releaseLegacy;
     releaseLegacy.nextMessage = &preview;
+    AvatarResourcesReady = false;
     ResetDisposalEvidence();
     auto* releaseClient = NetClientProxy::CreateForTesting(
         &releaseLegacy,
@@ -377,7 +357,9 @@ void RunOrderingAndLifecycleChecks() {
         releaseClient->Release();
         Check(
             DisposedMessageCount == 1 &&
-                releaseLegacy.releaseCalls == 1,
+                LastDisposedMessage == &preview &&
+                releaseLegacy.releaseCalls == 1 &&
+                releaseLegacy.disposedAtRelease == 1,
             "direct release did not clean the retained preview");
     }
 
@@ -385,6 +367,7 @@ void RunOrderingAndLifecycleChecks() {
     reconnectLegacy.queuedMessages[0] = &preview;
     reconnectLegacy.queuedMessages[1] = &later;
     reconnectLegacy.queuedMessageCount = 2;
+    AvatarResourcesReady = false;
     ResetDisposalEvidence();
     auto* reconnectClient = NetClientProxy::CreateForTesting(
         &reconnectLegacy,
@@ -398,13 +381,19 @@ void RunOrderingAndLifecycleChecks() {
         AvatarResourcesReady = true;
         Check(
             DisposedMessageCount == 1 &&
+                reconnectLegacy.connectCalls == 1 &&
+                reconnectLegacy.disposedAtConnect == 1 &&
                 reconnectClient->PickMsg() == &later,
             "reconnect delivered a stale prior-session preview");
         reconnectClient->Release();
+        Check(
+            DisposedMessageCount == 1 &&
+                reconnectLegacy.disposedAtRelease == 1,
+            "release disposed a reconnect-reset preview twice");
     }
 }
 
-void RunTimeoutChecks() {
+void RunPersistentSchedulingChecks() {
     TestLegacyMessage preview;
     TestLegacyMessage later;
     later.opcode = 0x2713;
@@ -413,44 +402,49 @@ void RunTimeoutChecks() {
     legacy.queuedMessages[1] = &later;
     legacy.queuedMessageCount = 2;
     AvatarResourcesReady = false;
-    AvatarClockMilliseconds = 10'000;
     ResetDisposalEvidence();
     auto* client = NetClientProxy::CreateForTesting(
         &legacy,
         true,
         ProbeAvatarResources,
-        DisposeTestMessage,
-        ReadTestAvatarClock,
-        100);
-    Check(client != nullptr, "timeout-fallback fixture returned null");
+        DisposeTestMessage);
+    Check(client != nullptr, "persistent-hold fixture returned null");
     if (client != nullptr) {
         Check(
             client->PickMsg() == nullptr && legacy.pickCalls == 1,
-            "timeout fixture did not retain its preview");
-        client->Process();
-        AvatarClockMilliseconds = 10'099;
+            "persistent-hold fixture did not retain its preview");
+        bool stayedBlocked = true;
+        constexpr int SchedulingCycles = 4'096;
+        for (int cycle = 0; cycle < SchedulingCycles; ++cycle) {
+            client->Process();
+            if (client->PickMsg() != nullptr ||
+                legacy.pickCalls != 1) {
+                stayedBlocked = false;
+                break;
+            }
+        }
         Check(
-            client->PickMsg() == nullptr &&
-                legacy.processCalls == 1 &&
-                legacy.pickCalls == 1,
-            "pre-timeout polling changed order or stopped network processing");
+            stayedBlocked &&
+                legacy.processCalls == SchedulingCycles &&
+                DisposedMessageCount == 0,
+            "scheduling released early or stopped legacy Process");
 
-        AvatarClockMilliseconds = 10'100;
+        AvatarResourcesReady = true;
         Check(
             client->PickMsg() == &preview &&
                 DisposedMessageCount == 0 &&
                 legacy.disconnectCalls == 0,
-            "timeout did not return the original preview without disconnect");
+            "readiness did not return the exact retained preview");
         Check(
             client->PickMsg() == &later && legacy.pickCalls == 2,
-            "a later message overtook the timeout-released preview");
+            "a later message overtook the readiness-released preview");
         client->DisConnect();
         client->Release();
         Check(
             DisposedMessageCount == 0 &&
                 legacy.disconnectCalls == 1 &&
                 legacy.releaseCalls == 1,
-            "timeout fallback changed native disconnect/release ownership");
+            "released scheduling fixture changed lifecycle ownership");
     }
 }
 
@@ -459,6 +453,6 @@ void RunTimeoutChecks() {
 int RunAvatarPreviewGateTests() {
     RunGateChecks();
     RunOrderingAndLifecycleChecks();
-    RunTimeoutChecks();
+    RunPersistentSchedulingChecks();
     return Failures;
 }

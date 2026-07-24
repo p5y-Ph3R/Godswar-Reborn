@@ -8,16 +8,12 @@ NetClientProxy::NetClientProxy(
     ILegacyNetClient* legacyClient,
     bool enableAvatarGate,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer,
-    AvatarMonotonicClock monotonicClock,
-    std::uint64_t waitTimeoutMilliseconds) noexcept
+    LegacyMessageDisposer messageDisposer) noexcept
     : legacyClient_(legacyClient),
       avatarPreviewGate_(
           enableAvatarGate,
           readinessProbe,
-          messageDisposer,
-          monotonicClock,
-          waitTimeoutMilliseconds) {
+          messageDisposer) {
 }
 
 ILegacyNetClient* NetClientProxy::Create(
@@ -26,18 +22,14 @@ ILegacyNetClient* NetClientProxy::Create(
         legacyClient,
         IsSupportedOriginAvatarHost(),
         AreOriginAvatarResourcesReady,
-        DestroyLegacyMessage,
-        ReadAvatarMonotonicMilliseconds,
-        AvatarPreviewWaitTimeoutMilliseconds);
+        DestroyLegacyMessage);
 }
 
 ILegacyNetClient* NetClientProxy::CreateForTesting(
     ILegacyNetClient* legacyClient,
     bool enableAvatarGate,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer,
-    AvatarMonotonicClock monotonicClock,
-    std::uint64_t waitTimeoutMilliseconds) noexcept {
+    LegacyMessageDisposer messageDisposer) noexcept {
     if (legacyClient == nullptr) {
         return nullptr;
     }
@@ -46,9 +38,7 @@ ILegacyNetClient* NetClientProxy::CreateForTesting(
         legacyClient,
         enableAvatarGate,
         readinessProbe,
-        messageDisposer,
-        monotonicClock,
-        waitTimeoutMilliseconds);
+        messageDisposer);
     if (proxy == nullptr) {
         legacyClient->Release();
     }
