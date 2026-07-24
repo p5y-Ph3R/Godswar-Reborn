@@ -38,7 +38,7 @@ internal sealed class RuntimePolicySessionSocket : IAsyncDisposable
         return new RuntimePolicySessionSocket(
             listener,
             inbound,
-            new ClientSession(outbound));
+            new ClientSession(new RawTcpLegacyTransport(outbound)));
     }
 
     public async Task<byte[]> ReadPacketAsync(int length)

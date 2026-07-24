@@ -79,13 +79,15 @@ internal static partial class Program
             var acceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await outboundClient.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var inboundClient = await acceptTask;
-            await using var session = new ClientSession(outboundClient);
+            await using var session =
+                new ClientSession(new RawTcpLegacyTransport(outboundClient));
 
             using var existingOutboundClient = new TcpClient();
             var existingAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await existingOutboundClient.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var existingInboundClient = await existingAcceptTask;
-            await using var existingSession = new ClientSession(existingOutboundClient);
+            await using var existingSession =
+                new ClientSession(new RawTcpLegacyTransport(existingOutboundClient));
 
             var character = CreateCharacter();
             var existingCharacter = CreateCharacter();
@@ -190,7 +192,8 @@ internal static partial class Program
             var acceptTask = listener.AcceptTcpClientAsync(cancellationToken).AsTask();
             await outboundClient.ConnectAsync(IPAddress.Loopback, port, cancellationToken);
             using var inboundClient = await acceptTask;
-            await using var session = new ClientSession(outboundClient);
+            await using var session =
+                new ClientSession(new RawTcpLegacyTransport(outboundClient));
 
             var clearPackets = Enumerable.Range(0, ConcurrentPacketCount)
                 .Select(CreateConcurrentPacket)

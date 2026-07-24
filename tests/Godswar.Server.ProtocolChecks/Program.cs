@@ -129,6 +129,7 @@ internal static partial class Program
             ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
             ("Secure Phase 2 bounded protocol codecs", SecureProtocolCodecChecks.RunAsync),
+            ("Secure Phase 2 legacy transport parity", LegacyByteTransportChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

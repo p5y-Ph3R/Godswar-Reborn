@@ -11,9 +11,9 @@ compatibility experiments V1–V4 are rejected. V3 reproduced the roughly
 15-second `0x005F58BC` timeout/crash. V4 failed its final pre-selection smoke
 (`20260724T095739213Z-db16daa7` / `Fail`) and was rolled back to predecessor
 Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
-`NetLegacy.dll`. Phase 2 codec slice 2 is implemented and tested without
-enabling a listener, TLS, or UDP. Slice 3 `ILegacyByteTransport` extraction is
-next and specified in
+`NetLegacy.dll`. Phase 2 slice 3 extracted and parity-tested the raw byte
+transport seam without changing existing listeners or enabling TLS/UDP. Slice
+4 bounded transport lifecycle is next and specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
 but no TLS/UDP traffic has started. The issue is parked; Phase 2 continues
 without Phase 1 acceptance. Records:

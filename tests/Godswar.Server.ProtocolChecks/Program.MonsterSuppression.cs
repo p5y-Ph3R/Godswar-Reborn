@@ -28,13 +28,15 @@ internal static partial class Program
             var selfAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await selfOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var selfInbound = await selfAcceptTask;
-            await using var selfSession = new ClientSession(selfOutbound);
+            await using var selfSession =
+                new ClientSession(new RawTcpLegacyTransport(selfOutbound));
 
             using var worldOutbound = new TcpClient();
             var worldAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await worldOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var worldInbound = await worldAcceptTask;
-            await using var worldSession = new ClientSession(worldOutbound);
+            await using var worldSession =
+                new ClientSession(new RawTcpLegacyTransport(worldOutbound));
 
             var selfCharacter = CreateCharacter();
             selfCharacter.CurrentMap = 0;

@@ -167,7 +167,7 @@ internal static partial class Program
             var acceptTask = listener.AcceptTcpClientAsync();
             await outbound.ConnectAsync(IPAddress.Loopback, port);
             using var inbound = await acceptTask;
-            await using var session = new ClientSession(outbound);
+            await using var session = new ClientSession(new RawTcpLegacyTransport(outbound));
 
             var character = CreateCharacter();
             character.Level = 40;
@@ -301,7 +301,7 @@ internal static partial class Program
             var acceptTask = listener.AcceptTcpClientAsync();
             await outbound.ConnectAsync(IPAddress.Loopback, port);
             using var inbound = await acceptTask;
-            await using var session = new ClientSession(outbound);
+            await using var session = new ClientSession(new RawTcpLegacyTransport(outbound));
 
             await using var store = new JsonGameStore(dataPath);
             await store.EnsureSeedDataAsync();

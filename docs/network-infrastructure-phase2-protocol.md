@@ -4,8 +4,9 @@
 
 - Protocol version: `1.3`
 - Last updated: `2026-07-24`
-- Runtime status: codec slice 2 implemented and tested; no listener, TLS, or
-  UDP runtime is enabled; slice 3 `ILegacyByteTransport` extraction is next
+- Runtime status: raw transport seam slice 3 implemented and tested; existing
+  raw listeners are unchanged, no TLS or UDP runtime is enabled, and bounded
+  transport-lifecycle slice 4 is next
 - Current predecessor Origin:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Current stock Net:

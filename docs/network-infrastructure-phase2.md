@@ -2,12 +2,12 @@
 
 ## Status
 
-- Specification version: `1.6`
+- Specification version: `1.7`
 - Last updated: `2026-07-24`
-- Runtime status: slice 2 codecs implemented and tested; no listener, TLS, or
-  UDP runtime is enabled
-- Current next milestone: slice 3, extract `ILegacyByteTransport` and prove raw
-  stream parity
+- Runtime status: slice 3 raw transport seam implemented and tested; existing
+  raw listeners are unchanged and no TLS or UDP runtime is enabled
+- Current next milestone: slice 4, bounded transport admission, tasks, queues,
+  deadlines, and metrics
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Rejected V3 SHA-256:
@@ -281,10 +281,15 @@ failures before continuing.
    it is not a blocker for pure-codec work.
 2. Completed: pure preface/frame/grant/bind codecs, golden vectors, boundary
    and fuzz checks. No listener or runtime transport was added.
-3. Current: extract `ILegacyByteTransport`; prove existing raw protocol tests
-   and captured streams remain byte-identical.
-4. Add bounded admission, tracked connection tasks, queues, deadlines, and
-   metrics to the transport layer while keeping secure listeners disabled.
+3. Completed: extracted `ILegacyByteTransport` and `RawTcpLegacyTransport`.
+   Framing, rolling XOR state, handler dispatch, and serialized send semantics
+   remain in `ClientSession`. A fixed 300-byte synthetic golden frozen before
+   refactoring, a captured-clear 2772-byte game bootstrap with fixed raw hash,
+   forced boundaries, handler dispatch, loopback, and the existing 512-send
+   test prove raw-stream parity. Full credential-bearing capture replay remains
+   an open final Phase 2 gate and is not committed.
+4. Current: add bounded admission, tracked connection tasks, queues, deadlines,
+   and metrics while keeping secure listeners disabled.
 5. Add the native loopback coordinator/pumps and lifecycle tests in an
    uninstalled test build.
 6. Add Schannel/`SslStream`, ALPN, certificate validation, and local test-CA
@@ -295,10 +300,10 @@ failures before continuing.
    guarded backup, perform original-client parity, then disable raw external
    access in the secure profile.
 
-Focused slice-2 check:
+Focused slice-3 check:
 
 ```powershell
-dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2"
+dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2 legacy transport parity" "ClientSession concurrent send ordering"
 ```
 
 ## Verification contract
@@ -384,7 +389,7 @@ acceptance are not claimed.
 
 Still required during the transport implementation slices:
 
-- Parked/open, non-blocking for slice 3: observed game `SetHost`
+- Parked/open, non-blocking for slice 4: observed game `SetHost`
   string/port and stock `GetStatus` transitions.
 - Account password audit and an explicit reset plan for blank credentials.
 - Development CA, signed endpoint-manifest key custody, and certificate

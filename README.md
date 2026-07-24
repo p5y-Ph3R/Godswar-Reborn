@@ -74,7 +74,7 @@ Implemented:
 - Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
-- Phase 2 secure-protocol codec slice: bounded preface/frame/grant/bind syntax and focused tests only; no listener, TLS, or UDP runtime is enabled, and `ILegacyByteTransport` extraction is next
+- Phase 2 secure-protocol foundation: bounded preface/frame/grant/bind codecs plus a parity-tested `ILegacyByteTransport` raw TCP seam; existing listeners are unchanged, no TLS/UDP runtime is enabled, and bounded transport lifecycle is next
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 

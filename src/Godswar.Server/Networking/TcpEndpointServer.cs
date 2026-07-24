@@ -45,7 +45,7 @@ internal sealed class TcpEndpointServer
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
     {
-        await using var session = new ClientSession(client);
+        await using var session = new ClientSession(new RawTcpLegacyTransport(client));
         Console.WriteLine($"[{_name}] connected {session.RemoteEndPoint}");
 
         try

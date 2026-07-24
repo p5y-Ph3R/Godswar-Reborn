@@ -30,13 +30,15 @@ internal static partial class Program
             var partialAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await partialOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var partialInbound = await partialAcceptTask;
-            await using var partialSession = new ClientSession(partialOutbound);
+            await using var partialSession =
+                new ClientSession(new RawTcpLegacyTransport(partialOutbound));
 
             using var farOutbound = new TcpClient();
             var farAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await farOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var farInbound = await farAcceptTask;
-            await using var farSession = new ClientSession(farOutbound);
+            await using var farSession =
+                new ClientSession(new RawTcpLegacyTransport(farOutbound));
 
             var partialCharacter = CreateCharacter();
             partialCharacter.CurrentMap = 0;

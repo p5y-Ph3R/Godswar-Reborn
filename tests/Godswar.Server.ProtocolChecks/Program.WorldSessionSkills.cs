@@ -66,13 +66,15 @@ internal static partial class Program
             var firstAccept = listener.AcceptTcpClientAsync();
             await firstOutbound.ConnectAsync(IPAddress.Loopback, port);
             using var firstInbound = await firstAccept;
-            await using var firstSession = new ClientSession(firstOutbound);
+            await using var firstSession =
+                new ClientSession(new RawTcpLegacyTransport(firstOutbound));
 
             using var secondOutbound = new TcpClient();
             var secondAccept = listener.AcceptTcpClientAsync();
             await secondOutbound.ConnectAsync(IPAddress.Loopback, port);
             using var secondInbound = await secondAccept;
-            await using var secondSession = new ClientSession(secondOutbound);
+            await using var secondSession =
+                new ClientSession(new RawTcpLegacyTransport(secondOutbound));
 
             await using var store = new JsonGameStore(dataPath);
             await store.EnsureSeedDataAsync();

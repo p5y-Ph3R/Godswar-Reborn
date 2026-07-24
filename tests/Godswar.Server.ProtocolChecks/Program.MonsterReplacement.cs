@@ -32,13 +32,15 @@ internal static partial class Program
             var viewerAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await viewerOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var viewerInbound = await viewerAcceptTask;
-            await using var viewerSession = new ClientSession(viewerOutbound);
+            await using var viewerSession =
+                new ClientSession(new RawTcpLegacyTransport(viewerOutbound));
 
             using var targetOutbound = new TcpClient();
             var targetAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await targetOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var targetInbound = await targetAcceptTask;
-            await using var targetSession = new ClientSession(targetOutbound);
+            await using var targetSession =
+                new ClientSession(new RawTcpLegacyTransport(targetOutbound));
 
             var viewerCharacter = CreateCharacter();
             viewerCharacter.CurrentMap = 0;

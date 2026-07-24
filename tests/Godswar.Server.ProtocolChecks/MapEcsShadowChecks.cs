@@ -31,7 +31,7 @@ internal static class MapEcsShadowChecks
             port,
             timeout.Token);
         using var accepted = await acceptedTask;
-        await using var session = new ClientSession(outbound);
+        await using var session = new ClientSession(new RawTcpLegacyTransport(outbound));
 
         var sparta = new MapInstance(0);
         var character = CreateCharacter(0, 100f, -100f);

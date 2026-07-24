@@ -2,15 +2,16 @@
 
 ## Version and status
 
-- Document version: `1.13`
+- Document version: `1.14`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 slice 3 `ILegacyByteTransport` extraction. Slice 2
-  bounded preface/frame/grant/bind codecs and focused tests are complete, but
-  no listener, TLS, or UDP runtime is enabled. V1–V4 are rejected and Phase 1
+- Current milestone: Phase 2 slice 4 bounded transport lifecycle. Slice 3
+  extracted and parity-tested `ILegacyByteTransport` plus the raw TCP adapter;
+  existing raw listeners are unchanged and no TLS or UDP runtime is enabled.
+  V1–V4 are rejected and Phase 1
   is not accepted. V4 smoke
   `20260724T095739213Z-db16daa7` failed before character selection and was
   rolled back to Origin `753BE49F...9ED79`, stock Net
@@ -311,8 +312,12 @@ Exact wire protocol and client lifecycle:
 - Golden-test current login/game streams.
 - Slice 2 pure codecs are implemented with bounded incremental parsing,
   caller-owned buffers, secret disposal/clearing, and role/direction checks.
-- Extract `ILegacyByteTransport` next and prove byte-identical raw transport
-  before adding listeners or bounded queues.
+- Slice 3 extracted `ILegacyByteTransport` and the raw adapter. Synthetic and
+  captured-clear bootstrap hashes, boundary tests, handler dispatch, loopback,
+  and concurrent sends prove raw parity; full credential-bearing capture
+  replay remains an uncommitted final Phase 2 gate.
+- Add bounded admission, tracked tasks, queues, deadlines, and metrics next
+  while secure listeners remain disabled.
 - Add separate TLS ports; never sniff raw and TLS on one port.
 - Specify a versioned outer preface, compatibility/error behavior, maximum
   fields, SNI/hostname validation, development trust, and certificate rotation.

@@ -64,3 +64,11 @@ This is the version ledger for
   client is predecessor Origin `753BE49F...9ED79`, stock Net
   `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`. Phase 1 remains unaccepted; the
   avatar issue is parked and Phase 2 codec slice 2 is next.
+- `1.14` (`2026-07-24`): Extracted `ILegacyByteTransport` and the owned raw TCP
+  adapter without moving legacy framing, XOR state, handler dispatch, or send
+  serialization out of `ClientSession`. Added a fixed synthetic golden across
+  the XOR wrap, a captured-clear game-bootstrap raw hash, and fragmented,
+  coalesced, EOF, bounds, handler-loop, loopback, ownership, and concurrent
+  parity checks.
+  Existing raw listeners are unchanged; no TLS, UDP, admission, queue,
+  deadline, or security runtime was enabled. Phase 2 slice 4 is next.

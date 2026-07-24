@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Net.Sockets;
 using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Networking;
@@ -8,35 +7,21 @@ internal sealed class ClientSession : IAsyncDisposable
 {
     private const int MaxPacketLength = 8196;
 
-    private readonly TcpClient _client;
-    private readonly NetworkStream _stream;
+    private readonly ILegacyByteTransport _transport;
     private readonly PacketCipher _receiveCipher = new();
     private readonly PacketCipher _sendCipher = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
-    public ClientSession(TcpClient client)
+    public ClientSession(ILegacyByteTransport transport)
     {
-        _client = client;
-        _client.NoDelay = true;
-        _stream = client.GetStream();
+        _transport = transport ?? throw new ArgumentNullException(nameof(transport));
     }
 
-    public string RemoteEndPoint => _client.Client.RemoteEndPoint?.ToString() ?? "unknown";
+    public string RemoteEndPoint => _transport.RemoteEndPoint;
 
     public void Disconnect()
     {
-        try
-        {
-            _client.Client.Shutdown(SocketShutdown.Both);
-        }
-        catch (SocketException)
-        {
-        }
-        catch (ObjectDisposedException)
-        {
-        }
-
-        _client.Close();
+        _transport.Disconnect();
     }
 
     public async Task<GamePacket?> ReadPacketAsync(CancellationToken cancellationToken)
@@ -84,8 +69,7 @@ internal sealed class ClientSession : IAsyncDisposable
 
             var encrypted = clearPacket.ToArray();
             _sendCipher.Transform(encrypted);
-            await _stream.WriteAsync(encrypted, cancellationToken);
-            await _stream.FlushAsync(cancellationToken);
+            await _transport.WriteAsync(encrypted, cancellationToken);
         }
         finally
         {
@@ -135,7 +119,9 @@ internal sealed class ClientSession : IAsyncDisposable
 
         while (offset < count)
         {
-            var read = await _stream.ReadAsync(buffer.AsMemory(offset, count - offset), cancellationToken);
+            var read = await _transport.ReadAsync(
+                buffer.AsMemory(offset, count - offset),
+                cancellationToken);
             if (read == 0)
             {
                 return offset == 0 ? null : throw new EndOfStreamException("Socket closed mid-packet.");
@@ -150,7 +136,6 @@ internal sealed class ClientSession : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _sendLock.Dispose();
-        await _stream.DisposeAsync();
-        _client.Dispose();
+        await _transport.DisposeAsync();
     }
 }

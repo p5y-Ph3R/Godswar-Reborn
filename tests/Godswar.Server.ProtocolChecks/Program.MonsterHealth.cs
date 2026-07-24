@@ -30,7 +30,8 @@ internal static partial class Program
             var viewerAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await viewerOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var viewerInbound = await viewerAcceptTask;
-            await using var viewerSession = new ClientSession(viewerOutbound);
+            await using var viewerSession =
+                new ClientSession(new RawTcpLegacyTransport(viewerOutbound));
 
             var viewerCharacter = CreateCharacter();
             viewerCharacter.CurrentMap = 0;
@@ -263,7 +264,8 @@ internal static partial class Program
             var viewerAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await viewerOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var viewerInbound = await viewerAcceptTask;
-            await using var viewerSession = new ClientSession(viewerOutbound);
+            await using var viewerSession =
+                new ClientSession(new RawTcpLegacyTransport(viewerOutbound));
 
             var character = CreateCharacter();
             character.CurrentMap = 0;

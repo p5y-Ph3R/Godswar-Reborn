@@ -27,13 +27,15 @@ internal static partial class Program
             var nearAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await nearOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var nearInbound = await nearAcceptTask;
-            await using var nearSession = new ClientSession(nearOutbound);
+            await using var nearSession =
+                new ClientSession(new RawTcpLegacyTransport(nearOutbound));
 
             using var farOutbound = new TcpClient();
             var farAcceptTask = listener.AcceptTcpClientAsync(timeout.Token).AsTask();
             await farOutbound.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
             using var farInbound = await farAcceptTask;
-            await using var farSession = new ClientSession(farOutbound);
+            await using var farSession =
+                new ClientSession(new RawTcpLegacyTransport(farOutbound));
 
             var nearCharacter = CreateCharacter();
             nearCharacter.CurrentMap = 0;
