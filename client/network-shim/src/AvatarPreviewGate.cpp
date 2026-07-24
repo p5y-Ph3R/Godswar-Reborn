@@ -16,10 +16,10 @@ constexpr DWORD OriginImageSize = 0x011DE000;
 constexpr DWORD OriginEntryPointRva = 0x003BF68D;
 
 constexpr std::uint8_t SupportedOriginSha256[] = {
-    0x75, 0x3B, 0xE4, 0x9F, 0xE9, 0x4B, 0x6F, 0x4C,
-    0x0E, 0x33, 0x29, 0xBC, 0x89, 0x05, 0x94, 0x5B,
-    0xD9, 0xB0, 0xF1, 0xA7, 0x90, 0xB4, 0xB9, 0x03,
-    0x8E, 0x69, 0xC2, 0xA5, 0xAD, 0x49, 0xED, 0x79,
+    0xE0, 0xF5, 0xBC, 0x95, 0x1C, 0x6E, 0x37, 0x55,
+    0x0F, 0x4D, 0x9C, 0xC1, 0xE2, 0x5B, 0xFD, 0xCB,
+    0x4F, 0x02, 0x04, 0x66, 0xAD, 0xD8, 0x54, 0xDC,
+    0x2E, 0x7E, 0xA0, 0x4E, 0x0D, 0x22, 0xF8, 0x1C,
 };
 
 constexpr std::uintptr_t ResourceSlotRvas[] = {
@@ -40,13 +40,62 @@ constexpr std::uint8_t SecondaryGuardHook[] = {
 constexpr std::uint8_t PrimaryGuardHook[] = {
     0xE9, 0x29, 0xE8, 0x3C, 0x00, 0x90,
 };
+constexpr std::uint8_t AvatarPreloadHook[] = {
+    0xE9, 0x8B, 0x1E, 0x50, 0x00,
+};
+constexpr std::uint8_t AvatarPreloadCave[] = {
+    0x9C, 0x60, 0x83, 0x3D, 0x4C, 0x5F, 0x57, 0x01,
+    0x02, 0x75, 0x5C, 0x81, 0x3D, 0x6C, 0x5F, 0x57,
+    0x01, 0x04, 0x5A, 0x9E, 0x00, 0x75, 0x50, 0x83,
+    0x3D, 0x48, 0x5F, 0x57, 0x01, 0x00, 0x74, 0x47,
+    0xB9, 0x04, 0x5A, 0x9E, 0x00, 0xE8, 0xF0, 0x3E,
+    0xAA, 0xFF, 0xA1, 0x88, 0x60, 0x57, 0x01, 0x85,
+    0xC0, 0x74, 0x34, 0xA1, 0x8C, 0x60, 0x57, 0x01,
+    0x85, 0xC0, 0x74, 0x2B, 0xA1, 0x90, 0x60, 0x57,
+    0x01, 0x85, 0xC0, 0x74, 0x22, 0xA1, 0x9C, 0x60,
+    0x57, 0x01, 0x85, 0xC0, 0x74, 0x19, 0xA1, 0xA0,
+    0x60, 0x57, 0x01, 0x85, 0xC0, 0x74, 0x10, 0xA1,
+    0xA4, 0x60, 0x57, 0x01, 0x85, 0xC0, 0x74, 0x07,
+    0xC6, 0x05, 0x70, 0x5F, 0x57, 0x01, 0x01, 0x61,
+    0x9D, 0x68, 0xA0, 0x39, 0x95, 0x00, 0xE9, 0x02,
+    0xE1, 0xAF, 0xFF,
+};
+constexpr std::uint8_t AvatarTimeoutGuardHook[] = {
+    0xE9, 0x64, 0xDB, 0x3C, 0x00, 0x90,
+};
+constexpr std::uint8_t AvatarTimeoutGuardCave[] = {
+    0xA1, 0x88, 0x60, 0x57, 0x01, 0x85, 0xC0, 0x74,
+    0x38, 0xA1, 0x8C, 0x60, 0x57, 0x01, 0x85, 0xC0,
+    0x74, 0x2F, 0xA1, 0x90, 0x60, 0x57, 0x01, 0x85,
+    0xC0, 0x74, 0x26, 0xA1, 0x9C, 0x60, 0x57, 0x01,
+    0x85, 0xC0, 0x74, 0x1D, 0xA1, 0xA0, 0x60, 0x57,
+    0x01, 0x85, 0xC0, 0x74, 0x14, 0xA1, 0xA4, 0x60,
+    0x57, 0x01, 0x85, 0xC0, 0x74, 0x0B, 0x8B, 0x0D,
+    0xA0, 0x60, 0x57, 0x01, 0xE9, 0x5C, 0x24, 0xC3,
+    0xFF, 0xBF, 0x02, 0x00, 0x00, 0x00, 0xC6, 0x05,
+    0x66, 0x5C, 0x57, 0x01, 0x01, 0x89, 0x3D, 0x50,
+    0x5F, 0x57, 0x01, 0xE9, 0x73, 0x24, 0xC3, 0xFF,
+};
 
 constexpr std::uintptr_t LifecycleHookRva = 0x000C14C5;
 constexpr std::uintptr_t SecondaryGuardHookRva = 0x001F05C2;
 constexpr std::uintptr_t PrimaryGuardHookRva = 0x001F4A82;
+constexpr std::uintptr_t AvatarPreloadHookRva = 0x000C14D6;
+constexpr std::uintptr_t AvatarPreloadCaveRva = 0x005C3366;
+constexpr std::uintptr_t AvatarTimeoutGuardHookRva = 0x001F58B6;
+constexpr std::uintptr_t AvatarTimeoutGuardCaveRva = 0x005C341F;
+constexpr std::uintptr_t CurrentStateRva = 0x01175F4C;
+constexpr std::uintptr_t PendingStateRva = 0x01175F50;
+constexpr std::uintptr_t TransitionLatchRva = 0x01175C66;
+constexpr std::int32_t CharacterSelectionState = 2;
+constexpr std::uint16_t AfterLoginRecordLength = 44;
+constexpr std::uint16_t AfterLoginOpcode = 0x2876;
 constexpr std::uint16_t CharacterPreviewLength = 188;
 constexpr std::uint16_t CharacterPreviewOpcode = 0x2712;
 constexpr std::uint8_t CharacterPreviewCount = 1;
+
+static_assert(sizeof(AvatarPreloadCave) == 115);
+static_assert(sizeof(AvatarTimeoutGuardCave) == 88);
 
 bool HasReadableProtection(DWORD protection) noexcept {
     if ((protection & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
@@ -82,6 +131,22 @@ bool HasExecutableProtection(DWORD protection) noexcept {
     }
 }
 
+bool HasWritableProtection(DWORD protection) noexcept {
+    if ((protection & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
+        return false;
+    }
+
+    switch (protection & 0xFF) {
+        case PAGE_READWRITE:
+        case PAGE_WRITECOPY:
+        case PAGE_EXECUTE_READWRITE:
+        case PAGE_EXECUTE_WRITECOPY:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool IsRangeAccessible(
     const void* address,
     std::size_t length,
@@ -109,6 +174,27 @@ bool IsRangeAccessible(
     return requireExecutable
         ? HasExecutableProtection(memory.Protect)
         : HasReadableProtection(memory.Protect);
+}
+
+bool IsRangeWritable(const void* address, std::size_t length) noexcept {
+    if (address == nullptr || length == 0) {
+        return false;
+    }
+
+    MEMORY_BASIC_INFORMATION memory{};
+    if (VirtualQuery(address, &memory, sizeof(memory)) == 0 ||
+        memory.State != MEM_COMMIT ||
+        !HasWritableProtection(memory.Protect)) {
+        return false;
+    }
+
+    const auto start = reinterpret_cast<std::uintptr_t>(address);
+    const auto regionStart =
+        reinterpret_cast<std::uintptr_t>(memory.BaseAddress);
+    const auto regionEnd = regionStart + memory.RegionSize;
+    return start >= regionStart &&
+        start <= regionEnd &&
+        length <= regionEnd - start;
 }
 
 bool HasBytes(
@@ -182,19 +268,23 @@ AvatarPreviewGate::AvatarPreviewGate() noexcept
     : AvatarPreviewGate(
         IsSupportedOriginAvatarHost(),
         AreOriginAvatarResourcesReady,
-        DestroyLegacyMessage) {
+        DestroyLegacyMessage,
+        RequestOriginAvatarPreload) {
 }
 
 AvatarPreviewGate::AvatarPreviewGate(
     bool enabled,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer) noexcept
+    LegacyMessageDisposer messageDisposer,
+    AvatarPreloadRequester preloadRequester) noexcept
     : enabled_(
           enabled &&
           readinessProbe != nullptr &&
           messageDisposer != nullptr),
       readinessProbe_(readinessProbe),
       messageDisposer_(messageDisposer),
+      preloadRequester_(preloadRequester),
+      preloadRequested_(false),
       heldMessage_(nullptr) {
 }
 
@@ -207,20 +297,33 @@ bool AvatarPreviewGate::IsHolding() const noexcept {
 }
 
 void* AvatarPreviewGate::Filter(void* message) noexcept {
-    if (!enabled_ ||
-        heldMessage_ != nullptr ||
+    if (!enabled_) {
+        return message;
+    }
+
+    if (IsAfterLoginBootstrapMessage(message)) {
+        TryRequestPreload();
+        return message;
+    }
+
+    if (heldMessage_ != nullptr ||
         !IsCharacterPreviewMessage(message) ||
         readinessProbe_()) {
         return message;
     }
 
+    TryRequestPreload();
     heldMessage_ = message;
     return nullptr;
 }
 
 void* AvatarPreviewGate::TryRelease() noexcept {
-    if (heldMessage_ == nullptr ||
-        !readinessProbe_()) {
+    if (heldMessage_ == nullptr) {
+        return nullptr;
+    }
+
+    if (!readinessProbe_()) {
+        TryRequestPreload();
         return nullptr;
     }
 
@@ -242,8 +345,17 @@ long AvatarPreviewGate::AdjustMessageCount(long legacyCount) const noexcept {
 void AvatarPreviewGate::Reset() noexcept {
     auto* message = heldMessage_;
     heldMessage_ = nullptr;
+    preloadRequested_ = false;
     if (message != nullptr && messageDisposer_ != nullptr) {
         messageDisposer_(message);
+    }
+}
+
+void AvatarPreviewGate::TryRequestPreload() noexcept {
+    if (!preloadRequested_ &&
+        preloadRequester_ != nullptr &&
+        preloadRequester_()) {
+        preloadRequested_ = true;
     }
 }
 
@@ -285,7 +397,27 @@ bool IsSupportedOriginAvatarHost() noexcept {
             image,
             PrimaryGuardHookRva,
             PrimaryGuardHook,
-            sizeof(PrimaryGuardHook));
+            sizeof(PrimaryGuardHook)) &&
+        HasBytes(
+            image,
+            AvatarPreloadHookRva,
+            AvatarPreloadHook,
+            sizeof(AvatarPreloadHook)) &&
+        HasBytes(
+            image,
+            AvatarPreloadCaveRva,
+            AvatarPreloadCave,
+            sizeof(AvatarPreloadCave)) &&
+        HasBytes(
+            image,
+            AvatarTimeoutGuardHookRva,
+            AvatarTimeoutGuardHook,
+            sizeof(AvatarTimeoutGuardHook)) &&
+        HasBytes(
+            image,
+            AvatarTimeoutGuardCaveRva,
+            AvatarTimeoutGuardCave,
+            sizeof(AvatarTimeoutGuardCave));
 }
 
 bool AreOriginAvatarResourcesReady() noexcept {
@@ -314,6 +446,100 @@ bool AreOriginAvatarResourcesReady() noexcept {
     }
 
     return true;
+}
+
+bool RequestOriginAvatarPreload() noexcept {
+    if (AreOriginAvatarResourcesReady()) {
+        return true;
+    }
+
+    const auto module = GetModuleHandleW(nullptr);
+    if (reinterpret_cast<std::uintptr_t>(module) != OriginImageBase) {
+        return false;
+    }
+
+    auto* const image = reinterpret_cast<std::uint8_t*>(module);
+    auto* const currentState = reinterpret_cast<const std::int32_t*>(
+        image + CurrentStateRva);
+    auto* const pendingState = reinterpret_cast<std::int32_t*>(
+        image + PendingStateRva);
+    auto* const transitionLatch = reinterpret_cast<std::uint8_t*>(
+        image + TransitionLatchRva);
+
+    if (!IsRangeAccessible(
+            currentState,
+            sizeof(*currentState),
+            false) ||
+        !IsRangeAccessible(
+            pendingState,
+            sizeof(*pendingState),
+            false) ||
+        !IsRangeWritable(
+            pendingState,
+            sizeof(*pendingState)) ||
+        !IsRangeAccessible(
+            transitionLatch,
+            sizeof(*transitionLatch),
+            false) ||
+        !IsRangeWritable(
+            transitionLatch,
+            sizeof(*transitionLatch))) {
+        return false;
+    }
+
+    __try {
+        const auto observedCurrentState = *currentState;
+        const auto observedPendingState = *pendingState;
+        const auto transitionPending = *transitionLatch;
+        // A same-state request is intentional recovery: it reruns the
+        // character-selection registration hook when its resources are absent.
+        static_cast<void>(observedCurrentState);
+
+        if (transitionPending != 0) {
+            return observedPendingState == CharacterSelectionState;
+        }
+
+        *pendingState = CharacterSelectionState;
+        MemoryBarrier();
+        *transitionLatch = 1;
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+bool IsAfterLoginBootstrapMessage(const void* message) noexcept {
+    constexpr std::size_t PacketOffset = sizeof(void*);
+    constexpr std::size_t HashTerminatorOffset = 40;
+    constexpr std::size_t VersionDigitOneOffset = 41;
+    constexpr std::size_t VersionDigitTwoOffset = 42;
+    constexpr std::size_t VersionTerminatorOffset = 43;
+    constexpr std::size_t RequiredSize =
+        PacketOffset + AfterLoginRecordLength;
+
+    if (!IsRangeAccessible(message, RequiredSize, false)) {
+        return false;
+    }
+
+    __try {
+        const auto* packet =
+            static_cast<const std::uint8_t*>(message) + PacketOffset;
+        std::uint16_t length = 0;
+        std::uint16_t opcode = 0;
+        std::memcpy(&length, packet, sizeof(length));
+        std::memcpy(&opcode, packet + sizeof(length), sizeof(opcode));
+
+        return length == AfterLoginRecordLength &&
+            opcode == AfterLoginOpcode &&
+            packet[HashTerminatorOffset] == 0 &&
+            packet[VersionDigitOneOffset] == '8' &&
+            packet[VersionDigitTwoOffset] == '8' &&
+            packet[VersionTerminatorOffset] == 0;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
 }
 
 bool IsCharacterPreviewMessage(const void* message) noexcept {

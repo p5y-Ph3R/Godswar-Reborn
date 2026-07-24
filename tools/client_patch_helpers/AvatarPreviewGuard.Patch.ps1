@@ -24,6 +24,17 @@ $expectedMachine = 0x014C
 $expectedOptionalMagic = 0x010B
 $expectedImageBase = 0x00400000
 
+# This older patch is the prerequisite for the additive V4 preload patch.
+# Refuse a partial downgrade: V4 must be reverted with its own tool first.
+$v4PreloadHookOffset = 0x0C14D6
+$v4PreloadOriginalHook = Convert-HexBytes '68 A0 39 95 00'
+$v4PreloadCaveOffset = 0x5C3366
+$v4PreloadEmptyCave = [byte[]]::new(154)
+$v4TimeoutHookOffset = 0x1F58B6
+$v4TimeoutOriginalHook = Convert-HexBytes '8B 0D A0 60 57 01'
+$v4TimeoutCaveOffset = 0x5C341F
+$v4TimeoutEmptyCave = [byte[]]::new(96)
+
 # The client intentionally unloads the selection-avatar resources after world
 # entry, but its one-time initialization flag is never reset. When state 2
 # installs the LOGIN/character-selection object, clear only that flag and
@@ -150,6 +161,12 @@ if ($runningClient.Count -gt 0) {
 $data = [IO.File]::ReadAllBytes($resolvedClientExe)
 if ($data.Length -ne $expectedLength) {
     throw "Unsupported Origin.exe size $($data.Length); expected $expectedLength bytes."
+}
+if (-not (Test-Bytes $data $v4PreloadHookOffset $v4PreloadOriginalHook) -or
+    -not (Test-Bytes $data $v4PreloadCaveOffset $v4PreloadEmptyCave) -or
+    -not (Test-Bytes $data $v4TimeoutHookOffset $v4TimeoutOriginalHook) -or
+    -not (Test-Bytes $data $v4TimeoutCaveOffset $v4TimeoutEmptyCave)) {
+    throw 'Origin.exe contains the additive V4 avatar preload patch. Revert it with PatchClientAvatarPreload.ps1 before changing the prerequisite preview guards.'
 }
 $peMetadata = Get-PeMetadata $data
 if ($peMetadata.Machine -ne $expectedMachine -or

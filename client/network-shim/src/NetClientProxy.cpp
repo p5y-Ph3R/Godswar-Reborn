@@ -8,12 +8,14 @@ NetClientProxy::NetClientProxy(
     ILegacyNetClient* legacyClient,
     bool enableAvatarGate,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer) noexcept
+    LegacyMessageDisposer messageDisposer,
+    AvatarPreloadRequester preloadRequester) noexcept
     : legacyClient_(legacyClient),
       avatarPreviewGate_(
           enableAvatarGate,
           readinessProbe,
-          messageDisposer) {
+          messageDisposer,
+          preloadRequester) {
 }
 
 ILegacyNetClient* NetClientProxy::Create(
@@ -22,14 +24,16 @@ ILegacyNetClient* NetClientProxy::Create(
         legacyClient,
         IsSupportedOriginAvatarHost(),
         AreOriginAvatarResourcesReady,
-        DestroyLegacyMessage);
+        DestroyLegacyMessage,
+        RequestOriginAvatarPreload);
 }
 
 ILegacyNetClient* NetClientProxy::CreateForTesting(
     ILegacyNetClient* legacyClient,
     bool enableAvatarGate,
     AvatarReadinessProbe readinessProbe,
-    LegacyMessageDisposer messageDisposer) noexcept {
+    LegacyMessageDisposer messageDisposer,
+    AvatarPreloadRequester preloadRequester) noexcept {
     if (legacyClient == nullptr) {
         return nullptr;
     }
@@ -38,7 +42,8 @@ ILegacyNetClient* NetClientProxy::CreateForTesting(
         legacyClient,
         enableAvatarGate,
         readinessProbe,
-        messageDisposer);
+        messageDisposer,
+        preloadRequester);
     if (proxy == nullptr) {
         legacyClient->Release();
     }

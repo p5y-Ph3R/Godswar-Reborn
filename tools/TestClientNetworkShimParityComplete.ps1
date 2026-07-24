@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590',
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864',
 
     [string]$CandidateShimPath
 )
@@ -11,9 +11,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
-$expectedToolVersion = '1.4.0'
+$expectedToolVersion = '1.5.0'
 $expectedShimHash =
-    '17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1'
+    'EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597'
 if ([string]::IsNullOrWhiteSpace($CandidateShimPath)) {
     $CandidateShimPath = Join-Path `
         $repoRoot 'client\network-shim\bin\Release\Win32\Net.dll'

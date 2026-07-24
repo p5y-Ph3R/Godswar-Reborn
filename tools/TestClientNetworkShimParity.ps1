@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,9 +12,9 @@ $tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
 $module = Join-Path $PSScriptRoot 'ClientNetworkShimParityEvidence.psm1'
 $validationModule = Join-Path `
     $PSScriptRoot 'ClientNetworkShimParityValidation.psm1'
-$expectedToolVersion = '1.4.0'
+$expectedToolVersion = '1.5.0'
 $expectedShimHash =
-    '17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1'
+    'EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597'
 Import-Module $module -Force
 Import-Module $validationModule -Force
 Import-Module (
@@ -216,7 +216,7 @@ try {
         $encoding)
     Assert-Throws {
         & $tool -Mode Status -EvidencePath $oldVersionRoot | Out-Null
-    } 'V1.3 evidence' 'start a new run with 1\.4\.0'
+    } 'V1.3 evidence' 'start a new run with 1\.5\.0'
 
     $afterHashes = @(
         Get-ParitySha256 $originPath

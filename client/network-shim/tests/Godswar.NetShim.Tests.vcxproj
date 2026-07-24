@@ -61,6 +61,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AvatarPreloadTests.cpp" />
     <ClCompile Include="AvatarPreviewGateTests.cpp" />
     <ClCompile Include="NetShimTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
@@ -68,6 +69,7 @@
     <ClCompile Include="..\src\NetClientProxy.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AvatarPreloadTests.h" />
     <ClInclude Include="AvatarPreviewGateTests.h" />
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
     <ClInclude Include="..\src\FileSha256.h" />

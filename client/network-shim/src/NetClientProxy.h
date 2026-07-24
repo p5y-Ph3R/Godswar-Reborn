@@ -12,7 +12,8 @@ public:
         ILegacyNetClient* legacyClient,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
-        LegacyMessageDisposer messageDisposer) noexcept;
+        LegacyMessageDisposer messageDisposer,
+        AvatarPreloadRequester preloadRequester = nullptr) noexcept;
 
     std::uint32_t Release() override;
     void SetHost(const char* host, std::uint16_t port) override;
@@ -29,7 +30,8 @@ private:
         ILegacyNetClient* legacyClient,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
-        LegacyMessageDisposer messageDisposer) noexcept;
+        LegacyMessageDisposer messageDisposer,
+        AvatarPreloadRequester preloadRequester) noexcept;
     ~NetClientProxy() = default;
 
     ILegacyNetClient* legacyClient_;

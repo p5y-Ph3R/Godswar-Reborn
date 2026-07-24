@@ -15,10 +15,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $supportedOriginHash = `
-    '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
+    'E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C'
 $supportedLegacyHash = `
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
-$installerVersion = '1.0.0'
+$installerVersion = '1.1.0'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ShimPath) {
     $ShimPath = Join-Path $repoRoot `

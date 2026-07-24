@@ -10,7 +10,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$OriginalApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590',
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864',
 
     [string]$FinalApplyBackupPath,
 
@@ -44,11 +44,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$toolVersion = '1.4.0'
+$toolVersion = '1.5.0'
 $originHash =
-    '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
+    'E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C'
 $shimHash =
-    '17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1'
+    'EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597'
 $legacyHash =
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
 $serverEndpoints = @('127.1.1.110:5998', '127.1.1.110:7000')

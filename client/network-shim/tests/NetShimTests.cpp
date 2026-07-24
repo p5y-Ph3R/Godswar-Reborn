@@ -1,4 +1,5 @@
 #include "AvatarPreviewGateTests.h"
+#include "AvatarPreloadTests.h"
 
 #include "../src/LegacyClientApi.h"
 #include "../src/NetClientProxy.h"
@@ -268,6 +269,7 @@ void RunRejectedShimProbe(
 int wmain(int argumentCount, wchar_t** arguments) {
     RunProxyUnitChecks();
     Failures += RunAvatarPreviewGateTests();
+    Failures += RunAvatarPreloadTests();
 
     if (argumentCount == 3 &&
         std::wcscmp(arguments[1], L"--probe") == 0) {
