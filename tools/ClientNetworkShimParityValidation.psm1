@@ -336,6 +336,8 @@ function New-ParityAcceptanceMarkdown {
 | Soak duration | $($manual.soakMinutes) minutes |
 | Dump changes | $dumpText |
 | Logs reviewed | $($manual.logsReviewed) |
+| Avatar preview loading gate | $($manual.avatarPreviewLoadingGatePassed) |
+| No unintended behavior difference | $($manual.noUnintendedBehaviorDifference) |
 | Stock rollback / final reapply | $stockResult / $reapplyResult |
 | Final Apply backup | $(Escape-MarkdownValue $backup) |
 | Notes | $(Escape-MarkdownValue ([string]$manual.notes)) |

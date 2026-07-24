@@ -61,10 +61,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AvatarPreviewGateTests.cpp" />
     <ClCompile Include="NetShimTests.cpp" />
+    <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
+    <ClCompile Include="..\src\FileSha256.cpp" />
     <ClCompile Include="..\src\NetClientProxy.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AvatarPreviewGateTests.h" />
+    <ClInclude Include="..\src\AvatarPreviewGate.h" />
+    <ClInclude Include="..\src\FileSha256.h" />
     <ClInclude Include="..\src\LegacyClientApi.h" />
     <ClInclude Include="..\src\NetClientProxy.h" />
   </ItemGroup>

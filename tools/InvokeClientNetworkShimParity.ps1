@@ -10,7 +10,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$OriginalApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594',
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083',
 
     [string]$FinalApplyBackupPath,
 
@@ -29,7 +29,9 @@ param(
 
     [switch]$LogsReviewed,
 
-    [switch]$NoBehaviorDifference,
+    [switch]$AvatarPreviewLoadingGatePassed,
+
+    [switch]$NoUnintendedBehaviorDifference,
 
     [switch]$RecordFailure,
 
@@ -42,11 +44,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$toolVersion = '1.1.0'
+$toolVersion = '1.2.0'
 $originHash =
     '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
 $shimHash =
-    '528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD'
+    '2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0'
 $legacyHash =
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
 $serverEndpoints = @('127.1.1.110:5998', '127.1.1.110:7000')
@@ -147,6 +149,8 @@ if ($Mode -eq 'Begin') {
             minimumShimLaunches = 5
             stages = @('ShimParity', 'StockRollback', 'FinalReapply')
             checklist = @(
+                'avatar preview loading remains responsive',
+                'avatar 3D model appears automatically without relogging',
                 'world entry',
                 'movement',
                 'map transition',
@@ -155,7 +159,8 @@ if ($Mode -eq 'Begin') {
                 'inventory and equip/unequip',
                 'forge and Gear Mentor',
                 'Zodiac',
-                'clean logout'
+                'clean logout',
+                'no unintended behavior differences outside preview timing'
             )
         }
         before = $before
@@ -508,8 +513,11 @@ if (-not $ChecklistPassed) {
 if (-not $LogsReviewed) {
     $errors += 'Changed client logs were not reviewed.'
 }
-if (-not $NoBehaviorDifference) {
-    $errors += 'No-behavior-difference was not attested.'
+if (-not $AvatarPreviewLoadingGatePassed) {
+    $errors += 'Avatar-preview loading-gate behavior was not attested.'
+}
+if (-not $NoUnintendedBehaviorDifference) {
+    $errors += 'No-unintended-behavior-difference was not attested.'
 }
 
 if ($errors.Count -gt 0 -and -not $RecordFailure) {
@@ -531,7 +539,10 @@ $completion = [ordered]@{
         soakMinutes = $SoakMinutes
         checklistPassed = [bool]$ChecklistPassed
         logsReviewed = [bool]$LogsReviewed
-        noBehaviorDifference = [bool]$NoBehaviorDifference
+        avatarPreviewLoadingGatePassed =
+            [bool]$AvatarPreviewLoadingGatePassed
+        noUnintendedBehaviorDifference =
+            [bool]$NoUnintendedBehaviorDifference
         notes = $Notes
     }
     repository = $repository

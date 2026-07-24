@@ -2,12 +2,12 @@
 
 ## Status
 
-- Specification version: `1.0`
+- Specification version: `1.1`
 - Last updated: `2026-07-24`
 - Runtime status: not implemented and not enabled
 - Required predecessor: Phase 1 interactive parity and rollback acceptance
 - Phase 1 installed shim SHA-256:
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 
 The SHA-256 above is intentionally repeated from the Phase 1 runbook as the
 rollback target for the next client build. This document is the reviewed
@@ -17,18 +17,22 @@ raw protocol is secure, and it does not authorize enabling UDP.
 ## Decision
 
 Phase 2 adds separate TLS login and game listeners and an in-process loopback
-bridge to the x86 `Net.dll` shim. The verified stock `NetLegacy.dll` remains the
-sole owner of:
+bridge to the x86 `Net.dll` shim. The verified stock `NetLegacy.dll` remains
+responsible for:
 
 - the proprietary nine-slot client ABI;
-- `CMsg` allocation, parsing, ownership, and `PickMsg` lifetime;
+- `CMsg` allocation and parsing;
 - legacy little-endian framing; and
 - the continuous rolling XOR stream.
 
 The bridge carries the exact XOR-protected legacy byte stream as opaque
-`LegacyBytes` frames inside TLS. It does not decrypt, parse, construct, retain,
-or free a legacy `CMsg`. TLS supplies confidentiality and integrity; the XOR is
-retained only to minimize compatibility risk.
+`LegacyBytes` frames inside TLS. It does not decrypt, parse, or construct a
+legacy `CMsg`. The existing Phase 1 loading gate is the one narrow ownership
+exception: it may retain the exact one-character opcode-`10002` pointer while
+avatar resources load and dispose an undelivered pointer through its stock
+virtual scalar-deleting destructor on disconnect, reconnect, release, or
+timeout. TLS supplies confidentiality and integrity; the XOR is retained only
+to minimize compatibility risk.
 
 This deliberately chooses compatibility over removing redundant obfuscation in
 the first secure phase. A later ADR may remove XOR from secure connections only
@@ -54,8 +58,9 @@ Current repository evidence:
 - Login currently upserts credentials rather than authenticating them.
 - Both stores overwrite an existing password, and game opcode `10000` calls the
   same operation with an empty password.
-- The Phase 1 proxy delegates all nine stock methods unchanged and can add the
-  bridge without patching `Origin.exe`.
+- The Phase 1 proxy preserves the nine-slot ABI. It delegates ordinary traffic
+  unchanged and applies only the documented preview loading gate, so the
+  bridge can still be added without patching `Origin.exe`.
 
 The secure transport must therefore expose an ordered byte stream to the
 existing `ClientSession`, not replace gameplay handlers or reinterpret packet
@@ -263,12 +268,14 @@ Before Phase 2 code:
    skill, manipulate inventory/equipment, and exercise one NPC/forge action.
 3. Fully exit `Origin.exe`, log in to account 13, and repeat.
 4. Alternate accounts for five complete close/relaunch cycles.
-5. Confirm no new dump, crash, or error-log entry.
-6. Run the Phase 1 stock Restore smoke, reapply the shim, and repeat one world
+5. Confirm a late selection preview remains responsively loading and its model
+   appears automatically; no blank preview or relaunch is accepted.
+6. Confirm no new dump, crash, or error-log entry.
+7. Run the Phase 1 stock Restore smoke, reapply the shim, and repeat one world
    entry. Record the final backup and hashes in the Phase 1 runbook.
 
-Any behavioral difference fails the gate and restores the exact Phase 1
-backup.
+Failure of the intended loading behavior, or any other unintended behavioral
+difference, fails the gate and restores the exact Phase 1 backup.
 
 ### Automated Phase 2 gates
 
@@ -290,7 +297,8 @@ backup.
   another.
 - Native lifecycle tests: repeated/failed connect, double disconnect, release
   without disconnect, concurrent grant claim, ticket zeroization, no
-  use-after-free, and stock `CMsg` ownership.
+  use-after-free, stock-compatible `CMsg` allocation, and exact-once cleanup of
+  the bounded preview-gate exception.
 - End-to-end login, grant-before-redirect ordering, game bind, world entry,
   account 7/13 switching, map/gameplay actions, clean shutdown, and long soak.
 - Packet capture/ETW proof that external credentials and game bytes are TLS,

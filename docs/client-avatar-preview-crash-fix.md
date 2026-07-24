@@ -17,6 +17,12 @@ Installed on 2026-07-22 with:
 
 No server or database change is part of this fix.
 
+The later companion `Net.dll` loading gate is documented in
+[`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
+It keeps the exact preview message pending until these guarded resources are
+ready, so the selection screen can show loading and then build the model
+automatically instead of permanently skipping it.
+
 ## Evidence and root cause
 
 The two 2026-07-22 dumps at `13:08:45` and `13:08:58` both contain an x86
@@ -60,7 +66,8 @@ transaction:
 Both guards are fail-closed. A packet that still wins a narrow initialization
 race can skip that one preview build instead of dereferencing null. Neither
 guard sleeps, re-enters the loader, or runs initialization from the render
-path.
+path. The companion shim gate addresses the consequence of that safe skip by
+retaining and retrying only the audited preview message.
 
 The patcher refuses to write unless the client is closed and all of the
 following match the audited build: file size, DOS/PE headers, x86 PE32 machine,
@@ -96,9 +103,12 @@ intermittent:
    enter the world.
 2. Leave that session and log in to account 13 without requiring a failed
    first attempt.
-3. Confirm account 13's preview appears and the client enters the world.
-4. Repeat the account switch at least five times.
-5. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
+3. If the resource race occurs, confirm the screen remains responsive in its
+   loading state and the model appears automatically rather than remaining
+   blank.
+4. Confirm account 13's preview appears and the client enters the world.
+5. Repeat the account switch at least five times.
+6. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
    `0x005F4ADD` or `0x005F060E` entry is appended to `Error.log`.
 
 Static and disposable-binary validation is complete. The interactive sequence

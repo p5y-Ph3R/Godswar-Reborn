@@ -1,11 +1,8 @@
 #include "LegacyModule.h"
-
-#include <wincrypt.h>
+#include "FileSha256.h"
 
 #include <cstddef>
 #include <cstdint>
-
-#pragma comment(lib, "advapi32.lib")
 
 namespace {
 
@@ -51,108 +48,11 @@ bool BuildLegacyPath(
     return true;
 }
 
-bool HashFileSha256(
-    const wchar_t* path,
-    std::uint8_t* hash,
-    DWORD hashSize) noexcept {
-    const auto file = CreateFileW(
-        path,
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
-        nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-
-    HCRYPTPROV provider = 0;
-    HCRYPTHASH hashHandle = 0;
-    bool succeeded = false;
-
-    if (CryptAcquireContextW(
-            &provider,
-            nullptr,
-            nullptr,
-            PROV_RSA_AES,
-            CRYPT_VERIFYCONTEXT) &&
-        CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hashHandle)) {
-        BYTE buffer[32 * 1024]{};
-        DWORD bytesRead = 0;
-        succeeded = true;
-
-        while (true) {
-            if (!ReadFile(
-                    file,
-                    buffer,
-                    static_cast<DWORD>(sizeof(buffer)),
-                    &bytesRead,
-                    nullptr)) {
-                succeeded = false;
-                break;
-            }
-
-            if (bytesRead == 0) {
-                break;
-            }
-
-            if (!CryptHashData(hashHandle, buffer, bytesRead, 0)) {
-                succeeded = false;
-                break;
-            }
-        }
-
-        DWORD actualSize = hashSize;
-        if (succeeded &&
-            (!CryptGetHashParam(
-                hashHandle,
-                HP_HASHVAL,
-                hash,
-                &actualSize,
-                0) ||
-             actualSize != hashSize)) {
-            succeeded = false;
-        }
-
-        SecureZeroMemory(buffer, sizeof(buffer));
-    }
-
-    if (hashHandle != 0) {
-        CryptDestroyHash(hashHandle);
-    }
-    if (provider != 0) {
-        CryptReleaseContext(provider, 0);
-    }
-    CloseHandle(file);
-    return succeeded;
-}
-
 bool IsSupportedLegacy(const wchar_t* path) noexcept {
-    std::uint8_t actualHash[sizeof(SupportedLegacySha256)]{};
-    if (!HashFileSha256(
-            path,
-            actualHash,
-            static_cast<DWORD>(sizeof(actualHash)))) {
-        return false;
-    }
-
-    std::uint8_t difference = 0;
-    for (std::size_t index = 0;
-         index < sizeof(SupportedLegacySha256);
-         ++index) {
-        difference |=
-            static_cast<std::uint8_t>(
-                actualHash[index] ^ SupportedLegacySha256[index]);
-    }
-    SecureZeroMemory(actualHash, sizeof(actualHash));
-
-    if (difference != 0) {
-        SetLastError(ERROR_INVALID_DATA);
-        return false;
-    }
-
-    return true;
+    return godswar::network::FileMatchesSha256(
+        path,
+        SupportedLegacySha256,
+        sizeof(SupportedLegacySha256));
 }
 
 } // namespace

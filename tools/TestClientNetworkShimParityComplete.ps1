@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -223,7 +223,8 @@ try {
         -SoakMinutes 10 `
         -ChecklistPassed `
         -LogsReviewed `
-        -NoBehaviorDifference
+        -AvatarPreviewLoadingGatePassed `
+        -NoUnintendedBehaviorDifference
     if ($complete.Result -ne 'Pass') {
         throw 'A valid synthetic Complete integration was rejected.'
     }
@@ -242,6 +243,23 @@ try {
             ) -PathType Leaf)) {
             throw "Complete did not create $name."
         }
+    }
+    $writtenCompletion = Get-Content -LiteralPath (
+        Join-Path $begin.EvidencePath 'completion.json'
+    ) -Raw | ConvertFrom-Json
+    $writtenAttestation = $writtenCompletion.manualAttestation
+    if (-not $writtenAttestation.avatarPreviewLoadingGatePassed -or
+        -not $writtenAttestation.noUnintendedBehaviorDifference) {
+        throw 'Complete did not persist both avatar-preview attestations.'
+    }
+    $acceptanceMarkdown = Get-Content -LiteralPath (
+        Join-Path $begin.EvidencePath 'acceptance.md'
+    ) -Raw
+    if ($acceptanceMarkdown -notmatch
+            'Avatar preview loading gate \| True' -or
+        $acceptanceMarkdown -notmatch
+            'No unintended behavior difference \| True') {
+        throw 'Acceptance Markdown omitted the avatar-preview attestations.'
     }
     Write-Host 'Clean-worktree Complete integration passed.'
 }

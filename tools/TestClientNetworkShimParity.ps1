@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,6 +89,17 @@ try {
         (Test-Path -LiteralPath $manifestPath -PathType Leaf) -and
         (Test-Path -LiteralPath $checksumPath -PathType Leaf)
     ) 'Begin did not create its immutable manifest pair.'
+    $beginManifest = Get-Content -LiteralPath $manifestPath -Raw |
+        ConvertFrom-Json
+    Assert-True (
+        $beginManifest.toolVersion -eq '1.2.0' -and
+        @($beginManifest.expected.checklist) -contains
+            'avatar preview loading remains responsive' -and
+        @($beginManifest.expected.checklist) -contains
+            'avatar 3D model appears automatically without relogging' -and
+        @($beginManifest.expected.checklist) -contains
+            'no unintended behavior differences outside preview timing'
+    ) 'Begin did not record the avatar-preview loading-gate contract.'
 
     $status = & $tool -Mode Status -EvidencePath $begin.EvidencePath
     Assert-True ($status.State -eq 'Pending') 'Status was not Pending.'
@@ -112,8 +123,34 @@ try {
             -CompletedCycles 5 `
             -SoakMinutes 1 `
             -ChecklistPassed `
+            -LogsReviewed | Out-Null
+    } 'Complete without avatar-preview attestation' `
+        'Avatar-preview loading-gate behavior was not attested'
+
+    Assert-Throws {
+        & $tool `
+            -Mode Complete `
+            -EvidencePath $begin.EvidencePath `
+            -FinalApplyBackupPath $ApplyBackupPath `
+            -CompletedCycles 5 `
+            -SoakMinutes 1 `
+            -ChecklistPassed `
             -LogsReviewed `
-            -NoBehaviorDifference | Out-Null
+            -AvatarPreviewLoadingGatePassed | Out-Null
+    } 'Complete without no-unintended-difference attestation' `
+        'No-unintended-behavior-difference was not attested'
+
+    Assert-Throws {
+        & $tool `
+            -Mode Complete `
+            -EvidencePath $begin.EvidencePath `
+            -FinalApplyBackupPath $ApplyBackupPath `
+            -CompletedCycles 5 `
+            -SoakMinutes 1 `
+            -ChecklistPassed `
+            -LogsReviewed `
+            -AvatarPreviewLoadingGatePassed `
+            -NoUnintendedBehaviorDifference | Out-Null
     } 'Complete without observations and with test overrides' `
         'Test-only Begin/Complete overrides prohibit acceptance'
     Assert-True (
@@ -204,7 +241,7 @@ try {
         $encoding)
     Assert-Throws {
         & $tool -Mode Status -EvidencePath $oldVersionRoot | Out-Null
-    } 'old tool version' 'start a new run with 1\.1\.0'
+    } 'old tool version' 'start a new run with 1\.2\.0'
 
     $afterHashes = @(
         Get-ParitySha256 $originPath

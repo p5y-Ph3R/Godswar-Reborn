@@ -2,21 +2,26 @@
 
 ## Verified state
 
-- Status: automated gates complete; interactive parity pending
+- Status: loading-gate shim installed; automated gates complete; interactive
+  parity pending
 - Supported `Origin.exe` SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Stock `Net.dll`/installed `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 - Installed shim SHA-256:
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 - Installed state: `InstalledExact`
 - Current Apply backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594`
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083`
 
 This is the executable verification and rollback contract for Phase 1 of
 [`network-infrastructure-goal.md`](network-infrastructure-goal.md). `Pending`
 interactive results mean Phase 1 is not yet accepted and TLS/UDP work must not
 begin.
+
+The intentional preview-timing exception and its exact native-message
+ownership contract are documented in
+[`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
 
 ## Build and automated verification
 
@@ -38,8 +43,12 @@ The native suite:
    two name/ordinal exports;
 4. rejects an unbundled Visual C++ runtime;
 5. exercises all nine proxy slots and arguments against a controlled fake;
-6. creates/releases 32 real stock client objects through the shim; and
-7. proves missing/tampered legacy files fail closed with stable errors.
+6. verifies preview readiness, exact-pointer ordering, malformed-message
+   rejection, reconnect/disconnect/release cleanup, and the 30-second bound;
+7. invokes a real MSVC scalar-deleting destructor for retained-message
+   ownership coverage;
+8. creates/releases 32 real stock client objects through the shim; and
+9. proves missing/tampered legacy files fail closed with stable errors.
 
 `NetServiceCreate` is name/ordinal and fail-closed checked but intentionally not
 success-invoked because `Origin.exe` does not import that unaudited interface.
@@ -153,12 +162,15 @@ baseline rather than mixing observation schemas.
 4. Login, select a character, enter the world, move continuously, change maps,
    fight, chat, and use inventory, equip/unequip, forge, Gear Mentor, and
    Zodiac. Logout cleanly.
-5. Fully close and relaunch the client, alternating account 7 then account 13
+5. During any late preview, confirm the selection UI remains responsive and
+   loading, then shows the 3D character automatically. A permanent blank
+   model, crash, extra slot click, or required relaunch fails the gate.
+6. Fully close and relaunch the client, alternating account 7 then account 13
    for five complete cycles. Both must enter the world on the first attempt.
-6. Run a longer movement/map-transition soak and repeat the dump/log inventory.
+7. Run a longer movement/map-transition soak and repeat the dump/log inventory.
    No new crash dump or network exception may appear. The shim must never log
    credentials, tickets, keys, or payloads.
-7. Restore using the recorded Apply backup and run one stock login/world-entry
+8. Restore using the recorded Apply backup and run one stock login/world-entry
    smoke. Apply the verified shim again and run one final login/world-entry
    smoke. Record the new Apply backup printed by the final Apply.
 
@@ -175,8 +187,9 @@ the actual account ID. After closing the final client, complete the record:
   -SoakMinutes 10 `
   -ChecklistPassed `
   -LogsReviewed `
-  -NoBehaviorDifference `
-  -Notes 'Five alternating launches, rollback, and reapply behaved normally.'
+  -AvatarPreviewLoadingGatePassed `
+  -NoUnintendedBehaviorDifference `
+  -Notes 'Loading preview appeared automatically; five alternating launches, rollback, and reapply otherwise behaved normally.'
 ```
 
 `Complete` fails closed unless the repository and server instance are unchanged,
@@ -192,14 +205,16 @@ evidence path. Inspect progress at any time with:
   -EvidencePath $evidence
 ```
 
-Any difference or crash fails Phase 1 and triggers Restore.
+Failure of the intentional loading behavior, any unintended difference, or any
+crash fails Phase 1 and triggers Restore.
 
-## Interactive acceptance record
+## Historical pass-through evidence record
 
 The 2026-07-24 evidence audit found no post-install client run: the latest
 client/server activity preceded the 11:25 NZST shim installation. Therefore
-this record correctly remains pending; pre-install logs are not parity
-evidence.
+this historical `528913E6...D17A6DD` pass-through record remains pending;
+pre-install logs are not parity evidence. It cannot attest to the later loading
+gate.
 
 | Field | Value |
 | --- | --- |
@@ -211,4 +226,23 @@ evidence.
 | Soak duration | Pending |
 | Dump/log before and after | Pending |
 | Stock rollback smoke / final reapply smoke | Pending / Pending |
+| Result and final Apply backup | Pending |
+
+## Current loading-gate acceptance record
+
+The loading-gate build requires a fresh tool-version-`1.2.0` evidence run; old
+pass-through observations cannot be reused.
+
+| Field | Value |
+| --- | --- |
+| Date/operator | Pending |
+| Repository revision (`git rev-parse HEAD`) | Pending |
+| Origin/shim hashes | `753BE49F...AD49ED79` / `2D819908...E2AE0` |
+| Server endpoint/commit | `127.1.1.110:5998,7000` / Pending |
+| Accounts/cycles | `7 <-> 13` / five complete cycles |
+| Responsive loading / automatic model | Pending / Pending |
+| Soak duration | Pending |
+| Dump/log before and after | Pending |
+| Stock rollback smoke / final reapply smoke | Pending / Pending |
+| No unintended behavior difference | Pending |
 | Result and final Apply backup | Pending |

@@ -63,11 +63,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AvatarPreviewGate.h" />
+    <ClInclude Include="FileSha256.h" />
     <ClInclude Include="LegacyClientApi.h" />
     <ClInclude Include="LegacyModule.h" />
     <ClInclude Include="NetClientProxy.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AvatarPreviewGate.cpp" />
+    <ClCompile Include="FileSha256.cpp" />
     <ClCompile Include="LegacyModule.cpp" />
     <ClCompile Include="NetClientProxy.cpp" />
     <ClCompile Include="NetShim.cpp" />

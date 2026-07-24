@@ -340,9 +340,13 @@ network objects.
 4. Game `Connect` establishes TLS/preface, sends the claimed bind, and requires
    acceptance before opening the local leg in the same listen/begin-accept/
    stock-connect/accept-complete order. It then wipes the ticket.
-5. `SendMsg`, `Process`, `PickMsg`, `GetMsgNum`, and stock `CMsg` ownership stay
-   delegated. A bridge failure closes the loopback socket so the stock status
-   follows its native disconnect path.
+5. `SendMsg` and ordinary message processing stay delegated. The Phase 1
+   avatar-preview gate remains the only `PickMsg`/`GetMsgNum` exception: it can
+   retain exactly one audited opcode-`10002` native pointer, preserve queue
+   order, release that same pointer on readiness, and invoke its stock virtual
+   destructor if the session ends or its 30-second bound expires. A bridge
+   failure closes the loopback socket so the stock status follows its native
+   disconnect path.
 6. `DisConnect` and `Release` are idempotent coordinated shutdowns: signal stop,
    close handles, join workers, wipe secrets, unregister, then call the stock
    method. No detached worker may retain a proxy.

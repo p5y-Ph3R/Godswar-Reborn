@@ -7,8 +7,10 @@ The long-term secure networking migration is tracked separately in
 selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
 behavior, and upstream DDoS integration. The current networking milestone is a
-reversible, behavior-preserving `Net.dll` compatibility seam; the next TLS
-phase is specified in
+reversible `Net.dll` compatibility seam. It preserves stock behavior except
+for one documented character-preview loading gate that deliberately delays the
+exact opcode-`10002` message until native avatar resources are ready. The next
+TLS phase is specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
 but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
 parity, and rollback gates pass. The exact operator commands and pending
@@ -25,6 +27,13 @@ evidence record are in
 - Same-account relog behavior remains in place: a new login replaces the stale session.
 - The post-login bootstrap now matches the working server's exact 63-record manifest and trailing version record. That server parity is retained, but dump analysis proved the intermittent first-attempt account-switch crash was also a distinct native client lifecycle defect.
 - `tools/PatchClientAvatarPreviewGuard.ps1` is installed locally: it resets avatar initialization only on the LOGIN state transition and fail-closes both known selection-avatar builders when any required resource is absent. The exact diagnosis, rollback hash, and interactive acceptance sequence are recorded in `docs/client-avatar-preview-crash-fix.md`.
+- The companion `Net.dll` gate preserves one early one-character preview
+  message and releases the same native pointer when all six avatar resources
+  are ready. This keeps the selection screen loading and lets the model appear
+  automatically instead of turning the executable guard's safe skip into a
+  permanent blank preview. Its ownership, timeout, compatibility, and test
+  contract is recorded in
+  `docs/client-avatar-preview-loading-gate.md`.
 - Captured opcode-10090 pages were identified in the native dispatcher as character-specific `MSG_PLAYER_ACCEPTQUESTS` records, not generic game-data bootstrap. Runtime replay is blocked until quests are implemented authoritatively; the separate dump diagnosis and future packet-order requirement are recorded in `docs/accepted-quest-login-crash-fix.md`.
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.
 - Multiplayer synchronization itself remains server-side and requires no game client change; the avatar patch is a separate native stability correction.

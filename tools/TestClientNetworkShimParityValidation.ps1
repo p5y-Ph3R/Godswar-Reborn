@@ -93,6 +93,8 @@ $failedMarkdown = New-ParityAcceptanceMarkdown ([pscustomobject]@{
         completedCycles = 0
         soakMinutes = 0
         logsReviewed = $false
+        avatarPreviewLoadingGatePassed = $false
+        noUnintendedBehaviorDifference = $false
         notes = ''
     }
     observationSummary = [pscustomobject]@{
@@ -122,7 +124,9 @@ $failedMarkdown = New-ParityAcceptanceMarkdown ([pscustomobject]@{
 })
 Assert-True (
     $failedMarkdown -match 'missing / missing' -and
-    $failedMarkdown -notmatch 'passed / passed'
+    $failedMarkdown -notmatch 'passed / passed' -and
+    $failedMarkdown -match 'Avatar preview loading gate \| False' -and
+    $failedMarkdown -match 'No unintended behavior difference \| False'
 ) 'Failure Markdown falsely reported rollback/reapply success.'
 
 Write-Host 'Client network shim parity validation unit tests passed.'

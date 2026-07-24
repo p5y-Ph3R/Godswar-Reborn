@@ -2,15 +2,16 @@
 
 ## Version and status
 
-- Document version: `1.7`
+- Document version: `1.8`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 1 compatibility shim; automated gates complete,
-  interactive client parity pending. The Phase 2 TLS contract is captured but
-  no secure listener or client bridge is enabled.
+- Current milestone: Phase 1 compatibility shim with a bounded
+  character-preview loading gate; installation and automated gates are
+  complete and interactive acceptance is pending. The Phase 2 TLS contract is
+  captured but no secure listener or client bridge is enabled.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -23,7 +24,8 @@ security or compatibility gates.
 Build an authoritative, production-minded MMORPG networking foundation in
 small reversible steps:
 
-1. Preserve the original client behavior through an audited binary seam.
+1. Preserve the original client behavior through an audited binary seam,
+   except for explicitly documented compatibility fixes with their own gates.
 2. Move reliable control traffic to TLS without changing gameplay semantics.
 3. Bind a low-latency UDP channel to the authenticated TCP session.
 4. Move only explicitly classified realtime messages to UDP.
@@ -138,15 +140,20 @@ information is less useful than missing information.
    rewrite because the original source is unavailable.
 
 The selected DLL will eventually host the TLS/UDP bridge in-process. Phase 1
-does not change endpoints, bytes, framing, timing, or transport.
+does not change endpoints, bytes, framing, or transport. Its sole delivery-
+timing exception is the audited one-character preview: the shim may retain the
+exact opcode-`10002` `CMsg` for at most 30 seconds while native avatar
+resources load, preserving order and then returning the same pointer.
 
 ### Phase 2 client bridge contract
 
 The shim will run a loopback bridge inside the `Origin.exe` process. It will
 point the verified `NetLegacy.dll` at that private listener, preserve the stock
-XOR/framing parser and proprietary `CMsg` allocation/`PickMsg` lifetime, and
-carry the unwrapped stream externally over TLS. There is no launcher or
-separate gateway process.
+XOR/framing parser and proprietary `CMsg` allocation, and carry the unwrapped
+stream externally over TLS. The existing Phase 1 preview gate remains the only
+approved `PickMsg`-lifetime exception: one exact native pointer may be retained
+until readiness and is destroyed through its stock virtual destructor if it
+cannot be delivered. There is no launcher or separate gateway process.
 
 The two client objects used for login and game connections need one
 process-local coordinator. The login TLS connection supplies an account-,
@@ -245,10 +252,10 @@ client parity pending.
 Verified local installation:
 
 - Shim SHA-256:
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 - Installed state: `InstalledExact`
 - Apply backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-112517594`
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083`
 - Disposable Apply, installed-object probe, Restore, and restore-without-build-
   artifacts tests passed.
 - Two consecutive clean builds produce the same pinned shim hash.
@@ -257,6 +264,9 @@ Deliverables:
 
 - Win32/x86 `Net.dll` with the exact two named exports and ordinals.
 - Nine-slot proxy that delegates to the pinned `NetLegacy.dll`.
+- Exact-pointer character-preview loading gate with bounded wait, preserved
+  message order, and deterministic cleanup, documented in
+  [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
 - Legacy hash verification before loading.
 - No work under `DllMain` beyond recording the module and disabling thread
   notifications.
@@ -274,7 +284,8 @@ Exit gate:
 - Rollback is proven.
 
 Phase 1 intentionally has no TLS, UDP, server, database, `Origin.exe`, config,
-or gameplay change.
+or gameplay-state change. It deliberately changes only the delivery timing of
+one audited preview message so a late selection model loads automatically.
 
 ### Phase 2 — framing bridge, TLS, and real authentication
 
@@ -389,3 +400,6 @@ Phase 1 remains unaccepted until that record passes.
   Manager file-use evidence bound to PID and creation FILETIME. The fallback is
   explicitly recorded as file-use evidence and does not claim unavailable
   module base or memory information.
+- `1.8` (`2026-07-24`): Added the bounded character-preview loading gate,
+  exact-pointer ownership and timeout contract, dedicated tests, and an
+  explicit parity attestation for the intended loading behavior.

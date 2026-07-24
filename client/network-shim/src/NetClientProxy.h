@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AvatarPreviewGate.h"
 #include "LegacyClientApi.h"
 
 namespace godswar::network {
@@ -7,6 +8,15 @@ namespace godswar::network {
 class NetClientProxy final : public ILegacyNetClient {
 public:
     static ILegacyNetClient* Create(ILegacyNetClient* legacyClient) noexcept;
+    static ILegacyNetClient* CreateForTesting(
+        ILegacyNetClient* legacyClient,
+        bool enableAvatarGate,
+        AvatarReadinessProbe readinessProbe,
+        LegacyMessageDisposer messageDisposer,
+        AvatarMonotonicClock monotonicClock =
+            ReadAvatarMonotonicMilliseconds,
+        std::uint64_t waitTimeoutMilliseconds =
+            AvatarPreviewWaitTimeoutMilliseconds) noexcept;
 
     std::uint32_t Release() override;
     void SetHost(const char* host, std::uint16_t port) override;
@@ -19,10 +29,19 @@ public:
     long GetMsgNum() override;
 
 private:
-    explicit NetClientProxy(ILegacyNetClient* legacyClient) noexcept;
+    NetClientProxy(
+        ILegacyNetClient* legacyClient,
+        bool enableAvatarGate,
+        AvatarReadinessProbe readinessProbe,
+        LegacyMessageDisposer messageDisposer,
+        AvatarMonotonicClock monotonicClock,
+        std::uint64_t waitTimeoutMilliseconds) noexcept;
     ~NetClientProxy() = default;
 
+    bool ExpireAvatarPreviewIfNeeded() noexcept;
+
     ILegacyNetClient* legacyClient_;
+    AvatarPreviewGate avatarPreviewGate_;
 };
 
 } // namespace godswar::network

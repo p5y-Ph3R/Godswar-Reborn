@@ -1,3 +1,5 @@
+#include "AvatarPreviewGateTests.h"
+
 #include "../src/LegacyClientApi.h"
 #include "../src/NetClientProxy.h"
 
@@ -70,7 +72,7 @@ public:
 
     long GetMsgNum() override {
         ++messageCountCalls;
-        return 19;
+        return messageCountResult;
     }
 
     int releaseCalls = 0;
@@ -87,6 +89,7 @@ public:
     const void* data = nullptr;
     int size = 0;
     std::uint32_t messageValue = 0xABCDEF01;
+    long messageCountResult = 19;
 };
 
 bool IsAddressInModule(const void* address, HMODULE module) {
@@ -264,6 +267,7 @@ void RunRejectedShimProbe(
 
 int wmain(int argumentCount, wchar_t** arguments) {
     RunProxyUnitChecks();
+    Failures += RunAvatarPreviewGateTests();
 
     if (argumentCount == 3 &&
         std::wcscmp(arguments[1], L"--probe") == 0) {
