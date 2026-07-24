@@ -2,10 +2,10 @@
 
 ## Verified state
 
-- Status: loading-gate V1 and V2 are rejected; readiness-only V3 is
-  `InstalledExact` with controlled live acceptance pending
+- Status: loading-gate V1, V2, and V3 are rejected; matched V4 Origin/Net is
+  `InstalledExact`, automated gates pass, and one cold live smoke is pending
 - Supported `Origin.exe` SHA-256:
-  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
 - Stock `Net.dll`/installed `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 - Historical failed v1 shim SHA-256:
@@ -20,18 +20,31 @@
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
 - Historical V2 Apply manifest SHA-256:
   `9A92451A6786EBBCBA65EA27B09A0EFDA0115754CCE73408CA717FC3CE4B8DFC`
-- Installed V3 shim SHA-256:
+- Rejected V3 shim SHA-256:
   `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
-- V3 Apply time: `2026-07-24T04:24:23.6140096Z`
-- Current V3 Apply/stock-restore backup:
+- Historical V3 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
-- Current Apply manifest SHA-256:
+- Historical V3 Apply manifest SHA-256:
   `BD139E5D461BEF7B209945F21816E04A5E752F7C0447DB0EDAD5909F2E8CC4D2`
+- V3 evidence/result:
+  `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7` /
+  `Fail`
+- Installed V4 Net SHA-256:
+  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+- Current V4 Net Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
+- Current V4 Net Apply manifest SHA-256:
+  `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
+- Current V4 Origin Apply backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
 
 This is the executable verification and rollback contract for Phase 1 of
 [`network-infrastructure-goal.md`](network-infrastructure-goal.md). Exact
 installation and automated success do not prove native rendering. Phase 1
-remains unaccepted and TLS/UDP work must not begin until live parity passes.
+remains unaccepted. No TLS/UDP runtime work is enabled. Failure uses the
+ordered Net restore while Origin is V4, stock Net/no `NetLegacy.dll` check, then
+`PatchClientAvatarPreload.ps1 -Mode Revert` below; it parks this issue and
+continues Phase 2 without claiming acceptance.
 
 The intentional preview-timing exception and its exact native-message
 ownership contract are documented in
@@ -46,6 +59,7 @@ Run the automated suites:
 .\tools\TestClientNetworkShimInstaller.ps1
 .\tools\TestClientNetworkShimWindowsEvidence.ps1
 .\tools\TestClientNetworkShimParity.ps1
+.\tools\TestClientAvatarPreloadPatch.ps1
 ```
 
 The native suite:
@@ -57,9 +71,10 @@ The native suite:
    two name/ordinal exports;
 4. rejects an unbundled Visual C++ runtime;
 5. exercises all nine proxy slots and arguments against a controlled fake;
-6. verifies preview readiness, continuous native `Process`, exact-pointer
-   ordering across 4,096 unready scheduling cycles, malformed-message
-   rejection, readiness-only release, and explicit lifecycle cleanup;
+6. verifies exact AfterLogin state-2 scheduling, preview readiness, continuous
+   native `Process`, exact-pointer ordering across 4,096 unready scheduling
+   cycles, malformed-message rejection, readiness-only release, and explicit
+   lifecycle cleanup;
 7. invokes a real MSVC scalar-deleting destructor for retained-message
    ownership coverage;
 8. creates/releases 32 real stock client objects through the shim; and
@@ -95,9 +110,9 @@ Reproducible release builds require Visual Studio 2022 MSVC tools
 only for repeated clean builds in that pinned environment; another compiler
 may legitimately produce different reviewed bytes.
 
-The native and disposable installer suites pass for installed V3. Historical
-V1/V2 evidence cannot be relabeled as V3 evidence; live parity requires a fresh
-run pinned to the installed hash and current Apply backup.
+The native, Origin patch, and disposable installer suites pass for installed
+V4. Historical V1/V2/V3 evidence cannot be relabeled as V4 evidence; one fresh
+cold live smoke remains.
 
 ## Status, Apply, and Restore
 
@@ -131,18 +146,29 @@ Restore preserves the installed files in a Revert backup. If stock `Net.dll`
 was restored but `NetLegacy.dll` cleanup was interrupted, Status reports
 `RecoverablePartial`; rerun the same Restore after releasing the file lock.
 
-For the current V3 installation, Restore must use:
+V4 rollback order is mandatory. First, while Origin still has V4 hash
+`E0F5BC95...D22F81C`, restore Net with:
 
 ```powershell
 .\tools\InstallClientNetworkShim.ps1 `
   -Mode Restore `
-  -ApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590' `
+  -ApplyBackupPath 'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864' `
   -Confirm:$false
 ```
 
-That returns exact stock `Net.dll` hash `1CC3F9...BCA00C`. If V3 fails live
-acceptance and the historical network-stable pass-through is required, apply
-its separately preserved candidate only after that Restore:
+Verify Net is exact stock `1CC3F9...BCA00C` and `NetLegacy.dll` is absent.
+Only then restore the matched Origin extension with:
+
+```powershell
+.\tools\PatchClientAvatarPreload.ps1 -Mode Revert
+```
+
+The Origin patcher refuses mutation unless that sibling-DLL state is exact.
+Its writes are staged, hash-verified, and atomically replace the destination.
+Both commands validate the recorded predecessor and create verified recovery
+evidence. If V4 fails its cold smoke and the historical network-stable
+pass-through is required, apply its separately preserved candidate only after
+the Net restore and `PatchClientAvatarPreload.ps1 -Mode Revert`:
 
 ```powershell
 .\tools\InstallClientNetworkShim.ps1 `
@@ -156,6 +182,17 @@ The historical `...151248244` Apply backup contains stock `Net.dll`, not the
 pass-through candidate.
 
 ## Interactive parity acceptance
+
+The immediate product decision gate is one final cold V4 launch: the 3D model
+must appear automatically, world entry must succeed, the connection must not
+reach the old roughly 15-second timeout, and no new dump/error may appear. V4
+is not accepted before that observation. If it fails, seal the failure,
+restore Net while Origin is V4, verify stock Net/no `NetLegacy.dll`, then run
+`PatchClientAvatarPreload.ps1 -Mode Revert`; proceed to Phase 2 with this issue
+parked.
+
+The longer evidence workflow below remains the formal parity contract if V4
+passes the cold decision gate.
 
 Use the read-only evidence recorder for this gate. It never launches, stops,
 restores, applies, or otherwise modifies the client or server. It only records
@@ -307,7 +344,7 @@ was blank. No new dump, game-close log, server exception, or container restart
 occurred. This is diagnostic evidence of the native resource race, not a pass
 for the loading gate.
 
-## Rejected V2 and installed V3
+## Rejected V2/V3 and installed V4
 
 V2 evidence run `20260724T040509293Z-4ce08407` is immutably completed as
 `Fail`. Two cycles passed; on fresh account-7 cycle 3, the five-second unready
@@ -319,11 +356,15 @@ no dump appeared. See the
 | --- | --- |
 | Rejected V2 shim hash | `73E65FBF...F2902FD` |
 | V2 evidence result | `Fail` / two completed cycles |
-| Installed V3 shim hash | `17A72198...D878D1` |
-| V3 install state/time | `InstalledExact` / `2026-07-24T04:24:23.6140096Z` |
-| V3 automated gates | Pass |
-| Current Apply backup | `...\client-network-shim-v1-Apply-20260724-162423590` |
-| Accounts/cycles | `7 <-> 13` / five complete cycles pending |
+| Rejected V3 shim hash | `17A72198...D878D1` |
+| V3 evidence result | `Fail` / `20260724T043833399Z-2bd75dd7` |
+| V3 failure | about 14.8-second close; server-unavailable; `0x005F58BC`, root `0x015760A0` null |
+| Installed V4 Origin/Net | `E0F5BC95...D22F81C` / `EF531F8C...817597` |
+| V4 automated gates | Pass |
+| Current Net Apply backup | `...\client-network-shim-v1-Apply-20260724-213354864` |
+| Current Origin Apply backup | `...\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25` |
+| Immediate cold smoke | Pending |
+| Accounts/cycles | formal `7 <-> 13` parity remains pending if cold smoke passes |
 | Responsive loading / automatic model | Pending / Pending |
 | Connection beyond old 14.6-second failure | Pending |
 | Readiness-only hold/release | Automated pass; native result pending |
@@ -331,5 +372,7 @@ no dump appeared. See the
 | Stock rollback / final reapply | Pending / Pending |
 | Result | Pending |
 
-V3 requires a fresh evidence version and run. Neither V1, V2, nor stable-shim
-observations can be reused.
+V3's immutable failure is detailed in
+[`client-avatar-preview-v3-failure-20260724.md`](client-avatar-preview-v3-failure-20260724.md).
+V4 requires fresh evidence; no V1/V2/V3 or stable-shim observation can be
+reused.

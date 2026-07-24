@@ -2,12 +2,11 @@
 
 ## Result
 
-The installed `C:\Godswar Origin\Origin.exe` is patched against two audited
-null-resource builders in the LOGIN/character-preview path. The patch also
-repairs the stale initialization lifecycle that made an account switch fail on
-the first launch and then work on a later attempt. A later incident found a
-third, separate null-resource fault at `0x005F58BC`; the installed executable
-patch does not guard that state-transition path.
+The installed V4 candidate at `C:\Godswar Origin\Origin.exe` retains the two
+audited LOGIN/character-preview builder guards, synchronously invokes the
+native LOGIN initializer after state registration, and guards the third
+null-resource path at `0x005F58BC`. Automated binary and shim tests pass; one
+final cold live smoke is pending, so this is not an acceptance claim.
 
 Installed on 2026-07-22 with:
 
@@ -19,12 +18,25 @@ Installed on 2026-07-22 with:
 
 No server or database change is part of this fix.
 
+The V4 extension was installed on 2026-07-24 with:
+
+- Before SHA-256:
+  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+- Installed SHA-256:
+  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
+- Apply backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
+- Companion `Net.dll` SHA-256:
+  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+
 The later companion `Net.dll` loading gate is documented in
 [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
 V1 failed by suppressing native processing. V2 fixed that scheduling defect but
 was rejected when its five-second unready handoff recreated the blank model.
-Installed V3 retains the exact preview until readiness; automated gates pass
-and controlled live acceptance is pending.
+V3 retained the exact preview until readiness but is rejected after immutable
+run `20260724T043833399Z-2bd75dd7` reproduced the native timeout and
+`0x005F58BC` crash. Installed V4 couples native initialization and timeout
+guards with the readiness-only hold.
 
 ## Evidence and root cause
 
@@ -48,6 +60,15 @@ not either guarded preview builder. Its evidence and the stable-shim
 blank-model baseline are recorded in
 [`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
 
+Readiness-only V3 independently reproduced the same fault in
+`20260724210050.dmp` (SHA-256
+`7A5B34B86A2A2E9F8281A1B9F7DDDA9579AAE9AFDC839E4A43D26C7575E993D9`).
+The client closed about 14.8 seconds after preview, displayed its native
+server-unavailable dialog, and faulted at `0x005F58BC` with `ECX` and root
+`0x015760A0` null after the dialog was acknowledged. The server had accepted
+the account and remained healthy. See
+[`client-avatar-preview-v3-failure-20260724.md`](client-avatar-preview-v3-failure-20260724.md).
+
 The client builds male and female selection resources through the LOGIN
 object's native initializer at VA `0x00467280`. It sets byte
 `0x01575F70 = 1` when entering the world and intentionally unloads the
@@ -58,8 +79,8 @@ can then reach either builder with null resources.
 
 ## Patch design
 
-`tools/PatchClientAvatarPreviewGuard.ps1` applies all three pieces as one
-transaction:
+`tools/PatchClientAvatarPreviewGuard.ps1` applies the historical base three
+pieces as one transaction:
 
 1. The LOGIN state arm at VA `0x004C14C5` clears `0x01575F70`, replays its
    displaced `push 0x009E5A04`, and returns to native dispatch. This restores
@@ -73,12 +94,23 @@ transaction:
    and before local object construction. A missing resource uses its untouched
    early epilogue at `0x005F516D`.
 
-Both guards are fail-closed. A packet that still wins a narrow initialization
-race can skip that one preview build instead of dereferencing null. Neither
-guard sleeps, re-enters the loader, or runs initialization from the render
-path. V2 tried to address the safe skip with a timed handoff and failed. The
-installed V3 shim retains only the audited preview message, continues native
-network processing, and releases only when all resources are ready.
+Both historical builder guards are fail-closed. A packet that still wins a
+narrow initialization race can skip that one preview build instead of
+dereferencing null. Neither guard sleeps, re-enters the loader, or runs
+initialization from the render path. V2 tried to address the safe skip with a
+timed handoff and failed; V3's readiness-only hold could prevent the LOGIN
+update from reaching the lifecycle work needed to populate the roots.
+
+`tools/PatchClientAvatarPreload.ps1` adds the matched V4 correction:
+
+1. After native LOGIN state registration at `0x004C14D6`, it invokes the
+   existing initializer at `0x00467280` synchronously on the main thread.
+2. It marks initialization complete only after all six audited avatar roots
+   are non-null; otherwise the stock later call remains available.
+3. At `0x005F58BC`, it checks all six roots before either unsafe avatar call.
+   Missing roots skip those calls and schedule a clean state-2 transition.
+4. The companion shim schedules state 2 on the exact AfterLogin record and
+   retains the exact preview pointer until those roots are ready.
 
 The patcher refuses to write unless the client is closed and all of the
 following match the audited build: file size, DOS/PE headers, x86 PE32 machine,
@@ -89,7 +121,7 @@ outside the six allowed ranges, and supports idempotent apply/revert.
 
 ## Apply or revert
 
-From `C:\Reborn`:
+The historical base patch is managed from `C:\Reborn` with:
 
 ```powershell
 .\tools\PatchClientAvatarPreviewGuard.ps1 -Mode Apply
@@ -105,24 +137,40 @@ The revert command also creates a verified backup of the patched executable
 before restoring the audited original bytes. The dated backup above can be
 copied back manually if the patch tool is unavailable.
 
+The installed V4 extension is managed independently with:
+
+```powershell
+.\tools\PatchClientAvatarPreload.ps1 -Mode Status
+.\tools\PatchClientAvatarPreload.ps1 -Mode Apply
+.\tools\PatchClientAvatarPreload.ps1 -Mode Revert
+```
+
+Apply/Revert refuse a running client and validate the exact predecessor,
+hooks, caves, file shape, allowlisted diffs, and hashes. Writes are staged,
+hash-verified, and atomically replace the destination. The patcher also requires
+sibling `Net.dll` to be exact stock and `NetLegacy.dll` to be absent. Therefore
+V4 rollback must restore Net first while Origin is still V4, verify that clean
+stock state, and only then run `PatchClientAvatarPreload.ps1 -Mode Revert`.
+
 ## Runtime acceptance check
 
-Repeat this sequence several times because the original symptom was
-intermittent:
+The remaining bounded check is one cold launch because the user set an
+explicit stop boundary for this issue:
 
-1. Open the client, log in to account 7, confirm the character preview, and
-   enter the world.
-2. Leave that session and log in to account 13 without requiring a failed
-   first attempt.
-3. If the resource race occurs, confirm the screen remains responsive in its
-   loading state without an unready handoff, then confirm the model appears
-   automatically when resources become ready.
-4. Confirm account 13's preview appears and the client enters the world.
-5. Repeat the account switch at least five times.
-6. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
+1. Open the client cold and log in to the account used for the next smoke.
+2. Confirm the character preview appears without requiring a failed first
+   attempt.
+3. If loading is visible, confirm the screen remains responsive without an
+   unready handoff, then confirm the model appears automatically when resources
+   become ready.
+4. Enter the world normally.
+5. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
    `0x005F4ADD`, `0x005F060E`, or `0x005F58BC` entry is appended to
    `Error.log`.
 
-The executable's two installed guards have static and disposable-binary
-validation. Loading-gate V1 and V2 are rejected; V3 passes automated gates but
-remains pending the interactive sequence.
+The matched V4 Origin/Net pair has static, disposable-binary, ABI, ownership,
+and lifecycle validation. Loading-gate V1, V2, and V3 are rejected. V4 passes
+automated gates but remains pending one final cold model/world-entry smoke. If
+that smoke fails, restore Net while Origin is V4, verify stock Net/no
+`NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert`; park the
+issue and proceed to Phase 2 without claiming acceptance.

@@ -47,3 +47,12 @@ This is the version ledger for
 - `1.11` (`2026-07-24`): Recorded V2 as rejected after its cycle-3 timed
   unready handoff recreated the blank model, installed readiness-only V3, and
   kept Phase 2 blocked pending controlled V3 live acceptance.
+- `1.12` (`2026-07-24`): Rejected V3 after immutable run
+  `20260724T043833399Z-2bd75dd7` reproduced the roughly 15-second
+  server-unavailable path and `0x005F58BC` null-root crash. Installed matched
+  V4 Origin/Net with exact AfterLogin state-2 scheduling, synchronous native
+  LOGIN initialization, readiness-only preview retention, and timeout guard.
+  Automated gates pass; one cold smoke remains. Failure restores Net while
+  Origin is V4, verifies stock Net/no `NetLegacy.dll`, then runs
+  `PatchClientAvatarPreload.ps1 -Mode Revert` and proceeds to Phase 2 without
+  claiming Phase 1 acceptance.

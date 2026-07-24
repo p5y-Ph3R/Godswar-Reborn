@@ -2,15 +2,19 @@
 
 ## Version and status
 
-- Document version: `1.11`
+- Document version: `1.12`
 - Last updated: `2026-07-24`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 1 compatibility shim. V1 and V2 are rejected;
-  readiness-only V3 is `InstalledExact` with controlled live acceptance
-  pending. Phase 2 remains blocked and no secure listener or bridge is enabled.
+- Current milestone: final Phase 1 compatibility candidate. V1, V2, and V3 are
+  rejected. Matched V4 Origin/Net is installed with automated gates passing
+  and one cold live smoke pending. No secure listener or bridge is enabled.
+  On failure, restore Net while Origin is V4, verify stock Net/no
+  `NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert` and
+  proceed to Phase 2 with the avatar issue parked; do not relabel Phase 1 as
+  accepted.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -57,8 +61,8 @@ has the following pinned contract:
   `Release`, `SetHost`, `Connect`, `DisConnect`, `Process`, `GetStatus`,
   `PickMsg`, `SendMsg`, and `GetMsgNum`
 
-The currently supported patched `Origin.exe` SHA-256 is
-`753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`.
+The currently supported V4 `Origin.exe` SHA-256 is
+`E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`.
 An unknown client or legacy DLL is a new compatibility target and must be
 audited instead of forced through the installer.
 
@@ -143,9 +147,12 @@ does not change endpoints, bytes, framing, or transport. Its sole proposed
 delivery-timing exception is the audited one-character preview. Failed v1
 suppressed native `Process`, held the exact opcode-`10002` pointer for up to 30
 seconds, then disposed it and disconnected. V2 delegated `Process` but its
-five-second unready handoff recreated the blank model. Installed V3 preserves
-continuous processing, pointer identity, and order, and releases only on
-readiness.
+five-second unready handoff recreated the blank model. V3 preserved continuous
+processing, pointer identity, and readiness-only release, but its cold
+account-13 run still reached the native roughly 15-second timeout and
+`0x005F58BC` null-root crash. Installed V4 also schedules state 2 on exact
+AfterLogin, synchronously invokes the native LOGIN initializer after
+registration, and guards the timeout path.
 
 ### Phase 2 client bridge contract
 
@@ -250,47 +257,26 @@ or rate limiting alone is not volumetric DDoS protection.
 
 ### Phase 1 — reversible client compatibility seam
 
-Status: not accepted. V1 and V2 are rejected. V3 is `InstalledExact`;
-automated gates pass and controlled live evidence is pending.
+Status: not accepted. V1, V2, and V3 are rejected. Matched V4 is
+`InstalledExact`; automated gates pass and one final cold live smoke is
+pending.
 
-Recorded local state:
-
-- Historical failed v1 shim SHA-256:
-  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-- Historical network-stable pass-through shim SHA-256:
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
-- Historical pass-through Apply evidence:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Rejected V2 shim SHA-256:
-  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- Historical V2 Apply/stock-restore backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
-- V2 evidence run `20260724T040509293Z-4ce08407`: `Fail`.
-- Installed V3 shim SHA-256:
-  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
-- Current V3 Apply/stock-restore backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
-- Current Apply manifest SHA-256:
-  `BD139E5D461BEF7B209945F21816E04A5E752F7C0447DB0EDAD5909F2E8CC4D2`
-- V1 evidence run `20260724T030417842Z-94e2c5f4`: `Fail`.
-
-V1 passed account 7, then account 13 disconnected after `14.633832034`
-seconds, showed server-full, and dumped at `0x005F58BC`; the server stayed up.
-Under the rollback shim, a later account-7 baseline received a valid preview
-and kept its TCP connection established for more than 142 seconds but still
-showed a blank model with no new dump. V2 completed two cycles, then its
-five-second unready handoff left account 7 blank beyond 44 seconds with TCP
-established and no dump. See the
-[V1 incident](client-avatar-preview-loading-gate-incident-20260724.md) and
-[V2 incident](client-avatar-preview-loading-gate-v2-incident-20260724.md).
+The exact V1–V4 hashes, backups, manifests, and evidence IDs live in the
+[Phase 1 runbook](network-infrastructure-phase1.md). V1 starved processing; V2
+released while unready; V3's immutable
+`20260724T043833399Z-2bd75dd7` run reproduced the roughly 15-second
+server-unavailable path and `0x005F58BC` null-root crash. Current V4 is Origin
+`E0F5BC95...D22F81C` plus Net `EF531F8C...817597`; see the
+[V3 failure](client-avatar-preview-v3-failure-20260724.md).
 
 Deliverables:
 
 - Win32/x86 `Net.dll` with the exact two named exports and ordinals.
 - Nine-slot proxy that delegates to the pinned `NetLegacy.dll`.
 - Installed exact-pointer character-preview loading gate with continuous
-  native processing, preserved order, readiness-only release, and
-  lifecycle-reset cleanup, documented in
+  native processing, preserved order, readiness-only release, exact AfterLogin
+  state-2 scheduling, synchronous native LOGIN initialization, guarded timeout,
+  and lifecycle-reset cleanup, documented in
   [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
 - Legacy hash verification before loading.
 - No work under `DllMain` beyond recording the module and disabling thread
@@ -308,9 +294,13 @@ Exit gate:
 - Installed client completes the manual parity test below.
 - Rollback is proven.
 
-Phase 1 intentionally has no TLS, UDP, server, database, `Origin.exe`, config,
-or gameplay-state change. V3 changes only one audited preview's delivery
-timing and remains unaccepted until controlled live evidence passes.
+Phase 1 intentionally has no TLS, UDP, server, database, config, or
+gameplay-state change. V4 includes the documented reversible `Origin.exe`
+lifecycle hooks plus the narrow shim scheduling/preview changes. It remains
+unaccepted until the final cold smoke passes. Failure uses the ordered Net
+restore, stock Net/no `NetLegacy.dll` verification, then
+`PatchClientAvatarPreload.ps1 -Mode Revert`; retain the record and continue
+Phase 2 rather than claiming acceptance.
 
 ### Phase 2 — framing bridge, TLS, and real authentication
 

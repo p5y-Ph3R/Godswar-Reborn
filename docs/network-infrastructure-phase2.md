@@ -2,29 +2,38 @@
 
 ## Status
 
-- Specification version: `1.3`
+- Specification version: `1.4`
 - Last updated: `2026-07-24`
 - Runtime status: not implemented and not enabled
-- Predecessor status: blocked pending avatar-preview loading-gate V3 live
-  acceptance
-- Historical network-stable recovery shim SHA-256:
-  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
-- Historical pass-through Apply evidence:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
-- Rejected V2 SHA-256:
-  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
-- Historical V2 Apply/stock-restore backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-155531621`
-- Installed V3 SHA-256:
+- Predecessor status: one final cold V4 smoke pending; if it fails, V4 is
+  restored and this phase proceeds with the avatar issue parked, without a
+  false Phase 1 acceptance
+- Rejected V3 SHA-256:
   `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
-- V3 state/time: `InstalledExact` / `2026-07-24T04:24:23.6140096Z`
-- Current V3 Apply/stock-restore backup:
+- V3 failure evidence:
+  `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7`
+- Installed V4 Origin SHA-256:
+  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
+- Installed V4 Net SHA-256:
+  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+- Current V4 Net Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
+- Current V4 Origin Apply backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
+- Current V4 Net Apply manifest SHA-256:
+  `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
+- Historical V3 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
+
+Exact V1/V2 and pass-through recovery hashes/backups remain in the
+[Phase 1 runbook](network-infrastructure-phase1.md).
 
 Loading-gate V1
 `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 failed by starving native processing. V2 failed when its timed unready handoff
-recreated the blank model. Both are historical evidence, not rollback targets.
+recreated the blank model. V3 still reached the roughly 15-second native
+timeout and `0x005F58BC` null-root crash. All three are historical evidence,
+not rollback targets.
 This document does not claim that the current raw protocol is secure or
 authorize enabling UDP.
 
@@ -41,11 +50,13 @@ responsible for:
 
 The bridge carries the exact XOR-protected legacy byte stream as opaque
 `LegacyBytes` frames inside TLS. It does not decrypt, parse, or construct a
-legacy `CMsg`. The installed but unaccepted V3 loading gate is the one narrow
-ownership exception. It delegates native `Process()` every frame, may hold one
-audited opcode-`10002` native pointer while avatar resources load, and prevents
-polling past it so queue order is preserved. It returns that exact pointer only
-on readiness. A pointer still held is destroyed only on an explicit `Connect`,
+legacy `CMsg`. The installed but unaccepted V4 gate is the one narrow ownership
+exception. It delegates native `Process()` every frame, may hold one audited
+opcode-`10002` native pointer while avatar resources load, and prevents polling
+past it so queue order is preserved. It returns that exact pointer only on
+readiness. V4 additionally requests state 2 on exact AfterLogin; its matched
+Origin patch synchronously initializes LOGIN after registration and guards the
+timeout path. A pointer still held is destroyed only on an explicit `Connect`,
 `DisConnect`, `Release`, or proxy-destruction lifecycle reset. TLS supplies
 confidentiality and integrity; XOR remains only to minimize compatibility risk.
 
@@ -73,9 +84,9 @@ Current repository evidence:
 - Login currently upserts credentials rather than authenticating them.
 - Both stores overwrite an existing password, and game opcode `10000` calls the
   same operation with an empty password.
-- Installed V3 preserves the nine-slot ABI and adds only the documented preview
-  gate. The bridge can still be added without patching `Origin.exe` after V3
-  passes live acceptance.
+- Installed V4 preserves the nine-slot ABI and adds only the documented
+  AfterLogin request and preview gate in Net. Its matched Origin lifecycle
+  hooks are independent of the future bridge.
 
 The secure transport must therefore expose an ordered byte stream to the
 existing `ClientSession`, not replace gameplay handlers or reinterpret packet
@@ -254,9 +265,11 @@ credentials, ticket/cookie/key bytes, or raw packet payloads.
 Each slice is a separate reversible checkpoint. Format, build, test, and fix
 failures before continuing.
 
-1. Accept the installed avatar-preview loading-gate V3 manually; capture exact
-   game `SetHost` host/port and stock `GetStatus` transitions without logging
-   credentials or payloads.
+1. Resolve the final V4 cold-smoke branch. Failure restores Net while Origin is
+   V4, verifies stock Net/no `NetLegacy.dll`, then runs
+   `PatchClientAvatarPreload.ps1 -Mode Revert` and parks the issue. Capture
+   exact game `SetHost` host/port and stock `GetStatus` transitions without
+   logging credentials or payloads.
 2. Add pure preface/frame/grant codecs, golden vectors, boundary tests, and
    fuzz entry points. Nothing listens on a new port.
 3. Extract `ILegacyByteTransport`; prove the existing raw protocol tests and
@@ -275,30 +288,27 @@ failures before continuing.
 
 ## Verification contract
 
-### Required loading-gate V3 manual acceptance
+### Final loading-gate V4 decision
 
-Phase 2 remains blocked while installed V3 lacks a live acceptance record:
+One cold V4 smoke remains before Phase 2 implementation starts:
 
-1. Record the installed V3 hash, current Apply backup, and exact recovery path.
-2. Start the existing server and run the V3 client normally.
-3. Log in to account 7, enter the world, move/map-transition, fight, use a
-   skill, manipulate inventory/equipment, and exercise one NPC/forge action.
-4. Fully exit `Origin.exe`, log in to account 13, and repeat.
-5. Alternate accounts for five complete close/relaunch cycles.
-6. Confirm a late selection preview remains responsive and loading without an
-   unready handoff, then renders automatically when readiness is observed.
-7. Confirm no new dump, crash, or error-log entry.
-8. Restore V3 with Apply backup
-   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`,
-   verify exact stock hash `1CC3F9...BCA00C`, and run one stock login smoke.
-9. On failure, recover pass-through `528913...D17A6DD` by guarded Apply with
-   `-ShimPath C:\Reborn\backups\client-network-shim-v1-Revert-20260724-155518012\Net.dll`.
-   On success, reapply verified V3 and run the final world-entry smoke.
+1. Record installed Origin `E0F5BC95...D22F81C`, Net
+   `EF531F8C...817597`, both current Apply backups, and dump/error inventory.
+2. Start the existing server and launch the client cold.
+3. Confirm the 3D model appears automatically and world entry succeeds without
+   reaching the old roughly 15-second server-unavailable path.
+4. Confirm no new dump, crash, or `0x005F58BC` error.
 
-Failure of the intended loading behavior, or any other unintended behavioral
-difference, fails the gate and follows the stock Restore plus pass-through
-recovery sequence above. The historical Apply `...151248244` contains stock,
-not the `528913...` candidate.
+A pass records the observation but does not retroactively relabel V1/V2/V3.
+On failure, first restore Net while Origin is still V4 with
+`C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`. After Net
+is exact stock and `NetLegacy.dll` is absent, run the Origin patcher's
+`PatchClientAvatarPreload.ps1 -Mode Revert`; its Apply backup is
+`C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`.
+Then seal the failure and proceed with Phase 2 while the avatar issue remains
+parked. Do not implement another avatar iteration. The separately preserved
+pass-through `528913...D17A6DD` remains available if needed; historical Apply
+`...151248244` contains stock, not that candidate.
 
 ### Automated Phase 2 gates
 
@@ -340,12 +350,15 @@ allocation, work, logging, an uncaught exception, or a process crash.
 
 ## Rollback
 
-- Phase 2 may begin only after V3 acceptance. Its installer first backs up the
-  exact accepted V3 `Net.dll`, `NetLegacy.dll`, endpoint manifest, and hashes.
+- Phase 2 begins after the final V4 decision branch. If V4 passes, its installer
+  first backs up the exact observed V4 Origin/Net pair, `NetLegacy.dll`,
+  endpoint manifest, and hashes. Failure restores Net while Origin is V4,
+  verifies stock Net/no `NetLegacy.dll`, then runs
+  `PatchClientAvatarPreload.ps1 -Mode Revert` and pins that predecessor; this
+  does not imply Phase 1 acceptance.
 - Restore must be artifact-independent, idempotent, interruption-recoverable,
-  and return the shim to accepted V3 hash
-  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`.
-- Pass-through `528913...D17A6DD` remains the current V3-failure recovery
+  and return the client to the exact predecessor selected by that branch.
+- Pass-through `528913...D17A6DD` remains an avatar-failure recovery
   candidate; it is not the future Phase 2 direct rollback target.
 - Restore must never select the historical failed loading-gate V1 hash
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`.
@@ -365,14 +378,14 @@ allocation, work, logging, an uncaught exception, or a process crash.
 Phase 2 is accepted only when the original client authenticates over TLS,
 receives and stores a grant before redirect, binds the game connection with a
 single-use ticket, enters the world, completes the parity/soak matrix, fails
-closed without raw downgrade, and can be restored exactly to accepted V3.
-It remains blocked until loading-gate V3 has a successful live acceptance
-record.
+closed without raw downgrade, and can be restored exactly to the pinned
+pre-Phase-2 client state. Runtime implementation is waiting only for the final
+V4 cold-smoke branch; V4 acceptance is not claimed now.
 
 Still required before implementation:
 
-- Avatar-preview loading-gate V3 live acceptance record; failed V1 and V2
-  records do not satisfy this requirement.
+- Final V4 cold-smoke result and the resulting exact predecessor/rollback
+  choice; failed V1/V2/V3 records cannot be reused as V4 evidence.
 - Observed game `SetHost` string/port and stock `GetStatus` transitions.
 - Account password audit and an explicit reset plan for blank credentials.
 - Development CA, signed endpoint-manifest key custody, and certificate

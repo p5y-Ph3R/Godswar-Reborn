@@ -52,7 +52,7 @@ Implemented:
 - Stream XOR cipher and packet framing
 - Account auto-create
 - Character list, create, delete, and preview
-- Working-server-compatible 63-record post-login bootstrap manifest, including the trailing client version record; two native avatar builders are guarded, while the separate loading-gate correction remains pending as documented below
+- Working-server-compatible 63-record post-login bootstrap manifest, including the trailing client version record; the installed V4 client candidate schedules native character-selection initialization, retains the exact preview until readiness, and guards all three audited null-resource sites
 - Camp-aware character starts: Sparta/camp 0 enters map 0 and Athens/camp 1 enters map 1 at the captured `(165, -97)` starting position
 - PostgreSQL-backed accounts and characters under Docker
 - Enter-game packet stream based on the Go reference
@@ -95,15 +95,17 @@ Detailed client patches, rank and forge extensions, effect experiments, item
 persistence notes, and the current avatar-gate status are maintained in
 [`docs/client-reverse-engineering-notes.md`](docs/client-reverse-engineering-notes.md).
 
-Avatar-preview loading-gate v1 (`2D819908...E2AE0`) failed live validation and
-was rolled back through the network-stable shim `528913E6...D17A6DD`.
-V2 (`73E65FBF...F2902FD`) was also rejected after its five-second unready
-handoff recreated the blank model on cycle 3. V3
-(`17A72198...D878D1`) is now `InstalledExact`; it always delegates native
-`Process`, preserves exact pointer identity and order, and releases only when
-avatar resources are ready. Lifecycle reset remains exact-once cleanup.
-Automated gates pass; controlled live acceptance is pending. Current status,
-both immutable incident records, and the acceptance contract are in
+Avatar-preview loading-gate V1 (`2D819908...E2AE0`) failed by starving native
+processing; V2 (`73E65FBF...F2902FD`) failed after its timed unready handoff
+recreated the blank model. Readiness-only V3 (`17A72198...D878D1`) is also
+rejected: its immutable `20260724T043833399Z-2bd75dd7` run reproduced the
+about-15-second server-unavailable path and `0x005F58BC` null-root crash.
+Matched V4 Origin (`E0F5BC95...D22F81C`) and Net
+(`EF531F8C...817597`) are installed. V4 schedules native state 2 on the exact
+AfterLogin record, synchronously initializes LOGIN after registration, keeps
+the preview readiness-only hold, and guards the timeout path. Automated gates
+pass; one final cold live smoke is pending and acceptance is not claimed.
+Current status, immutable incident records, and the acceptance contract are in
 [`docs/client-avatar-preview-loading-gate.md`](docs/client-avatar-preview-loading-gate.md).
 
 Important client-side files touched while allowing grade 25 / Boundless quality / rank testing:

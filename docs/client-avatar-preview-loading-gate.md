@@ -26,29 +26,47 @@ It is rejected:
 - V2 evidence run/result:
   `20260724T040509293Z-4ce08407` / `Fail`
 
-V3 is now `InstalledExact`. Its automated gates pass; controlled live
-validation is pending:
+V3 passed its automated gates but failed its cold account-13 live run and is
+rejected:
 
-- installed V3 `Net.dll` SHA-256:
+- rejected V3 `Net.dll` SHA-256:
   `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
-- current V3 Apply/stock-restore backup:
+- historical V3 Apply/stock-restore backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-162423590`
-- Apply manifest SHA-256:
+- historical V3 Apply manifest SHA-256:
   `BD139E5D461BEF7B209945F21816E04A5E752F7C0447DB0EDAD5909F2E8CC4D2`
-- acceptance state: pending fresh account-switch parity, soak, rollback, and
-  reapply evidence
+- immutable V3 evidence/result:
+  `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7` /
+  `Fail`
+
+The matched V4 Origin/Net candidate is now installed. Automated tests pass;
+one final cold live smoke is pending, so acceptance is not claimed:
+
+- installed V4 `Origin.exe` SHA-256:
+  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
+- V4 Origin Apply backup:
+  `C:\Reborn\backups\origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`
+- installed V4 `Net.dll` SHA-256:
+  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
+- V4 Net Apply/stock-restore backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-213354864`
+- V4 Net Apply manifest SHA-256:
+  `5E8986F01742F855D2248B899C58590AB57F4B72D1C27A10F25BDEC290CAD04B`
+- acceptance state: pending one final cold live smoke
 
 The immutable V1 dump record is in
 [`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
 The V2 blank-model rejection is in
 [`client-avatar-preview-loading-gate-v2-incident-20260724.md`](client-avatar-preview-loading-gate-v2-incident-20260724.md).
+The V3 timeout and crash are in
+[`client-avatar-preview-v3-failure-20260724.md`](client-avatar-preview-v3-failure-20260724.md).
 No server, packet-format, database, or character-data change is part of these
 loading-gate versions.
 
 Supported host binaries remain:
 
 - `Origin.exe` SHA-256:
-  `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
+  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
 - `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 
@@ -118,7 +136,7 @@ The five-second fallback was unsafe. On cycle 3, V2 returned the pointer while
 readiness was false and the model stayed blank for more than 44 seconds despite
 a responsive client and established TCP connection. V2 is rejected.
 
-## Installed V3 contract
+## Historical V3 contract and rejection
 
 V3 retains the safe V2 scheduling and ownership rules but removes all timeout
 and clock behavior:
@@ -134,43 +152,78 @@ and clock behavior:
 A held pointer is disposed exactly once only when an explicit lifecycle reset
 still owns it: `Connect`, `DisConnect`, `Release`, or proxy destruction.
 
+That contract was insufficient. In the immutable V3 failure run, cold
+account 13 received a valid preview but never sent EnterGame. The TCP
+connection closed about 14.8 seconds later, the client displayed its native
+server-unavailable dialog, and acknowledging it produced dump
+`20260724210050.dmp` with SHA-256
+`7A5B34B86A2A2E9F8281A1B9F7DDDA9579AAE9AFDC839E4A43D26C7575E993D9`.
+The x86 access violation was at `0x005F58BC`, with `ECX`/avatar root
+`0x015760A0` null. Native `PickMsg()` returning null exited the LOGIN update
+before the missing selection resources could be initialized.
+
+## Installed V4 contract
+
+V4 keeps V3's exact-pointer ownership, queue order, continuous native
+`Process()`, readiness-only release, and lifecycle cleanup, then adds a bounded
+native lifecycle correction:
+
+1. The shim recognizes only the exact AfterLogin bootstrap record and requests
+   native state 2 without overwriting a different pending transition.
+2. Immediately after native LOGIN state registration, the Origin patch calls
+   the existing initializer at `0x00467280` synchronously on the main thread.
+3. The exact opcode-`10002` preview remains retained until all six resource
+   roots are non-null.
+4. The later `0x005F58BC` path checks all six roots. A missing root skips the
+   unsafe avatar calls and schedules a clean state-2 transition.
+
+V4 does not add a server delay or change the legacy packet bytes. Working
+captures send AfterLogin and preview nearly back-to-back; timing the server is
+not a deterministic substitute for repairing the client lifecycle.
+
 ## Rollback and pass-through recovery
 
-The current V3 Apply backup is distinct from the historical V1, V2, and
-pass-through Apply backups. Restoring V3 with
-`client-network-shim-v1-Apply-20260724-162423590` returns the client to exact
-stock `Net.dll` hash `1CC3F9...BCA00C` and removes the installed legacy copy.
+Rollback order is mandatory:
 
-If V3 fails live acceptance, the pass-through binary remains a separately
+1. While Origin still has V4 hash `E0F5BC95...D22F81C`, restore Net with
+   `client-network-shim-v1-Apply-20260724-213354864`.
+2. Verify Net is exact stock `1CC3F9...BCA00C` and `NetLegacy.dll` is absent.
+3. Run `PatchClientAvatarPreload.ps1 -Mode Revert`; its recorded Apply backup
+   is `origin-avatar-preload-v4-Apply-20260724-213316596-5256fb25`.
+
+The Origin patcher refuses mutation unless step 2 is true. Its writes are
+staged, hash-verified, and atomically replace the destination.
+
+If V4 fails its final live smoke, restore Net while Origin is V4, verify stock
+Net/no `NetLegacy.dll`, then run `PatchClientAvatarPreload.ps1 -Mode Revert`;
+record the failure and move to Phase 2 without claiming acceptance.
+The pass-through binary remains a separately
 preserved recovery candidate at:
 
 ```text
 C:\Reborn\backups\client-network-shim-v1-Revert-20260724-155518012\Net.dll
 ```
 
-Its hash is `528913E6...D17A6DD`. Restore V3 to stock first, then use guarded
-Apply with that explicit `-ShimPath`; this creates a new Apply backup. The
+Its hash is `528913E6...D17A6DD`. Complete the ordered V4 restore first, then
+use guarded Apply with that explicit `-ShimPath`; this creates a new backup. The
 historical `...151248244` Apply backup records the earlier pass-through
-installation and its stock predecessor, but it is not the current V3 rollback
+installation and its stock predecessor, but it is not the current V4 rollback
 backup and does not itself contain the pass-through candidate.
 
 ## Compatibility and verification
 
-The gate enables only when the audited process name, full Origin hash, x86 PE
-identity, and installed avatar-guard hook bytes match. Unknown hosts retain
-pass-through behavior. Automated tests cover ABI preservation, exact-pointer
-ordering, 4,096 unready scheduling cycles with continuous `Process`, malformed
-input, readiness-only release, and explicit lifecycle cleanup; they do not
-prove native UI behavior.
+The gate enables only when the audited process name, full V4 Origin hash, x86
+PE identity, preload/timeout hook bytes, and legacy hash match. Unknown hosts
+retain pass-through behavior. Automated tests cover ABI preservation,
+AfterLogin recognition and bounded state-2 requests, exact-pointer ordering,
+4,096 unready scheduling cycles with continuous `Process`, malformed input,
+readiness-only release, lifecycle cleanup, and guarded binary Apply/Revert;
+they do not prove native UI behavior.
 
-V3 remains pending until fresh evidence confirms:
-
-1. alternating account 7/account 13 full relaunch and same-process cycles;
-2. a delayed preview remains connected beyond the old 14.6-second failure;
-3. an unready preview stays in a responsive loading state without being handed
-   to the guarded builder;
-4. the model appears automatically, without another click, when readiness
-   occurs;
-5. world entry and later packet ordering remain normal;
-6. no server-full state, new dump, or `0x005F58BC` recurrence; and
-7. stock restore, V3 reapply, and final soak use a fresh evidence run.
+V4 remains pending until one fresh cold launch confirms that character
+selection renders automatically, world entry succeeds, the connection does
+not reach the old roughly 15-second timeout, and no new dump or
+`0x005F58BC` error appears. If it fails, stop iterating on this correction,
+restore Net while Origin is V4, verify stock Net/no `NetLegacy.dll`, then run
+`PatchClientAvatarPreload.ps1 -Mode Revert` and continue the next
+network-infrastructure phase as requested.

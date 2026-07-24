@@ -7,14 +7,15 @@ The long-term secure networking migration is tracked separately in
 selects an in-process x86 client shim followed by TLS control traffic,
 authenticated UDP realtime traffic, server authority, bounded overload
 behavior, and upstream DDoS integration. The current networking milestone is a
-reversible `Net.dll` compatibility seam. Loading-gate v1 failed and was rolled
-back; v2 was rejected after its timed unready handoff recreated the blank
-model. Readiness-only v3 is installed with controlled live acceptance pending.
-The next TLS phase is specified in
+reversible Origin/`Net.dll` compatibility seam. V1–V3 are rejected; V3
+reproduced the roughly 15-second `0x005F58BC` timeout/crash. Matched V4 is
+installed with automated gates passing and one cold smoke pending. Phase 2 is
+specified in
 [`docs/network-infrastructure-phase2.md`](network-infrastructure-phase2.md),
-but TLS/UDP traffic does not begin until the shim's automated ABI, interactive
-parity, and rollback gates pass. The exact operator commands and pending
-evidence record are in
+but no TLS/UDP traffic has started. On failure: restore Net while Origin is
+V4, verify stock Net/no `NetLegacy.dll`, then run
+`PatchClientAvatarPreload.ps1 -Mode Revert`; park the issue and continue Phase
+2 without claiming acceptance. Exact commands are in
 [`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
@@ -26,14 +27,16 @@ evidence record are in
 - Two-client visibility sends server-built remote spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets in both directions.
 - Same-account relog behavior remains in place: a new login replaces the stale session.
 - The post-login bootstrap now matches the working server's exact 63-record manifest and trailing version record. That server parity is retained, but dump analysis proved the intermittent first-attempt account-switch crash was also a distinct native client lifecycle defect.
-- The installed Origin patch guards two preview builders, not the later
-  `0x005F58BC` state-transition fault. See
+- The installed V4 Origin candidate retains the two preview-builder guards,
+  initializes LOGIN synchronously after state registration, and guards the
+  later `0x005F58BC` state-transition fault. See
   `docs/client-avatar-preview-crash-fix.md`.
 - Loading-gate v1 (`2D8199...`) failed by starving native processing. V2
   (`73E65F...`) fixed scheduling but failed cycle 3 when its five-second
-  unready handoff stayed blank beyond 44 seconds. Installed v3
-  (`17A721...`) keeps processing and order but releases only on readiness.
-  Pass-through `528913...` remains the recovery candidate. See
+  unready handoff stayed blank beyond 44 seconds. Readiness-only V3
+  (`17A721...`) still hit the native timeout/crash. Installed V4 schedules
+  state 2 from exact AfterLogin, retains preview order until readiness, and
+  guards the timeout. One cold smoke remains; this is not acceptance. See
   `docs/client-avatar-preview-loading-gate.md`.
 - Captured opcode-10090 pages were identified in the native dispatcher as character-specific `MSG_PLAYER_ACCEPTQUESTS` records, not generic game-data bootstrap. Runtime replay is blocked until quests are implemented authoritatively; the separate dump diagnosis and future packet-order requirement are recorded in `docs/accepted-quest-login-crash-fix.md`.
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.
