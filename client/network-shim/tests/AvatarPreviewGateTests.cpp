@@ -22,8 +22,6 @@ bool AvatarResourcesReady = false;
 std::uint64_t AvatarClockMilliseconds = 0;
 int DisposedMessageCount = 0;
 void* LastDisposedMessage = nullptr;
-int TestEventSequence = 0;
-int LastDisposeSequence = 0;
 int DestroyedVirtualMessageCount = 0;
 
 void Check(bool condition, const char* message) {
@@ -46,7 +44,6 @@ std::uint64_t ReadTestAvatarClock() noexcept {
 void DisposeTestMessage(void* message) noexcept {
     ++DisposedMessageCount;
     LastDisposedMessage = message;
-    LastDisposeSequence = ++TestEventSequence;
 }
 
 struct TestLegacyMessage {
@@ -65,6 +62,9 @@ static_assert(
 static_assert(
     offsetof(TestLegacyMessage, characterCount) == 8,
     "legacy message payload offset changed");
+static_assert(
+    godswar::network::AvatarPreviewWaitTimeoutMilliseconds == 5'000,
+    "bounded preview fallback contract changed");
 
 class TestVirtualMessage {
 public:
@@ -90,7 +90,6 @@ public:
 
     void DisConnect() override {
         ++disconnectCalls;
-        disconnectSequence = ++TestEventSequence;
     }
 
     void Process() override {
@@ -121,7 +120,6 @@ public:
     int releaseCalls = 0;
     int connectCalls = 0;
     int disconnectCalls = 0;
-    int disconnectSequence = 0;
     int processCalls = 0;
     int pickCalls = 0;
     int messageCountCalls = 0;
@@ -135,8 +133,6 @@ public:
 void ResetDisposalEvidence() {
     DisposedMessageCount = 0;
     LastDisposedMessage = nullptr;
-    TestEventSequence = 0;
-    LastDisposeSequence = 0;
 }
 
 void RunGateChecks() {
@@ -233,6 +229,7 @@ void RunGateChecks() {
 
     AvatarResourcesReady = false;
     AvatarClockMilliseconds = 5'000;
+    ResetDisposalEvidence();
     {
         AvatarPreviewGate gate(
             true,
@@ -244,9 +241,31 @@ void RunGateChecks() {
             gate.Filter(&preview) == nullptr,
             "timeout fixture did not retain its preview");
         AvatarClockMilliseconds = 5'099;
-        Check(!gate.HasTimedOut(), "avatar gate timed out too early");
+        Check(
+            !gate.HasTimedOut() && gate.TryRelease() == nullptr,
+            "avatar gate released or timed out too early");
         AvatarClockMilliseconds = 5'100;
         Check(gate.HasTimedOut(), "avatar gate did not reach its timeout");
+        Check(
+            gate.TryRelease() == &preview && !gate.IsHolding(),
+            "timeout did not return the original preview as a bounded fallback");
+        Check(
+            DisposedMessageCount == 0,
+            "timeout fallback disposed a message owned by Origin");
+    }
+
+    AvatarClockMilliseconds = 6'000;
+    {
+        AvatarPreviewGate gate(
+            true,
+            ProbeAvatarResources,
+            DisposeTestMessage,
+            ReadTestAvatarClock,
+            100);
+        Check(
+            gate.Filter(&preview) == nullptr,
+            "readiness-boundary fixture did not retain its preview");
+        AvatarClockMilliseconds = 6'100;
         AvatarResourcesReady = true;
         Check(
             !gate.HasTimedOut() && gate.TryRelease() == &preview,
@@ -302,8 +321,8 @@ void RunOrderingAndLifecycleChecks() {
 
         client->Process();
         Check(
-            legacy.processCalls == 1,
-            "proxy polled the socket while retaining a preview");
+            legacy.processCalls == 2,
+            "proxy stopped network processing while retaining a preview");
         Check(
             client->PickMsg() == nullptr && legacy.pickCalls == 1,
             "proxy polled past the retained preview");
@@ -334,12 +353,14 @@ void RunOrderingAndLifecycleChecks() {
     Check(disconnectClient != nullptr, "disconnect fixture returned null");
     if (disconnectClient != nullptr) {
         static_cast<void>(disconnectClient->PickMsg());
+        disconnectClient->Process();
         disconnectClient->DisConnect();
         disconnectClient->Release();
         Check(
             DisposedMessageCount == 1 &&
-                LastDisposedMessage == &preview,
-            "disconnect/release did not dispose exactly once");
+                LastDisposedMessage == &preview &&
+                disconnectLegacy.processCalls == 1,
+            "remote-disconnect cleanup did not dispose exactly once");
     }
 
     FakeLegacyClient releaseLegacy;
@@ -385,63 +406,51 @@ void RunOrderingAndLifecycleChecks() {
 
 void RunTimeoutChecks() {
     TestLegacyMessage preview;
-    FakeLegacyClient processLegacy;
-    processLegacy.nextMessage = &preview;
+    TestLegacyMessage later;
+    later.opcode = 0x2713;
+    FakeLegacyClient legacy;
+    legacy.queuedMessages[0] = &preview;
+    legacy.queuedMessages[1] = &later;
+    legacy.queuedMessageCount = 2;
     AvatarResourcesReady = false;
     AvatarClockMilliseconds = 10'000;
     ResetDisposalEvidence();
-    auto* processClient = NetClientProxy::CreateForTesting(
-        &processLegacy,
+    auto* client = NetClientProxy::CreateForTesting(
+        &legacy,
         true,
         ProbeAvatarResources,
         DisposeTestMessage,
         ReadTestAvatarClock,
         100);
-    Check(processClient != nullptr, "process-timeout fixture returned null");
-    if (processClient != nullptr) {
-        static_cast<void>(processClient->PickMsg());
-        AvatarClockMilliseconds = 10'100;
-        processClient->Process();
+    Check(client != nullptr, "timeout-fallback fixture returned null");
+    if (client != nullptr) {
         Check(
-            DisposedMessageCount == 1 &&
-                processLegacy.disconnectCalls == 1 &&
-                LastDisposeSequence > 0 &&
-                LastDisposeSequence < processLegacy.disconnectSequence,
-            "process timeout did not dispose before native disconnect");
+            client->PickMsg() == nullptr && legacy.pickCalls == 1,
+            "timeout fixture did not retain its preview");
+        client->Process();
+        AvatarClockMilliseconds = 10'099;
         Check(
-            processLegacy.processCalls == 0,
-            "process timeout polled the expired socket");
-        processClient->DisConnect();
-        processClient->Release();
-        Check(
-            DisposedMessageCount == 1,
-            "process timeout disposed its preview more than once");
-    }
+            client->PickMsg() == nullptr &&
+                legacy.processCalls == 1 &&
+                legacy.pickCalls == 1,
+            "pre-timeout polling changed order or stopped network processing");
 
-    FakeLegacyClient pickLegacy;
-    pickLegacy.nextMessage = &preview;
-    AvatarClockMilliseconds = 20'000;
-    ResetDisposalEvidence();
-    auto* pickClient = NetClientProxy::CreateForTesting(
-        &pickLegacy,
-        true,
-        ProbeAvatarResources,
-        DisposeTestMessage,
-        ReadTestAvatarClock,
-        100);
-    Check(pickClient != nullptr, "pick-timeout fixture returned null");
-    if (pickClient != nullptr) {
-        static_cast<void>(pickClient->PickMsg());
-        AvatarClockMilliseconds = 20'100;
+        AvatarClockMilliseconds = 10'100;
         Check(
-            pickClient->PickMsg() == nullptr &&
-                DisposedMessageCount == 1 &&
-                pickLegacy.disconnectCalls == 1,
-            "PickMsg timeout did not dispose and disconnect");
-        pickClient->Release();
+            client->PickMsg() == &preview &&
+                DisposedMessageCount == 0 &&
+                legacy.disconnectCalls == 0,
+            "timeout did not return the original preview without disconnect");
         Check(
-            DisposedMessageCount == 1,
-            "PickMsg timeout disposed its preview more than once");
+            client->PickMsg() == &later && legacy.pickCalls == 2,
+            "a later message overtook the timeout-released preview");
+        client->DisConnect();
+        client->Release();
+        Check(
+            DisposedMessageCount == 0 &&
+                legacy.disconnectCalls == 1 &&
+                legacy.releaseCalls == 1,
+            "timeout fallback changed native disconnect/release ownership");
     }
 }
 

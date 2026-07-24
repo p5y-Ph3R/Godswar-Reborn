@@ -1,132 +1,125 @@
 # Character-selection avatar loading gate
 
-## Result
+## Current status
 
-The x86 `Net.dll` compatibility shim contains a narrowly scoped loading gate
-for the intermittent character-selection race. When the one-character preview
-packet arrives before the six native avatar resources are ready, the client
-remains in its normal responsive loading state. The exact packet is delivered
-automatically as soon as those resources are available; the player does not
-need to relaunch or select the slot again.
+The first loading-gate build failed live validation and was rolled back:
 
-Installed on 2026-07-24 with:
-
-- Apply backup:
+- failed v1 `Net.dll` SHA-256:
+  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
+- historical v1 Apply backup:
   `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083`
-- Pre-upgrade shim recovery backup:
-  `C:\Reborn\backups\client-network-shim-v1-Revert-20260724-150029673`
+- installed stable pass-through shim SHA-256:
+  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+- stable rollback Apply backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
 
-This complements the guarded `Origin.exe` patch documented in
-[`client-avatar-preview-crash-fix.md`](client-avatar-preview-crash-fix.md).
-The executable guards prevent null-resource crashes. The shim gate prevents
-the winning packet from being discarded by waiting and retrying it.
+The current v2 candidate is not installed and has not passed live validation:
 
-Supported binaries:
+- candidate SHA-256:
+  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
+- state: repository candidate; pending install, account-switch parity, soak,
+  rollback, and reapply evidence
+
+The immutable v1 failure record and dump evidence are in
+[`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
+No server, packet-format, database, or character-data change is part of either
+loading-gate version.
+
+Supported host binaries remain:
 
 - `Origin.exe` SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
-- loading-gate `Net.dll` SHA-256:
-  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
 
-No server, packet format, database, or character data change is part of this
-fix.
-
-## Root cause
+## Problem and live baseline
 
 The server sends one valid 188-byte character-preview message, opcode `10002`
-(`0x2712`), for the observed one-character selection flow. The stock
-`NetLegacy.dll` can expose that message before `Origin.exe` has populated all
-six male/female avatar-resource pointers:
+(`0x2712`), for the observed one-character selection flow. `NetLegacy.dll` can
+expose it before `Origin.exe` populates all six avatar-resource pointers:
 
 ```text
 0x01576088  0x0157608C  0x01576090
 0x0157609C  0x015760A0  0x015760A4
 ```
 
-The executable guards safely skip the native builders while a pointer is
-absent. Skipping prevents a crash but consumes the only preview message, which
-explains the clickable slot and successful world entry with no 3D model.
-Stock and shim timing observations both reproduced the model-only symptom, so
-this is a native resource/packet race rather than malformed server data.
+The executable guards documented in
+[`client-avatar-preview-crash-fix.md`](client-avatar-preview-crash-fix.md)
+skip two native builders while a required pointer is absent. That avoids those
+two null dereferences but consumes the only preview message, leaving a
+clickable character slot with no 3D model.
 
-## Ownership and loading behavior
+The stable pass-through shim reproduced this model-only state on 2026-07-24:
 
-The implementation preserves the stock `CMsg` object rather than copying or
-reconstructing proprietary bytes:
+- account 7 authenticated and the game connection opened at
+  `2026-07-24T03:30:23Z`;
+- the server emitted one valid 188-byte opcode-`10002` preview at
+  `03:30:23.586601356Z`;
+- the TCP game connection remained established for more than 142 seconds;
+- the character model stayed blank; and
+- the client stayed responsive with no new dump or server/container restart.
 
-1. `NetLegacy.dll::PickMsg` removes and returns the first `CMsg`.
-2. The shim recognizes only the audited 188-byte opcode-`10002`,
+This baseline separates the native resource race from malformed server data
+and from the separate v1 disconnect incident.
+
+## Historical v1 failure
+
+V1 retained the exact preview pointer but deliberately stopped delegating
+native `Process()` while it was held. Account 7 first passed, but the next full
+relaunch for account 13 lost its game connection after `14.633832034` seconds,
+showed the native server-full state, and produced a new access violation at
+`0x005F58BC`.
+
+V1's 30-second timeout disposed the held pointer and called native disconnect,
+but transport starvation closed the connection before that deadline.
+Disassembly of Origin's caller rules out a `GetMsgNum` drain-loop spin:
+a null `PickMsg` exits that per-frame call, and the next frame can call
+`Process`. V1 failed because its proxy itself suppressed that delegation.
+
+## V2 candidate contract
+
+V2 preserves the stock `CMsg` allocation and ownership:
+
+1. Every proxy `Process()` call delegates to `NetLegacy.dll`, including while a
+   preview is held.
+2. The gate recognizes only the audited 188-byte opcode-`10002`,
    one-character message.
-3. If every resource pointer is ready, the pointer passes through immediately.
-4. Otherwise the shim retains that one pointer, returns `nullptr` from
-   `PickMsg`, includes the retained item in `GetMsgNum`, and does not poll past
-   it. The render/UI loop continues normally, so the selection screen stays
-   responsive and loading remains visible.
-5. On readiness, the next `PickMsg` returns the same pointer. `Origin.exe`
-   handles it and invokes its ordinary scalar-deleting destructor.
+3. If all six resources are ready, the original pointer passes through.
+4. Otherwise the gate retains exactly that pointer, returns `nullptr` from
+   `PickMsg`, includes the held item in `GetMsgNum`, and prevents later
+   messages from overtaking it.
+5. Readiness returns the exact pointer to Origin, which then owns and destroys
+   it normally.
+6. If readiness is still false after five monotonic seconds, the gate returns
+   that same pointer as a bounded guarded fallback. It does not dispose the
+   message or disconnect the transport.
 
-Later messages cannot overtake the held preview. Only one message can be held.
-All other messages and all nine legacy virtual methods retain their original
-ABI and behavior.
+The five-second fallback prevents an unbounded hold and stays below the
+observed v1 disconnect interval. It is a local compatibility choice, not a
+readiness guarantee: if the resources never become ready, the executable
+guards may safely skip the returned preview and the model can remain blank.
+Documentation and tests must not claim that v2 always makes the model appear.
 
-On disconnect, reconnect, or release, the shim disposes an undelivered pointer
-through its real `CMsg` virtual scalar-deleting destructor exactly once. A
-30-second monotonic fail-safe disposes it and enters the stock disconnected
-path rather than leaving an unbounded wait or retained allocation. Readiness
-wins if it becomes true at the timeout boundary.
+A held pointer is disposed exactly once only when an explicit lifecycle reset
+still owns it: `Connect`, `DisConnect`, `Release`, or proxy destruction.
+Timeout alone is not cleanup.
 
-## Compatibility guard
+## Compatibility and verification
 
-The loading gate enables only when all of the following match the audited
-client:
+The gate enables only when the audited process name, full Origin hash, x86 PE
+identity, and installed avatar-guard hook bytes match. Unknown hosts retain
+pass-through behavior. Automated tests cover ABI preservation, exact-pointer
+ordering, continuous `Process`, malformed input, the five-second handoff, and
+explicit lifecycle cleanup; they do not prove native UI behavior.
 
-- process filename and full `Origin.exe` SHA-256;
-- x86 PE timestamp, image base, image size, and entry point; and
-- all three installed avatar-lifecycle/guard hook byte sequences.
+V2 remains pending until fresh evidence confirms:
 
-An unknown or unpatched executable receives the ordinary pass-through shim
-behavior. The installer independently pins the supported executable and
-legacy-DLL hashes and refuses unknown state.
-
-## Automated verification
-
-From `C:\Reborn`:
-
-```powershell
-.\tools\TestClientNetworkShim.ps1
-.\tools\TestClientNetworkShimInstaller.ps1
-.\tools\TestClientNetworkShimWindowsEvidence.ps1
-```
-
-The native suite covers:
-
-- exact x86 ABI/export/runtime hardening;
-- immediate and delayed preview delivery;
-- exact-pointer and packet-order preservation;
-- malformed, wrong-opcode, wrong-length, wrong-count, and inaccessible input;
-- saturated message counts;
-- reconnect, disconnect, release, and timeout cleanup;
-- a real MSVC scalar-deleting destructor; and
-- two clean release builds with identical SHA-256.
-
-## Interactive acceptance
-
-Repeat the race-prone flow several times:
-
-1. Launch the client and alternate accounts 7 and 13, including same-process
-   return-to-login and full relaunch cycles.
-2. If preview resources are late, confirm the selection screen remains
-   responsive and visibly loading rather than closing or showing a permanent
-   blank model.
-3. Confirm the 3D character appears automatically without another login or
-   slot click.
-4. Confirm the slot remains selectable and world entry still succeeds.
-5. Confirm later packets and normal gameplay are not delayed after the model
-   appears.
-6. Confirm no new dump or avatar access-violation entry is produced.
-
-If resources are already ready, no visible delay is expected. The current
-candidate has passed static and automated validation; the interactive sequence
-is the remaining proof of the native UI behavior.
+1. alternating account 7/account 13 full relaunch and same-process cycles;
+2. a delayed preview remains connected beyond the old 14.6-second failure;
+3. the model appears without another click when readiness occurs before the
+   fallback;
+4. the known five-second blank-model fallback is reported as a failure of the
+   desired loading result, not hidden as success;
+5. world entry and later packet ordering remain normal;
+6. no server-full state, new dump, or `0x005F58BC` recurrence; and
+7. stock restore, v2 reapply, and final soak use a fresh evidence run.

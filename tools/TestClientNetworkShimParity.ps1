@@ -3,7 +3,7 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,42 +12,14 @@ $tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
 $module = Join-Path $PSScriptRoot 'ClientNetworkShimParityEvidence.psm1'
 $validationModule = Join-Path `
     $PSScriptRoot 'ClientNetworkShimParityValidation.psm1'
+$expectedToolVersion = '1.3.0'
+$expectedShimHash =
+    '73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD'
 Import-Module $module -Force
 Import-Module $validationModule -Force
-
-function Assert-True {
-    param(
-        [Parameter(Mandatory)][bool]$Condition,
-        [Parameter(Mandatory)][string]$Message
-    )
-
-    if (-not $Condition) {
-        throw $Message
-    }
-}
-
-function Assert-Throws {
-    param(
-        [Parameter(Mandatory)][scriptblock]$Operation,
-        [Parameter(Mandatory)][string]$Label,
-        [Parameter(Mandatory)][string]$ExpectedPattern
-    )
-
-    try {
-        & $Operation
-    }
-    catch {
-        if ($_.Exception.Message -notmatch $ExpectedPattern) {
-            throw (
-                "Wrong refusal for ${Label}: $($_.Exception.Message)"
-            )
-        }
-        Write-Host "Expected refusal ($Label): $($_.Exception.Message)"
-        return
-    }
-
-    throw "Expected operation to be refused: $Label"
-}
+Import-Module (
+    Join-Path $PSScriptRoot 'ClientNetworkShimTestAssertions.psm1'
+) -Force
 
 if (@(Get-Process -Name Origin -ErrorAction SilentlyContinue).Count -gt 0) {
     throw 'Close Origin.exe before running the parity evidence tests.'
@@ -92,7 +64,10 @@ try {
     $beginManifest = Get-Content -LiteralPath $manifestPath -Raw |
         ConvertFrom-Json
     Assert-True (
-        $beginManifest.toolVersion -eq '1.2.0' -and
+        $beginManifest.toolVersion -eq $expectedToolVersion -and
+        $beginManifest.client.netSha256 -eq $expectedShimHash -and
+        $beginManifest.originalApplyBackup.afterNetSha256 -eq
+            $expectedShimHash -and
         @($beginManifest.expected.checklist) -contains
             'avatar preview loading remains responsive' -and
         @($beginManifest.expected.checklist) -contains
@@ -229,7 +204,7 @@ try {
     $oldManifestPath = Join-Path $oldVersionRoot 'manifest.json'
     $oldManifest = Get-Content -LiteralPath $oldManifestPath -Raw |
         ConvertFrom-Json
-    $oldManifest.toolVersion = '0.0.0'
+    $oldManifest.toolVersion = '1.2.0'
     $encoding = New-Object Text.UTF8Encoding($false)
     [IO.File]::WriteAllText(
         $oldManifestPath,
@@ -241,7 +216,7 @@ try {
         $encoding)
     Assert-Throws {
         & $tool -Mode Status -EvidencePath $oldVersionRoot | Out-Null
-    } 'old tool version' 'start a new run with 1\.2\.0'
+    } 'V1.2 evidence' 'start a new run with 1\.3\.0'
 
     $afterHashes = @(
         Get-ParitySha256 $originPath

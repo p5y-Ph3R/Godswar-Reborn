@@ -38,8 +38,6 @@ private:
         std::uint64_t waitTimeoutMilliseconds) noexcept;
     ~NetClientProxy() = default;
 
-    bool ExpireAvatarPreviewIfNeeded() noexcept;
-
     ILegacyNetClient* legacyClient_;
     AvatarPreviewGate avatarPreviewGate_;
 };

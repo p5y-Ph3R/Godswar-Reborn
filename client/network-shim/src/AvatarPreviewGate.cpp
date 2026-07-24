@@ -236,7 +236,10 @@ void* AvatarPreviewGate::Filter(void* message) noexcept {
 }
 
 void* AvatarPreviewGate::TryRelease() noexcept {
-    if (heldMessage_ == nullptr || !readinessProbe_()) {
+    if (heldMessage_ == nullptr ||
+        (!readinessProbe_() &&
+         monotonicClock_() - heldAtMilliseconds_ <
+             waitTimeoutMilliseconds_)) {
         return nullptr;
     }
 

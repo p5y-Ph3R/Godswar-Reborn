@@ -3,12 +3,21 @@ param(
     [string]$ClientRoot = 'C:\Godswar Origin',
 
     [string]$ApplyBackupPath =
-        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083'
+        'C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244',
+
+    [string]$CandidateShimPath
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $tool = Join-Path $PSScriptRoot 'InvokeClientNetworkShimParity.ps1'
+$expectedToolVersion = '1.3.0'
+$expectedShimHash =
+    '73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD'
+if ([string]::IsNullOrWhiteSpace($CandidateShimPath)) {
+    $CandidateShimPath = Join-Path `
+        $repoRoot 'client\network-shim\bin\Release\Win32\Net.dll'
+}
 Import-Module (
     Join-Path $PSScriptRoot 'ClientNetworkShimParityEvidence.psm1'
 ) -Force
@@ -165,15 +174,23 @@ New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 try {
     $client = Join-Path $testRoot 'client'
     New-Item -ItemType Directory -Path $client | Out-Null
-    foreach ($name in @('Origin.exe', 'Net.dll', 'NetLegacy.dll')) {
+    foreach ($name in @('Origin.exe', 'NetLegacy.dll')) {
         Copy-Item -LiteralPath (Join-Path $ClientRoot $name) `
             -Destination (Join-Path $client $name)
     }
+    Copy-Item -LiteralPath $CandidateShimPath `
+        -Destination (Join-Path $client 'Net.dll')
     $hashes = @(
         Get-ParitySha256 (Join-Path $client 'Origin.exe')
         Get-ParitySha256 (Join-Path $client 'Net.dll')
         Get-ParitySha256 (Join-Path $client 'NetLegacy.dll')
     )
+    if ($hashes[1] -ne $expectedShimHash) {
+        throw (
+            "Candidate shim hash is $($hashes[1]); expected " +
+            "$expectedShimHash."
+        )
+    }
     $stock = Join-Path $ApplyBackupPath 'Net.dll'
     $original = Join-Path $testRoot 'original-backup'
     New-TestApplyBackup `
@@ -188,6 +205,12 @@ try {
     $manifest = Get-Content -LiteralPath (
         Join-Path $begin.EvidencePath 'manifest.json'
     ) -Raw | ConvertFrom-Json
+    if ($manifest.toolVersion -ne $expectedToolVersion -or
+        $manifest.client.netSha256 -ne $expectedShimHash -or
+        $manifest.originalApplyBackup.afterNetSha256 -ne
+            $expectedShimHash) {
+        throw 'Begin did not pin the V2 candidate.'
+    }
     $base = [DateTimeOffset]$manifest.startedUtc
     for ($index = 0; $index -lt 5; $index++) {
         Write-TestObservation `

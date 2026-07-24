@@ -2,22 +2,26 @@
 
 ## Verified state
 
-- Status: loading-gate shim installed; automated gates complete; interactive
-  parity pending
+- Status: loading-gate v1 failed live validation and was rolled back; v2 is
+  built but not installed and remains pending
 - Supported `Origin.exe` SHA-256:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Stock `Net.dll`/installed `NetLegacy.dll` SHA-256:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
-- Installed shim SHA-256:
+- Historical failed v1 shim SHA-256:
   `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-- Installed state: `InstalledExact`
-- Current Apply backup:
-  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-150036083`
+- Installed stable rollback shim SHA-256:
+  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+- Stable rollback Apply backup:
+  `C:\Reborn\backups\client-network-shim-v1-Apply-20260724-151248244`
+- Uninstalled v2 candidate SHA-256:
+  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
 
 This is the executable verification and rollback contract for Phase 1 of
-[`network-infrastructure-goal.md`](network-infrastructure-goal.md). `Pending`
-interactive results mean Phase 1 is not yet accepted and TLS/UDP work must not
-begin.
+[`network-infrastructure-goal.md`](network-infrastructure-goal.md). The current
+installer reports the rollback shim as unknown relative to the uninstalled
+candidate; that does not convert v1 into an accepted build. Phase 1 remains
+unaccepted and TLS/UDP work must not begin.
 
 The intentional preview-timing exception and its exact native-message
 ownership contract are documented in
@@ -43,8 +47,9 @@ The native suite:
    two name/ordinal exports;
 4. rejects an unbundled Visual C++ runtime;
 5. exercises all nine proxy slots and arguments against a controlled fake;
-6. verifies preview readiness, exact-pointer ordering, malformed-message
-   rejection, reconnect/disconnect/release cleanup, and the 30-second bound;
+6. verifies preview readiness, continuous native `Process`, exact-pointer
+   ordering, malformed-message rejection, explicit lifecycle cleanup, and the
+   five-second exact-pointer fallback;
 7. invokes a real MSVC scalar-deleting destructor for retained-message
    ownership coverage;
 8. creates/releases 32 real stock client objects through the shim; and
@@ -79,6 +84,10 @@ Reproducible release builds require Visual Studio 2022 MSVC tools
 `14.44.35207` and Windows SDK `10.0.26100.0`. Matching hashes are guaranteed
 only for repeated clean builds in that pinned environment; another compiler
 may legitimately produce different reviewed bytes.
+
+The native suite currently describes v2. Installer, Windows
+evidence, and parity hash pins must be advanced together before installation;
+historical v1 evidence cannot be relabeled as v2 evidence.
 
 ## Status, Apply, and Restore
 
@@ -152,7 +161,8 @@ Evidence runs are tool-version pinned; after a recorder upgrade, start a new
 baseline rather than mixing observation schemas.
 
 1. Preflight: `docker ps` reports `godswar-server` up; host listeners exist on
-   `127.1.1.110:5998` and `:7000`; installer Status is `InstalledExact`.
+   `127.1.1.110:5998` and `:7000`; installer Status is `InstalledExact` for the
+   exact candidate under test.
 2. Record file names, sizes, and timestamps under `C:\Godswar Origin\Dump`,
    `Dump\Error.log`, and `Log`; do not delete them.
 3. Start the normal client. While open, run the evidence recorder. It prefers
@@ -163,8 +173,11 @@ baseline rather than mixing observation schemas.
    fight, chat, and use inventory, equip/unequip, forge, Gear Mentor, and
    Zodiac. Logout cleanly.
 5. During any late preview, confirm the selection UI remains responsive and
-   loading, then shows the 3D character automatically. A permanent blank
-   model, crash, extra slot click, or required relaunch fails the gate.
+   loading, then shows the 3D character automatically before the five-second
+   fallback. The fallback returns the original pointer without disconnecting,
+   but can still leave a blank model if resources remain absent. A blank model,
+   crash, extra slot click, or required relaunch fails the desired loading
+   result.
 6. Fully close and relaunch the client, alternating account 7 then account 13
    for five complete cycles. Both must enter the world on the first attempt.
 7. Run a longer movement/map-transition soak and repeat the dump/log inventory.
@@ -228,21 +241,53 @@ gate.
 | Stock rollback smoke / final reapply smoke | Pending / Pending |
 | Result and final Apply backup | Pending |
 
-## Current loading-gate acceptance record
+## Failed v1 loading-gate record
 
-The loading-gate build requires a fresh tool-version-`1.2.0` evidence run; old
-pass-through observations cannot be reused.
+V1 evidence run
+`20260724T030417842Z-94e2c5f4` is immutably completed as `Fail`. Account 7
+displayed its model and entered the world. On the next full relaunch, account
+13's game connection closed `14.633832034` seconds after CharacterPreview, the
+UI showed server-full, and Origin dumped at `0x005F58BC`. The server container
+did not crash. V1 was restored to the stable rollback shim.
 
 | Field | Value |
 | --- | --- |
-| Date/operator | Pending |
-| Repository revision (`git rev-parse HEAD`) | Pending |
+| Date/operator | `2026-07-24` / `Iamc1` |
+| Repository revision | `1417eed958788b5a5e690fb68e0f23f24c51affd` |
 | Origin/shim hashes | `753BE49F...AD49ED79` / `2D819908...E2AE0` |
-| Server endpoint/commit | `127.1.1.110:5998,7000` / Pending |
-| Accounts/cycles | `7 <-> 13` / five complete cycles |
+| Accounts/cycles | account 7 passed; account 13 failed / one completed cycle |
+| Connection result | closed after `14.633832034` seconds; server stayed up |
+| Client result | server-full UI; new dump at `0x005F58BC` |
+| Evidence result | `Fail` |
+| Installed rollback | `528913E6...D17A6DD` |
+| Stable rollback Apply backup | `...\client-network-shim-v1-Apply-20260724-151248244` |
+
+See
+[`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md)
+for hashes and fault evidence.
+
+## Stable rollback live baseline
+
+At `2026-07-24T03:30:23Z`, account 7 received one valid 188-byte preview under
+the `528913E6...D17A6DD` shim. Origin remained responsive and the TCP game
+connection remained established for more than 142 seconds, but the 3D model
+was blank. No new dump, game-close log, server exception, or container restart
+occurred. This is diagnostic evidence of the native resource race, not a pass
+for the loading gate.
+
+## Pending v2 acceptance record
+
+V2 requires a fresh evidence-tool version and a new run; neither v1 nor the
+stable-shim observations can be reused.
+
+| Field | Value |
+| --- | --- |
+| Candidate shim hash | `73E65FBF...F2902FD` |
+| Install state | Not installed |
+| Accounts/cycles | `7 <-> 13` / five complete cycles pending |
 | Responsive loading / automatic model | Pending / Pending |
-| Soak duration | Pending |
-| Dump/log before and after | Pending |
-| Stock rollback smoke / final reapply smoke | Pending / Pending |
-| No unintended behavior difference | Pending |
-| Result and final Apply backup | Pending |
+| Connection beyond old 14.6-second failure | Pending |
+| Five-second guarded fallback | Automated only; native result pending |
+| Soak / dump and log review | Pending / Pending |
+| Stock rollback / final reapply | Pending / Pending |
+| Result | Pending |

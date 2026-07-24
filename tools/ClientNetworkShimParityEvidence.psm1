@@ -334,6 +334,8 @@ function Get-ParityBackupSnapshot {
         beforeState = [string]$manifest.before.state
         beforeNetSha256 = [string]$manifest.before.netSha256
         beforeNetLegacySha256 = [string]$manifest.before.netLegacySha256
+        afterNetSha256 = [string]$manifest.after.netSha256
+        afterNetLegacySha256 = [string]$manifest.after.netLegacySha256
     }
 }
 
@@ -346,7 +348,10 @@ function Test-ParityBackupSnapshot {
     return (
         $Current.manifestSha256 -eq [string]$Expected.manifestSha256 -and
         $Current.stockNetSha256 -eq [string]$Expected.stockNetSha256 -and
-        $Current.createdUtc -eq [string]$Expected.createdUtc
+        $Current.createdUtc -eq [string]$Expected.createdUtc -and
+        $Current.afterNetSha256 -eq [string]$Expected.afterNetSha256 -and
+        $Current.afterNetLegacySha256 -eq
+            [string]$Expected.afterNetLegacySha256
     )
 }
 

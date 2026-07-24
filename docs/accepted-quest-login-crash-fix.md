@@ -7,9 +7,10 @@ The client intermittently exited after entering the world. The July 22 dump
 The failing instruction dereferenced a null UI-control pointer while refreshing
 the accepted-quest display.
 
-This is separate from the character-selection avatar crashes at `0x005F060E`
-and `0x005F4ADD`. The installed avatar guard is intact and does not modify the
-new faulting handler or call site.
+This is separate from the character-selection avatar-builder crashes at
+`0x005F060E` and `0x005F4ADD`, and from the later disconnect/state-transition
+avatar-resource fault at `0x005F58BC`. The installed two-builder avatar guard
+is intact and does not modify the quest handler or either separate call site.
 
 It is also separate from the later world-target QuestView crash at
 `0x00493A4E`, documented in `quest-view-target-crash-fix.md`.

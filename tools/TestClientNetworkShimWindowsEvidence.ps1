@@ -5,6 +5,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$originHash =
+    '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
+$shimHash =
+    '73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD'
+$legacyHash =
+    '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
 Import-Module (
     Join-Path $PSScriptRoot 'ClientNetworkShimWindowsEvidence.psm1'
 ) -Force
@@ -156,13 +162,13 @@ try {
                     Select-Object -First 1
             )
         }
+        $install = $null
         if ($gameConnection.Count -eq 1) {
-            $originHash =
-                '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
-            $shimHash =
-                '2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0'
-            $legacyHash =
-                '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
+            $install = Get-ParityClientSnapshot `
+                $ClientRoot $originHash $shimHash $legacyHash
+        }
+        if ($gameConnection.Count -eq 1 -and
+            $install.state -eq 'InstalledExact') {
             $startedUtc = $origin.StartTime.ToUniversalTime()
             $observation = [pscustomobject][ordered]@{
                 schemaVersion = 1
@@ -178,8 +184,7 @@ try {
                     pathEvidenceSource = $runtime.pathEvidenceSource
                     pathLocker = $null
                 }
-                install = Get-ParityClientSnapshot `
-                    $ClientRoot $originHash $shimHash $legacyHash
+                install = $install
                 modules = $rmModules
                 connections = @(
                     [pscustomobject][ordered]@{
@@ -228,6 +233,11 @@ try {
                         }
                 ).Count -gt 0
             ) 'A mismatched Restart Manager resource path was accepted.'
+        } elseif ($gameConnection.Count -eq 1) {
+            Write-Host (
+                'Live V2 semantic observation skipped: client state is ' +
+                "$($install.state)."
+            )
         }
         Write-Host 'Live Origin process and DLL evidence passed.'
     } else {

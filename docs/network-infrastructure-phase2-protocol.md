@@ -4,13 +4,20 @@
 
 - Protocol version: `1.0`
 - Last updated: `2026-07-24`
-- Runtime status: specified only; not implemented or enabled
+- Runtime status: specified only; not enabled; blocked on V2 live acceptance
+- Stable installed rollback shim:
+  `528913E66888D5C070C39949D2FC1AE439B8414B15152312D4E093A29D17A6DD`
+- Historical failed V1 (rolled back after the 2026-07-24 live incident):
+  `2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
+- Current V2 candidate (not installed):
+  `73E65FBFA3EA9809AF597DA3D25D1E0963B0A4A467549191BAFB4FAE9F2902FD`
 - Parent phase:
   [`network-infrastructure-phase2.md`](network-infrastructure-phase2.md)
 
 This is the normative TLS, framing, game-ticket, and x86 client-lifecycle
 contract. All bounds are part of the protocol unless explicitly described as
-an operational default.
+an operational default. The failed V1 is not the installed build or rollback
+target.
 
 ## TLS policy
 
@@ -340,13 +347,15 @@ network objects.
 4. Game `Connect` establishes TLS/preface, sends the claimed bind, and requires
    acceptance before opening the local leg in the same listen/begin-accept/
    stock-connect/accept-complete order. It then wipes the ticket.
-5. `SendMsg` and ordinary message processing stay delegated. The Phase 1
-   avatar-preview gate remains the only `PickMsg`/`GetMsgNum` exception: it can
-   retain exactly one audited opcode-`10002` native pointer, preserve queue
-   order, release that same pointer on readiness, and invoke its stock virtual
-   destructor if the session ends or its 30-second bound expires. A bridge
-   failure closes the loopback socket so the stock status follows its native
-   disconnect path.
+5. `SendMsg` and native `Process()` stay delegated every frame. The V2 gate is
+   the only `PickMsg`/`GetMsgNum` exception: it may hold exactly one audited
+   opcode-`10002` native pointer and must not poll past it, preserving order.
+   It returns that exact pointer on readiness or after a guarded five-second
+   fallback. The fallback neither destroys it nor calls native disconnect and
+   may still yield a blank preview if resources never become ready. Only an
+   explicit `Connect`, `DisConnect`, `Release`, or proxy destruction reset
+   invokes the stock virtual destructor for a pointer still held. A bridge
+   failure may close the loopback socket but does not dispose that pointer.
 6. `DisConnect` and `Release` are idempotent coordinated shutdowns: signal stop,
    close handles, join workers, wipe secrets, unregister, then call the stock
    method. No detached worker may retain a proxy.

@@ -2,10 +2,12 @@
 
 ## Result
 
-The installed `C:\Godswar Origin\Origin.exe` is patched against the two known
-null-resource crashes in the LOGIN/character-preview path. The patch also
+The installed `C:\Godswar Origin\Origin.exe` is patched against two audited
+null-resource builders in the LOGIN/character-preview path. The patch also
 repairs the stale initialization lifecycle that made an account switch fail on
-the first launch and then work on a later attempt.
+the first launch and then work on a later attempt. A later incident found a
+third, separate null-resource fault at `0x005F58BC`; the installed executable
+patch does not guard that state-transition path.
 
 Installed on 2026-07-22 with:
 
@@ -19,9 +21,10 @@ No server or database change is part of this fix.
 
 The later companion `Net.dll` loading gate is documented in
 [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
-It keeps the exact preview message pending until these guarded resources are
-ready, so the selection screen can show loading and then build the model
-automatically instead of permanently skipping it.
+Its v1 build failed live validation and was rolled back. The current v2
+candidate is not installed; it retains the exact preview until readiness or a
+five-second guarded fallback, but cannot guarantee a model if resources remain
+unavailable.
 
 ## Evidence and root cause
 
@@ -37,6 +40,13 @@ The same address appears repeatedly in the historical client error log and
 predates the Q20/G25 and global-rank work. Two older dumps independently fault
 at VA `0x005F060E`, where the other selection-avatar builder dereferences
 `0x015760A0` while the avatar resource set is absent.
+
+The later v1 loading-gate incident produced dump `20260724151147.dmp` at
+`0x005F58BC`, where a state-transition routine dereferenced the same null
+`0x015760A0` root after calling native network disconnect. That third site is
+not either guarded preview builder. Its evidence and the stable-shim
+blank-model baseline are recorded in
+[`client-avatar-preview-loading-gate-incident-20260724.md`](client-avatar-preview-loading-gate-incident-20260724.md).
 
 The client builds male and female selection resources through the LOGIN
 object's native initializer at VA `0x00467280`. It sets byte
@@ -66,8 +76,9 @@ transaction:
 Both guards are fail-closed. A packet that still wins a narrow initialization
 race can skip that one preview build instead of dereferencing null. Neither
 guard sleeps, re-enters the loader, or runs initialization from the render
-path. The companion shim gate addresses the consequence of that safe skip by
-retaining and retrying only the audited preview message.
+path. The uninstalled v2 shim candidate attempts to address the consequence of
+that safe skip by retaining only the audited preview message while continuing
+native network processing.
 
 The patcher refuses to write unless the client is closed and all of the
 following match the audited build: file size, DOS/PE headers, x86 PE32 machine,
@@ -104,13 +115,15 @@ intermittent:
 2. Leave that session and log in to account 13 without requiring a failed
    first attempt.
 3. If the resource race occurs, confirm the screen remains responsive in its
-   loading state and the model appears automatically rather than remaining
-   blank.
+   loading state and the model appears automatically before the candidate's
+   five-second fallback. A fallback with a blank model is safe but does not
+   pass the desired loading result.
 4. Confirm account 13's preview appears and the client enters the world.
 5. Repeat the account switch at least five times.
 6. Confirm no new file appears in `C:\Godswar Origin\Dump` and no new
-   `0x005F4ADD` or `0x005F060E` entry is appended to `Error.log`.
+   `0x005F4ADD`, `0x005F060E`, or `0x005F58BC` entry is appended to
+   `Error.log`.
 
-Static and disposable-binary validation is complete. The interactive sequence
-is the remaining acceptance test because it requires the game UI and account
-switch flow.
+The executable's two installed guards have static and disposable-binary
+validation. Loading-gate v1 failed; v2 remains uninstalled and pending the
+interactive sequence.

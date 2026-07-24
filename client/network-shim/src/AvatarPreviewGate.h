@@ -9,7 +9,7 @@ using LegacyMessageDisposer = void (*)(void*) noexcept;
 using AvatarMonotonicClock = std::uint64_t (*)() noexcept;
 
 inline constexpr std::uint64_t AvatarPreviewWaitTimeoutMilliseconds =
-    30'000;
+    5'000;
 
 std::uint64_t ReadAvatarMonotonicMilliseconds() noexcept;
 

@@ -81,11 +81,6 @@ void NetClientProxy::DisConnect() {
 }
 
 void NetClientProxy::Process() {
-    if (ExpireAvatarPreviewIfNeeded() ||
-        avatarPreviewGate_.IsHolding()) {
-        return;
-    }
-
     legacyClient_->Process();
 }
 
@@ -95,11 +90,7 @@ std::uint32_t NetClientProxy::GetStatus() const {
 
 void* NetClientProxy::PickMsg() {
     if (avatarPreviewGate_.IsHolding()) {
-        auto* message = avatarPreviewGate_.TryRelease();
-        if (message == nullptr) {
-            static_cast<void>(ExpireAvatarPreviewIfNeeded());
-        }
-        return message;
+        return avatarPreviewGate_.TryRelease();
     }
 
     return avatarPreviewGate_.Filter(legacyClient_->PickMsg());
@@ -112,16 +103,6 @@ bool NetClientProxy::SendMsg(const void* data, int size) {
 long NetClientProxy::GetMsgNum() {
     return avatarPreviewGate_.AdjustMessageCount(
         legacyClient_->GetMsgNum());
-}
-
-bool NetClientProxy::ExpireAvatarPreviewIfNeeded() noexcept {
-    if (!avatarPreviewGate_.HasTimedOut()) {
-        return false;
-    }
-
-    avatarPreviewGate_.Reset();
-    legacyClient_->DisConnect();
-    return true;
 }
 
 } // namespace godswar::network
