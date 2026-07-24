@@ -109,8 +109,10 @@ remains a mandatory regression gate.
 
 ## Remaining Phase 2 work
 
-Slice 5 adds the uninstalled native client coordinator and bounded client-side
-pumps. Slice 6 adds Schannel/`SslStream` and consumes the reserved handshake,
-ingress, and control limits. Slice 7 replaces permissive legacy account upsert
-with password verification and single-use game tickets. Until those slices
-pass, raw `5999/7000` is a local development protocol and is not secure.
+Slice 5's uninstalled native coordinator and bounded client pumps are complete;
+see
+[`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
+Slice 6 adds Schannel/`SslStream` and consumes the reserved handshake, ingress,
+and control limits. Slice 7 replaces permissive legacy account upsert with
+password verification and single-use game tickets. Until those slices pass,
+raw `5999/7000` is a local development protocol and is not secure.

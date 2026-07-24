@@ -2,9 +2,12 @@
 
 #include "AvatarPreviewGate.h"
 #include "LegacyClientApi.h"
+#include "NativeClientCoordinator.h"
 
 namespace godswar::network {
 
+// Mirrors the stock ABI's single-owner lifecycle. Release is the exclusive
+// final call and must not overlap another virtual method.
 class NetClientProxy final : public ILegacyNetClient {
 public:
     static ILegacyNetClient* Create(ILegacyNetClient* legacyClient) noexcept;
@@ -14,6 +17,9 @@ public:
         AvatarReadinessProbe readinessProbe,
         LegacyMessageDisposer messageDisposer,
         AvatarPreloadRequester preloadRequester = nullptr) noexcept;
+    static ILegacyNetClient* CreateWithCoordinatorForTesting(
+        ILegacyNetClient* legacyClient,
+        NativeClientCoordinator* coordinator) noexcept;
 
     std::uint32_t Release() override;
     void SetHost(const char* host, std::uint16_t port) override;
@@ -28,6 +34,8 @@ public:
 private:
     NetClientProxy(
         ILegacyNetClient* legacyClient,
+        NativeClientCoordinator* coordinator,
+        NativeProxyId proxyId,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
         LegacyMessageDisposer messageDisposer,
@@ -35,6 +43,8 @@ private:
     ~NetClientProxy() = default;
 
     ILegacyNetClient* legacyClient_;
+    NativeClientCoordinator* coordinator_;
+    NativeProxyId proxyId_;
     AvatarPreviewGate avatarPreviewGate_;
 };
 

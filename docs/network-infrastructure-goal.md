@@ -2,16 +2,15 @@
 
 ## Version and status
 
-- Document version: `1.15`
-- Last updated: `2026-07-24`
+- Document version: `1.16`
+- Last updated: `2026-07-25`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 slice 5 native coordinator/pumps. Slice 4 added
-  bounded admission, tracked tasks, per-session reliable egress, absolute
-  deadlines, and finite metrics to raw development listeners. No TLS or UDP
-  runtime is enabled.
+- Current milestone: Phase 2 slice 6 Schannel/`SslStream`. Slice 5 added the
+  uninstalled native coordinator, loopback bridge, bounded pumps, and tests.
+  Its process policy is disabled; no TLS or UDP runtime is enabled.
   V1–V4 are rejected and Phase 1
   is not accepted. V4 smoke
   `20260724T095739213Z-db16daa7` failed before character selection and was
@@ -320,7 +319,9 @@ Exact wire protocol and client lifecycle:
 - Slice 4 bounded admission, tracked tasks, reliable egress, deadlines, and
   metrics is implemented; see
   [`network-infrastructure-phase2-runtime.md`](network-infrastructure-phase2-runtime.md).
-- Add the uninstalled native coordinator and bounded client pumps next.
+- Slice 5's uninstalled native coordinator and bounded client pumps are
+  implemented; see
+  [`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
 - Add separate TLS ports; never sniff raw and TLS on one port.
 - Specify a versioned outer preface, compatibility/error behavior, maximum
   fields, SNI/hostname validation, development trust, and certificate rotation.

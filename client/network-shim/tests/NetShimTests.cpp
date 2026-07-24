@@ -1,5 +1,11 @@
 #include "AvatarPreviewGateTests.h"
 #include "AvatarPreloadTests.h"
+#include "BoundedChunkQueueTests.h"
+#include "LoopbackAcceptorTests.h"
+#include "NativeClientBridgeTests.h"
+#include "NativeClientCoordinatorTests.h"
+#include "OpaqueDuplexPumpTests.h"
+#include "WinSocketByteStreamTests.h"
 
 #include "../src/LegacyClientApi.h"
 #include "../src/NetClientProxy.h"
@@ -14,7 +20,16 @@
 namespace {
 
 using godswar::network::ILegacyNetClient;
+using godswar::network::ClientRoute;
+using godswar::network::ClientRouteDecision;
+using godswar::network::ClientRoutePolicy;
+using godswar::network::ClientRoutesEqual;
+using godswar::network::NativeClientCoordinator;
+using godswar::network::NativeClientRegistryCapacity;
+using godswar::network::NativeProxyId;
 using godswar::network::NetClientProxy;
+using godswar::network::ProcessNativeClientCoordinator;
+using godswar::network::TryCopyClientRoute;
 using Factory = void*(__cdecl*)();
 
 int Failures = 0;
@@ -103,6 +118,12 @@ bool IsAddressInModule(const void* address, HMODULE module) {
 }
 
 void RunProxyUnitChecks() {
+    auto& coordinator = ProcessNativeClientCoordinator();
+    const auto beforeCreate = coordinator.Snapshot();
+    Check(
+        beforeCreate.capacity == NativeClientRegistryCapacity,
+        "process coordinator capacity changed");
+
     FakeLegacyClient legacy;
     auto* client = NetClientProxy::Create(&legacy);
     Check(client != nullptr, "proxy factory returned null");
@@ -110,9 +131,22 @@ void RunProxyUnitChecks() {
         return;
     }
 
+    const auto afterCreate = coordinator.Snapshot();
+    Check(
+        afterCreate.registered == beforeCreate.registered + 1,
+        "proxy factory did not register exactly one native client");
+
     const std::uint8_t payload[] = {1, 2, 3, 4};
     client->SetHost("127.0.0.1", 5999);
+    const auto afterSetHost = coordinator.Snapshot();
+    Check(
+        afterSetHost.hostReady == beforeCreate.hostReady + 1,
+        "proxy SetHost did not publish one bounded route");
     Check(client->Connect(), "Connect return value was not delegated");
+    const auto afterConnect = coordinator.Snapshot();
+    Check(
+        afterConnect.connected == beforeCreate.connected + 1,
+        "pass-through proxy did not enter connected state");
     client->Process();
     Check(
         client->GetStatus() == 0x12345678,
@@ -127,6 +161,11 @@ void RunProxyUnitChecks() {
         client->GetMsgNum() == 19,
         "GetMsgNum return value was not delegated");
     client->DisConnect();
+    const auto afterDisconnect = coordinator.Snapshot();
+    Check(
+        afterDisconnect.connected == beforeCreate.connected &&
+            afterDisconnect.hostReady == beforeCreate.hostReady,
+        "proxy disconnect did not reset coordinator state");
 
     Check(legacy.setHostCalls == 1, "SetHost call count changed");
     Check(
@@ -152,6 +191,112 @@ void RunProxyUnitChecks() {
 
     Check(client->Release() == 73, "Release return value was not delegated");
     Check(legacy.releaseCalls == 1, "Release call count changed");
+    const auto afterRelease = coordinator.Snapshot();
+    Check(
+        afterRelease.registered == beforeCreate.registered,
+        "proxy release did not unregister before stock release");
+}
+
+struct ProxyRoutePolicyContext final {
+    ClientRoute route{};
+    ClientRouteDecision decision = ClientRouteDecision::Reject;
+};
+
+ClientRouteDecision ClassifyProxyTestRoute(
+    void* contextValue,
+    NativeProxyId,
+    const ClientRoute& route) noexcept {
+    auto* context =
+        static_cast<ProxyRoutePolicyContext*>(contextValue);
+    return context != nullptr &&
+        ClientRoutesEqual(context->route, route)
+        ? context->decision
+        : ClientRouteDecision::Reject;
+}
+
+void RunProxyNoDowngradeChecks() {
+    constexpr ClientRouteDecision decisions[] = {
+        ClientRouteDecision::Login,
+        ClientRouteDecision::Game,
+        ClientRouteDecision::Reject,
+    };
+
+    for (const auto decision : decisions) {
+        ProxyRoutePolicyContext context{};
+        context.decision = decision;
+        Check(
+            TryCopyClientRoute(
+                "secure.reborn.test",
+                6599,
+                &context.route),
+            "proxy no-downgrade route setup failed");
+        NativeClientCoordinator coordinator(ClientRoutePolicy{
+            &context,
+            ClassifyProxyTestRoute,
+        });
+        FakeLegacyClient legacy;
+        auto* client =
+            NetClientProxy::CreateWithCoordinatorForTesting(
+                &legacy,
+                &coordinator);
+        Check(
+            client != nullptr,
+            "coordinator-injected proxy factory failed");
+        if (client == nullptr) {
+            continue;
+        }
+
+        client->SetHost("secure.reborn.test", 6599);
+        SetLastError(ERROR_SUCCESS);
+        Check(
+            !client->Connect(),
+            "secure route downgraded to raw stock Connect");
+        Check(
+            legacy.connectCalls == 0,
+            "secure/rejected route invoked raw stock Connect");
+        if (decision != ClientRouteDecision::Reject) {
+            Check(
+                GetLastError() == ERROR_NOT_SUPPORTED,
+                "dormant secure route returned an unstable error");
+        }
+        client->Release();
+        Check(
+            legacy.releaseCalls == 1 &&
+                coordinator.Snapshot().registered == 0,
+            "injected proxy did not release/unregister");
+    }
+
+    ProxyRoutePolicyContext context{};
+    context.decision = ClientRouteDecision::Login;
+    Check(
+        TryCopyClientRoute(
+            "secure.reborn.test",
+            6599,
+            &context.route),
+        "invalid-route reset setup failed");
+    NativeClientCoordinator coordinator(ClientRoutePolicy{
+        &context,
+        ClassifyProxyTestRoute,
+    });
+    FakeLegacyClient legacy;
+    auto* client = NetClientProxy::CreateWithCoordinatorForTesting(
+        &legacy,
+        &coordinator);
+    Check(client != nullptr, "invalid-route proxy fixture failed");
+    if (client == nullptr) {
+        return;
+    }
+
+    client->SetHost("secure.reborn.test", 6599);
+    char overlong[255]{};
+    std::memset(overlong, 'x', sizeof(overlong) - 1);
+    client->SetHost(overlong, 6599);
+    Check(
+        !client->Connect() &&
+            legacy.setHostCalls == 1 &&
+            legacy.connectCalls == 0,
+        "invalid SetHost reused an older authoritative route");
+    client->Release();
 }
 
 void RunInstalledShimProbe(const wchar_t* shimPath) {
@@ -268,8 +413,15 @@ void RunRejectedShimProbe(
 
 int wmain(int argumentCount, wchar_t** arguments) {
     RunProxyUnitChecks();
+    RunProxyNoDowngradeChecks();
     Failures += RunAvatarPreviewGateTests();
     Failures += RunAvatarPreloadTests();
+    Failures += RunBoundedChunkQueueTests();
+    Failures += RunOpaqueDuplexPumpTests();
+    Failures += RunWinSocketByteStreamTests();
+    Failures += RunLoopbackAcceptorTests();
+    Failures += RunNativeClientCoordinatorTests();
+    Failures += RunNativeClientBridgeTests();
 
     if (argumentCount == 3 &&
         std::wcscmp(arguments[1], L"--probe") == 0) {

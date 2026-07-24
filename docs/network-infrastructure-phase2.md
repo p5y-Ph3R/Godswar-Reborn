@@ -2,12 +2,12 @@
 
 ## Status
 
-- Specification version: `1.8`
-- Last updated: `2026-07-24`
-- Runtime status: slice 4 bounded admission, tracked tasks, reliable egress,
-  absolute deadlines, and finite metrics implemented on raw development
-  listeners; no TLS or UDP runtime is enabled
-- Current next milestone: slice 5, uninstalled native coordinator and pumps
+- Specification version: `1.9`
+- Last updated: `2026-07-25`
+- Runtime status: slice 5's uninstalled x86 coordinator, ephemeral-loopback
+  bridge, bounded queues, and opaque pumps pass automated tests; the process
+  policy remains disabled and no TLS or UDP runtime is enabled
+- Current next milestone: slice 6, Schannel/`SslStream` secure transport
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Rejected V3 SHA-256:
@@ -282,10 +282,11 @@ failures before continuing.
    reliable egress, absolute raw-stream deadlines, graceful drain, and finite
    metrics. Secure listeners remain disabled. Runtime details:
    [`network-infrastructure-phase2-runtime.md`](network-infrastructure-phase2-runtime.md).
-5. Current: add the native loopback coordinator/pumps and lifecycle tests in an
-   uninstalled test build.
-6. Add Schannel/`SslStream`, ALPN, certificate validation, and local test-CA
-   automation. Secure ports remain opt-in development endpoints.
+5. Completed: uninstalled native route coordinator, ephemeral-loopback bridge,
+   bounded queues/pumps, WinSocket adapter, and lifecycle tests. Details:
+   [`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
+6. Current: add Schannel/`SslStream`, ALPN, certificate validation, and local
+   test-CA automation. Secure ports remain opt-in development endpoints.
 7. Add password hashing/migration plus opaque ticket grant/bind. Remove
    username-only authority from the secure game path.
 8. Run automated negative/fuzz/slow-client/load gates, install through a new

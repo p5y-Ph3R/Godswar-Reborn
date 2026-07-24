@@ -54,6 +54,7 @@
     <Link>
       <ModuleDefinitionFile>NetShim.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -64,17 +65,34 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AvatarPreviewGate.h" />
+    <ClInclude Include="BoundedChunkQueue.h" />
+    <ClInclude Include="ClientRoute.h" />
     <ClInclude Include="FileSha256.h" />
     <ClInclude Include="LegacyClientApi.h" />
     <ClInclude Include="LegacyModule.h" />
+    <ClInclude Include="LoopbackAcceptor.h" />
+    <ClInclude Include="NativeClientBridge.h" />
+    <ClInclude Include="NativeClientCoordinator.h" />
+    <ClInclude Include="NativeNetworkLimits.h" />
     <ClInclude Include="NetClientProxy.h" />
+    <ClInclude Include="OpaqueDuplexPump.h" />
+    <ClInclude Include="SocketHandle.h" />
+    <ClInclude Include="WinSocketByteStream.h" />
+    <ClInclude Include="WinSockRuntime.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AvatarPreviewGate.cpp" />
+    <ClCompile Include="BoundedChunkQueue.cpp" />
     <ClCompile Include="FileSha256.cpp" />
     <ClCompile Include="LegacyModule.cpp" />
+    <ClCompile Include="LoopbackAcceptor.cpp" />
+    <ClCompile Include="NativeClientBridge.cpp" />
+    <ClCompile Include="NativeClientCoordinator.cpp" />
     <ClCompile Include="NetClientProxy.cpp" />
     <ClCompile Include="NetShim.cpp" />
+    <ClCompile Include="OpaqueDuplexPump.cpp" />
+    <ClCompile Include="WinSocketByteStream.cpp" />
+    <ClCompile Include="WinSockRuntime.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="NetShim.def" />

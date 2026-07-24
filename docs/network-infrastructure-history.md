@@ -78,3 +78,8 @@ This is the version ledger for
   non-resetting packet/write deadlines, validated configuration, and finite
   low-cardinality metrics. Raw stream/cipher parity remains intact. TLS, UDP,
   secure control, and native client pumps remain disabled; slice 5 is next.
+- `1.16` (`2026-07-25`): Added the uninstalled x86 native route coordinator,
+  ephemeral-loopback bridge, dual-bounded opaque byte pumps, cancellable
+  WinSocket adapter, generation-safe proxy lifecycle, and concurrency/failure
+  tests. The process policy remains disabled/pass-through; no client was
+  installed and Schannel/`SslStream` is slice 6.
