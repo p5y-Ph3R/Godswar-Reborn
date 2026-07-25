@@ -2,15 +2,17 @@
 
 ## Version and status
 
-- Document version: `1.16`
+- Document version: `1.17`
 - Last updated: `2026-07-25`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 slice 6 Schannel/`SslStream`. Slice 5 added the
-  uninstalled native coordinator, loopback bridge, bounded pumps, and tests.
-  Its process policy is disabled; no TLS or UDP runtime is enabled.
+- Current milestone: Phase 2 Slice 6 secure-transport foundation is complete.
+  Signed endpoint validation, native Schannel/framing primitives, and opt-in
+  bounded server `SslStream` listeners are implemented. The candidate remains
+  uninstalled and disabled; Slice 7 authentication/tickets are next and UDP is
+  absent.
   V1–V4 are rejected and Phase 1
   is not accepted. V4 smoke
   `20260724T095739213Z-db16daa7` failed before character selection and was
@@ -144,19 +146,9 @@ information is less useful than missing information.
 3. New compatible client: possible, but equivalent to a long-term client
    rewrite because the original source is unavailable.
 
-The selected DLL will eventually host the TLS/UDP bridge in-process. Phase 1
-does not change endpoints, bytes, framing, or transport. Its sole proposed
-delivery-timing exception is the audited one-character preview. Failed v1
-suppressed native `Process`, held the exact opcode-`10002` pointer for up to 30
-seconds, then disposed it and disconnected. V2 delegated `Process` but its
-five-second unready handoff recreated the blank model. V3 preserved continuous
-processing, pointer identity, and readiness-only release, but its cold
-account-13 run still reached the native roughly 15-second timeout and
-`0x005F58BC` null-root crash. V4 also scheduled state 2 on exact AfterLogin,
-synchronously invoked the native LOGIN initializer after registration, and
-guarded the timeout path. Its final smoke connected to TCP `7000`, but the
-server received no `LoginGameServer`, so those paths never ran. It was rejected
-and rolled back.
+The selected DLL will host the TLS/UDP bridge in-process. Phase 1 V1–V4 were
+rejected and rolled back; their exact behavior and evidence remain in the
+[Phase 1 runbook](network-infrastructure-phase1.md).
 
 ### Phase 2 client bridge contract
 
@@ -322,11 +314,11 @@ Exact wire protocol and client lifecycle:
 - Slice 5's uninstalled native coordinator and bounded client pumps are
   implemented; see
   [`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
-- Add separate TLS ports; never sniff raw and TLS on one port.
-- Specify a versioned outer preface, compatibility/error behavior, maximum
-  fields, SNI/hostname validation, development trust, and certificate rotation.
-- Add maximum frames, deadlines, slow-client protection, bounded handshakes,
-  password hashing/migration, and short-lived game tickets.
+- Slice 6's signed manifest, Schannel/`SslStream`, separate TLS ports, outer
+  framing, deadlines, bounded handshakes/queues, and development-certificate
+  workflow are implemented but disabled and uninstalled; see
+  [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
+- Add password hashing/migration and short-lived single-use game tickets.
 - Define and test bounded queue overflow, backpressure, and rejection metrics.
 - Add golden, boundary, partial/coalesced, malformed, fuzz/property, timeout,
   and slow-client tests for every new TCP decoder in this phase.

@@ -2,15 +2,16 @@
 
 ## Status and scope
 
-Phase 2 slice 4 is implemented on the existing raw development endpoints.
-It adds bounded lifecycle controls before the secure listener exists; it does
-not enable TLS, UDP, the native client bridge, or a production endpoint.
+Phase 2 Slice 4 remains the bounded lifecycle base for the raw development
+endpoints. Slice 6 now consumes its reserved handshake and dual-queue limits
+through opt-in `SslStream` listeners. Those listeners remain disabled by
+default; UDP, live client activation, and production endpoints are absent.
 
 The raw protocol remains a pull-based stream. A handler reads at most one
 legacy packet of `8196` bytes at a time, so adding a second buffered ingress
 queue now would duplicate data without improving isolation. The configured
-ingress and control-queue limits are reserved for the framed secure transport
-in later slices.
+ingress and control-queue limits are consumed only by Slice 6's framed secure
+transport; they remain inert on the raw endpoints.
 
 ## Runtime ownership
 
@@ -109,10 +110,10 @@ remains a mandatory regression gate.
 
 ## Remaining Phase 2 work
 
-Slice 5's uninstalled native coordinator and bounded client pumps are complete;
-see
-[`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
-Slice 6 adds Schannel/`SslStream` and consumes the reserved handshake, ingress,
-and control limits. Slice 7 replaces permissive legacy account upsert with
-password verification and single-use game tickets. Until those slices pass,
+Slices 5 and 6 provide the uninstalled native coordinator, signed endpoint
+policy, Schannel/framing primitives, and bounded `SslStream` candidate; see
+[`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md)
+and [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
+Slice 7 replaces permissive legacy account upsert with
+password verification and single-use game tickets. Until Slice 7 passes,
 raw `5999/7000` is a local development protocol and is not secure.

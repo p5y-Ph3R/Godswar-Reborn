@@ -16,7 +16,7 @@ $binaryTest = Join-Path $PSScriptRoot 'TestClientNetworkShim.ps1'
 $candidate = Join-Path $repoRoot `
     "client\network-shim\bin\$Configuration\Win32\Net.dll"
 $probe = Join-Path $repoRoot `
-    "client\network-shim\bin\$Configuration\Win32\Godswar.NetShim.Tests.exe"
+    "client\network-shim\bin\$Configuration\Win32\Godswar.NetShim.Checks.exe"
 
 & $binaryTest -Configuration $Configuration | Out-Host
 

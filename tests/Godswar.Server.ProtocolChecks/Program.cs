@@ -131,6 +131,10 @@ internal static partial class Program
             ("Secure Phase 2 bounded protocol codecs", SecureProtocolCodecChecks.RunAsync),
             ("Secure Phase 2 legacy transport parity", LegacyByteTransportChecks.RunAsync),
             ("Secure Phase 2 bounded network lifecycle", NetworkRuntimeLifecycleChecks.RunAsync),
+            ("Secure Phase 2 TLS mux transport", SecureTlsTransportChecks.RunAsync),
+            (
+                "Secure Phase 2 authentication idle transition",
+                ClientSessionRuntimeChecks.RunSecureAuthenticationIdleTransitionAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 
@@ -164,7 +168,7 @@ internal static partial class Program
             catch (Exception ex)
             {
                 failures++;
-                Console.Error.WriteLine($"FAIL {check.Name}: {ex.Message}");
+                Console.Error.WriteLine($"FAIL {check.Name}: {ex}");
             }
         }
 

@@ -21,3 +21,12 @@ internal interface ILegacyByteTransport : IAsyncDisposable
 
     void Disconnect();
 }
+
+/// <summary>
+/// Marks a transport whose diagnostics must never expose endpoint, payload, or
+/// principal data.
+/// </summary>
+internal interface ISecureLegacyByteTransport
+{
+    void MarkAuthenticated();
+}

@@ -15,6 +15,7 @@ internal sealed class ClientSession : IAsyncDisposable
     private readonly PacketCipher _sendCipher = new();
     private readonly TimeProvider _timeProvider;
     private bool _hasReceivedPacket;
+    private int _authenticated;
     private int _disconnected;
 
     public ClientSession(
@@ -40,9 +41,17 @@ internal sealed class ClientSession : IAsyncDisposable
 
     public string RemoteEndPoint => _transport.RemoteEndPoint;
 
+    internal bool AllowsPayloadDiagnostics =>
+        _transport is not ISecureLegacyByteTransport;
+
     public void MarkAuthenticated()
     {
         _markAuthenticated?.Invoke();
+        Volatile.Write(ref _authenticated, 1);
+        if (_transport is ISecureLegacyByteTransport secureTransport)
+        {
+            secureTransport.MarkAuthenticated();
+        }
     }
 
     public void Disconnect()
@@ -98,10 +107,14 @@ internal sealed class ClientSession : IAsyncDisposable
         var firstByteTimeout = isFirstPacket
             ? _options.FirstPacketTimeout
             : _options.IdleTimeout;
-        var firstByte = await ReadFirstByteAsync(
-            firstByteStage,
-            firstByteTimeout,
-            cancellationToken);
+        var firstByte = !isFirstPacket &&
+            _transport is ISecureLegacyByteTransport &&
+            Volatile.Read(ref _authenticated) != 0
+            ? await ReadFirstByteWithoutDeadlineAsync(cancellationToken)
+            : await ReadFirstByteAsync(
+                firstByteStage,
+                firstByteTimeout,
+                cancellationToken);
         if (firstByte is null)
         {
             return null;
@@ -148,7 +161,8 @@ internal sealed class ClientSession : IAsyncDisposable
         string? label = null,
         bool framed = true)
     {
-        if (!string.IsNullOrWhiteSpace(label))
+        if (AllowsPayloadDiagnostics &&
+            !string.IsNullOrWhiteSpace(label))
         {
             LogSend(clearPacket, label, framed);
         }
@@ -202,6 +216,24 @@ internal sealed class ClientSession : IAsyncDisposable
             stage,
             timeout,
             cancellationToken);
+        return read == 0 ? null : buffer[0];
+    }
+
+    private async Task<byte?> ReadFirstByteWithoutDeadlineAsync(
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1];
+        using var readLifetime =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _lifetime.Token);
+        var read = await _transport.ReadAsync(
+            buffer,
+            readLifetime.Token);
+        NetworkRuntimeMetrics.RecordTransportBytes(
+            _endpointRole,
+            NetworkTrafficDirection.Inbound,
+            read);
         return read == 0 ? null : buffer[0];
     }
 

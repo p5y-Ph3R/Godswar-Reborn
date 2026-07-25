@@ -1,10 +1,15 @@
 #include "AvatarPreviewGateTests.h"
 #include "AvatarPreloadTests.h"
 #include "BoundedChunkQueueTests.h"
+#include "EndpointManifestTests.h"
+#include "ExternalTcpConnectorTests.h"
 #include "LoopbackAcceptorTests.h"
 #include "NativeClientBridgeTests.h"
 #include "NativeClientCoordinatorTests.h"
 #include "OpaqueDuplexPumpTests.h"
+#include "SchannelClientStreamTests.h"
+#include "SecureClientProtocolTests.h"
+#include "SecureOuterStreamTests.h"
 #include "WinSocketByteStreamTests.h"
 
 #include "../src/LegacyClientApi.h"
@@ -412,42 +417,68 @@ void RunRejectedShimProbe(
 } // namespace
 
 int wmain(int argumentCount, wchar_t** arguments) {
+    const bool full =
+        argumentCount == 1;
+    const bool offline =
+        argumentCount == 2 &&
+        std::wcscmp(arguments[1], L"--offline") == 0;
+    const bool probe =
+        argumentCount == 3 &&
+        std::wcscmp(arguments[1], L"--probe") == 0;
+    const bool rejectedProbe =
+        argumentCount == 4 &&
+        std::wcscmp(arguments[1], L"--probe-rejected") == 0;
+    if (!full && !offline && !probe && !rejectedProbe) {
+        std::fprintf(
+            stderr,
+            "Usage: Godswar.NetShim.Checks.exe "
+            "[--offline | --probe <Net.dll> | "
+            "--probe-rejected <Net.dll> <Win32Error>]\n");
+        return 2;
+    }
+
+    DWORD expectedProbeError = ERROR_SUCCESS;
+    if (rejectedProbe) {
+        wchar_t* parseEnd = nullptr;
+        const auto parsed = std::wcstoull(
+            arguments[3],
+            &parseEnd,
+            10);
+        if (parseEnd == arguments[3] ||
+            *parseEnd != L'\0' ||
+            parsed > MAXDWORD) {
+            std::fprintf(
+                stderr,
+                "Expected error must be a decimal DWORD.\n");
+            return 2;
+        }
+        expectedProbeError = static_cast<DWORD>(parsed);
+    }
+
     RunProxyUnitChecks();
     RunProxyNoDowngradeChecks();
     Failures += RunAvatarPreviewGateTests();
     Failures += RunAvatarPreloadTests();
     Failures += RunBoundedChunkQueueTests();
+    Failures += RunEndpointManifestTests();
     Failures += RunOpaqueDuplexPumpTests();
-    Failures += RunWinSocketByteStreamTests();
-    Failures += RunLoopbackAcceptorTests();
+    Failures += RunSchannelClientStreamTests(!offline);
+    Failures += RunSecureClientProtocolTests();
+    Failures += RunSecureOuterStreamTests();
     Failures += RunNativeClientCoordinatorTests();
-    Failures += RunNativeClientBridgeTests();
+    if (!offline) {
+        Failures += RunExternalTcpConnectorTests();
+        Failures += RunWinSocketByteStreamTests();
+        Failures += RunLoopbackAcceptorTests();
+        Failures += RunNativeClientBridgeTests();
+    }
 
-    if (argumentCount == 3 &&
-        std::wcscmp(arguments[1], L"--probe") == 0) {
+    if (probe) {
         RunInstalledShimProbe(arguments[2]);
-    } else if (
-        argumentCount == 4 &&
-        std::wcscmp(arguments[1], L"--probe-rejected") == 0) {
-        wchar_t* parseEnd = nullptr;
-        const auto expectedError = std::wcstoul(
-            arguments[3],
-            &parseEnd,
-            10);
-        if (parseEnd == arguments[3] || *parseEnd != L'\0') {
-            std::fprintf(stderr, "Expected error must be a decimal DWORD.\n");
-            return 2;
-        }
+    } else if (rejectedProbe) {
         RunRejectedShimProbe(
             arguments[2],
-            static_cast<DWORD>(expectedError));
-    } else if (argumentCount != 1) {
-        std::fprintf(
-            stderr,
-            "Usage: Godswar.NetShim.Tests.exe "
-            "[--probe <Net.dll> | "
-            "--probe-rejected <Net.dll> <Win32Error>]\n");
-        return 2;
+            expectedProbeError);
     }
 
     if (Failures != 0) {
@@ -455,6 +486,9 @@ int wmain(int argumentCount, wchar_t** arguments) {
         return 1;
     }
 
-    std::puts("All network-shim checks passed.");
+    std::puts(
+        offline
+            ? "All offline network-shim checks passed."
+            : "All network-shim checks passed.");
     return 0;
 }

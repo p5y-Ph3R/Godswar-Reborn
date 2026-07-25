@@ -13,6 +13,11 @@ the proxy continues to call the pinned stock client directly. The `Login` and
 `Game` bridge decisions exist for injected tests and the Slice 6 handoff, but
 the default process policy cannot produce either decision.
 
+Slice 6 now supplies the signed-manifest loader, bounded external connector,
+Schannel stream, secure outer-frame stream, and matching server transport as
+independently tested candidate components. They are not wired into the
+exported process policy or installed client.
+
 This document complements the parent
 [Phase 2 design](network-infrastructure-phase2.md), the
 [wire and lifecycle specification](network-infrastructure-phase2-protocol.md),
@@ -94,10 +99,11 @@ but the disabled proxy does not activate it. It accepts:
 - the already-created stock `ILegacyNetClient`; and
 - an already-established caller-owned `IByteStream` outer leg.
 
-The bridge does not resolve a host, dial an external server, perform TLS, or
-validate an endpoint. Slice 6 must supply an outer stream only after its secure
-connection and protocol prerequisites succeed. Both supplied objects must
-remain alive until `StopAndJoin` completes.
+The bridge itself does not resolve a host, dial an external server, perform
+TLS, or validate an endpoint. Slice 6 supplies separate signed-manifest,
+connector, Schannel, and outer-frame primitives that can create that stream,
+but exported-proxy wiring remains disabled until Slice 7. Both supplied
+objects must remain alive until `StopAndJoin` completes.
 
 The tested startup order is:
 
@@ -128,9 +134,9 @@ the owner stops/joins the bridge and then issues the stock disconnect.
 Failure states and accept reasons are closed enums. A stop timeout reports
 `JoinPending`, never `Running`, and retains ownership for a later join retry.
 A polled snapshot maps terminal pump EOF/read/write/queue outcomes to
-`PumpTerminated`/`JoinPending`. Slice 6 must monitor that state before wiring
-the bridge into the process coordinator. Destructors use a bounded join and
-fail fast rather than detach a worker or wait forever.
+`PumpTerminated`/`JoinPending`. Activation code must monitor that state when
+the bridge is wired into the process coordinator. Destructors use a bounded
+join and fail fast rather than detach a worker or wait forever.
 
 ## Opaque byte pumps
 
@@ -162,8 +168,8 @@ is never silently skipped or reordered; data still queued when a terminal
 connection failure occurs is securely discarded as part of teardown.
 
 `IByteStream::Stop` must be idempotent, thread-safe, and unblock all current
-reads and writes. Slice 5 deliberately does not add a transport write deadline;
-the secure stream and write deadline belong to Slice 6.
+reads and writes. Slice 5 did not add a transport write deadline; Slice 6's
+dormant secure stream supplies finite read/write deadlines.
 
 ## Verification
 
@@ -172,9 +178,7 @@ From `C:\Reborn`:
 ```powershell
 .\tools\BuildClientNetworkShim.ps1 -Configuration Release
 
-& .\client\network-shim\bin\Release\Win32\Godswar.NetShim.Tests.exe
-
-.\tools\TestClientNetworkShim.ps1 -Configuration Release
+& .\client\network-shim\bin\Release\Win32\Godswar.NetShim.Checks.exe --offline
 ```
 
 The build is pinned to MSVC v143 `14.44.35207`, Windows SDK
@@ -208,16 +212,23 @@ The Slice 5 checks cover:
   missing/tampered legacy rejection.
 
 These are automated candidate tests, not an installed original-client smoke.
-Do not run the installer or manual parity workflow for Slice 5.
+The full `TestClientNetworkShim.ps1` wrapper includes socket checks and is
+reserved for a controlled test host; it is not the local offline gate.
+
+`Godswar.NetShim.Checks.exe --offline` omits every WinSock listener,
+connection, DNS, and Schannel socket-handshake check while retaining manifest,
+protocol, queue, pump, coordinator, and secure-stream state-machine coverage.
+Use the complete socket suite only on a controlled test host.
 
 ## Rollback
 
-There is no live rollback action because Slice 5 is not installed or enabled:
+There is no live rollback action because the candidate is not installed or
+enabled:
 
 - leave `C:\Godswar Origin\Net.dll` at the exact stock hash above;
 - leave `NetLegacy.dll` absent;
 - discard ignored `client\network-shim\bin` and `obj` outputs if desired;
-- revert the Slice 5 source checkpoint to remove the candidate implementation.
+- revert the Slice 6 source checkpoint to remove the candidate implementation.
 
 If a candidate is copied into the game directory outside this runbook, that is
 an unapproved state. Fully close Origin and restore the exact stock files using
@@ -241,29 +252,25 @@ The native bridge cannot be used securely by itself: its outer stream is an
 injected interface, not proof of TLS or identity. The conservative registry
 and queue values are safety bounds, not player-capacity claims. The current
 listener is IPv4 loopback only. Client runtime observability is limited to
-finite state snapshots and test assertions; Slice 6 must poll terminal pump
-state and add production-safe structured telemetry. The synchronous stock
-`Connect` call is not preemptible, and the nine-slot client object remains
-single-owner with exclusive final `Release`.
+finite state snapshots and test assertions; activation must poll terminal pump
+state, and production-safe structured telemetry remains required. The
+synchronous stock `Connect` call is not preemptible, and the nine-slot client
+object remains single-owner with exclusive final `Release`.
 
-## Slice 6 handoff
+## Slice 6 result and activation handoff
 
-Slice 6 must preserve these ownership and bound contracts while adding the
-secure transport:
+Slice 6 preserves these ownership and bound contracts and provides:
 
-1. parse and validate the signed endpoint manifest before enabling a
-   non-pass-through policy;
-2. establish external TCP and Schannel with normal platform trust, exact DNS
-   name, SNI, ALPN `godswar-shim/1`, and no raw downgrade;
-3. implement the bounded client preface and secure outer-frame state machine;
-4. expose the resulting framed legacy-byte channel as the bridge's established
-   `IByteStream`;
-5. add the matching server `SslStream` listeners and consume the reserved
-   handshake, ingress, and control limits;
-6. apply absolute handshake/read/write/idle deadlines and secure-path
-   telemetry;
-7. keep `Login`/`Game` activation feature-gated and uninstalled until its
-   negative tests and development-CA verification pass.
+1. strict signed endpoint-manifest parsing, ECDSA verification, sequence
+   floors, validity checks, and one-shot module-relative loading;
+2. bounded external TCP resolution/connect and Schannel with normal platform
+   trust, exact DNS name, SNI, ALPN `godswar-shim/1`, and no raw downgrade;
+3. bounded client preface and secure outer-frame state machines;
+4. matching opt-in server `SslStream` listeners with absolute deadlines,
+   bounded handshake/ingress/control work, heartbeat, and secure telemetry; and
+5. guarded development-certificate generation and exact trust cleanup.
 
-Tickets and password migration remain Slice 7. UDP remains absent until a
-later authenticated session-binding slice.
+Activation still requires reviewed production manifest keys/floors, wiring
+the validated route through the exported proxy, password migration and
+single-use tickets in Slice 7, and a controlled-host client/server smoke.
+UDP remains absent until a later authenticated session-binding slice.

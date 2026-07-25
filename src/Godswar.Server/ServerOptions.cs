@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
+using Godswar.Server.Networking.Secure;
 
 namespace Godswar.Server;
 
@@ -25,6 +26,8 @@ internal sealed class ServerOptions
 
     public NetworkRuntimeOptions Network { get; set; } = new();
 
+    public SecureNetworkOptions Secure { get; set; } = new();
+
     public static ServerOptions Load(string path)
     {
         if (!File.Exists(path))
@@ -48,6 +51,8 @@ internal sealed class ServerOptions
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
+        Secure ??= new SecureNetworkOptions();
+        Secure.ApplyEnvironment();
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
@@ -131,6 +136,7 @@ internal sealed class ServerOptions
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
+        Secure ??= new SecureNetworkOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -139,6 +145,11 @@ internal sealed class ServerOptions
         Game.Monsters.Validate();
         Game.Players.Validate();
         Network.Validate();
+        Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
+        if (Secure.Enabled)
+        {
+            SecureNetworkOptions.ValidateSecureRuntime(Network);
+        }
 
         return this;
     }

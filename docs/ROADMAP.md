@@ -11,10 +11,10 @@ compatibility experiments V1–V4 are rejected. V3 reproduced the roughly
 15-second `0x005F58BC` timeout/crash. V4 failed its final pre-selection smoke
 (`20260724T095739213Z-db16daa7` / `Fail`) and was rolled back to predecessor
 Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
-`NetLegacy.dll`. Phase 2 slice 5 now adds an uninstalled x86 route coordinator,
-ephemeral-loopback bridge, bounded queues, opaque pumps, and lifecycle tests;
-its process policy remains disabled. Slice 6 Schannel/`SslStream` is next.
-No TLS/UDP traffic has started. The issue is parked; Phase 2 continues
+`NetLegacy.dll`. Phase 2 Slice 6 now adds signed endpoint-policy validation,
+native Schannel/framing primitives, and opt-in bounded server `SslStream`
+listeners. The candidate remains uninstalled and disabled; secure game bind
+fails closed until Slice 7 tickets, and UDP is absent. The issue is parked; Phase 2 continues
 without Phase 1 acceptance. Records:
 [`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
 

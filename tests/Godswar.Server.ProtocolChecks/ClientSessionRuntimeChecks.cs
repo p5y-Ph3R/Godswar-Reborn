@@ -4,7 +4,7 @@ using Godswar.Server.Protocol;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class ClientSessionRuntimeChecks
+internal static partial class ClientSessionRuntimeChecks
 {
     public static async Task RunAsync()
     {

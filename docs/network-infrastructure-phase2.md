@@ -2,12 +2,13 @@
 
 ## Status
 
-- Specification version: `1.9`
+- Specification version: `1.10`
 - Last updated: `2026-07-25`
-- Runtime status: slice 5's uninstalled x86 coordinator, ephemeral-loopback
-  bridge, bounded queues, and opaque pumps pass automated tests; the process
-  policy remains disabled and no TLS or UDP runtime is enabled
-- Current next milestone: slice 6, Schannel/`SslStream` secure transport
+- Runtime status: Slice 6 signed endpoint validation, native Schannel/framing
+  primitives, and opt-in bounded server `SslStream` listeners are implemented;
+  the candidate remains uninstalled and disabled, secure game bind is
+  fail-closed, and UDP is absent
+- Current next milestone: Slice 7 password migration and single-use game tickets
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Rejected V3 SHA-256:
@@ -244,6 +245,8 @@ on the server, then disconnects the slow/overloaded session.
 | Graceful drain | `5 s` |
 
 Receiving one byte does not indefinitely reset an absolute deadline.
+The native Schannel revocation exception remains a documented activation
+blocker.
 
 ## Logging, metrics, and failure behavior
 
@@ -285,9 +288,11 @@ failures before continuing.
 5. Completed: uninstalled native route coordinator, ephemeral-loopback bridge,
    bounded queues/pumps, WinSocket adapter, and lifecycle tests. Details:
    [`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md).
-6. Current: add Schannel/`SslStream`, ALPN, certificate validation, and local
-   test-CA automation. Secure ports remain opt-in development endpoints.
-7. Add password hashing/migration plus opaque ticket grant/bind. Remove
+6. Completed: Schannel/`SslStream`, exact ALPN/cipher checks, signed endpoint
+   policy, bounded outer framing, separate opt-in TLS ports, and guarded
+   development-CA automation. Details:
+   [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
+7. Current: add password hashing/migration plus opaque ticket grant/bind. Remove
    username-only authority from the secure game path.
 8. Run automated negative/fuzz/slow-client/load gates, install through a new
    guarded backup, perform original-client parity, then disable raw external

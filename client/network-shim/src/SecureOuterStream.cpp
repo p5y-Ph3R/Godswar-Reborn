@@ -1,0 +1,421 @@
+#include "SecureOuterStream.h"
+
+#include <algorithm>
+#include <cstring>
+#include <limits>
+
+namespace godswar::network {
+namespace {
+
+bool IsRole(SecureEndpointRole role) noexcept {
+    return role == SecureEndpointRole::Login ||
+        role == SecureEndpointRole::Game;
+}
+
+ULONGLONG DeadlineAfter(DWORD milliseconds) noexcept {
+    return GetTickCount64() + milliseconds;
+}
+
+} // namespace
+
+SecureOuterStream::SecureOuterStream(
+    IDeadlinePlaintextStream* plaintextStream) noexcept
+    : plaintextStream_(plaintextStream) {
+    InitializeSRWLock(&writeLock_);
+    InitializeSRWLock(&snapshotLock_);
+}
+
+SecureOuterStream::~SecureOuterStream() noexcept {
+    Stop();
+    SecureZeroMemory(inboundPayload_, sizeof(inboundPayload_));
+}
+
+bool SecureOuterStream::Establish(
+    SecureEndpointRole role,
+    const std::uint8_t* clientInstanceId,
+    std::size_t clientInstanceIdBytes,
+    const std::uint8_t* originSha256,
+    std::size_t originSha256Bytes) noexcept {
+    if (plaintextStream_ == nullptr ||
+        established_ ||
+        IsStopped() ||
+        !IsRole(role)) {
+        Fail(SecureOuterFailure::InvalidArgument);
+        return false;
+    }
+
+    std::uint8_t clientPreface[SecureClientPrefaceBytes]{};
+    if (!TryEncodeSecureClientPreface(
+            role,
+            clientInstanceId,
+            clientInstanceIdBytes,
+            originSha256,
+            originSha256Bytes,
+            clientPreface,
+            sizeof(clientPreface))) {
+        Fail(SecureOuterFailure::InvalidArgument);
+        return false;
+    }
+
+    const ULONGLONG deadline =
+        DeadlineAfter(PrefaceDeadlineMilliseconds);
+    if (!plaintextStream_->WriteAll(
+            clientPreface,
+            sizeof(clientPreface),
+            deadline)) {
+        SecureZeroMemory(clientPreface, sizeof(clientPreface));
+        Fail(
+            GetTickCount64() >= deadline
+                ? SecureOuterFailure::OperationDeadline
+                : SecureOuterFailure::PrefaceWrite);
+        return false;
+    }
+    SecureZeroMemory(clientPreface, sizeof(clientPreface));
+
+    std::uint8_t serverPreface[SecureServerPrefaceBytes]{};
+    const DeadlineStreamResult read = ReadExact(
+        serverPreface,
+        sizeof(serverPreface),
+        deadline,
+        0);
+    if (read.status != DeadlineStreamStatus::Success) {
+        SecureZeroMemory(serverPreface, sizeof(serverPreface));
+        Fail(
+            read.status == DeadlineStreamStatus::TimedOut
+                ? SecureOuterFailure::OperationDeadline
+                : SecureOuterFailure::PrefaceRead);
+        return false;
+    }
+
+    SecureServerPrefaceView decoded{};
+    if (!TryDecodeSecureServerPreface(
+            serverPreface,
+            sizeof(serverPreface),
+            role,
+            &decoded) ||
+        decoded.status != SecureServerPrefaceStatus::Ok) {
+        SecureZeroMemory(serverPreface, sizeof(serverPreface));
+        SecureZeroMemory(&decoded, sizeof(decoded));
+        Fail(SecureOuterFailure::PrefaceRejected);
+        return false;
+    }
+
+    SecureZeroMemory(serverPreface, sizeof(serverPreface));
+    SecureZeroMemory(&decoded, sizeof(decoded));
+    AcquireSRWLockExclusive(&snapshotLock_);
+    role_ = role;
+    established_ = true;
+    ReleaseSRWLockExclusive(&snapshotLock_);
+    return true;
+}
+
+ByteStreamIoResult SecureOuterStream::Read(
+    void* destination,
+    std::size_t destinationCapacity) noexcept {
+    if (destination == nullptr ||
+        destinationCapacity == 0 ||
+        !established_ ||
+        IsStopped()) {
+        return {ByteStreamIoStatus::Failed, 0};
+    }
+
+    if (inboundBytes_ > 0) {
+        const std::size_t copied = (std::min)(
+            destinationCapacity,
+            inboundBytes_);
+        std::memcpy(
+            destination,
+            inboundPayload_ + inboundOffset_,
+            copied);
+        SecureZeroMemory(
+            inboundPayload_ + inboundOffset_,
+            copied);
+        inboundOffset_ += copied;
+        inboundBytes_ -= copied;
+        if (inboundBytes_ == 0) {
+            inboundOffset_ = 0;
+        }
+        return {ByteStreamIoStatus::Success, copied};
+    }
+
+    for (unsigned controlFrames = 0;
+         controlFrames < 8;
+         ++controlFrames) {
+        std::uint8_t encodedHeader[SecureFrameHeaderBytes]{};
+        const DeadlineStreamResult headerRead = ReadExact(
+            encodedHeader,
+            sizeof(encodedHeader),
+            DeadlineAfter(IdleDeadlineMilliseconds),
+            FrameHeaderDeadlineMilliseconds);
+        if (headerRead.status == DeadlineStreamStatus::EndOfStream &&
+            headerRead.bytesTransferred == 0) {
+            return {ByteStreamIoStatus::EndOfStream, 0};
+        }
+        if (headerRead.status != DeadlineStreamStatus::Success) {
+            Fail(
+                headerRead.status == DeadlineStreamStatus::TimedOut
+                    ? SecureOuterFailure::OperationDeadline
+                    : SecureOuterFailure::FrameHeader);
+            return {ByteStreamIoStatus::Failed, 0};
+        }
+
+        SecureEndpointRole role = SecureEndpointRole::Login;
+        std::uint64_t expectedSequence = 0;
+        AcquireSRWLockShared(&snapshotLock_);
+        role = role_;
+        expectedSequence = nextInboundSequence_;
+        ReleaseSRWLockShared(&snapshotLock_);
+
+        SecureFrameHeader header{};
+        if (!TryDecodeSecureFrameHeader(
+                encodedHeader,
+                sizeof(encodedHeader),
+                role,
+                SecureFrameDirection::ServerToClient,
+                expectedSequence,
+                &header)) {
+            Fail(SecureOuterFailure::FrameHeader);
+            return {ByteStreamIoStatus::Failed, 0};
+        }
+
+        std::uint64_t followingSequence = 0;
+        if (!TryGetNextSecureSequence(
+                expectedSequence,
+                &followingSequence)) {
+            Fail(SecureOuterFailure::FrameSequenceExhausted);
+            return {ByteStreamIoStatus::Failed, 0};
+        }
+
+        const DeadlineStreamResult bodyRead = ReadExact(
+            inboundPayload_,
+            header.payloadBytes,
+            DeadlineAfter(FrameBodyDeadlineMilliseconds),
+            0);
+        if (bodyRead.status != DeadlineStreamStatus::Success) {
+            Fail(
+                bodyRead.status == DeadlineStreamStatus::TimedOut
+                    ? SecureOuterFailure::OperationDeadline
+                    : SecureOuterFailure::FrameBody);
+            return {ByteStreamIoStatus::Failed, 0};
+        }
+        AcquireSRWLockExclusive(&snapshotLock_);
+        nextInboundSequence_ = followingSequence;
+        ReleaseSRWLockExclusive(&snapshotLock_);
+
+        if (header.type == SecureFrameType::LegacyBytes) {
+            inboundOffset_ = 0;
+            inboundBytes_ = header.payloadBytes;
+            const std::size_t copied = (std::min)(
+                destinationCapacity,
+                inboundBytes_);
+            std::memcpy(destination, inboundPayload_, copied);
+            SecureZeroMemory(inboundPayload_, copied);
+            inboundOffset_ = copied;
+            inboundBytes_ -= copied;
+            if (inboundBytes_ == 0) {
+                inboundOffset_ = 0;
+            }
+            return {ByteStreamIoStatus::Success, copied};
+        }
+
+        if (header.type == SecureFrameType::Ping) {
+            AcquireSRWLockExclusive(&writeLock_);
+            const bool pongWritten = WriteFrame(
+                SecureFrameType::Pong,
+                inboundPayload_,
+                header.payloadBytes,
+                DeadlineAfter(WriteDeadlineMilliseconds));
+            ReleaseSRWLockExclusive(&writeLock_);
+            SecureZeroMemory(
+                inboundPayload_,
+                header.payloadBytes);
+            if (!pongWritten) {
+                Fail(SecureOuterFailure::PongWrite);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            continue;
+        }
+
+        SecureZeroMemory(
+            inboundPayload_,
+            header.payloadBytes);
+        if (header.type == SecureFrameType::Close) {
+            return {ByteStreamIoStatus::EndOfStream, 0};
+        }
+
+        // Grant/bind state and secret ownership belong to Slice 7. No
+        // control payload may leak into the stock legacy byte stream.
+        Fail(SecureOuterFailure::UnsupportedControl);
+        return {ByteStreamIoStatus::Failed, 0};
+    }
+
+    Fail(SecureOuterFailure::UnsupportedControl);
+    return {ByteStreamIoStatus::Failed, 0};
+}
+
+ByteStreamIoResult SecureOuterStream::Write(
+    const void* source,
+    std::size_t sourceBytes) noexcept {
+    if (source == nullptr ||
+        sourceBytes == 0 ||
+        sourceBytes > SecureMaximumPayloadBytes ||
+        !established_ ||
+        IsStopped()) {
+        return {ByteStreamIoStatus::Failed, 0};
+    }
+
+    AcquireSRWLockExclusive(&writeLock_);
+    const bool written = WriteFrame(
+        SecureFrameType::LegacyBytes,
+        source,
+        sourceBytes,
+        DeadlineAfter(WriteDeadlineMilliseconds));
+    ReleaseSRWLockExclusive(&writeLock_);
+    if (!written) {
+        Fail(SecureOuterFailure::LegacyWrite);
+        return {ByteStreamIoStatus::Failed, 0};
+    }
+
+    return {ByteStreamIoStatus::Success, sourceBytes};
+}
+
+void SecureOuterStream::Stop() noexcept {
+    if (InterlockedCompareExchange(&stopped_, 1, 0) == 0) {
+        InterlockedCompareExchange(
+            &failure_,
+            static_cast<LONG>(SecureOuterFailure::Stopped),
+            static_cast<LONG>(SecureOuterFailure::None));
+        if (plaintextStream_ != nullptr) {
+            plaintextStream_->Stop();
+        }
+    }
+}
+
+SecureOuterSnapshot SecureOuterStream::Snapshot() const noexcept {
+    SecureOuterSnapshot snapshot{};
+    AcquireSRWLockShared(&snapshotLock_);
+    snapshot.established = established_;
+    snapshot.role = role_;
+    snapshot.nextInboundSequence = nextInboundSequence_;
+    snapshot.nextOutboundSequence = nextOutboundSequence_;
+    ReleaseSRWLockShared(&snapshotLock_);
+    snapshot.stopped = IsStopped();
+    snapshot.failure = static_cast<SecureOuterFailure>(
+        InterlockedCompareExchange(
+            const_cast<volatile LONG*>(&failure_),
+            0,
+            0));
+    return snapshot;
+}
+
+DeadlineStreamResult SecureOuterStream::ReadExact(
+    void* destination,
+    std::size_t bytes,
+    ULONGLONG firstDeadline,
+    DWORD partialDeadlineMilliseconds) noexcept {
+    if (destination == nullptr ||
+        bytes == 0 ||
+        plaintextStream_ == nullptr) {
+        return {DeadlineStreamStatus::Failed, 0};
+    }
+
+    auto* output = static_cast<std::uint8_t*>(destination);
+    std::size_t offset = 0;
+    ULONGLONG deadline = firstDeadline;
+    while (offset < bytes) {
+        const DeadlineStreamResult read = plaintextStream_->Read(
+            output + offset,
+            bytes - offset,
+            deadline);
+        if (read.status != DeadlineStreamStatus::Success) {
+            return {read.status, offset};
+        }
+        if (read.bytesTransferred == 0 ||
+            read.bytesTransferred > bytes - offset) {
+            return {DeadlineStreamStatus::Failed, offset};
+        }
+        offset += read.bytesTransferred;
+        if (partialDeadlineMilliseconds != 0 &&
+            offset < bytes &&
+            offset == read.bytesTransferred) {
+            deadline = DeadlineAfter(partialDeadlineMilliseconds);
+        }
+    }
+
+    return {DeadlineStreamStatus::Success, offset};
+}
+
+bool SecureOuterStream::WriteFrame(
+    SecureFrameType type,
+    const void* payload,
+    std::size_t payloadBytes,
+    ULONGLONG deadline) noexcept {
+    if (payload == nullptr ||
+        payloadBytes == 0 ||
+        payloadBytes > SecureMaximumPayloadBytes ||
+        plaintextStream_ == nullptr ||
+        nextOutboundSequence_ == 0) {
+        return false;
+    }
+
+    SecureEndpointRole role = SecureEndpointRole::Login;
+    std::uint64_t currentSequence = 0;
+    AcquireSRWLockShared(&snapshotLock_);
+    role = role_;
+    currentSequence = nextOutboundSequence_;
+    ReleaseSRWLockShared(&snapshotLock_);
+
+    std::uint8_t encodedHeader[SecureFrameHeaderBytes]{};
+    std::uint64_t followingSequence = 0;
+    if (!TryGetNextSecureSequence(
+            currentSequence,
+            &followingSequence)) {
+        return false;
+    }
+    const SecureFrameHeader header{
+        static_cast<std::uint32_t>(payloadBytes),
+        type,
+        currentSequence};
+    if (!TryEncodeSecureFrameHeader(
+            header,
+            role,
+            SecureFrameDirection::ClientToServer,
+            encodedHeader,
+            sizeof(encodedHeader)) ||
+        !plaintextStream_->WriteAll(
+            encodedHeader,
+            sizeof(encodedHeader),
+            deadline) ||
+        !plaintextStream_->WriteAll(
+            payload,
+            payloadBytes,
+            deadline)) {
+        return false;
+    }
+
+    AcquireSRWLockExclusive(&snapshotLock_);
+    nextOutboundSequence_ = followingSequence;
+    ReleaseSRWLockExclusive(&snapshotLock_);
+    return true;
+}
+
+void SecureOuterStream::Fail(
+    SecureOuterFailure failure) noexcept {
+    InterlockedCompareExchange(
+        &failure_,
+        static_cast<LONG>(failure),
+        static_cast<LONG>(SecureOuterFailure::None));
+    if (InterlockedCompareExchange(&stopped_, 1, 0) == 0 &&
+        plaintextStream_ != nullptr) {
+        plaintextStream_->Stop();
+    }
+}
+
+bool SecureOuterStream::IsStopped() const noexcept {
+    return InterlockedCompareExchange(
+        const_cast<volatile LONG*>(&stopped_),
+        0,
+        0) != 0;
+}
+
+} // namespace godswar::network

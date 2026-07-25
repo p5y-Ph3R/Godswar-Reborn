@@ -2,11 +2,11 @@
 
 ## Status and ownership
 
-- Protocol version: `1.3`
-- Last updated: `2026-07-24`
-- Runtime status: raw transport seam slice 3 implemented and tested; existing
-  raw listeners are unchanged, no TLS or UDP runtime is enabled, and bounded
-  transport-lifecycle slice 4 is next
+- Protocol version: `1.4`
+- Last updated: `2026-07-25`
+- Runtime status: Slice 6 TLS/preface/framing primitives and opt-in server
+  listeners are implemented; they remain disabled and uninstalled, secure game
+  bind rejects before the legacy handler until Slice 7 tickets, and UDP is absent
 - Current predecessor Origin:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Current stock Net:
@@ -232,8 +232,9 @@ The first game-channel frame after its successful preface is type `0x0201`:
 Grant ID and ticket must be nonzero. The server replies with type `0x0202`: a
 two-byte `BindResult` (`0=accepted`, `1=rejected`, `2=server-busy`,
 `3=policy-rejected`) followed by two zero reserved bytes. All failures close.
-The channel-phase gate remains mandatory before any secure listener/legacy
-handler path; this syntax-only slice deliberately does not claim it or runtime.
+The channel-phase gate is enforced before the legacy game handler. Slice 6
+decodes the first bind and returns `policy-rejected`; Slice 7 supplies the
+ticket authority that can produce `accepted`.
 
 ## Ticket policy
 

@@ -34,7 +34,10 @@ internal sealed class LoginClientHandler : IClientHandler
 
     private async Task HandlePacketAsync(GamePacket packet, CancellationToken cancellationToken)
     {
-        LogReceived(packet);
+        if (_session.AllowsPayloadDiagnostics)
+        {
+            LogReceived(packet);
+        }
 
         switch (packet.Opcode)
         {
@@ -51,8 +54,11 @@ internal sealed class LoginClientHandler : IClientHandler
                     "GameServerRedirect");
                 break;
             default:
-                Console.WriteLine(
-                    $"[login] unknown {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode} len={packet.Length} {packet.ToHexPreview()}");
+                if (_session.AllowsPayloadDiagnostics)
+                {
+                    Console.WriteLine(
+                        $"[login] unknown {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode} len={packet.Length} {packet.ToHexPreview()}");
+                }
                 break;
         }
     }
@@ -72,7 +78,10 @@ internal sealed class LoginClientHandler : IClientHandler
 
         await _store.LoginOrCreateAccountAsync(username, password, cancellationToken);
         _session.MarkAuthenticated();
-        Console.WriteLine($"[login] accepted {username}");
+        if (_session.AllowsPayloadDiagnostics)
+        {
+            Console.WriteLine($"[login] accepted {username}");
+        }
         await _session.SendAsync(PacketBuilder.ServerList(), cancellationToken, "ServerList");
     }
 

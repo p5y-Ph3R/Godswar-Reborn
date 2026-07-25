@@ -3,13 +3,42 @@
 ## Status and ownership
 
 - Format version: `1.0`
-- Last updated: `2026-07-24`
-- Runtime status: specified only; no loader or installer is enabled
+- Specification revision: `1.1`
+- Last updated: `2026-07-25`
+- Runtime status: Slice 6 parser, verifier, and one-shot loader are
+  implemented and tested; no production key material, registry provider,
+  installer, or live route activation is enabled
 - Parent protocol:
   [`network-infrastructure-phase2-protocol.md`](network-infrastructure-phase2-protocol.md)
 
 This is the normative bounded format, signature, rollback-protection, loader,
 and key-rotation contract for `RebornNetwork.gwem`.
+
+All multibyte integers inherit the parent protocol's unsigned big-endian
+network byte order.
+
+## Slice 6 implementation checkpoint
+
+The native x86 candidate now contains:
+
+- a bounded version 1 parser in
+  `client/network-shim/src/EndpointManifest.cpp`;
+- ECDSA P-256/SHA-256 IEEE P1363 verification through Windows CNG in
+  `client/network-shim/src/EndpointManifestCrypto.cpp`;
+- an injected current/next public-key lookup, compiled and installed sequence
+  floors, UTC clock, and expected environment;
+- a one-shot, module-relative loader in
+  `client/network-shim/src/EndpointManifestLoader.cpp` that opens without
+  write sharing, rejects a manifest-file reparse point or a final parent
+  outside the resolved module directory, reads once into a fixed 4096-byte
+  buffer, and publishes only after complete validation;
+- focused golden-vector, boundary, truncation, signature, environment,
+  rollback, validity, DNS, audience, server-ID, active-writer, no-hot-reload,
+  oversized-file, tamper, and reparse checks under
+  `client/network-shim/tests/EndpointManifest*`.
+
+The candidate tests use an ephemeral test-only P-256 private key. No private
+key or development credential is shipped.
 
 ## Binary format
 
@@ -94,3 +123,18 @@ writes and flushes the higher registry minimum first, then atomically replaces
 and flushes the manifest from the same directory. An interruption between
 those steps fails closed and is repaired by installer recovery; it cannot
 reactivate the lower sequence.
+
+## Deliberately unconfigured production inputs
+
+Slice 6 does not invent security material that the project does not yet own:
+
+- production current/next public keys and their key IDs;
+- per-environment compiled sequence floors;
+- the hardened HKLM highest-sequence reader and installer/writer;
+- a signed production or staging `RebornNetwork.gwem`;
+- live non-pass-through route-policy activation.
+
+Those inputs remain required before `SecureRequired` can be enabled. Missing
+or corrupt installed floor state must fail closed in that mode, as specified
+above. The candidate is not installed into the original game client and does
+not hot-reload a changed manifest.

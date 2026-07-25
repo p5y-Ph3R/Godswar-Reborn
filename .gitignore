@@ -6,6 +6,9 @@
 appsettings.Local.json
 appsettings.*.local.json
 data/
+*.pfx
+*.p12
+*.key
 
 # .NET build output
 **/bin/

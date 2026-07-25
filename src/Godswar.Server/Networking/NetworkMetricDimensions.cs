@@ -14,7 +14,12 @@ internal enum NetworkTimeoutStage : byte
     PacketBody = 4,
     ReliableWrite = 5,
     Idle = 6,
-    GracefulDrain = 7
+    GracefulDrain = 7,
+    TlsHandshake = 8,
+    SecurePreface = 9,
+    SecureFrameHeader = 10,
+    SecureFrameBody = 11,
+    GameBind = 12
 }
 
 internal enum NetworkDrainOutcome : byte
@@ -61,6 +66,11 @@ internal static class NetworkMetricDimensionExtensions
             NetworkTimeoutStage.ReliableWrite => "reliable_write",
             NetworkTimeoutStage.Idle => "idle",
             NetworkTimeoutStage.GracefulDrain => "graceful_drain",
+            NetworkTimeoutStage.TlsHandshake => "tls_handshake",
+            NetworkTimeoutStage.SecurePreface => "secure_preface",
+            NetworkTimeoutStage.SecureFrameHeader => "secure_frame_header",
+            NetworkTimeoutStage.SecureFrameBody => "secure_frame_body",
+            NetworkTimeoutStage.GameBind => "game_bind",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(stage),
                 stage,

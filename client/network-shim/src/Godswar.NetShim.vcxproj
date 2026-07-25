@@ -46,6 +46,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
       <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <DebugInformationFormat Condition="'$(Configuration)'=='Debug'">ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>false</ExceptionHandling>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -54,7 +55,7 @@
     <Link>
       <ModuleDefinitionFile>NetShim.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Ws2_32.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -67,6 +68,10 @@
     <ClInclude Include="AvatarPreviewGate.h" />
     <ClInclude Include="BoundedChunkQueue.h" />
     <ClInclude Include="ClientRoute.h" />
+    <ClInclude Include="EndpointManifest.h" />
+    <ClInclude Include="EndpointManifestCrypto.h" />
+    <ClInclude Include="EndpointManifestLoader.h" />
+    <ClInclude Include="ExternalTcpConnector.h" />
     <ClInclude Include="FileSha256.h" />
     <ClInclude Include="LegacyClientApi.h" />
     <ClInclude Include="LegacyModule.h" />
@@ -77,12 +82,20 @@
     <ClInclude Include="NetClientProxy.h" />
     <ClInclude Include="OpaqueDuplexPump.h" />
     <ClInclude Include="SocketHandle.h" />
+    <ClInclude Include="SchannelClientStream.h" />
+    <ClInclude Include="SchannelClientStreamInternal.h" />
+    <ClInclude Include="SecureClientProtocol.h" />
+    <ClInclude Include="SecureOuterStream.h" />
     <ClInclude Include="WinSocketByteStream.h" />
     <ClInclude Include="WinSockRuntime.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AvatarPreviewGate.cpp" />
     <ClCompile Include="BoundedChunkQueue.cpp" />
+    <ClCompile Include="EndpointManifest.cpp" />
+    <ClCompile Include="EndpointManifestCrypto.cpp" />
+    <ClCompile Include="EndpointManifestLoader.cpp" />
+    <ClCompile Include="ExternalTcpConnector.cpp" />
     <ClCompile Include="FileSha256.cpp" />
     <ClCompile Include="LegacyModule.cpp" />
     <ClCompile Include="LoopbackAcceptor.cpp" />
@@ -91,6 +104,10 @@
     <ClCompile Include="NetClientProxy.cpp" />
     <ClCompile Include="NetShim.cpp" />
     <ClCompile Include="OpaqueDuplexPump.cpp" />
+    <ClCompile Include="SchannelClientStream.cpp" />
+    <ClCompile Include="SchannelClientStreamIo.cpp" />
+    <ClCompile Include="SecureClientProtocol.cpp" />
+    <ClCompile Include="SecureOuterStream.cpp" />
     <ClCompile Include="WinSocketByteStream.cpp" />
     <ClCompile Include="WinSockRuntime.cpp" />
   </ItemGroup>

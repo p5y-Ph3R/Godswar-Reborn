@@ -34,6 +34,12 @@ internal sealed class NetworkRuntimeOptions
 
     public int QueueAdmissionTimeoutMilliseconds { get; set; } = 2_000;
 
+    public int TlsHandshakeTimeoutMilliseconds { get; set; } = 5_000;
+
+    public int SecurePrefaceTimeoutMilliseconds { get; set; } = 2_000;
+
+    public int GameBindTimeoutMilliseconds { get; set; } = 5_000;
+
     public int FirstPacketTimeoutMilliseconds { get; set; } = 10_000;
 
     public int PacketHeaderTimeoutMilliseconds { get; set; } = 5_000;
@@ -49,6 +55,18 @@ internal sealed class NetworkRuntimeOptions
     [JsonIgnore]
     public TimeSpan QueueAdmissionTimeout =>
         TimeSpan.FromMilliseconds(QueueAdmissionTimeoutMilliseconds);
+
+    [JsonIgnore]
+    public TimeSpan TlsHandshakeTimeout =>
+        TimeSpan.FromMilliseconds(TlsHandshakeTimeoutMilliseconds);
+
+    [JsonIgnore]
+    public TimeSpan SecurePrefaceTimeout =>
+        TimeSpan.FromMilliseconds(SecurePrefaceTimeoutMilliseconds);
+
+    [JsonIgnore]
+    public TimeSpan GameBindTimeout =>
+        TimeSpan.FromMilliseconds(GameBindTimeoutMilliseconds);
 
     [JsonIgnore]
     public TimeSpan FirstPacketTimeout =>
@@ -130,6 +148,15 @@ internal sealed class NetworkRuntimeOptions
         RequireTimeout(
             QueueAdmissionTimeoutMilliseconds,
             nameof(QueueAdmissionTimeoutMilliseconds));
+        RequireTimeout(
+            TlsHandshakeTimeoutMilliseconds,
+            nameof(TlsHandshakeTimeoutMilliseconds));
+        RequireTimeout(
+            SecurePrefaceTimeoutMilliseconds,
+            nameof(SecurePrefaceTimeoutMilliseconds));
+        RequireTimeout(
+            GameBindTimeoutMilliseconds,
+            nameof(GameBindTimeoutMilliseconds));
         RequireTimeout(
             FirstPacketTimeoutMilliseconds,
             nameof(FirstPacketTimeoutMilliseconds));

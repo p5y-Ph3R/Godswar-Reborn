@@ -68,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
 $outputDirectory = Join-Path $repoRoot `
     "client\network-shim\bin\$Configuration\Win32"
 $shimPath = Join-Path $outputDirectory 'Net.dll'
-$testPath = Join-Path $outputDirectory 'Godswar.NetShim.Tests.exe'
+$testPath = Join-Path $outputDirectory 'Godswar.NetShim.Checks.exe'
 
 if (-not (Test-Path -LiteralPath $shimPath -PathType Leaf) -or
     -not (Test-Path -LiteralPath $testPath -PathType Leaf)) {

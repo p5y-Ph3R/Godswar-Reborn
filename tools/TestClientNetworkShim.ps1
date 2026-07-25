@@ -25,7 +25,7 @@ $shimPath = if ($CandidateShimPath) {
 } else {
     Join-Path $outputDirectory 'Net.dll'
 }
-$testPath = Join-Path $outputDirectory 'Godswar.NetShim.Tests.exe'
+$testPath = Join-Path $outputDirectory 'Godswar.NetShim.Checks.exe'
 
 if (-not $LegacyDllPath) {
     $installedLegacy = 'C:\Godswar Origin\NetLegacy.dll'

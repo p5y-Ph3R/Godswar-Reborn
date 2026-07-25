@@ -34,7 +34,7 @@
   <PropertyGroup>
     <OutDir>$(ProjectDir)..\bin\$(Configuration)\$(Platform)\</OutDir>
     <IntDir>$(ProjectDir)..\obj\$(Configuration)\$(Platform)\tests\</IntDir>
-    <TargetName>Godswar.NetShim.Tests</TargetName>
+    <TargetName>Godswar.NetShim.Checks</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -46,6 +46,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebug</RuntimeLibrary>
       <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreaded</RuntimeLibrary>
+      <DebugInformationFormat Condition="'$(Configuration)'=='Debug'">ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>false</ExceptionHandling>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -53,7 +54,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Ws2_32.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -65,6 +66,10 @@
     <ClCompile Include="AvatarPreloadTests.cpp" />
     <ClCompile Include="AvatarPreviewGateTests.cpp" />
     <ClCompile Include="BoundedChunkQueueTests.cpp" />
+    <ClCompile Include="EndpointManifestLoaderTests.cpp" />
+    <ClCompile Include="EndpointManifestTests.cpp" />
+    <ClCompile Include="EndpointManifestTestSupport.cpp" />
+    <ClCompile Include="ExternalTcpConnectorTests.cpp" />
     <ClCompile Include="LoopbackAcceptorTests.cpp" />
     <ClCompile Include="NativeClientBridgeTests.cpp" />
     <ClCompile Include="NativeClientBridgeLifecycleTests.cpp" />
@@ -72,15 +77,26 @@
     <ClCompile Include="NetShimTests.cpp" />
     <ClCompile Include="OpaqueDuplexPumpTests.cpp" />
     <ClCompile Include="OpaqueDuplexPumpLifecycleTests.cpp" />
+    <ClCompile Include="SchannelClientStreamTests.cpp" />
+    <ClCompile Include="SecureClientProtocolTests.cpp" />
+    <ClCompile Include="SecureOuterStreamTests.cpp" />
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
     <ClCompile Include="..\src\BoundedChunkQueue.cpp" />
+    <ClCompile Include="..\src\EndpointManifest.cpp" />
+    <ClCompile Include="..\src\EndpointManifestCrypto.cpp" />
+    <ClCompile Include="..\src\EndpointManifestLoader.cpp" />
+    <ClCompile Include="..\src\ExternalTcpConnector.cpp" />
     <ClCompile Include="..\src\FileSha256.cpp" />
     <ClCompile Include="..\src\LoopbackAcceptor.cpp" />
     <ClCompile Include="..\src\NativeClientBridge.cpp" />
     <ClCompile Include="..\src\NativeClientCoordinator.cpp" />
     <ClCompile Include="..\src\NetClientProxy.cpp" />
     <ClCompile Include="..\src\OpaqueDuplexPump.cpp" />
+    <ClCompile Include="..\src\SchannelClientStream.cpp" />
+    <ClCompile Include="..\src\SchannelClientStreamIo.cpp" />
+    <ClCompile Include="..\src\SecureClientProtocol.cpp" />
+    <ClCompile Include="..\src\SecureOuterStream.cpp" />
     <ClCompile Include="..\src\WinSocketByteStream.cpp" />
     <ClCompile Include="..\src\WinSockRuntime.cpp" />
   </ItemGroup>
@@ -88,16 +104,27 @@
     <ClInclude Include="AvatarPreloadTests.h" />
     <ClInclude Include="AvatarPreviewGateTests.h" />
     <ClInclude Include="BoundedChunkQueueTests.h" />
+    <ClInclude Include="EndpointManifestLoaderTests.h" />
+    <ClInclude Include="EndpointManifestTests.h" />
+    <ClInclude Include="EndpointManifestTestSupport.h" />
+    <ClInclude Include="ExternalTcpConnectorTests.h" />
     <ClInclude Include="LoopbackAcceptorTests.h" />
     <ClInclude Include="NativeClientBridgeTests.h" />
     <ClInclude Include="NativeClientBridgeLifecycleTests.h" />
     <ClInclude Include="NativeClientCoordinatorTests.h" />
     <ClInclude Include="OpaqueDuplexPumpTests.h" />
     <ClInclude Include="OpaqueDuplexPumpLifecycleTests.h" />
+    <ClInclude Include="SchannelClientStreamTests.h" />
+    <ClInclude Include="SecureClientProtocolTests.h" />
+    <ClInclude Include="SecureOuterStreamTests.h" />
     <ClInclude Include="WinSocketByteStreamTests.h" />
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
     <ClInclude Include="..\src\BoundedChunkQueue.h" />
     <ClInclude Include="..\src\ClientRoute.h" />
+    <ClInclude Include="..\src\EndpointManifest.h" />
+    <ClInclude Include="..\src\EndpointManifestCrypto.h" />
+    <ClInclude Include="..\src\EndpointManifestLoader.h" />
+    <ClInclude Include="..\src\ExternalTcpConnector.h" />
     <ClInclude Include="..\src\FileSha256.h" />
     <ClInclude Include="..\src\LegacyClientApi.h" />
     <ClInclude Include="..\src\LoopbackAcceptor.h" />
@@ -107,6 +134,10 @@
     <ClInclude Include="..\src\NetClientProxy.h" />
     <ClInclude Include="..\src\OpaqueDuplexPump.h" />
     <ClInclude Include="..\src\SocketHandle.h" />
+    <ClInclude Include="..\src\SchannelClientStream.h" />
+    <ClInclude Include="..\src\SchannelClientStreamInternal.h" />
+    <ClInclude Include="..\src\SecureClientProtocol.h" />
+    <ClInclude Include="..\src\SecureOuterStream.h" />
     <ClInclude Include="..\src\WinSocketByteStream.h" />
     <ClInclude Include="..\src\WinSockRuntime.h" />
   </ItemGroup>

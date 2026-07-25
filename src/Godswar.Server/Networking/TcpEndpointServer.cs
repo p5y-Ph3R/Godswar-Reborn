@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using Godswar.Server.Networking.Secure;
 
 namespace Godswar.Server.Networking;
 
@@ -12,6 +13,7 @@ internal sealed class TcpEndpointServer
     private readonly string _host;
     private readonly IConnectionAdmission _admission;
     private readonly NetworkRuntimeOptions _runtimeOptions;
+    private readonly ILegacyByteTransportFactory _transportFactory;
     private readonly TaskCompletionSource<IPEndPoint> _started =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TimeProvider _timeProvider;
@@ -24,7 +26,8 @@ internal sealed class TcpEndpointServer
         NetworkRuntimeOptions runtimeOptions,
         IConnectionAdmission admission,
         Func<ClientSession, IClientHandler> handlerFactory,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ILegacyByteTransportFactory? transportFactory = null)
     {
         _endpointRole = endpointRole;
         _host = host;
@@ -36,6 +39,8 @@ internal sealed class TcpEndpointServer
         _handlerFactory = handlerFactory
             ?? throw new ArgumentNullException(nameof(handlerFactory));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _transportFactory =
+            transportFactory ?? RawTcpLegacyTransportFactory.Instance;
         _runtimeOptions.Validate();
     }
 
@@ -109,7 +114,10 @@ internal sealed class TcpEndpointServer
         }
 
         var connectionId = Interlocked.Increment(ref _nextConnectionId);
-        var connection = new ActiveConnection(client, lease);
+        var connection = new ActiveConnection(
+            client,
+            lease,
+            _timeProvider.GetTimestamp());
         if (!_connections.TryAdd(connectionId, connection))
         {
             lease.Dispose();
@@ -136,7 +144,11 @@ internal sealed class TcpEndpointServer
 
         try
         {
-            var transport = new RawTcpLegacyTransport(connection.Client);
+            var transport = await _transportFactory.CreateAsync(
+                connection.Client,
+                _endpointRole,
+                connection.AcceptedTimestamp,
+                cancellationToken);
             await using var session = new ClientSession(
                 transport,
                 _runtimeOptions,
@@ -158,6 +170,10 @@ internal sealed class TcpEndpointServer
             disconnectReason = NetworkDisconnectReason.ReliableQueueOverflow;
         }
         catch (InvalidDataException)
+        {
+            disconnectReason = NetworkDisconnectReason.ProtocolViolation;
+        }
+        catch (SecureTransportException)
         {
             disconnectReason = NetworkDisconnectReason.ProtocolViolation;
         }
@@ -251,11 +267,14 @@ internal sealed class TcpEndpointServer
 
     private sealed class ActiveConnection(
         TcpClient client,
-        ConnectionAdmissionLease lease)
+        ConnectionAdmissionLease lease,
+        long acceptedTimestamp)
     {
         public TcpClient Client { get; } = client;
 
         public ConnectionAdmissionLease Lease { get; } = lease;
+
+        public long AcceptedTimestamp { get; } = acceptedTimestamp;
 
         public ClientSession? Session { get; set; }
 

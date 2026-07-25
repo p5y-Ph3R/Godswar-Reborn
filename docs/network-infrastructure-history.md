@@ -83,3 +83,9 @@ This is the version ledger for
   WinSocket adapter, generation-safe proxy lifecycle, and concurrency/failure
   tests. The process policy remains disabled/pass-through; no client was
   installed and Schannel/`SslStream` is slice 6.
+- `1.17` (`2026-07-25`): Added strict signed endpoint-manifest validation,
+  bounded external TCP and native Schannel/outer-frame primitives, opt-in
+  default-disabled server `SslStream` listeners, finite handshake/frame/queue
+  policy, heartbeat handling, and guarded development-certificate tooling.
+  The client candidate remains uninstalled, no trust was installed, secure
+  game binding fails closed pending Slice 7 tickets, and UDP remains absent.
