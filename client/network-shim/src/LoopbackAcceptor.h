@@ -19,9 +19,10 @@ enum class LoopbackAcceptFailure : std::uint8_t {
     WorkerCreate = 7,
     Accept = 8,
     NonLoopbackPeer = 9,
-    Deadline = 10,
-    Cancelled = 11,
-    JoinDeadline = 12,
+    ForeignProcessPeer = 10,
+    Deadline = 11,
+    Cancelled = 12,
+    JoinDeadline = 13,
 };
 
 class LoopbackAcceptor final {

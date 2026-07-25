@@ -1,30 +1,22 @@
-# Phase 2 Slice 5 native client runtime
+# Phase 2 native client runtime and Slice 8 activation
 
 ## Status and scope
 
-Slice 5 implements the bounded native coordinator and opaque loopback bridge
-for the Win32/x86 `Net.dll` candidate. It is an **uninstalled test build**.
-Nothing in this slice changes the installed client, server listeners, database,
-firewall, or live network path.
+Slices 5-8 implement the bounded native coordinator, signed activation runtime,
+Schannel session, and opaque loopback bridge for the Win32/x86 `Net.dll`
+candidate. It remains an **uninstalled test build**. No installed client,
+server listener, database, trust store, firewall, or live network path changed.
 
-The process policy compiled into the exported candidate is deliberately
-disabled. It classifies every valid legacy route as explicit `PassThrough`, so
-the proxy continues to call the pinned stock client directly. The `Login` and
-`Game` bridge decisions exist for injected tests and the Slice 6 handoff, but
-the default process policy cannot produce either decision.
+The exported process policy now has two explicit states. Missing activation or
+`ActivationMode=0` selects raw `PassThrough`. `SecureRequired` loads one signed
+module-relative manifest, selects the exact Login route, admits Game only for a
+matching pending authenticated grant, and rejects everything else. Once a
+secure route is selected, failure never downgrades to raw TCP.
 
-Slice 6 now supplies the signed-manifest loader, bounded external connector,
-Schannel stream, secure outer-frame stream, and matching server transport as
-independently tested candidate components. They are not wired into the
-exported process policy or installed client.
-
-Slice 7 adds offline-only native `GameGrant` decoding, signed-policy
-validation, a fixed one-grant registry, exact-route claim/presentation, secure
-`GameBind` writing, and `BindResult` handling. These primitives are compiled
-and tested, but the exported classifier still returns only `PassThrough`.
-Accordingly, the checked-in server must remain in its default raw-only profile:
-enabling its mutually exclusive secure profile would suppress raw `5999/7000`
-before this uninstalled client can select TLS routes.
+The client session wires the Slice 6 connector, Schannel and outer framing to
+Slice 7 grant/bind state. The server's mutually exclusive secure profile must
+still remain disabled until controlled-host Slice 8 acceptance because the
+candidate is not installed.
 
 This document complements the parent
 [Phase 2 design](network-infrastructure-phase2.md), the
@@ -41,9 +33,9 @@ The accepted rollback state remains:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`;
 - installed `NetLegacy.dll`: absent.
 
-Slice 5 does not authorize running the historical installer or copying its
-candidate into the game directory. The generated `bin` and `obj` files are
-test artifacts only.
+Slice 8 does not authorize an ad-hoc copy into the game directory. Activation
+must use the guarded [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md);
+generated `bin` and `obj` files remain test artifacts.
 
 ## Runtime ownership
 
@@ -58,12 +50,15 @@ add a virtual destructor or change slot order.
 
 1. creation registers a unique nonzero proxy ID;
 2. allocation or registration failure releases the stock client;
-3. `SetHost` records the bounded route before delegating;
+3. `SetHost` records and classifies the bounded route; only explicit
+   `PassThrough` reaches the stock client;
 4. `Connect` begins a generation-bound plan;
-5. default `PassThrough` calls stock `Connect` and marks the plan connected;
-6. connection failure or `DisConnect` resets coordinator state;
-7. `Release` unregisters before forwarding stock `Release` and deleting the
-   proxy.
+5. `PassThrough` calls stock `Connect`; Login/Game creates a fail-closed secure
+   session and gives stock only an ephemeral loopback endpoint;
+6. `Process` polls secure bridge state and resets a terminated session;
+7. failure or `DisConnect` stops the session and resets coordinator state; and
+8. `Release` joins secure work, unregisters, forwards stock `Release`, and
+   deletes the proxy.
 
 `Process`, `GetStatus`, `PickMsg`, `SendMsg`, and `GetMsgNum` retain their stock
 delegation and native message ownership. The rejected avatar-loading gate is
@@ -94,24 +89,23 @@ committing its result. Reset, unregister, and a newer `SetHost` invalidate an
 older connection plan, preventing delayed work from completing against a
 reused registry slot.
 
-The default process callback returns only `PassThrough`. A null injected
-callback also resolves to that disabled policy. An unknown callback result is
-normalized to `Reject`. The coordinator stores no password, ticket, grant,
-certificate, key, or other secret.
+The process callback comes from the one-shot `SecureClientRuntime`. Disabled
+returns `PassThrough`; a ready secure runtime returns Login/Game/Reject under
+the signed policy; initialization failure returns `Reject`. A null injected
+test callback remains disabled and unknown results normalize to `Reject`. The
+coordinator itself stores no password, ticket, grant, certificate, or key.
 
-## Dormant loopback bridge
+## Secure loopback bridge
 
-`NativeClientBridge` is compiled into the candidate and tested independently,
-but the disabled proxy does not activate it. It accepts:
+`SecureClientSession` now activates `NativeClientBridge` for exported Login and
+Game routes. The bridge accepts:
 
 - the already-created stock `ILegacyNetClient`; and
 - an already-established caller-owned `IByteStream` outer leg.
 
-The bridge itself does not resolve a host, dial an external server, perform
-TLS, or validate an endpoint. Slice 6 supplies separate signed-manifest,
-connector, Schannel, and outer-frame primitives that can create that stream,
-but exported-proxy wiring remains disabled until Slice 8. Both supplied
-objects must remain alive until `StopAndJoin` completes.
+The bridge itself still does not resolve, dial, perform TLS, or validate an
+endpoint. `SecureClientSession` owns those steps and supplies the established
+outer stream. Both supplied objects remain alive until `StopAndJoin` completes.
 
 The tested startup order is:
 
@@ -176,8 +170,8 @@ is never silently skipped or reordered; data still queued when a terminal
 connection failure occurs is securely discarded as part of teardown.
 
 `IByteStream::Stop` must be idempotent, thread-safe, and unblock all current
-reads and writes. Slice 5 did not add a transport write deadline; Slice 6's
-dormant secure stream supplies finite read/write deadlines.
+reads and writes. Slice 5 did not add a transport write deadline; the secure
+stream used by Slice 8 supplies finite read/write deadlines.
 
 ## Verification
 
@@ -206,24 +200,30 @@ The Slice 5 checks cover:
   between a stalled and healthy pump;
 - WinSock one-time concurrent initialization, loopback-only acceptance,
   absolute accept timeout, concurrent open ownership, concurrent
-  complete/cancel, byte transfer, and repeated lifecycle cleanup;
+  complete/cancel, reverse-tuple Origin-PID ownership, bounded foreign-peer
+  rejection, byte transfer, and repeated lifecycle cleanup;
 - exact socket read/write/EOF, bounded nonblocking I/O, pump compatibility, and
   shutdown unblocking;
 - complete bridge startup ordering, bidirectional bytes, stock-connect
   failure, expired startup, invalid queue configuration, spontaneous pump
   termination, join-timeout recovery, overlapping Start/Stop, two stop owners,
   exact disconnect ownership, argument rejection, and repeated teardown;
-- injected Login/Game/Reject proxy routes proving dormant secure plans never
-  invoke raw stock `Connect`, including invalid-route stale-state rejection;
+- exported Disabled/SecureRequired/failed-closed route policy, one-shot
+  manifest/runtime initialization, exact Login and grant-gated Game selection,
+  and proof that secure/rejected logical routes never reach stock `SetHost`;
+- secure Login/Game session construction, target validation, Schannel/preface/
+  bind-before-loopback ordering, bridge polling, and coordinated teardown;
 - grant decoding and field bounds, manifest-scoped host/audience/server policy,
   pending/claimed/presented transitions, expiry, generation invalidation,
   route mismatch, return-before-presentation, and secret erasure;
 - first-frame game bind encoding, accepted/rejected result handling, sequence
   transition to `2`, timeout/malformed/wrong-phase failures, and proof that a
   presented ticket is never returned or reused;
-- existing export ordinals, x86 ABI delegation, hardening flags,
-  deterministic clean-build hashes, exact legacy-DLL verification, and
-  missing/tampered legacy rejection.
+- current/next candidate `.gwkey` build-contract parsing and candidate-bound
+  signed-manifest probing;
+- existing export ordinals, x86 ABI delegation, hardening flags, deterministic
+  clean-build hashes, and handle-held legacy-DLL verification including
+  missing, tampered, replacement, and reparse rejection.
 
 These are automated candidate tests, not an installed original-client smoke.
 The full `TestClientNetworkShim.ps1` wrapper includes socket checks and is
@@ -236,26 +236,25 @@ Use the complete socket suite only on a controlled test host.
 
 ## Rollback
 
-There is no live rollback action because the candidate is not installed or
-enabled:
+There is no current live rollback action because the candidate is uninstalled.
+Future activation uses the guarded bundle transaction, not an ad-hoc copy:
 
 - leave `C:\Godswar Origin\Net.dll` at the exact stock hash above;
 - leave `NetLegacy.dll` absent;
-- discard ignored `client\network-shim\bin` and `obj` outputs if desired;
-- revert the Slice 6 source checkpoint to remove the candidate implementation.
+- leave `RebornNetwork.gwem` and the 64-bit activation key absent; and
+- retain ignored build outputs only as test artifacts.
 
-If a candidate is copied into the game directory outside this runbook, that is
-an unapproved state. Fully close Origin and restore the exact stock files using
-the existing guarded Phase 1 recovery evidence; do not improvise a mixed
-`Net.dll`/`NetLegacy.dll` pair.
+Guarded Apply backs up the exact predecessor, advances the sequence floor while
+disabled, installs and verifies all files, then commits `SecureRequired`.
+Restore disables first, retains the monotonic floor, and reproduces the exact
+receipt-bound files. Full sequencing and interruption recovery are in the
+[Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
 
 ## Explicit exclusions and limitations
 
-The cumulative Slice 5-7 candidate still provides no:
+The cumulative Slice 5-8 candidate still provides no:
 
-- exported-process policy that can select a secure Login or Game route;
-- production manifest keys/floors, signed production manifest, hardened
-  installed floor, or approved installer state;
+- production/staging manifest keys or signed operational manifest;
 - installed/trusted development or production certificate state;
 - controlled-host socket, original-client end-to-end, or live-database
   migration acceptance;
@@ -263,18 +262,18 @@ The cumulative Slice 5-7 candidate still provides no:
 - live endpoint activation, client installation, or production-readiness
   claim.
 
-The native bridge cannot be used securely by itself: its outer stream is an
-injected interface, not proof of TLS or identity. The conservative registry
-and queue values are safety bounds, not player-capacity claims. The current
-listener is IPv4 loopback only. Client runtime observability is limited to
-finite state snapshots and test assertions; activation must poll terminal pump
-state, and production-safe structured telemetry remains required. The
+The bridge alone is not proof of TLS or identity; `SecureClientSession` must
+construct its authenticated outer stream. Registry and queue values are safety
+bounds, not player-capacity claims. The loopback listener is IPv4-only and
+requires reverse-tuple ownership by the current Origin PID, but local flooding
+can still deny one bounded startup attempt. Client observability remains finite
+state snapshots and tests; production-safe telemetry remains required. The
 synchronous stock `Connect` call is not preemptible, and the nine-slot client
 object remains single-owner with exclusive final `Release`.
 
-## Slice 7 result and activation handoff
+## Slice 8 result and activation handoff
 
-Slices 6-7 preserve these ownership and bound contracts and provide:
+Slices 6-8 preserve these ownership and bound contracts and provide:
 
 1. strict signed endpoint-manifest parsing, ECDSA verification, sequence
    floors, validity checks, and one-shot module-relative loading;
@@ -287,13 +286,11 @@ Slices 6-7 preserve these ownership and bound contracts and provide:
 6. a noncopyable, zeroing game-grant value and fixed one-grant
    pending/claim/presentation registry; and
 7. exact game-bind/result I/O that succeeds before opening the local game leg
-   and never reuses a presented ticket.
+   and never reuses a presented ticket;
+8. exported fail-closed Login/Game routing and secure-session ownership; and
+9. candidate-bound manifest probing plus guarded monotonic activation/restore.
 
-Slice 8 is the conservative next milestone: reviewed production manifest
-keys/floors, validated route wiring through the exported proxy, a guarded
-install/rollback checkpoint, live-account backup/reset rehearsal, and
-controlled-host client/server socket and original-client smoke tests. Selecting
-a secure route must fail closed; the current `PassThrough` policy is the
-disabled baseline, not a fallback after secure failure. Activation must also
-verify that secure mode starts no raw compatibility listener. UDP remains
-absent until the later authenticated session-binding phase.
+Live account backup/reset rehearsal, operational keys/trust, controlled-host
+socket tests, and original-client TLS world entry remain required. The next
+implementation milestone after acceptance is Slice 9 authenticated UDP binding;
+gameplay remains on TLS throughout that slice.

@@ -11,16 +11,14 @@ compatibility experiments V1–V4 are rejected. V3 reproduced the roughly
 15-second `0x005F58BC` timeout/crash. V4 failed its final pre-selection smoke
 (`20260724T095739213Z-db16daa7` / `Fail`) and was rolled back to predecessor
 Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
-`NetLegacy.dll`. Phase 2 Slice 7 now adds secure-path password authentication,
-grant-before-redirect, bounded single-use server tickets, authoritative game
-principals, and offline native grant/bind primitives on top of Slice 6 TLS.
-Secure listeners still default off, the client candidate is uninstalled with
-pass-through routing, and the default profile starts only raw `5999/7000`.
-Secure mode suppresses raw listeners; keep it off until Slice 8, gated by
-production manifest, trust, live-account
-backup/reset, controlled-host socket, and rollback gates. UDP remains absent;
-Phase 2 continues without Phase 1 acceptance. Records:
-[`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
+`NetLegacy.dll`. Phase 2 Slice 8 now wires signed Login/Game routing and secure
+sessions into the exported shim and adds guarded monotonic-floor activation,
+exact restore, and coherent raw-or-TLS startup. Source/offline checks pass, but
+the candidate remains uninstalled and secure listeners default off pending
+account backup/reset, operational keys/trust, and controlled-host acceptance.
+UDP is absent; Slice 9 binding is next. Phase 1 remains unaccepted. Records:
+[Phase 1](network-infrastructure-phase1.md) and
+[Slice 8](network-infrastructure-phase2-slice8-activation.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 
@@ -31,14 +29,8 @@ Phase 2 continues without Phase 1 acceptance. Records:
 - Two-client visibility sends server-built remote spawn, equipment/appearance, weapon and armor aura, position, and derived-status packets in both directions.
 - Same-account relog behavior remains in place: a new login replaces the stale session.
 - The post-login bootstrap now matches the working server's exact 63-record manifest and trailing version record. That server parity is retained, but dump analysis proved the intermittent first-attempt account-switch crash was also a distinct native client lifecycle defect.
-- Loading-gate v1 (`2D8199...`) failed by starving native processing. V2
-  (`73E65F...`) fixed scheduling but failed cycle 3 when its five-second
-  unready handoff stayed blank beyond 44 seconds. Readiness-only V3
-  (`17A721...`) still hit the native timeout/crash. V4 scheduled state 2 from
-  exact AfterLogin, retained preview order until readiness, and guarded the
-  timeout, but its final smoke failed earlier in login and is sealed `Fail`.
-  It is rolled back and not accepted. See
-  `docs/client-avatar-preview-loading-gate.md`.
+- Loading-gate V1-V4 all failed acceptance and are rolled back. Exact behavior,
+  evidence, and recovery remain in `docs/client-avatar-preview-loading-gate.md`.
 - Captured opcode-10090 pages were identified in the native dispatcher as character-specific `MSG_PLAYER_ACCEPTQUESTS` records, not generic game-data bootstrap. Runtime replay is blocked until quests are implemented authoritatively; the separate dump diagnosis and future packet-order requirement are recorded in `docs/accepted-quest-login-crash-fix.md`.
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.
 - Multiplayer synchronization itself remains server-side and requires no game client change; the avatar patch is a separate native stability correction.

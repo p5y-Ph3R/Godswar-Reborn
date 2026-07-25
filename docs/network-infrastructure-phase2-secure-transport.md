@@ -1,20 +1,19 @@
-# Phase 2 secure transport and Slice 7 binding
+# Phase 2 secure transport through Slice 8 activation
 
 ## Status and boundary
 
-- Implementation checkpoint: Slice 7 complete in source/offline tests;
-  activation pending
+- Implementation checkpoint: Slice 8 complete in source/offline tests;
+  controlled-host activation pending
 - Last updated: `2026-07-25`
 - Default state: disabled
 - Installed game-client state: unchanged
 - UDP state: absent
 
-Slice 6 supplied the TLS and signed-endpoint prerequisites. Slice 7 adds
-secure-path password authentication, grant/ticket issuance and bind on the
-server, plus offline native grant/bind primitives. It does not enable the
-exported client policy, install a replacement `Net.dll`, create a production
-manifest, trust a development CA, run a controlled-host socket smoke, or
-authorize UDP.
+Slice 6 supplied TLS and signed-endpoint prerequisites; Slice 7 added
+authentication and one-use grant/ticket binding. Slice 8 wires the exported
+client route/session path, candidate-bound manifest probing, guarded activation
+and coherent listener startup. It does not install `Net.dll`, create operational
+keys, trust a CA, run controlled-host original-client smoke, or authorize UDP.
 
 Listener profiles are mutually exclusive. The checked-in `secure.enabled=false`
 profile starts only raw development listeners `5999/7000`; enabling secure mode
@@ -164,9 +163,9 @@ The raw compatibility profile retains legacy login upsert and username-only
 game admission, with versioned verifiers protected from raw overwrite. It is
 available only while secure mode is disabled. Enabling secure mode does not
 start either raw listener, so the secure profile has no raw authentication
-bypass or downgrade path. The original client remains unmodified and
-pass-through, so secure mode must stay disabled until controlled Slice 8
-activation wires and verifies the client route.
+bypass or downgrade path. The secure candidate route is now wired but remains
+uninstalled, so secure mode must stay disabled until controlled Slice 8
+acceptance verifies the complete client path.
 
 ## Development certificate workflow
 
@@ -213,9 +212,9 @@ It uses Windows CNG ECDSA P-256/SHA-256 verification, strict network byte
 order, injected current/next public keys, both compiled and installed sequence
 floors, an injected clock, and a one-shot module-relative loader.
 
-Production public keys, floor values, hardened HKLM floor state, installer,
-signed manifest, and route-policy activation are deliberately absent. No
-private manifest-signing key is present in the repository.
+Candidate-bound public trust, 64-bit HKLM state handling, the guarded installer,
+and exported route policy are implemented. Operational production/staging keys,
+signed manifests, installed state, and private signing material remain absent.
 
 ## Verification
 
@@ -227,6 +226,14 @@ dotnet run `
   --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj `
   --configuration Release -- `
   'Secure Phase 2 TLS mux transport'
+dotnet run `
+  --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj `
+  --configuration Release -- `
+  'Secure Phase 2 authenticated grant and principal flow'
+dotnet run `
+  --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj `
+  --configuration Release -- `
+  'Mutually exclusive raw or secure listener profile'
 ```
 
 Native x86 build and checks:
@@ -234,6 +241,7 @@ Native x86 build and checks:
 ```powershell
 .\tools\BuildClientNetworkShim.ps1 -Configuration Release
 .\client\network-shim\bin\Release\Win32\Godswar.NetShim.Checks.exe --offline
+.\tools\TestSecureNetworkBundleTransaction.ps1
 ```
 
 Offline mode performs no WinSock initialization, DNS lookup, listener,
@@ -254,35 +262,33 @@ filter interferes with arbitrary loopback TLS, run the socket suite in a
 disposable VM or dedicated test machine and keep offline mode as the local
 gate.
 
-Coverage includes protocol golden vectors and boundaries, manifest
-signature/rollback/path checks, TLS/ALPN/preface rejection, PFX chain loading,
-framed login round-trip and split output, bounded handshake admission,
-heartbeat validation, authentication/KDF bounds, atomic password migration,
-ticket forgery/expiry/replay/scope, grant-before-redirect ordering, accepted
-game bind/principal attachment, and pre-handler rejection.
+Coverage includes protocol/manifest boundaries, candidate-bound trust,
+activation interruption/path/floor forgery, TLS/ALPN/preface rejection, PFX
+loading, bounded admission, authentication migration, ticket forgery/replay,
+grant ordering, accepted game bind/principal attachment, exported secure
+session lifecycle, and coherent listener startup.
 
 These are local functional/security checks, not a production capacity claim or
 proof of upstream DDoS protection.
 
 ## Rollback and remaining gates
 
-There is no live Slice 7 rollback action because secure listeners default off
-and the candidate client is not installed. Source rollback consists of
-disabling `secure.enabled`/`GODSWAR_SECURE_ENABLED` and reverting the secure
-transport/authentication checkpoints.
+There is no current live rollback action because secure listeners default off
+and the candidate is uninstalled. Future Apply/Restore must use the guarded,
+receipt-bound transaction in the
+[Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
 
 Before any original-client activation:
 
-1. supply reviewed production manifest keys/floors and the guarded installer;
-2. take and verify a live account-store backup, audit/reset blank credentials,
+1. supply reviewed operational manifest keys/floors and signed manifest;
+2. take and verify an account-store backup, audit/reset blank credentials,
    and rehearse plaintext migration on a restored copy;
-3. wire the validated Login/Game routes through the exported proxy;
-4. test the exact native Schannel-to-`SslStream` path with authorized trust and
+3. test the exact native Schannel-to-`SslStream` path with authorized trust and
    remove all temporary trust afterward;
-5. run the installer through a new backup/evidence checkpoint and complete the
+4. run guarded Apply through a new backup/evidence checkpoint and complete the
    original-client parity/soak matrix; and
-6. preserve a separate, verified stock rollback path and prove the enabled
+5. prove guarded Restore and that the enabled
    secure profile exposes no raw compatibility ingress.
 
-UDP, authenticated encryption/replay windows, NAT rebinding, pacing,
-snapshots, and TLS fallback for real-time traffic remain later slices.
+Slice 9 next adds authenticated UDP binding while gameplay remains on TLS.
+Slice 10 moves movement and snapshots with authenticated TLS fallback.

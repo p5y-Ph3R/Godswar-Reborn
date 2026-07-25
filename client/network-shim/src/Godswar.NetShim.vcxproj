@@ -55,7 +55,7 @@
     <Link>
       <ModuleDefinitionFile>NetShim.def</ModuleDefinitionFile>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>Ws2_32.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Ws2_32.lib;Iphlpapi.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -76,6 +76,7 @@
     <ClInclude Include="LegacyClientApi.h" />
     <ClInclude Include="LegacyModule.h" />
     <ClInclude Include="LoopbackAcceptor.h" />
+    <ClInclude Include="LoopbackPeerOwner.h" />
     <ClInclude Include="NativeClientBridge.h" />
     <ClInclude Include="NativeClientCoordinator.h" />
     <ClInclude Include="NativeNetworkLimits.h" />
@@ -84,10 +85,16 @@
     <ClInclude Include="SocketHandle.h" />
     <ClInclude Include="SchannelClientStream.h" />
     <ClInclude Include="SchannelClientStreamInternal.h" />
+    <ClInclude Include="SecureClientManifestDevelopmentKeys.generated.h" />
+    <ClInclude Include="SecureClientManifestBuildContract.h" />
+    <ClInclude Include="SecureClientRuntime.h" />
+    <ClInclude Include="SecureClientRuntimeInternal.h" />
+    <ClInclude Include="SecureClientSession.h" />
     <ClInclude Include="SecureClientProtocol.h" />
     <ClInclude Include="SecureGameControl.h" />
     <ClInclude Include="SecureGameGrantRegistry.h" />
     <ClInclude Include="SecureOuterStream.h" />
+    <ClInclude Include="VerifiedImageFile.h" />
     <ClInclude Include="WinSocketByteStream.h" />
     <ClInclude Include="WinSockRuntime.h" />
   </ItemGroup>
@@ -101,6 +108,7 @@
     <ClCompile Include="FileSha256.cpp" />
     <ClCompile Include="LegacyModule.cpp" />
     <ClCompile Include="LoopbackAcceptor.cpp" />
+    <ClCompile Include="LoopbackPeerOwner.cpp" />
     <ClCompile Include="NativeClientBridge.cpp" />
     <ClCompile Include="NativeClientCoordinator.cpp" />
     <ClCompile Include="NetClientProxy.cpp" />
@@ -108,11 +116,16 @@
     <ClCompile Include="OpaqueDuplexPump.cpp" />
     <ClCompile Include="SchannelClientStream.cpp" />
     <ClCompile Include="SchannelClientStreamIo.cpp" />
+    <ClCompile Include="SecureClientRuntime.cpp" />
+    <ClCompile Include="SecureClientManifestBuildContract.cpp" />
+    <ClCompile Include="SecureClientRuntime.Platform.cpp" />
+    <ClCompile Include="SecureClientSession.cpp" />
     <ClCompile Include="SecureClientProtocol.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
     <ClCompile Include="SecureOuterStream.Control.cpp" />
     <ClCompile Include="SecureOuterStream.cpp" />
+    <ClCompile Include="VerifiedImageFile.cpp" />
     <ClCompile Include="WinSocketByteStream.cpp" />
     <ClCompile Include="WinSockRuntime.cpp" />
   </ItemGroup>

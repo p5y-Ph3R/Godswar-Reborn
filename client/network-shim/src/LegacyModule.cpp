@@ -1,5 +1,5 @@
 #include "LegacyModule.h"
-#include "FileSha256.h"
+#include "VerifiedImageFile.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -48,13 +48,6 @@ bool BuildLegacyPath(
     return true;
 }
 
-bool IsSupportedLegacy(const wchar_t* path) noexcept {
-    return godswar::network::FileMatchesSha256(
-        path,
-        SupportedLegacySha256,
-        sizeof(SupportedLegacySha256));
-}
-
 } // namespace
 
 namespace godswar::network {
@@ -71,15 +64,27 @@ bool LoadVerifiedLegacyModule(
     if (!BuildLegacyPath(
             shimModule,
             legacyPath,
-            sizeof(legacyPath) / sizeof(legacyPath[0])) ||
-        !IsSupportedLegacy(legacyPath)) {
+            sizeof(legacyPath) / sizeof(legacyPath[0]))) {
+        return false;
+    }
+
+    // This work runs on the first exported factory call, never from DllMain.
+    // Holding the verified normal-file handle without write/delete sharing
+    // prevents the path from being modified or replaced between hashing and
+    // image mapping.
+    VerifiedImageFile verifiedLegacy;
+    if (!verifiedLegacy.OpenAndVerify(
+            legacyPath,
+            SupportedLegacySha256,
+            sizeof(SupportedLegacySha256))) {
         return false;
     }
 
     const auto module = LoadLibraryExW(
         legacyPath,
         nullptr,
-        LOAD_WITH_ALTERED_SEARCH_PATH);
+        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+            LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (module == nullptr) {
         return false;
     }

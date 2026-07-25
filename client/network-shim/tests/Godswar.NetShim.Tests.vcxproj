@@ -54,7 +54,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>Ws2_32.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Ws2_32.lib;Iphlpapi.lib;Secur32.lib;Crypt32.lib;Bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <ControlFlowGuard>Guard</ControlFlowGuard>
@@ -71,6 +71,7 @@
     <ClCompile Include="EndpointManifestTestSupport.cpp" />
     <ClCompile Include="ExternalTcpConnectorTests.cpp" />
     <ClCompile Include="LoopbackAcceptorTests.cpp" />
+    <ClCompile Include="LoopbackPeerOwnerTests.cpp" />
     <ClCompile Include="NativeClientBridgeTests.cpp" />
     <ClCompile Include="NativeClientBridgeLifecycleTests.cpp" />
     <ClCompile Include="NativeClientCoordinatorTests.cpp" />
@@ -78,11 +79,15 @@
     <ClCompile Include="OpaqueDuplexPumpTests.cpp" />
     <ClCompile Include="OpaqueDuplexPumpLifecycleTests.cpp" />
     <ClCompile Include="SchannelClientStreamTests.cpp" />
+    <ClCompile Include="SecureClientRuntimeTests.cpp" />
+    <ClCompile Include="SecureClientSessionTests.cpp" />
     <ClCompile Include="SecureClientProtocolTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureManifestProbe.cpp" />
     <ClCompile Include="SecureOuterControlTests.cpp" />
     <ClCompile Include="SecureOuterStreamTests.cpp" />
+    <ClCompile Include="VerifiedImageFileTests.cpp" />
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
     <ClCompile Include="..\src\BoundedChunkQueue.cpp" />
@@ -92,17 +97,23 @@
     <ClCompile Include="..\src\ExternalTcpConnector.cpp" />
     <ClCompile Include="..\src\FileSha256.cpp" />
     <ClCompile Include="..\src\LoopbackAcceptor.cpp" />
+    <ClCompile Include="..\src\LoopbackPeerOwner.cpp" />
     <ClCompile Include="..\src\NativeClientBridge.cpp" />
     <ClCompile Include="..\src\NativeClientCoordinator.cpp" />
     <ClCompile Include="..\src\NetClientProxy.cpp" />
     <ClCompile Include="..\src\OpaqueDuplexPump.cpp" />
     <ClCompile Include="..\src\SchannelClientStream.cpp" />
     <ClCompile Include="..\src\SchannelClientStreamIo.cpp" />
+    <ClCompile Include="..\src\SecureClientRuntime.cpp" />
+    <ClCompile Include="..\src\SecureClientManifestBuildContract.cpp" />
+    <ClCompile Include="..\src\SecureClientRuntime.Platform.cpp" />
+    <ClCompile Include="..\src\SecureClientSession.cpp" />
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Control.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.cpp" />
+    <ClCompile Include="..\src\VerifiedImageFile.cpp" />
     <ClCompile Include="..\src\WinSocketByteStream.cpp" />
     <ClCompile Include="..\src\WinSockRuntime.cpp" />
   </ItemGroup>
@@ -115,18 +126,23 @@
     <ClInclude Include="EndpointManifestTestSupport.h" />
     <ClInclude Include="ExternalTcpConnectorTests.h" />
     <ClInclude Include="LoopbackAcceptorTests.h" />
+    <ClInclude Include="LoopbackPeerOwnerTests.h" />
     <ClInclude Include="NativeClientBridgeTests.h" />
     <ClInclude Include="NativeClientBridgeLifecycleTests.h" />
     <ClInclude Include="NativeClientCoordinatorTests.h" />
     <ClInclude Include="OpaqueDuplexPumpTests.h" />
     <ClInclude Include="OpaqueDuplexPumpLifecycleTests.h" />
     <ClInclude Include="SchannelClientStreamTests.h" />
+    <ClInclude Include="SecureClientRuntimeTests.h" />
+    <ClInclude Include="SecureClientSessionTests.h" />
     <ClInclude Include="SecureClientProtocolTests.h" />
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureManifestProbe.h" />
     <ClInclude Include="SecureOuterControlTests.h" />
     <ClInclude Include="SecureOuterStreamTests.h" />
+    <ClInclude Include="VerifiedImageFileTests.h" />
     <ClInclude Include="WinSocketByteStreamTests.h" />
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
     <ClInclude Include="..\src\BoundedChunkQueue.h" />
@@ -138,6 +154,7 @@
     <ClInclude Include="..\src\FileSha256.h" />
     <ClInclude Include="..\src\LegacyClientApi.h" />
     <ClInclude Include="..\src\LoopbackAcceptor.h" />
+    <ClInclude Include="..\src\LoopbackPeerOwner.h" />
     <ClInclude Include="..\src\NativeClientBridge.h" />
     <ClInclude Include="..\src\NativeClientCoordinator.h" />
     <ClInclude Include="..\src\NativeNetworkLimits.h" />
@@ -146,10 +163,16 @@
     <ClInclude Include="..\src\SocketHandle.h" />
     <ClInclude Include="..\src\SchannelClientStream.h" />
     <ClInclude Include="..\src\SchannelClientStreamInternal.h" />
+    <ClInclude Include="..\src\SecureClientManifestDevelopmentKeys.generated.h" />
+    <ClInclude Include="..\src\SecureClientManifestBuildContract.h" />
+    <ClInclude Include="..\src\SecureClientRuntime.h" />
+    <ClInclude Include="..\src\SecureClientRuntimeInternal.h" />
+    <ClInclude Include="..\src\SecureClientSession.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
     <ClInclude Include="..\src\SecureGameControl.h" />
     <ClInclude Include="..\src\SecureGameGrantRegistry.h" />
     <ClInclude Include="..\src\SecureOuterStream.h" />
+    <ClInclude Include="..\src\VerifiedImageFile.h" />
     <ClInclude Include="..\src\WinSocketByteStream.h" />
     <ClInclude Include="..\src\WinSockRuntime.h" />
   </ItemGroup>

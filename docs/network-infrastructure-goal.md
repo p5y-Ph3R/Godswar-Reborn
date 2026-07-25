@@ -2,21 +2,19 @@
 
 ## Version and status
 
-- Document version: `1.18`
+- Document version: `1.19`
 - Last updated: `2026-07-25`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 Slice 7 authentication and game-ticket binding is
-  complete in source/offline tests. Secure-path password verification and
-  migration, grant-before-redirect, single-use server tickets, bound game
-  principals, and native grant/bind primitives are implemented. The candidate
-  remains uninstalled/pass-through. Default starts raw `5999/7000` only; secure
-  mode suppresses both. Keep it disabled until Slice 8. UDP is absent.
+- Current milestone: Phase 2 Slice 8 secure route/session wiring, guarded
+  activation/restore, and coherent listener startup are complete in
+  source/offline checks. The candidate remains uninstalled and secure mode
+  disabled pending operational keys/trust, account backup/reset, and
+  controlled-host acceptance. UDP is absent; Slice 9 is next.
   V1–V4 are rejected and Phase 1
-  is not accepted. The avatar issue is parked; no secure listener or bridge is
-  enabled.
+  remains unaccepted; the avatar issue is parked.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -253,15 +251,9 @@ or rate limiting alone is not volumetric DDoS protection.
 Status: not accepted; V1–V4 are rejected and rolled back.
 
 The exact V1–V4 hashes, backups, manifests, and evidence IDs live in the
-[Phase 1 runbook](network-infrastructure-phase1.md). V1 starved processing; V2
-released while unready; V3's immutable
-`20260724T043833399Z-2bd75dd7` run reproduced the roughly 15-second
-server-unavailable path and `0x005F58BC` null-root crash. V4's sealed
-`20260724T095739213Z-db16daa7` smoke failed before CharacterSelection,
-AfterLogin, or preload ran. Current state is predecessor Origin
-`753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`; see
-the
-[V3 failure](client-avatar-preview-v3-failure-20260724.md).
+[Phase 1 runbook](network-infrastructure-phase1.md). Final V4 evidence is
+sealed `Fail`; current state is predecessor Origin `753BE49F...9ED79`, stock
+Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`.
 
 Deliverables:
 
@@ -321,13 +313,11 @@ Exact wire protocol and client lifecycle:
   grant-before-redirect lease, hash-only single-use tickets, accepted game
   bind/principal, and offline native grant registry/bind I/O are implemented.
   They remain disabled/uninstalled.
-- Define and test bounded queue overflow, backpressure, and rejection metrics.
-- Add golden, boundary, partial/coalesced, malformed, fuzz/property, timeout,
-  and slow-client tests for every new TCP decoder in this phase.
-- Slice 8: wire signed Login/Game routes into the exported proxy under a guarded
-  install, rehearse live credential migration from a verified backup, test
-  authorized trust/controlled-host sockets, and verify secure mode omits raw
-  `5999/7000`. Keep it disabled while the client is uninstalled. No UDP.
+- Slice 8 source/offline work is complete: signed Login/Game routing and secure
+  sessions are exported behind guarded monotonic activation and exact restore.
+  Live account/trust/original-client acceptance remains pending; see the
+  [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
+- Next, Slice 9 binds authenticated UDP while gameplay remains on TLS.
 
 Exit gate: legacy parity, TLS authentication/control, ticket forgery/expiry/
 replay tests, frame boundary tests, and authenticated TLS-only fallback pass.

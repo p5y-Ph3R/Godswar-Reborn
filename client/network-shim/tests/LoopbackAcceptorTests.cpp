@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cwchar>
 #include <cstring>
 
 namespace {
@@ -184,6 +185,85 @@ void RunAcceptSuccessCheck() {
     Check(
         acceptor.CancelAndJoin(5'000),
         "completed acceptor cleanup failed");
+}
+
+void RunForeignPeerRejectionCheck() {
+    LoopbackAcceptor acceptor;
+    Check(acceptor.Open(), "foreign-peer listener did not open");
+    Check(acceptor.BeginAccept(), "foreign-peer accept did not begin");
+
+    SECURITY_ATTRIBUTES security{
+        sizeof(SECURITY_ATTRIBUTES),
+        nullptr,
+        TRUE,
+    };
+    const HANDLE connected =
+        CreateEventW(&security, TRUE, FALSE, nullptr);
+    Check(connected != nullptr, "foreign-peer event creation failed");
+    if (connected == nullptr) {
+        static_cast<void>(acceptor.CancelAndJoin(5'000));
+        return;
+    }
+
+    wchar_t executable[4096]{};
+    const DWORD executableLength = GetModuleFileNameW(
+        nullptr,
+        executable,
+        static_cast<DWORD>(
+            sizeof(executable) / sizeof(executable[0])));
+    wchar_t command[8192]{};
+    const int commandLength = swprintf_s(
+        command,
+        L"\"%ls\" --foreign-loopback-connect %u %llu",
+        executable,
+        static_cast<unsigned>(acceptor.Port()),
+        static_cast<unsigned long long>(
+            reinterpret_cast<std::uintptr_t>(connected)));
+    Check(
+        executableLength != 0 &&
+            executableLength <
+                sizeof(executable) / sizeof(executable[0]) &&
+            commandLength > 0,
+        "foreign-peer helper command creation failed");
+
+    STARTUPINFOW startup{sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION process{};
+    const bool started = commandLength > 0 &&
+        CreateProcessW(
+            executable,
+            command,
+            nullptr,
+            nullptr,
+            TRUE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &startup,
+            &process) != FALSE;
+    Check(started, "foreign-peer helper did not start");
+    if (started) {
+        Check(
+            WaitForSingleObject(connected, 5'000) == WAIT_OBJECT_0,
+            "foreign-peer helper did not connect");
+        auto ownedClient = ConnectToLoopback(acceptor.Port());
+        SocketHandle accepted;
+        Check(
+            ownedClient.IsValid() &&
+                acceptor.Complete(5'000, &accepted),
+            "owned peer was not accepted after foreign rejection");
+        Check(
+            acceptor.Failure() == LoopbackAcceptFailure::None,
+            "foreign peer poisoned the accepted owner state");
+        Check(
+            WaitForSingleObject(process.hProcess, 5'000) ==
+                WAIT_OBJECT_0,
+            "foreign-peer helper did not exit");
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+    } else {
+        static_cast<void>(acceptor.CancelAndJoin(5'000));
+    }
+    CloseHandle(connected);
 }
 
 void RunDeadlineCheck() {
@@ -385,9 +465,43 @@ int RunLoopbackAcceptorTests() {
     RunConcurrentWinSockCheck();
     RunInvalidLifecycleCheck();
     RunAcceptSuccessCheck();
+    RunForeignPeerRejectionCheck();
     RunDeadlineCheck();
     RunConcurrentOpenCheck();
     RunConcurrentCancelCompleteCheck();
     RunRepeatedLifecycleCheck();
     return Failures;
+}
+
+int RunForeignLoopbackPeerHelper(
+    const wchar_t* portText,
+    const wchar_t* eventHandleText) {
+    wchar_t* portEnd = nullptr;
+    wchar_t* handleEnd = nullptr;
+    const auto port = std::wcstoul(portText, &portEnd, 10);
+    const auto inherited =
+        std::wcstoull(eventHandleText, &handleEnd, 10);
+    if (portText == portEnd ||
+        eventHandleText == handleEnd ||
+        *portEnd != L'\0' ||
+        *handleEnd != L'\0' ||
+        port == 0 ||
+        port > 65535 ||
+        inherited == 0 ||
+        !EnsureWinSock()) {
+        return 2;
+    }
+
+    auto socket = ConnectToLoopback(
+        static_cast<std::uint16_t>(port));
+    if (!socket.IsValid()) {
+        return 1;
+    }
+    const HANDLE connected = reinterpret_cast<HANDLE>(
+        static_cast<std::uintptr_t>(inherited));
+    if (SetEvent(connected) == FALSE) {
+        return 1;
+    }
+    Sleep(1'000);
+    return 0;
 }

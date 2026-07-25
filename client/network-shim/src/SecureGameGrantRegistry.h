@@ -46,6 +46,12 @@ struct SecureGameGrantClaim final {
     std::uint64_t grantGeneration = 0;
 };
 
+struct SecureGameGrantTarget final {
+    char tlsHost[EndpointManifestMaximumDnsBytes + 1]{};
+    std::uint16_t tlsHostLength = 0;
+    std::uint16_t tlsPort = 0;
+};
+
 struct SecureGameGrantRegistrySnapshot final {
     SecureGameGrantState state = SecureGameGrantState::Empty;
     std::uint64_t grantGeneration = 0;
@@ -53,7 +59,7 @@ struct SecureGameGrantRegistrySnapshot final {
 };
 
 // Fixed-memory, process-local owner for at most one authenticated game grant.
-// It is not wired into the exported proxy in Slice 7. All methods are bounded;
+// Slice 8 wires this owner into the exported proxy. All methods are bounded;
 // no timer or worker thread is created, and expiry is enforced lazily on each
 // state transition.
 class SecureGameGrantRegistry final {
@@ -74,6 +80,11 @@ public:
         std::uint64_t proxyGeneration,
         const ClientRoute& route,
         SecureGameGrantClaim* claim) noexcept;
+    bool MatchesPendingRoute(
+        const ClientRoute& route) noexcept;
+    SecureGameGrantResult TryCopyClaimedTarget(
+        const SecureGameGrantClaim& claim,
+        SecureGameGrantTarget* target) noexcept;
     SecureGameGrantResult ReturnUnpresented(
         const SecureGameGrantClaim& claim) noexcept;
     SecureGameGrantResult BeginPresentation(

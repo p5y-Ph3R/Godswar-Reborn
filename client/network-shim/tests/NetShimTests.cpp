@@ -4,15 +4,20 @@
 #include "EndpointManifestTests.h"
 #include "ExternalTcpConnectorTests.h"
 #include "LoopbackAcceptorTests.h"
+#include "LoopbackPeerOwnerTests.h"
 #include "NativeClientBridgeTests.h"
 #include "NativeClientCoordinatorTests.h"
 #include "OpaqueDuplexPumpTests.h"
 #include "SchannelClientStreamTests.h"
+#include "SecureClientRuntimeTests.h"
+#include "SecureClientSessionTests.h"
 #include "SecureClientProtocolTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
+#include "SecureManifestProbe.h"
 #include "SecureOuterControlTests.h"
 #include "SecureOuterStreamTests.h"
+#include "VerifiedImageFileTests.h"
 #include "WinSocketByteStreamTests.h"
 
 #include "../src/LegacyClientApi.h"
@@ -36,7 +41,6 @@ using godswar::network::NativeClientCoordinator;
 using godswar::network::NativeClientRegistryCapacity;
 using godswar::network::NativeProxyId;
 using godswar::network::NetClientProxy;
-using godswar::network::ProcessNativeClientCoordinator;
 using godswar::network::TryCopyClientRoute;
 using Factory = void*(__cdecl*)();
 
@@ -126,14 +130,17 @@ bool IsAddressInModule(const void* address, HMODULE module) {
 }
 
 void RunProxyUnitChecks() {
-    auto& coordinator = ProcessNativeClientCoordinator();
+    NativeClientCoordinator coordinator;
     const auto beforeCreate = coordinator.Snapshot();
     Check(
         beforeCreate.capacity == NativeClientRegistryCapacity,
         "process coordinator capacity changed");
 
     FakeLegacyClient legacy;
-    auto* client = NetClientProxy::Create(&legacy);
+    auto* client =
+        NetClientProxy::CreateWithCoordinatorForTesting(
+            &legacy,
+            &coordinator);
     Check(client != nullptr, "proxy factory returned null");
     if (client == nullptr) {
         return;
@@ -260,13 +267,12 @@ void RunProxyNoDowngradeChecks() {
             !client->Connect(),
             "secure route downgraded to raw stock Connect");
         Check(
-            legacy.connectCalls == 0,
-            "secure/rejected route invoked raw stock Connect");
-        if (decision != ClientRouteDecision::Reject) {
-            Check(
-                GetLastError() == ERROR_NOT_SUPPORTED,
-                "dormant secure route returned an unstable error");
-        }
+            legacy.setHostCalls == 0 &&
+                legacy.connectCalls == 0,
+            "secure/rejected route touched the raw stock endpoint");
+        Check(
+            GetLastError() == ERROR_ACCESS_DENIED,
+            "secure/rejected route returned an unstable error");
         client->Release();
         Check(
             legacy.releaseCalls == 1 &&
@@ -301,7 +307,7 @@ void RunProxyNoDowngradeChecks() {
     client->SetHost(overlong, 6599);
     Check(
         !client->Connect() &&
-            legacy.setHostCalls == 1 &&
+            legacy.setHostCalls == 0 &&
             legacy.connectCalls == 0,
         "invalid SetHost reused an older authoritative route");
     client->Release();
@@ -422,22 +428,60 @@ void RunRejectedShimProbe(
 int wmain(int argumentCount, wchar_t** arguments) {
     const bool full =
         argumentCount == 1;
-    const bool offline =
+    const bool offlineOnly =
         argumentCount == 2 &&
         std::wcscmp(arguments[1], L"--offline") == 0;
+    const bool offlineProbe =
+        argumentCount == 3 &&
+        std::wcscmp(arguments[1], L"--offline-probe") == 0;
+    const bool offline = offlineOnly || offlineProbe;
     const bool probe =
         argumentCount == 3 &&
-        std::wcscmp(arguments[1], L"--probe") == 0;
+        (std::wcscmp(arguments[1], L"--probe") == 0 ||
+            offlineProbe);
     const bool rejectedProbe =
         argumentCount == 4 &&
         std::wcscmp(arguments[1], L"--probe-rejected") == 0;
-    if (!full && !offline && !probe && !rejectedProbe) {
+    const bool manifestProbe =
+        argumentCount == 4 &&
+        std::wcscmp(
+            arguments[1],
+            L"--offline-manifest-probe") == 0;
+    const bool contractProbe =
+        argumentCount == 3 &&
+        std::wcscmp(
+            arguments[1],
+            L"--offline-contract-probe") == 0;
+    const bool foreignPeerHelper =
+        argumentCount == 4 &&
+        std::wcscmp(
+            arguments[1],
+            L"--foreign-loopback-connect") == 0;
+    if (!full && !offline && !probe && !rejectedProbe &&
+        !manifestProbe && !contractProbe &&
+        !foreignPeerHelper) {
         std::fprintf(
             stderr,
             "Usage: Godswar.NetShim.Checks.exe "
-            "[--offline | --probe <Net.dll> | "
+            "[--offline | --offline-probe <Net.dll> | "
+            "--offline-contract-probe <Net.dll> | "
+            "--offline-manifest-probe <Net.dll> <RebornNetwork.gwem> | "
+            "--probe <Net.dll> | "
             "--probe-rejected <Net.dll> <Win32Error>]\n");
         return 2;
+    }
+    if (foreignPeerHelper) {
+        return RunForeignLoopbackPeerHelper(
+            arguments[2],
+            arguments[3]);
+    }
+    if (contractProbe) {
+        return RunSecureCandidateContractProbe(arguments[2]);
+    }
+    if (manifestProbe) {
+        return RunSecureManifestProbe(
+            arguments[2],
+            arguments[3]);
     }
 
     DWORD expectedProbeError = ERROR_SUCCESS;
@@ -464,13 +508,17 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunAvatarPreloadTests();
     Failures += RunBoundedChunkQueueTests();
     Failures += RunEndpointManifestTests();
+    Failures += RunLoopbackPeerOwnerTests();
     Failures += RunOpaqueDuplexPumpTests();
     Failures += RunSchannelClientStreamTests(!offline);
+    Failures += RunSecureClientRuntimeTests();
+    Failures += RunSecureClientSessionTests();
     Failures += RunSecureClientProtocolTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();
     Failures += RunSecureOuterControlTests();
     Failures += RunSecureOuterStreamTests();
+    Failures += RunVerifiedImageFileTests();
     Failures += RunNativeClientCoordinatorTests();
     if (!offline) {
         Failures += RunExternalTcpConnectorTests();

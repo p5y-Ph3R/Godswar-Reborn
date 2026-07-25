@@ -1,5 +1,6 @@
 #include "LegacyModule.h"
 #include "NetClientProxy.h"
+#include "SecureClientRuntime.h"
 
 #include <Windows.h>
 
@@ -49,6 +50,11 @@ bool EnsureLegacyInitialized() noexcept {
 } // namespace
 
 extern "C" void* __cdecl NetClientCreate() {
+    if (!godswar::network::
+            EnsureProcessSecureClientRuntimeInitialized(ShimModule)) {
+        SetLastError(ERROR_ACCESS_DENIED);
+        return nullptr;
+    }
     if (!EnsureLegacyInitialized()) {
         return nullptr;
     }

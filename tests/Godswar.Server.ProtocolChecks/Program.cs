@@ -153,6 +153,9 @@ internal static partial class Program
             (
                 "Secure Phase 2 authentication idle transition",
                 ClientSessionRuntimeChecks.RunSecureAuthenticationIdleTransitionAsync),
+            (
+                "Mutually exclusive raw or secure listener profile",
+                ServerListenerProfileChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

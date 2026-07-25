@@ -99,3 +99,12 @@ This is the version ledger for
   remains absent. Slice 8 is controlled activation and route wiring behind
   production manifest, backup/reset, authorized-trust, socket-test, and
   rollback gates.
+- `1.19` (`2026-07-25`): Wired signed-manifest Login/Game routing and secure
+  sessions into the exported x86 proxy, withheld secure external routes from
+  the stock DLL, added fail-closed one-shot activation, grant-gated game
+  routing, Origin-PID loopback ownership, handle-held stock-DLL loading,
+  candidate-bound manifest trust, coherent raw-or-TLS startup, and guarded
+  monotonic-floor Apply/Restore with interruption and forgery tests.
+  Source/offline checks pass. No client, HKLM state, trust, account store,
+  listener, or UDP changed live; controlled-host acceptance remains pending
+  and Slice 9 is next.

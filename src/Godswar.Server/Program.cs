@@ -29,12 +29,14 @@ var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
     options.Network.MaxUnauthenticatedConnections,
     options.Network.MaxUnauthenticatedConnectionsPerIp,
     options.Network.MaxUnauthenticatedConnectionsPerPrefix));
-var rawCompatibilityEnabled = !options.Secure.Enabled;
+var listenerProfile = ServerListenerProfile.Build(options);
+var rawCompatibilityEnabled =
+    listenerProfile.Transport == ServerListenerTransport.RawTcp;
 var loginServer = rawCompatibilityEnabled
     ? new TcpEndpointServer(
         NetworkEndpointRole.Login,
-        options.Login.BindHost,
-        options.Login.Port,
+        listenerProfile.Login.Host,
+        listenerProfile.Login.Port,
         options.Network,
         admission,
         session => new LoginClientHandler(session, store, options))
@@ -43,8 +45,8 @@ var loginServer = rawCompatibilityEnabled
 var gameServer = rawCompatibilityEnabled
     ? new TcpEndpointServer(
         NetworkEndpointRole.Game,
-        options.Game.BindHost,
-        options.Game.Port,
+        listenerProfile.Game.Host,
+        listenerProfile.Game.Port,
         options.Network,
         admission,
         session => new GameClientHandler(
@@ -91,8 +93,8 @@ var secureLoginServer = secureTransportFactory is null
     ? null
     : new TcpEndpointServer(
         NetworkEndpointRole.Login,
-        options.Secure.Login.BindHost,
-        options.Secure.Login.Port,
+        listenerProfile.Login.Host,
+        listenerProfile.Login.Port,
         options.Network,
         admission,
         session => new LoginClientHandler(
@@ -107,8 +109,8 @@ var secureGameServer = secureTransportFactory is null
     ? null
     : new TcpEndpointServer(
         NetworkEndpointRole.Game,
-        options.Secure.Game.BindHost,
-        options.Secure.Game.Port,
+        listenerProfile.Game.Host,
+        listenerProfile.Game.Port,
         options.Network,
         admission,
         session => new GameClientHandler(
@@ -148,15 +150,62 @@ var runtimeTasks = new List<Task>
     registry.RunExperienceBoostStatusReconciliationAsync(shutdown.Token),
     registry.RunZodiacEnergyAccrualAsync(shutdown.Token)
 };
+var endpointServers = new List<TcpEndpointServer>(2);
 if (loginServer is not null && gameServer is not null)
 {
+    endpointServers.Add(loginServer);
+    endpointServers.Add(gameServer);
     runtimeTasks.Add(loginServer.RunAsync(shutdown.Token));
     runtimeTasks.Add(gameServer.RunAsync(shutdown.Token));
 }
 if (secureLoginServer is not null && secureGameServer is not null)
 {
+    endpointServers.Add(secureLoginServer);
+    endpointServers.Add(secureGameServer);
     runtimeTasks.Add(secureLoginServer.RunAsync(shutdown.Token));
     runtimeTasks.Add(secureGameServer.RunAsync(shutdown.Token));
 }
 
-await Task.WhenAll(runtimeTasks);
+if (endpointServers.Count != 2)
+{
+    throw new InvalidOperationException(
+        "Exactly one coherent login/game listener pair is required.");
+}
+
+var endpointTasks = runtimeTasks.Skip(runtimeTasks.Count - 2).ToArray();
+foreach (var endpointTask in endpointTasks)
+{
+    _ = endpointTask.ContinueWith(
+        static (_, state) =>
+            ((CancellationTokenSource)state!).Cancel(),
+        shutdown,
+        CancellationToken.None,
+        TaskContinuationOptions.OnlyOnFaulted |
+            TaskContinuationOptions.ExecuteSynchronously,
+        TaskScheduler.Default);
+}
+
+try
+{
+    await Task.WhenAll(endpointServers.Select(
+        server => server.WaitUntilStartedAsync(shutdown.Token))).WaitAsync(
+        TimeSpan.FromSeconds(10),
+        shutdown.Token);
+    Console.WriteLine(
+        $"Listener profile ready: {listenerProfile.Transport} " +
+        $"({listenerProfile.Login.Port}/{listenerProfile.Game.Port})");
+    await Task.WhenAll(runtimeTasks);
+}
+catch
+{
+    shutdown.Cancel();
+    try
+    {
+        await Task.WhenAll(runtimeTasks);
+    }
+    catch
+    {
+        // Preserve the initiating startup/runtime exception below.
+    }
+    throw;
+}

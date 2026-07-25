@@ -24,6 +24,7 @@ using godswar::network::SecureGameGrantPolicy;
 using godswar::network::SecureGameGrantRegistry;
 using godswar::network::SecureGameGrantResult;
 using godswar::network::SecureGameGrantState;
+using godswar::network::SecureGameGrantTarget;
 using godswar::network::TryCopyClientRoute;
 using godswar::network::tests::BuildSecureGrantTestBytes;
 using godswar::network::tests::BuildSecureGrantTestManifest;
@@ -168,6 +169,13 @@ void CheckClaimLifecycle() {
 
     SecureGameGrantClaim claim{};
     Check(
+        registry.MatchesPendingRoute(Route()) &&
+            !registry.MatchesPendingRoute(
+                Route("wrong.reborn.test")) &&
+            !registry.MatchesPendingRoute(
+                Route("game-route.reborn.test", 7001)),
+        "pending-route inspection did not require an exact live grant");
+    Check(
         registry.Claim(
             7,
             11,
@@ -187,6 +195,19 @@ void CheckClaimLifecycle() {
             registry.Snapshot().state ==
                 SecureGameGrantState::Claimed,
         "exact logical redirect did not claim grant");
+    Check(
+        !registry.MatchesPendingRoute(Route()),
+        "claimed grant remained available to route classification");
+
+    SecureGameGrantTarget target{};
+    Check(
+        registry.TryCopyClaimedTarget(claim, &target) ==
+                SecureGameGrantResult::Success &&
+            std::strcmp(target.tlsHost, "game.reborn.test") == 0 &&
+            target.tlsHostLength ==
+                std::strlen("game.reborn.test") &&
+            target.tlsPort == 7443,
+        "claimed grant did not expose its bounded nonsecret TLS target");
 
     SecureGameGrantClaim duplicate{};
     Check(
@@ -196,6 +217,10 @@ void CheckClaimLifecycle() {
 
     auto stale = claim;
     ++stale.proxyGeneration;
+    Check(
+        registry.TryCopyClaimedTarget(stale, &target) ==
+                SecureGameGrantResult::StaleClaim,
+        "stale claim copied a live TLS target");
     Check(
         registry.ReturnUnpresented(stale) ==
                 SecureGameGrantResult::StaleClaim &&

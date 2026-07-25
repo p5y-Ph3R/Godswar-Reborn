@@ -142,6 +142,78 @@ SecureGameGrantResult SecureGameGrantRegistry::Claim(
     return SecureGameGrantResult::Success;
 }
 
+bool SecureGameGrantRegistry::MatchesPendingRoute(
+    const ClientRoute& route) noexcept {
+    if (route.hostLength == 0 ||
+        route.hostLength > NativeRouteHostMaximumBytes ||
+        route.port == 0) {
+        return false;
+    }
+
+    std::uint64_t now = 0;
+    if (!TryGetNow(&now)) {
+        return false;
+    }
+
+    ExclusiveLock guard(&lock_);
+    if (ClearIfExpiredLocked(now) ||
+        state_ != SecureGameGrantState::Pending ||
+        !grant_.IsValid()) {
+        return false;
+    }
+
+    return route.port == grant_.RoutePort() &&
+        route.hostLength == grant_.RouteHostLength() &&
+        std::memcmp(
+            route.host,
+            grant_.RouteHost(),
+            route.hostLength) == 0;
+}
+
+SecureGameGrantResult SecureGameGrantRegistry::TryCopyClaimedTarget(
+    const SecureGameGrantClaim& claim,
+    SecureGameGrantTarget* target) noexcept {
+    if (target == nullptr ||
+        claim.proxyId == 0 ||
+        claim.proxyGeneration == 0 ||
+        claim.grantGeneration == 0) {
+        return SecureGameGrantResult::InvalidArgument;
+    }
+    *target = SecureGameGrantTarget{};
+
+    std::uint64_t now = 0;
+    if (!TryGetNow(&now)) {
+        return SecureGameGrantResult::ClockUnavailable;
+    }
+
+    ExclusiveLock guard(&lock_);
+    if (ClearIfExpiredLocked(now)) {
+        return SecureGameGrantResult::Expired;
+    }
+    if (!ClaimMatchesLocked(claim)) {
+        return SecureGameGrantResult::StaleClaim;
+    }
+
+    const auto hostLength = grant_.TlsHostLength();
+    if (hostLength == 0 ||
+        hostLength > EndpointManifestMaximumDnsBytes ||
+        grant_.TlsPort() == 0) {
+        return SecureGameGrantResult::PolicyRejected;
+    }
+
+    SecureGameGrantTarget candidate{};
+    std::memcpy(
+        candidate.tlsHost,
+        grant_.TlsHost(),
+        hostLength);
+    candidate.tlsHost[hostLength] = '\0';
+    candidate.tlsHostLength =
+        static_cast<std::uint16_t>(hostLength);
+    candidate.tlsPort = grant_.TlsPort();
+    *target = candidate;
+    return SecureGameGrantResult::Success;
+}
+
 SecureGameGrantResult SecureGameGrantRegistry::ReturnUnpresented(
     const SecureGameGrantClaim& claim) noexcept {
     if (claim.proxyId == 0 ||

@@ -1,4 +1,5 @@
 #include "LoopbackAcceptor.h"
+#include "LoopbackPeerOwner.h"
 #include "WinSockRuntime.h"
 
 #include <WS2tcpip.h>
@@ -10,6 +11,7 @@
 namespace {
 
 constexpr DWORD DestructorJoinMilliseconds = 5'000;
+constexpr unsigned MaximumForeignPeerRejections = 8;
 
 struct AbsoluteDeadline final {
     ULONGLONG value = 0;
@@ -378,6 +380,7 @@ unsigned LoopbackAcceptor::AcceptWorker() noexcept {
     sockaddr_in peer{};
     LoopbackAcceptFailure terminalFailure =
         LoopbackAcceptFailure::None;
+    unsigned foreignPeerRejections = 0;
 
     for (;;) {
         const auto waitResult = WSAWaitForMultipleEvents(
@@ -427,6 +430,25 @@ unsigned LoopbackAcceptor::AcceptWorker() noexcept {
                         &nonblocking) == SOCKET_ERROR) {
                     accepted.Reset();
                     terminalFailure = LoopbackAcceptFailure::Accept;
+                    break;
+                }
+                if (!IsLoopbackPeer(peer)) {
+                    accepted.Reset();
+                    terminalFailure =
+                        LoopbackAcceptFailure::NonLoopbackPeer;
+                    break;
+                }
+                if (!IsAcceptedLoopbackPeerOwnedByCurrentProcess(
+                        accepted.Get())) {
+                    accepted.Reset();
+                    ++foreignPeerRejections;
+                    if (foreignPeerRejections >=
+                        MaximumForeignPeerRejections) {
+                        terminalFailure =
+                            LoopbackAcceptFailure::ForeignProcessPeer;
+                        break;
+                    }
+                    continue;
                 }
                 break;
             }
@@ -445,14 +467,11 @@ unsigned LoopbackAcceptor::AcceptWorker() noexcept {
     AcquireSRWLockExclusive(&lock_);
     if (state_ == State::Cancelled) {
         // The owner already selected the terminal reason.
-    } else if (accepted.IsValid() && IsLoopbackPeer(peer)) {
+    } else if (accepted.IsValid()) {
         accepted_ = static_cast<SocketHandle&&>(accepted);
         state_ = State::Accepted;
         failure_ = LoopbackAcceptFailure::None;
     } else {
-        if (accepted.IsValid()) {
-            terminalFailure = LoopbackAcceptFailure::NonLoopbackPeer;
-        }
         failure_ = terminalFailure;
         state_ = State::Failed;
     }

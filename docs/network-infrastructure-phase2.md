@@ -2,13 +2,13 @@
 
 ## Status
 
-- Specification version: `1.11`
+- Specification version: `1.12`
 - Last updated: `2026-07-25`
-- Runtime status: Slice 7 auth, tickets, game bind, and native offline primitives
-  are implemented. Secure/client remain disabled/uninstalled; default starts
-  raw `5999/7000` only, while secure mode suppresses both. UDP is absent
-- Current next milestone: Slice 8 controlled activation and exported-client
-  route wiring
+- Runtime status: Slice 8 exported secure sessions, guarded activation/restore,
+  and coherent listener startup pass source/offline checks. The client remains
+  uninstalled, secure mode disabled, and UDP absent
+- Current next milestone: controlled-host Slice 8 acceptance, then Slice 9
+  authenticated UDP binding
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Current predecessor Origin:
@@ -283,11 +283,12 @@ failures before continuing.
 7. Completed in source/offline checks: bounded PBKDF2 authentication and
    plaintext migration, grant-before-redirect ordering, hash-only bounded
    single-use tickets, game bind, authoritative bound principals, and native
-   grant-registry/bind primitives. The client policy is not wired or installed.
-8. Current: controlled activation and route wiring. Supply production manifest
-   material, use authorized trust, run controlled-host socket/original-client
-   tests, install through a guarded backup, and verify secure mode omits raw.
-   Keep it disabled while the client is uninstalled/pass-through. No UDP.
+   grant-registry/bind primitives.
+8. Completed in source/offline checks: signed Login/Game routes, Schannel
+   sessions, grant-gated binding, stock-DLL hardening, guarded Apply/Restore,
+   and coherent raw-or-TLS startup. Live account, trust, socket, and client
+   acceptance remain pending; see the
+   [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
 
 Focused slice-4 check:
 
@@ -299,17 +300,10 @@ dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.Protocol
 
 ### Final loading-gate V4 decision
 
-Evidence `20260724T095739213Z-db16daa7` is sealed `Fail`. Origin PID `64928`
-established redirected TCP to `127.1.1.110:7000`, but the server received no
-`LoginGameServer`; CharacterSelection, AfterLogin, and V4 preload never ran.
-No new dump appeared. This does not prove the preload path caused the stall,
-but it fails the agreed acceptance branch.
-
-The mandatory Net-first rollback completed. Current state is predecessor
+Evidence `20260724T095739213Z-db16daa7` is sealed `Fail`; the client never
+reached CharacterSelection. Mandatory Net-first rollback restored predecessor
 Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
-`NetLegacy.dll`. Phase 1 remains unaccepted. Do not implement another avatar
-iteration; proceed with Phase 2. Pass-through `528913...D17A6DD` remains a
-separate recovery candidate if later needed.
+`NetLegacy.dll`. Phase 1 remains unaccepted; full evidence stays in its runbook.
 
 ### Automated Phase 2 gates
 
@@ -341,10 +335,6 @@ separate recovery candidate if later needed.
   handles, queue depth, bytes/frames per second, and recovery time. Results are
   local baselines, never production guarantees.
 
-Every external decoder is a pure bounded state-machine/fuzz entry point.
-Arbitrary bytes may return a finite rejection but may not cause unbounded
-allocation, work, logging, an uncaught exception, or a process crash.
-
 ## Rollback
 
 - Phase 2 begins from the pinned rolled-back predecessor: Origin
@@ -373,7 +363,7 @@ Phase 2 is accepted only when the original client authenticates over TLS,
 receives and stores a grant before redirect, binds the game connection with a
 single-use ticket, enters the world, completes the parity/soak matrix, fails
 closed without raw downgrade, and can be restored exactly to the pinned
-pre-Phase-2 client state. Slice 7 source completion does not claim activation,
+pre-Phase-2 client state. Slice 8 source completion does not claim activation,
 original-client acceptance, V4 acceptance, or Phase 1 acceptance.
 
 Still required during the transport implementation slices:

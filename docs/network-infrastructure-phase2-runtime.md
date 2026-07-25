@@ -77,8 +77,13 @@ maximum `8196`-byte legacy packet.
 | `idleTimeoutMilliseconds` | `90000` |
 | `gracefulDrainTimeoutMilliseconds` | `5000` |
 
-The TLS-handshake limit is validated now but cannot be consumed before the TLS
-listener is added.
+The TLS-handshake limit is consumed when the mutually exclusive secure
+listener profile is selected.
+
+`ServerListenerProfile` permits exactly one coherent raw or TLS Login/Game
+pair with distinct valid ports. Startup requires both endpoint servers to
+report ready within ten seconds; either endpoint fault cancels and drains the
+shared lifetime.
 
 ## Metrics
 
@@ -108,12 +113,13 @@ independent slow sessions, absolute read/write deadlines, finite metric tags,
 tracked loopback connections, and bounded shutdown. Slice 3 byte/cipher parity
 remains a mandatory regression gate.
 
-## Remaining Phase 2 work
+## Current activation boundary
 
-Slices 5 and 6 provide the uninstalled native coordinator, signed endpoint
-policy, Schannel/framing primitives, and bounded `SslStream` candidate; see
+Slices 5-8 provide the uninstalled native coordinator, signed endpoint policy,
+Schannel/framing, exported secure session, and guarded activation; see
 [`network-infrastructure-phase2-client-runtime.md`](network-infrastructure-phase2-client-runtime.md)
 and [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
-Slice 7 replaces permissive legacy account upsert with
-password verification and single-use game tickets. Until Slice 7 passes,
-raw `5999/7000` is a local development protocol and is not secure.
+Live secure mode remains disabled pending account backup/reset, operational
+keys/trust, controlled-host sockets, and original-client acceptance. Raw
+`5999/7000` remains a local development protocol and is not secure. UDP is
+absent; Slice 9 binding follows controlled Slice 8 acceptance.

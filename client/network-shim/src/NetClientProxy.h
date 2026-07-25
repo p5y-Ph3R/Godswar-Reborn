@@ -3,6 +3,8 @@
 #include "AvatarPreviewGate.h"
 #include "LegacyClientApi.h"
 #include "NativeClientCoordinator.h"
+#include "SecureClientRuntime.h"
+#include "SecureClientSession.h"
 
 namespace godswar::network {
 
@@ -20,6 +22,10 @@ public:
     static ILegacyNetClient* CreateWithCoordinatorForTesting(
         ILegacyNetClient* legacyClient,
         NativeClientCoordinator* coordinator) noexcept;
+    static ILegacyNetClient* CreateWithRuntimeForTesting(
+        ILegacyNetClient* legacyClient,
+        NativeClientCoordinator* coordinator,
+        SecureClientRuntime* secureRuntime) noexcept;
 
     std::uint32_t Release() override;
     void SetHost(const char* host, std::uint16_t port) override;
@@ -35,6 +41,7 @@ private:
     NetClientProxy(
         ILegacyNetClient* legacyClient,
         NativeClientCoordinator* coordinator,
+        SecureClientRuntime* secureRuntime,
         NativeProxyId proxyId,
         bool enableAvatarGate,
         AvatarReadinessProbe readinessProbe,
@@ -42,8 +49,15 @@ private:
         AvatarPreloadRequester preloadRequester) noexcept;
     ~NetClientProxy() = default;
 
+    bool ConnectSecure(const ClientBridgePlan& plan) noexcept;
+    bool TryBuildSecureConfiguration(
+        SecureClientSessionConfiguration* configuration) noexcept;
+    void StopSecureSession() noexcept;
+
     ILegacyNetClient* legacyClient_;
     NativeClientCoordinator* coordinator_;
+    SecureClientRuntime* secureRuntime_;
+    SecureClientSession* secureSession_ = nullptr;
     NativeProxyId proxyId_;
     AvatarPreviewGate avatarPreviewGate_;
 };

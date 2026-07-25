@@ -7,27 +7,21 @@
 
 namespace godswar::network {
 
-bool FileMatchesSha256(
-    const wchar_t* path,
+bool FileHandleMatchesSha256(
+    HANDLE file,
     const std::uint8_t* expectedHash,
     std::size_t expectedHashSize) noexcept {
     constexpr DWORD Sha256Size = 32;
-    if (path == nullptr ||
+    if (file == nullptr ||
+        file == INVALID_HANDLE_VALUE ||
         expectedHash == nullptr ||
         expectedHashSize != Sha256Size) {
         SetLastError(ERROR_INVALID_PARAMETER);
         return false;
     }
 
-    const auto file = CreateFileW(
-        path,
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
-        nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
+    LARGE_INTEGER start{};
+    if (!SetFilePointerEx(file, start, nullptr, FILE_BEGIN)) {
         return false;
     }
 
@@ -102,7 +96,39 @@ bool FileMatchesSha256(
     if (provider != 0) {
         CryptReleaseContext(provider, 0);
     }
+    return succeeded;
+}
+
+bool FileMatchesSha256(
+    const wchar_t* path,
+    const std::uint8_t* expectedHash,
+    std::size_t expectedHashSize) noexcept {
+    if (path == nullptr) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return false;
+    }
+
+    const auto file = CreateFileW(
+        path,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+        nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    const bool succeeded = FileHandleMatchesSha256(
+        file,
+        expectedHash,
+        expectedHashSize);
+    const DWORD error = succeeded ? ERROR_SUCCESS : GetLastError();
     CloseHandle(file);
+    if (!succeeded) {
+        SetLastError(error);
+    }
     return succeeded;
 }
 

@@ -1,4 +1,5 @@
 #include "NativeClientCoordinator.h"
+#include "SecureClientRuntime.h"
 
 #include <limits>
 
@@ -330,7 +331,8 @@ NativeProxyId NativeClientCoordinator::NextProxyId() noexcept {
 }
 
 NativeClientCoordinator& ProcessNativeClientCoordinator() noexcept {
-    static NativeClientCoordinator coordinator;
+    static NativeClientCoordinator coordinator(
+        ProcessSecureClientRuntime().RoutePolicy());
     return coordinator;
 }
 

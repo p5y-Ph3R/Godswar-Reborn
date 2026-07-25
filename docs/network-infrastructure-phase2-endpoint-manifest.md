@@ -3,11 +3,12 @@
 ## Status and ownership
 
 - Format version: `1.0`
-- Specification revision: `1.1`
+- Specification revision: `1.2`
 - Last updated: `2026-07-25`
-- Runtime status: Slice 6 parser, verifier, and one-shot loader are
-  implemented and tested; no production key material, registry provider,
-  installer, or live route activation is enabled
+- Runtime status: parser, verifier, one-shot loader, candidate `.gwkey` contract,
+  64-bit HKLM provider, exported route integration, and guarded installer are
+  implemented and offline-tested; operational keys and live activation remain
+  absent
 - Parent protocol:
   [`network-infrastructure-phase2-protocol.md`](network-infrastructure-phase2-protocol.md)
 
@@ -17,7 +18,7 @@ and key-rotation contract for `RebornNetwork.gwem`.
 All multibyte integers inherit the parent protocol's unsigned big-endian
 network byte order.
 
-## Slice 6 implementation checkpoint
+## Slice 6-8 implementation checkpoint
 
 The native x86 candidate now contains:
 
@@ -35,9 +36,12 @@ The native x86 candidate now contains:
 - focused golden-vector, boundary, truncation, signature, environment,
   rollback, validity, DNS, audience, server-ID, active-writer, no-hot-reload,
   oversized-file, tamper, and reparse checks under
-  `client/network-shim/tests/EndpointManifest*`.
+  `client/network-shim/tests/EndpointManifest*`; and
+- a versioned read-only `.gwkey` candidate build contract plus offline probe
+  that verifies a manifest against the exact candidate's current/next key.
 
-The candidate tests use an ephemeral test-only P-256 private key. No private
+Tests use ephemeral P-256 private keys. The checked-in development coordinates
+are public-only placeholders whose private halves were discarded. No private
 key or development credential is shipped.
 
 ## Binary format
@@ -103,13 +107,15 @@ longer than 31 days.
 ## Rollback protection and key rotation
 
 The shim embeds current and next verification public keys plus a minimum
-sequence per environment. The guarded installer maintains the highest accepted
-sequence in an administrators/SYSTEM-write, users-read registry value under
-`HKLM\Software\Reborn\NetworkManifest`; missing or corrupt state fails closed
-in `SecureRequired`. A manifest sequence below either compiled or installed
-minimum is rejected. Key rotation first ships a shim that trusts current and
-next IDs, then signs a higher-sequence manifest with the next key, and a later
-shim removes the old key and advances its compiled minimum.
+sequence per environment. Activation uses the 64-bit view of
+`HKLM\Software\Reborn\NetworkManifest`: `ActivationMode` and `Environment` are
+`REG_DWORD`; `HighestAcceptedSequence` is `REG_QWORD`. Missing state means
+explicit `Disabled`. `SecureRequired` needs a known environment and nonzero
+floor; malformed state fails closed. Installer writes require elevation and
+explicit authorization, with SYSTEM/Administrators full control and Users
+read-only. A manifest sequence below either compiled or installed minimum is
+rejected. Key rotation ships current/next trust first, signs a higher-sequence
+manifest with next, then removes old trust and advances the compiled minimum.
 
 ## Loader and installer
 
@@ -118,23 +124,26 @@ reparse point or a final path outside the module directory, reads once into a
 fixed 4096-byte buffer, strictly parses, verifies the signature, and only then
 copies endpoints into runtime state. It never hot-reloads.
 
-The installer verifies a candidate with the same parser, atomically
-writes and flushes the higher registry minimum first, then atomically replaces
-and flushes the manifest from the same directory. An interruption between
-those steps fails closed and is repaired by installer recovery; it cannot
-reactivate the lower sequence.
+The installer binds the manifest to the exact candidate `.gwkey` contract,
+creates a checksummed exact-predecessor receipt, and advances the irreversible
+floor while activation remains `Disabled`. It then atomically installs and
+verifies the manifest, predecessor DLL, and candidate before committing
+`SecureRequired`. Failure and Restore disable first, retain the maximum of the
+current floor and freshly verified signed-manifest sequence, and reproduce the
+receipt-bound predecessor files.
+Interrupted stages remain disabled and cannot reactivate a lower sequence.
 
 ## Deliberately unconfigured production inputs
 
-Slice 6 does not invent security material that the project does not yet own:
+Slice 8 does not invent security material that the project does not yet own:
 
 - production current/next public keys and their key IDs;
 - per-environment compiled sequence floors;
-- the hardened HKLM highest-sequence reader and installer/writer;
 - a signed production or staging `RebornNetwork.gwem`;
-- live non-pass-through route-policy activation.
+- authorized TLS trust and live installed activation.
 
-Those inputs remain required before `SecureRequired` can be enabled. Missing
-or corrupt installed floor state must fail closed in that mode, as specified
-above. The candidate is not installed into the original game client and does
-not hot-reload a changed manifest.
+Those inputs and controlled-host acceptance remain required before live
+`SecureRequired`. The candidate is not installed into the original game client
+and does not hot-reload a changed manifest. Development key/manifest tooling is
+documented in the
+[Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).

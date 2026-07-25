@@ -2,12 +2,11 @@
 
 ## Status and ownership
 
-- Protocol version: `1.5`
+- Document revision: `1.6` (wire protocol remains `1.0`)
 - Last updated: `2026-07-25`
-- Runtime status: Slice 7 authentication, grants, single-use server tickets,
-  accepted game bind, and offline native grant/bind state machines are
-  implemented; listeners remain disabled, the client remains uninstalled and
-  pass-through, and UDP is absent
+- Runtime status: Slice 8 secure exported routing/session lifecycle and guarded
+  activation are implemented and offline-tested; listeners remain disabled,
+  the client remains uninstalled, and UDP is absent
 - Current predecessor Origin:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Current stock Net:
@@ -85,9 +84,9 @@ TLS and legacy traffic use separate listeners; the server never sniffs both
 protocols on one port. Listener profiles are mutually exclusive: with secure
 mode disabled (the checked-in default), only raw `5999/7000` start; with secure
 mode enabled, only secure `6599/7443` start and both raw compatibility
-listeners are suppressed. Because the client candidate remains uninstalled and
-pass-through, secure mode must remain disabled until controlled Slice 8
-activation.
+listeners are suppressed. Because the secure client candidate remains
+uninstalled, secure mode must remain disabled until controlled Slice 8
+acceptance.
 
 The exact bounded format, signature, rollback protection, loader, and key
 rotation contract is maintained separately in the
@@ -288,10 +287,10 @@ atomically consumed by a valid bind.
 ## Client lifecycle
 
 Do not infer role from factory-call order; Origin creates and replaces multiple
-network objects. Slice 7 implements and tests the grant decoder, signed-policy
-validation, one-grant registry, claim/presentation lifecycle, bind encoder, and
-result decoder below, but the exported process policy still returns
-`PassThrough`; external route wiring is Slice 8.
+network objects. Slice 8 wires the tested grant decoder, signed policy,
+one-grant claim/presentation lifecycle, bind I/O, and secure session into the
+exported process policy. The installed client remains at its explicit disabled
+baseline until guarded activation.
 
 1. `NetClientCreate` creates the verified stock client and registers a unique
    proxy ID with a process coordinator. It starts no thread/socket in
@@ -322,11 +321,11 @@ write uses a complete-send loop.
 
 ## Downgrade and ordering rules
 
-- Once Slice 8 selects a secure `Login` or `Game` route, the shim never contacts
-  raw external ports after TLS, certificate, ALPN, preface, authentication,
-  grant, or bind failure. The current disabled classifier deliberately selects
-  `PassThrough` before any secure attempt; that is an uninstalled compatibility
-  state, not a secure-failure fallback.
+- When `SecureRequired` selects a secure `Login` or `Game` route, the shim
+  never contacts raw external ports after TLS, certificate, ALPN, preface,
+  authentication, grant, or bind failure. Missing activation state selects
+  the explicit `Disabled` pass-through baseline before any secure attempt; it
+  is an uninstalled compatibility state, not a secure-failure fallback.
 - The secure game endpoint comes from the authenticated grant and signed
   allowlist, not from the legacy redirect alone.
 - One outer writer serializes the grant before the matching legacy redirect.
