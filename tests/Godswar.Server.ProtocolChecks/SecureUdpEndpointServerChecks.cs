@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Buffers.Binary;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
 
@@ -14,6 +15,7 @@ internal static class SecureUdpEndpointServerChecks
     {
         await CheckLoopbackLifecycleAndBindingAsync();
         CheckRateLimiterBounds();
+        CheckUnknownProtectedCandidateAdmission();
     }
 
     private static async Task CheckLoopbackLifecycleAndBindingAsync()
@@ -204,8 +206,15 @@ internal static class SecureUdpEndpointServerChecks
         var time = new ManualTimeProvider();
         var limiter = new SecureUdpRateLimiter(
             globalLimit: 3,
+            unvalidatedLimit: 3,
             prefixLimit: 2,
             prefixCapacity: 2,
+            bindingProofLimit: 3,
+            bindingProofPrefixLimit: 2,
+            protectedCandidateLimit: 3,
+            protectedCandidatePrefixLimit: 2,
+            authenticatedSessionLimit: 3,
+            authenticatedSessionCapacity: 2,
             time);
         Check.True(
             limiter.TryAcquire(IPAddress.Parse("203.0.113.1")) &&
@@ -226,5 +235,87 @@ internal static class SecureUdpEndpointServerChecks
         Check.True(
             limiter.TryAcquire(IPAddress.Parse("192.0.2.1")),
             "UDP limiter window recovers");
+    }
+
+    private static void CheckUnknownProtectedCandidateAdmission()
+    {
+        var connectionId = Enumerable.Range(1, 16)
+            .Select(static value => checked((byte)value))
+            .ToArray();
+        using var authority = new SecureUdpSessionAuthority(
+            capacity: 1,
+            pendingTtl: TimeSpan.FromSeconds(30));
+        using var cookies = new SecureUdpCookieProtector(
+            new SecureUdpCookiePolicy(
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(60)),
+            serverId: 100,
+            udpPort: 7_444,
+            audience: "reborn-game");
+        using var addressValidation =
+            new SecureUdpAddressValidation(1_200, cookies);
+        var limiter = new SecureUdpRateLimiter(
+            globalLimit: 1,
+            unvalidatedLimit: 1,
+            prefixLimit: 1,
+            prefixCapacity: 1,
+            bindingProofLimit: 1,
+            bindingProofPrefixLimit: 1,
+            protectedCandidateLimit: 1,
+            protectedCandidatePrefixLimit: 1,
+            authenticatedSessionLimit: 1,
+            authenticatedSessionCapacity: 1);
+        var server = new SecureUdpEndpointServer(
+            "127.0.0.1",
+            port: 0,
+            maximumDatagramBytes: 1_200,
+            new SecureUdpBindingCoordinator(
+                addressValidation,
+                authority),
+            limiter,
+            authority);
+        using var client = new SecureUdpProtectedSession(
+            SecureUdpPeerRole.Client,
+            Enumerable.Repeat((byte)0x52, 32).ToArray(),
+            connectionId,
+            serverId: 100,
+            previousEpochOverlap: TimeSpan.FromSeconds(10));
+        Span<byte> pingPayload = stackalloc byte[
+            SecureUdpProtectedConstants.PingPayloadBytes];
+        BinaryPrimitives.WriteUInt64BigEndian(pingPayload, 1);
+        Span<byte> datagram = stackalloc byte[128];
+        Check.True(
+            client.TryProtect(
+                SecureUdpProtectedMessageType.Ping,
+                pingPayload,
+                datagram,
+                out var datagramBytes,
+                out _),
+            "unknown-session protected candidate encodes");
+        var remote = new IPEndPoint(
+            IPAddress.Parse("203.0.113.90"),
+            50_090);
+        Span<byte> response = stackalloc byte[128];
+        var first = server.ProcessDatagram(
+            datagram[..datagramBytes],
+            remote,
+            response);
+        var afterFirst = limiter.GetSnapshot();
+        authority.Dispose();
+        var second = server.ProcessDatagram(
+            datagram[..datagramBytes],
+            remote,
+            response);
+        var afterSecond = limiter.GetSnapshot();
+        Check.True(
+            first.Outcome ==
+                SecureUdpDatagramOutcome.ProtectedRejected &&
+            second.Outcome == SecureUdpDatagramOutcome.RateLimited &&
+            afterFirst.ProtectedCandidatePackets == 1 &&
+            afterFirst.ActiveAuthenticatedSessions == 0 &&
+            afterSecond.ProtectedCandidatePackets == 1 &&
+            afterSecond.ActiveAuthenticatedSessions == 0,
+            "unknown IDs exhaust bounded pre-auth admission before authority state is touched");
     }
 }

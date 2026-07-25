@@ -15,7 +15,10 @@ internal enum SecureUdpSessionBindStatus : byte
     Expired = 4,
     InvalidProof = 5,
     EndpointConflict = 6,
-    InvalidEndpoint = 7
+    InvalidEndpoint = 7,
+    Rebound = 8,
+    ReplayRejected = 9,
+    RebindRateLimited = 10
 }
 
 internal readonly record struct SecureUdpSessionRegistrationResult(

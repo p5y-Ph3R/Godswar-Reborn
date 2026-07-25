@@ -122,6 +122,11 @@ internal sealed class SecureNetworkOptions
             rawGamePort,
             Login.Port,
             Game.Port);
+        if (Udp.Enabled && !Enabled)
+        {
+            throw new InvalidDataException(
+                "Secure UDP requires the TLS secure transport to be enabled.");
+        }
         CertificatePath = CertificatePath?.Trim() ?? string.Empty;
 
         if (!Enabled)

@@ -8,13 +8,29 @@ internal sealed class SecureUdpRateLimiter
 {
     private static readonly TimeSpan Window = TimeSpan.FromSeconds(1);
 
+    private readonly int _authenticatedSessionCapacity;
+    private readonly int _authenticatedSessionLimit;
+    private readonly Dictionary<SecureUdpConnectionKey, int>
+        _authenticatedSessionCounts = [];
+    private readonly int _bindingProofLimit;
+    private readonly int _bindingProofPrefixLimit;
+    private readonly Dictionary<SecureUdpPrefix, int>
+        _bindingProofPrefixCounts = [];
+    private readonly int _protectedCandidateLimit;
+    private readonly int _protectedCandidatePrefixLimit;
+    private readonly Dictionary<SecureUdpPrefix, int>
+        _protectedCandidatePrefixCounts = [];
     private readonly int _globalLimit;
+    private readonly int _unvalidatedLimit;
     private readonly int _prefixCapacity;
     private readonly int _prefixLimit;
     private readonly object _sync = new();
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<SecureUdpPrefix, int> _prefixCounts = [];
     private int _globalCount;
+    private int _bindingProofCount;
+    private int _protectedCandidateCount;
+    private int _unvalidatedCount;
     private long _windowTimestamp;
 
     public SecureUdpRateLimiter(
@@ -22,12 +38,44 @@ internal sealed class SecureUdpRateLimiter
         int prefixLimit,
         int prefixCapacity,
         TimeProvider? timeProvider = null)
+        : this(
+            globalLimit,
+            unvalidatedLimit: globalLimit,
+            prefixLimit,
+            prefixCapacity,
+            bindingProofLimit: globalLimit,
+            bindingProofPrefixLimit: globalLimit,
+            protectedCandidateLimit: globalLimit,
+            protectedCandidatePrefixLimit: globalLimit,
+            authenticatedSessionLimit: globalLimit,
+            authenticatedSessionCapacity: 1,
+            timeProvider)
+    {
+    }
+
+    public SecureUdpRateLimiter(
+        int globalLimit,
+        int unvalidatedLimit,
+        int prefixLimit,
+        int prefixCapacity,
+        int bindingProofLimit,
+        int bindingProofPrefixLimit,
+        int protectedCandidateLimit,
+        int protectedCandidatePrefixLimit,
+        int authenticatedSessionLimit,
+        int authenticatedSessionCapacity,
+        TimeProvider? timeProvider = null)
     {
         if (globalLimit < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(globalLimit));
         }
-        if (prefixLimit < 1 || prefixLimit > globalLimit)
+        if (unvalidatedLimit < 1 || unvalidatedLimit > globalLimit)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(unvalidatedLimit));
+        }
+        if (prefixLimit < 1 || prefixLimit > unvalidatedLimit)
         {
             throw new ArgumentOutOfRangeException(nameof(prefixLimit));
         }
@@ -35,15 +83,67 @@ internal sealed class SecureUdpRateLimiter
         {
             throw new ArgumentOutOfRangeException(nameof(prefixCapacity));
         }
+        if (bindingProofLimit < 1 ||
+            bindingProofLimit > globalLimit)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(bindingProofLimit));
+        }
+        if (bindingProofPrefixLimit < 1 ||
+            bindingProofPrefixLimit > bindingProofLimit)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(bindingProofPrefixLimit));
+        }
+        if (protectedCandidateLimit < 1 ||
+            protectedCandidateLimit > globalLimit)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(protectedCandidateLimit));
+        }
+        if (protectedCandidatePrefixLimit < 1 ||
+            protectedCandidatePrefixLimit > protectedCandidateLimit)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(protectedCandidatePrefixLimit));
+        }
+        if (authenticatedSessionLimit < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(authenticatedSessionLimit));
+        }
+        if (authenticatedSessionCapacity < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(authenticatedSessionCapacity));
+        }
 
         _globalLimit = globalLimit;
+        _unvalidatedLimit = unvalidatedLimit;
         _prefixLimit = prefixLimit;
         _prefixCapacity = prefixCapacity;
+        _bindingProofLimit = bindingProofLimit;
+        _bindingProofPrefixLimit = bindingProofPrefixLimit;
+        _protectedCandidateLimit = protectedCandidateLimit;
+        _protectedCandidatePrefixLimit =
+            protectedCandidatePrefixLimit;
+        _authenticatedSessionLimit = authenticatedSessionLimit;
+        _authenticatedSessionCapacity = authenticatedSessionCapacity;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _windowTimestamp = _timeProvider.GetTimestamp();
     }
 
     public bool TryAcquire(IPAddress address)
+    {
+        return TryAcquireUnvalidated(address);
+    }
+
+    public bool TryAcquirePending(IPAddress address)
+    {
+        return TryAcquireUnvalidated(address);
+    }
+
+    public bool TryAcquireUnvalidated(IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
         if (!SecureUdpPrefix.TryCreate(address, out var prefix))
@@ -54,7 +154,8 @@ internal sealed class SecureUdpRateLimiter
         lock (_sync)
         {
             ResetWindowIfDue();
-            if (_globalCount >= _globalLimit)
+            if (_globalCount >= _globalLimit ||
+                _unvalidatedCount >= _unvalidatedLimit)
             {
                 return false;
             }
@@ -72,7 +173,119 @@ internal sealed class SecureUdpRateLimiter
             }
 
             _globalCount++;
+            _unvalidatedCount++;
             _prefixCounts[prefix] = count + 1;
+            return true;
+        }
+    }
+
+    public bool TryAcquireBindingProof(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (!SecureUdpPrefix.TryCreate(address, out var prefix))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            ResetWindowIfDue();
+            if (_globalCount >= _globalLimit ||
+                _bindingProofCount >= _bindingProofLimit)
+            {
+                return false;
+            }
+            if (!_bindingProofPrefixCounts.TryGetValue(
+                    prefix,
+                    out var count))
+            {
+                if (_bindingProofPrefixCounts.Count >=
+                    _prefixCapacity)
+                {
+                    return false;
+                }
+                count = 0;
+            }
+            if (count >= _bindingProofPrefixLimit)
+            {
+                return false;
+            }
+
+            _globalCount++;
+            _bindingProofCount++;
+            _bindingProofPrefixCounts[prefix] = count + 1;
+            return true;
+        }
+    }
+
+    public bool TryAcquireAuthenticatedSession(
+        SecureUdpConnectionKey connectionId)
+    {
+        if (connectionId == default)
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            ResetWindowIfDue();
+            if (!_authenticatedSessionCounts.TryGetValue(
+                    connectionId,
+                    out var count))
+            {
+                if (_authenticatedSessionCounts.Count >=
+                    _authenticatedSessionCapacity)
+                {
+                    return false;
+                }
+                count = 0;
+            }
+            if (count >= _authenticatedSessionLimit)
+            {
+                return false;
+            }
+
+            _authenticatedSessionCounts[connectionId] = count + 1;
+            return true;
+        }
+    }
+
+    public bool TryAcquireProtectedCandidate(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (!SecureUdpPrefix.TryCreate(address, out var prefix))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            ResetWindowIfDue();
+            if (_globalCount >= _globalLimit ||
+                _protectedCandidateCount >=
+                    _protectedCandidateLimit)
+            {
+                return false;
+            }
+            if (!_protectedCandidatePrefixCounts.TryGetValue(
+                    prefix,
+                    out var count))
+            {
+                if (_protectedCandidatePrefixCounts.Count >=
+                    _prefixCapacity)
+                {
+                    return false;
+                }
+                count = 0;
+            }
+            if (count >= _protectedCandidatePrefixLimit)
+            {
+                return false;
+            }
+
+            _globalCount++;
+            _protectedCandidateCount++;
+            _protectedCandidatePrefixCounts[prefix] = count + 1;
             return true;
         }
     }
@@ -84,8 +297,17 @@ internal sealed class SecureUdpRateLimiter
             ResetWindowIfDue();
             return new SecureUdpRateLimiterSnapshot(
                 _globalCount,
+                _unvalidatedCount,
+                _bindingProofCount,
+                _protectedCandidateCount,
                 _prefixCounts.Count,
+                _bindingProofPrefixCounts.Count,
+                _protectedCandidatePrefixCounts.Count,
+                _authenticatedSessionCounts.Count,
                 _globalLimit,
+                _unvalidatedLimit,
+                _bindingProofLimit,
+                _protectedCandidateLimit,
                 _prefixCapacity);
         }
     }
@@ -101,7 +323,13 @@ internal sealed class SecureUdpRateLimiter
 
         _windowTimestamp = now;
         _globalCount = 0;
+        _unvalidatedCount = 0;
+        _bindingProofCount = 0;
+        _protectedCandidateCount = 0;
         _prefixCounts.Clear();
+        _bindingProofPrefixCounts.Clear();
+        _protectedCandidatePrefixCounts.Clear();
+        _authenticatedSessionCounts.Clear();
     }
 
     private readonly record struct SecureUdpPrefix(
@@ -161,6 +389,15 @@ internal sealed class SecureUdpRateLimiter
 
 internal readonly record struct SecureUdpRateLimiterSnapshot(
     int CurrentPackets,
+    int UnvalidatedPackets,
+    int BindingProofPackets,
+    int ProtectedCandidatePackets,
     int ActivePrefixes,
+    int ActiveBindingProofPrefixes,
+    int ActiveProtectedCandidatePrefixes,
+    int ActiveAuthenticatedSessions,
     int GlobalLimit,
+    int UnvalidatedLimit,
+    int BindingProofLimit,
+    int ProtectedCandidateLimit,
     int PrefixCapacity);

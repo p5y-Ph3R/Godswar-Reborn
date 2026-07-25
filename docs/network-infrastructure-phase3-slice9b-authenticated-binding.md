@@ -1,10 +1,11 @@
 # Phase 3 Slice 9B authenticated UDP binding
 
-Document revision: 1.0
+Document revision: 1.1
 
 Wire revision: 1.0
 
-Status: implemented in source and verified offline; deliberately inactive
+Status: implemented in source and verified offline; checked-in activation
+remains disabled
 
 ## Scope
 
@@ -21,8 +22,8 @@ TLS connection. It adds:
   endpoint rejection;
 - bounded prefix/global admission, low-cardinality counters, and a loopback
   listener exercised only by tests; and
-- native x86 parsing and single-owner retention of the grant for a future UDP
-  worker.
+- native x86 parsing and single-owner retention of the grant for the subsequent
+  Slice 9C UDP worker.
 
 Gameplay remains on TLS. Slice 9B does not provide protected gameplay
 datagrams, AEAD, replay windows, UDP key epochs, NAT rebinding, keepalive,
@@ -229,22 +230,20 @@ vectors continue to prove that types 1 through 3 did not change.
 
 These are offline/local results, not a capacity claim or live activation.
 
-## Remaining Slice 9 work
+## Subsequent Slice 9 closeout
 
-Before UDP can be enabled, a reviewed protected-datagram ADR and implementation
-must add:
+Slice 9C completed the work that was intentionally outside Slice 9B:
+AES-256-GCM datagrams, replay/key epochs, authenticated NAT rebinding, a
+nonblocking native worker, keepalive/pacing, TLS-only fallback,
+authenticated-session priority, guarded activation, and bounded verification.
+The [protected-datagram document](network-infrastructure-phase3-slice9c-protected-datagrams.md)
+is the canonical wire specification, the
+[protected-UDP ADR](network-infrastructure-phase3-slice9c-protected-udp.md) is
+the overall completion overview, and the
+[runtime document](network-infrastructure-phase3-slice9-runtime.md) records
+runtime ownership and admission behavior.
 
-- an established-library or reviewed AEAD construction and nonce strategy;
-- packet sequence numbers, wraparound rules, bounded replay windows, and key
-  epochs with rotation overlap;
-- authenticated NAT rebinding without endpoint takeover;
-- a nonblocking native x86 UDP worker and lifecycle integration;
-- keepalive, RTT/loss handling, pacing, congestion-aware reduction, and
-  UDP-blocked TLS fallback;
-- authenticated-session priority and layered cost-aware admission;
-- protected gameplay message semantics, bounded queues, and cross-transport
-  reconciliation; and
-- loss, duplication, reordering, MTU, rotation, rebinding, fuzz, load, and
-  soak verification.
-
-Until those gates pass, no gameplay message may move from TLS to UDP.
+Closeout passed the full managed protocol suite (`121/121`), a Win32 Release
+native build with `/W4 /WX`, and five consecutive native offline passes.
+Checked-in UDP remains disabled, no client shim was installed, and gameplay
+remains on TLS. Gameplay transport migration belongs to Phase 4.

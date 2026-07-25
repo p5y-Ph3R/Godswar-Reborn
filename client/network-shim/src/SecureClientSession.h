@@ -8,6 +8,7 @@
 #include "SchannelClientStream.h"
 #include "SecureGameGrantRegistry.h"
 #include "SecureOuterStream.h"
+#include "SecureUdpClientWorker.h"
 
 #include <Windows.h>
 
@@ -65,6 +66,8 @@ struct SecureClientSessionSnapshot final {
     SchannelClientSnapshot tls{};
     SecureOuterSnapshot outer{};
     NativeClientBridgeSnapshot bridge{};
+    bool hasUdpWorker = false;
+    SecureUdpClientWorkerSnapshot udp{};
 };
 
 // Owns one secure outer connection and the loopback bridge used by the stock
@@ -86,6 +89,12 @@ public:
     void Disconnect() noexcept;
 
     SecureClientSessionSnapshot Snapshot() const noexcept;
+    // UDP status is observable but never participates in the TLS bridge
+    // health decision. Kept pure so the fallback boundary is regression
+    // tested without requiring an external TLS endpoint.
+    static bool ShouldContinueTlsBridge(
+        const NativeClientBridgeSnapshot& bridge,
+        const SecureUdpClientWorkerSnapshot* udp) noexcept;
 
 private:
     bool PrepareTarget(
@@ -94,6 +103,7 @@ private:
         std::size_t tlsHostCapacity,
         std::uint16_t* tlsPort) noexcept;
     bool BeginGamePresentation() noexcept;
+    void TryStartUdpWorker() noexcept;
     void Fail(SecureClientSessionFailure failure) noexcept;
     void ReleaseClaim() noexcept;
     void DestroyTransport(bool disconnectStock) noexcept;
@@ -113,6 +123,10 @@ private:
     SchannelClientStream* tls_ = nullptr;
     SecureOuterStream* outer_ = nullptr;
     NativeClientBridge* bridge_ = nullptr;
+    SecureUdpClientWorker* udpWorker_ = nullptr;
+    sockaddr_storage tlsPeer_{};
+    int tlsPeerBytes_ = 0;
+    bool udpGrantHandled_ = false;
 };
 
 } // namespace godswar::network

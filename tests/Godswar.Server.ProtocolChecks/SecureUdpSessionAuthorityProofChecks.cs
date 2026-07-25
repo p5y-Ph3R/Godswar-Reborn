@@ -65,9 +65,10 @@ internal static partial class SecureUdpSessionAuthorityChecks
                 conflictingEndpoint,
                 out boundPrincipal);
             Check.True(
-                status == SecureUdpSessionBindStatus.EndpointConflict &&
+                status ==
+                    SecureUdpSessionBindStatus.ReplayRejected &&
                 boundPrincipal is null,
-                "different endpoint cannot replace an active binding");
+                "captured proof cannot replace an active endpoint");
 
             status = authority.TryBind(
                 connection.ConnectionId.Span,
@@ -78,7 +79,7 @@ internal static partial class SecureUdpSessionAuthorityChecks
             Check.True(
                 status == SecureUdpSessionBindStatus.AlreadyBound &&
                 ReferenceEquals(principal, boundPrincipal),
-                "endpoint conflict preserves the original binding");
+                "replayed rebind preserves the original binding");
 
             status = authority.TryBind(
                 connection.ConnectionId.Span,

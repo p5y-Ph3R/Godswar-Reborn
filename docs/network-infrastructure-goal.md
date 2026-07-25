@@ -2,20 +2,16 @@
 
 ## Version and status
 
-- Document version: `1.21`
+- Document version: `1.22`
 - Last updated: `2026-07-26`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 Slice 8 secure route/session wiring, guarded
-  activation/restore, and coherent listener startup are complete in
-  source/offline checks. The candidate remains uninstalled and secure mode
-  disabled pending operational keys/trust, account backup/reset, and
-  controlled-host acceptance. Slice 9B binding passes offline; its listener
-  and gameplay UDP remain inactive.
-  V1–V4 are rejected and Phase 1
-  remains unaccepted; the avatar issue is parked.
+- Current milestone: Slice 9 protected UDP is implemented and verified
+  offline/loopback; defaults remain off, no shim is installed, and gameplay
+  remains on TLS. Slice 8 awaits controlled-host acceptance. V1–V4 are
+  rejected, Phase 1 is unaccepted, and the avatar issue is parked.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -129,7 +125,7 @@ volumetric TCP/UDP floods.
 | --- | --- | --- | --- |
 | Raw UDP plus TLS TCP | Fits the legacy DLL seam; gives deliberate delivery semantics; mature Windows and .NET crypto/TLS APIs | Requires a reviewed UDP envelope, replay protection, pacing, NAT rebinding, and two-transport reconciliation | Selected |
 | QUIC streams plus DATAGRAM | One cryptographic connection and modern migration/congestion behavior | Adds a substantial native x86 client dependency and DATAGRAM/platform compatibility risk; would silently replace the requested TCP/UDP architecture | Reconsider only through a new ADR |
-| Mature game-networking library | Can supply sequencing, reliability, congestion, and testing | Must match x86 Windows, .NET server, security, DDoS, license, and legacy translation requirements; no library has yet been validated against all of them | Evaluate before Phase 3 |
+| Mature game-networking library | Can supply sequencing, reliability, congestion, and testing | Must match x86 Windows, .NET server, security, DDoS, license, and legacy translation requirements; no library has yet been validated against all of them | Reconsider only through a new ADR |
 
 TLS TCP is used for authentication, account/character control, inventory,
 forging, chat, spawn/despawn, map transfer, damage, progression, and other
@@ -318,24 +314,34 @@ Exact wire protocol and client lifecycle:
   sessions are exported behind guarded monotonic activation and exact restore.
   Live account/trust/original-client acceptance remains pending; see the
   [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
-- Slice 9B binding passes offline; listener inactive.
-  [Specification](network-infrastructure-phase3-slice9b-authenticated-binding.md).
+- Slice 9 source/offline work is complete; see its
+  [overview](network-infrastructure-phase3-slice9c-protected-udp.md).
 
 Exit gate: legacy parity, TLS authentication/control, ticket forgery/expiry/
 replay tests, frame boundary tests, and authenticated TLS-only fallback pass.
 
 ### Phase 3 — authenticated UDP binding without gameplay
 
-Specifications: [Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md)
-and [Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md).
+Records: [9A](network-infrastructure-phase3-slice9a-udp-foundation.md),
+[9B](network-infrastructure-phase3-slice9b-authenticated-binding.md), canonical
+[wire](network-infrastructure-phase3-slice9c-protected-datagrams.md),
+[completion ADR](network-infrastructure-phase3-slice9c-protected-udp.md), and
+[runtime](network-infrastructure-phase3-slice9-runtime.md).
 
-- Completed: cookies and bounded TLS-authenticated endpoint binding.
-- Remaining: AEAD, replay/key epochs, NAT rebinding, native UDP worker, pacing,
-  keepalive, fuzzing, and production metrics.
+- Completed: TLS binding, AES-GCM, replay/key epochs, authenticated rebinding,
+  native keepalive/pacing/fallback, bounded runtime, and telemetry.
+- Verified locally: managed `121/121`; native Release `/W4 /WX` plus five
+  offline passes; and a two-second-capped loopback run (`16,000` attempted,
+  `14,000` accepted, `2,000` rejected; latest `5.094 ms`). Limiter usage/caps:
+  global `10000/10000`, unvalidated `6000/6000`, proof `2000/2000`,
+  protected-candidate `2000/2000`, authenticated-session `128/128`. This is
+  not a production or DDoS-capacity claim.
+- Checked-in UDP remains disabled, no shim was installed, and gameplay remains
+  on TLS. Phase 4 owns gameplay migration.
 
-Exit gate: forgery, tamper, replay, wraparound, duplication, reordering, loss,
-rotation, NAT rebinding, 1,200-byte MTU, amplification, and bounded-state tests
-pass.
+Exit gate: offline/loopback security, MTU, bounds, rebinding, emulation,
+admission, and TLS-fallback checks are covered. Staggered maximum-capacity key
+rotation remains Phase 5 production scalability work.
 
 ### Phase 4 — first hybrid authoritative slice
 

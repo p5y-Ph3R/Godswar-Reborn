@@ -159,6 +159,9 @@ internal static partial class Program
             (
                 "Secure Phase 3 UDP Slice 9A/9B binding foundation",
                 SecureUdpFoundationChecks.RunAsync),
+            (
+                "Secure Phase 3 UDP bounded loopback baseline",
+                SecureUdpAdmissionBaselineChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

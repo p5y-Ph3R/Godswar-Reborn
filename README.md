@@ -14,11 +14,16 @@ Focused Phase 2 codec check:
 dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2"
 ```
 
-Focused UDP Slice 9A/9B binding checks:
+Focused Slice 9 protected-UDP checks:
 
 ```powershell
 dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 3 UDP"
 ```
+
+Slice 9 closeout passed the full managed protocol suite (`121/121`), a Win32
+Release native build with `/W4 /WX`, and five consecutive native offline
+passes. These are local/offline results: checked-in UDP remains disabled, no
+client shim was installed, and gameplay remains on TLS.
 
 ## Docker
 
@@ -80,7 +85,7 @@ Implemented:
 - Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
-- Secure networking: Slice 8 TLS activation remains uninstalled and gated to controlled-host acceptance ([runbook](docs/network-infrastructure-phase2-slice8-activation.md)); Slice 9B adds bounded TLS-to-UDP endpoint authentication while its listener remains test-only and fail-closed ([binding specification](docs/network-infrastructure-phase3-slice9b-authenticated-binding.md))
+- Secure networking: Slice 8 TLS activation remains uninstalled and gated to controlled-host acceptance ([runbook](docs/network-infrastructure-phase2-slice8-activation.md)); Slice 9's authenticated, encrypted UDP control-channel foundation is implemented and verified offline/loopback, but checked-in UDP remains disabled, no shim was installed, and gameplay stays on TLS ([completion overview](docs/network-infrastructure-phase3-slice9c-protected-udp.md), [wire specification](docs/network-infrastructure-phase3-slice9c-protected-datagrams.md), [runtime details](docs/network-infrastructure-phase3-slice9-runtime.md))
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 

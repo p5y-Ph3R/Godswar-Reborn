@@ -2,6 +2,7 @@ using Godswar.Server;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
 
@@ -63,6 +64,13 @@ using SecureServerCertificate? secureCertificate =
 var secureGameTarget = options.Secure.Enabled
     ? options.Secure.BuildGameTarget()
     : null;
+await using SecureUdpRuntime? secureUdpRuntime =
+    secureGameTarget is not null
+        ? SecureUdpRuntime.TryCreate(
+            options.Secure,
+            secureGameTarget,
+            SecureUdpRuntimeCapabilities.Current)
+        : null;
 using InMemoryGameTicketStore? secureGameTickets =
     options.Secure.Enabled
         ? new InMemoryGameTicketStore(
@@ -87,7 +95,8 @@ var secureTransportFactory =
             secureCertificate.Context,
             secureHandshakeGate,
             ticketStore: secureGameTickets,
-            gameTarget: secureGameTarget)
+            gameTarget: secureGameTarget,
+            udpSessionAuthority: secureUdpRuntime?.Authority)
         : null;
 var secureLoginServer = secureTransportFactory is null
     ? null
@@ -142,6 +151,10 @@ Console.WriteLine(
         ? $"Secure TLS:   login={options.Secure.Login.BindHost}:{options.Secure.Login.Port}, " +
           $"game={options.Secure.Game.BindHost}:{options.Secure.Game.Port} (single-use ticket binding)"
         : "Secure TLS:   disabled");
+Console.WriteLine(
+    secureUdpRuntime is not null
+        ? $"Secure UDP:   starting {options.Secure.Udp.BindHost}:{options.Secure.Udp.Port}"
+        : "Secure UDP:   disabled; gameplay remains on TLS");
 
 var runtimeTasks = new List<Task>
 {
@@ -151,42 +164,63 @@ var runtimeTasks = new List<Task>
     registry.RunZodiacEnergyAccrualAsync(shutdown.Token)
 };
 var endpointServers = new List<TcpEndpointServer>(2);
-if (loginServer is not null && gameServer is not null)
-{
-    endpointServers.Add(loginServer);
-    endpointServers.Add(gameServer);
-    runtimeTasks.Add(loginServer.RunAsync(shutdown.Token));
-    runtimeTasks.Add(gameServer.RunAsync(shutdown.Token));
-}
-if (secureLoginServer is not null && secureGameServer is not null)
-{
-    endpointServers.Add(secureLoginServer);
-    endpointServers.Add(secureGameServer);
-    runtimeTasks.Add(secureLoginServer.RunAsync(shutdown.Token));
-    runtimeTasks.Add(secureGameServer.RunAsync(shutdown.Token));
-}
-
-if (endpointServers.Count != 2)
-{
-    throw new InvalidOperationException(
-        "Exactly one coherent login/game listener pair is required.");
-}
-
-var endpointTasks = runtimeTasks.Skip(runtimeTasks.Count - 2).ToArray();
-foreach (var endpointTask in endpointTasks)
-{
-    _ = endpointTask.ContinueWith(
-        static (_, state) =>
-            ((CancellationTokenSource)state!).Cancel(),
-        shutdown,
-        CancellationToken.None,
-        TaskContinuationOptions.OnlyOnFaulted |
-            TaskContinuationOptions.ExecuteSynchronously,
-        TaskScheduler.Default);
-}
+var endpointTasks = new List<Task>(3);
 
 try
 {
+    if (secureUdpRuntime is not null)
+    {
+        var udpTask = secureUdpRuntime.RunAsync(shutdown.Token);
+        runtimeTasks.Add(udpTask);
+        endpointTasks.Add(udpTask);
+        var udpEndpoint = await secureUdpRuntime.WaitUntilReadyAsync(
+            shutdown.Token).WaitAsync(
+                TimeSpan.FromSeconds(10),
+                shutdown.Token);
+        Console.WriteLine($"Secure UDP ready: {udpEndpoint}");
+    }
+
+    if (loginServer is not null && gameServer is not null)
+    {
+        endpointServers.Add(loginServer);
+        endpointServers.Add(gameServer);
+        var loginTask = loginServer.RunAsync(shutdown.Token);
+        var gameTask = gameServer.RunAsync(shutdown.Token);
+        runtimeTasks.Add(loginTask);
+        runtimeTasks.Add(gameTask);
+        endpointTasks.Add(loginTask);
+        endpointTasks.Add(gameTask);
+    }
+    if (secureLoginServer is not null && secureGameServer is not null)
+    {
+        endpointServers.Add(secureLoginServer);
+        endpointServers.Add(secureGameServer);
+        var loginTask = secureLoginServer.RunAsync(shutdown.Token);
+        var gameTask = secureGameServer.RunAsync(shutdown.Token);
+        runtimeTasks.Add(loginTask);
+        runtimeTasks.Add(gameTask);
+        endpointTasks.Add(loginTask);
+        endpointTasks.Add(gameTask);
+    }
+
+    if (endpointServers.Count != 2)
+    {
+        throw new InvalidOperationException(
+            "Exactly one coherent login/game listener pair is required.");
+    }
+
+    foreach (var endpointTask in endpointTasks)
+    {
+        _ = endpointTask.ContinueWith(
+            static (_, state) =>
+                ((CancellationTokenSource)state!).Cancel(),
+            shutdown,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted |
+                TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     await Task.WhenAll(endpointServers.Select(
         server => server.WaitUntilStartedAsync(shutdown.Token))).WaitAsync(
         TimeSpan.FromSeconds(10),

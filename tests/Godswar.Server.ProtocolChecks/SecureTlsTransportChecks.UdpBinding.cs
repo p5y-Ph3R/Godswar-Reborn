@@ -119,6 +119,113 @@ internal static partial class SecureTlsTransportChecks
             "TLS disposal immediately revokes UDP registration");
     }
 
+    private static async Task CheckUdpCapacityFallsBackToTlsAsync()
+    {
+        using var certificate = SecureTlsTestCertificate.Create();
+        var options = CreateRuntimeOptions();
+        using var gate = new TlsHandshakeGate(1);
+        using var ticketStore = new InMemoryGameTicketStore();
+        using var udpAuthority = new SecureUdpSessionAuthority(
+            capacity: 1,
+            pendingTtl: TimeSpan.FromSeconds(30));
+        var blockerContext = new SecureConnectionContext(
+            SecureEndpointRole.Game,
+            SecureProtocolConstants.ProtocolMajor,
+            SecureProtocolConstants.ProtocolMinor,
+            Enumerable.Repeat((byte)0x71, 16).ToArray(),
+            Enumerable.Repeat((byte)0x72, 16).ToArray(),
+            Convert.FromHexString(
+                SecureNetworkOptions.PredecessorOriginSha256));
+        var blocker = udpAuthority.Register(
+            blockerContext,
+            new SecureBoundGamePrincipal(
+                99,
+                "udp-capacity-blocker",
+                SecureGamePermissions.EnterWorld,
+                Guid.Parse(
+                    "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")));
+        Check.True(
+            blocker.IsRegistered,
+            "TLS fallback fixture fills UDP authority");
+        using var blockerLease = blocker.Lease!;
+
+        var target = new SecureGameTarget(
+            "game.reborn.test",
+            "game.reborn.test",
+            "reborn-game",
+            routePort: 7_000,
+            tlsPort: 7_443,
+            serverId: 100);
+        var loginContext = new SecureConnectionContext(
+            SecureEndpointRole.Login,
+            SecureProtocolConstants.ProtocolMajor,
+            SecureProtocolConstants.ProtocolMinor,
+            Enumerable.Repeat((byte)0x73, 16).ToArray(),
+            Enumerable.Range(1, 16)
+                .Select(static value => checked((byte)value))
+                .ToArray(),
+            Convert.FromHexString(
+                SecureNetworkOptions.PredecessorOriginSha256));
+        using var grantLease = IssueCommittedGrant(
+            ticketStore,
+            target,
+            loginContext);
+        var factory = new TlsMuxLegacyTransportFactory(
+            new SecureNetworkOptions(),
+            options,
+            certificate.Context,
+            gate,
+            ticketStore: ticketStore,
+            gameTarget: target,
+            udpSessionAuthority: udpAuthority);
+        await using var pair = await StartPairAsync(
+            factory,
+            NetworkEndpointRole.Game);
+        _ = await AuthenticateAndPrefaceAsync(
+            pair.ClientStream,
+            certificate,
+            SecureEndpointRole.Game,
+            targetHost: "game.reborn.test");
+        await PresentGrantAsync(
+            pair.ClientStream,
+            grantLease.Grant);
+        var bindResult = await ReadFrameAsync(
+            pair.ClientStream,
+            SecureEndpointRole.Game,
+            SecureFrameDirection.ServerToClient,
+            expectedSequence: 1);
+        Check.True(
+            SecureGameControlCodec.TryDecodeBindResult(
+                bindResult.Payload,
+                out var bindStatus) &&
+            bindStatus.Status == SecureBindStatus.Accepted,
+            "UDP capacity does not reject TLS game bind");
+
+        var transport =
+            (TlsMuxLegacyTransport)await pair.TransportTask;
+        var payload = Enumerable.Range(1, 19)
+            .Select(static value => checked((byte)value))
+            .ToArray();
+        var write = transport.WriteAsync(
+            payload,
+            CancellationToken.None).AsTask();
+        var frame = await ReadFrameAsync(
+            pair.ClientStream,
+            SecureEndpointRole.Game,
+            SecureFrameDirection.ServerToClient,
+            expectedSequence: 2);
+        await write;
+        Check.True(
+            frame.Header.Type == SecureFrameType.LegacyBytes &&
+            frame.Payload.SequenceEqual(payload),
+            "full UDP authority omits grant and preserves TLS-only sequence");
+        Check.Equal(
+            1,
+            udpAuthority.GetSnapshot().TrackedSessions,
+            "TLS fallback does not displace established UDP registration");
+        await transport.DisposeAsync();
+    }
+
     private static SecureGameGrantLease IssueCommittedGrant(
         InMemoryGameTicketStore ticketStore,
         SecureGameTarget target,

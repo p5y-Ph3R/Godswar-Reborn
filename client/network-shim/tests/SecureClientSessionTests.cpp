@@ -13,10 +13,15 @@ using godswar::network::ClientBridgePlan;
 using godswar::network::ClientEndpointRole;
 using godswar::network::ClientRouteDecision;
 using godswar::network::ILegacyNetClient;
+using godswar::network::NativeBridgeFailure;
+using godswar::network::NativeBridgeState;
+using godswar::network::NativeClientBridgeSnapshot;
 using godswar::network::SecureClientSession;
 using godswar::network::SecureClientSessionConfiguration;
 using godswar::network::SecureClientSessionFailure;
 using godswar::network::SecureClientSessionState;
+using godswar::network::SecureUdpClientWorkerSnapshot;
+using godswar::network::SecureUdpClientWorkerState;
 using godswar::network::SecureGameGrantPolicy;
 using godswar::network::SecureGameGrantRegistry;
 using godswar::network::TryCopyClientRoute;
@@ -184,6 +189,34 @@ void CheckMissingGameGrantNeverTouchesStock() {
         "missing game grant reached the stock transport");
 }
 
+void CheckUdpFallbackNeverStopsTlsBridge() {
+    NativeClientBridgeSnapshot bridge{};
+    bridge.state = NativeBridgeState::Running;
+    bridge.failure = NativeBridgeFailure::None;
+    SecureUdpClientWorkerSnapshot udp{};
+    udp.state = SecureUdpClientWorkerState::TlsFallback;
+    Check(
+        SecureClientSession::ShouldContinueTlsBridge(
+            bridge,
+            &udp),
+        "UDP fallback incorrectly stopped healthy TLS gameplay");
+
+    udp.state = SecureUdpClientWorkerState::Failed;
+    Check(
+        SecureClientSession::ShouldContinueTlsBridge(
+            bridge,
+            &udp),
+        "UDP failure incorrectly stopped healthy TLS gameplay");
+
+    bridge.state = NativeBridgeState::Failed;
+    bridge.failure = NativeBridgeFailure::PumpTerminated;
+    Check(
+        !SecureClientSession::ShouldContinueTlsBridge(
+            bridge,
+            &udp),
+        "failed TLS bridge was hidden by UDP fallback");
+}
+
 } // namespace
 
 int RunSecureClientSessionTests() {
@@ -191,5 +224,6 @@ int RunSecureClientSessionTests() {
     CheckInvalidIdentityNeverTouchesStock();
     CheckInvalidLoginTargetNeverTouchesStock();
     CheckMissingGameGrantNeverTouchesStock();
+    CheckUdpFallbackNeverStopsTlsBridge();
     return Failures;
 }

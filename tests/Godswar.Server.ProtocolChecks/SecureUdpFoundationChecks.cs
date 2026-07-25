@@ -1,3 +1,4 @@
+using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -10,8 +11,12 @@ internal static class SecureUdpFoundationChecks
         SecureUdpBindingCodecChecks.Run();
         SecureUdpBindingGrantChecks.Run();
         SecureUdpCookieChecks.Run();
+        SecureUdpProtectedCodecChecks.Run();
+        SecureUdpReplayWindowChecks.Run();
+        SecureUdpProtectedSessionChecks.Run();
         await SecureUdpSessionAuthorityChecks.RunAsync();
         await SecureUdpEndpointServerChecks.RunAsync();
+        await SecureUdpRuntimeChecks.RunAsync();
     }
 
     private static void CheckOptions()
@@ -28,6 +33,26 @@ internal static class SecureUdpFoundationChecks
             30,
             options.BindingOfferTtlSeconds,
             "UDP binding-offer TTL");
+        Check.Equal(
+            3_072,
+            options.UnvalidatedPacketsPerSecond,
+            "unvalidated admission limit");
+        Check.Equal(
+            512,
+            options.BindingProofPacketsPerSecond,
+            "binding-proof admission limit");
+        Check.Equal(
+            512,
+            options.ProtectedCandidatePacketsPerSecond,
+            "pre-auth protected-candidate admission limit");
+        Check.Equal(
+            256,
+            options.ProtectedCandidatePrefixPacketsPerSecond,
+            "pre-auth protected-candidate prefix limit");
+        Check.Equal(
+            256,
+            options.AuthenticatedSessionPacketsPerSecond,
+            "per-session authenticated admission limit");
 
         var mappedLoopback = WithUdp(
             static udp => udp.BindHost = "::ffff:127.0.0.1");
@@ -41,9 +66,9 @@ internal static class SecureUdpFoundationChecks
             mappedLoopback.BindHost,
             "IPv4-mapped loopback development bind");
 
-        CheckInvalid(
-            WithUdp(static udp => udp.Enabled = true),
-            "Slice 9B activation");
+        var optIn = WithUdp(static udp => udp.Enabled = true);
+        optIn.NormalizeAndValidate(5999, 7000, 6599, 7443);
+        Check.True(optIn.Enabled, "UDP option permits guarded opt-in");
         CheckInvalid(
             WithUdp(static udp => udp.Port = 7443),
             "TCP port collision");
@@ -69,8 +94,28 @@ internal static class SecureUdpFoundationChecks
         CheckInvalid(
             WithUdp(static udp =>
                 udp.PrefixPacketsPerSecond =
-                    udp.GlobalPacketsPerSecond + 1),
-            "UDP prefix limit above global limit");
+                    udp.UnvalidatedPacketsPerSecond + 1),
+            "UDP prefix limit above unvalidated limit");
+        CheckInvalid(
+            WithUdp(static udp =>
+                udp.BindingProofPacketsPerSecond =
+                    udp.GlobalPacketsPerSecond -
+                    udp.UnvalidatedPacketsPerSecond),
+            "UDP pre-auth classes exceed the global admission envelope");
+        CheckInvalid(
+            WithUdp(static udp =>
+                udp.ProtectedCandidatePrefixPacketsPerSecond =
+                    udp.ProtectedCandidatePacketsPerSecond + 1),
+            "UDP protected-candidate prefix limit above class limit");
+
+        var tlsDisabled = new SecureNetworkOptions();
+        tlsDisabled.Udp.Enabled = true;
+        Check.Throws<InvalidDataException>(
+            () => tlsDisabled.NormalizeAndValidate(
+                "appsettings.json",
+                rawLoginPort: 5_999,
+                rawGamePort: 7_000),
+            "UDP cannot activate without secure TLS");
     }
 
     private static SecureUdpOptions WithUdp(

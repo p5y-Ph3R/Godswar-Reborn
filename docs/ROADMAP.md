@@ -2,28 +2,22 @@
 
 This is the current step-by-step plan for moving the local C# server from packet replay toward real MMORPG gameplay.
 
-The long-term secure networking migration is tracked separately in
-[`docs/network-infrastructure-goal.md`](network-infrastructure-goal.md). It
-selects an in-process x86 client shim followed by TLS control traffic,
-authenticated UDP realtime traffic, server authority, bounded overload
-behavior, and upstream DDoS integration. The reversible Origin/`Net.dll`
-compatibility experiments V1–V4 are rejected. V3 reproduced the roughly
-15-second `0x005F58BC` timeout/crash. V4 failed its final pre-selection smoke
-(`20260724T095739213Z-db16daa7` / `Fail`) and was rolled back to predecessor
-Origin `753BE49F...9ED79`, stock Net `1CC3F9AA...BCA00C`, and no
-`NetLegacy.dll`. Phase 2 Slice 8 now wires signed Login/Game routing and secure
-sessions into the exported shim and adds guarded monotonic-floor activation,
-exact restore, and coherent raw-or-TLS startup. Source/offline checks pass, but
-the candidate remains uninstalled and secure listeners default off pending
-account backup/reset, operational keys/trust, and controlled-host acceptance.
-Slice 9B's authenticated TLS-to-UDP binding passes offline checks, but the
-listener stays inactive and gameplay stays on TLS. Protected datagrams remain
-next.
-Phase 1 remains unaccepted. Records:
-[Phase 1](network-infrastructure-phase1.md) and
-[Slice 8](network-infrastructure-phase2-slice8-activation.md), with
-[Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md) and
-[Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md).
+The long-term secure networking migration is tracked in
+[`network-infrastructure-goal.md`](network-infrastructure-goal.md). It selects
+an in-process x86 shim, TLS control traffic, authenticated UDP realtime
+traffic, bounded overload behavior, and upstream DDoS integration. Reversible
+Origin/`Net.dll` experiments V1–V4 are rejected; V4's final smoke failed and
+was rolled back to predecessor Origin, stock `Net.dll`, and no
+`NetLegacy.dll`. Slice 8 source/offline work passes, but the shim remains
+uninstalled and secure profiles default off pending controlled-host
+acceptance. Slice 9's protected UDP foundation is implemented and verified
+offline/loopback. Checked-in UDP remains disabled, no shim was installed, and
+gameplay remains on TLS; gameplay migration belongs to Phase 4. Phase 1 remains
+unaccepted. Records: [Phase 1](network-infrastructure-phase1.md),
+[Slice 8](network-infrastructure-phase2-slice8-activation.md),
+[Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md),
+[Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md), and
+[Slice 9C](network-infrastructure-phase3-slice9c-protected-udp.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

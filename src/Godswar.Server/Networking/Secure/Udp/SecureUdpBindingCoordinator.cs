@@ -13,13 +13,17 @@ internal enum SecureUdpBindingProcessOutcome : byte
     Expired = 6,
     InvalidProof = 7,
     EndpointConflict = 8,
-    InvalidEndpoint = 9
+    InvalidEndpoint = 9,
+    Rebound = 10,
+    ReplayRejected = 11,
+    RebindRateLimited = 12
 }
 
 internal readonly record struct SecureUdpBindingProcessResult(
     SecureUdpBindingProcessOutcome Outcome,
     int ResponseBytes,
-    SecureBoundGamePrincipal? Principal)
+    SecureBoundGamePrincipal? Principal,
+    ulong BindingRevision = 0)
 {
     public bool HasResponse =>
         Outcome == SecureUdpBindingProcessOutcome.ChallengeCreated &&
@@ -106,11 +110,13 @@ internal sealed class SecureUdpBindingCoordinator
                 challenge,
                 tlsProof,
                 remoteEndpoint,
-                out var principal);
+                out var principal,
+                out var bindingRevision);
             return new SecureUdpBindingProcessResult(
                 ToProcessOutcome(status),
                 ResponseBytes: 0,
-                principal);
+                principal,
+                bindingRevision);
         }
         finally
         {
@@ -147,6 +153,12 @@ internal sealed class SecureUdpBindingCoordinator
                 SecureUdpBindingProcessOutcome.EndpointConflict,
             SecureUdpSessionBindStatus.InvalidEndpoint =>
                 SecureUdpBindingProcessOutcome.InvalidEndpoint,
+            SecureUdpSessionBindStatus.Rebound =>
+                SecureUdpBindingProcessOutcome.Rebound,
+            SecureUdpSessionBindStatus.ReplayRejected =>
+                SecureUdpBindingProcessOutcome.ReplayRejected,
+            SecureUdpSessionBindStatus.RebindRateLimited =>
+                SecureUdpBindingProcessOutcome.RebindRateLimited,
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
     }

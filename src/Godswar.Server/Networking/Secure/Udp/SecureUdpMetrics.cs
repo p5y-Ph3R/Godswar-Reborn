@@ -13,7 +13,23 @@ internal enum SecureUdpDatagramOutcome : byte
     Expired = 7,
     InvalidSessionProof = 8,
     EndpointConflict = 9,
-    TransportError = 10
+    TransportError = 10,
+    Rebound = 11,
+    ReplayRejected = 12,
+    RebindRateLimited = 13,
+    ProtectedPongSent = 14,
+    ProtectedRejected = 15,
+    EndpointMismatch = 16
+}
+
+internal enum SecureUdpRuntimeOutcome : byte
+{
+    Started = 1,
+    Stopped = 2,
+    Faulted = 3,
+    SessionExpired = 4,
+    KeyRotated = 5,
+    KeyEpochExhausted = 6
 }
 
 internal static class SecureUdpMetricTags
@@ -37,6 +53,32 @@ internal static class SecureUdpMetricTags
                 "endpoint_conflict",
             SecureUdpDatagramOutcome.TransportError =>
                 "transport_error",
+            SecureUdpDatagramOutcome.Rebound => "rebound",
+            SecureUdpDatagramOutcome.ReplayRejected =>
+                "replay_rejected",
+            SecureUdpDatagramOutcome.RebindRateLimited =>
+                "rebind_rate_limited",
+            SecureUdpDatagramOutcome.ProtectedPongSent =>
+                "protected_pong_sent",
+            SecureUdpDatagramOutcome.ProtectedRejected =>
+                "protected_rejected",
+            SecureUdpDatagramOutcome.EndpointMismatch =>
+                "endpoint_mismatch",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+
+    public static string ToMetricTag(
+        this SecureUdpRuntimeOutcome outcome) =>
+        outcome switch
+        {
+            SecureUdpRuntimeOutcome.Started => "started",
+            SecureUdpRuntimeOutcome.Stopped => "stopped",
+            SecureUdpRuntimeOutcome.Faulted => "faulted",
+            SecureUdpRuntimeOutcome.SessionExpired =>
+                "session_expired",
+            SecureUdpRuntimeOutcome.KeyRotated => "key_rotated",
+            SecureUdpRuntimeOutcome.KeyEpochExhausted =>
+                "key_epoch_exhausted",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome))
         };
 }
@@ -44,6 +86,8 @@ internal static class SecureUdpMetricTags
 internal static class SecureUdpMetrics
 {
     private const string OutcomeTagName = "network.secure.udp.outcome";
+    private const string RuntimeOutcomeTagName =
+        "network.secure.udp.runtime_outcome";
 
     private static readonly Meter Meter =
         new(SecureNetworkMetrics.MeterName);
@@ -73,6 +117,11 @@ internal static class SecureUdpMetrics
             "godswar.server.network.secure.udp.datagrams",
             "{datagram}");
 
+    private static readonly Counter<long> RuntimeOutcomes =
+        Meter.CreateCounter<long>(
+            "godswar.server.network.secure.udp.runtime",
+            "{event}");
+
     public static void DatagramReceived(int byteCount)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(byteCount);
@@ -93,6 +142,18 @@ internal static class SecureUdpMetrics
             1,
             new KeyValuePair<string, object?>(
                 OutcomeTagName,
+                outcome.ToMetricTag()));
+    }
+
+    public static void RecordRuntimeOutcome(
+        SecureUdpRuntimeOutcome outcome,
+        long count = 1)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        RuntimeOutcomes.Add(
+            count,
+            new KeyValuePair<string, object?>(
+                RuntimeOutcomeTagName,
                 outcome.ToMetricTag()));
     }
 }

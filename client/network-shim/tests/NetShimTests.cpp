@@ -19,6 +19,9 @@
 #include "SecureOuterStreamTests.h"
 #include "SecureOuterUdpGrantTests.h"
 #include "SecureUdpBindingGrantTests.h"
+#include "SecureUdpClientChannelTests.h"
+#include "SecureUdpClientWorkerTests.h"
+#include "SecureUdpProtectedProtocolTests.h"
 #include "VerifiedImageFileTests.h"
 #include "WinSocketByteStreamTests.h"
 
@@ -522,6 +525,9 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecureOuterStreamTests();
     Failures += RunSecureOuterUdpGrantTests();
     Failures += RunSecureUdpBindingGrantTests();
+    Failures += RunSecureUdpClientChannelTests();
+    Failures += RunSecureUdpClientWorkerTests();
+    Failures += RunSecureUdpProtectedProtocolTests();
     Failures += RunVerifiedImageFileTests();
     Failures += RunNativeClientCoordinatorTests();
     if (!offline) {

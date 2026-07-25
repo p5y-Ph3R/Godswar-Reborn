@@ -3,13 +3,17 @@ using System.Security.Cryptography;
 
 namespace Godswar.Server.Networking.Secure.Udp;
 
-internal sealed class SecureUdpSessionAuthority : IDisposable
+internal sealed partial class SecureUdpSessionAuthority : IDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<SecureUdpConnectionKey, SessionEntry>
         _sessions = [];
     private readonly int _capacity;
+    private readonly TimeSpan _boundIdleTimeout;
+    private readonly TimeSpan _minimumRebindInterval;
     private readonly TimeSpan _pendingTtl;
+    private readonly TimeSpan _previousEpochOverlap;
+    private readonly uint _serverId;
     private readonly TimeProvider _timeProvider;
     private readonly Func<byte[]> _proofKeyFactory;
     private readonly long _timeOriginTimestamp;
@@ -24,6 +28,48 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         : this(
             capacity,
             pendingTtl,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(2),
+            1,
+            TimeSpan.FromSeconds(10),
+            timeProvider ?? TimeProvider.System,
+            CreateProofKey)
+    {
+    }
+
+    public SecureUdpSessionAuthority(
+        int capacity,
+        TimeSpan pendingTtl,
+        TimeSpan boundIdleTimeout,
+        TimeSpan minimumRebindInterval,
+        TimeProvider? timeProvider = null)
+        : this(
+            capacity,
+            pendingTtl,
+            boundIdleTimeout,
+            minimumRebindInterval,
+            1,
+            TimeSpan.FromSeconds(10),
+            timeProvider ?? TimeProvider.System,
+            CreateProofKey)
+    {
+    }
+
+    public SecureUdpSessionAuthority(
+        int capacity,
+        TimeSpan pendingTtl,
+        TimeSpan boundIdleTimeout,
+        TimeSpan minimumRebindInterval,
+        uint serverId,
+        TimeSpan previousEpochOverlap,
+        TimeProvider? timeProvider = null)
+        : this(
+            capacity,
+            pendingTtl,
+            boundIdleTimeout,
+            minimumRebindInterval,
+            serverId,
+            previousEpochOverlap,
             timeProvider ?? TimeProvider.System,
             CreateProofKey)
     {
@@ -32,6 +78,46 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
     internal SecureUdpSessionAuthority(
         int capacity,
         TimeSpan pendingTtl,
+        TimeProvider timeProvider,
+        Func<byte[]> proofKeyFactory)
+        : this(
+            capacity,
+            pendingTtl,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(2),
+            1,
+            TimeSpan.FromSeconds(10),
+            timeProvider,
+            proofKeyFactory)
+    {
+    }
+
+    internal SecureUdpSessionAuthority(
+        int capacity,
+        TimeSpan pendingTtl,
+        TimeSpan boundIdleTimeout,
+        TimeSpan minimumRebindInterval,
+        TimeProvider timeProvider,
+        Func<byte[]> proofKeyFactory)
+        : this(
+            capacity,
+            pendingTtl,
+            boundIdleTimeout,
+            minimumRebindInterval,
+            1,
+            TimeSpan.FromSeconds(10),
+            timeProvider,
+            proofKeyFactory)
+    {
+    }
+
+    internal SecureUdpSessionAuthority(
+        int capacity,
+        TimeSpan pendingTtl,
+        TimeSpan boundIdleTimeout,
+        TimeSpan minimumRebindInterval,
+        uint serverId,
+        TimeSpan previousEpochOverlap,
         TimeProvider timeProvider,
         Func<byte[]> proofKeyFactory)
     {
@@ -44,9 +130,35 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(pendingTtl));
         }
+        if (boundIdleTimeout < TimeSpan.FromSeconds(15) ||
+            boundIdleTimeout > TimeSpan.FromMinutes(10))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(boundIdleTimeout));
+        }
+        if (minimumRebindInterval < TimeSpan.FromMilliseconds(500) ||
+            minimumRebindInterval > TimeSpan.FromSeconds(10))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(minimumRebindInterval));
+        }
+        if (serverId == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(serverId));
+        }
+        if (previousEpochOverlap < TimeSpan.FromSeconds(1) ||
+            previousEpochOverlap > TimeSpan.FromMinutes(2))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(previousEpochOverlap));
+        }
 
         _capacity = capacity;
         _pendingTtl = pendingTtl;
+        _boundIdleTimeout = boundIdleTimeout;
+        _minimumRebindInterval = minimumRebindInterval;
+        _serverId = serverId;
+        _previousEpochOverlap = previousEpochOverlap;
         _timeProvider = timeProvider ??
             throw new ArgumentNullException(nameof(timeProvider));
         _proofKeyFactory = proofKeyFactory ??
@@ -81,17 +193,31 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         {
             ThrowIfDisposed();
             var nowTimestamp = _timeProvider.GetTimestamp();
-            CleanupExpiredPending(nowTimestamp);
-            if (_sessions.ContainsKey(connectionId))
+            if (_sessions.TryGetValue(
+                    connectionId,
+                    out var existing))
             {
-                return Rejected(
-                    SecureUdpSessionRegistrationStatus
-                        .DuplicateConnectionId);
+                if (IsExpiredPending(existing, nowTimestamp) ||
+                    IsExpiredBound(existing, nowTimestamp))
+                {
+                    RemoveAndClear(connectionId, existing);
+                }
+                else
+                {
+                    return Rejected(
+                        SecureUdpSessionRegistrationStatus
+                            .DuplicateConnectionId);
+                }
             }
             if (_sessions.Count >= _capacity)
             {
-                return Rejected(
-                    SecureUdpSessionRegistrationStatus.CapacityExceeded);
+                CleanupExpired(nowTimestamp);
+                if (_sessions.Count >= _capacity)
+                {
+                    return Rejected(
+                        SecureUdpSessionRegistrationStatus
+                            .CapacityExceeded);
+                }
             }
 
             var proofKey = CreateAndValidateProofKey();
@@ -105,12 +231,23 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
                         "UDP session generation exhausted.");
                 }
 
+                Span<byte> protectedConnectionId = stackalloc byte[
+                    SecureUdpProtectedConstants.ConnectionIdBytes];
+                connectionId.WriteTo(protectedConnectionId);
+                var protectedSession = new SecureUdpProtectedSession(
+                    SecureUdpPeerRole.Server,
+                    proofKey,
+                    protectedConnectionId,
+                    _serverId,
+                    _previousEpochOverlap,
+                    _timeProvider);
                 var entry = new SessionEntry(
                     generation,
                     principal,
                     nowTimestamp,
                     GetPendingExpiryUnixMilliseconds(),
-                    proofKey);
+                    proofKey,
+                    protectedSession);
                 if (!_sessions.TryAdd(connectionId, entry))
                 {
                     entry.Clear();
@@ -137,119 +274,12 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         }
     }
 
-    public SecureUdpSessionBindStatus TryBind(
-        ReadOnlySpan<byte> connectionIdBytes,
-        ReadOnlySpan<byte> serverChallenge,
-        ReadOnlySpan<byte> tlsProofAuthenticator,
-        IPEndPoint remoteEndpoint,
-        out SecureBoundGamePrincipal? principal)
-    {
-        principal = null;
-        if (!SecureUdpConnectionKey.TryCreate(
-                connectionIdBytes,
-                out var connectionId) ||
-            !SecureUdpBindingCodec.TryDecode(
-                serverChallenge,
-                out var challenge) ||
-            challenge.Type != SecureUdpBindingType.ServerChallenge ||
-            !CryptographicOperations.FixedTimeEquals(
-                challenge.ConnectionId,
-                connectionIdBytes) ||
-            tlsProofAuthenticator.Length !=
-                SecureUdpBindingConstants.TlsProofTagBytes)
-        {
-            return SecureUdpSessionBindStatus.InvalidProof;
-        }
-        if (!SecureUdpEndpointKey.TryCreate(
-                remoteEndpoint,
-                out var endpoint))
-        {
-            return SecureUdpSessionBindStatus.InvalidEndpoint;
-        }
-
-        Span<byte> proofKey = stackalloc byte[
-            SecureUdpTlsProofAuthenticator.KeyBytes];
-        long generation;
-        try
-        {
-            lock (_gate)
-            {
-                ThrowIfDisposed();
-                if (!_sessions.TryGetValue(
-                        connectionId,
-                        out var entry))
-                {
-                    return SecureUdpSessionBindStatus.UnknownSession;
-                }
-                if (IsExpiredPending(
-                        entry,
-                        _timeProvider.GetTimestamp()))
-                {
-                    RemoveAndClear(connectionId, entry);
-                    return SecureUdpSessionBindStatus.Expired;
-                }
-
-                entry.ProofKey.CopyTo(proofKey);
-                generation = entry.Generation;
-            }
-
-            if (!SecureUdpTlsProofAuthenticator.Validate(
-                    proofKey,
-                    serverChallenge,
-                    tlsProofAuthenticator))
-            {
-                return SecureUdpSessionBindStatus.InvalidProof;
-            }
-
-            lock (_gate)
-            {
-                ThrowIfDisposed();
-                if (!_sessions.TryGetValue(
-                        connectionId,
-                        out var entry) ||
-                    entry.Generation != generation)
-                {
-                    return SecureUdpSessionBindStatus.UnknownSession;
-                }
-                if (IsExpiredPending(
-                        entry,
-                        _timeProvider.GetTimestamp()))
-                {
-                    RemoveAndClear(connectionId, entry);
-                    return SecureUdpSessionBindStatus.Expired;
-                }
-
-                principal = entry.Principal;
-                if (principal is null)
-                {
-                    return SecureUdpSessionBindStatus.UnknownSession;
-                }
-                if (entry.BoundEndpoint is null)
-                {
-                    entry.BoundEndpoint = endpoint;
-                    return SecureUdpSessionBindStatus.Bound;
-                }
-                if (entry.BoundEndpoint.Value == endpoint)
-                {
-                    return SecureUdpSessionBindStatus.AlreadyBound;
-                }
-
-                principal = null;
-                return SecureUdpSessionBindStatus.EndpointConflict;
-            }
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(proofKey);
-        }
-    }
-
     public SecureUdpSessionAuthoritySnapshot GetSnapshot()
     {
         lock (_gate)
         {
             ThrowIfDisposed();
-            CleanupExpiredPending(_timeProvider.GetTimestamp());
+            CleanupExpired(_timeProvider.GetTimestamp());
             var bound = 0;
             foreach (var entry in _sessions.Values)
             {
@@ -347,12 +377,13 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         }
     }
 
-    private void CleanupExpiredPending(long nowTimestamp)
+    private int CleanupExpired(long nowTimestamp)
     {
         List<SecureUdpConnectionKey>? expired = null;
         foreach (var item in _sessions)
         {
-            if (IsExpiredPending(item.Value, nowTimestamp))
+            if (IsExpiredPending(item.Value, nowTimestamp) ||
+                IsExpiredBound(item.Value, nowTimestamp))
             {
                 expired ??= [];
                 expired.Add(item.Key);
@@ -360,17 +391,22 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         }
         if (expired is null)
         {
-            return;
+            return 0;
         }
 
+        var removed = 0;
         foreach (var connectionId in expired)
         {
             if (_sessions.TryGetValue(connectionId, out var entry) &&
-                IsExpiredPending(entry, nowTimestamp))
+                (IsExpiredPending(entry, nowTimestamp) ||
+                    IsExpiredBound(entry, nowTimestamp)))
             {
                 RemoveAndClear(connectionId, entry);
+                removed++;
             }
         }
+
+        return removed;
     }
 
     private bool IsExpiredPending(
@@ -382,6 +418,17 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
             _timeProvider.GetElapsedTime(
                 entry.RegisteredTimestamp,
                 nowTimestamp) >= _pendingTtl;
+    }
+
+    private bool IsExpiredBound(
+        SessionEntry entry,
+        long nowTimestamp)
+    {
+        return entry.BoundEndpoint is not null &&
+            nowTimestamp >= entry.LastActivityTimestamp &&
+            _timeProvider.GetElapsedTime(
+                entry.LastActivityTimestamp,
+                nowTimestamp) >= _boundIdleTimeout;
     }
 
     private void RemoveAndClear(
@@ -466,7 +513,8 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
         SecureBoundGamePrincipal principal,
         long registeredTimestamp,
         ulong expiryUnixMilliseconds,
-        byte[] proofKey)
+        byte[] proofKey,
+        SecureUdpProtectedSession protectedSession)
     {
         public long Generation { get; } = generation;
 
@@ -480,13 +528,44 @@ internal sealed class SecureUdpSessionAuthority : IDisposable
 
         public byte[] ProofKey { get; } = proofKey;
 
+        public SecureUdpProtectedSession ProtectedSession { get; } =
+            protectedSession;
+
         public SecureUdpEndpointKey? BoundEndpoint { get; set; }
+
+        public ulong BindingRevision { get; set; }
+
+        public SecureUdpProofFingerprint CurrentProof { get; set; }
+
+        public int RecentProofCount { get; set; }
+
+        public int RecentProofCursor { get; set; }
+
+        public SecureUdpProofFingerprint[] RecentProofs { get; } =
+            new SecureUdpProofFingerprint[
+                SecureUdpProofFingerprint.HistoryCapacity];
+
+        public long LastActivityTimestamp { get; set; } =
+            registeredTimestamp;
+
+        public long LastEndpointChangeTimestamp { get; set; }
+
+        public long RebindNotBeforeUnixSeconds { get; set; }
 
         public void Clear()
         {
+            ProtectedSession.Dispose();
             CryptographicOperations.ZeroMemory(ProofKey);
+            Array.Clear(RecentProofs);
             Principal = null;
             BoundEndpoint = null;
+            BindingRevision = 0;
+            CurrentProof = default;
+            RecentProofCount = 0;
+            RecentProofCursor = 0;
+            LastActivityTimestamp = 0;
+            LastEndpointChangeTimestamp = 0;
+            RebindNotBeforeUnixSeconds = 0;
         }
     }
 }

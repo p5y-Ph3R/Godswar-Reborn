@@ -24,6 +24,9 @@ internal static partial class SecureUdpSessionAuthorityChecks
         CheckPendingExpiryAndGenerationSafeRelease();
         CheckConcurrentCapacity();
         CheckProofAuthenticationAndEndpointBinding();
+        CheckRebindAndProtectedSessionContinuity();
+        CheckKeepaliveActivityAndIdleCleanup();
+        CheckOutboundTrafficDoesNotRefreshInboundLiveness();
         CheckUnknownRevokedAndExpiredProofs();
         CheckSecretZeroing();
         SecureUdpBindingCoordinatorChecks.Run();

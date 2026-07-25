@@ -354,10 +354,11 @@ internal static class SecureUdpBindingCoordinatorChecks
                 response);
             Check.True(
                 result.Outcome ==
-                    SecureUdpBindingProcessOutcome.EndpointConflict &&
+                    SecureUdpBindingProcessOutcome
+                        .RebindRateLimited &&
                 result.ResponseBytes == 0 &&
                 result.Principal is null,
-                "new endpoint with its own valid cookie cannot take over");
+                "new endpoint cannot churn an active binding immediately");
 
             result = fixture.Coordinator.ProcessDatagram(
                 firstProof,
@@ -368,6 +369,37 @@ internal static class SecureUdpBindingCoordinatorChecks
                     SecureUdpBindingProcessOutcome.AlreadyBound &&
                 ReferenceEquals(principal, result.Principal),
                 "endpoint takeover attempt preserves original principal");
+
+            fixture.Time.Advance(TimeSpan.FromSeconds(2));
+            var freshChallenge = IssueChallenge(
+                fixture.Coordinator,
+                connection.ConnectionId.Span,
+                secondEndpoint);
+            var freshProof = CreateAuthenticatedProof(
+                freshChallenge,
+                grant.ProofKey);
+            result = fixture.Coordinator.ProcessDatagram(
+                freshProof,
+                secondEndpoint,
+                response);
+            Check.True(
+                result.Outcome ==
+                    SecureUdpBindingProcessOutcome.Rebound &&
+                ReferenceEquals(principal, result.Principal) &&
+                result.BindingRevision == 2 &&
+                result.ResponseBytes == 0,
+                "fresh return-path and TLS proof perform guarded rebind");
+
+            result = fixture.Coordinator.ProcessDatagram(
+                firstProof,
+                firstEndpoint,
+                response);
+            Check.True(
+                result.Outcome ==
+                    SecureUdpBindingProcessOutcome.ReplayRejected &&
+                result.Principal is null &&
+                result.BindingRevision == 2,
+                "captured original proof cannot roll rebind back");
         }
         finally
         {

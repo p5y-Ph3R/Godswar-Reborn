@@ -98,6 +98,18 @@ bool SecureClientSession::Connect(
         Fail(SecureClientSessionFailure::TcpConnect);
         return false;
     }
+    int peerBytes = sizeof(tlsPeer_);
+    if (getpeername(
+            connectedSocket.Get(),
+            reinterpret_cast<sockaddr*>(&tlsPeer_),
+            &peerBytes) == 0 &&
+        (tlsPeer_.ss_family == AF_INET ||
+            tlsPeer_.ss_family == AF_INET6)) {
+        tlsPeerBytes_ = peerBytes;
+    } else {
+        tlsPeer_ = sockaddr_storage{};
+        tlsPeerBytes_ = 0;
+    }
 
     tls_ = new (std::nothrow) SchannelClientStream(
         static_cast<SocketHandle&&>(connectedSocket));
@@ -157,14 +169,31 @@ bool SecureClientSession::Poll() noexcept {
         return false;
     }
 
+    TryStartUdpWorker();
     const auto snapshot = bridge_->Snapshot();
-    if (snapshot.state == NativeBridgeState::Running &&
-        snapshot.failure == NativeBridgeFailure::None) {
+    SecureUdpClientWorkerSnapshot udpSnapshot{};
+    const SecureUdpClientWorkerSnapshot* udp = nullptr;
+    if (udpWorker_ != nullptr) {
+        udpSnapshot = udpWorker_->Snapshot();
+        udp = &udpSnapshot;
+    }
+    if (ShouldContinueTlsBridge(snapshot, udp)) {
         return true;
     }
 
     Fail(SecureClientSessionFailure::BridgeTerminated);
     return false;
+}
+
+bool SecureClientSession::ShouldContinueTlsBridge(
+    const NativeClientBridgeSnapshot& bridge,
+    const SecureUdpClientWorkerSnapshot* udp) noexcept {
+    // Deliberately read the pointer only to make the transport boundary
+    // explicit: every UDP state, including Failed and TlsFallback, is
+    // non-authoritative while gameplay remains on TLS.
+    static_cast<void>(udp);
+    return bridge.state == NativeBridgeState::Running &&
+        bridge.failure == NativeBridgeFailure::None;
 }
 
 void SecureClientSession::Disconnect() noexcept {
@@ -201,7 +230,37 @@ SecureClientSessionSnapshot SecureClientSession::Snapshot() const noexcept {
     if (bridge_ != nullptr) {
         snapshot.bridge = bridge_->Snapshot();
     }
+    if (udpWorker_ != nullptr) {
+        snapshot.hasUdpWorker = true;
+        snapshot.udp = udpWorker_->Snapshot();
+    }
     return snapshot;
+}
+
+void SecureClientSession::TryStartUdpWorker() noexcept {
+    if (udpGrantHandled_ ||
+        role_ != ClientEndpointRole::Game ||
+        outer_ == nullptr) {
+        return;
+    }
+
+    SecureUdpBindingGrant grant;
+    if (!outer_->TryTakeUdpBindingGrant(&grant)) {
+        return;
+    }
+    udpGrantHandled_ = true;
+    auto* worker =
+        new (std::nothrow) SecureUdpClientWorker();
+    if (worker == nullptr) {
+        return;
+    }
+    static_cast<void>(worker->Start(
+        &grant,
+        tlsPeerBytes_ == 0
+            ? nullptr
+            : reinterpret_cast<const sockaddr*>(&tlsPeer_),
+        tlsPeerBytes_));
+    udpWorker_ = worker;
 }
 
 bool SecureClientSession::PrepareTarget(
@@ -317,12 +376,17 @@ void SecureClientSession::DestroyTransport(
         legacyClient->DisConnect();
     }
 
+    delete udpWorker_;
+    udpWorker_ = nullptr;
     delete bridge_;
     bridge_ = nullptr;
     delete outer_;
     outer_ = nullptr;
     delete tls_;
     tls_ = nullptr;
+    tlsPeer_ = sockaddr_storage{};
+    tlsPeerBytes_ = 0;
+    udpGrantHandled_ = false;
 }
 
 bool SecureClientSession::IsNonzero(

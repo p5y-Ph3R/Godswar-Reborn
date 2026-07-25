@@ -1,10 +1,11 @@
 # Phase 3 Slice 9A UDP binding foundation
 
-Document revision: 1.0
+Document revision: 1.1
 
 Wire revision: 1.0
 
-Status: implemented and verified offline; deliberately inactive
+Status: implemented and verified offline; checked-in activation remains
+disabled
 
 ## Scope and non-scope
 
@@ -19,13 +20,14 @@ foundation for later authenticated UDP binding:
 - golden, boundary, forgery, timing, rotation, concurrency, and randomized
   tests.
 
-It does not create a socket, advertise a UDP capability, retain the TLS
-connection ID, modify the native client, allocate a UDP session, or move
-gameplay off TLS. Setting `Secure.Udp.Enabled=true` fails configuration
-validation explicitly.
+Slice 9A itself does not create a socket, advertise a UDP capability, retain
+the TLS connection ID, modify the native client, allocate a UDP session, or
+move gameplay off TLS. At this slice's completion,
+`Secure.Udp.Enabled=true` failed configuration validation explicitly. Slice 9C
+has since supplied the guarded runtime; checked-in activation remains false.
 
-The DTLS-versus-reviewed-AEAD decision remains a blocking ADR before protected
-session packets are designed. This binding format does not define gameplay,
+The then-blocking DTLS-versus-reviewed-AEAD decision was resolved by the Slice
+9C completion ADR. This Slice 9A binding format still does not define gameplay,
 snapshot, acknowledgement, replay-window, congestion, or AEAD semantics.
 
 ## Fixed binding datagram
@@ -167,13 +169,19 @@ Coverage includes:
 - zero-allocation warmed decoding; and
 - deterministic randomized malformed input with the amplification invariant.
 
-## Slice 9B result
+## Subsequent Slice 9 result
 
 Slice 9B now retains the exact connection ID, delivers a fresh proof key over
 game TLS, and combines that key with the stateless cookie to bind one endpoint
-to one bounded authenticated session. Its exact grant, type-4 proof, lifecycle,
-tests, inactive-listener boundary, and remaining work are specified in
+to one bounded authenticated session. Its exact grant, type-4 proof, and
+lifecycle are specified in
 [the Slice 9B binding document](network-infrastructure-phase3-slice9b-authenticated-binding.md).
 
-Gameplay remains on authenticated TLS. AEAD, replay windows, key epochs, NAT
-rebinding, keepalive, pacing, and the native UDP worker are still required.
+Slice 9C subsequently completed the protected control-channel foundation. The
+[protected-datagram document](network-infrastructure-phase3-slice9c-protected-datagrams.md)
+is the canonical wire specification, the
+[protected-UDP ADR](network-infrastructure-phase3-slice9c-protected-udp.md) is
+the overall completion overview, and the
+[runtime document](network-infrastructure-phase3-slice9-runtime.md) records
+activation and admission behavior. Checked-in UDP remains disabled, no client
+shim was installed, and gameplay remains on authenticated TLS.
