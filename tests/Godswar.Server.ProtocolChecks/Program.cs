@@ -156,6 +156,9 @@ internal static partial class Program
             (
                 "Mutually exclusive raw or secure listener profile",
                 ServerListenerProfileChecks.RunAsync),
+            (
+                "Secure Phase 3 UDP Slice 9A foundation",
+                SecureUdpFoundationChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

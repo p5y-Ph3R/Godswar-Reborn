@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json.Serialization;
+using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Networking.Secure;
 
@@ -29,6 +30,8 @@ internal sealed class SecureNetworkOptions
 
     public SecureGameTicketOptions Tickets { get; set; } = new();
 
+    public SecureUdpOptions Udp { get; set; } = new();
+
     public string CertificatePath { get; set; } = string.Empty;
 
     public string[] AllowedOriginSha256 { get; set; } =
@@ -43,6 +46,7 @@ internal sealed class SecureNetworkOptions
         Login ??= new SecureEndpointOptions();
         Game ??= new SecureEndpointOptions();
         Tickets ??= new SecureGameTicketOptions();
+        Udp ??= new SecureUdpOptions();
         Login.BindHost = ReadString(
             "GODSWAR_SECURE_LOGIN_BIND_HOST",
             Login.BindHost);
@@ -78,6 +82,7 @@ internal sealed class SecureNetworkOptions
         Tickets.Capacity = ReadInt(
             "GODSWAR_SECURE_TICKET_CAPACITY",
             Tickets.Capacity);
+        Udp.ApplyEnvironment();
         CertificatePath = ReadString(
             "GODSWAR_SECURE_CERTIFICATE_PATH",
             CertificatePath);
@@ -106,11 +111,17 @@ internal sealed class SecureNetworkOptions
         Login ??= new SecureEndpointOptions();
         Game ??= new SecureEndpointOptions();
         Tickets ??= new SecureGameTicketOptions();
+        Udp ??= new SecureUdpOptions();
         AllowedOriginSha256 ??= [];
 
         Login.Normalize();
         Game.Normalize();
         Tickets.Normalize();
+        Udp.NormalizeAndValidate(
+            rawLoginPort,
+            rawGamePort,
+            Login.Port,
+            Game.Port);
         CertificatePath = CertificatePath?.Trim() ?? string.Empty;
 
         if (!Enabled)

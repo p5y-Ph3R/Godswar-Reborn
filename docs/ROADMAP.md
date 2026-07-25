@@ -16,9 +16,11 @@ sessions into the exported shim and adds guarded monotonic-floor activation,
 exact restore, and coherent raw-or-TLS startup. Source/offline checks pass, but
 the candidate remains uninstalled and secure listeners default off pending
 account backup/reset, operational keys/trust, and controlled-host acceptance.
-UDP is absent; Slice 9 binding is next. Phase 1 remains unaccepted. Records:
+No UDP socket exists; inert Slice 9A codecs/cookies pass and 9B is next.
+Phase 1 remains unaccepted. Records:
 [Phase 1](network-infrastructure-phase1.md) and
-[Slice 8](network-infrastructure-phase2-slice8-activation.md).
+[Slice 8](network-infrastructure-phase2-slice8-activation.md), with
+[Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

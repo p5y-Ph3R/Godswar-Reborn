@@ -262,8 +262,9 @@ security.
 
 ## UDP timeline
 
-Slice 9 / Phase 3 begins after controlled Slice 8 acceptance. It adds
-authenticated UDP binding only: a maximum 1,200-byte envelope, TLS-issued
+Slice 9A's inert fixed binding codec and stateless cookie foundation is
+complete with no socket or capability. Slice 9B follows controlled Slice 8
+acceptance and adds authenticated UDP binding: a maximum 1,200-byte envelope, TLS-issued
 session material, stateless cookie validation, reviewed AEAD, sequence/replay
 window, key epochs, NAT rebinding, bounded state/rate limits, keepalive, and
 metrics. Gameplay stays on TLS and UDP-blocked clients fall back to

@@ -292,5 +292,5 @@ Slices 6-8 preserve these ownership and bound contracts and provide:
 
 Live account backup/reset rehearsal, operational keys/trust, controlled-host
 socket tests, and original-client TLS world entry remain required. The next
-implementation milestone after acceptance is Slice 9 authenticated UDP binding;
+implementation milestone after acceptance is Slice 9B authenticated UDP binding;
 gameplay remains on TLS throughout that slice.

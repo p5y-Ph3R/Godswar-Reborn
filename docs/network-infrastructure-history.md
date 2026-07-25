@@ -108,3 +108,11 @@ This is the version ledger for
   Source/offline checks pass. No client, HKLM state, trust, account store,
   listener, or UDP changed live; controlled-host acceptance remains pending
   and Slice 9 is next.
+- `1.20` (`2026-07-25`): Added the inert Slice 9A server-side UDP binding
+  foundation: an exact 128-byte big-endian Hello/Challenge/Proof codec,
+  allocation-free hostile-input parsing, full HMAC-SHA256 stateless
+  return-path cookies, canonical IPv4/IPv6 endpoint binding, monotonic
+  lifetime and current/previous key rotation, fail-closed configuration, and
+  adversarial tests. No UDP socket, capability, session, native-client change,
+  or gameplay migration exists; Slice 9B must retain the TLS connection ID and
+  add authenticated binding after the protected-datagram ADR.

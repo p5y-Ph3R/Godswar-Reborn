@@ -14,6 +14,12 @@ Focused Phase 2 codec check:
 dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 2"
 ```
 
+Focused inert UDP Slice 9A foundation check:
+
+```powershell
+dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 3 UDP"
+```
+
 ## Docker
 
 ```powershell
@@ -74,7 +80,7 @@ Implemented:
 - Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
-- Phase 2 Slice 8 secure-client activation foundation: signed Login/Game routing, Schannel/TLS sessions, grant-before-redirect and one-use game binding, coherent raw-or-TLS server startup, and guarded monotonic-floor install/restore are complete in source/offline checks; the candidate remains uninstalled, live secure mode remains disabled, and UDP is next after controlled-host acceptance ([runbook](docs/network-infrastructure-phase2-slice8-activation.md))
+- Secure networking: Slice 8 TLS activation remains uninstalled and gated to controlled-host acceptance ([runbook](docs/network-infrastructure-phase2-slice8-activation.md)); Slice 9A's inert 128-byte UDP binding codec and stateless cookie foundation is implemented with no socket or capability enabled ([specification](docs/network-infrastructure-phase3-slice9a-udp-foundation.md))
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 
