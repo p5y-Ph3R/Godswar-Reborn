@@ -93,35 +93,6 @@ internal sealed partial class PostgresGameStore : IGameStore
         }
     }
 
-    public async Task<GameAccount> LoginOrCreateAccountAsync(string username, string password, CancellationToken cancellationToken = default)
-    {
-        username = CleanUsername(username);
-        password ??= string.Empty;
-
-        await using var command = _dataSource.CreateCommand($"""
-            INSERT INTO accounts (
-                uuid, email, username, password, login_status, last_login_time,
-                last_logout_time, last_login_ip, last_login_mac, total_online_time, status
-            )
-            VALUES ('', '', @username, @password, 1, now(), now(), '', '', 0, 0)
-            ON CONFLICT (username) DO UPDATE
-            SET password = EXCLUDED.password,
-                login_status = 1,
-                last_login_time = now()
-            RETURNING {AccountColumns};
-            """);
-        command.Parameters.AddWithValue("username", username);
-        command.Parameters.AddWithValue("password", password);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            throw new InvalidOperationException("Account upsert did not return a row.");
-        }
-
-        return ReadAccount(reader);
-    }
-
     public async Task MarkAccountOfflineAsync(int accountId, CancellationToken cancellationToken = default)
     {
         await using var command = _dataSource.CreateCommand("""

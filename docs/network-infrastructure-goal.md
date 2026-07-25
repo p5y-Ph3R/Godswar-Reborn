@@ -2,23 +2,21 @@
 
 ## Version and status
 
-- Document version: `1.17`
+- Document version: `1.18`
 - Last updated: `2026-07-25`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 2 Slice 6 secure-transport foundation is complete.
-  Signed endpoint validation, native Schannel/framing primitives, and opt-in
-  bounded server `SslStream` listeners are implemented. The candidate remains
-  uninstalled and disabled; Slice 7 authentication/tickets are next and UDP is
-  absent.
+- Current milestone: Phase 2 Slice 7 authentication and game-ticket binding is
+  complete in source/offline tests. Secure-path password verification and
+  migration, grant-before-redirect, single-use server tickets, bound game
+  principals, and native grant/bind primitives are implemented. The candidate
+  remains uninstalled/pass-through. Default starts raw `5999/7000` only; secure
+  mode suppresses both. Keep it disabled until Slice 8. UDP is absent.
   V1–V4 are rejected and Phase 1
-  is not accepted. V4 smoke
-  `20260724T095739213Z-db16daa7` failed before character selection and was
-  rolled back to Origin `753BE49F...9ED79`, stock Net
-  `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`. The avatar issue is parked. No
-  secure listener or bridge is enabled.
+  is not accepted. The avatar issue is parked; no secure listener or bridge is
+  enabled.
 - Production-capacity guarantees: none; player count, regions, latency budget,
   hosting provider, and peak concurrency remain unspecified
 
@@ -83,8 +81,9 @@ Conservative defaults until measurements replace them:
 ## Threat model and target trust boundaries
 
 The following is the target, not the current security state. In particular,
-the legacy server still accepts absolute client position samples and has not
-completed authoritative movement validation or bounded transport queues.
+the legacy server still accepts absolute client position samples, the secure
+client path is not installed or activated, and default mode exposes only raw
+ingress. The mutually exclusive secure profile suppresses it.
 
 ```text
 Untrusted player / network
@@ -318,13 +317,17 @@ Exact wire protocol and client lifecycle:
   framing, deadlines, bounded handshakes/queues, and development-certificate
   workflow are implemented but disabled and uninstalled; see
   [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
-- Add password hashing/migration and short-lived single-use game tickets.
+- Slice 7's bounded PBKDF2 authentication, atomic plaintext migration,
+  grant-before-redirect lease, hash-only single-use tickets, accepted game
+  bind/principal, and offline native grant registry/bind I/O are implemented.
+  They remain disabled/uninstalled.
 - Define and test bounded queue overflow, backpressure, and rejection metrics.
 - Add golden, boundary, partial/coalesced, malformed, fuzz/property, timeout,
   and slow-client tests for every new TCP decoder in this phase.
-- Keep raw `5999/7000` only behind an explicit loopback/private development
-  flag.
-- Reject username-only game login.
+- Slice 8: wire signed Login/Game routes into the exported proxy under a guarded
+  install, rehearse live credential migration from a verified backup, test
+  authorized trust/controlled-host sockets, and verify secure mode omits raw
+  `5999/7000`. Keep it disabled while the client is uninstalled. No UDP.
 
 Exit gate: legacy parity, TLS authentication/control, ticket forgery/expiry/
 replay tests, frame boundary tests, and authenticated TLS-only fallback pass.
@@ -380,6 +383,9 @@ Phase 1 is closed as unaccepted; Phase 2 proceeds with the avatar issue parked.
   authenticate, sequence, validate, and reconcile movement, but true input-level
   prediction may require a later targeted `Origin.exe` hook.
 - Client signing and distribution remain undecided.
+- Production manifest keys/floors/signature, installed trust, blank-account
+  reset tooling, live-database backup rehearsal, controlled-host socket tests,
+  and original-client secure parity remain activation gates.
 - Hosting region/provider, expected concurrency, tick/snapshot rates, latency
   target, packet-loss target, and budget remain open capacity inputs.
 - Provider-specific infrastructure and paid deployment require approval.

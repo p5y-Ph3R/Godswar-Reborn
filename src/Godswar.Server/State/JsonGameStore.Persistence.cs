@@ -74,15 +74,7 @@ internal sealed partial class JsonGameStore
 
     private static GameAccount Clone(GameAccount account)
     {
-        return new GameAccount
-        {
-            Id = account.Id,
-            Username = account.Username,
-            Password = account.Password,
-            VipTier = account.VipTier,
-            VipExpiresAt = account.VipExpiresAt,
-            CreatedUtc = account.CreatedUtc
-        };
+        return AccountCredentialPersistence.WithoutCredential(account);
     }
 
     private static GameCharacter Clone(GameCharacter character)

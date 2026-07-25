@@ -1,22 +1,25 @@
-# Phase 2 Slice 6 secure transport
+# Phase 2 secure transport and Slice 7 binding
 
 ## Status and boundary
 
-- Implementation checkpoint: Slice 6 complete; activation pending
+- Implementation checkpoint: Slice 7 complete in source/offline tests;
+  activation pending
 - Last updated: `2026-07-25`
 - Default state: disabled
 - Installed game-client state: unchanged
 - UDP state: absent
 
-Slice 6 adds the independently testable TLS and signed-endpoint prerequisites
-for the selected in-process x86 client approach. It does not enable the
+Slice 6 supplied the TLS and signed-endpoint prerequisites. Slice 7 adds
+secure-path password authentication, grant/ticket issuance and bind on the
+server, plus offline native grant/bind primitives. It does not enable the
 exported client policy, install a replacement `Net.dll`, create a production
-manifest, trust a development CA, issue account or game tickets, or authorize
-UDP.
+manifest, trust a development CA, run a controlled-host socket smoke, or
+authorize UDP.
 
-The raw development listeners on `5999` and `7000` remain unchanged. Secure
-TLS uses separate listeners and never sniffs or downgrades to raw traffic on a
-secure port.
+Listener profiles are mutually exclusive. The checked-in `secure.enabled=false`
+profile starts only raw development listeners `5999/7000`; enabling secure mode
+instead starts only TLS `6599/7443` and suppresses both raw compatibility
+listeners. Secure TLS never sniffs or downgrades to raw traffic.
 
 ## Implemented shape
 
@@ -34,20 +37,20 @@ opaque legacy XOR byte stream            ClientSession
 
 The server has two opt-in development listeners:
 
-| Role | Default | Slice 6 behavior |
+| Role | Default | Current source behavior |
 | --- | --- | --- |
 | Secure login | `127.0.0.1:6599` | TLS, preface, framed opaque legacy bytes |
-| Secure game | `127.0.0.1:7443` | TLS and preface, then fail-closed bind rejection |
+| Secure game | `127.0.0.1:7443` | TLS/preface, then ticket bind before legacy bytes |
 
-Secure login deliberately retains the existing login semantics so transport
-parity can be tested. It is not production authentication: password
-verification, migration, grants, and single-use game tickets belong to Slice
-7.
-
-Secure game validates the syntax and sequence of the first `GameBind` frame,
-returns the finite `PolicyRejected` result, closes, and never constructs a
-legacy game handler. This is the required safe state before the Slice 7 ticket
-authority exists.
+Secure login now authenticates against a versioned password verifier, creates
+one login generation, sends one `GameGrant` before the matching redirect, and
+activates the ticket after the grant is physically written. The activated
+ticket is redeemable but its lease remains revocable until the redirect is
+physically written; redirect success commits it. The client stores the grant
+but must not expose or use its route before that matching redirect. Secure game
+requires and atomically consumes the scoped ticket before it can construct a
+legacy game handler. The bound account ID is authoritative; opcode `10000`
+supplies only a username compatibility check.
 
 ## TLS policy
 
@@ -122,7 +125,7 @@ $env:GODSWAR_SECURE_CERTIFICATE_PATH = 'C:\private\reborn-development-server.pfx
 $env:GODSWAR_SECURE_CERTIFICATE_PASSWORD = '<private process value>'
 ```
 
-The enabled Slice 6 profile permits only literal loopback/private bind
+The enabled secure development profile permits only literal loopback/private bind
 addresses. Secure ports must be distinct from each other and both raw ports.
 The certificate password is process-environment-only and is excluded from
 JSON configuration. Startup loads and validates the complete certificate
@@ -136,6 +139,34 @@ development default is the verified predecessor Origin:
 ```
 
 This allowlist is a build-compatibility gate, not player authentication.
+
+Checked-in Slice 7 defaults are:
+
+| Setting | Default |
+| --- | --- |
+| Secure enabled | `false` |
+| Game route / TLS endpoint | `game.reborn.test:7000` / `game.reborn.test:7443` |
+| Audience / server / permission | `reborn-game` / `100` / `EnterWorld (1)` |
+| Ticket TTL / capacity | `60 s` / `1024` |
+| PBKDF2 iterations / accepted stored range | `600000` / `100000..2000000` |
+| KDF workers / queue / copied bytes | `min(CPU,16)` / `64` / `8192` |
+| KDF admission / complete operation | `250 ms` / `5 s` |
+| Registration / plaintext migration | `false` / `true` |
+
+Ticket settings use `GODSWAR_SECURE_GAME_ROUTE_HOST`,
+`GODSWAR_SECURE_GAME_ROUTE_PORT`, `GODSWAR_SECURE_GAME_AUDIENCE`,
+`GODSWAR_SECURE_GAME_SERVER_ID`, `GODSWAR_SECURE_GAME_PERMISSIONS`,
+`GODSWAR_SECURE_TICKET_TTL_SECONDS`, and
+`GODSWAR_SECURE_TICKET_CAPACITY`. Authentication settings use the corresponding
+`GODSWAR_AUTH_*` environment variables declared by `ServerOptions`.
+
+The raw compatibility profile retains legacy login upsert and username-only
+game admission, with versioned verifiers protected from raw overwrite. It is
+available only while secure mode is disabled. Enabling secure mode does not
+start either raw listener, so the secure profile has no raw authentication
+bypass or downgrade path. The original client remains unmodified and
+pass-through, so secure mode must stay disabled until controlled Slice 8
+activation wires and verifies the client route.
 
 ## Development certificate workflow
 
@@ -226,28 +257,32 @@ gate.
 Coverage includes protocol golden vectors and boundaries, manifest
 signature/rollback/path checks, TLS/ALPN/preface rejection, PFX chain loading,
 framed login round-trip and split output, bounded handshake admission,
-heartbeat validation, handshake deadline, and the pre-handler secure-game
-rejection.
+heartbeat validation, authentication/KDF bounds, atomic password migration,
+ticket forgery/expiry/replay/scope, grant-before-redirect ordering, accepted
+game bind/principal attachment, and pre-handler rejection.
 
 These are local functional/security checks, not a production capacity claim or
 proof of upstream DDoS protection.
 
 ## Rollback and remaining gates
 
-There is no live Slice 6 rollback action because secure listeners default off
+There is no live Slice 7 rollback action because secure listeners default off
 and the candidate client is not installed. Source rollback consists of
-disabling `secure.enabled`/`GODSWAR_SECURE_ENABLED` and reverting the Slice 6
-checkpoint.
+disabling `secure.enabled`/`GODSWAR_SECURE_ENABLED` and reverting the secure
+transport/authentication checkpoints.
 
 Before any original-client activation:
 
 1. supply reviewed production manifest keys/floors and the guarded installer;
-2. complete Slice 7 password verification, grant, bind, ticket, duplicate
-   login, expiry, and replay policy;
-3. test the exact native Schannel-to-`SslStream` path with authorized trust and
+2. take and verify a live account-store backup, audit/reset blank credentials,
+   and rehearse plaintext migration on a restored copy;
+3. wire the validated Login/Game routes through the exported proxy;
+4. test the exact native Schannel-to-`SslStream` path with authorized trust and
    remove all temporary trust afterward;
-4. run the installer through a new backup/evidence checkpoint; and
-5. preserve a separate, verified stock rollback path.
+5. run the installer through a new backup/evidence checkpoint and complete the
+   original-client parity/soak matrix; and
+6. preserve a separate, verified stock rollback path and prove the enabled
+   secure profile exposes no raw compatibility ingress.
 
 UDP, authenticated encryption/replay windows, NAT rebinding, pacing,
 snapshots, and TLS fallback for real-time traffic remain later slices.

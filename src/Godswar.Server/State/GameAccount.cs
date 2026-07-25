@@ -14,3 +14,7 @@ internal sealed class GameAccount
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
+
+internal sealed record StoredAccountCredential(
+    GameAccount Account,
+    string Verifier);

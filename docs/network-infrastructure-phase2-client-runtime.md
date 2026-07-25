@@ -18,6 +18,14 @@ Schannel stream, secure outer-frame stream, and matching server transport as
 independently tested candidate components. They are not wired into the
 exported process policy or installed client.
 
+Slice 7 adds offline-only native `GameGrant` decoding, signed-policy
+validation, a fixed one-grant registry, exact-route claim/presentation, secure
+`GameBind` writing, and `BindResult` handling. These primitives are compiled
+and tested, but the exported classifier still returns only `PassThrough`.
+Accordingly, the checked-in server must remain in its default raw-only profile:
+enabling its mutually exclusive secure profile would suppress raw `5999/7000`
+before this uninstalled client can select TLS routes.
+
 This document complements the parent
 [Phase 2 design](network-infrastructure-phase2.md), the
 [wire and lifecycle specification](network-infrastructure-phase2-protocol.md),
@@ -102,7 +110,7 @@ but the disabled proxy does not activate it. It accepts:
 The bridge itself does not resolve a host, dial an external server, perform
 TLS, or validate an endpoint. Slice 6 supplies separate signed-manifest,
 connector, Schannel, and outer-frame primitives that can create that stream,
-but exported-proxy wiring remains disabled until Slice 7. Both supplied
+but exported-proxy wiring remains disabled until Slice 8. Both supplied
 objects must remain alive until `StopAndJoin` completes.
 
 The tested startup order is:
@@ -207,6 +215,12 @@ The Slice 5 checks cover:
   exact disconnect ownership, argument rejection, and repeated teardown;
 - injected Login/Game/Reject proxy routes proving dormant secure plans never
   invoke raw stock `Connect`, including invalid-route stale-state rejection;
+- grant decoding and field bounds, manifest-scoped host/audience/server policy,
+  pending/claimed/presented transitions, expiry, generation invalidation,
+  route mismatch, return-before-presentation, and secret erasure;
+- first-frame game bind encoding, accepted/rejected result handling, sequence
+  transition to `2`, timeout/malformed/wrong-phase failures, and proof that a
+  presented ticket is never returned or reused;
 - existing export ordinals, x86 ABI delegation, hardening flags,
   deterministic clean-build hashes, exact legacy-DLL verification, and
   missing/tampered legacy rejection.
@@ -237,15 +251,16 @@ the existing guarded Phase 1 recovery evidence; do not improvise a mixed
 
 ## Explicit exclusions and limitations
 
-Slice 5 provides no:
+The cumulative Slice 5-7 candidate still provides no:
 
-- Schannel or server `SslStream`;
-- certificate, SNI, ALPN, revocation, or cipher-suite validation;
-- signed endpoint-manifest loader or rollback-protected manifest state;
-- TLS preface, secure outer-frame runtime, grant, bind, or game ticket;
-- authentication change;
-- UDP socket, capability, encryption, replay window, or NAT rebinding;
-- live endpoint activation, client installation, or original-client parity
+- exported-process policy that can select a secure Login or Game route;
+- production manifest keys/floors, signed production manifest, hardened
+  installed floor, or approved installer state;
+- installed/trusted development or production certificate state;
+- controlled-host socket, original-client end-to-end, or live-database
+  migration acceptance;
+- UDP socket, capability, encryption, replay window, or NAT rebinding; or
+- live endpoint activation, client installation, or production-readiness
   claim.
 
 The native bridge cannot be used securely by itself: its outer stream is an
@@ -257,9 +272,9 @@ state, and production-safe structured telemetry remains required. The
 synchronous stock `Connect` call is not preemptible, and the nine-slot client
 object remains single-owner with exclusive final `Release`.
 
-## Slice 6 result and activation handoff
+## Slice 7 result and activation handoff
 
-Slice 6 preserves these ownership and bound contracts and provides:
+Slices 6-7 preserve these ownership and bound contracts and provide:
 
 1. strict signed endpoint-manifest parsing, ECDSA verification, sequence
    floors, validity checks, and one-shot module-relative loading;
@@ -268,9 +283,17 @@ Slice 6 preserves these ownership and bound contracts and provides:
 3. bounded client preface and secure outer-frame state machines;
 4. matching opt-in server `SslStream` listeners with absolute deadlines,
    bounded handshake/ingress/control work, heartbeat, and secure telemetry; and
-5. guarded development-certificate generation and exact trust cleanup.
+5. guarded development-certificate generation and exact trust cleanup;
+6. a noncopyable, zeroing game-grant value and fixed one-grant
+   pending/claim/presentation registry; and
+7. exact game-bind/result I/O that succeeds before opening the local game leg
+   and never reuses a presented ticket.
 
-Activation still requires reviewed production manifest keys/floors, wiring
-the validated route through the exported proxy, password migration and
-single-use tickets in Slice 7, and a controlled-host client/server smoke.
-UDP remains absent until a later authenticated session-binding slice.
+Slice 8 is the conservative next milestone: reviewed production manifest
+keys/floors, validated route wiring through the exported proxy, a guarded
+install/rollback checkpoint, live-account backup/reset rehearsal, and
+controlled-host client/server socket and original-client smoke tests. Selecting
+a secure route must fail closed; the current `PassThrough` policy is the
+disabled baseline, not a fallback after secure failure. Activation must also
+verify that secure mode starts no raw compatibility listener. UDP remains
+absent until the later authenticated session-binding phase.

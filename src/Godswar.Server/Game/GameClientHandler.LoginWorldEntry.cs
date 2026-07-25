@@ -14,15 +14,61 @@ internal sealed partial class GameClientHandler
     {
         ClearForgeSelection();
         ClearGearEnhancerSelection();
+        if (_account is not null)
+        {
+            _session.Disconnect();
+            return;
+        }
+
         var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
-        _account = await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
-        _session.MarkAuthenticated();
+        var boundPrincipal = _session.BoundGamePrincipal;
+        if (boundPrincipal is not null)
+        {
+            if (!string.Equals(
+                    username,
+                    boundPrincipal.Username,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _session.Disconnect();
+                return;
+            }
+
+            _account = await _store.FindAccountByIdAsync(
+                boundPrincipal.AccountId,
+                cancellationToken);
+            if (_account is null ||
+                !string.Equals(
+                    _account.Username,
+                    boundPrincipal.Username,
+                    StringComparison.Ordinal))
+            {
+                _session.Disconnect();
+                return;
+            }
+        }
+        else
+        {
+            _account = await _store.FindAccountByUsernameAsync(
+                username,
+                cancellationToken);
+            if (_account is null)
+            {
+                _session.Disconnect();
+                return;
+            }
+
+            _session.MarkAuthenticated();
+        }
         _accountSessionRegistered = true;
 
         var replacedSession = _registry.ReplaceAccountSession(_account.Id, _session);
         if (replacedSession is not null)
         {
-            Console.WriteLine($"[game] replacing stale session account={_account.Username}");
+            if (_session.AllowsPayloadDiagnostics)
+            {
+                Console.WriteLine(
+                    $"[game] replacing stale session account={_account.Username}");
+            }
             try
             {
                 await _registry.FinishProgressionBoostOnlineSessionAsync(
@@ -36,14 +82,19 @@ internal sealed partial class GameClientHandler
                 // transient persistence failure must never reject the new
                 // account session or reproduce the switch-login crash.
                 Console.WriteLine(
-                    $"[status] stale-session boost tail deferred account={_account.Username}: {ex.Message}");
+                    _session.AllowsPayloadDiagnostics
+                        ? $"[status] stale-session boost tail deferred account={_account.Username}: {ex.Message}"
+                        : "[status] stale-session boost tail deferred");
             }
 
             _registry.Remove(replacedSession);
             replacedSession.Disconnect();
         }
 
-        Console.WriteLine($"[game] accepted {_account.Username}");
+        if (_session.AllowsPayloadDiagnostics)
+        {
+            Console.WriteLine($"[game] accepted {_account.Username}");
+        }
 
         await _session.SendAsync(PacketBuilder.AfterLogin(), cancellationToken, "AfterLogin");
         await SendCharacterPreviewAsync(cancellationToken);
@@ -71,7 +122,11 @@ internal sealed partial class GameClientHandler
     {
         ClearForgeSelection();
         ClearGearEnhancerSelection();
-        _account ??= await _store.LoginOrCreateAccountAsync("player", string.Empty, cancellationToken);
+        if (_account is null)
+        {
+            _session.Disconnect();
+            return;
+        }
 
         var payload = packet.Payload;
         var character = new GameCharacter
@@ -101,8 +156,11 @@ internal sealed partial class GameClientHandler
     {
         ClearForgeSelection();
         ClearGearEnhancerSelection();
-        var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
-        _account ??= await _store.LoginOrCreateAccountAsync(username, string.Empty, cancellationToken);
+        if (_account is null)
+        {
+            _session.Disconnect();
+            return;
+        }
 
         var characterName = PacketText.ReadFixedAscii(packet.Payload, 32, 32);
         await _store.DeleteCharacterAsync(_account.Id, characterName, cancellationToken);

@@ -5,13 +5,15 @@ using System.Security.Cryptography;
 
 namespace Godswar.Server.Networking.Secure;
 
-internal sealed class TlsMuxLegacyTransportFactory :
+internal sealed partial class TlsMuxLegacyTransportFactory :
     ILegacyByteTransportFactory
 {
     private readonly IReadOnlySet<string> _allowedOriginSha256;
     private readonly SslStreamCertificateContext _certificateContext;
+    private readonly SecureGameTarget? _gameTarget;
     private readonly TlsHandshakeGate _handshakeGate;
     private readonly NetworkRuntimeOptions _options;
+    private readonly IGameTicketStore? _ticketStore;
     private readonly TimeProvider _timeProvider;
 
     public TlsMuxLegacyTransportFactory(
@@ -19,7 +21,9 @@ internal sealed class TlsMuxLegacyTransportFactory :
         NetworkRuntimeOptions runtimeOptions,
         SslStreamCertificateContext certificateContext,
         TlsHandshakeGate handshakeGate,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IGameTicketStore? ticketStore = null,
+        SecureGameTarget? gameTarget = null)
     {
         ArgumentNullException.ThrowIfNull(secureOptions);
         _options = runtimeOptions
@@ -28,6 +32,13 @@ internal sealed class TlsMuxLegacyTransportFactory :
             ?? throw new ArgumentNullException(nameof(certificateContext));
         _handshakeGate = handshakeGate
             ?? throw new ArgumentNullException(nameof(handshakeGate));
+        if ((ticketStore is null) != (gameTarget is null))
+        {
+            throw new ArgumentException(
+                "The secure ticket store and game target must be configured together.");
+        }
+        _ticketStore = ticketStore;
+        _gameTarget = gameTarget;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _options.Validate();
         SecureNetworkOptions.ValidateSecureRuntime(_options);
@@ -100,19 +111,30 @@ internal sealed class TlsMuxLegacyTransportFactory :
                 endpointRole,
                 acceptedTimestamp,
                 cancellationToken);
-            await ValidatePrefaceAsync(
+            var connectionContext = await ValidatePrefaceAsync(
                 sslStream,
                 endpointRole,
                 secureRole,
                 cancellationToken);
 
+            SecureBoundGamePrincipal? gamePrincipal = null;
             if (endpointRole == NetworkEndpointRole.Game)
             {
-                await RejectGameUntilTicketSliceAsync(
+                if (_ticketStore is null || _gameTarget is null)
+                {
+                    await RejectGameUntilTicketSliceAsync(
+                        sslStream,
+                        cancellationToken);
+                    throw new SecureTransportException(
+                        "Secure game transport is unavailable without a ticket authority.");
+                }
+
+                gamePrincipal = await BindGameAsync(
                     sslStream,
+                    connectionContext,
+                    _ticketStore,
+                    _gameTarget,
                     cancellationToken);
-                throw new SecureTransportException(
-                    "Secure game transport is unavailable before ticket binding is implemented.");
             }
 
             var transport = new TlsMuxLegacyTransport(
@@ -123,7 +145,9 @@ internal sealed class TlsMuxLegacyTransportFactory :
                 endpointRole,
                 secureRole,
                 _options,
-                _timeProvider);
+                _timeProvider,
+                connectionContext,
+                gamePrincipal);
             sslStream = null;
             return transport;
         }
@@ -263,7 +287,7 @@ internal sealed class TlsMuxLegacyTransportFactory :
         }
     }
 
-    private async Task ValidatePrefaceAsync(
+    private async Task<SecureConnectionContext> ValidatePrefaceAsync(
         SslStream sslStream,
         NetworkEndpointRole endpointRole,
         SecureEndpointRole secureRole,
@@ -295,7 +319,7 @@ internal sealed class TlsMuxLegacyTransportFactory :
             bytes,
             secureRole,
             _allowedOriginSha256,
-            out _);
+            out var preface);
         SecureNetworkMetrics.PrefaceCompleted(endpointRole, outcome);
         var connectionId = new byte[
             SecureProtocolConstants.ConnectionIdBytes];
@@ -331,156 +355,13 @@ internal sealed class TlsMuxLegacyTransportFactory :
             throw new SecureTransportException(
                 $"Secure client preface rejected with finite outcome '{outcome.ToMetricTag()}'.");
         }
-    }
 
-    private async Task RejectGameUntilTicketSliceAsync(
-        SslStream sslStream,
-        CancellationToken cancellationToken)
-    {
-        using var bindDeadline = new CancellationTokenSource(
-            _options.GameBindTimeout,
-            _timeProvider);
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            bindDeadline.Token);
-        var headerBytes = new byte[SecureProtocolConstants.FrameHeaderBytes];
-        try
-        {
-            await ReadExactlyUnderBindDeadlineAsync(
-                sslStream,
-                headerBytes,
-                lifetime.Token);
-        }
-        catch (OperationCanceledException)
-            when (bindDeadline.IsCancellationRequested &&
-                !cancellationToken.IsCancellationRequested)
-        {
-            NetworkRuntimeMetrics.RecordTimeout(
-                NetworkEndpointRole.Game,
-                NetworkTimeoutStage.GameBind);
-            throw new NetworkDeadlineException(
-                NetworkTimeoutStage.GameBind);
-        }
-
-        if (!SecureFrameCodec.TryDecodeHeader(
-                headerBytes,
-                SecureEndpointRole.Game,
-                SecureFrameDirection.ClientToServer,
-                expectedSequence: 1,
-                out var header) ||
-            header.Type != SecureFrameType.GameBind)
-        {
-            SecureNetworkMetrics.FrameCompleted(
-                NetworkEndpointRole.Game,
-                SecureFrameOutcome.WrongPhase);
-            throw new SecureTransportException(
-                "The first secure game frame must be a game-ticket bind.");
-        }
-
-        var bindBytes = new byte[SecureProtocolConstants.GameBindBytes];
-        try
-        {
-            await ReadExactlyUnderBindDeadlineAsync(
-                sslStream,
-                bindBytes,
-                lifetime.Token);
-            if (!SecureGameControlCodec.TryDecodeBind(
-                    bindBytes,
-                    out var bind))
-            {
-                SecureNetworkMetrics.FrameCompleted(
-                    NetworkEndpointRole.Game,
-                    SecureFrameOutcome.Malformed);
-                throw new SecureTransportException(
-                    "The secure game bind payload is malformed.");
-            }
-            bind!.Dispose();
-        }
-        catch (OperationCanceledException)
-            when (bindDeadline.IsCancellationRequested &&
-                !cancellationToken.IsCancellationRequested)
-        {
-            NetworkRuntimeMetrics.RecordTimeout(
-                NetworkEndpointRole.Game,
-                NetworkTimeoutStage.GameBind);
-            throw new NetworkDeadlineException(
-                NetworkTimeoutStage.GameBind);
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(bindBytes);
-        }
-
-        SecureNetworkMetrics.FrameCompleted(
-            NetworkEndpointRole.Game,
-            SecureFrameOutcome.WrongPhase);
-        var payload = new byte[SecureProtocolConstants.BindResultBytes];
-        if (!SecureGameControlCodec.TryEncodeBindResult(
-                new SecureBindResult(SecureBindStatus.PolicyRejected),
-                payload,
-                out _))
-        {
-            throw new InvalidOperationException(
-                "The policy-rejected game bind result could not be encoded.");
-        }
-
-        var response = new byte[
-            SecureProtocolConstants.FrameHeaderBytes +
-            SecureProtocolConstants.BindResultBytes];
-        if (!SecureFrameCodec.TryEncode(
-                new SecureFrameHeader(
-                    SecureProtocolConstants.BindResultBytes,
-                    SecureFrameType.BindResult,
-                    Sequence: 1),
-                payload,
-                SecureEndpointRole.Game,
-                SecureFrameDirection.ServerToClient,
-                response,
-                out _))
-        {
-            throw new InvalidOperationException(
-                "The policy-rejected game bind frame could not be encoded.");
-        }
-
-        await SecureStreamIo.WriteExactlyAsync(
-            sslStream,
-            response,
-            _options.ReliableWriteTimeout,
-            _timeProvider,
-            cancellationToken,
-            NetworkTimeoutStage.ReliableWrite);
-    }
-
-    private void RecordHandshakeBeforeAdmission(
-        NetworkEndpointRole role,
-        SecureHandshakeOutcome outcome,
-        TimeSpan duration)
-    {
-        SecureNetworkMetrics.HandshakeRejectedBeforeAdmission(
-            role,
-            outcome,
-            duration);
-    }
-
-    private static async ValueTask ReadExactlyUnderBindDeadlineAsync(
-        SslStream stream,
-        Memory<byte> destination,
-        CancellationToken cancellationToken)
-    {
-        var offset = 0;
-        while (offset < destination.Length)
-        {
-            var read = await stream.ReadAsync(
-                destination[offset..],
-                cancellationToken);
-            if (read == 0)
-            {
-                throw new EndOfStreamException(
-                    $"TLS peer closed after {offset} of {destination.Length} game-bind bytes.");
-            }
-
-            offset += read;
-        }
+        return new SecureConnectionContext(
+            preface!.Role,
+            SecureProtocolConstants.ProtocolMajor,
+            SecureProtocolConstants.ProtocolMinor,
+            preface.ClientInstanceId.Span,
+            preface.OriginSha256.Span);
     }
 
     private static SecureEndpointRole ToSecureRole(

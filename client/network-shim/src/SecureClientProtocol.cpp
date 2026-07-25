@@ -100,16 +100,16 @@ bool IsPayloadValid(
         case SecureFrameType::GameGrant:
             return role == SecureEndpointRole::Login &&
                 direction == SecureFrameDirection::ServerToClient &&
-                payloadBytes >= 71 &&
-                payloadBytes <= 408;
+                payloadBytes >= SecureGameGrantMinimumBytes &&
+                payloadBytes <= SecureGameGrantMaximumBytes;
         case SecureFrameType::GameBind:
             return role == SecureEndpointRole::Game &&
                 direction == SecureFrameDirection::ClientToServer &&
-                payloadBytes == 52;
+                payloadBytes == SecureGameBindBytes;
         case SecureFrameType::BindResult:
             return role == SecureEndpointRole::Game &&
                 direction == SecureFrameDirection::ServerToClient &&
-                payloadBytes == 4;
+                payloadBytes == SecureBindResultBytes;
     }
     return false;
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server;
 
@@ -28,6 +29,8 @@ internal sealed class ServerOptions
 
     public SecureNetworkOptions Secure { get; set; } = new();
 
+    public AuthenticationOptions Authentication { get; set; } = new();
+
     public static ServerOptions Load(string path)
     {
         if (!File.Exists(path))
@@ -52,7 +55,38 @@ internal sealed class ServerOptions
         Game.Players ??= new PlayerRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
+        Authentication ??= new AuthenticationOptions();
         Secure.ApplyEnvironment();
+        Authentication.Iterations = ReadInt(
+            "GODSWAR_AUTH_ITERATIONS",
+            Authentication.Iterations);
+        Authentication.MinimumStoredIterations = ReadInt(
+            "GODSWAR_AUTH_MINIMUM_STORED_ITERATIONS",
+            Authentication.MinimumStoredIterations);
+        Authentication.MaximumStoredIterations = ReadInt(
+            "GODSWAR_AUTH_MAXIMUM_STORED_ITERATIONS",
+            Authentication.MaximumStoredIterations);
+        Authentication.MaximumConcurrentKdfs = ReadInt(
+            "GODSWAR_AUTH_MAXIMUM_CONCURRENT_KDFS",
+            Authentication.MaximumConcurrentKdfs);
+        Authentication.QueueCapacity = ReadInt(
+            "GODSWAR_AUTH_QUEUE_CAPACITY",
+            Authentication.QueueCapacity);
+        Authentication.QueueCredentialBytes = ReadInt(
+            "GODSWAR_AUTH_QUEUE_CREDENTIAL_BYTES",
+            Authentication.QueueCredentialBytes);
+        Authentication.QueueAdmissionTimeoutMilliseconds = ReadInt(
+            "GODSWAR_AUTH_QUEUE_ADMISSION_TIMEOUT_MILLISECONDS",
+            Authentication.QueueAdmissionTimeoutMilliseconds);
+        Authentication.OperationTimeoutMilliseconds = ReadInt(
+            "GODSWAR_AUTH_OPERATION_TIMEOUT_MILLISECONDS",
+            Authentication.OperationTimeoutMilliseconds);
+        Authentication.AllowRegistration = ReadBool(
+            "GODSWAR_AUTH_ALLOW_REGISTRATION",
+            Authentication.AllowRegistration);
+        Authentication.AllowPlaintextMigration = ReadBool(
+            "GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION",
+            Authentication.AllowPlaintextMigration);
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
@@ -137,6 +171,7 @@ internal sealed class ServerOptions
         Game.Players ??= new PlayerRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
+        Authentication ??= new AuthenticationOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -145,6 +180,7 @@ internal sealed class ServerOptions
         Game.Monsters.Validate();
         Game.Players.Validate();
         Network.Validate();
+        Authentication.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
         if (Secure.Enabled)
         {

@@ -79,6 +79,9 @@
     <ClCompile Include="OpaqueDuplexPumpLifecycleTests.cpp" />
     <ClCompile Include="SchannelClientStreamTests.cpp" />
     <ClCompile Include="SecureClientProtocolTests.cpp" />
+    <ClCompile Include="SecureGameControlTests.cpp" />
+    <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureOuterControlTests.cpp" />
     <ClCompile Include="SecureOuterStreamTests.cpp" />
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
@@ -96,6 +99,9 @@
     <ClCompile Include="..\src\SchannelClientStream.cpp" />
     <ClCompile Include="..\src\SchannelClientStreamIo.cpp" />
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
+    <ClCompile Include="..\src\SecureGameControl.cpp" />
+    <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="..\src\SecureOuterStream.Control.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.cpp" />
     <ClCompile Include="..\src\WinSocketByteStream.cpp" />
     <ClCompile Include="..\src\WinSockRuntime.cpp" />
@@ -116,6 +122,10 @@
     <ClInclude Include="OpaqueDuplexPumpLifecycleTests.h" />
     <ClInclude Include="SchannelClientStreamTests.h" />
     <ClInclude Include="SecureClientProtocolTests.h" />
+    <ClInclude Include="SecureGameControlTests.h" />
+    <ClInclude Include="SecureGameControlTestSupport.h" />
+    <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureOuterControlTests.h" />
     <ClInclude Include="SecureOuterStreamTests.h" />
     <ClInclude Include="WinSocketByteStreamTests.h" />
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
@@ -137,6 +147,8 @@
     <ClInclude Include="..\src\SchannelClientStream.h" />
     <ClInclude Include="..\src\SchannelClientStreamInternal.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
+    <ClInclude Include="..\src\SecureGameControl.h" />
+    <ClInclude Include="..\src\SecureGameGrantRegistry.h" />
     <ClInclude Include="..\src\SecureOuterStream.h" />
     <ClInclude Include="..\src\WinSocketByteStream.h" />
     <ClInclude Include="..\src\WinSockRuntime.h" />

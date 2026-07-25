@@ -14,6 +14,39 @@ internal abstract class GameStoreTestStub : IGameStore
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
+    public virtual Task<StoredAccountCredential?> FindAccountCredentialAsync(
+        string username,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<GameAccount?> FindAccountByIdAsync(
+        int accountId,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<GameAccount?> FindAccountByUsernameAsync(
+        string username,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<GameAccount?> TryCreateAccountWithCredentialAsync(
+        string username,
+        string versionedVerifier,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<bool> TryReplaceAccountCredentialAsync(
+        int accountId,
+        string expectedVerifier,
+        string versionedVerifier,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task MarkAccountOnlineAsync(
+        int accountId,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
     public virtual Task MarkAccountOfflineAsync(
         int accountId,
         CancellationToken cancellationToken = default) =>

@@ -85,6 +85,8 @@
     <ClInclude Include="SchannelClientStream.h" />
     <ClInclude Include="SchannelClientStreamInternal.h" />
     <ClInclude Include="SecureClientProtocol.h" />
+    <ClInclude Include="SecureGameControl.h" />
+    <ClInclude Include="SecureGameGrantRegistry.h" />
     <ClInclude Include="SecureOuterStream.h" />
     <ClInclude Include="WinSocketByteStream.h" />
     <ClInclude Include="WinSockRuntime.h" />
@@ -107,6 +109,9 @@
     <ClCompile Include="SchannelClientStream.cpp" />
     <ClCompile Include="SchannelClientStreamIo.cpp" />
     <ClCompile Include="SecureClientProtocol.cpp" />
+    <ClCompile Include="SecureGameControl.cpp" />
+    <ClCompile Include="SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="SecureOuterStream.Control.cpp" />
     <ClCompile Include="SecureOuterStream.cpp" />
     <ClCompile Include="WinSocketByteStream.cpp" />
     <ClCompile Include="WinSockRuntime.cpp" />

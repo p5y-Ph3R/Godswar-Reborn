@@ -6,7 +6,7 @@ namespace Godswar.Server.Networking.Secure;
 
 internal sealed partial class TlsMuxLegacyTransport :
     ILegacyByteTransport,
-    ISecureLegacyByteTransport
+    ISecureControlChannel
 {
     private readonly Action _abortConnection;
     private readonly IDisposable _connectionOwner;
@@ -14,6 +14,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private readonly TaskCompletionSource _authenticated =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly BoundedByteQueue<SecureControlWork> _controlQueue;
+    private readonly SecureConnectionContext _connectionContext;
     private readonly Task _controlTask;
     private readonly NetworkEndpointRole _endpointRole;
     private readonly BoundedByteQueue<SecureLegacyChunk> _ingress;
@@ -22,6 +23,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private readonly Task _readerTask;
     private readonly Task _heartbeatTask;
     private readonly SecureEndpointRole _secureRole;
+    private readonly SecureBoundGamePrincipal? _boundGamePrincipal;
     private readonly SslStream _stream;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -29,6 +31,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private SecureLegacyChunk? _currentChunk;
     private int _currentChunkOffset;
     private int _disconnectStarted;
+    private int _gameGrantStarted;
     private Task? _disposeTask;
     private ulong _nextInboundSequence = 1;
     private ulong _nextOutboundSequence = 1;
@@ -47,18 +50,32 @@ internal sealed partial class TlsMuxLegacyTransport :
         NetworkEndpointRole endpointRole,
         SecureEndpointRole secureRole,
         NetworkRuntimeOptions options,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider,
+        SecureConnectionContext connectionContext,
+        SecureBoundGamePrincipal? boundGamePrincipal)
     {
         ArgumentNullException.ThrowIfNull(connectionOwner);
         ArgumentNullException.ThrowIfNull(abortConnection);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentException.ThrowIfNullOrWhiteSpace(remoteEndPoint);
         ArgumentNullException.ThrowIfNull(options);
-        if (endpointRole != NetworkEndpointRole.Login ||
-            secureRole != SecureEndpointRole.Login)
+        ArgumentNullException.ThrowIfNull(connectionContext);
+        if (connectionContext.Role != secureRole)
         {
             throw new ArgumentException(
-                "Slice 6 exposes framed legacy bytes only on the secure login role.");
+                "The secure connection context role must match the transport role.",
+                nameof(connectionContext));
+        }
+        if ((endpointRole == NetworkEndpointRole.Game) !=
+                (secureRole == SecureEndpointRole.Game) ||
+            endpointRole == NetworkEndpointRole.Game &&
+                boundGamePrincipal is null ||
+            endpointRole == NetworkEndpointRole.Login &&
+                boundGamePrincipal is not null)
+        {
+            throw new ArgumentException(
+                "Only a successfully bound secure game transport may carry a game principal.",
+                nameof(boundGamePrincipal));
         }
         if (!SecureTlsPolicy.IsNegotiationAccepted(stream))
         {
@@ -71,8 +88,15 @@ internal sealed partial class TlsMuxLegacyTransport :
         _stream = stream;
         _endpointRole = endpointRole;
         _secureRole = secureRole;
+        _connectionContext = connectionContext;
+        _boundGamePrincipal = boundGamePrincipal;
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        if (boundGamePrincipal is not null)
+        {
+            _nextInboundSequence = 2;
+            _nextOutboundSequence = 2;
+        }
         _ingress = new BoundedByteQueue<SecureLegacyChunk>(
             options.IngressQueueItems,
             options.IngressQueueBytes);
@@ -86,11 +110,27 @@ internal sealed partial class TlsMuxLegacyTransport :
 
     public string RemoteEndPoint => "secure";
 
+    public SecureConnectionContext ConnectionContext => _connectionContext;
+
+    public SecureBoundGamePrincipal? BoundGamePrincipal =>
+        _boundGamePrincipal;
+
     internal BoundedByteQueueSnapshot IngressSnapshot =>
         _ingress.Snapshot();
 
     internal BoundedByteQueueSnapshot ControlSnapshot =>
         _controlQueue.Snapshot();
+
+    internal bool PingOutstanding
+    {
+        get
+        {
+            lock (_heartbeatGate)
+            {
+                return _pingOutstanding;
+            }
+        }
+    }
 
     public void MarkAuthenticated()
     {

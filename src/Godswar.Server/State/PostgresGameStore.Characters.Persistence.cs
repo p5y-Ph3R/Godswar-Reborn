@@ -195,7 +195,7 @@ internal sealed partial class PostgresGameStore
         {
             Id = reader.GetInt32(0),
             Username = reader.GetString(1),
-            Password = reader.GetString(2),
+            Password = string.Empty,
             CreatedUtc = reader.GetDateTime(3).ToUniversalTime(),
             VipTier = (VipTier)reader.GetInt16(4),
             VipExpiresAt = reader.IsDBNull(5)

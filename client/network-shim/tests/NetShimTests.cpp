@@ -9,6 +9,9 @@
 #include "OpaqueDuplexPumpTests.h"
 #include "SchannelClientStreamTests.h"
 #include "SecureClientProtocolTests.h"
+#include "SecureGameControlTests.h"
+#include "SecureGameGrantRegistryTests.h"
+#include "SecureOuterControlTests.h"
 #include "SecureOuterStreamTests.h"
 #include "WinSocketByteStreamTests.h"
 
@@ -464,6 +467,9 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunOpaqueDuplexPumpTests();
     Failures += RunSchannelClientStreamTests(!offline);
     Failures += RunSecureClientProtocolTests();
+    Failures += RunSecureGameControlTests();
+    Failures += RunSecureGameGrantRegistryTests();
+    Failures += RunSecureOuterControlTests();
     Failures += RunSecureOuterStreamTests();
     Failures += RunNativeClientCoordinatorTests();
     if (!offline) {

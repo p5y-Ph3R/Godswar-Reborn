@@ -2,11 +2,12 @@
 
 ## Status and ownership
 
-- Protocol version: `1.4`
+- Protocol version: `1.5`
 - Last updated: `2026-07-25`
-- Runtime status: Slice 6 TLS/preface/framing primitives and opt-in server
-  listeners are implemented; they remain disabled and uninstalled, secure game
-  bind rejects before the legacy handler until Slice 7 tickets, and UDP is absent
+- Runtime status: Slice 7 authentication, grants, single-use server tickets,
+  accepted game bind, and offline native grant/bind state machines are
+  implemented; listeners remain disabled, the client remains uninstalled and
+  pass-through, and UDP is absent
 - Current predecessor Origin:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Current stock Net:
@@ -80,10 +81,13 @@ Local defaults reserve:
 | Secure game TLS/TCP | `7443` |
 | Future authenticated UDP, absent in Phase 2 | `7444` |
 
-TLS and legacy traffic always use separate listeners; the server never sniffs
-both protocols on one port. Raw listeners require an explicit development
-profile and loopback/private binding. Production startup fails if raw listeners
-are enabled or if secure certificate/configuration material is absent.
+TLS and legacy traffic use separate listeners; the server never sniffs both
+protocols on one port. Listener profiles are mutually exclusive: with secure
+mode disabled (the checked-in default), only raw `5999/7000` start; with secure
+mode enabled, only secure `6599/7443` start and both raw compatibility
+listeners are suppressed. Because the client candidate remains uninstalled and
+pass-through, secure mode must remain disabled until controlled Slice 8
+activation.
 
 The exact bounded format, signature, rollback protection, loader, and key
 rotation contract is maintained separately in the
@@ -232,9 +236,10 @@ The first game-channel frame after its successful preface is type `0x0201`:
 Grant ID and ticket must be nonzero. The server replies with type `0x0202`: a
 two-byte `BindResult` (`0=accepted`, `1=rejected`, `2=server-busy`,
 `3=policy-rejected`) followed by two zero reserved bytes. All failures close.
-The channel-phase gate is enforced before the legacy game handler. Slice 6
-decodes the first bind and returns `policy-rejected`; Slice 7 supplies the
-ticket authority that can produce `accepted`.
+The channel-phase gate is enforced before the legacy game handler. Slice 7
+atomically consumes the ticket, writes `accepted` at server-to-client sequence
+`1`, attaches the bounded account principal, and starts subsequent frame
+sequences at `2`. A rejection closes before constructing the legacy handler.
 
 ## Ticket policy
 
@@ -253,6 +258,15 @@ ticket authority that can produce `accepted`.
 - Never persist or log raw tickets. Zero client/server raw ticket buffers on
   every terminal path.
 
+This policy is implemented by a process-local bounded authority. A restart
+invalidates all generations and tickets. A newly issued grant is not
+redeemable. The physical `GameGrant` write activates its lease and makes the
+ticket redeemable, avoiding a bind race after the client receives it. The lease
+remains revocable until the matching legacy redirect is physically written;
+redirect failure or disposal revokes it, while redirect success commits the
+lease for bind or expiry. The client must not expose or use the route before it
+accepts that matching redirect.
+
 Client ticket state is:
 
 ```text
@@ -264,15 +278,20 @@ Empty -> Pending -> Claimed(proxy ID) -> Presented -> Consumed/Erased
 A claim may return to `Pending` only if no ticket byte was transmitted. Once
 presentation starts, the ticket is never reused. Each successful login creates
 a generation ID distinct from the login socket lifetime. A new authenticated
-generation erases an older grant. Once the grant and redirect are durably
-ordered to the client, the expected login-socket close and release preserve
-that generation's one grant until bind or expiry. A protocol failure before
-that commit point invalidates it.
+generation erases an older grant. Once the `GameGrant` write activates the
+lease, the ticket can be redeemed, but it remains revocable until the redirect
+write commits that lease. The expected login-socket close after that commit
+preserves the generation's one grant until bind or expiry. A protocol failure
+before the redirect commit point invalidates it unless it has already been
+atomically consumed by a valid bind.
 
 ## Client lifecycle
 
 Do not infer role from factory-call order; Origin creates and replaces multiple
-network objects.
+network objects. Slice 7 implements and tests the grant decoder, signed-policy
+validation, one-grant registry, claim/presentation lifecycle, bind encoder, and
+result decoder below, but the exported process policy still returns
+`PassThrough`; external route wiring is Slice 8.
 
 1. `NetClientCreate` creates the verified stock client and registers a unique
    proxy ID with a process coordinator. It starts no thread/socket in
@@ -303,12 +322,17 @@ write uses a complete-send loop.
 
 ## Downgrade and ordering rules
 
-- The shim never contacts raw external ports after TLS, certificate, ALPN,
-  preface, authentication, grant, or bind failure.
+- Once Slice 8 selects a secure `Login` or `Game` route, the shim never contacts
+  raw external ports after TLS, certificate, ALPN, preface, authentication,
+  grant, or bind failure. The current disabled classifier deliberately selects
+  `PassThrough` before any secure attempt; that is an uninstalled compatibility
+  state, not a secure-failure fallback.
 - The secure game endpoint comes from the authenticated grant and signed
   allowlist, not from the legacy redirect alone.
 - One outer writer serializes the grant before the matching legacy redirect.
-- The client commits the grant before exposing subsequent legacy bytes.
+- The client stores the authenticated grant first, but cannot expose or use its
+  game route until the matching legacy redirect has arrived and passed exact
+  policy validation.
 - Control frames never enter the legacy XOR stream.
 - TCP/TLS and future UDP have no shared ordering. Phase 2 advertises no UDP
   capability and creates no UDP socket.

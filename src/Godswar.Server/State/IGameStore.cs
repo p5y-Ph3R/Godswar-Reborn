@@ -24,6 +24,33 @@ internal interface IGameStore : IAsyncDisposable
 
     Task<GameAccount> LoginOrCreateAccountAsync(string username, string password, CancellationToken cancellationToken = default);
 
+    Task<StoredAccountCredential?> FindAccountCredentialAsync(
+        string username,
+        CancellationToken cancellationToken = default);
+
+    Task<GameAccount?> FindAccountByIdAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+
+    Task<GameAccount?> FindAccountByUsernameAsync(
+        string username,
+        CancellationToken cancellationToken = default);
+
+    Task<GameAccount?> TryCreateAccountWithCredentialAsync(
+        string username,
+        string versionedVerifier,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryReplaceAccountCredentialAsync(
+        int accountId,
+        string expectedVerifier,
+        string versionedVerifier,
+        CancellationToken cancellationToken = default);
+
+    Task MarkAccountOnlineAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+
     Task MarkAccountOfflineAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task SaveCharacterPositionAsync(

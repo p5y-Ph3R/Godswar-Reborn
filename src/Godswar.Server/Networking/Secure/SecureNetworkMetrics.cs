@@ -28,7 +28,8 @@ internal enum SecureFrameOutcome : byte
     Malformed = 2,
     WrongPhase = 3,
     QueueOverflow = 4,
-    DeadlineExceeded = 5
+    DeadlineExceeded = 5,
+    Rejected = 6
 }
 
 internal static class SecureNetworkMetricTags
@@ -68,6 +69,7 @@ internal static class SecureNetworkMetricTags
             SecureFrameOutcome.WrongPhase => "wrong_phase",
             SecureFrameOutcome.QueueOverflow => "queue_overflow",
             SecureFrameOutcome.DeadlineExceeded => "deadline_exceeded",
+            SecureFrameOutcome.Rejected => "rejected",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome))
         };
 }

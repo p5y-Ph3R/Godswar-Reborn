@@ -128,10 +128,28 @@ internal static partial class Program
             ("Monster area-damage AOI revision delivery", CheckMonsterAreaDamageDeliveryAsync),
             ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
+            (
+                "Password authentication primitives",
+                PasswordAuthenticationPrimitiveChecks.RunAsync),
+            (
+                "Bounded password KDF scheduler",
+                PasswordKdfSchedulerChecks.RunAsync),
+            (
+                "JSON account authentication and migration",
+                AccountAuthenticationJsonChecks.RunAsync),
+            (
+                "Registration collision plaintext authentication",
+                RegistrationCollisionAuthenticationChecks.RunAsync),
             ("Secure Phase 2 bounded protocol codecs", SecureProtocolCodecChecks.RunAsync),
             ("Secure Phase 2 legacy transport parity", LegacyByteTransportChecks.RunAsync),
             ("Secure Phase 2 bounded network lifecycle", NetworkRuntimeLifecycleChecks.RunAsync),
             ("Secure Phase 2 TLS mux transport", SecureTlsTransportChecks.RunAsync),
+            (
+                "Secure Phase 2 single-use game ticket authority",
+                SecureGameTicketStoreChecks.RunAsync),
+            (
+                "Secure Phase 2 authenticated grant and principal flow",
+                SecureLoginTicketFlowChecks.RunAsync),
             (
                 "Secure Phase 2 authentication idle transition",
                 ClientSessionRuntimeChecks.RunSecureAuthenticationIdleTransitionAsync),

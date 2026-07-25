@@ -89,3 +89,13 @@ This is the version ledger for
   policy, heartbeat handling, and guarded development-certificate tooling.
   The client candidate remains uninstalled, no trust was installed, secure
   game binding fails closed pending Slice 7 tickets, and UDP remains absent.
+- `1.18` (`2026-07-25`): Added secure-path bounded PBKDF2 authentication,
+  atomic plaintext migration, grant-before-redirect ordering, hash-only
+  single-use tickets, accepted game bind with authoritative principals, and
+  offline native grant-registry/bind primitives. The secure profile remains
+  disabled and the client remains uninstalled/pass-through; the default profile
+  starts only raw `5999/7000`, while enabling secure mode suppresses both raw
+  compatibility listeners. No live database or trust was changed, and UDP
+  remains absent. Slice 8 is controlled activation and route wiring behind
+  production manifest, backup/reset, authorized-trust, socket-test, and
+  rollback gates.

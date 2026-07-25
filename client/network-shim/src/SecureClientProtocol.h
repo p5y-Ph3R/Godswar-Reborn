@@ -51,6 +51,13 @@ inline constexpr std::size_t SecureClientPrefaceBytes = 72;
 inline constexpr std::size_t SecureServerPrefaceBytes = 40;
 inline constexpr std::size_t SecureFrameHeaderBytes = 16;
 inline constexpr std::size_t SecureMaximumPayloadBytes = 16 * 1024;
+inline constexpr std::size_t SecureGameGrantIdBytes = 16;
+inline constexpr std::size_t SecureGameTicketBytes = 32;
+inline constexpr std::size_t SecureGameGrantFixedBytes = 68;
+inline constexpr std::size_t SecureGameGrantMinimumBytes = 71;
+inline constexpr std::size_t SecureGameGrantMaximumBytes = 408;
+inline constexpr std::size_t SecureGameBindBytes = 52;
+inline constexpr std::size_t SecureBindResultBytes = 4;
 inline constexpr std::uint16_t SecureProtocolMajor = 1;
 inline constexpr std::uint16_t SecureProtocolMinor = 0;
 

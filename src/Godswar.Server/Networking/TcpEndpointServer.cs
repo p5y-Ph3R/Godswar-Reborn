@@ -156,6 +156,14 @@ internal sealed class TcpEndpointServer
                 _timeProvider,
                 connection.Lease.MarkAuthenticated);
             connection.Session = session;
+            if (session.BoundGamePrincipal is not null)
+            {
+                // Ticket consumption is the authentication boundary for the
+                // secure game endpoint. Release unauthenticated admission and
+                // start the secure heartbeat before legacy compatibility data
+                // reaches the game handler.
+                session.MarkAuthenticated();
+            }
             await _handlerFactory(session).RunAsync(cancellationToken);
             disconnectReason = cancellationToken.IsCancellationRequested
                 ? NetworkDisconnectReason.ServerShutdown

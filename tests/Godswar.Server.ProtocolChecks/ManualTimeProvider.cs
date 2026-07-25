@@ -9,6 +9,19 @@ internal sealed class ManualTimeProvider : TimeProvider
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
+    public int ScheduledTimerCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _timers.Count(static timer =>
+                    !timer.IsDisposed &&
+                    timer.DueTimestamp is not null);
+            }
+        }
+    }
+
     public override DateTimeOffset GetUtcNow()
     {
         lock (_sync)

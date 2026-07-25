@@ -24,6 +24,7 @@ internal static partial class SecureTlsTransportChecks
         await CheckWrongAlpnFailsClosedAsync();
         await CheckHandshakeDeadlineAsync();
         await CheckGameFailsClosedBeforeHandlerAsync();
+        await CheckGameTicketBindRoundTripAsync();
         await CheckHandshakeGateAsync();
     }
 
@@ -37,6 +38,10 @@ internal static partial class SecureTlsTransportChecks
         Check.True(
             disabled.CertificatePassword.Length == 0,
             "certificate password is absent from serialized defaults");
+        Check.Equal(
+            "rejected",
+            SecureFrameOutcome.Rejected.ToMetricTag(),
+            "rejected secure binds have a distinct telemetry outcome");
         Check.Throws<InvalidDataException>(
             () => SecureNetworkOptions.ValidateSecureRuntime(
                 new NetworkRuntimeOptions
@@ -387,7 +392,7 @@ internal static partial class SecureTlsTransportChecks
             NetworkEndpointRole.Login,
             timeProvider);
         session.MarkAuthenticated();
-        await Task.Yield();
+        await WaitForScheduledTimerAsync(timeProvider);
         timeProvider.Advance(TimeSpan.FromSeconds(30));
 
         var ping = await ReadFrameAsync(
@@ -405,8 +410,9 @@ internal static partial class SecureTlsTransportChecks
             SecureFrameType.Pong,
             sequence: 1,
             ping.Payload);
-        await Task.Delay(25);
+        await WaitForPongProcessedAsync(transport);
 
+        await WaitForScheduledTimerAsync(timeProvider);
         timeProvider.Advance(TimeSpan.FromSeconds(30));
         var secondPing = await ReadFrameAsync(
             pair.ClientStream,
@@ -428,6 +434,28 @@ internal static partial class SecureTlsTransportChecks
         Check.True(
             await WaitForTlsCloseAsync(pair.ClientStream),
             "wrong Pong fails the secure connection");
+    }
+
+    private static async Task WaitForScheduledTimerAsync(
+        ManualTimeProvider timeProvider)
+    {
+        using var deadline = new CancellationTokenSource(
+            TimeSpan.FromSeconds(5));
+        while (timeProvider.ScheduledTimerCount == 0)
+        {
+            await Task.Delay(1, deadline.Token);
+        }
+    }
+
+    private static async Task WaitForPongProcessedAsync(
+        TlsMuxLegacyTransport transport)
+    {
+        using var deadline = new CancellationTokenSource(
+            TimeSpan.FromSeconds(5));
+        while (transport.PingOutstanding)
+        {
+            await Task.Delay(1, deadline.Token);
+        }
     }
 
     private static async Task CheckHeartbeatWriteDeadlineAsync()

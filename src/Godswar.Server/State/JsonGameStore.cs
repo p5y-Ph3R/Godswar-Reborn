@@ -40,41 +40,6 @@ internal sealed partial class JsonGameStore : IGameStore
         }
     }
 
-    public async Task<GameAccount> LoginOrCreateAccountAsync(string username, string password, CancellationToken cancellationToken = default)
-    {
-        username = CleanUsername(username);
-
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var db = await LoadUnsafeAsync(cancellationToken);
-            var account = db.Accounts.FirstOrDefault(a => string.Equals(a.Username, username, StringComparison.OrdinalIgnoreCase));
-            if (account is null)
-            {
-                account = new GameAccount
-                {
-                    Id = db.NextAccountId++,
-                    Username = username,
-                    Password = password,
-                    CreatedUtc = DateTime.UtcNow
-                };
-                db.Accounts.Add(account);
-            }
-            else
-            {
-                // Local emulator mode: keep login friction low while packets are still being mapped.
-                account.Password = password;
-            }
-
-            await SaveUnsafeAsync(db, cancellationToken);
-            return Clone(account);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
     public Task MarkAccountOfflineAsync(int accountId, CancellationToken cancellationToken = default)
     {
         return Task.CompletedTask;

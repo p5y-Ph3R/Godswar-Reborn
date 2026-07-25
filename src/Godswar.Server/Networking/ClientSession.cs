@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Networking.Secure;
 using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Networking;
@@ -43,6 +44,30 @@ internal sealed class ClientSession : IAsyncDisposable
 
     internal bool AllowsPayloadDiagnostics =>
         _transport is not ISecureLegacyByteTransport;
+
+    internal bool IsSecure =>
+        _transport is ISecureControlChannel;
+
+    internal SecureConnectionContext? SecureConnectionContext =>
+        (_transport as ISecureControlChannel)?.ConnectionContext;
+
+    internal SecureBoundGamePrincipal? BoundGamePrincipal =>
+        (_transport as ISecureControlChannel)?.BoundGamePrincipal;
+
+    internal ValueTask SendGameGrantAsync(
+        SecureGameGrant grant,
+        CancellationToken cancellationToken)
+    {
+        if (_transport is not ISecureControlChannel controlChannel)
+        {
+            throw new InvalidOperationException(
+                "The raw legacy transport cannot send secure game grants.");
+        }
+
+        return controlChannel.SendGameGrantAsync(
+            grant,
+            cancellationToken);
+    }
 
     public void MarkAuthenticated()
     {

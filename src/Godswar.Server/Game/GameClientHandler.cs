@@ -191,7 +191,21 @@ internal sealed partial class GameClientHandler : IClientHandler
 
     private async Task HandlePacketAsync(GamePacket packet, CancellationToken cancellationToken)
     {
-        LogReceived(packet);
+        if (_session.AllowsPayloadDiagnostics)
+        {
+            LogReceived(packet);
+        }
+
+        if (_session.BoundGamePrincipal is not null &&
+            _account is null &&
+            packet.Opcode is not (
+                Opcodes.LoginGameServer or
+                Opcodes.Ping or
+                Opcodes.UiHeartbeat))
+        {
+            _session.Disconnect();
+            return;
+        }
 
         switch (packet.Opcode)
         {

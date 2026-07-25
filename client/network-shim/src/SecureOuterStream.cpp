@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace godswar::network {
 namespace {
@@ -19,8 +20,10 @@ ULONGLONG DeadlineAfter(DWORD milliseconds) noexcept {
 } // namespace
 
 SecureOuterStream::SecureOuterStream(
-    IDeadlinePlaintextStream* plaintextStream) noexcept
-    : plaintextStream_(plaintextStream) {
+    IDeadlinePlaintextStream* plaintextStream,
+    SecureGameGrantRegistry* grantRegistry) noexcept
+    : plaintextStream_(plaintextStream),
+      grantRegistry_(grantRegistry) {
     InitializeSRWLock(&writeLock_);
     InitializeSRWLock(&snapshotLock_);
 }
@@ -105,6 +108,10 @@ bool SecureOuterStream::Establish(
     AcquireSRWLockExclusive(&snapshotLock_);
     role_ = role;
     established_ = true;
+    gameBound_ = role == SecureEndpointRole::Login;
+    grantCommitted_ = false;
+    grantExposed_ = false;
+    committedGrantGeneration_ = 0;
     ReleaseSRWLockExclusive(&snapshotLock_);
     return true;
 }
@@ -112,9 +119,16 @@ bool SecureOuterStream::Establish(
 ByteStreamIoResult SecureOuterStream::Read(
     void* destination,
     std::size_t destinationCapacity) noexcept {
+    SecureEndpointRole currentRole = SecureEndpointRole::Login;
+    bool currentBound = false;
+    AcquireSRWLockShared(&snapshotLock_);
+    currentRole = role_;
+    currentBound = gameBound_;
+    ReleaseSRWLockShared(&snapshotLock_);
     if (destination == nullptr ||
         destinationCapacity == 0 ||
         !established_ ||
+        (currentRole == SecureEndpointRole::Game && !currentBound) ||
         IsStopped()) {
         return {ByteStreamIoStatus::Failed, 0};
     }
@@ -203,6 +217,11 @@ ByteStreamIoResult SecureOuterStream::Read(
         ReleaseSRWLockExclusive(&snapshotLock_);
 
         if (header.type == SecureFrameType::LegacyBytes) {
+            AcquireSRWLockExclusive(&snapshotLock_);
+            if (grantCommitted_) {
+                grantExposed_ = true;
+            }
+            ReleaseSRWLockExclusive(&snapshotLock_);
             inboundOffset_ = 0;
             inboundBytes_ = header.payloadBytes;
             const std::size_t copied = (std::min)(
@@ -236,6 +255,47 @@ ByteStreamIoResult SecureOuterStream::Read(
             continue;
         }
 
+        if (header.type == SecureFrameType::GameGrant) {
+            bool alreadyCommitted = false;
+            AcquireSRWLockShared(&snapshotLock_);
+            alreadyCommitted = grantCommitted_;
+            ReleaseSRWLockShared(&snapshotLock_);
+            if (alreadyCommitted) {
+                SecureZeroMemory(
+                    inboundPayload_,
+                    header.payloadBytes);
+                Fail(SecureOuterFailure::UnsupportedControl);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            SecureGameGrant grant;
+            const bool decoded = TryDecodeSecureGameGrant(
+                inboundPayload_,
+                header.payloadBytes,
+                &grant);
+            SecureZeroMemory(
+                inboundPayload_,
+                header.payloadBytes);
+            if (!decoded) {
+                Fail(SecureOuterFailure::GrantDecode);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            std::uint64_t committedGeneration = 0;
+            if (grantRegistry_ == nullptr ||
+                grantRegistry_->Commit(
+                    std::move(grant),
+                    &committedGeneration) !=
+                    SecureGameGrantResult::Success) {
+                Fail(SecureOuterFailure::GrantCommit);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            AcquireSRWLockExclusive(&snapshotLock_);
+            grantCommitted_ = true;
+            grantExposed_ = false;
+            committedGrantGeneration_ = committedGeneration;
+            ReleaseSRWLockExclusive(&snapshotLock_);
+            continue;
+        }
+
         SecureZeroMemory(
             inboundPayload_,
             header.payloadBytes);
@@ -256,10 +316,17 @@ ByteStreamIoResult SecureOuterStream::Read(
 ByteStreamIoResult SecureOuterStream::Write(
     const void* source,
     std::size_t sourceBytes) noexcept {
+    SecureEndpointRole currentRole = SecureEndpointRole::Login;
+    bool currentBound = false;
+    AcquireSRWLockShared(&snapshotLock_);
+    currentRole = role_;
+    currentBound = gameBound_;
+    ReleaseSRWLockShared(&snapshotLock_);
     if (source == nullptr ||
         sourceBytes == 0 ||
         sourceBytes > SecureMaximumPayloadBytes ||
         !established_ ||
+        (currentRole == SecureEndpointRole::Game && !currentBound) ||
         IsStopped()) {
         return {ByteStreamIoStatus::Failed, 0};
     }
@@ -280,6 +347,7 @@ ByteStreamIoResult SecureOuterStream::Write(
 }
 
 void SecureOuterStream::Stop() noexcept {
+    InvalidateUnexposedGrant();
     if (InterlockedCompareExchange(&stopped_, 1, 0) == 0) {
         InterlockedCompareExchange(
             &failure_,
@@ -295,6 +363,7 @@ SecureOuterSnapshot SecureOuterStream::Snapshot() const noexcept {
     SecureOuterSnapshot snapshot{};
     AcquireSRWLockShared(&snapshotLock_);
     snapshot.established = established_;
+    snapshot.gameBound = gameBound_;
     snapshot.role = role_;
     snapshot.nextInboundSequence = nextInboundSequence_;
     snapshot.nextOutboundSequence = nextOutboundSequence_;
@@ -405,9 +474,30 @@ void SecureOuterStream::Fail(
         &failure_,
         static_cast<LONG>(failure),
         static_cast<LONG>(SecureOuterFailure::None));
+    InvalidateUnexposedGrant();
     if (InterlockedCompareExchange(&stopped_, 1, 0) == 0 &&
         plaintextStream_ != nullptr) {
         plaintextStream_->Stop();
+    }
+}
+
+void SecureOuterStream::InvalidateUnexposedGrant() noexcept {
+    SecureGameGrantRegistry* registry = nullptr;
+    std::uint64_t generation = 0;
+    AcquireSRWLockExclusive(&snapshotLock_);
+    if (grantRegistry_ != nullptr &&
+        grantCommitted_ &&
+        !grantExposed_ &&
+        committedGrantGeneration_ != 0) {
+        registry = grantRegistry_;
+        generation = committedGrantGeneration_;
+        committedGrantGeneration_ = 0;
+        grantCommitted_ = false;
+    }
+    ReleaseSRWLockExclusive(&snapshotLock_);
+    if (registry != nullptr) {
+        static_cast<void>(
+            registry->EraseIfGeneration(generation));
     }
 }
 

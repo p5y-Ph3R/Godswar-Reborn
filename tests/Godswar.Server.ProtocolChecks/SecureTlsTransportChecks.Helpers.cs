@@ -262,21 +262,29 @@ internal static partial class SecureTlsTransportChecks
 
         public async ValueTask DisposeAsync()
         {
-            await ClientStream.DisposeAsync();
-            client.Dispose();
             if (TransportTask.IsCompletedSuccessfully)
-            {
-                await TransportTask.Result.DisposeAsync();
-            }
-            else
             {
                 try
                 {
-                    await TransportTask;
+                    await TransportTask.Result.DisposeAsync();
                 }
-                catch
+                finally
                 {
+                    await ClientStream.DisposeAsync();
+                    client.Dispose();
                 }
+                return;
+            }
+
+            await ClientStream.DisposeAsync();
+            client.Dispose();
+            try
+            {
+                var transport = await TransportTask;
+                await transport.DisposeAsync();
+            }
+            catch
+            {
             }
         }
     }

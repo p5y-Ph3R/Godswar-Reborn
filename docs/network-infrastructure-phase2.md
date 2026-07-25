@@ -2,41 +2,23 @@
 
 ## Status
 
-- Specification version: `1.10`
+- Specification version: `1.11`
 - Last updated: `2026-07-25`
-- Runtime status: Slice 6 signed endpoint validation, native Schannel/framing
-  primitives, and opt-in bounded server `SslStream` listeners are implemented;
-  the candidate remains uninstalled and disabled, secure game bind is
-  fail-closed, and UDP is absent
-- Current next milestone: Slice 7 password migration and single-use game tickets
+- Runtime status: Slice 7 auth, tickets, game bind, and native offline primitives
+  are implemented. Secure/client remain disabled/uninstalled; default starts
+  raw `5999/7000` only, while secure mode suppresses both. UDP is absent
+- Current next milestone: Slice 8 controlled activation and exported-client
+  route wiring
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
-- Rejected V3 SHA-256:
-  `17A7219868BAC19BA2BDDD2949FCF70884D4FD9F3EC5799455EF944F40D878D1`
-- V3 failure evidence:
-  `artifacts/network-shim/manual-parity/20260724T043833399Z-2bd75dd7`
-- Rejected V4 Origin SHA-256:
-  `E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C`
-- Rejected V4 Net SHA-256:
-  `EF531F8CB20A4FCA8D1DBA979FD131ECA002383AE862890435426DF948817597`
-- V4 evidence/result:
-  `artifacts/network-shim/manual-parity/20260724T095739213Z-db16daa7` /
-  `Fail`
 - Current predecessor Origin:
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 - Current stock Net:
   `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C`
 - Current `NetLegacy.dll`: absent
 
-Exact V1/V2 and pass-through recovery hashes/backups remain in the
-[Phase 1 runbook](network-infrastructure-phase1.md).
-
-Loading-gate V1
-`2D819908BEE2FA7D8BE4957E18358DEFFB5FD65D01AC26D6F73F29F4C71E2AE0`
-failed by starving native processing. V2 failed when its timed unready handoff
-recreated the blank model. V3 still reached the roughly 15-second native
-timeout and `0x005F58BC` null-root crash. All three are historical evidence,
-not rollback targets.
+Rejected V1-V4 hashes, failures, and recovery backups remain in the
+[Phase 1 runbook](network-infrastructure-phase1.md); none is a rollback target.
 This document does not claim that the current raw protocol is secure or
 authorize enabling UDP.
 
@@ -69,19 +51,18 @@ work.
 
 ## Why this seam is necessary
 
-Current repository evidence:
+Repository seam and compatibility evidence:
 
-- `TcpEndpointServer` accepts indefinitely and starts one untracked task per
-  socket without admission limits.
-- `ClientSession` is tied directly to `TcpClient`/`NetworkStream`, has no
-  read/write deadlines, and uses an inbound legacy packet ceiling of `8196`.
+- Slice 3/4 moved sockets behind `ILegacyByteTransport` and added bounded
+  admission, tracked tasks, queues, deadlines, and drain behavior.
+- `ClientSession` still owns the inbound legacy packet ceiling of `8196`,
+  handler dispatch, and rolling cipher state.
 - `PacketCipher` advances one continuous 256-byte XOR pointer across arbitrary
   read and write boundaries.
 - Some outbound calls are packet batches or arbitrary stream chunks. An outer
   TLS frame therefore cannot assume that it contains exactly one legacy packet.
-- Login currently upserts credentials rather than authenticating them.
-- Both stores overwrite an existing password, and game opcode `10000` calls the
-  same operation with an empty password.
+- The default raw profile retains compatibility upsert/username admission but
+  cannot overwrite a versioned verifier; secure mode does not start it.
 - The rejected V4 experiment preserved the nine-slot ABI, but its AfterLogin,
   preview-gate, and Origin lifecycle hooks were rolled back and are not part of
   the future bridge.
@@ -137,7 +118,9 @@ The normative summary is:
   exact consumed counts, role/direction checks, and disposable secret controls;
   decoded grants remain syntax-only until signed policy validates them.
 - Opaque legacy XOR stream chunks remain byte-identical inside TLS.
-- An authenticated grant is committed before the legacy redirect is exposed.
+- The `GameGrant` physical write makes its lease redeemable. Redirect failure
+  revokes it; a physical redirect write commits it. The client cannot expose or
+  use the route before that redirect.
 - A 60-second, server-stored, hashed, single-use ticket binds the game channel
   before any legacy game data or state allocation.
 - The process coordinator classifies exact `SetHost` routes rather than factory
@@ -167,7 +150,10 @@ cancels handshakes, and drains active tasks within a fixed deadline.
 
 ## Authentication migration
 
-Authentication is not an upsert.
+Authentication is not an upsert. Slice 7 implements password verification,
+migration, and ticket-backed identity only for an opt-in secure login; the
+mutually exclusive default profile retains raw compatibility. Secure mode
+starts neither raw listener.
 
 - Split storage operations into find, explicit create, authenticate, mark
   login, and mark logout.
@@ -189,10 +175,12 @@ Authentication is not an upsert.
 - Do not invent a password pepper until a managed secret/HSM boundary and a
   tested rotation/recovery procedure exist.
 
-Back up and audit the account table before credential migration. Schema changes
-are additive and tested against both JSON and PostgreSQL stores. Successfully
-migrated plaintext is not retained merely to make rollback easier; old and new
-server binaries used during rollback must both understand the versioned hash.
+Back up and audit the account table before enabling secure authentication
+against a live database. JSON migration is covered offline and both JSON and
+PostgreSQL persistence adapters understand the versioned verifier, but no live
+PostgreSQL migration was run. Empty verifiers return reset-required through the
+generic login failure; no administrative reset workflow exists yet. Successful
+plaintext migration is atomic and does not retain plaintext for rollback.
 
 The global KDF admission queue is independently bounded to 64 requests and
 8 KiB of copied credential bytes. Admission waits at most 250 ms. The complete
@@ -292,11 +280,14 @@ failures before continuing.
    policy, bounded outer framing, separate opt-in TLS ports, and guarded
    development-CA automation. Details:
    [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure-phase2-secure-transport.md).
-7. Current: add password hashing/migration plus opaque ticket grant/bind. Remove
-   username-only authority from the secure game path.
-8. Run automated negative/fuzz/slow-client/load gates, install through a new
-   guarded backup, perform original-client parity, then disable raw external
-   access in the secure profile.
+7. Completed in source/offline checks: bounded PBKDF2 authentication and
+   plaintext migration, grant-before-redirect ordering, hash-only bounded
+   single-use tickets, game bind, authoritative bound principals, and native
+   grant-registry/bind primitives. The client policy is not wired or installed.
+8. Current: controlled activation and route wiring. Supply production manifest
+   material, use authorized trust, run controlled-host socket/original-client
+   tests, install through a guarded backup, and verify secure mode omits raw.
+   Keep it disabled while the client is uninstalled/pass-through. No UDP.
 
 Focused slice-4 check:
 
@@ -382,14 +373,14 @@ Phase 2 is accepted only when the original client authenticates over TLS,
 receives and stores a grant before redirect, binds the game connection with a
 single-use ticket, enters the world, completes the parity/soak matrix, fails
 closed without raw downgrade, and can be restored exactly to the pinned
-pre-Phase-2 client state. Runtime implementation may now begin; V4 and Phase 1
-acceptance are not claimed.
+pre-Phase-2 client state. Slice 7 source completion does not claim activation,
+original-client acceptance, V4 acceptance, or Phase 1 acceptance.
 
 Still required during the transport implementation slices:
 
-- Parked/open, non-blocking for slice 4: observed game `SetHost`
-  string/port and stock `GetStatus` transitions.
-- Account password audit and an explicit reset plan for blank credentials.
-- Development CA, signed endpoint-manifest key custody, and certificate
-  rotation procedure.
+- Slice 8 activation evidence: observed login/game `SetHost` values and stock
+  `GetStatus` transitions.
+- Live account backup/audit and an explicit reset plan for blank credentials.
+- Production endpoint-manifest/key/floor material, authorized certificate
+  trust and rotation, and controlled-host socket/original-client tests.
 - Capacity inputs before changing conservative limits or claiming scale.

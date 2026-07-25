@@ -6,6 +6,7 @@ using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
+using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -126,8 +127,13 @@ internal static class LegacyByteTransportChecks
 
     private static async Task CheckLoginHandlerLoopAsync()
     {
+        var login = CreatePacket(68, Opcodes.Login, 0);
+        login.AsSpan(4).Clear();
+        PacketText.WriteFixedAscii(login.AsSpan(4, 32), "test2");
+        PacketText.WriteFixedAscii(login.AsSpan(36, 32), "password");
         var input = new[]
         {
+            login,
             CreatePacket(4, Opcodes.SelectServer, 0),
             CreatePacket(4, Opcodes.LoginReturnInfo, 0)
         }.SelectMany(static packet => packet).ToArray();
@@ -140,12 +146,13 @@ internal static class LegacyByteTransportChecks
         {
             var handler = new LoginClientHandler(
                 session,
-                new UnusedGameStore(),
+                new LoginGameStore(),
                 options);
             await handler.RunAsync(CancellationToken.None);
         }
 
-        var expectedClear = PacketBuilder.SendServer()
+        var expectedClear = PacketBuilder.ServerList()
+            .Concat(PacketBuilder.SendServer())
             .Concat(PacketBuilder.GameServerRedirect(
                 options.Game.PublicHost,
                 options.Game.Port))
@@ -153,7 +160,10 @@ internal static class LegacyByteTransportChecks
         Check.True(
             transport.WrittenBytes.SequenceEqual(Encrypt(expectedClear)),
             "transport framing dispatches login opcodes and ordered responses");
-        Check.Equal(2, transport.WriteCount, "login handler emits two responses");
+        Check.Equal(
+            3,
+            transport.WriteCount,
+            "login handler authenticates before server selection and redirect");
     }
 
     private static async Task CheckLegacyEofBoundariesAsync()
@@ -441,7 +451,18 @@ internal static class LegacyByteTransportChecks
             $"Assertion failed: {description}; expected {typeof(TException).Name}.");
     }
 
-    private sealed class UnusedGameStore : GameStoreTestStub
+    private sealed class LoginGameStore : GameStoreTestStub
     {
+        public override Task<GameAccount> LoginOrCreateAccountAsync(
+            string username,
+            string password,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new GameAccount
+            {
+                Id = 7,
+                Username = username
+            });
+        }
     }
 }

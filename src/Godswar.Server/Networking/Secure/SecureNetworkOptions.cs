@@ -27,6 +27,8 @@ internal sealed class SecureNetworkOptions
         DnsHost = "game.reborn.test"
     };
 
+    public SecureGameTicketOptions Tickets { get; set; } = new();
+
     public string CertificatePath { get; set; } = string.Empty;
 
     public string[] AllowedOriginSha256 { get; set; } =
@@ -40,6 +42,7 @@ internal sealed class SecureNetworkOptions
         Enabled = ReadBool("GODSWAR_SECURE_ENABLED", Enabled);
         Login ??= new SecureEndpointOptions();
         Game ??= new SecureEndpointOptions();
+        Tickets ??= new SecureGameTicketOptions();
         Login.BindHost = ReadString(
             "GODSWAR_SECURE_LOGIN_BIND_HOST",
             Login.BindHost);
@@ -54,6 +57,27 @@ internal sealed class SecureNetworkOptions
         Game.DnsHost = ReadString(
             "GODSWAR_SECURE_GAME_DNS_HOST",
             Game.DnsHost);
+        Tickets.RouteHost = ReadString(
+            "GODSWAR_SECURE_GAME_ROUTE_HOST",
+            Tickets.RouteHost);
+        Tickets.RoutePort = ReadInt(
+            "GODSWAR_SECURE_GAME_ROUTE_PORT",
+            Tickets.RoutePort);
+        Tickets.Audience = ReadString(
+            "GODSWAR_SECURE_GAME_AUDIENCE",
+            Tickets.Audience);
+        Tickets.TargetServerId = ReadUInt(
+            "GODSWAR_SECURE_GAME_SERVER_ID",
+            Tickets.TargetServerId);
+        Tickets.Permissions = ReadUInt(
+            "GODSWAR_SECURE_GAME_PERMISSIONS",
+            Tickets.Permissions);
+        Tickets.TtlSeconds = ReadInt(
+            "GODSWAR_SECURE_TICKET_TTL_SECONDS",
+            Tickets.TtlSeconds);
+        Tickets.Capacity = ReadInt(
+            "GODSWAR_SECURE_TICKET_CAPACITY",
+            Tickets.Capacity);
         CertificatePath = ReadString(
             "GODSWAR_SECURE_CERTIFICATE_PATH",
             CertificatePath);
@@ -81,10 +105,12 @@ internal sealed class SecureNetworkOptions
     {
         Login ??= new SecureEndpointOptions();
         Game ??= new SecureEndpointOptions();
+        Tickets ??= new SecureGameTicketOptions();
         AllowedOriginSha256 ??= [];
 
         Login.Normalize();
         Game.Normalize();
+        Tickets.Normalize();
         CertificatePath = CertificatePath?.Trim() ?? string.Empty;
 
         if (!Enabled)
@@ -94,6 +120,7 @@ internal sealed class SecureNetworkOptions
 
         Login.Validate(nameof(Login));
         Game.Validate(nameof(Game));
+        Tickets.Validate();
 
         if (Login.Port == Game.Port ||
             Login.Port == rawLoginPort ||
@@ -150,6 +177,19 @@ internal sealed class SecureNetworkOptions
         return AllowedOriginSha256.ToHashSet(StringComparer.Ordinal);
     }
 
+    internal SecureGameTarget BuildGameTarget()
+    {
+        Tickets.Validate();
+        return new SecureGameTarget(
+            Tickets.RouteHost,
+            Game.DnsHost,
+            Tickets.Audience,
+            checked((ushort)Tickets.RoutePort),
+            checked((ushort)Game.Port),
+            Tickets.TargetServerId,
+            (SecureGamePermissions)Tickets.Permissions);
+    }
+
     internal static void ValidateSecureRuntime(
         NetworkRuntimeOptions runtimeOptions)
     {
@@ -195,6 +235,15 @@ internal sealed class SecureNetworkOptions
             : fallback;
     }
 
+    private static uint ReadUInt(string name, uint fallback)
+    {
+        return uint.TryParse(
+            Environment.GetEnvironmentVariable(name),
+            out var value)
+            ? value
+            : fallback;
+    }
+
     private static bool ReadBool(string name, bool fallback)
     {
         return bool.TryParse(
@@ -203,6 +252,70 @@ internal sealed class SecureNetworkOptions
             ? value
             : fallback;
     }
+}
+
+internal sealed class SecureGameTicketOptions
+{
+    public string RouteHost { get; set; } = "game.reborn.test";
+
+    public int RoutePort { get; set; } = 7000;
+
+    public string Audience { get; set; } = "reborn-game";
+
+    public uint TargetServerId { get; set; } = 100;
+
+    public uint Permissions { get; set; } = 1;
+
+    public int TtlSeconds { get; set; } = 60;
+
+    public int Capacity { get; set; } = 1024;
+
+    internal void Normalize()
+    {
+        RouteHost = RouteHost?.Trim().ToLowerInvariant() ?? string.Empty;
+        Audience = Audience?.Trim() ?? string.Empty;
+    }
+
+    internal void Validate()
+    {
+        if (!SecureProtocolValidation.IsDnsName(RouteHost, 23))
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.RouteHost must be a strict lowercase ASCII DNS name of at most 23 bytes.");
+        }
+        if (RoutePort is < 1 or > ushort.MaxValue)
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.RoutePort must be between 1 and 65535.");
+        }
+        if (!SecureProtocolValidation.IsAudience(Audience))
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.Audience must be a 1..64 byte protocol token.");
+        }
+        if (TargetServerId == 0)
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.TargetServerId must be nonzero.");
+        }
+        if (Permissions != (uint)SecureGamePermissions.EnterWorld)
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.Permissions must be the Slice 7 EnterWorld value (1).");
+        }
+        if (TtlSeconds is < 5 or > 300)
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.TtlSeconds must be between 5 and 300.");
+        }
+        if (Capacity is < 1 or > 65_536)
+        {
+            throw new InvalidDataException(
+                "Secure.Tickets.Capacity must be between 1 and 65536.");
+        }
+    }
+
+    internal TimeSpan Ttl => TimeSpan.FromSeconds(TtlSeconds);
 }
 
 internal sealed class SecureEndpointOptions
