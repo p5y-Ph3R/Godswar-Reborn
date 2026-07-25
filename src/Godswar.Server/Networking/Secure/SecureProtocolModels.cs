@@ -39,7 +39,8 @@ internal enum SecureFrameType : ushort
     LegacyBytes = 0x0100,
     GameGrant = 0x0200,
     GameBind = 0x0201,
-    BindResult = 0x0202
+    BindResult = 0x0202,
+    UdpBindingGrant = 0x0203
 }
 
 internal enum SecureBindStatus : ushort
@@ -70,6 +71,7 @@ internal static class SecureProtocolConstants
     public const int MaximumGameGrantBytes = 408;
     public const int GameBindBytes = 52;
     public const int BindResultBytes = 4;
+    public const int UdpBindingGrantBytes = 72;
 }
 
 internal sealed class SecureClientPreface

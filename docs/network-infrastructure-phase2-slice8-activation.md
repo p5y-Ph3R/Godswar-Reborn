@@ -262,13 +262,11 @@ security.
 
 ## UDP timeline
 
-Slice 9A's inert fixed binding codec and stateless cookie foundation is
-complete with no socket or capability. Slice 9B follows controlled Slice 8
-acceptance and adds authenticated UDP binding: a maximum 1,200-byte envelope, TLS-issued
-session material, stateless cookie validation, reviewed AEAD, sequence/replay
-window, key epochs, NAT rebinding, bounded state/rate limits, keepalive, and
-metrics. Gameplay stays on TLS and UDP-blocked clients fall back to
-authenticated TLS.
+Slice 9B's bounded cookie-plus-TLS endpoint-binding foundation now passes
+offline, but its listener and capability remain inactive. Remaining Slice 9
+work adds reviewed AEAD, sequence/replay windows, key epochs, NAT rebinding,
+keepalive, pacing, and production metrics. Gameplay stays on TLS and
+UDP-blocked clients fall back to authenticated TLS.
 
 Slice 10 / Phase 4 moves the first gameplay slice: sequenced movement meaning
 for opcode `10194`, authoritative snapshots/keyframes, reconciliation,

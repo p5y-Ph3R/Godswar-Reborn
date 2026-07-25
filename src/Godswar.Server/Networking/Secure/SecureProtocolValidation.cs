@@ -21,7 +21,8 @@ internal static class SecureProtocolValidation
             SecureFrameType.LegacyBytes or
             SecureFrameType.GameGrant or
             SecureFrameType.GameBind or
-            SecureFrameType.BindResult;
+            SecureFrameType.BindResult or
+            SecureFrameType.UdpBindingGrant;
     }
 
     public static bool IsFrameDirection(SecureFrameDirection direction)

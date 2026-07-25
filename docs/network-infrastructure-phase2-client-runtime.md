@@ -291,6 +291,6 @@ Slices 6-8 preserve these ownership and bound contracts and provide:
 9. candidate-bound manifest probing plus guarded monotonic activation/restore.
 
 Live account backup/reset rehearsal, operational keys/trust, controlled-host
-socket tests, and original-client TLS world entry remain required. The next
-implementation milestone after acceptance is Slice 9B authenticated UDP binding;
-gameplay remains on TLS throughout that slice.
+socket tests, and original-client TLS world entry remain required. Slice 9B's
+binding foundation passes offline; the remaining Slice 9 work protects
+datagrams while gameplay stays on TLS.

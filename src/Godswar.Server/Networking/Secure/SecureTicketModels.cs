@@ -32,6 +32,7 @@ internal enum SecureTicketConsumeStatus : byte
 
 internal sealed class SecureConnectionContext
 {
+    private readonly byte[] _connectionId;
     private readonly byte[] _clientInstanceId;
     private readonly byte[] _originSha256;
 
@@ -39,6 +40,7 @@ internal sealed class SecureConnectionContext
         SecureEndpointRole role,
         ushort protocolMajor,
         ushort protocolMinor,
+        ReadOnlySpan<byte> connectionId,
         ReadOnlySpan<byte> clientInstanceId,
         ReadOnlySpan<byte> originSha256)
     {
@@ -49,6 +51,14 @@ internal sealed class SecureConnectionContext
         if (protocolMajor == 0)
         {
             throw new ArgumentOutOfRangeException(nameof(protocolMajor));
+        }
+        if (connectionId.Length !=
+                SecureProtocolConstants.ConnectionIdBytes ||
+            SecureProtocolValidation.IsAllZero(connectionId))
+        {
+            throw new ArgumentException(
+                "TLS connection ID must be exactly 16 nonzero bytes.",
+                nameof(connectionId));
         }
         if (clientInstanceId.Length !=
                 SecureProtocolConstants.ClientInstanceIdBytes ||
@@ -69,6 +79,7 @@ internal sealed class SecureConnectionContext
         Role = role;
         ProtocolMajor = protocolMajor;
         ProtocolMinor = protocolMinor;
+        _connectionId = connectionId.ToArray();
         _clientInstanceId = clientInstanceId.ToArray();
         _originSha256 = originSha256.ToArray();
     }
@@ -78,6 +89,8 @@ internal sealed class SecureConnectionContext
     public ushort ProtocolMajor { get; }
 
     public ushort ProtocolMinor { get; }
+
+    public ReadOnlyMemory<byte> ConnectionId => _connectionId;
 
     public ReadOnlyMemory<byte> ClientInstanceId => _clientInstanceId;
 

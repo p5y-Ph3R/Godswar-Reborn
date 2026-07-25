@@ -87,6 +87,8 @@
     <ClCompile Include="SecureManifestProbe.cpp" />
     <ClCompile Include="SecureOuterControlTests.cpp" />
     <ClCompile Include="SecureOuterStreamTests.cpp" />
+    <ClCompile Include="SecureOuterUdpGrantTests.cpp" />
+    <ClCompile Include="SecureUdpBindingGrantTests.cpp" />
     <ClCompile Include="VerifiedImageFileTests.cpp" />
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
@@ -112,7 +114,9 @@
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Control.cpp" />
+    <ClCompile Include="..\src\SecureOuterStream.Binding.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.cpp" />
+    <ClCompile Include="..\src\SecureUdpBindingGrant.cpp" />
     <ClCompile Include="..\src\VerifiedImageFile.cpp" />
     <ClCompile Include="..\src\WinSocketByteStream.cpp" />
     <ClCompile Include="..\src\WinSockRuntime.cpp" />
@@ -142,6 +146,8 @@
     <ClInclude Include="SecureManifestProbe.h" />
     <ClInclude Include="SecureOuterControlTests.h" />
     <ClInclude Include="SecureOuterStreamTests.h" />
+    <ClInclude Include="SecureOuterUdpGrantTests.h" />
+    <ClInclude Include="SecureUdpBindingGrantTests.h" />
     <ClInclude Include="VerifiedImageFileTests.h" />
     <ClInclude Include="WinSocketByteStreamTests.h" />
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
@@ -172,6 +178,7 @@
     <ClInclude Include="..\src\SecureGameControl.h" />
     <ClInclude Include="..\src\SecureGameGrantRegistry.h" />
     <ClInclude Include="..\src\SecureOuterStream.h" />
+    <ClInclude Include="..\src\SecureUdpBindingGrant.h" />
     <ClInclude Include="..\src\VerifiedImageFile.h" />
     <ClInclude Include="..\src\WinSocketByteStream.h" />
     <ClInclude Include="..\src\WinSockRuntime.h" />

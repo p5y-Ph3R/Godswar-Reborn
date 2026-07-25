@@ -17,6 +17,8 @@
 #include "SecureManifestProbe.h"
 #include "SecureOuterControlTests.h"
 #include "SecureOuterStreamTests.h"
+#include "SecureOuterUdpGrantTests.h"
+#include "SecureUdpBindingGrantTests.h"
 #include "VerifiedImageFileTests.h"
 #include "WinSocketByteStreamTests.h"
 
@@ -518,6 +520,8 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecureGameGrantRegistryTests();
     Failures += RunSecureOuterControlTests();
     Failures += RunSecureOuterStreamTests();
+    Failures += RunSecureOuterUdpGrantTests();
+    Failures += RunSecureUdpBindingGrantTests();
     Failures += RunVerifiedImageFileTests();
     Failures += RunNativeClientCoordinatorTests();
     if (!offline) {

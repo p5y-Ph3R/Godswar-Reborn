@@ -4,7 +4,8 @@ internal enum SecureUdpBindingType : byte
 {
     ClientHello = 1,
     ServerChallenge = 2,
-    ClientProof = 3
+    ClientProof = 3,
+    AuthenticatedClientProof = 4
 }
 
 internal static class SecureUdpBindingConstants
@@ -17,6 +18,7 @@ internal static class SecureUdpBindingConstants
     public const ushort PayloadBytes = 48;
     public const int ConnectionIdBytes = 16;
     public const int ClientNonceBytes = 16;
+    public const int TlsProofTagBytes = 24;
     public const int CookieTagBytes = 32;
     public const int MaximumDatagramBytes = 1_200;
 }
@@ -30,6 +32,7 @@ internal readonly ref struct SecureUdpBindingView
         ulong sequence,
         ReadOnlySpan<byte> clientNonce,
         long issuedAtUnixSeconds,
+        ReadOnlySpan<byte> tlsProofAuthenticator,
         ReadOnlySpan<byte> authenticator)
     {
         Type = type;
@@ -38,6 +41,7 @@ internal readonly ref struct SecureUdpBindingView
         Sequence = sequence;
         ClientNonce = clientNonce;
         IssuedAtUnixSeconds = issuedAtUnixSeconds;
+        TlsProofAuthenticator = tlsProofAuthenticator;
         Authenticator = authenticator;
     }
 
@@ -52,6 +56,8 @@ internal readonly ref struct SecureUdpBindingView
     public ReadOnlySpan<byte> ClientNonce { get; }
 
     public long IssuedAtUnixSeconds { get; }
+
+    public ReadOnlySpan<byte> TlsProofAuthenticator { get; }
 
     public ReadOnlySpan<byte> Authenticator { get; }
 }

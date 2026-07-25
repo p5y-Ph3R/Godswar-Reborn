@@ -116,3 +116,10 @@ This is the version ledger for
   adversarial tests. No UDP socket, capability, session, native-client change,
   or gameplay migration exists; Slice 9B must retain the TLS connection ID and
   add authenticated binding after the protected-datagram ADR.
+- `1.21` (`2026-07-26`): Added Slice 9B authenticated endpoint binding: an
+  exact 72-byte game-TLS grant, retained connection ID, CSPRNG proof key,
+  type-4 cookie-plus-TLS proof, fixed-capacity generation-safe authority,
+  lease-owned cleanup, endpoint conflict handling, initial rate limits and
+  metrics, native grant retention, and a loopback-tested listener. Activation
+  remains fail-closed; AEAD, replay windows, key epochs, NAT rebinding,
+  keepalive, and the native UDP worker remain required.

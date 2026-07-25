@@ -19,6 +19,16 @@ internal sealed class SecureUdpOptions
 
     public int CookieKeyRotationSeconds { get; set; } = 60;
 
+    public int SessionCapacity { get; set; } = 1_024;
+
+    public int BindingOfferTtlSeconds { get; set; } = 30;
+
+    public int GlobalPacketsPerSecond { get; set; } = 4_096;
+
+    public int PrefixPacketsPerSecond { get; set; } = 256;
+
+    public int RateLimitPrefixCapacity { get; set; } = 1_024;
+
     internal void ApplyEnvironment()
     {
         Enabled = ReadBool(
@@ -42,6 +52,21 @@ internal sealed class SecureUdpOptions
         CookieKeyRotationSeconds = ReadInt(
             "GODSWAR_SECURE_UDP_COOKIE_KEY_ROTATION_SECONDS",
             CookieKeyRotationSeconds);
+        SessionCapacity = ReadInt(
+            "GODSWAR_SECURE_UDP_SESSION_CAPACITY",
+            SessionCapacity);
+        BindingOfferTtlSeconds = ReadInt(
+            "GODSWAR_SECURE_UDP_BINDING_OFFER_TTL_SECONDS",
+            BindingOfferTtlSeconds);
+        GlobalPacketsPerSecond = ReadInt(
+            "GODSWAR_SECURE_UDP_GLOBAL_PACKETS_PER_SECOND",
+            GlobalPacketsPerSecond);
+        PrefixPacketsPerSecond = ReadInt(
+            "GODSWAR_SECURE_UDP_PREFIX_PACKETS_PER_SECOND",
+            PrefixPacketsPerSecond);
+        RateLimitPrefixCapacity = ReadInt(
+            "GODSWAR_SECURE_UDP_RATE_LIMIT_PREFIX_CAPACITY",
+            RateLimitPrefixCapacity);
     }
 
     internal void NormalizeAndValidate(
@@ -97,10 +122,36 @@ internal sealed class SecureUdpOptions
             throw new InvalidDataException(
                 "Secure.Udp.CookieKeyRotationSeconds must be at least twice the cookie lifetime and cannot exceed 3600.");
         }
+        if (SessionCapacity is < 1 or > 65_536)
+        {
+            throw new InvalidDataException(
+                "Secure.Udp.SessionCapacity must be between 1 and 65536.");
+        }
+        if (BindingOfferTtlSeconds is < 5 or > 120)
+        {
+            throw new InvalidDataException(
+                "Secure.Udp.BindingOfferTtlSeconds must be between 5 and 120.");
+        }
+        if (GlobalPacketsPerSecond is < 1 or > 1_000_000)
+        {
+            throw new InvalidDataException(
+                "Secure.Udp.GlobalPacketsPerSecond must be between 1 and 1000000.");
+        }
+        if (PrefixPacketsPerSecond < 1 ||
+            PrefixPacketsPerSecond > GlobalPacketsPerSecond)
+        {
+            throw new InvalidDataException(
+                "Secure.Udp.PrefixPacketsPerSecond must be positive and cannot exceed the global limit.");
+        }
+        if (RateLimitPrefixCapacity is < 1 or > 65_536)
+        {
+            throw new InvalidDataException(
+                "Secure.Udp.RateLimitPrefixCapacity must be between 1 and 65536.");
+        }
         if (Enabled)
         {
             throw new InvalidDataException(
-                "Secure UDP is a codec-only foundation in Slice 9A and cannot be enabled.");
+                "Secure UDP remains fail-closed until the protected-datagram ADR and nonblocking native UDP worker are implemented.");
         }
     }
 

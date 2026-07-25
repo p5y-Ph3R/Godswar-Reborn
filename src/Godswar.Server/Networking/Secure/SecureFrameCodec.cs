@@ -217,6 +217,11 @@ internal static class SecureFrameCodec
                 endpointRole == SecureEndpointRole.Game &&
                 direction == SecureFrameDirection.ServerToClient &&
                 payloadLength == SecureProtocolConstants.BindResultBytes,
+            SecureFrameType.UdpBindingGrant =>
+                endpointRole == SecureEndpointRole.Game &&
+                direction == SecureFrameDirection.ServerToClient &&
+                payloadLength ==
+                    SecureProtocolConstants.UdpBindingGrantBytes,
             _ => false
         };
     }

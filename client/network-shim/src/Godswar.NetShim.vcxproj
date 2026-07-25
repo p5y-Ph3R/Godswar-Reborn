@@ -94,6 +94,7 @@
     <ClInclude Include="SecureGameControl.h" />
     <ClInclude Include="SecureGameGrantRegistry.h" />
     <ClInclude Include="SecureOuterStream.h" />
+    <ClInclude Include="SecureUdpBindingGrant.h" />
     <ClInclude Include="VerifiedImageFile.h" />
     <ClInclude Include="WinSocketByteStream.h" />
     <ClInclude Include="WinSockRuntime.h" />
@@ -124,7 +125,9 @@
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
     <ClCompile Include="SecureOuterStream.Control.cpp" />
+    <ClCompile Include="SecureOuterStream.Binding.cpp" />
     <ClCompile Include="SecureOuterStream.cpp" />
+    <ClCompile Include="SecureUdpBindingGrant.cpp" />
     <ClCompile Include="VerifiedImageFile.cpp" />
     <ClCompile Include="WinSocketByteStream.cpp" />
     <ClCompile Include="WinSockRuntime.cpp" />

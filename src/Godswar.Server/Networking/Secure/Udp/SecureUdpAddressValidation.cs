@@ -149,6 +149,63 @@ internal sealed class SecureUdpAddressValidation : IDisposable
         }
     }
 
+    public static bool TryCreateAuthenticatedClientProof(
+        ReadOnlySpan<byte> serverChallenge,
+        ReadOnlySpan<byte> tlsProofKey,
+        Span<byte> destination,
+        out int bytesWritten)
+    {
+        bytesWritten = 0;
+        if (!SecureUdpBindingCodec.TryDecode(
+                serverChallenge,
+                out var challenge) ||
+            challenge.Type != SecureUdpBindingType.ServerChallenge)
+        {
+            return false;
+        }
+
+        Span<byte> connectionId = stackalloc byte[
+            SecureUdpBindingConstants.ConnectionIdBytes];
+        Span<byte> nonce = stackalloc byte[
+            SecureUdpBindingConstants.ClientNonceBytes];
+        Span<byte> cookie = stackalloc byte[
+            SecureUdpBindingConstants.CookieTagBytes];
+        Span<byte> tlsProof = stackalloc byte[
+            SecureUdpBindingConstants.TlsProofTagBytes];
+        try
+        {
+            challenge.ConnectionId.CopyTo(connectionId);
+            challenge.ClientNonce.CopyTo(nonce);
+            challenge.Authenticator.CopyTo(cookie);
+            if (!SecureUdpTlsProofAuthenticator.TryCompute(
+                    tlsProofKey,
+                    serverChallenge,
+                    tlsProof))
+            {
+                return false;
+            }
+
+            return SecureUdpBindingCodec
+                .TryEncodeAuthenticatedClientProof(
+                    connectionId,
+                    challenge.KeyEpoch,
+                    challenge.Sequence,
+                    nonce,
+                    challenge.IssuedAtUnixSeconds,
+                    tlsProof,
+                    cookie,
+                    destination,
+                    out bytesWritten);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(connectionId);
+            CryptographicOperations.ZeroMemory(nonce);
+            CryptographicOperations.ZeroMemory(cookie);
+            CryptographicOperations.ZeroMemory(tlsProof);
+        }
+    }
+
     public bool TryValidateClientProof(
         ReadOnlySpan<byte> clientProof,
         IPEndPoint remoteEndpoint,
@@ -175,6 +232,90 @@ internal sealed class SecureUdpAddressValidation : IDisposable
 
         proof.ConnectionId.CopyTo(connectionIdDestination);
         return true;
+    }
+
+    public bool TryValidateAuthenticatedProofCookie(
+        ReadOnlySpan<byte> authenticatedProof,
+        IPEndPoint remoteEndpoint,
+        Span<byte> connectionIdDestination,
+        Span<byte> serverChallengeDestination,
+        Span<byte> tlsProofAuthenticatorDestination)
+    {
+        ThrowIfDisposed();
+        if (authenticatedProof.Length > _maximumDatagramBytes ||
+            connectionIdDestination.Length <
+                SecureUdpBindingConstants.ConnectionIdBytes ||
+            serverChallengeDestination.Length <
+                SecureUdpBindingConstants.DatagramBytes ||
+            tlsProofAuthenticatorDestination.Length <
+                SecureUdpBindingConstants.TlsProofTagBytes ||
+            connectionIdDestination.Overlaps(
+                serverChallengeDestination) ||
+            connectionIdDestination.Overlaps(
+                tlsProofAuthenticatorDestination) ||
+            serverChallengeDestination.Overlaps(
+                tlsProofAuthenticatorDestination) ||
+            !SecureUdpBindingCodec.TryDecode(
+                authenticatedProof,
+                out var proof) ||
+            proof.Type !=
+                SecureUdpBindingType.AuthenticatedClientProof)
+        {
+            return false;
+        }
+
+        Span<byte> connectionId = stackalloc byte[
+            SecureUdpBindingConstants.ConnectionIdBytes];
+        Span<byte> nonce = stackalloc byte[
+            SecureUdpBindingConstants.ClientNonceBytes];
+        Span<byte> cookie = stackalloc byte[
+            SecureUdpBindingConstants.CookieTagBytes];
+        Span<byte> tlsProof = stackalloc byte[
+            SecureUdpBindingConstants.TlsProofTagBytes];
+        Span<byte> challenge = stackalloc byte[
+            SecureUdpBindingConstants.DatagramBytes];
+        try
+        {
+            proof.ConnectionId.CopyTo(connectionId);
+            proof.ClientNonce.CopyTo(nonce);
+            proof.Authenticator.CopyTo(cookie);
+            proof.TlsProofAuthenticator.CopyTo(tlsProof);
+            if (!_cookies.Validate(
+                    remoteEndpoint,
+                    connectionId,
+                    nonce,
+                    proof.KeyEpoch,
+                    proof.IssuedAtUnixSeconds,
+                    cookie) ||
+                !SecureUdpBindingCodec.TryEncode(
+                    SecureUdpBindingType.ServerChallenge,
+                    connectionId,
+                    proof.KeyEpoch,
+                    proof.Sequence,
+                    nonce,
+                    proof.IssuedAtUnixSeconds,
+                    cookie,
+                    challenge,
+                    out var challengeBytes) ||
+                challengeBytes !=
+                    SecureUdpBindingConstants.DatagramBytes)
+            {
+                return false;
+            }
+
+            connectionId.CopyTo(connectionIdDestination);
+            challenge.CopyTo(serverChallengeDestination);
+            tlsProof.CopyTo(tlsProofAuthenticatorDestination);
+            return true;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(connectionId);
+            CryptographicOperations.ZeroMemory(nonce);
+            CryptographicOperations.ZeroMemory(cookie);
+            CryptographicOperations.ZeroMemory(tlsProof);
+            CryptographicOperations.ZeroMemory(challenge);
+        }
     }
 
     public void Dispose()

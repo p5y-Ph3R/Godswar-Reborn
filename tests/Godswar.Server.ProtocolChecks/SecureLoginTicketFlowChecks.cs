@@ -34,6 +34,7 @@ internal static class SecureLoginTicketFlowChecks
                 SecureProtocolConstants.ProtocolMajor,
                 SecureProtocolConstants.ProtocolMinor,
                 clientInstanceId,
+                clientInstanceId,
                 originHash);
 
             var shortPacket = CreateLoginBuffer(length: 50);
@@ -137,6 +138,7 @@ internal static class SecureLoginTicketFlowChecks
             SecureProtocolConstants.ProtocolMajor,
             SecureProtocolConstants.ProtocolMinor,
             clientInstanceId,
+            clientInstanceId,
             originHash);
         var clearInput = CreateLoginPacket(rawUsername, password)
             .Concat(CreatePacket(Opcodes.SelectServer))
@@ -221,6 +223,7 @@ internal static class SecureLoginTicketFlowChecks
                 SecureProtocolConstants.ProtocolMajor,
                 SecureProtocolConstants.ProtocolMinor,
                 clientInstanceId,
+                clientInstanceId,
                 originHash);
             var consumed = ticketStore.Consume(
                 bind,
@@ -256,6 +259,7 @@ internal static class SecureLoginTicketFlowChecks
             SecureEndpointRole.Game,
             SecureProtocolConstants.ProtocolMajor,
             SecureProtocolConstants.ProtocolMinor,
+            instanceId,
             instanceId,
             buildHash);
         var principal = new SecureBoundGamePrincipal(

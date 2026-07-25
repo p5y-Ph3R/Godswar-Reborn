@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Net.Security;
 using System.Security.Cryptography;
+using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Networking.Secure;
 
@@ -26,6 +27,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private readonly SecureBoundGamePrincipal? _boundGamePrincipal;
     private readonly SslStream _stream;
     private readonly TimeProvider _timeProvider;
+    private IDisposable? _udpRegistrationLease;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _heartbeatGate = new();
     private SecureLegacyChunk? _currentChunk;
@@ -52,7 +54,8 @@ internal sealed partial class TlsMuxLegacyTransport :
         NetworkRuntimeOptions options,
         TimeProvider? timeProvider,
         SecureConnectionContext connectionContext,
-        SecureBoundGamePrincipal? boundGamePrincipal)
+        SecureBoundGamePrincipal? boundGamePrincipal,
+        IDisposable? udpRegistrationLease = null)
     {
         ArgumentNullException.ThrowIfNull(connectionOwner);
         ArgumentNullException.ThrowIfNull(abortConnection);
@@ -71,7 +74,9 @@ internal sealed partial class TlsMuxLegacyTransport :
             endpointRole == NetworkEndpointRole.Game &&
                 boundGamePrincipal is null ||
             endpointRole == NetworkEndpointRole.Login &&
-                boundGamePrincipal is not null)
+                boundGamePrincipal is not null ||
+            udpRegistrationLease is not null &&
+                boundGamePrincipal is null)
         {
             throw new ArgumentException(
                 "Only a successfully bound secure game transport may carry a game principal.",
@@ -90,6 +95,7 @@ internal sealed partial class TlsMuxLegacyTransport :
         _secureRole = secureRole;
         _connectionContext = connectionContext;
         _boundGamePrincipal = boundGamePrincipal;
+        _udpRegistrationLease = udpRegistrationLease;
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
         if (boundGamePrincipal is not null)
@@ -216,6 +222,7 @@ internal sealed partial class TlsMuxLegacyTransport :
         _ingress.Complete();
         _controlQueue.Complete();
         CancelLifetime();
+        ReleaseUdpRegistration();
         CloseSocket();
     }
 
@@ -255,6 +262,7 @@ internal sealed partial class TlsMuxLegacyTransport :
             _currentChunk?.Return();
             _currentChunk = null;
             DrainIngress();
+            ReleaseUdpRegistration();
             _writeGate.Dispose();
             _lifetime.Dispose();
             await _stream.DisposeAsync();
@@ -273,6 +281,7 @@ internal sealed partial class TlsMuxLegacyTransport :
         _ingress.Complete(error);
         _controlQueue.Complete(error);
         CancelLifetime();
+        ReleaseUdpRegistration();
         CloseSocket();
     }
 
@@ -332,6 +341,11 @@ internal sealed partial class TlsMuxLegacyTransport :
         catch (ObjectDisposedException)
         {
         }
+    }
+
+    private void ReleaseUdpRegistration()
+    {
+        Interlocked.Exchange(ref _udpRegistrationLease, null)?.Dispose();
     }
 
     private sealed class SecureLegacyChunk(

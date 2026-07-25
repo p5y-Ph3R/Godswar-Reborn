@@ -31,6 +31,7 @@ internal static partial class SecureTlsTransportChecks
             SecureProtocolConstants.ProtocolMajor,
             SecureProtocolConstants.ProtocolMinor,
             clientInstanceId,
+            clientInstanceId,
             buildHash);
         var generation = ticketStore.BeginLogin(7, "test2");
         Check.True(

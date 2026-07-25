@@ -2,13 +2,13 @@
 
 ## Status
 
-- Specification version: `1.12`
-- Last updated: `2026-07-25`
+- Specification version: `1.13`
+- Last updated: `2026-07-26`
 - Runtime status: Slice 8 exported secure sessions, guarded activation/restore,
   and coherent listener startup pass source/offline checks. The client remains
-  uninstalled, secure mode disabled, and UDP absent
-- Current next milestone: controlled-host Slice 8 acceptance and Slice 9B
-  authenticated UDP binding; inert Slice 9A codecs/cookies are complete
+  uninstalled, secure mode disabled, and UDP inactive
+- Current next milestone: controlled-host Slice 8 acceptance and protected
+  datagrams; Slice 9B's binding foundation passes offline
 - Predecessor status: V4 final smoke is sealed `Fail`; ordered rollback is
   complete; Phase 1 remains unaccepted and the avatar issue is parked
 - Current predecessor Origin:

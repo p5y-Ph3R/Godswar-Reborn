@@ -2,6 +2,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
+using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Networking.Secure;
 
@@ -15,6 +16,8 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
     private readonly NetworkRuntimeOptions _options;
     private readonly IGameTicketStore? _ticketStore;
     private readonly TimeProvider _timeProvider;
+    private readonly SecureUdpSessionAuthority? _udpSessionAuthority;
+    private readonly ushort _udpPort;
 
     public TlsMuxLegacyTransportFactory(
         SecureNetworkOptions secureOptions,
@@ -23,7 +26,8 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
         TlsHandshakeGate handshakeGate,
         TimeProvider? timeProvider = null,
         IGameTicketStore? ticketStore = null,
-        SecureGameTarget? gameTarget = null)
+        SecureGameTarget? gameTarget = null,
+        SecureUdpSessionAuthority? udpSessionAuthority = null)
     {
         ArgumentNullException.ThrowIfNull(secureOptions);
         _options = runtimeOptions
@@ -37,8 +41,15 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
             throw new ArgumentException(
                 "The secure ticket store and game target must be configured together.");
         }
+        if (udpSessionAuthority is not null && gameTarget is null)
+        {
+            throw new ArgumentException(
+                "The UDP session authority requires the authenticated game-ticket target.");
+        }
         _ticketStore = ticketStore;
         _gameTarget = gameTarget;
+        _udpSessionAuthority = udpSessionAuthority;
+        _udpPort = checked((ushort)secureOptions.Udp.Port);
         _timeProvider = timeProvider ?? TimeProvider.System;
         _options.Validate();
         SecureNetworkOptions.ValidateSecureRuntime(_options);
@@ -101,6 +112,9 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
     {
         var secureRole = ToSecureRole(endpointRole);
         SslStream? sslStream = null;
+        TlsMuxLegacyTransport? transport = null;
+        SecureUdpSessionLease? pendingUdpLease = null;
+        SecureUdpBindingGrant? udpGrant = null;
         try
         {
             sslStream = new SslStream(
@@ -137,7 +151,23 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
                     cancellationToken);
             }
 
-            var transport = new TlsMuxLegacyTransport(
+            if (gamePrincipal is not null &&
+                _udpSessionAuthority is not null &&
+                _gameTarget is not null)
+            {
+                var registration = _udpSessionAuthority.Register(
+                    connectionContext,
+                    gamePrincipal);
+                if (registration.IsRegistered)
+                {
+                    pendingUdpLease = registration.Lease!;
+                    udpGrant = CreateUdpBindingGrant(
+                        pendingUdpLease,
+                        _gameTarget.ServerId);
+                }
+            }
+
+            transport = new TlsMuxLegacyTransport(
                 connectionOwner,
                 abortConnection,
                 sslStream,
@@ -147,19 +177,74 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
                 _options,
                 _timeProvider,
                 connectionContext,
-                gamePrincipal);
+                gamePrincipal,
+                pendingUdpLease);
+            pendingUdpLease = null;
             sslStream = null;
-            return transport;
+            if (udpGrant is not null)
+            {
+                await transport.SendUdpBindingGrantAsync(
+                    udpGrant,
+                    cancellationToken);
+            }
+            var result = transport;
+            transport = null;
+            return result;
         }
         catch
         {
-            if (sslStream is not null)
+            pendingUdpLease?.Dispose();
+            if (transport is not null)
             {
-                await sslStream.DisposeAsync();
+                await transport.DisposeAsync();
             }
-            TryClose(abortConnection);
-            TryDispose(connectionOwner);
+            else
+            {
+                if (sslStream is not null)
+                {
+                    await sslStream.DisposeAsync();
+                }
+                TryClose(abortConnection);
+                TryDispose(connectionOwner);
+            }
             throw;
+        }
+        finally
+        {
+            udpGrant?.Dispose();
+        }
+    }
+
+    private SecureUdpBindingGrant CreateUdpBindingGrant(
+        SecureUdpSessionLease lease,
+        uint serverId)
+    {
+        Span<byte> connectionId = stackalloc byte[
+            SecureUdpBindingConstants.ConnectionIdBytes];
+        Span<byte> proofKey = stackalloc byte[
+            SecureUdpTlsProofAuthenticator.KeyBytes];
+        try
+        {
+            if (!lease.TryCopyGrantMaterial(
+                    connectionId,
+                    proofKey,
+                    out var expiryUnixMilliseconds))
+            {
+                throw new SecureTransportException(
+                    "The registered UDP binding material expired before TLS delivery.");
+            }
+
+            return new SecureUdpBindingGrant(
+                _udpPort,
+                serverId,
+                expiryUnixMilliseconds,
+                connectionId,
+                proofKey);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(connectionId);
+            CryptographicOperations.ZeroMemory(proofKey);
         }
     }
 
@@ -360,6 +445,7 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
             preface!.Role,
             SecureProtocolConstants.ProtocolMajor,
             SecureProtocolConstants.ProtocolMinor,
+            connectionId,
             preface.ClientInstanceId.Span,
             preface.OriginSha256.Span);
     }

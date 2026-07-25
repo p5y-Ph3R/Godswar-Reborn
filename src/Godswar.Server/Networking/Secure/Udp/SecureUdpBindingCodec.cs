@@ -25,6 +25,61 @@ internal static class SecureUdpBindingCodec
         Span<byte> destination,
         out int bytesWritten)
     {
+        if (type == SecureUdpBindingType.AuthenticatedClientProof)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+
+        return TryEncodeCore(
+            type,
+            connectionId,
+            keyEpoch,
+            sequence,
+            clientNonce,
+            issuedAtUnixSeconds,
+            ReadOnlySpan<byte>.Empty,
+            authenticator,
+            destination,
+            out bytesWritten);
+    }
+
+    public static bool TryEncodeAuthenticatedClientProof(
+        ReadOnlySpan<byte> connectionId,
+        uint keyEpoch,
+        ulong sequence,
+        ReadOnlySpan<byte> clientNonce,
+        long issuedAtUnixSeconds,
+        ReadOnlySpan<byte> tlsProofAuthenticator,
+        ReadOnlySpan<byte> cookieAuthenticator,
+        Span<byte> destination,
+        out int bytesWritten)
+    {
+        return TryEncodeCore(
+            SecureUdpBindingType.AuthenticatedClientProof,
+            connectionId,
+            keyEpoch,
+            sequence,
+            clientNonce,
+            issuedAtUnixSeconds,
+            tlsProofAuthenticator,
+            cookieAuthenticator,
+            destination,
+            out bytesWritten);
+    }
+
+    private static bool TryEncodeCore(
+        SecureUdpBindingType type,
+        ReadOnlySpan<byte> connectionId,
+        uint keyEpoch,
+        ulong sequence,
+        ReadOnlySpan<byte> clientNonce,
+        long issuedAtUnixSeconds,
+        ReadOnlySpan<byte> tlsProofAuthenticator,
+        ReadOnlySpan<byte> cookieAuthenticator,
+        Span<byte> destination,
+        out int bytesWritten)
+    {
         bytesWritten = 0;
         if (!IsKnownType(type) ||
             connectionId.Length !=
@@ -44,16 +99,33 @@ internal static class SecureUdpBindingCodec
         {
             if (keyEpoch != 0 ||
                 issuedAtUnixSeconds != 0 ||
-                !authenticator.IsEmpty)
+                !tlsProofAuthenticator.IsEmpty ||
+                !cookieAuthenticator.IsEmpty)
             {
                 return false;
             }
         }
         else if (keyEpoch == 0 ||
             issuedAtUnixSeconds <= 0 ||
-            authenticator.Length !=
+            cookieAuthenticator.Length !=
                 SecureUdpBindingConstants.CookieTagBytes ||
-            IsAllZero(authenticator))
+            IsAllZero(cookieAuthenticator))
+        {
+            return false;
+        }
+
+        var isAuthenticatedProof =
+            type == SecureUdpBindingType.AuthenticatedClientProof;
+        if (isAuthenticatedProof)
+        {
+            if (tlsProofAuthenticator.Length !=
+                    SecureUdpBindingConstants.TlsProofTagBytes ||
+                IsAllZero(tlsProofAuthenticator))
+            {
+                return false;
+            }
+        }
+        else if (!tlsProofAuthenticator.IsEmpty)
         {
             return false;
         }
@@ -87,9 +159,13 @@ internal static class SecureUdpBindingCodec
         BinaryPrimitives.WriteInt64BigEndian(
             output[IssuedAtOffset..],
             issuedAtUnixSeconds);
+        if (isAuthenticatedProof)
+        {
+            tlsProofAuthenticator.CopyTo(output[PaddingOffset..]);
+        }
         if (!isHello)
         {
-            authenticator.CopyTo(output[AuthenticatorOffset..]);
+            cookieAuthenticator.CopyTo(output[AuthenticatorOffset..]);
         }
 
         bytesWritten = output.Length;
@@ -114,14 +190,25 @@ internal static class SecureUdpBindingCodec
             BinaryPrimitives.ReadUInt16BigEndian(
                 source[PayloadLengthOffset..]) !=
                 SecureUdpBindingConstants.PayloadBytes ||
-            !IsAllZero(source.Slice(ReservedOffset, 6)) ||
-            !IsAllZero(source.Slice(PaddingOffset, 24)))
+            !IsAllZero(source.Slice(ReservedOffset, 6)))
         {
             return false;
         }
 
         var type = (SecureUdpBindingType)source[8];
         if (!IsKnownType(type))
+        {
+            return false;
+        }
+
+        var encodedTlsProof = source.Slice(
+            PaddingOffset,
+            SecureUdpBindingConstants.TlsProofTagBytes);
+        var isAuthenticatedProof =
+            type == SecureUdpBindingType.AuthenticatedClientProof;
+        if (isAuthenticatedProof
+                ? IsAllZero(encodedTlsProof)
+                : !IsAllZero(encodedTlsProof))
         {
             return false;
         }
@@ -171,6 +258,9 @@ internal static class SecureUdpBindingCodec
             sequence,
             nonce,
             issuedAt,
+            isAuthenticatedProof
+                ? encodedTlsProof
+                : ReadOnlySpan<byte>.Empty,
             authenticator);
         return true;
     }
@@ -190,5 +280,6 @@ internal static class SecureUdpBindingCodec
     private static bool IsKnownType(SecureUdpBindingType type) =>
         type is SecureUdpBindingType.ClientHello or
             SecureUdpBindingType.ServerChallenge or
-            SecureUdpBindingType.ClientProof;
+            SecureUdpBindingType.ClientProof or
+            SecureUdpBindingType.AuthenticatedClientProof;
 }

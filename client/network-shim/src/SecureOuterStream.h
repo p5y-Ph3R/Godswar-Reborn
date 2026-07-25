@@ -5,6 +5,7 @@
 #include "SecureClientProtocol.h"
 #include "SecureGameControl.h"
 #include "SecureGameGrantRegistry.h"
+#include "SecureUdpBindingGrant.h"
 
 #include <Windows.h>
 
@@ -33,11 +34,15 @@ enum class SecureOuterFailure : std::uint8_t {
     BindRejected,
     OperationDeadline,
     Stopped,
+    UdpGrantDecode,
+    UdpGrantState,
+    UdpGrantConnection,
 };
 
 struct SecureOuterSnapshot final {
     bool established = false;
     bool gameBound = false;
+    bool hasUdpBindingGrant = false;
     bool stopped = false;
     SecureOuterFailure failure = SecureOuterFailure::None;
     SecureEndpointRole role = SecureEndpointRole::Login;
@@ -83,6 +88,14 @@ public:
     void Stop() noexcept override;
 
     SecureOuterSnapshot Snapshot() const noexcept;
+    bool TryCopyConnectionId(
+        std::uint8_t* destination,
+        std::size_t destinationBytes) const noexcept;
+
+    // Transfers the single retained proof key to a future UDP worker. The
+    // caller owns and must clear the returned grant.
+    bool TryTakeUdpBindingGrant(
+        SecureUdpBindingGrant* grant) noexcept;
 
 private:
     DeadlineStreamResult ReadExact(
@@ -97,6 +110,11 @@ private:
         ULONGLONG deadline) noexcept;
     void Fail(SecureOuterFailure failure) noexcept;
     void InvalidateUnexposedGrant() noexcept;
+    void ClearUdpBindingState() noexcept;
+    bool TryRetainUdpBindingGrant(
+        const void* payload,
+        std::size_t payloadBytes,
+        SecureOuterFailure* failure) noexcept;
     bool IsStopped() const noexcept;
 
     IDeadlinePlaintextStream* plaintextStream_ = nullptr;
@@ -107,12 +125,17 @@ private:
     volatile LONG failure_ = 0;
     bool established_ = false;
     bool gameBound_ = false;
+    bool connectionIdRetained_ = false;
+    bool udpBindingGrantReceived_ = false;
+    bool udpBindingGrantAvailable_ = false;
     bool grantCommitted_ = false;
     bool grantExposed_ = false;
     std::uint64_t committedGrantGeneration_ = 0;
     SecureEndpointRole role_ = SecureEndpointRole::Login;
     std::uint64_t nextInboundSequence_ = 1;
     std::uint64_t nextOutboundSequence_ = 1;
+    std::uint8_t connectionId_[SecureUdpConnectionIdBytes]{};
+    SecureUdpBindingGrant udpBindingGrant_{};
     std::uint8_t inboundPayload_[SecureMaximumPayloadBytes]{};
     std::size_t inboundOffset_ = 0;
     std::size_t inboundBytes_ = 0;

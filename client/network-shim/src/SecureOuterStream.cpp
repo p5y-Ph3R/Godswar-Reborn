@@ -103,8 +103,6 @@ bool SecureOuterStream::Establish(
         return false;
     }
 
-    SecureZeroMemory(serverPreface, sizeof(serverPreface));
-    SecureZeroMemory(&decoded, sizeof(decoded));
     AcquireSRWLockExclusive(&snapshotLock_);
     role_ = role;
     established_ = true;
@@ -112,7 +110,16 @@ bool SecureOuterStream::Establish(
     grantCommitted_ = false;
     grantExposed_ = false;
     committedGrantGeneration_ = 0;
+    std::memcpy(
+        connectionId_,
+        decoded.connectionId,
+        sizeof(connectionId_));
+    connectionIdRetained_ = true;
+    udpBindingGrantReceived_ = false;
+    udpBindingGrantAvailable_ = false;
     ReleaseSRWLockExclusive(&snapshotLock_);
+    SecureZeroMemory(serverPreface, sizeof(serverPreface));
+    SecureZeroMemory(&decoded, sizeof(decoded));
     return true;
 }
 
@@ -296,6 +303,23 @@ ByteStreamIoResult SecureOuterStream::Read(
             continue;
         }
 
+        if (header.type == SecureFrameType::UdpBindingGrant) {
+            SecureOuterFailure grantFailure =
+                SecureOuterFailure::None;
+            const bool retained = TryRetainUdpBindingGrant(
+                inboundPayload_,
+                header.payloadBytes,
+                &grantFailure);
+            SecureZeroMemory(
+                inboundPayload_,
+                header.payloadBytes);
+            if (!retained) {
+                Fail(grantFailure);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            continue;
+        }
+
         SecureZeroMemory(
             inboundPayload_,
             header.payloadBytes);
@@ -303,8 +327,8 @@ ByteStreamIoResult SecureOuterStream::Read(
             return {ByteStreamIoStatus::EndOfStream, 0};
         }
 
-        // Grant/bind state and secret ownership belong to Slice 7. No
-        // control payload may leak into the stock legacy byte stream.
+        // Control state and secret ownership remain outside the stock legacy
+        // byte stream.
         Fail(SecureOuterFailure::UnsupportedControl);
         return {ByteStreamIoStatus::Failed, 0};
     }
@@ -348,6 +372,7 @@ ByteStreamIoResult SecureOuterStream::Write(
 
 void SecureOuterStream::Stop() noexcept {
     InvalidateUnexposedGrant();
+    ClearUdpBindingState();
     if (InterlockedCompareExchange(&stopped_, 1, 0) == 0) {
         InterlockedCompareExchange(
             &failure_,
@@ -364,6 +389,7 @@ SecureOuterSnapshot SecureOuterStream::Snapshot() const noexcept {
     AcquireSRWLockShared(&snapshotLock_);
     snapshot.established = established_;
     snapshot.gameBound = gameBound_;
+    snapshot.hasUdpBindingGrant = udpBindingGrantAvailable_;
     snapshot.role = role_;
     snapshot.nextInboundSequence = nextInboundSequence_;
     snapshot.nextOutboundSequence = nextOutboundSequence_;
@@ -475,6 +501,7 @@ void SecureOuterStream::Fail(
         static_cast<LONG>(failure),
         static_cast<LONG>(SecureOuterFailure::None));
     InvalidateUnexposedGrant();
+    ClearUdpBindingState();
     if (InterlockedCompareExchange(&stopped_, 1, 0) == 0 &&
         plaintextStream_ != nullptr) {
         plaintextStream_->Stop();

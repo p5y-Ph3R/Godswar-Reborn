@@ -109,6 +109,7 @@ internal static partial class SecureGameTicketStoreChecks
             SecureProtocolConstants.ProtocolMajor,
             protocolMinor,
             instanceId ?? DefaultInstanceId,
+            instanceId ?? DefaultInstanceId,
             buildHash ?? DefaultBuildHash);
     }
 

@@ -290,5 +290,6 @@ Before any original-client activation:
 5. prove guarded Restore and that the enabled
    secure profile exposes no raw compatibility ingress.
 
-Slice 9B next adds authenticated UDP binding while gameplay remains on TLS.
-Slice 10 moves movement and snapshots with authenticated TLS fallback.
+Slice 9B's binding foundation now passes offline while gameplay remains on
+TLS. The remaining Slice 9 work protects datagrams; Slice 10 moves movement
+and snapshots with authenticated TLS fallback.

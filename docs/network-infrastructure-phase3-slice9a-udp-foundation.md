@@ -167,20 +167,13 @@ Coverage includes:
 - zero-allocation warmed decoding; and
 - deterministic randomized malformed input with the amplification invariant.
 
-## Required Slice 9B work
+## Slice 9B result
 
-The current TLS server and native client both discard the 16-byte server
-connection ID after the preface. Slice 9B must retain the exact game-TLS value
-on both sides; it must never regenerate it or identify a player by endpoint.
+Slice 9B now retains the exact connection ID, delivers a fresh proof key over
+game TLS, and combines that key with the stateless cookie to bind one endpoint
+to one bounded authenticated session. Its exact grant, type-4 proof, lifecycle,
+tests, inactive-listener boundary, and remaining work are specified in
+[the Slice 9B binding document](network-infrastructure-phase3-slice9b-authenticated-binding.md).
 
-After successful TLS game binding, 9B must deliver fresh UDP proof material
-over TLS, add a bounded connection/session authority, open the separately
-owned UDP listener, add cheap admission/rate limiting and low-cardinality
-metrics, and make repeat proofs idempotent. A cookie proves only return-path
-ownership. It is replayable from the same tuple during its short lifetime, is
-not player authentication, does not stop an on-path attacker, and does not
-replace upstream arbitrary-UDP DDoS protection.
-
-Gameplay remains on authenticated TLS until a separate ADR selects the
-protected datagram construction and its replay, key-epoch, pacing, congestion,
-fallback, and reconciliation rules.
+Gameplay remains on authenticated TLS. AEAD, replay windows, key epochs, NAT
+rebinding, keepalive, pacing, and the native UDP worker are still required.

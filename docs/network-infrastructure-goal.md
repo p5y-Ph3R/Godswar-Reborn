@@ -2,8 +2,8 @@
 
 ## Version and status
 
-- Document version: `1.20`
-- Last updated: `2026-07-25`
+- Document version: `1.21`
+- Last updated: `2026-07-26`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
@@ -12,7 +12,8 @@
   activation/restore, and coherent listener startup are complete in
   source/offline checks. The candidate remains uninstalled and secure mode
   disabled pending operational keys/trust, account backup/reset, and
-  controlled-host acceptance. UDP is inactive; Slice 9A is complete.
+  controlled-host acceptance. Slice 9B binding passes offline; its listener
+  and gameplay UDP remain inactive.
   V1–V4 are rejected and Phase 1
   remains unaccepted; the avatar issue is parked.
 - Production-capacity guarantees: none; player count, regions, latency budget,
@@ -317,21 +318,20 @@ Exact wire protocol and client lifecycle:
   sessions are exported behind guarded monotonic activation and exact restore.
   Live account/trust/original-client acceptance remains pending; see the
   [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
-- Next, Slice 9B binds authenticated UDP while gameplay remains on TLS.
+- Slice 9B binding passes offline; listener inactive.
+  [Specification](network-infrastructure-phase3-slice9b-authenticated-binding.md).
 
 Exit gate: legacy parity, TLS authentication/control, ticket forgery/expiry/
 replay tests, frame boundary tests, and authenticated TLS-only fallback pass.
 
 ### Phase 3 — authenticated UDP binding without gameplay
 
-Slice 9A: [wire/cookie specification](network-infrastructure-phase3-slice9a-udp-foundation.md).
+Specifications: [Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md)
+and [Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md).
 
-- Specify the versioned binary UDP envelope and limits.
-- Add stateless cookies, AEAD, replay windows, key epochs, NAT rebinding,
-  cleanup, pacing, rate limits, and observability.
-- Negotiate and exercise UDP keepalive while gameplay stays on TLS.
-- Add fuzz/property tests and low-cardinality rejection/rate-limit/session
-  metrics with the UDP decoder rather than deferring them.
+- Completed: cookies and bounded TLS-authenticated endpoint binding.
+- Remaining: AEAD, replay/key epochs, NAT rebinding, native UDP worker, pacing,
+  keepalive, fuzzing, and production metrics.
 
 Exit gate: forgery, tamper, replay, wraparound, duplication, reordering, loss,
 rotation, NAT rebinding, 1,200-byte MTU, amplification, and bounded-state tests

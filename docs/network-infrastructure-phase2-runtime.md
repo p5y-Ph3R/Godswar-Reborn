@@ -122,4 +122,4 @@ and [`network-infrastructure-phase2-secure-transport.md`](network-infrastructure
 Live secure mode remains disabled pending account backup/reset, operational
 keys/trust, controlled-host sockets, and original-client acceptance. Raw
 `5999/7000` remains a local development protocol and is not secure. UDP is
-absent; Slice 9B binding follows controlled Slice 8 acceptance.
+inactive; Slice 9B binding passes offline and protected datagrams remain.
