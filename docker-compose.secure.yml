@@ -1,0 +1,84 @@
+# Secure hybrid networking override.
+#
+# Use only with the base Compose file:
+#   docker compose --env-file .env.secure.local `
+#     -f docker-compose.yml -f docker-compose.secure.yml `
+#     --profile secure up --build -d server
+#
+# This overrides the existing `server` service instead of defining a second
+# game server, so the raw and secure listener profiles cannot run together.
+services:
+  server:
+    profiles: ["secure"]
+    container_name: godswar-server
+    environment:
+      GODSWAR_STORAGE_PROVIDER: postgres
+      GODSWAR_POSTGRES_CONNECTION_STRING: "Host=postgres;Port=5432;Database=${GODSWAR_SECURE_POSTGRES_DB:-godswar};Username=${POSTGRES_USER:-godswar};Password=${POSTGRES_PASSWORD:-godswar_dev_password};Pooling=true"
+      GODSWAR_SECURE_ENABLED: "true"
+      GODSWAR_SECURE_LOGIN_BIND_HOST: "${GODSWAR_SECURE_CONTAINER_BIND_ADDRESS:-172.31.250.10}"
+      GODSWAR_SECURE_LOGIN_PORT: "6599"
+      GODSWAR_SECURE_LOGIN_DNS_HOST: login.reborn.test
+      GODSWAR_SECURE_GAME_BIND_HOST: "${GODSWAR_SECURE_CONTAINER_BIND_ADDRESS:-172.31.250.10}"
+      GODSWAR_SECURE_GAME_PORT: "7443"
+      GODSWAR_SECURE_GAME_DNS_HOST: game.reborn.test
+      GODSWAR_SECURE_GAME_ROUTE_HOST: game.reborn.test
+      GODSWAR_SECURE_GAME_ROUTE_PORT: "7000"
+      GODSWAR_SECURE_GAME_AUDIENCE: reborn-game
+      GODSWAR_SECURE_GAME_SERVER_ID: "100"
+      GODSWAR_SECURE_GAME_PERMISSIONS: "1"
+      GODSWAR_SECURE_UDP_ENABLED: "true"
+      GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED: "true"
+      GODSWAR_SECURE_UDP_BIND_HOST: "${GODSWAR_SECURE_CONTAINER_BIND_ADDRESS:-172.31.250.10}"
+      GODSWAR_SECURE_UDP_PORT: "7444"
+      GODSWAR_SECURE_CERTIFICATE_PATH: /run/secrets/reborn-secure-certificate
+      GODSWAR_SECURE_CERTIFICATE_PASSWORD_FILE: /run/secrets/reborn-secure-certificate-password
+      GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256: "${GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256:-753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79}"
+      GODSWAR_SECURE_PHASE4_ACCEPTANCE_FAULTS_ENABLED: "false"
+      GODSWAR_AUTH_ALLOW_REGISTRATION: "false"
+      GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION: "true"
+    ports: !override
+      - target: 6599
+        published: "6599"
+        host_ip: 127.0.0.1
+        protocol: tcp
+      - target: 7443
+        published: "7443"
+        host_ip: 127.0.0.1
+        protocol: tcp
+      - target: 7444
+        published: "7444"
+        host_ip: 127.0.0.1
+        protocol: udp
+    secrets:
+      - source: reborn-secure-certificate
+        target: reborn-secure-certificate
+        mode: 0444
+      - source: reborn-secure-certificate-password
+        target: reborn-secure-certificate-password
+        mode: 0400
+    networks:
+      default: {}
+      secure-runtime:
+        ipv4_address: "${GODSWAR_SECURE_CONTAINER_BIND_ADDRESS:-172.31.250.10}"
+    healthcheck:
+      test: ["CMD", "/app/secure-healthcheck.sh"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    labels:
+      com.reborn.network.profile: secure-hybrid
+
+secrets:
+  reborn-secure-certificate:
+    file: "${GODSWAR_SECURE_CERTIFICATE_HOST_PATH:?Set GODSWAR_SECURE_CERTIFICATE_HOST_PATH in the untracked secure environment file}"
+  reborn-secure-certificate-password:
+    file: "${GODSWAR_SECURE_CERTIFICATE_PASSWORD_HOST_PATH:?Set GODSWAR_SECURE_CERTIFICATE_PASSWORD_HOST_PATH in the untracked secure environment file}"
+
+networks:
+  secure-runtime:
+    name: reborn_secure_runtime
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "${GODSWAR_SECURE_DOCKER_SUBNET:-172.31.250.0/24}"

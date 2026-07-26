@@ -22,7 +22,9 @@ RUN apt-get update \
 
 COPY --from=build /app/publish ./
 COPY appsettings.docker.json ./appsettings.json
+COPY tools/docker/secure-healthcheck.sh ./secure-healthcheck.sh
+RUN chmod 0555 ./secure-healthcheck.sh
 
-EXPOSE 5999 7000
+EXPOSE 5999/tcp 7000/tcp 6599/tcp 7443/tcp 7444/udp
 
 ENTRYPOINT ["dotnet", "Godswar.Server.dll", "appsettings.json"]
