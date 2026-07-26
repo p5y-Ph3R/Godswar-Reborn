@@ -248,7 +248,7 @@ function Test-RebornManifestSignature {
     }
 }
 
-function Read-RebornSecureEndpointManifest {
+function Read-RebornSecureEndpointManifestCore {
     param(
         [Parameter(Mandatory)]
         [string]$ManifestPath,
@@ -258,7 +258,9 @@ function Read-RebornSecureEndpointManifest {
 
         [UInt64]$InstalledSequenceFloor = 0,
 
-        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow,
+
+        [switch]$EnforceTimeValidity
     )
 
     $file = Read-RebornBoundedFile `
@@ -317,14 +319,16 @@ function Read-RebornSecureEndpointManifest {
         throw 'Endpoint manifest header violates the secure v1 policy.'
     }
 
-    $nowSeconds = [UInt64][Math]::Floor(
-        ($Now.ToUniversalTime() -
-            [DateTimeOffset]::new(
-                [DateTime]::SpecifyKind(
-                    [DateTime]::new(1970, 1, 1),
-                    [DateTimeKind]::Utc))).TotalSeconds)
-    if ($nowSeconds -lt $notBefore -or $nowSeconds -gt $notAfter) {
-        throw 'Endpoint manifest is outside its validity interval.'
+    if ($EnforceTimeValidity) {
+        $nowSeconds = [UInt64][Math]::Floor(
+            ($Now.ToUniversalTime() -
+                [DateTimeOffset]::new(
+                    [DateTime]::SpecifyKind(
+                        [DateTime]::new(1970, 1, 1),
+                        [DateTimeKind]::Utc))).TotalSeconds)
+        if ($nowSeconds -lt $notBefore -or $nowSeconds -gt $notAfter) {
+            throw 'Endpoint manifest is outside its validity interval.'
+        }
     }
 
     $trust = Read-RebornManifestTrust $TrustPath
@@ -432,4 +436,48 @@ function Read-RebornSecureEndpointManifest {
     }
 }
 
-Export-ModuleMember -Function 'Read-RebornSecureEndpointManifest'
+function Read-RebornSecureEndpointManifest {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ManifestPath,
+
+        [Parameter(Mandatory)]
+        [string]$TrustPath,
+
+        [UInt64]$InstalledSequenceFloor = 0,
+
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+    )
+
+    Read-RebornSecureEndpointManifestCore `
+        -ManifestPath $ManifestPath `
+        -TrustPath $TrustPath `
+        -InstalledSequenceFloor $InstalledSequenceFloor `
+        -Now $Now `
+        -EnforceTimeValidity
+}
+
+function Read-RebornSecureEndpointManifestForRestore {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ManifestPath,
+
+        [Parameter(Mandatory)]
+        [string]$TrustPath,
+
+        [UInt64]$InstalledSequenceFloor = 0
+    )
+
+    # Restore deliberately ignores only the signed validity interval. The
+    # shared core still enforces exact structure, hashes, trust identity,
+    # environment, sequence floor, and signature.
+    Read-RebornSecureEndpointManifestCore `
+        -ManifestPath $ManifestPath `
+        -TrustPath $TrustPath `
+        -InstalledSequenceFloor $InstalledSequenceFloor
+}
+
+Export-ModuleMember -Function @(
+    'Read-RebornSecureEndpointManifest',
+    'Read-RebornSecureEndpointManifestForRestore'
+)

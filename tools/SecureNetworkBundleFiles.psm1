@@ -3,7 +3,76 @@ Set-StrictMode -Version Latest
 $moduleRoot = Split-Path -Parent $PSCommandPath
 Import-Module (
     Join-Path $moduleRoot 'SecureNetworkPathSafety.psm1'
-) -Force
+)
+
+if (-not ('RebornSecureBundleAtomicNativeV1' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class RebornSecureBundleAtomicNativeV1
+{
+    private const uint MoveFileWriteThrough = 0x00000008;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern bool ReplaceFileW(
+        string replacedFileName,
+        string replacementFileName,
+        string backupFileName,
+        uint replaceFlags,
+        IntPtr exclude,
+        IntPtr reserved);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern bool MoveFileExW(
+        string existingFileName,
+        string newFileName,
+        uint flags);
+
+    public static void ReplaceExisting(string destination, string staged)
+    {
+        if (!ReplaceFileW(
+            destination, staged, null, 0, IntPtr.Zero, IntPtr.Zero))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Atomic ReplaceFileW failed.");
+        }
+    }
+
+    public static void PublishNew(string staged, string destination)
+    {
+        if (!MoveFileExW(staged, destination, MoveFileWriteThrough))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Atomic MoveFileExW publication failed.");
+        }
+    }
+}
+'@
+}
+
+$script:RecoveryInputSpecifications = @(
+    [pscustomobject]@{
+        Role = 'Candidate'
+        FileName = 'candidate-Net.dll'
+        PolicyHash = 'CandidateNetSha256'
+    },
+    [pscustomobject]@{
+        Role = 'Manifest'
+        FileName = 'endpoint-manifest.gwem'
+        PolicyHash = 'ManifestSha256'
+    },
+    [pscustomobject]@{
+        Role = 'Trust'
+        FileName = 'manifest-trust.json'
+        PolicyHash = 'ManifestTrustSha256'
+    }
+)
 
 function Get-RebornBundleFileSha256 {
     param([Parameter(Mandatory)][string]$Path)
@@ -14,6 +83,78 @@ function Test-RebornBundleSha256 {
     param([object]$Value)
     return $Value -is [string] -and
         $Value -cmatch '^[0-9A-F]{64}$'
+}
+
+function Move-RebornStagedFileAtomic {
+    param(
+        [Parameter(Mandatory)][string]$StagedPath,
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$ExpectedSha256
+    )
+
+    $staged = Assert-RebornSingleLinkRegularFilePath `
+        $StagedPath 'staged atomic file'
+    $destination =
+        Resolve-RebornCanonicalLocalPath `
+            $DestinationPath 'atomic destination'
+    $destinationParent =
+        Assert-RebornDirectoryPath `
+            (Split-Path -Parent $destination) `
+            'atomic destination parent'
+    if (-not (Split-Path -Parent $staged).Equals(
+            $destinationParent,
+            [StringComparison]::OrdinalIgnoreCase) -or
+        -not ([IO.Path]::GetPathRoot($staged)).Equals(
+            [IO.Path]::GetPathRoot($destination),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Atomic publication requires same-directory staging.'
+    }
+    $expected = $ExpectedSha256.ToUpperInvariant()
+    if ((Get-RebornBundleFileSha256 $staged) -cne $expected) {
+        throw 'The staged atomic file does not match its hash pin.'
+    }
+
+    $existing = Test-Path -LiteralPath $destination -PathType Leaf
+    $beforeAcl = $null
+    $beforeSddl = $null
+    if ($existing) {
+        Assert-RebornSingleLinkRegularFilePath `
+            $destination 'existing atomic destination' | Out-Null
+        $beforeAcl = Get-Acl -LiteralPath $destination
+        $beforeSddl = $beforeAcl.Sddl
+        [RebornSecureBundleAtomicNativeV1]::ReplaceExisting(
+            $destination,
+            $staged)
+    } else {
+        if (Test-Path -LiteralPath $destination) {
+            throw 'Atomic destination exists but is not a regular file.'
+        }
+        [RebornSecureBundleAtomicNativeV1]::PublishNew(
+            $staged,
+            $destination)
+    }
+
+    Assert-RebornSingleLinkRegularFilePath `
+        $destination 'published atomic destination' | Out-Null
+    if ((Get-RebornBundleFileSha256 $destination) -cne $expected) {
+        throw 'Atomic publication post-hash verification failed.'
+    }
+    if ($existing) {
+        $afterSddl = (Get-Acl -LiteralPath $destination).Sddl
+        if ($afterSddl -cne $beforeSddl) {
+            # ReplaceFileW can apply the protected parent's inherited ACL to
+            # the replacement file. The parent remains protected throughout;
+            # restore the exact destination descriptor before returning.
+            Set-Acl -LiteralPath $destination -AclObject $beforeAcl
+            $afterSddl = (Get-Acl -LiteralPath $destination).Sddl
+        }
+        if ($afterSddl -cne $beforeSddl) {
+            throw 'Atomic replacement could not restore the destination ACL.'
+        }
+    }
+    return $destination
 }
 
 function Resolve-RebornReceiptDirectory {
@@ -35,16 +176,70 @@ function Write-RebornJsonAtomic {
     $temporary = "$Path.$([Guid]::NewGuid().ToString('N')).tmp"
     $json = $Value | ConvertTo-Json -Depth 10
     try {
-        [IO.File]::WriteAllText(
-            $temporary,
-            $json,
-            [Text.UTF8Encoding]::new($false))
-        [IO.File]::Move($temporary, $Path)
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
+        try {
+            $stream = [IO.File]::Open(
+                $temporary,
+                [IO.FileMode]::CreateNew,
+                [IO.FileAccess]::Write,
+                [IO.FileShare]::None)
+            try {
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Flush($true)
+            }
+            finally {
+                $stream.Dispose()
+            }
+        }
+        finally {
+            [Array]::Clear($bytes, 0, $bytes.Length)
+        }
+        $expected =
+            Get-RebornBundleFileSha256 $temporary
+        Move-RebornStagedFileAtomic `
+            $temporary $Path $expected | Out-Null
     }
     finally {
         if (Test-Path -LiteralPath $temporary -PathType Leaf) {
             Assert-RebornRegularFilePath `
                 $temporary 'temporary receipt' | Out-Null
+            [IO.File]::Delete($temporary)
+        }
+    }
+}
+
+function Write-RebornTextDurableAtomic {
+    param([Parameter(Mandatory)][string]$Value, [string]$Path)
+
+    $temporary = "$Path.$([Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Value)
+        try {
+            $stream = [IO.File]::Open(
+                $temporary,
+                [IO.FileMode]::CreateNew,
+                [IO.FileAccess]::Write,
+                [IO.FileShare]::None)
+            try {
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Flush($true)
+            }
+            finally {
+                $stream.Dispose()
+            }
+        }
+        finally {
+            [Array]::Clear($bytes, 0, $bytes.Length)
+        }
+        $expected =
+            Get-RebornBundleFileSha256 $temporary
+        Move-RebornStagedFileAtomic `
+            $temporary $Path $expected | Out-Null
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporary -PathType Leaf) {
+            Assert-RebornRegularFilePath `
+                $temporary 'temporary durable text file' | Out-Null
             [IO.File]::Delete($temporary)
         }
     }
@@ -65,7 +260,6 @@ function Copy-RebornFileAtomic {
     }
     $temporary =
         "$Destination.$([Guid]::NewGuid().ToString('N')).stage"
-    $old = "$Destination.$([Guid]::NewGuid().ToString('N')).old"
     try {
         $input = [IO.File]::Open(
             $Source,
@@ -93,20 +287,77 @@ function Copy-RebornFileAtomic {
             throw "Staged file hash mismatch: $Destination"
         }
 
-        if (Test-Path -LiteralPath $Destination -PathType Leaf) {
-            [IO.File]::Replace($temporary, $Destination, $old, $true)
-        } else {
-            [IO.File]::Move($temporary, $Destination)
-        }
+        Move-RebornStagedFileAtomic `
+            $temporary `
+            $Destination `
+            $ExpectedHash | Out-Null
     }
     finally {
-        foreach ($path in @($temporary, $old)) {
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                Assert-RebornRegularFilePath `
-                    $path 'copy cleanup file' | Out-Null
-                [IO.File]::Delete($path)
-            }
+        if (Test-Path -LiteralPath $temporary -PathType Leaf) {
+            Assert-RebornRegularFilePath `
+                $temporary 'copy cleanup file' | Out-Null
+            [IO.File]::Delete($temporary)
         }
+    }
+}
+
+function New-RebornRecoveryInputSet {
+    param(
+        [object]$Policy,
+        [string]$Directory,
+        [string]$CandidatePath,
+        [string]$ManifestPath,
+        [string]$TrustPath
+    )
+
+    $sources = @{
+        Candidate = $CandidatePath
+        Manifest = $ManifestPath
+        Trust = $TrustPath
+    }
+    foreach ($specification in $script:RecoveryInputSpecifications) {
+        $expectedHash =
+            [string]$Policy.($specification.PolicyHash)
+        Copy-RebornFileAtomic `
+            $sources[$specification.Role] `
+            (Join-Path $Directory $specification.FileName) `
+            $expectedHash
+        [ordered]@{
+            role = $specification.Role
+            path = $specification.FileName
+            sha256 = $expectedHash
+        }
+    }
+}
+
+function Get-RebornRecoveryInputSet {
+    param(
+        [string]$Directory,
+        [object]$Policy
+    )
+
+    $paths = @{}
+    foreach ($specification in $script:RecoveryInputSpecifications) {
+        $path = Join-Path $Directory $specification.FileName
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Secure-bundle recovery input is missing: $path"
+        }
+        $path = Assert-RebornRegularFilePath `
+            $path 'secure-bundle recovery input'
+        $expectedHash =
+            [string]$Policy.($specification.PolicyHash)
+        if ((Get-RebornBundleFileSha256 $path) -cne $expectedHash) {
+            throw (
+                "Secure-bundle recovery input failed validation: " +
+                $specification.Role)
+        }
+        $paths[$specification.Role] = $path
+    }
+
+    [pscustomobject]@{
+        Candidate = $paths.Candidate
+        Manifest = $paths.Manifest
+        Trust = $paths.Trust
     }
 }
 
@@ -140,10 +391,9 @@ function Write-RebornBackupReceipt {
 
     $receiptPath = Join-Path $Directory 'receipt.json'
     Write-RebornJsonAtomic $Receipt $receiptPath
-    [IO.File]::WriteAllText(
-        (Join-Path $Directory 'receipt.sha256'),
-        (Get-RebornBundleFileSha256 $receiptPath),
-        [Text.UTF8Encoding]::new($false))
+    Write-RebornTextDurableAtomic `
+        (Get-RebornBundleFileSha256 $receiptPath) `
+        (Join-Path $Directory 'receipt.sha256')
 }
 
 function Assert-RebornReceiptPolicy {
@@ -168,6 +418,27 @@ function Assert-RebornReceiptPolicy {
     )) {
         if ([string]$Receipt.policy.$name -cne [string]$Policy.$name) {
             throw "Secure-bundle receipt policy mismatch: $name"
+        }
+    }
+
+    $recoveryEntries = @($Receipt.recoveryInputs)
+    if ($recoveryEntries.Count -ne
+            $script:RecoveryInputSpecifications.Count) {
+        throw 'Secure-bundle receipt recovery input count is invalid.'
+    }
+    foreach ($specification in $script:RecoveryInputSpecifications) {
+        $matches = @($recoveryEntries | Where-Object {
+            $_.role -is [string] -and
+            $_.role -ceq $specification.Role
+        })
+        $expectedHash =
+            [string]$Policy.($specification.PolicyHash)
+        if ($matches.Count -ne 1 -or
+            $matches[0].path -cne $specification.FileName -or
+            $matches[0].sha256 -cne $expectedHash) {
+            throw (
+                'Secure-bundle receipt recovery input violates policy: ' +
+                $specification.Role)
         }
     }
 
@@ -253,7 +524,7 @@ function Read-RebornBackupReceipt {
 
     $receipt = Get-Content -LiteralPath $receiptPath -Raw |
         ConvertFrom-Json
-    if ($receipt.schemaVersion -ne 2 -or
+    if ($receipt.schemaVersion -ne 3 -or
         $receipt.mode -cne 'Apply' -or
         -not ([IO.Path]::GetFullPath([string]$receipt.clientRoot)).Equals(
             $ExpectedClient,
@@ -279,7 +550,12 @@ function Read-RebornBackupReceipt {
 }
 
 Export-ModuleMember -Function @(
+    'Move-RebornStagedFileAtomic',
     'Copy-RebornFileAtomic',
+    'Write-RebornJsonAtomic',
+    'Write-RebornTextDurableAtomic',
+    'New-RebornRecoveryInputSet',
+    'Get-RebornRecoveryInputSet',
     'New-RebornFileBackupEntry',
     'Write-RebornBackupReceipt',
     'Read-RebornBackupReceipt'

@@ -4,6 +4,10 @@ $script:ActivationRegistrySubKey = 'SOFTWARE\Reborn\NetworkManifest'
 $script:ActivationModeValue = 'ActivationMode'
 $script:ActivationEnvironmentValue = 'Environment'
 $script:ActivationSequenceFloorValue = 'HighestAcceptedSequence'
+$moduleRoot = Split-Path -Parent $PSCommandPath
+Import-Module (
+    Join-Path $moduleRoot 'SecureNetworkActivationAcl.psm1'
+) -Force
 
 function New-RebornActivationState {
     param(
@@ -30,6 +34,36 @@ function New-RebornActivationState {
         Mode = [UInt64]$Mode
         Environment = [UInt64]$Environment
         SequenceFloor = [UInt64]$SequenceFloor
+        ModeExists = $Exists
+        EnvironmentExists = $Exists
+        SequenceFloorExists = $Exists
+        Complete = $Exists
+    }
+}
+
+function New-RebornObservedActivationState {
+    param(
+        [bool]$Exists,
+        [bool]$ModeExists,
+        [UInt64]$Mode,
+        [bool]$EnvironmentExists,
+        [UInt64]$Environment,
+        [bool]$SequenceFloorExists,
+        [UInt64]$SequenceFloor
+    )
+
+    [pscustomobject]@{
+        Exists = $Exists
+        Mode = $Mode
+        Environment = $Environment
+        SequenceFloor = $SequenceFloor
+        ModeExists = $ModeExists
+        EnvironmentExists = $EnvironmentExists
+        SequenceFloorExists = $SequenceFloorExists
+        Complete = (
+            $ModeExists -and
+            $EnvironmentExists -and
+            $SequenceFloorExists)
     }
 }
 
@@ -182,6 +216,11 @@ function Open-RebornActivationRegistryKey {
     }
 }
 
+function Assert-RebornProtectedHklmActivationState {
+    Assert-RebornProtectedActivationRegistryAcl
+    return Get-RebornHklmActivationState
+}
+
 function Get-RebornHklmActivationState {
     $key = Open-RebornActivationRegistryKey $false
     if ($null -eq $key) {
@@ -193,32 +232,126 @@ function Get-RebornHklmActivationState {
     }
 
     try {
-        foreach ($name in @(
-            $script:ActivationModeValue,
-            $script:ActivationEnvironmentValue
-        )) {
-            if ($key.GetValueKind($name) -ne
-                [Microsoft.Win32.RegistryValueKind]::DWord) {
-                throw "HKLM activation value $name must be REG_DWORD."
+        $names = @($key.GetValueNames())
+        $modeExists = $names -contains $script:ActivationModeValue
+        $environmentExists =
+            $names -contains $script:ActivationEnvironmentValue
+        $floorExists =
+            $names -contains $script:ActivationSequenceFloorValue
+
+        if (-not $modeExists) {
+            if ($environmentExists -or $floorExists) {
+                throw (
+                    'HKLM activation commit marker is absent while other ' +
+                    'activation values exist.')
             }
+            return New-RebornObservedActivationState `
+                $true $false 0 $false 0 $false 0
         }
-        if ($key.GetValueKind($script:ActivationSequenceFloorValue) -ne
-            [Microsoft.Win32.RegistryValueKind]::QWord) {
+        if ($key.GetValueKind($script:ActivationModeValue) -ne
+            [Microsoft.Win32.RegistryValueKind]::DWord) {
+            throw (
+                "HKLM activation value $script:ActivationModeValue " +
+                'must be REG_DWORD.')
+        }
+        if ($environmentExists -and
+            $key.GetValueKind($script:ActivationEnvironmentValue) -ne
+                [Microsoft.Win32.RegistryValueKind]::DWord) {
+            throw (
+                "HKLM activation value $script:ActivationEnvironmentValue " +
+                'must be REG_DWORD.')
+        }
+        if ($floorExists -and
+            $key.GetValueKind($script:ActivationSequenceFloorValue) -ne
+                [Microsoft.Win32.RegistryValueKind]::QWord) {
             throw (
                 "HKLM activation value " +
                 "$script:ActivationSequenceFloorValue must be REG_QWORD."
             )
         }
 
-        return New-RebornActivationState `
-            -Mode ([UInt64]$key.GetValue($script:ActivationModeValue)) `
-            -Environment (
-                [UInt64]$key.GetValue($script:ActivationEnvironmentValue)) `
-            -SequenceFloor (
-                [UInt64]$key.GetValue($script:ActivationSequenceFloorValue))
+        $mode = [UInt64]$key.GetValue($script:ActivationModeValue)
+        $environment = if ($environmentExists) {
+            [UInt64]$key.GetValue($script:ActivationEnvironmentValue)
+        } else {
+            [UInt64]0
+        }
+        $floor = if ($floorExists) {
+            [UInt64]$key.GetValue($script:ActivationSequenceFloorValue)
+        } else {
+            [UInt64]0
+        }
+        if ($mode -gt 1 -or $environment -gt 3) {
+            throw 'HKLM activation values are outside their supported range.'
+        }
+        if ($mode -eq 1 -and (
+                -not $environmentExists -or
+                -not $floorExists -or
+                $environment -eq 0 -or
+                $floor -eq 0)) {
+            throw (
+                'SecureRequired activation is missing committed environment ' +
+                'or sequence-floor data.')
+        }
+
+        return New-RebornObservedActivationState `
+            $true $true $mode `
+            $environmentExists $environment `
+            $floorExists $floor
     }
     finally {
         $key.Dispose()
+    }
+}
+
+function Get-RebornActivationValueWritePlan {
+    param([Parameter(Mandatory)][object]$State)
+
+    $plan = @(
+        [pscustomobject]@{
+            Step = 'AfterInactiveMode'
+            Name = $script:ActivationModeValue
+            Value = [Int32]0
+            Kind = [Microsoft.Win32.RegistryValueKind]::DWord
+        },
+        [pscustomobject]@{
+            Step = 'AfterSequenceFloor'
+            Name = $script:ActivationSequenceFloorValue
+            Value = [Int64]$State.SequenceFloor
+            Kind = [Microsoft.Win32.RegistryValueKind]::QWord
+        },
+        [pscustomobject]@{
+            Step = 'AfterEnvironment'
+            Name = $script:ActivationEnvironmentValue
+            Value = [Int32]$State.Environment
+            Kind = [Microsoft.Win32.RegistryValueKind]::DWord
+        }
+    )
+    if ([UInt64]$State.Mode -eq 1) {
+        $plan += [pscustomobject]@{
+            Step = 'AfterSecureMode'
+            Name = $script:ActivationModeValue
+            Value = [Int32]1
+            Kind = [Microsoft.Win32.RegistryValueKind]::DWord
+        }
+    }
+    return $plan
+}
+
+function Invoke-RebornActivationOrderedValueWrites {
+    param(
+        [Parameter(Mandatory)][object]$State,
+        [Parameter(Mandatory)][scriptblock]$WriteValue,
+        [Parameter(Mandatory)][scriptblock]$Flush,
+        [scriptblock]$AfterWrite
+    )
+
+    foreach ($entry in @(Get-RebornActivationValueWritePlan $State)) {
+        & $WriteValue $entry
+        & $Flush
+        if ($null -ne $AfterWrite) {
+            & $AfterWrite $entry.Step
+        }
     }
 }
 
@@ -257,6 +390,8 @@ function Write-RebornHklmActivationState {
         $security =
             New-Object Security.AccessControl.RegistrySecurity
         $security.SetAccessRuleProtection($true, $false)
+        $security.SetOwner(
+            [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
         $inheritance =
             [Security.AccessControl.InheritanceFlags]::ContainerInherit
         $propagation =
@@ -290,19 +425,14 @@ function Write-RebornHklmActivationState {
         }
         $key.SetAccessControl($security)
 
-        $key.SetValue(
-            $script:ActivationModeValue,
-            [Int32]$validated.Mode,
-            [Microsoft.Win32.RegistryValueKind]::DWord)
-        $key.SetValue(
-            $script:ActivationEnvironmentValue,
-            [Int32]$validated.Environment,
-            [Microsoft.Win32.RegistryValueKind]::DWord)
-        $key.SetValue(
-            $script:ActivationSequenceFloorValue,
-            [Int64]$validated.SequenceFloor,
-            [Microsoft.Win32.RegistryValueKind]::QWord)
         $key.Flush()
+        $writeValue = {
+            param($Entry)
+            $key.SetValue($Entry.Name, $Entry.Value, $Entry.Kind)
+        }
+        $flush = { $key.Flush() }
+        Invoke-RebornActivationOrderedValueWrites `
+            $validated $writeValue $flush
     }
     finally {
         $key.Dispose()
@@ -353,6 +483,7 @@ function Write-RebornActivationState {
 
 Export-ModuleMember -Function @(
     'Get-RebornActivationStateDescriptor',
+    'Assert-RebornProtectedHklmActivationState',
     'Get-RebornActivationState',
     'Write-RebornActivationState',
     'New-RebornActivationState'

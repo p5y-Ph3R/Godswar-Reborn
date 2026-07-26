@@ -14,6 +14,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module (
+    Join-Path $PSScriptRoot 'DevelopmentNetworkTrustReceipt.psm1'
+) -Force
+
 if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
     throw 'Development Schannel certificates can only be created on Windows.'
 }
@@ -218,28 +222,17 @@ try {
         [Array]::Clear($pfxBytes, 0, $pfxBytes.Length)
     }
 
-    $sha256 = [Security.Cryptography.SHA256]::Create()
-    try {
-        $rootSha256 = (
-            [BitConverter]::ToString(
-                $sha256.ComputeHash($rootCertificate.RawData)
-            )
-        ).Replace('-', '')
-    }
-    finally {
-        $sha256.Dispose()
-    }
-
+    $certificateDescriptor =
+        Get-RebornTrustCertificateDescriptor $rootCertificate
+    $rootFileSha256 = Get-RebornTrustFileSha256 $rootPath
+    $serverPfxSha256 = Get-RebornTrustFileSha256 $serverPath
     $installedByScript = $false
-    $receipt = [ordered]@{
-        version = 1
-        storeLocation = 'CurrentUser'
-        storeName = 'Root'
-        thumbprint = $rootCertificate.Thumbprint
-        rootSha256 = $rootSha256
-        installedByScript = $false
-        createdUtc = [DateTimeOffset]::UtcNow.ToString('O')
-    }
+    $receipt = New-RebornTrustReceiptRecord `
+        $certificateDescriptor `
+        $rootFileSha256 `
+        $serverPfxSha256 `
+        $false `
+        'NoChange'
     if ($InstallCurrentUserTrust) {
         $publicRoot =
             [Security.Cryptography.X509Certificates.X509Certificate2]::new(
@@ -259,15 +252,35 @@ try {
                 $false
             )
             if ($existing.Count -eq 0) {
-                # Write the guarded cleanup receipt before changing trust. If
-                # the process is interrupted during Store.Add, cleanup can
-                # safely remove the exact root or report it already absent.
-                $receipt.installedByScript = $true
-                $receipt |
-                    ConvertTo-Json |
-                    Set-Content -LiteralPath $receiptPath -Encoding UTF8
-                $store.Add($publicRoot)
+                $addCertificate = { $store.Add($publicRoot) }
+                $findCertificate = {
+                    $matches = $store.Certificates.Find(
+                        [Security.Cryptography.X509Certificates.X509FindType]::FindByThumbprint,
+                        $rootCertificate.Thumbprint,
+                        $false)
+                    if ($matches.Count -gt 1) {
+                        throw 'Multiple roots matched the generated thumbprint.'
+                    }
+                    if ($matches.Count -eq 0) {
+                        return $null
+                    }
+                    return Get-RebornTrustCertificateDescriptor $matches[0]
+                }
+                Invoke-RebornTrustInstallReceiptTransaction `
+                    $receipt `
+                    $receiptPath `
+                    $addCertificate `
+                    $findCertificate | Out-Null
                 $installedByScript = $true
+            } elseif ($existing.Count -eq 1) {
+                Assert-RebornTrustCertificateDescriptor `
+                    (Get-RebornTrustCertificateDescriptor $existing[0]) `
+                    $receipt
+                Write-RebornTrustReceiptAtomic `
+                    $receipt $receiptPath -NoOverwrite
+                Read-RebornTrustReceipt $receiptPath | Out-Null
+            } else {
+                throw 'Multiple roots matched the generated thumbprint.'
             }
         }
         finally {
@@ -276,8 +289,11 @@ try {
         }
     }
 
-    $receipt.installedByScript = $installedByScript
-    $receipt | ConvertTo-Json | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+    if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+        Write-RebornTrustReceiptAtomic `
+            $receipt $receiptPath -NoOverwrite
+        Read-RebornTrustReceipt $receiptPath | Out-Null
+    }
 
     [pscustomobject]@{
         RootCertificate = $rootPath

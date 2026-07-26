@@ -15,6 +15,21 @@ public static class RebornSecurePathNativeV1
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode,
         SetLastError = true)]
     private static extern SafeFileHandle CreateFileW(
@@ -33,6 +48,11 @@ public static class RebornSecurePathNativeV1
         StringBuilder value,
         uint length,
         uint flags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(
+        SafeFileHandle handle,
+        out ByHandleFileInformation information);
 
     public static string GetFinalPath(string path)
     {
@@ -64,6 +84,25 @@ public static class RebornSecurePathNativeV1
         }
         throw new InvalidOperationException(
             "The final filesystem path exceeds the supported limit.");
+    }
+
+    public static uint GetLinkCount(string path)
+    {
+        using (SafeFileHandle handle = CreateFileW(
+            path, FileReadAttributes, ShareReadWriteDelete, IntPtr.Zero,
+            OpenExisting, 0, IntPtr.Zero))
+        {
+            if (handle.IsInvalid)
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Cannot open file metadata for link validation.");
+            ByHandleFileInformation information;
+            if (!GetFileInformationByHandle(handle, out information))
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Cannot read file metadata for link validation.");
+            return information.NumberOfLinks;
+        }
     }
 }
 '@
@@ -185,6 +224,16 @@ function Assert-RebornRegularFilePath {
         Split-Path -Parent $resolved
     ) "$Label parent" | Out-Null
     Assert-RebornPathComponent $resolved $Label File
+    return $resolved
+}
+
+function Assert-RebornSingleLinkRegularFilePath {
+    param([string]$Path, [string]$Label)
+
+    $resolved = Assert-RebornRegularFilePath $Path $Label
+    if ([RebornSecurePathNativeV1]::GetLinkCount($resolved) -ne 1) {
+        throw "$Label cannot be a hard-linked file: $resolved"
+    }
     return $resolved
 }
 
@@ -403,6 +452,7 @@ Export-ModuleMember -Function @(
     'Resolve-RebornNonRootLocalPath',
     'Assert-RebornDirectoryPath',
     'Assert-RebornRegularFilePath',
+    'Assert-RebornSingleLinkRegularFilePath',
     'Assert-RebornProtectedDirectoryPath',
     'Assert-RebornProtectedRegularFilePath',
     'Assert-RebornProtectedFileSet',

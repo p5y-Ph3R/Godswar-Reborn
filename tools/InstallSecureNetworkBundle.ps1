@@ -9,10 +9,8 @@ param(
         Join-Path $PSScriptRoot `
             '..\client\network-shim\bin\Release\Win32\Net.dll'),
 
-    [Parameter(Mandatory)]
     [string]$ManifestPath,
 
-    [Parameter(Mandatory)]
     [string]$TrustPath,
 
     [Parameter(Mandatory)]
@@ -38,6 +36,11 @@ param(
 
     [string]$ApplyBackupPath,
 
+    [string]$ClientInventoryReceiptPath,
+
+    [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+    [string]$ExpectedClientInventoryReceiptSha256,
+
     [switch]$AllowHklmWrite,
 
     [switch]$ControlledHostSocketChecks
@@ -55,11 +58,45 @@ Import-Module (
     Join-Path $PSScriptRoot 'SecureNetworkBundleTransaction.psm1'
 ) -Force
 Import-Module (
+    Join-Path $PSScriptRoot 'ControlledHostClientInventoryReceipt.psm1'
+) -Force
+Import-Module (
+    Join-Path $PSScriptRoot 'SecureNetworkOperationLock.psm1'
+) -Force
+Import-Module (
+    Join-Path $PSScriptRoot 'ControlledHostRuntimeLock.psm1'
+) -Force
+Import-Module (
     Join-Path $PSScriptRoot 'SecureNetworkBundleFiles.psm1'
 ) -Force
 Import-Module (
     Join-Path $PSScriptRoot 'SecureNetworkPathSafety.psm1'
 ) -Force
+
+$requiredDependencyCommands = @(
+    'Assert-RebornControlledHostClientInventoryReceipt'
+    'Assert-RebornControlledHostClientPostInventoryReboot'
+    'Assert-RebornDirectChildDirectory'
+    'Assert-RebornProtectedDirectoryPath'
+    'Assert-RebornRegularFilePath'
+    'Copy-RebornFileAtomic'
+    'Enter-RebornControlledHostRuntimeSetLock'
+    'Enter-RebornSecureNetworkOperationLock'
+    'Exit-RebornControlledHostRuntimeSetLock'
+    'Exit-RebornSecureNetworkOperationLock'
+    'Get-RebornSecureBundleStatus'
+    'Initialize-RebornProtectedDirectoryPath'
+    'Invoke-RebornSecureBundleApply'
+    'Invoke-RebornSecureBundleRestore'
+    'New-RebornSecureBundlePolicy'
+    'Read-RebornControlledHostClientInventoryReceipt'
+)
+foreach ($commandName in $requiredDependencyCommands) {
+    if ($null -eq (Get-Command $commandName `
+            -CommandType Function -ErrorAction SilentlyContinue)) {
+        throw "Secure bundle dependency is not in script scope: $commandName"
+    }
+}
 
 function Assert-OriginClosed {
     if (Get-Process -Name Origin -ErrorAction SilentlyContinue) {
@@ -241,8 +278,21 @@ function Invoke-NativeOfflineGate {
 }
 
 $candidate = [IO.Path]::GetFullPath($CandidatePath)
-$manifest = [IO.Path]::GetFullPath($ManifestPath)
-$trust = [IO.Path]::GetFullPath($TrustPath)
+if ($Mode -ne 'Restore' -and
+    ([string]::IsNullOrWhiteSpace($ManifestPath) -or
+        [string]::IsNullOrWhiteSpace($TrustPath))) {
+    throw "$Mode requires -ManifestPath and -TrustPath."
+}
+$manifest = if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
+    ''
+} else {
+    [IO.Path]::GetFullPath($ManifestPath)
+}
+$trust = if ([string]::IsNullOrWhiteSpace($TrustPath)) {
+    ''
+} else {
+    [IO.Path]::GetFullPath($TrustPath)
+}
 $client = [IO.Path]::GetFullPath($ClientRoot).TrimEnd('\')
 $backup = [IO.Path]::GetFullPath($BackupRoot).TrimEnd('\')
 $policy = New-RebornSecureBundlePolicy `
@@ -254,15 +304,47 @@ $policy = New-RebornSecureBundlePolicy `
         $ExpectedManifestSha256.ToUpperInvariant()) `
     -ManifestTrustSha256 (
         $ExpectedTrustSha256.ToUpperInvariant())
+$controlledClient =
+    $client.Equals(
+        'C:\RebornNetworkAcceptanceClient',
+        [StringComparison]::OrdinalIgnoreCase)
+$inventoryReceipt = $null
+if ($controlledClient) {
+    if ([string]::IsNullOrWhiteSpace($ClientInventoryReceiptPath) -or
+        [string]::IsNullOrWhiteSpace(
+            $ExpectedClientInventoryReceiptSha256)) {
+        throw (
+            'The controlled-host client requires its protected inventory ' +
+            'receipt path and SHA-256.')
+    }
+    $inventoryReceipt =
+        Read-RebornControlledHostClientInventoryReceipt `
+            $ClientInventoryReceiptPath `
+            $ExpectedClientInventoryReceiptSha256
+}
 
 if ($Mode -eq 'Status') {
-    Get-RebornSecureBundleStatus `
+    $bundleStatus = Get-RebornSecureBundleStatus `
         -Policy $policy `
         -ClientRoot $client `
         -CandidatePath $candidate `
         -ManifestPath $manifest `
         -TrustPath $trust `
         -StateProvider Hklm
+    if ($controlledClient -and
+        $bundleStatus.State -in @('Stock', 'InstalledExact')) {
+        $inventoryMode = if (
+            $bundleStatus.State -eq 'Stock'
+        ) { 'Stock' } else { 'InstalledExact' }
+        Assert-RebornControlledHostClientInventoryReceipt `
+            $inventoryReceipt `
+            $client `
+            $inventoryMode `
+            $policy.CandidateNetSha256 `
+            $policy.LegacyNetSha256 `
+            $policy.ManifestSha256 | Out-Null
+    }
+    $bundleStatus
     return
 }
 
@@ -291,38 +373,90 @@ if ($Mode -eq 'Apply') {
         return
     }
 
-    $mutation = Enter-SecureBundleMutation
+    $operationLock =
+        Enter-RebornSecureNetworkOperationLock -Name 'secure-bundle'
+    $runtimeSetLock = $null
     try {
-        Assert-OriginClosed
-        Assert-RebornProtectedDirectoryPath `
-            $client 'ClientRoot' -ProtectContents | Out-Null
-        $backup = Initialize-RebornProtectedDirectoryPath `
-            $backup 'BackupRoot'
-        Invoke-NativeOfflineGate `
-            -Candidate $candidate `
-            -StockNet (Join-Path $client 'Net.dll') `
-            -Manifest $manifest `
-            -ScratchRoot (Join-Path $backup '.staging') `
-            -ExpectedCandidate $policy.CandidateNetSha256 `
-            -ExpectedStockNet $policy.LegacyNetSha256 `
-            -ExpectedChecks $ExpectedChecksSha256.ToUpperInvariant() `
-            -ExpectedManifest $policy.ManifestSha256 `
-            -IncludeSockets:$ControlledHostSocketChecks
-
-        Assert-OriginClosed
-        Invoke-RebornSecureBundleApply `
+        $runtimeSetLock =
+            Enter-RebornControlledHostRuntimeSetLock
+        if ($controlledClient) {
+            $rebootGate =
+                Assert-RebornControlledHostClientPostInventoryReboot `
+                    $ClientInventoryReceiptPath `
+                    $ExpectedClientInventoryReceiptSha256
+            $inventoryReceipt = $rebootGate.Receipt
+        }
+        $lockedPreflight = Get-RebornSecureBundleStatus `
             -Policy $policy `
             -ClientRoot $client `
             -CandidatePath $candidate `
             -ManifestPath $manifest `
             -TrustPath $trust `
-            -BackupRoot $backup `
-            -StateProvider Hklm `
-            -AllowHklmWrite
+            -StateProvider Hklm
+        if ($lockedPreflight.State -ne 'Stock') {
+            throw (
+                'Secure bundle state changed before the operation lock; ' +
+                "got $($lockedPreflight.State).")
+        }
+
+        $mutation = Enter-SecureBundleMutation
+        try {
+            Assert-OriginClosed
+            Assert-RebornProtectedDirectoryPath `
+                $client 'ClientRoot' -ProtectContents | Out-Null
+            if ($controlledClient) {
+                Assert-RebornControlledHostClientInventoryReceipt `
+                    $inventoryReceipt $client Stock | Out-Null
+            }
+            $backup = Initialize-RebornProtectedDirectoryPath `
+                $backup 'BackupRoot'
+            Invoke-NativeOfflineGate `
+                -Candidate $candidate `
+                -StockNet (Join-Path $client 'Net.dll') `
+                -Manifest $manifest `
+                -ScratchRoot (Join-Path $backup '.staging') `
+                -ExpectedCandidate $policy.CandidateNetSha256 `
+                -ExpectedStockNet $policy.LegacyNetSha256 `
+                -ExpectedChecks $ExpectedChecksSha256.ToUpperInvariant() `
+                -ExpectedManifest $policy.ManifestSha256 `
+                -IncludeSockets:$ControlledHostSocketChecks
+
+            Assert-OriginClosed
+            $applyResult = Invoke-RebornSecureBundleApply `
+                -Policy $policy `
+                -ClientRoot $client `
+                -CandidatePath $candidate `
+                -ManifestPath $manifest `
+                -TrustPath $trust `
+                -BackupRoot $backup `
+                -StateProvider Hklm `
+                -AllowHklmWrite `
+                -PreCommitValidation {
+                    param([IO.FileStream]$LockedOriginStream)
+                    if ($controlledClient) {
+                        Assert-RebornControlledHostClientInventoryReceipt `
+                            $inventoryReceipt `
+                            $client `
+                            InstalledExact `
+                            $policy.CandidateNetSha256 `
+                            $policy.LegacyNetSha256 `
+                            $policy.ManifestSha256 `
+                            -LockedOriginStream $LockedOriginStream | Out-Null
+                    }
+                }
+            $applyResult
+        }
+        finally {
+            $mutation.ReleaseMutex()
+            $mutation.Dispose()
+        }
     }
     finally {
-        $mutation.ReleaseMutex()
-        $mutation.Dispose()
+        if ($null -ne $runtimeSetLock) {
+            Exit-RebornControlledHostRuntimeSetLock `
+                $runtimeSetLock
+        }
+        Exit-RebornSecureNetworkOperationLock $operationLock
     }
     return
 }
@@ -335,21 +469,45 @@ if (-not $PSCmdlet.ShouldProcess(
         'Disable secure routing and restore the exact predecessor files')) {
     return
 }
-$mutation = Enter-SecureBundleMutation
+$operationLock =
+    Enter-RebornSecureNetworkOperationLock -Name 'secure-bundle'
+$runtimeSetLock = $null
 try {
-    Assert-OriginClosed
-    Invoke-RebornSecureBundleRestore `
-        -Policy $policy `
-        -ClientRoot $client `
-        -CandidatePath $candidate `
-        -ManifestPath $manifest `
-        -TrustPath $trust `
-        -ApplyBackupPath $ApplyBackupPath `
-        -BackupRoot $backup `
-        -StateProvider Hklm `
-        -AllowHklmWrite
+    $runtimeSetLock =
+        Enter-RebornControlledHostRuntimeSetLock
+    if ($controlledClient) {
+        $inventoryReceipt =
+            Read-RebornControlledHostClientInventoryReceipt `
+                $ClientInventoryReceiptPath `
+                $ExpectedClientInventoryReceiptSha256
+    }
+    $mutation = Enter-SecureBundleMutation
+    try {
+        Assert-OriginClosed
+        $restoreResult = Invoke-RebornSecureBundleRestore `
+            -Policy $policy `
+            -ClientRoot $client `
+            -CandidatePath $candidate `
+            -ManifestPath $manifest `
+            -TrustPath $trust `
+            -ApplyBackupPath $ApplyBackupPath `
+            -BackupRoot $backup `
+            -StateProvider Hklm `
+            -AllowHklmWrite
+        if ($controlledClient) {
+            Assert-RebornControlledHostClientInventoryReceipt `
+                $inventoryReceipt $client Stock | Out-Null
+        }
+        $restoreResult
+    }
+    finally {
+        $mutation.ReleaseMutex()
+        $mutation.Dispose()
+    }
 }
 finally {
-    $mutation.ReleaseMutex()
-    $mutation.Dispose()
+    if ($null -ne $runtimeSetLock) {
+        Exit-RebornControlledHostRuntimeSetLock $runtimeSetLock
+    }
+    Exit-RebornSecureNetworkOperationLock $operationLock
 }

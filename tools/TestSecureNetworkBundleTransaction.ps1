@@ -13,139 +13,9 @@ Import-Module (
 Import-Module (
     Join-Path $PSScriptRoot 'SecureEndpointManifestValidation.psm1'
 ) -Force
-
-function Write-UInt16Be {
-    param([byte[]]$Bytes, [int]$Offset, [UInt16]$Value)
-    $Bytes[$Offset] = [byte](($Value -shr 8) -band 0xFF)
-    $Bytes[$Offset + 1] = [byte]($Value -band 0xFF)
-}
-
-function Write-UInt32Be {
-    param([byte[]]$Bytes, [int]$Offset, [UInt32]$Value)
-    for ($index = 0; $index -lt 4; $index++) {
-        $Bytes[$Offset + $index] =
-            [byte](($Value -shr ((3 - $index) * 8)) -band 0xFF)
-    }
-}
-
-function Write-UInt64Be {
-    param([byte[]]$Bytes, [int]$Offset, [UInt64]$Value)
-    for ($index = 0; $index -lt 8; $index++) {
-        $Bytes[$Offset + $index] =
-            [byte](($Value -shr ((7 - $index) * 8)) -band 0xFF)
-    }
-}
-
-function New-SignedManifestFixture {
-    param(
-        [string]$ManifestPath,
-        [string]$TrustPath,
-        [UInt64]$Sequence = 7
-    )
-
-    $key = [Security.Cryptography.CngKey]::Create(
-        [Security.Cryptography.CngAlgorithm]::ECDsaP256)
-    $ecdsa = [Security.Cryptography.ECDsaCng]::new($key)
-    $ecdsa.HashAlgorithm =
-        [Security.Cryptography.CngAlgorithm]::Sha256
-    try {
-        $public = $key.Export(
-            [Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)
-        if ($public.Length -ne 72) {
-            throw 'Unexpected ECDSA P-256 public blob size.'
-        }
-        $x = New-Object byte[] 32
-        $y = New-Object byte[] 32
-        [Array]::Copy($public, 8, $x, 0, 32)
-        [Array]::Copy($public, 40, $y, 0, 32)
-
-        $logical = [Text.Encoding]::ASCII.GetBytes(
-            'login-route.reborn.test')
-        $tls = [Text.Encoding]::ASCII.GetBytes('login.reborn.test')
-        $suffix = [Text.Encoding]::ASCII.GetBytes('reborn.test')
-        $audience = [Text.Encoding]::ASCII.GetBytes('reborn-game')
-        $signedLength =
-            72 + $logical.Length + $tls.Length +
-            1 + $suffix.Length + 1 + $audience.Length + 4
-        $signed = New-Object byte[] $signedLength
-        [Text.Encoding]::ASCII.GetBytes('GWEM').CopyTo($signed, 0)
-        Write-UInt32Be $signed 4 ([UInt32]($signedLength + 64))
-        Write-UInt16Be $signed 8 72
-        Write-UInt16Be $signed 10 1
-        Write-UInt16Be $signed 12 0
-        $signed[14] = 1
-        $signed[15] = 0
-        Write-UInt16Be $signed 16 1
-        Write-UInt16Be $signed 18 0xD001
-        Write-UInt64Be $signed 24 $Sequence
-        $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-        Write-UInt64Be $signed 32 ([UInt64]($now - 60))
-        Write-UInt64Be $signed 40 ([UInt64]($now + 3600))
-        Write-UInt16Be $signed 48 1
-        Write-UInt16Be $signed 50 0
-        Write-UInt16Be $signed 52 5999
-        Write-UInt16Be $signed 54 6599
-        Write-UInt16Be $signed 56 ([UInt16]$logical.Length)
-        Write-UInt16Be $signed 58 ([UInt16]$tls.Length)
-        $signed[60] = 1
-        $signed[61] = 1
-        $signed[62] = 1
-        Write-UInt32Be $signed 64 ([UInt32]$signedLength)
-
-        $cursor = 72
-        $logical.CopyTo($signed, $cursor)
-        $cursor += $logical.Length
-        $tls.CopyTo($signed, $cursor)
-        $cursor += $tls.Length
-        $signed[$cursor++] = [byte]$suffix.Length
-        $suffix.CopyTo($signed, $cursor)
-        $cursor += $suffix.Length
-        $signed[$cursor++] = [byte]$audience.Length
-        $audience.CopyTo($signed, $cursor)
-        $cursor += $audience.Length
-        Write-UInt32Be $signed $cursor 42
-
-        $signature = $ecdsa.SignData($signed)
-        if ($signature.Length -ne 64) {
-            throw 'Unexpected ECDSA P-256 signature size.'
-        }
-        $manifest = New-Object byte[] ($signed.Length + 64)
-        $signed.CopyTo($manifest, 0)
-        $signature.CopyTo($manifest, $signed.Length)
-        [IO.File]::WriteAllBytes($ManifestPath, $manifest)
-        [IO.File]::WriteAllText(
-            $TrustPath,
-            ([ordered]@{
-                schemaVersion = 1
-                keyId = '53249'
-                environment = '1'
-                minimumSequence = '1'
-                x = [Convert]::ToBase64String($x)
-                y = [Convert]::ToBase64String($y)
-            } | ConvertTo-Json),
-            [Text.UTF8Encoding]::new($false))
-    }
-    finally {
-        $ecdsa.Dispose()
-        $key.Dispose()
-    }
-}
-
-function Write-TestBytes {
-    param([string]$Path, [int]$Length, [byte]$Seed)
-    $bytes = New-Object byte[] $Length
-    for ($index = 0; $index -lt $bytes.Length; $index++) {
-        $bytes[$index] = [byte](($Seed + $index) % 251)
-    }
-    [IO.File]::WriteAllBytes($Path, $bytes)
-}
-
-function Assert-True {
-    param([bool]$Condition, [string]$Message)
-    if (-not $Condition) {
-        throw "Assertion failed: $Message"
-    }
-}
+Import-Module (
+    Join-Path $PSScriptRoot 'SecureNetworkBundleTestFixtures.psm1'
+) -Force
 
 $authenticatedUsers =
     [Security.Principal.SecurityIdentifier]::new('S-1-5-11')
@@ -397,6 +267,104 @@ try {
         ) "interruption $point did not roll back"
     }
 
+    $expiredRoot = Join-Path $root 'expired-recovery'
+    $expiredClient = Join-Path $expiredRoot 'client'
+    $expiredInputs = Join-Path $expiredRoot 'inputs'
+    $expiredBackups = Join-Path $expiredRoot 'backups'
+    foreach ($directory in @(
+        $expiredClient,
+        $expiredInputs,
+        $expiredBackups
+    )) {
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+    $expiredOrigin = Join-Path $expiredClient 'Origin.exe'
+    $expiredStock = Join-Path $expiredClient 'Net.dll'
+    $expiredCandidate = Join-Path $expiredInputs 'Net.dll'
+    $expiredManifest = Join-Path $expiredInputs 'RebornNetwork.gwem'
+    $expiredTrust = Join-Path $expiredInputs 'manifest-trust.json'
+    $expiredState = Join-Path $expiredRoot 'activation-state.json'
+    Write-TestBytes $expiredOrigin 4096 31
+    Write-TestBytes $expiredStock 2048 37
+    Write-TestBytes $expiredCandidate 3072 41
+    $validAt = [DateTimeOffset]::Parse('2026-01-01T00:00:00Z')
+    New-SignedManifestFixture `
+        $expiredManifest $expiredTrust 7 $validAt
+    $expiredPolicy = New-RebornSecureBundlePolicy `
+        (Get-FileHash $expiredOrigin -Algorithm SHA256).Hash `
+        (Get-FileHash $expiredStock -Algorithm SHA256).Hash `
+        (Get-FileHash $expiredCandidate -Algorithm SHA256).Hash `
+        (Get-FileHash $expiredManifest -Algorithm SHA256).Hash `
+        (Get-FileHash $expiredTrust -Algorithm SHA256).Hash
+    $expiredApplied = Invoke-RebornSecureBundleApply `
+        $expiredPolicy $expiredClient $expiredCandidate `
+        $expiredManifest $expiredTrust $expiredBackups `
+        OfflineFile $expiredState -Now $validAt
+    $expiredReceipt = Get-Content -LiteralPath (
+        Join-Path $expiredApplied.BackupPath 'receipt.json'
+    ) -Raw | ConvertFrom-Json
+    Assert-True (
+        $expiredReceipt.schemaVersion -eq 3 -and
+        @($expiredReceipt.recoveryInputs).Count -eq 3
+    ) 'Apply did not retain a schema-3 recovery input set'
+
+    $expiredAt = $validAt.AddHours(2)
+    $expiredStatusError = $null
+    $expiredApplyError = $null
+    try {
+        Get-RebornSecureBundleStatus `
+            $expiredPolicy $expiredClient $expiredCandidate `
+            $expiredManifest $expiredTrust OfflineFile $expiredState `
+            -Now $expiredAt | Out-Null
+    } catch { $expiredStatusError = $_.Exception.Message }
+    try {
+        Invoke-RebornSecureBundleApply `
+            $expiredPolicy $expiredClient $expiredCandidate `
+            $expiredManifest $expiredTrust $expiredBackups `
+            OfflineFile $expiredState -Now $expiredAt | Out-Null
+    } catch { $expiredApplyError = $_.Exception.Message }
+    Assert-True (
+        $expiredStatusError -match 'outside its validity interval' -and
+        $expiredApplyError -match 'outside its validity interval'
+    ) 'expired Status or Apply did not fail closed'
+
+    $recoveryManifest = Join-Path (
+        $expiredApplied.BackupPath
+    ) 'endpoint-manifest.gwem'
+    $damagedRecovery = [IO.File]::ReadAllBytes($recoveryManifest)
+    $damagedRecovery[80] = $damagedRecovery[80] -bxor 1
+    [IO.File]::WriteAllBytes($recoveryManifest, $damagedRecovery)
+    $damagedRecoveryRejected = $false
+    try {
+        Invoke-RebornSecureBundleRestore `
+            $expiredPolicy $expiredClient '' '' '' `
+            $expiredApplied.BackupPath $expiredBackups `
+            OfflineFile $expiredState | Out-Null
+    } catch { $damagedRecoveryRejected = $true }
+    Assert-True $damagedRecoveryRejected (
+        'Restore accepted a modified self-contained recovery input')
+    Copy-Item -LiteralPath $expiredManifest `
+        -Destination $recoveryManifest -Force
+    Remove-Item -LiteralPath @(
+        $expiredCandidate,
+        $expiredManifest,
+        $expiredTrust
+    ) -Force
+
+    $expiredRestored = Invoke-RebornSecureBundleRestore `
+        $expiredPolicy $expiredClient '' '' '' `
+        $expiredApplied.BackupPath $expiredBackups `
+        OfflineFile $expiredState
+    $expiredStateDocument =
+        Get-Content -LiteralPath $expiredState -Raw | ConvertFrom-Json
+    Assert-True (
+        $expiredRestored.Result -eq 'StockFilesRestored' -and
+        (Get-FileHash $expiredStock -Algorithm SHA256).Hash -ceq
+            $expiredPolicy.LegacyNetSha256 -and
+        $expiredStateDocument.activationMode -eq '0' -and
+        $expiredStateDocument.sequenceFloor -eq '7'
+    ) 'expired self-contained Restore did not recover exact Stock'
+
     $tampered = [IO.File]::ReadAllBytes($manifest)
     $tampered[80] = $tampered[80] -bxor 1
     [IO.File]::WriteAllBytes($manifest, $tampered)
@@ -411,7 +379,7 @@ try {
     }
     Assert-True $tamperRejected 'tampered manifest was accepted'
 
-    Write-Host 'Secure network bundle transaction checks passed.'
+    Write-Host 'Secure network bundle core transaction checks passed.'
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($root)
@@ -424,3 +392,7 @@ finally {
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }
+
+& (Join-Path $PSScriptRoot 'TestSecureNetworkBundleRestoreState.ps1')
+& (Join-Path $PSScriptRoot 'TestSecureNetworkActivationCommit.ps1')
+Write-Host 'Secure network bundle transaction checks passed.'
