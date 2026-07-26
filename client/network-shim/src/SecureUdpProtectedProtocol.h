@@ -22,6 +22,8 @@ enum class SecureUdpProtectedMessageType : std::uint8_t {
     Ping = 1,
     Pong = 2,
     BindingConfirm = 3,
+    MovementInput = 4,
+    PositionSnapshot = 5,
 };
 
 struct SecureUdpProtectedHeader final {

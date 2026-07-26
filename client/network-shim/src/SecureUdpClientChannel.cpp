@@ -195,6 +195,8 @@ SecureUdpClientChannel::Snapshot() const noexcept {
     snapshot.authenticatedPackets = authenticatedPackets_;
     snapshot.rejectedPackets = rejectedPackets_;
     snapshot.replayedPackets = replayedPackets_;
+    snapshot.latestPositionSnapshotSequence =
+        latestPositionSnapshot_.snapshotSequence;
     return snapshot;
 }
 
@@ -220,6 +222,9 @@ void SecureUdpClientChannel::ClearSecrets() noexcept {
     currentReceiveWindow_.Reset();
     previousReceiveWindow_.Reset();
     nextReceiveWindow_.Reset();
+    latestPositionSnapshot_ =
+        SecureRealtimePositionSnapshot{};
+    positionSnapshotPending_ = false;
 }
 
 bool SecureUdpClientChannel::IsNonzero(

@@ -98,10 +98,14 @@ internal sealed partial class SecureUdpSessionAuthority
                 }
 
                 var now = _timeProvider.GetTimestamp();
-                if (IsExpiredPending(entry, now) ||
+                if (IsBindingOfferExpired(entry, now) ||
                     IsExpiredBound(entry, now))
                 {
-                    RemoveAndClear(connectionId, entry);
+                    if (IsExpiredBound(entry, now) ||
+                        !_gameplayMovementEnabled)
+                    {
+                        RemoveAndClear(connectionId, entry);
+                    }
                     return SecureUdpSessionBindStatus.Expired;
                 }
 
@@ -118,6 +122,25 @@ internal sealed partial class SecureUdpSessionAuthority
                     challenge.IssuedAtUnixSeconds,
                     now);
                 bindingRevision = entry.BindingRevision;
+                var snapshotQueueStatus =
+                    QueueRealtimeSnapshotLocked(
+                        connectionId,
+                        entry);
+                if ((status is
+                        SecureUdpSessionBindStatus.Bound or
+                        SecureUdpSessionBindStatus.AlreadyBound or
+                        SecureUdpSessionBindStatus.Rebound) &&
+                    snapshotQueueStatus ==
+                        SecureRealtimeSnapshotQueueStatus.Enqueued)
+                {
+                    _realtimeSnapshotAvailable.Release();
+                }
+                else if (snapshotQueueStatus ==
+                        SecureRealtimeSnapshotQueueStatus
+                            .CapacityExceeded)
+                {
+                    entry.Realtime?.SnapshotEgress.TryTake(out _);
+                }
                 if (status is
                     SecureUdpSessionBindStatus.ReplayRejected or
                     SecureUdpSessionBindStatus.RebindRateLimited)
@@ -220,10 +243,14 @@ internal sealed partial class SecureUdpSessionAuthority
             return SecureUdpSessionBindStatus.UnknownSession;
         }
         var now = _timeProvider.GetTimestamp();
-        if (IsExpiredPending(entry, now) ||
+        if (IsBindingOfferExpired(entry, now) ||
             IsExpiredBound(entry, now))
         {
-            RemoveAndClear(connectionId, entry);
+            if (IsExpiredBound(entry, now) ||
+                !_gameplayMovementEnabled)
+            {
+                RemoveAndClear(connectionId, entry);
+            }
             return SecureUdpSessionBindStatus.Expired;
         }
 

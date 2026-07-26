@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Net.Security;
 using System.Security.Cryptography;
+using Godswar.Server.Networking.Secure.Realtime;
 using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Networking.Secure;
@@ -27,7 +28,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private readonly SecureBoundGamePrincipal? _boundGamePrincipal;
     private readonly SslStream _stream;
     private readonly TimeProvider _timeProvider;
-    private IDisposable? _udpRegistrationLease;
+    private SecureUdpSessionLease? _udpRegistrationLease;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _heartbeatGate = new();
     private SecureLegacyChunk? _currentChunk;
@@ -55,7 +56,7 @@ internal sealed partial class TlsMuxLegacyTransport :
         TimeProvider? timeProvider,
         SecureConnectionContext connectionContext,
         SecureBoundGamePrincipal? boundGamePrincipal,
-        IDisposable? udpRegistrationLease = null)
+        SecureUdpSessionLease? udpRegistrationLease = null)
     {
         ArgumentNullException.ThrowIfNull(connectionOwner);
         ArgumentNullException.ThrowIfNull(abortConnection);
@@ -121,6 +122,33 @@ internal sealed partial class TlsMuxLegacyTransport :
     public SecureBoundGamePrincipal? BoundGamePrincipal =>
         _boundGamePrincipal;
 
+    public bool SupportsRealtimeMovement =>
+        _udpRegistrationLease?.SupportsRealtimeMovement == true;
+
+    public bool IsRealtimeMovementActive =>
+        _udpRegistrationLease?.IsRealtimeMovementActive == true;
+
+    public bool TryTakeRealtimeMovement(
+        out SecureRealtimeMovementIngress ingress)
+    {
+        var lease = Volatile.Read(ref _udpRegistrationLease);
+        if (lease is not null &&
+            lease.TryTakeRealtimeMovement(out ingress))
+        {
+            return true;
+        }
+
+        ingress = default;
+        return false;
+    }
+
+    public bool TryPublishRealtimeSnapshot(
+        in SecureRealtimePositionSnapshot snapshot)
+    {
+        var lease = Volatile.Read(ref _udpRegistrationLease);
+        return lease is not null &&
+            lease.TryPublishRealtimeSnapshot(snapshot);
+    }
     internal BoundedByteQueueSnapshot IngressSnapshot =>
         _ingress.Snapshot();
 

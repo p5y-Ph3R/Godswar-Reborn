@@ -2,18 +2,16 @@
 
 ## Version and status
 
-- Document version: `1.22`
+- Document version: `1.23`
 - Last updated: `2026-07-26`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Slice 9 protected UDP is implemented and verified
-  offline/loopback; defaults remain off, no shim is installed, and gameplay
-  remains on TLS. Slice 8 awaits controlled-host acceptance. V1–V4 are
-  rejected, Phase 1 is unaccepted, and the avatar issue is parked.
-- Production-capacity guarantees: none; player count, regions, latency budget,
-  hosting provider, and peak concurrency remain unspecified
+- Current milestone: Phase 4 authoritative movement passes offline gates.
+  Defaults remain off; controlled-host acceptance is pending. Slice 8 also
+  awaits acceptance; V1-V4 and Phase 1 are unaccepted.
+- Production capacity is not guaranteed; workload and hosting inputs remain open.
 
 This document is the durable reference for the networking migration. Update its
 phase ledger and version history as work is accepted. Do not silently weaken the
@@ -252,22 +250,8 @@ The exact V1–V4 hashes, backups, manifests, and evidence IDs live in the
 sealed `Fail`; current state is predecessor Origin `753BE49F...9ED79`, stock
 Net `1CC3F9AA...BCA00C`, and no `NetLegacy.dll`.
 
-Deliverables:
-
-- Win32/x86 `Net.dll` with the exact two named exports and ordinals.
-- Nine-slot proxy that delegates to the pinned `NetLegacy.dll`.
-- Experimental exact-pointer character-preview loading gate with continuous
-  native processing, preserved order, readiness-only release, exact AfterLogin
-  state-2 scheduling, synchronous native LOGIN initialization, guarded timeout,
-  and lifecycle-reset cleanup, documented in
-  [`client-avatar-preview-loading-gate.md`](client-avatar-preview-loading-gate.md).
-- Legacy hash verification before loading.
-- No work under `DllMain` beyond recording the module and disabling thread
-  notifications.
-- ASLR, NX, Control Flow Guard, static runtime, and a preferred image base
-  distinct from stock `NetLegacy.dll`'s preferred base.
-- Strict proxy/ABI tests, repeated stock factory lifecycle probe, and guarded
-  Apply/Restore tooling with exact backups.
+Its native proxy, preview experiment, hardening, compatibility tests, and
+guarded rollback tooling are preserved in the Phase 1 record.
 
 Exit gate:
 
@@ -345,15 +329,15 @@ rotation remains Phase 5 production scalability work.
 
 ### Phase 4 — first hybrid authoritative slice
 
-- Carry sequenced `10194` movement meaning over UDP.
-- Publish authoritative position snapshots plus periodic keyframes.
-- Add authenticated TLS fallback and a transport epoch so one logical input is
-  never applied twice.
-- Reject impossible movement cadence, speed, distance, and map transitions;
-  send correction.
+- Offline implementation and verification are complete: protected UDP
+  movement/snapshots, TLS fallback, fixed-step authority, bounded queues,
+  dedupe, correction, and world-transition protection. See the
+  [Phase 4 record](network-infrastructure-phase4-authoritative-movement.md).
+- Release is warning-free; managed `126/126`, native `/W4 /WX`, reproducible
+  clean builds, and five offline passes are green. Defaults remain off.
 
-Exit gate: network-emulation tests and stock-client end-to-end parity pass under
-latency, jitter, burst loss, duplication, reordering, and UDP blocking.
+Exit gate: controlled-host parity, map/mount/revive, UDP block/unblock, and
+soak remain pending.
 
 ### Phase 5 — extension, hardening, and operations
 
@@ -368,27 +352,26 @@ latency, jitter, burst loss, duplication, reordering, and UDP blocking.
 Exit gate: security, overload/recovery, observability, local benchmark, rollback,
 and incident-response gates pass. Local results are not production guarantees.
 
-## Phase 1 verification and rollback
-
-The exact build prerequisites, automated suites, guarded Apply/Restore commands,
-interactive parity checklist, sealed failure, and rollback record live in
-[`docs/network-infrastructure-phase1.md`](network-infrastructure-phase1.md).
-Phase 1 is closed as unaccepted; Phase 2 proceeds with the avatar issue parked.
-
 ## Known limitations and unresolved decisions
 
 - The shim sees legacy absolute position samples, not keyboard intent. It can
   authenticate, sequence, validate, and reconcile movement, but true input-level
   prediction may require a later targeted `Origin.exe` hook.
-- Client signing and distribution remain undecided.
+- Phase 4 AOI visibility transitions still await bounded reliable remove/spawn
+  writes while holding the character-state gate. A slow client is bounded by
+  transport deadlines, but can delay that session's fixed-step movement.
+  Phase 5 must move the ordered AOI commit/send effects behind a bounded
+  single-owner queue without permitting visibility rollback.
+- Client signing/distribution remain undecided.
 - Production manifest keys/floors/signature, installed trust, blank-account
   reset tooling, live-database backup rehearsal, controlled-host socket tests,
   and original-client secure parity remain activation gates.
 - Hosting region/provider, expected concurrency, tick/snapshot rates, latency
   target, packet-loss target, and budget remain open capacity inputs.
 - Provider-specific infrastructure and paid deployment require approval.
-- The application-layer cryptographic construction requires a separate reviewed
-  ADR before implementation.
+- The implemented Phase 3 application-layer cryptographic construction has its
+  repository ADR and tests, but still requires independent security review
+  before production activation.
 
 ## Version history
 

@@ -222,6 +222,11 @@ internal static class SecureFrameCodec
                 direction == SecureFrameDirection.ServerToClient &&
                 payloadLength ==
                     SecureProtocolConstants.UdpBindingGrantBytes,
+            SecureFrameType.RealtimeMovementInput =>
+                endpointRole == SecureEndpointRole.Game &&
+                direction == SecureFrameDirection.ClientToServer &&
+                payloadLength ==
+                    SecureProtocolConstants.RealtimeMovementInputBytes,
             _ => false
         };
     }

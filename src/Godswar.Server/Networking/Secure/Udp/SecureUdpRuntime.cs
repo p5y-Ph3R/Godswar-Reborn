@@ -271,6 +271,7 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
                 gameTarget.ServerId,
                 TimeSpan.FromSeconds(
                     options.PreviousKeyEpochOverlapSeconds),
+                options.GameplayMovementEnabled,
                 timeProvider);
             var cookies = new SecureUdpCookieProtector(
                 options.BuildCookiePolicy(),

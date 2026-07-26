@@ -10,14 +10,17 @@ Origin/`Net.dll` experiments V1–V4 are rejected; V4's final smoke failed and
 was rolled back to predecessor Origin, stock `Net.dll`, and no
 `NetLegacy.dll`. Slice 8 source/offline work passes, but the shim remains
 uninstalled and secure profiles default off pending controlled-host
-acceptance. Slice 9's protected UDP foundation is implemented and verified
-offline/loopback. Checked-in UDP remains disabled, no shim was installed, and
-gameplay remains on TLS; gameplay migration belongs to Phase 4. Phase 1 remains
-unaccepted. Records: [Phase 1](network-infrastructure-phase1.md),
+acceptance. Slice 9's protected UDP foundation and Phase 4's first
+authoritative movement slice are implemented and verified offline. Checked-in
+TLS/UDP/gameplay settings remain disabled and no shim was installed; the
+controlled-host stock-client Phase 4 gate is still pending. Phase 5 hardening
+and operations are next. Phase 1 remains unaccepted. Records:
+[Phase 1](network-infrastructure-phase1.md),
 [Slice 8](network-infrastructure-phase2-slice8-activation.md),
 [Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md),
 [Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md), and
-[Slice 9C](network-infrastructure-phase3-slice9c-protected-udp.md).
+[Slice 9C](network-infrastructure-phase3-slice9c-protected-udp.md), and
+[Phase 4](network-infrastructure-phase4-authoritative-movement.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

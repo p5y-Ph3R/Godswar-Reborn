@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Networking.Secure.Realtime;
 using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Networking;
@@ -53,6 +54,34 @@ internal sealed class ClientSession : IAsyncDisposable
 
     internal SecureBoundGamePrincipal? BoundGamePrincipal =>
         (_transport as ISecureControlChannel)?.BoundGamePrincipal;
+
+    internal bool SupportsRealtimeMovement =>
+        (_transport as ISecureControlChannel)?
+            .SupportsRealtimeMovement == true;
+
+    internal bool IsRealtimeMovementActive =>
+        (_transport as ISecureControlChannel)?
+            .IsRealtimeMovementActive == true;
+
+    internal bool TryTakeRealtimeMovement(
+        out SecureRealtimeMovementIngress ingress)
+    {
+        if (_transport is ISecureControlChannel controlChannel)
+        {
+            return controlChannel.TryTakeRealtimeMovement(
+                out ingress);
+        }
+
+        ingress = default;
+        return false;
+    }
+
+    internal bool TryPublishRealtimeSnapshot(
+        in SecureRealtimePositionSnapshot snapshot)
+    {
+        return _transport is ISecureControlChannel controlChannel &&
+            controlChannel.TryPublishRealtimeSnapshot(snapshot);
+    }
 
     internal ValueTask SendGameGrantAsync(
         SecureGameGrant grant,

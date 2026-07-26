@@ -1,3 +1,5 @@
+using Godswar.Server.Networking.Secure.Realtime;
+
 namespace Godswar.Server.Networking.Secure.Udp;
 
 internal sealed class SecureUdpSessionLease : IDisposable
@@ -46,6 +48,74 @@ internal sealed class SecureUdpSessionLease : IDisposable
                 connectionIdOutput,
                 proofKeyOutput,
                 out expiryUnixMilliseconds);
+    }
+
+    public SecureUdpBindingCapabilities Capabilities
+    {
+        get
+        {
+            var authority = Volatile.Read(ref _authority);
+            return authority is not null &&
+                authority.SupportsRealtimeMovement(
+                    _connectionId,
+                    _generation)
+                ? authority.BindingCapabilities
+                : SecureUdpBindingCapabilities.None;
+        }
+    }
+
+    public bool SupportsRealtimeMovement =>
+        Capabilities.HasFlag(
+            SecureUdpBindingCapabilities.AuthoritativeMovement);
+
+    public bool IsRealtimeMovementActive =>
+        Volatile.Read(ref _authority)?
+            .IsRealtimeMovementActive(
+                _connectionId,
+                _generation) == true;
+
+    public SecureRealtimeMovementOfferResult OfferTlsMovement(
+        ReadOnlySpan<byte> payload)
+    {
+        var authority = Volatile.Read(ref _authority);
+        return authority is null
+            ? new SecureRealtimeMovementOfferResult(
+                SecureRealtimeMovementOfferStatus.SessionUnavailable,
+                0,
+                default,
+                0)
+            : authority.OfferTlsMovement(
+                _connectionId,
+                _generation,
+                payload);
+    }
+
+    public bool TryTakeRealtimeMovement(
+        out SecureRealtimeMovementIngress ingress)
+    {
+        var authority = Volatile.Read(ref _authority);
+        if (authority is not null &&
+            authority.TryTakeRealtimeMovement(
+                _connectionId,
+                _generation,
+                out ingress))
+        {
+            return true;
+        }
+
+        ingress = default;
+        return false;
+    }
+
+    public bool TryPublishRealtimeSnapshot(
+        in SecureRealtimePositionSnapshot snapshot)
+    {
+        var authority = Volatile.Read(ref _authority);
+        return authority is not null &&
+            authority.TryPublishRealtimeSnapshot(
+                _connectionId,
+                _generation,
+                snapshot);
     }
 
     public void Dispose()

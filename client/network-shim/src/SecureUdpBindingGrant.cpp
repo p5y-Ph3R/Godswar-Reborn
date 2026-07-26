@@ -11,6 +11,9 @@ namespace {
 constexpr std::uint8_t GrantMagic[] = {'G', 'W', 'U', 'G'};
 constexpr std::uint16_t GrantMajor = 1;
 constexpr std::uint16_t GrantMinor = 0;
+constexpr std::uint16_t KnownCapabilityFlags =
+    static_cast<std::uint16_t>(
+        SecureUdpBindingCapability::AuthoritativeMovement);
 
 std::uint16_t ReadUInt16(const std::uint8_t* source) noexcept {
     return static_cast<std::uint16_t>(
@@ -75,6 +78,21 @@ std::uint16_t SecureUdpBindingGrant::UdpPort() const noexcept {
     return valid_ ? udpPort_ : 0;
 }
 
+std::uint16_t
+SecureUdpBindingGrant::CapabilityFlags() const noexcept {
+    return valid_ ? capabilityFlags_ : 0;
+}
+
+bool SecureUdpBindingGrant::HasCapability(
+    SecureUdpBindingCapability capability) const noexcept {
+    const auto requested =
+        static_cast<std::uint16_t>(capability);
+    return valid_ &&
+        requested != 0 &&
+        (requested & ~KnownCapabilityFlags) == 0 &&
+        (capabilityFlags_ & requested) == requested;
+}
+
 std::uint32_t SecureUdpBindingGrant::ServerId() const noexcept {
     return valid_ ? serverId_ : 0;
 }
@@ -136,6 +154,7 @@ void SecureUdpBindingGrant::Clear() noexcept {
     SecureZeroMemory(connectionId_, sizeof(connectionId_));
     SecureZeroMemory(proofKey_, sizeof(proofKey_));
     udpPort_ = 0;
+    capabilityFlags_ = 0;
     serverId_ = 0;
     expiryUnixMilliseconds_ = 0;
     valid_ = false;
@@ -147,6 +166,7 @@ void SecureUdpBindingGrant::MoveFrom(
         return;
     }
     udpPort_ = other->udpPort_;
+    capabilityFlags_ = other->capabilityFlags_;
     serverId_ = other->serverId_;
     expiryUnixMilliseconds_ = other->expiryUnixMilliseconds_;
     std::memcpy(
@@ -173,13 +193,14 @@ bool TryDecodeSecureUdpBindingGrant(
 
     const auto* input = static_cast<const std::uint8_t*>(source);
     const auto udpPort = ReadUInt16(input + 8);
+    const auto capabilityFlags = ReadUInt16(input + 10);
     const auto serverId = ReadUInt32(input + 12);
     const auto expiry = ReadUInt64(input + 16);
     if (std::memcmp(input, GrantMagic, sizeof(GrantMagic)) != 0 ||
         ReadUInt16(input + 4) != GrantMajor ||
         ReadUInt16(input + 6) != GrantMinor ||
         udpPort == 0 ||
-        ReadUInt16(input + 10) != 0 ||
+        (capabilityFlags & ~KnownCapabilityFlags) != 0 ||
         serverId == 0 ||
         expiry == 0 ||
         IsAllZero(input + 24, SecureUdpConnectionIdBytes) ||
@@ -189,6 +210,7 @@ bool TryDecodeSecureUdpBindingGrant(
 
     SecureUdpBindingGrant decoded;
     decoded.udpPort_ = udpPort;
+    decoded.capabilityFlags_ = capabilityFlags;
     decoded.serverId_ = serverId;
     decoded.expiryUnixMilliseconds_ = expiry;
     std::memcpy(

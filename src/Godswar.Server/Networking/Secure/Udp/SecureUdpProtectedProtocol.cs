@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Networking.Secure.Realtime;
 
 namespace Godswar.Server.Networking.Secure.Udp;
 
@@ -18,7 +19,9 @@ internal enum SecureUdpProtectedMessageType : byte
 {
     Ping = 1,
     Pong = 2,
-    BindingConfirm = 3
+    BindingConfirm = 3,
+    MovementInput = 4,
+    PositionSnapshot = 5
 }
 
 internal enum SecureUdpProtectedError : byte
@@ -65,6 +68,10 @@ internal static class SecureUdpProtectedConstants
     public const int PingPayloadBytes = 16;
     public const int PongPayloadBytes = 32;
     public const int BindingConfirmPayloadBytes = 32;
+    public const int MovementInputPayloadBytes =
+        SecureRealtimeMovementProtocol.MovementInputBytes;
+    public const int PositionSnapshotPayloadBytes =
+        SecureRealtimeMovementProtocol.PositionSnapshotBytes;
     public const int ReplayWindowBits = 128;
     public const uint InitialKeyEpoch = 1;
 }
@@ -135,6 +142,14 @@ internal static class SecureUdpProtectedPayload
             SecureUdpProtectedMessageType.BindingConfirm =>
                 payloadBytes ==
                     SecureUdpProtectedConstants.BindingConfirmPayloadBytes,
+            SecureUdpProtectedMessageType.MovementInput =>
+                payloadBytes ==
+                    SecureUdpProtectedConstants
+                        .MovementInputPayloadBytes,
+            SecureUdpProtectedMessageType.PositionSnapshot =>
+                payloadBytes ==
+                    SecureUdpProtectedConstants
+                        .PositionSnapshotPayloadBytes,
             _ => false
         };
     }
@@ -160,6 +175,15 @@ internal static class SecureUdpProtectedPayload
                 !SecureUdpBindingCodec.IsAllZero(payload[..16]) &&
                 BinaryPrimitives.ReadUInt64BigEndian(payload[16..]) != 0 &&
                 BinaryPrimitives.ReadUInt64BigEndian(payload[24..]) != 0,
+            SecureUdpProtectedMessageType.MovementInput =>
+                SecureRealtimeMovementProtocol.TryDecodeMovementInput(
+                    payload,
+                    SecureRealtimeTransportSource.Udp,
+                    out _),
+            SecureUdpProtectedMessageType.PositionSnapshot =>
+                SecureRealtimeMovementProtocol.TryDecodePositionSnapshot(
+                    payload,
+                    out _),
             _ => false
         };
     }

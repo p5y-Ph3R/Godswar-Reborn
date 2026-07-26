@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SecureRealtimeMovementProtocol.h"
 #include "SecureUdpBindingGrant.h"
 
 #include <cstddef>
@@ -35,6 +36,7 @@ enum class SecureFrameType : std::uint16_t {
     GameBind = 0x0201,
     BindResult = 0x0202,
     UdpBindingGrant = 0x0203,
+    RealtimeMovementInput = 0x0300,
 };
 
 struct SecureServerPrefaceView final {
@@ -63,6 +65,8 @@ inline constexpr std::size_t SecureGameBindBytes = 52;
 inline constexpr std::size_t SecureBindResultBytes = 4;
 inline constexpr std::size_t SecureUdpBindingGrantPayloadBytes =
     SecureUdpBindingGrantBytes;
+inline constexpr std::size_t SecureRealtimeMovementInputPayloadBytes =
+    SecureRealtimeMovementInputBytes;
 inline constexpr std::uint16_t SecureProtocolMajor = 1;
 inline constexpr std::uint16_t SecureProtocolMinor = 0;
 

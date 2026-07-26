@@ -1,6 +1,7 @@
 #include "SecureUdpClientWorker.h"
 
 #include "SecureClientRuntimeInternal.h"
+#include "SecureOuterStream.h"
 #include "WinSockRuntime.h"
 
 #include <WS2tcpip.h>
@@ -47,11 +48,19 @@ SecureUdpClientWorker::~SecureUdpClientWorker() noexcept {
 bool SecureUdpClientWorker::Start(
     SecureUdpBindingGrant* grant,
     const sockaddr* tlsPeer,
-    int tlsPeerBytes) noexcept {
+    int tlsPeerBytes,
+    SecureOuterStream* outerStream) noexcept {
+    const bool authoritativeMovement =
+        grant != nullptr &&
+        grant->HasCapability(
+            SecureUdpBindingCapability::
+                AuthoritativeMovement);
     if (grant == nullptr ||
         !grant->IsValid() ||
         tlsPeer == nullptr ||
+        (authoritativeMovement && outerStream == nullptr) ||
         stopEvent_ == nullptr ||
+        !movementRouter_.IsValid() ||
         thread_ != nullptr ||
         published_.state != SecureUdpClientWorkerState::Idle ||
         !CopyPeer(
@@ -65,6 +74,14 @@ bool SecureUdpClientWorker::Start(
             SecureUdpClientWorkerFailure::InvalidArgument);
         return false;
     }
+    if (!movementRouter_.Configure(authoritativeMovement)) {
+        grant->Clear();
+        SetState(
+            SecureUdpClientWorkerState::Failed,
+            SecureUdpClientWorkerFailure::InvalidArgument);
+        return false;
+    }
+    outerStream_ = outerStream;
 
     std::uint64_t nowUnix = 0;
     std::uint8_t nonce[SecureUdpClientNonceBytes]{};
@@ -102,6 +119,7 @@ bool SecureUdpClientWorker::Start(
     ResetEvent(stopEvent_);
     SetState(SecureUdpClientWorkerState::Starting);
     PublishChannel();
+    PublishMovement();
 
     thread_ = CreateThread(
         nullptr,
@@ -129,6 +147,7 @@ bool SecureUdpClientWorker::StopAndJoin(
         return false;
     }
 
+    movementRouter_.Stop();
     HANDLE thread = nullptr;
     AcquireSRWLockExclusive(&lock_);
     thread = thread_;
@@ -140,6 +159,7 @@ bool SecureUdpClientWorker::StopAndJoin(
         }
         ReleaseSRWLockExclusive(&lock_);
         channel_.Stop();
+        outerStream_ = nullptr;
         return true;
     }
     if (published_.state !=
@@ -174,8 +194,22 @@ bool SecureUdpClientWorker::StopAndJoin(
     }
     ReleaseSRWLockExclusive(&lock_);
     channel_.Stop();
+    outerStream_ = nullptr;
     PublishChannel();
+    PublishMovement();
     return true;
+}
+
+SecureRealtimeMovementRouteResult
+SecureUdpClientWorker::RouteLegacyMovement(
+    const void* packet,
+    int packetBytes) noexcept {
+    const auto result = movementRouter_.RouteLegacyPacket(
+        packet,
+        packetBytes,
+        GetTickCount64());
+    PublishMovement();
+    return result;
 }
 
 SecureUdpClientWorkerSnapshot
@@ -275,16 +309,28 @@ void SecureUdpClientWorker::PublishChannel() noexcept {
     ReleaseSRWLockExclusive(&lock_);
 }
 
+void SecureUdpClientWorker::PublishMovement() noexcept {
+    const auto movement = movementRouter_.Snapshot();
+    AcquireSRWLockExclusive(&lock_);
+    published_.movement = movement;
+    ReleaseSRWLockExclusive(&lock_);
+}
+
 void SecureUdpClientWorker::EnterTlsFallback(
     SecureUdpClientWorkerFailure failure,
     int nativeError) noexcept {
     channel_.Stop();
     CloseSocket();
+    if (movementRouter_.Snapshot().owner ==
+        SecureRealtimeMovementOwner::SecureUdp) {
+        movementRouter_.Stop();
+    }
     SetState(
         SecureUdpClientWorkerState::TlsFallback,
         failure,
         nativeError);
     PublishChannel();
+    PublishMovement();
 }
 
 bool SecureUdpClientWorker::CopyPeer(

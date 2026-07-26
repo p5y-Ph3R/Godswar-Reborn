@@ -40,7 +40,8 @@ internal enum SecureFrameType : ushort
     GameGrant = 0x0200,
     GameBind = 0x0201,
     BindResult = 0x0202,
-    UdpBindingGrant = 0x0203
+    UdpBindingGrant = 0x0203,
+    RealtimeMovementInput = 0x0300
 }
 
 internal enum SecureBindStatus : ushort
@@ -72,6 +73,7 @@ internal static class SecureProtocolConstants
     public const int GameBindBytes = 52;
     public const int BindResultBytes = 4;
     public const int UdpBindingGrantBytes = 72;
+    public const int RealtimeMovementInputBytes = 52;
 }
 
 internal sealed class SecureClientPreface

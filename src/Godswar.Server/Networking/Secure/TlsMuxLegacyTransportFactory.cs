@@ -239,7 +239,8 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
                 serverId,
                 expiryUnixMilliseconds,
                 connectionId,
-                proofKey);
+                proofKey,
+                lease.Capabilities);
         }
         finally
         {

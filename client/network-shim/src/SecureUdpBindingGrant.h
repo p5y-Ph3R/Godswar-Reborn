@@ -9,6 +9,11 @@ inline constexpr std::size_t SecureUdpBindingGrantBytes = 72;
 inline constexpr std::size_t SecureUdpConnectionIdBytes = 16;
 inline constexpr std::size_t SecureUdpProofKeyBytes = 32;
 
+enum class SecureUdpBindingCapability : std::uint16_t {
+    None = 0,
+    AuthoritativeMovement = 1,
+};
+
 // Owns the secret material delivered over the authenticated game TLS channel.
 // Copying is forbidden so every proof-key copy has an explicit owner.
 class SecureUdpBindingGrant final {
@@ -28,6 +33,9 @@ public:
 
     bool IsValid() const noexcept;
     std::uint16_t UdpPort() const noexcept;
+    std::uint16_t CapabilityFlags() const noexcept;
+    bool HasCapability(
+        SecureUdpBindingCapability capability) const noexcept;
     std::uint32_t ServerId() const noexcept;
     std::uint64_t ExpiryUnixMilliseconds() const noexcept;
 
@@ -53,6 +61,7 @@ private:
     void MoveFrom(SecureUdpBindingGrant* other) noexcept;
 
     std::uint16_t udpPort_ = 0;
+    std::uint16_t capabilityFlags_ = 0;
     std::uint32_t serverId_ = 0;
     std::uint64_t expiryUnixMilliseconds_ = 0;
     std::uint8_t connectionId_[SecureUdpConnectionIdBytes]{};

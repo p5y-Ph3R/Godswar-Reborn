@@ -1,3 +1,5 @@
+using Godswar.Server.Networking.Secure.Realtime;
+
 namespace Godswar.Server.Networking.Secure;
 
 /// <summary>
@@ -9,6 +11,16 @@ internal interface ISecureControlChannel : ISecureLegacyByteTransport
     SecureConnectionContext ConnectionContext { get; }
 
     SecureBoundGamePrincipal? BoundGamePrincipal { get; }
+
+    bool SupportsRealtimeMovement { get; }
+
+    bool IsRealtimeMovementActive { get; }
+
+    bool TryTakeRealtimeMovement(
+        out SecureRealtimeMovementIngress ingress);
+
+    bool TryPublishRealtimeSnapshot(
+        in SecureRealtimePositionSnapshot snapshot);
 
     ValueTask SendGameGrantAsync(
         SecureGameGrant grant,

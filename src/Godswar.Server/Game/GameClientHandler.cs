@@ -93,6 +93,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         try
         {
             StartNpcCatalogUpdates();
+            StartRealtimeMovement(cancellationToken);
             while (!cancellationToken.IsCancellationRequested)
             {
                 var packet = await _session.ReadPacketAsync(cancellationToken);
@@ -114,6 +115,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         }
         finally
         {
+            await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
             _rideCastLifetime.Cancel();
             if (_rideCastCompletionTask is { } rideCastCompletionTask)

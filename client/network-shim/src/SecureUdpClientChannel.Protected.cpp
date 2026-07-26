@@ -105,6 +105,7 @@ bool SecureUdpClientChannel::TryHandleProtectedDatagram(
     }
 
     bool semanticallyValid = false;
+    SecureRealtimePositionSnapshot positionSnapshot{};
     if (opened.messageType ==
             SecureUdpProtectedMessageType::BindingConfirm &&
         plaintextBytes == 32) {
@@ -142,6 +143,15 @@ bool SecureUdpClientChannel::TryHandleProtectedDatagram(
                 sizeof(pendingPing_)) &&
             nowMonotonicMilliseconds >=
                 pendingPingSentMilliseconds_;
+    } else if (
+        opened.messageType ==
+            SecureUdpProtectedMessageType::PositionSnapshot &&
+        plaintextBytes ==
+            SecureRealtimePositionSnapshotBytes) {
+        semanticallyValid = CanAcceptPositionSnapshot(
+            plaintext,
+            plaintextBytes,
+            &positionSnapshot);
     }
     if (!semanticallyValid) {
         SecureZeroMemory(plaintext, sizeof(plaintext));
@@ -174,6 +184,12 @@ bool SecureUdpClientChannel::TryHandleProtectedDatagram(
         accepted = AcceptPong(
             plaintext,
             nowMonotonicMilliseconds);
+    } else if (
+        opened.messageType ==
+            SecureUdpProtectedMessageType::PositionSnapshot &&
+        plaintextBytes ==
+            SecureRealtimePositionSnapshotBytes) {
+        accepted = AcceptPositionSnapshot(positionSnapshot);
     }
     SecureZeroMemory(plaintext, sizeof(plaintext));
     if (!accepted) {
@@ -234,6 +250,12 @@ bool SecureUdpClientChannel::TryBuildPing(
     SecureZeroMemory(payload, sizeof(payload));
     pingPending_ = true;
     pendingPingSentMilliseconds_ = nowMonotonicMilliseconds;
+    CompleteProtectedSend(nowMonotonicMilliseconds);
+    return true;
+}
+
+void SecureUdpClientChannel::CompleteProtectedSend(
+    std::uint64_t nowMonotonicMilliseconds) noexcept {
     lastSendMilliseconds_ = nowMonotonicMilliseconds;
     ++packetsInSendEpoch_;
     if (nextSendSequence_ ==
@@ -251,7 +273,6 @@ bool SecureUdpClientChannel::TryBuildPing(
     } else {
         ++nextSendSequence_;
     }
-    return true;
 }
 
 bool SecureUdpClientChannel::RotateSendEpochIfNeeded(

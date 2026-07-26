@@ -2,6 +2,7 @@
 
 #include "SecureUdpBindingGrant.h"
 #include "SecureUdpClientChannel.h"
+#include "SecureRealtimeMovementRouter.h"
 
 #include <WinSock2.h>
 #include <Windows.h>
@@ -10,6 +11,8 @@
 #include <cstdint>
 
 namespace godswar::network {
+
+class SecureOuterStream;
 
 enum class SecureUdpClientWorkerState : std::uint8_t {
     Idle = 0,
@@ -34,6 +37,8 @@ enum class SecureUdpClientWorkerFailure : std::uint8_t {
     Send,
     HandshakeTimeout,
     PeerTimeout,
+    GameplayAcknowledgmentTimeout,
+    TlsMovementWrite,
     StopDeadline,
 };
 
@@ -49,11 +54,11 @@ struct SecureUdpClientWorkerSnapshot final {
     std::uint64_t datagramsReceived = 0;
     std::uint64_t oversizedDatagramsDropped = 0;
     SecureUdpClientChannelSnapshot channel{};
+    SecureRealtimeMovementRouterSnapshot movement{};
 };
 
-// Owns one bounded, control-only UDP worker. It has no gameplay API and never
-// affects the legacy client ABI. Failure is terminal for UDP only; the owning
-// SecureClientSession deliberately keeps its TLS bridge alive.
+// Owns one bounded UDP worker and the capacity-one movement mailbox. Origin's
+// SendMsg thread only enqueues; all UDP and TLS-fallback I/O stays here.
 class SecureUdpClientWorker final {
 public:
     static constexpr DWORD StopDeadlineMilliseconds = 2'000;
@@ -68,13 +73,17 @@ public:
     bool Start(
         SecureUdpBindingGrant* grant,
         const sockaddr* tlsPeer,
-        int tlsPeerBytes) noexcept;
+        int tlsPeerBytes,
+        SecureOuterStream* outerStream = nullptr) noexcept;
     bool StopAndJoin(
         DWORD timeoutMilliseconds =
             StopDeadlineMilliseconds) noexcept;
 
     static DWORD BindingRetryDelayMilliseconds(
         unsigned completedAttempts) noexcept;
+    SecureRealtimeMovementRouteResult RouteLegacyMovement(
+        const void* packet,
+        int packetBytes) noexcept;
     SecureUdpClientWorkerSnapshot Snapshot() const noexcept;
 
 private:
@@ -95,6 +104,15 @@ private:
     bool SendKeepalive(
         std::uint64_t nowMilliseconds) noexcept;
     bool BeginRebind(std::uint64_t nowMilliseconds) noexcept;
+    bool ProcessUdpMovement(
+        std::uint64_t nowMilliseconds) noexcept;
+    bool ProcessTlsMovement() noexcept;
+    bool SwitchMovementToTls(
+        SecureUdpClientWorkerFailure failure,
+        int nativeError = 0) noexcept;
+    bool ContinueTlsFallbackLoop() noexcept;
+    void ConsumePositionSnapshot(
+        std::uint64_t nowMilliseconds) noexcept;
     bool GenerateNonce(std::uint8_t* nonce) noexcept;
     bool GeneratePingId(std::uint64_t* pingId) noexcept;
     bool ShouldStop() const noexcept;
@@ -104,6 +122,7 @@ private:
             SecureUdpClientWorkerFailure::None,
         int nativeError = 0) noexcept;
     void PublishChannel() noexcept;
+    void PublishMovement() noexcept;
     void EnterTlsFallback(
         SecureUdpClientWorkerFailure failure,
         int nativeError = 0) noexcept;
@@ -121,7 +140,13 @@ private:
     sockaddr_storage remote_{};
     int remoteBytes_ = 0;
     SecureUdpClientChannel channel_{};
+    SecureRealtimeMovementRouter movementRouter_{};
     SecureUdpClientWorkerSnapshot published_{};
+    SecureOuterStream* outerStream_ = nullptr;
+    SecureRealtimeMovementInput pendingMovement_{};
+    SecureRealtimeMovementInput retryMovement_{};
+    bool hasPendingMovement_ = false;
+    bool hasRetryMovement_ = false;
     std::uint64_t nextBindingSendMilliseconds_ = 0;
     std::uint64_t bindingDeadlineMilliseconds_ = 0;
     bool hasReachedActive_ = false;

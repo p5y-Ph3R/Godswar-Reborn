@@ -85,6 +85,8 @@
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
     <ClCompile Include="SecureManifestProbe.cpp" />
+    <ClCompile Include="SecureRealtimeMovementTests.cpp" />
+    <ClCompile Include="SecureRealtimeMovementChannelTests.cpp" />
     <ClCompile Include="SecureOuterControlTests.cpp" />
     <ClCompile Include="SecureOuterStreamTests.cpp" />
     <ClCompile Include="SecureOuterUdpGrantTests.cpp" />
@@ -116,15 +118,20 @@
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="..\src\SecureRealtimeMovementProtocol.cpp" />
+    <ClCompile Include="..\src\SecureRealtimeMovementRouter.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Control.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Binding.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.cpp" />
+    <ClCompile Include="..\src\SecureOuterStream.Movement.cpp" />
     <ClCompile Include="..\src\SecureUdpBindingProtocol.cpp" />
     <ClCompile Include="..\src\SecureUdpBindingGrant.cpp" />
     <ClCompile Include="..\src\SecureUdpClientChannel.cpp" />
     <ClCompile Include="..\src\SecureUdpClientChannel.Protected.cpp" />
+    <ClCompile Include="..\src\SecureUdpClientChannel.Movement.cpp" />
     <ClCompile Include="..\src\SecureUdpClientWorker.cpp" />
     <ClCompile Include="..\src\SecureUdpClientWorker.Loop.cpp" />
+    <ClCompile Include="..\src\SecureUdpClientWorker.Movement.cpp" />
     <ClCompile Include="..\src\SecureUdpCrypto.cpp" />
     <ClCompile Include="..\src\SecureUdpProtectedProtocol.cpp" />
     <ClCompile Include="..\src\SecureUdpReplayWindow.cpp" />
@@ -155,6 +162,8 @@
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
     <ClInclude Include="SecureManifestProbe.h" />
+    <ClInclude Include="SecureRealtimeMovementTests.h" />
+    <ClInclude Include="SecureRealtimeMovementChannelTests.h" />
     <ClInclude Include="SecureOuterControlTests.h" />
     <ClInclude Include="SecureOuterStreamTests.h" />
     <ClInclude Include="SecureOuterUdpGrantTests.h" />
@@ -191,6 +200,8 @@
     <ClInclude Include="..\src\SecureClientProtocol.h" />
     <ClInclude Include="..\src\SecureGameControl.h" />
     <ClInclude Include="..\src\SecureGameGrantRegistry.h" />
+    <ClInclude Include="..\src\SecureRealtimeMovementProtocol.h" />
+    <ClInclude Include="..\src\SecureRealtimeMovementRouter.h" />
     <ClInclude Include="..\src\SecureOuterStream.h" />
     <ClInclude Include="..\src\SecureUdpBindingProtocol.h" />
     <ClInclude Include="..\src\SecureUdpBindingGrant.h" />

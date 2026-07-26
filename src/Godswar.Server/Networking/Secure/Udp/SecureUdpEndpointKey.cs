@@ -11,6 +11,21 @@ internal readonly record struct SecureUdpEndpointKey(
     long ScopeId,
     ushort Port)
 {
+    public IPEndPoint ToIPEndPoint()
+    {
+        Span<byte> raw = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(raw, AddressHigh);
+        BinaryPrimitives.WriteUInt64BigEndian(raw[8..], AddressLow);
+        var address = Family switch
+        {
+            4 => new IPAddress(raw[12..]),
+            6 => new IPAddress(raw, ScopeId),
+            _ => throw new InvalidOperationException(
+                "A canonical UDP endpoint must use IPv4 or IPv6.")
+        };
+        return new IPEndPoint(address, Port);
+    }
+
     public static bool TryCreate(
         IPEndPoint? endpoint,
         out SecureUdpEndpointKey key)

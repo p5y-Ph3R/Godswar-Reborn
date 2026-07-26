@@ -37,6 +37,7 @@ bool CopyAsciiHost(
 SecureClientSession::SecureClientSession(
     const SecureClientSessionConfiguration& configuration) noexcept
     : configuration_(configuration) {
+    InitializeSRWLock(&udpWorkerLock_);
 }
 
 SecureClientSession::~SecureClientSession() noexcept {
@@ -173,10 +174,12 @@ bool SecureClientSession::Poll() noexcept {
     const auto snapshot = bridge_->Snapshot();
     SecureUdpClientWorkerSnapshot udpSnapshot{};
     const SecureUdpClientWorkerSnapshot* udp = nullptr;
+    AcquireSRWLockShared(&udpWorkerLock_);
     if (udpWorker_ != nullptr) {
         udpSnapshot = udpWorker_->Snapshot();
         udp = &udpSnapshot;
     }
+    ReleaseSRWLockShared(&udpWorkerLock_);
     if (ShouldContinueTlsBridge(snapshot, udp)) {
         return true;
     }
@@ -188,9 +191,9 @@ bool SecureClientSession::Poll() noexcept {
 bool SecureClientSession::ShouldContinueTlsBridge(
     const NativeClientBridgeSnapshot& bridge,
     const SecureUdpClientWorkerSnapshot* udp) noexcept {
-    // Deliberately read the pointer only to make the transport boundary
-    // explicit: every UDP state, including Failed and TlsFallback, is
-    // non-authoritative while gameplay remains on TLS.
+    // Realtime transport failure never tears down an otherwise healthy
+    // reliable bridge. After cutover the worker either owns UDP movement or
+    // its dedicated TLS fallback; control/inventory traffic remains here.
     static_cast<void>(udp);
     return bridge.state == NativeBridgeState::Running &&
         bridge.failure == NativeBridgeFailure::None;
@@ -198,6 +201,16 @@ bool SecureClientSession::ShouldContinueTlsBridge(
 
 void SecureClientSession::Disconnect() noexcept {
     ReleaseClaim();
+    auto* udpWorker = DetachUdpWorker();
+    if (udpWorker != nullptr &&
+        !udpWorker->StopAndJoin(
+            SecureUdpClientWorker::
+                StopDeadlineMilliseconds)) {
+        state_ = SecureClientSessionState::Failed;
+        failure_ = SecureClientSessionFailure::UdpJoin;
+        RaiseFailFastException(nullptr, nullptr, 0);
+    }
+    delete udpWorker;
     if (bridge_ != nullptr &&
         !bridge_->StopAndJoin(
             NativeClientBridge::DefaultOperationDeadlineMilliseconds)) {
@@ -212,6 +225,22 @@ void SecureClientSession::Disconnect() noexcept {
     if (state_ != SecureClientSessionState::Failed) {
         state_ = SecureClientSessionState::Stopped;
     }
+}
+
+SecureRealtimeMovementRouteResult
+SecureClientSession::RouteLegacyMovement(
+    const void* packet,
+    int packetBytes) noexcept {
+    AcquireSRWLockShared(&udpWorkerLock_);
+    auto result =
+        SecureRealtimeMovementRouteResult::PassThrough;
+    if (udpWorker_ != nullptr) {
+        result = udpWorker_->RouteLegacyMovement(
+            packet,
+            packetBytes);
+    }
+    ReleaseSRWLockShared(&udpWorkerLock_);
+    return result;
 }
 
 SecureClientSessionSnapshot SecureClientSession::Snapshot() const noexcept {
@@ -230,10 +259,12 @@ SecureClientSessionSnapshot SecureClientSession::Snapshot() const noexcept {
     if (bridge_ != nullptr) {
         snapshot.bridge = bridge_->Snapshot();
     }
+    AcquireSRWLockShared(&udpWorkerLock_);
     if (udpWorker_ != nullptr) {
         snapshot.hasUdpWorker = true;
         snapshot.udp = udpWorker_->Snapshot();
     }
+    ReleaseSRWLockShared(&udpWorkerLock_);
     return snapshot;
 }
 
@@ -259,8 +290,15 @@ void SecureClientSession::TryStartUdpWorker() noexcept {
         tlsPeerBytes_ == 0
             ? nullptr
             : reinterpret_cast<const sockaddr*>(&tlsPeer_),
-        tlsPeerBytes_));
-    udpWorker_ = worker;
+        tlsPeerBytes_,
+        outer_));
+    AcquireSRWLockExclusive(&udpWorkerLock_);
+    if (udpWorker_ == nullptr) {
+        udpWorker_ = worker;
+        worker = nullptr;
+    }
+    ReleaseSRWLockExclusive(&udpWorkerLock_);
+    delete worker;
 }
 
 bool SecureClientSession::PrepareTarget(
@@ -349,6 +387,13 @@ void SecureClientSession::Fail(
     ReleaseClaim();
 
     bool disconnectStock = false;
+    auto* udpWorker = DetachUdpWorker();
+    if (udpWorker != nullptr) {
+        static_cast<void>(udpWorker->StopAndJoin(
+            SecureUdpClientWorker::
+                StopDeadlineMilliseconds));
+    }
+    delete udpWorker;
     if (bridge_ != nullptr) {
         static_cast<void>(bridge_->StopAndJoin(
             NativeClientBridge::DefaultOperationDeadlineMilliseconds));
@@ -376,8 +421,8 @@ void SecureClientSession::DestroyTransport(
         legacyClient->DisConnect();
     }
 
-    delete udpWorker_;
-    udpWorker_ = nullptr;
+    auto* udpWorker = DetachUdpWorker();
+    delete udpWorker;
     delete bridge_;
     bridge_ = nullptr;
     delete outer_;
@@ -387,6 +432,15 @@ void SecureClientSession::DestroyTransport(
     tlsPeer_ = sockaddr_storage{};
     tlsPeerBytes_ = 0;
     udpGrantHandled_ = false;
+}
+
+SecureUdpClientWorker*
+SecureClientSession::DetachUdpWorker() noexcept {
+    AcquireSRWLockExclusive(&udpWorkerLock_);
+    auto* worker = udpWorker_;
+    udpWorker_ = nullptr;
+    ReleaseSRWLockExclusive(&udpWorkerLock_);
+    return worker;
 }
 
 bool SecureClientSession::IsNonzero(

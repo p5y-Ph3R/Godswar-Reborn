@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Networking.Secure.Realtime;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -197,4 +198,18 @@ internal sealed class ScriptedSecureControlTransport :
 
         return ValueTask.CompletedTask;
     }
+
+    public bool SupportsRealtimeMovement => false;
+
+    public bool IsRealtimeMovementActive => false;
+
+    public bool TryTakeRealtimeMovement(
+        out SecureRealtimeMovementIngress ingress)
+    {
+        ingress = default;
+        return false;
+    }
+
+    public bool TryPublishRealtimeSnapshot(
+        in SecureRealtimePositionSnapshot snapshot) => false;
 }

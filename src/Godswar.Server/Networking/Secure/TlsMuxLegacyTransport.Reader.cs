@@ -85,6 +85,35 @@ internal sealed partial class TlsMuxLegacyTransport
                             SecureFrameOutcome.Accepted);
                         continue;
                     }
+                    if (header.Type ==
+                        SecureFrameType.RealtimeMovementInput)
+                    {
+                        var lease = Volatile.Read(
+                            ref _udpRegistrationLease);
+                        var movementResult = lease?.OfferTlsMovement(
+                            payload.AsSpan(0, payloadLength));
+                        if (movementResult is null ||
+                            !movementResult.Value
+                                .IsBenignProtocolResult)
+                        {
+                            var outcome = movementResult?.Status ==
+                                Udp.SecureRealtimeMovementOfferStatus
+                                    .Malformed
+                                ? SecureFrameOutcome.Malformed
+                                : SecureFrameOutcome.WrongPhase;
+                            SecureNetworkMetrics.FrameCompleted(
+                                _endpointRole,
+                                outcome);
+                            throw new SecureTransportException(
+                                "A realtime movement frame was malformed or received without an active negotiated capability.");
+                        }
+
+                        RecordValidReceivedFrame();
+                        SecureNetworkMetrics.FrameCompleted(
+                            _endpointRole,
+                            SecureFrameOutcome.Accepted);
+                        continue;
+                    }
                     if (header.Type != SecureFrameType.LegacyBytes)
                     {
                         SecureNetworkMetrics.FrameCompleted(

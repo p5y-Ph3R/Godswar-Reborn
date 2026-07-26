@@ -1,10 +1,11 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
+using Godswar.Server.Networking.Secure.Realtime;
 
 namespace Godswar.Server.Networking.Secure.Udp;
 
-internal sealed class SecureUdpEndpointServer
+internal sealed partial class SecureUdpEndpointServer
 {
     private readonly SecureUdpBindingCoordinator _coordinator;
     private readonly string _host;
@@ -76,11 +77,21 @@ internal sealed class SecureUdpEndpointServer
             address.AddressFamily,
             SocketType.Dgram,
             ProtocolType.Udp);
+        using var snapshotLifetime =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+        Task? snapshotEgress = null;
         try
         {
             socket.Bind(new IPEndPoint(address, Port));
             var localEndpoint = (IPEndPoint)socket.LocalEndPoint!;
             _started.TrySetResult(localEndpoint);
+            if (_sessions?.GameplayMovementEnabled == true)
+            {
+                snapshotEgress = RunRealtimeSnapshotEgressAsync(
+                    socket,
+                    snapshotLifetime.Token);
+            }
 
             var receiveBuffer = new byte[_maximumDatagramBytes + 1];
             var responseBuffer = new byte[
@@ -175,6 +186,14 @@ internal sealed class SecureUdpEndpointServer
             _started.TrySetException(error);
             throw;
         }
+        finally
+        {
+            snapshotLifetime.Cancel();
+            if (snapshotEgress is not null)
+            {
+                await AwaitRealtimeSnapshotEgressAsync(snapshotEgress);
+            }
+        }
     }
 
     internal SecureUdpEndpointDispatch ProcessDatagram(
@@ -261,11 +280,7 @@ internal sealed class SecureUdpEndpointServer
                 remote,
                 datagram,
                 plaintext);
-            if (!result.IsAccepted ||
-                result.Header.MessageType !=
-                    SecureUdpProtectedMessageType.Ping ||
-                result.PayloadBytes !=
-                    SecureUdpProtectedConstants.PingPayloadBytes)
+            if (!result.IsAccepted)
             {
                 return Rejected(
                     result.ProtectedError ==
@@ -278,6 +293,51 @@ internal sealed class SecureUdpEndpointServer
             {
                 return Rejected(
                     SecureUdpDatagramOutcome.RateLimited);
+            }
+
+            if (result.Header.MessageType ==
+                SecureUdpProtectedMessageType.MovementInput)
+            {
+                if (!SecureRealtimeMovementProtocol
+                        .TryDecodeMovementInput(
+                            plaintext[..result.PayloadBytes],
+                            SecureRealtimeTransportSource.Udp,
+                            out var input))
+                {
+                    return Rejected(
+                        SecureUdpDatagramOutcome
+                            .RealtimeMovementRejected);
+                }
+
+                var movement = _sessions.OfferUdpMovement(
+                    connectionId,
+                    result.BindingRevision,
+                    input);
+                return movement.Status switch
+                {
+                    SecureRealtimeMovementOfferStatus.Accepted or
+                    SecureRealtimeMovementOfferStatus.Replaced =>
+                        new SecureUdpEndpointDispatch(
+                            SecureUdpDatagramOutcome
+                                .RealtimeMovementAccepted,
+                            0),
+                    SecureRealtimeMovementOfferStatus.Duplicate =>
+                        new SecureUdpEndpointDispatch(
+                            SecureUdpDatagramOutcome
+                                .RealtimeMovementDeduplicated,
+                            0),
+                    _ => Rejected(
+                        SecureUdpDatagramOutcome
+                            .RealtimeMovementRejected)
+                };
+            }
+            if (result.Header.MessageType !=
+                    SecureUdpProtectedMessageType.Ping ||
+                result.PayloadBytes !=
+                    SecureUdpProtectedConstants.PingPayloadBytes)
+            {
+                return Rejected(
+                    SecureUdpDatagramOutcome.ProtectedRejected);
             }
 
             Span<byte> pong = stackalloc byte[

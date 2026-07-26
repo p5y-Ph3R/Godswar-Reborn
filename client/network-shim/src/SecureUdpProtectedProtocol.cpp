@@ -1,5 +1,6 @@
 #include "SecureUdpProtectedProtocol.h"
 
+#include "SecureRealtimeMovementProtocol.h"
 #include "SecureUdpCrypto.h"
 
 #include <Windows.h>
@@ -107,12 +108,17 @@ bool IsAllowedMessage(
     SecureUdpDirection direction,
     SecureUdpProtectedMessageType type) noexcept {
     return direction == SecureUdpDirection::ClientToServer
-        ? type == SecureUdpProtectedMessageType::Ping
+        ? type == SecureUdpProtectedMessageType::Ping ||
+            type ==
+                SecureUdpProtectedMessageType::MovementInput
         : direction == SecureUdpDirection::ServerToClient &&
             (type == SecureUdpProtectedMessageType::Pong ||
                 type ==
                     SecureUdpProtectedMessageType::
-                        BindingConfirm);
+                        BindingConfirm ||
+                type ==
+                    SecureUdpProtectedMessageType::
+                        PositionSnapshot);
 }
 
 std::size_t ExpectedPayloadBytes(
@@ -123,6 +129,10 @@ std::size_t ExpectedPayloadBytes(
         case SecureUdpProtectedMessageType::Pong:
         case SecureUdpProtectedMessageType::BindingConfirm:
             return 32;
+        case SecureUdpProtectedMessageType::MovementInput:
+            return SecureRealtimeMovementInputBytes;
+        case SecureUdpProtectedMessageType::PositionSnapshot:
+            return SecureRealtimePositionSnapshotBytes;
         default:
             return 0;
     }
@@ -177,6 +187,21 @@ bool IsValidPayloadContent(
             return !IsAllZero(input, 16) &&
                 ReadUInt64(input + 16) != 0 &&
                 ReadUInt64(input + 24) != 0;
+        case SecureUdpProtectedMessageType::MovementInput: {
+            SecureRealtimeMovementInput movement{};
+            return TryDecodeSecureRealtimeMovementInput(
+                payload,
+                payloadBytes,
+                SecureRealtimeMovementSource::Udp,
+                &movement);
+        }
+        case SecureUdpProtectedMessageType::PositionSnapshot: {
+            SecureRealtimePositionSnapshot snapshot{};
+            return TryDecodeSecureRealtimePositionSnapshot(
+                payload,
+                payloadBytes,
+                &snapshot);
+        }
         default:
             return false;
     }

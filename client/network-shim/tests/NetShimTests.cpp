@@ -14,6 +14,8 @@
 #include "SecureClientProtocolTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
+#include "SecureRealtimeMovementTests.h"
+#include "SecureRealtimeMovementChannelTests.h"
 #include "SecureManifestProbe.h"
 #include "SecureOuterControlTests.h"
 #include "SecureOuterStreamTests.h"
@@ -521,6 +523,8 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecureClientProtocolTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();
+    Failures += RunSecureRealtimeMovementTests();
+    Failures += RunSecureRealtimeMovementChannelTests();
     Failures += RunSecureOuterControlTests();
     Failures += RunSecureOuterStreamTests();
     Failures += RunSecureOuterUdpGrantTests();

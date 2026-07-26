@@ -177,7 +177,7 @@ void CheckStrictRejection() {
         "failed UDP grant decode retained an earlier proof key");
 
     constexpr std::size_t singleByteMutations[] = {
-        0, 5, 7, 11,
+        0, 5, 7,
     };
     for (const auto offset : singleByteMutations) {
         auto changed = canonical;
@@ -189,6 +189,31 @@ void CheckStrictRejection() {
                 &grant),
             "malformed UDP grant fixed field was accepted");
     }
+
+    auto authoritative = canonical;
+    Write16(
+        authoritative.data() + 10,
+        static_cast<std::uint16_t>(
+            godswar::network::SecureUdpBindingCapability::
+                AuthoritativeMovement));
+    Check(
+        TryDecodeSecureUdpBindingGrant(
+            authoritative.data(),
+            authoritative.size(),
+            &grant) &&
+            grant.HasCapability(
+                godswar::network::SecureUdpBindingCapability::
+                    AuthoritativeMovement),
+        "known UDP grant capability was rejected");
+
+    auto unknownCapability = canonical;
+    Write16(unknownCapability.data() + 10, 2);
+    Check(
+        !TryDecodeSecureUdpBindingGrant(
+            unknownCapability.data(),
+            unknownCapability.size(),
+            &grant),
+        "unknown UDP grant capability was accepted");
 
     auto zeroPort = canonical;
     std::memset(zeroPort.data() + 8, 0, 2);

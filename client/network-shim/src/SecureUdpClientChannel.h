@@ -3,6 +3,7 @@
 #include "SecureUdpBindingGrant.h"
 #include "SecureUdpBindingProtocol.h"
 #include "SecureUdpProtectedProtocol.h"
+#include "SecureRealtimeMovementProtocol.h"
 #include "SecureUdpReplayWindow.h"
 
 #include <cstddef>
@@ -47,6 +48,7 @@ struct SecureUdpClientChannelSnapshot final {
     std::uint64_t authenticatedPackets = 0;
     std::uint64_t rejectedPackets = 0;
     std::uint64_t replayedPackets = 0;
+    std::uint64_t latestPositionSnapshotSequence = 0;
 };
 
 // Pure, single-owner binding/protected-channel state machine. Socket lifecycle
@@ -99,6 +101,14 @@ public:
         void* destination,
         std::size_t destinationBytes,
         std::size_t* bytesWritten) noexcept;
+    bool TryBuildMovementInput(
+        const SecureRealtimeMovementInput& movement,
+        std::uint64_t nowMonotonicMilliseconds,
+        void* destination,
+        std::size_t destinationBytes,
+        std::size_t* bytesWritten) noexcept;
+    bool TryTakePositionSnapshot(
+        SecureRealtimePositionSnapshot* snapshot) noexcept;
 
     bool KeepaliveDue(
         std::uint64_t nowMonotonicMilliseconds) const noexcept;
@@ -135,6 +145,14 @@ private:
         const SecureUdpProtectedHeader& header) noexcept;
     bool AcceptPong(
         const std::uint8_t* plaintext,
+        std::uint64_t nowMonotonicMilliseconds) noexcept;
+    bool CanAcceptPositionSnapshot(
+        const std::uint8_t* plaintext,
+        std::size_t plaintextBytes,
+        SecureRealtimePositionSnapshot* snapshot) const noexcept;
+    bool AcceptPositionSnapshot(
+        const SecureRealtimePositionSnapshot& snapshot) noexcept;
+    void CompleteProtectedSend(
         std::uint64_t nowMonotonicMilliseconds) noexcept;
     static bool IsNonzero(
         const std::uint8_t* bytes,
@@ -173,6 +191,8 @@ private:
     std::uint64_t authenticatedPackets_ = 0;
     std::uint64_t rejectedPackets_ = 0;
     std::uint64_t replayedPackets_ = 0;
+    SecureRealtimePositionSnapshot latestPositionSnapshot_{};
+    bool positionSnapshotPending_ = false;
 };
 
 } // namespace godswar::network

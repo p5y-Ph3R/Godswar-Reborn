@@ -3,10 +3,19 @@ using System.Security.Cryptography;
 
 namespace Godswar.Server.Networking.Secure.Udp;
 
+[Flags]
+internal enum SecureUdpBindingCapabilities : ushort
+{
+    None = 0,
+    AuthoritativeMovement = 1
+}
+
 internal sealed class SecureUdpBindingGrant : IDisposable
 {
     internal const uint Magic = 0x47575547; // GWUG
     internal const int ProofKeyBytes = 32;
+    internal const SecureUdpBindingCapabilities KnownCapabilities =
+        SecureUdpBindingCapabilities.AuthoritativeMovement;
 
     private readonly object _gate = new();
     private readonly byte[] _connectionId;
@@ -18,7 +27,9 @@ internal sealed class SecureUdpBindingGrant : IDisposable
         uint serverId,
         ulong expiryUnixMilliseconds,
         ReadOnlySpan<byte> connectionId,
-        ReadOnlySpan<byte> proofKey)
+        ReadOnlySpan<byte> proofKey,
+        SecureUdpBindingCapabilities capabilities =
+            SecureUdpBindingCapabilities.None)
     {
         if (udpPort == 0)
         {
@@ -48,10 +59,16 @@ internal sealed class SecureUdpBindingGrant : IDisposable
                 "UDP grant proof key must be exactly 32 nonzero bytes.",
                 nameof(proofKey));
         }
+        if ((capabilities & ~KnownCapabilities) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(capabilities));
+        }
 
         UdpPort = udpPort;
         ServerId = serverId;
         ExpiryUnixMilliseconds = expiryUnixMilliseconds;
+        Capabilities = capabilities;
         _connectionId = connectionId.ToArray();
         _proofKey = proofKey.ToArray();
     }
@@ -61,6 +78,8 @@ internal sealed class SecureUdpBindingGrant : IDisposable
     public uint ServerId { get; }
 
     public ulong ExpiryUnixMilliseconds { get; }
+
+    public SecureUdpBindingCapabilities Capabilities { get; }
 
     public bool TryCopySecrets(
         Span<byte> connectionIdDestination,
@@ -138,6 +157,9 @@ internal static class SecureUdpBindingGrantCodec
         BinaryPrimitives.WriteUInt16BigEndian(
             output[8..],
             grant.UdpPort);
+        BinaryPrimitives.WriteUInt16BigEndian(
+            output[10..],
+            (ushort)grant.Capabilities);
         BinaryPrimitives.WriteUInt32BigEndian(
             output[12..],
             grant.ServerId);
@@ -167,8 +189,6 @@ internal static class SecureUdpBindingGrantCodec
                 SecureProtocolConstants.ProtocolMajor ||
             BinaryPrimitives.ReadUInt16BigEndian(source[6..]) !=
                 SecureProtocolConstants.ProtocolMinor ||
-            source[10] != 0 ||
-            source[11] != 0 ||
             SecureUdpBindingCodec.IsAllZero(source[24..40]) ||
             SecureUdpBindingCodec.IsAllZero(source[40..72]))
         {
@@ -176,9 +196,14 @@ internal static class SecureUdpBindingGrantCodec
         }
 
         var udpPort = BinaryPrimitives.ReadUInt16BigEndian(source[8..]);
+        var capabilities = (SecureUdpBindingCapabilities)
+            BinaryPrimitives.ReadUInt16BigEndian(source[10..]);
         var serverId = BinaryPrimitives.ReadUInt32BigEndian(source[12..]);
         var expiry = BinaryPrimitives.ReadUInt64BigEndian(source[16..]);
-        if (udpPort == 0 || serverId == 0 || expiry == 0)
+        if (udpPort == 0 ||
+            (capabilities & ~SecureUdpBindingGrant.KnownCapabilities) != 0 ||
+            serverId == 0 ||
+            expiry == 0)
         {
             return false;
         }
@@ -188,7 +213,8 @@ internal static class SecureUdpBindingGrantCodec
             serverId,
             expiry,
             source[24..40],
-            source[40..72]);
+            source[40..72],
+            capabilities);
         return true;
     }
 }

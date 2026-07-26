@@ -5,6 +5,7 @@
 #include "SecureClientProtocol.h"
 #include "SecureGameControl.h"
 #include "SecureGameGrantRegistry.h"
+#include "SecureRealtimeMovementProtocol.h"
 #include "SecureUdpBindingGrant.h"
 
 #include <Windows.h>
@@ -37,6 +38,7 @@ enum class SecureOuterFailure : std::uint8_t {
     UdpGrantDecode,
     UdpGrantState,
     UdpGrantConnection,
+    RealtimeMovementWrite,
 };
 
 struct SecureOuterSnapshot final {
@@ -96,6 +98,10 @@ public:
     // caller owns and must clear the returned grant.
     bool TryTakeUdpBindingGrant(
         SecureUdpBindingGrant* grant) noexcept;
+    // Called only by the realtime worker. The game-facing SendMsg path
+    // enqueues and returns without waiting for TLS I/O.
+    bool WriteRealtimeMovementInput(
+        const SecureRealtimeMovementInput& movement) noexcept;
 
 private:
     DeadlineStreamResult ReadExact(

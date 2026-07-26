@@ -19,7 +19,11 @@ internal enum SecureUdpDatagramOutcome : byte
     RebindRateLimited = 13,
     ProtectedPongSent = 14,
     ProtectedRejected = 15,
-    EndpointMismatch = 16
+    EndpointMismatch = 16,
+    RealtimeMovementAccepted = 17,
+    RealtimeMovementDeduplicated = 18,
+    RealtimeMovementRejected = 19,
+    RealtimeSnapshotSent = 20
 }
 
 internal enum SecureUdpRuntimeOutcome : byte
@@ -64,6 +68,15 @@ internal static class SecureUdpMetricTags
                 "protected_rejected",
             SecureUdpDatagramOutcome.EndpointMismatch =>
                 "endpoint_mismatch",
+            SecureUdpDatagramOutcome.RealtimeMovementAccepted =>
+                "realtime_movement_accepted",
+            SecureUdpDatagramOutcome
+                    .RealtimeMovementDeduplicated =>
+                "realtime_movement_deduplicated",
+            SecureUdpDatagramOutcome.RealtimeMovementRejected =>
+                "realtime_movement_rejected",
+            SecureUdpDatagramOutcome.RealtimeSnapshotSent =>
+                "realtime_snapshot_sent",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome))
         };
 

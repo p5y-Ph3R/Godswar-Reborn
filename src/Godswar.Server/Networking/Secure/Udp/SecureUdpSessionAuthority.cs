@@ -42,6 +42,28 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
         TimeSpan pendingTtl,
         TimeSpan boundIdleTimeout,
         TimeSpan minimumRebindInterval,
+        uint serverId,
+        TimeSpan previousEpochOverlap,
+        bool gameplayMovementEnabled,
+        TimeProvider? timeProvider = null)
+        : this(
+            capacity,
+            pendingTtl,
+            boundIdleTimeout,
+            minimumRebindInterval,
+            serverId,
+            previousEpochOverlap,
+            timeProvider ?? TimeProvider.System,
+            CreateProofKey,
+            gameplayMovementEnabled)
+    {
+    }
+
+    public SecureUdpSessionAuthority(
+        int capacity,
+        TimeSpan pendingTtl,
+        TimeSpan boundIdleTimeout,
+        TimeSpan minimumRebindInterval,
         TimeProvider? timeProvider = null)
         : this(
             capacity,
@@ -119,7 +141,8 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
         uint serverId,
         TimeSpan previousEpochOverlap,
         TimeProvider timeProvider,
-        Func<byte[]> proofKeyFactory)
+        Func<byte[]> proofKeyFactory,
+        bool gameplayMovementEnabled = false)
     {
         if (capacity is < 1 or > 65_536)
         {
@@ -163,6 +186,7 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
             throw new ArgumentNullException(nameof(timeProvider));
         _proofKeyFactory = proofKeyFactory ??
             throw new ArgumentNullException(nameof(proofKeyFactory));
+        _gameplayMovementEnabled = gameplayMovementEnabled;
         _timeOriginTimestamp = _timeProvider.GetTimestamp();
         _timeOriginUnixMilliseconds =
             _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
@@ -248,6 +272,10 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
                     GetPendingExpiryUnixMilliseconds(),
                     proofKey,
                     protectedSession);
+                if (_gameplayMovementEnabled)
+                {
+                    entry.EnableRealtime();
+                }
                 if (!_sessions.TryAdd(connectionId, entry))
                 {
                     entry.Clear();
@@ -298,6 +326,7 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
 
     public void Dispose()
     {
+        var wakeSnapshotEgress = false;
         lock (_gate)
         {
             if (_disposed)
@@ -310,7 +339,14 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
                 entry.Clear();
             }
             _sessions.Clear();
+            _realtimeSnapshotReady.Clear();
             _disposed = true;
+            wakeSnapshotEgress = _gameplayMovementEnabled;
+        }
+
+        if (wakeSnapshotEgress)
+        {
+            _realtimeSnapshotAvailable.Release();
         }
     }
 
@@ -345,11 +381,10 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
             {
                 return false;
             }
-            if (IsExpiredPending(
+            if (IsBindingOfferExpired(
                     entry,
                     _timeProvider.GetTimestamp()))
             {
-                RemoveAndClear(connectionId, entry);
                 return false;
             }
 
@@ -410,6 +445,14 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
     }
 
     private bool IsExpiredPending(
+        SessionEntry entry,
+        long nowTimestamp)
+    {
+        return !_gameplayMovementEnabled &&
+            IsBindingOfferExpired(entry, nowTimestamp);
+    }
+
+    private bool IsBindingOfferExpired(
         SessionEntry entry,
         long nowTimestamp)
     {
@@ -508,7 +551,7 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    private sealed class SessionEntry(
+    private sealed partial class SessionEntry(
         long generation,
         SecureBoundGamePrincipal principal,
         long registeredTimestamp,
@@ -554,6 +597,7 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
 
         public void Clear()
         {
+            Realtime?.Dispose();
             ProtectedSession.Dispose();
             CryptographicOperations.ZeroMemory(ProofKey);
             Array.Clear(RecentProofs);

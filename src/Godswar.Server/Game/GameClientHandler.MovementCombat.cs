@@ -16,6 +16,12 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (_session.IsRealtimeMovementActive)
+        {
+            await RejectLegacyWalkAfterRealtimeCutoverAsync(
+                cancellationToken);
+            return false;
+        }
 
         var updated = _registry.PlayerRuntimeMode ==
             PlayerRuntimeMode.Ecs

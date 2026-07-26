@@ -12,7 +12,7 @@ namespace {
 
 constexpr std::uint64_t BindingBudgetMilliseconds = 3'500;
 constexpr unsigned MaximumBindingAttempts = 5;
-constexpr long SelectSliceMicroseconds = 50'000;
+constexpr long SelectSliceMicroseconds = 10'000;
 
 } // namespace
 
@@ -38,6 +38,18 @@ DWORD SecureUdpClientWorker::Run() noexcept {
 
     while (!ShouldStop()) {
         const auto now = GetTickCount64();
+        if (movementRouter_.UdpAcknowledgmentTimedOut(now)) {
+            if (SwitchMovementToTls(
+                    SecureUdpClientWorkerFailure::
+                        GameplayAcknowledgmentTimeout)) {
+                static_cast<void>(ContinueTlsFallbackLoop());
+                return 0;
+            }
+            EnterTlsFallback(
+                SecureUdpClientWorkerFailure::
+                    GameplayAcknowledgmentTimeout);
+            return 0;
+        }
         const auto channel = channel_.Snapshot();
         if (channel.state ==
                 SecureUdpClientChannelState::AwaitingChallenge ||
@@ -45,6 +57,13 @@ DWORD SecureUdpClientWorker::Run() noexcept {
                 SecureUdpClientChannelState::AwaitingConfirmation) {
             const auto worker = Snapshot();
             if (now >= bindingDeadlineMilliseconds_) {
+                if (SwitchMovementToTls(
+                        SecureUdpClientWorkerFailure::
+                            PeerTimeout)) {
+                    static_cast<void>(
+                        ContinueTlsFallbackLoop());
+                    return 0;
+                }
                 EnterTlsFallback(
                     hasReachedActive_
                         ? SecureUdpClientWorkerFailure::PeerTimeout
@@ -56,9 +75,17 @@ DWORD SecureUdpClientWorker::Run() noexcept {
                     MaximumBindingAttempts &&
                 now >= nextBindingSendMilliseconds_ &&
                 !SendBindingHello(now)) {
+                const int sendError = WSAGetLastError();
+                if (SwitchMovementToTls(
+                        SecureUdpClientWorkerFailure::Send,
+                        sendError)) {
+                    static_cast<void>(
+                        ContinueTlsFallbackLoop());
+                    return 0;
+                }
                 EnterTlsFallback(
                     SecureUdpClientWorkerFailure::Send,
-                    WSAGetLastError());
+                    sendError);
                 return 0;
             }
         } else if (
@@ -69,6 +96,13 @@ DWORD SecureUdpClientWorker::Run() noexcept {
                 SetState(SecureUdpClientWorkerState::Active);
             }
             if (channel_.PeerTimedOut(now)) {
+                if (SwitchMovementToTls(
+                        SecureUdpClientWorkerFailure::
+                            PeerTimeout)) {
+                    static_cast<void>(
+                        ContinueTlsFallbackLoop());
+                    return 0;
+                }
                 if (!BeginRebind(now)) {
                     EnterTlsFallback(
                         SecureUdpClientWorkerFailure::PeerTimeout);
@@ -76,14 +110,40 @@ DWORD SecureUdpClientWorker::Run() noexcept {
                 }
             } else if (channel_.KeepaliveDue(now) &&
                 !SendKeepalive(now)) {
+                const int sendError = WSAGetLastError();
+                if (SwitchMovementToTls(
+                        SecureUdpClientWorkerFailure::Send,
+                        sendError)) {
+                    static_cast<void>(
+                        ContinueTlsFallbackLoop());
+                    return 0;
+                }
                 if (!BeginRebind(now)) {
                     EnterTlsFallback(
                         SecureUdpClientWorkerFailure::Send,
-                        WSAGetLastError());
+                        sendError);
                     return 0;
                 }
+            } else if (!ProcessUdpMovement(now)) {
+                const int sendError = WSAGetLastError();
+                if (SwitchMovementToTls(
+                        SecureUdpClientWorkerFailure::Send,
+                        sendError)) {
+                    static_cast<void>(
+                        ContinueTlsFallbackLoop());
+                    return 0;
+                }
+                EnterTlsFallback(
+                    SecureUdpClientWorkerFailure::Send,
+                    sendError);
+                return 0;
             }
         } else {
+            if (SwitchMovementToTls(
+                    SecureUdpClientWorkerFailure::Channel)) {
+                static_cast<void>(ContinueTlsFallbackLoop());
+                return 0;
+            }
             EnterTlsFallback(
                 SecureUdpClientWorkerFailure::Channel);
             return 0;
@@ -91,6 +151,12 @@ DWORD SecureUdpClientWorker::Run() noexcept {
 
         if (!DrainIncoming(now)) {
             const int error = WSAGetLastError();
+            if (SwitchMovementToTls(
+                    SecureUdpClientWorkerFailure::Socket,
+                    error)) {
+                static_cast<void>(ContinueTlsFallbackLoop());
+                return 0;
+            }
             if (hasReachedActive_ && BeginRebind(now)) {
                 continue;
             }
@@ -300,6 +366,11 @@ bool SecureUdpClientWorker::HandleIncoming(
             SecureUdpClientChannelState::Active) {
         hasReachedActive_ = true;
         SetState(SecureUdpClientWorkerState::Active);
+    }
+    if (accepted &&
+        channel_.Snapshot().state ==
+            SecureUdpClientChannelState::Active) {
+        ConsumePositionSnapshot(nowMilliseconds);
     }
     return accepted;
 }

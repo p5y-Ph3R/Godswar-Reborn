@@ -162,6 +162,21 @@ internal static partial class Program
             (
                 "Secure Phase 3 UDP bounded loopback baseline",
                 SecureUdpAdmissionBaselineChecks.RunAsync),
+            (
+                "Secure Phase 4 realtime movement protocol",
+                SecureRealtimeMovementProtocolChecks.RunAsync),
+            (
+                "Secure Phase 4 realtime session authority",
+                SecureRealtimeSessionAuthorityChecks.RunAsync),
+            (
+                "Secure Phase 4 authoritative movement policy",
+                AuthoritativePlayerMovementSystemChecks.RunAsync),
+            (
+                "Secure Phase 4 deterministic network emulation and overload",
+                SecurePhase4NetworkEmulationChecks.RunAsync),
+            (
+                "Secure Phase 4 game-handler movement integration",
+                SecureRealtimeHandlerIntegrationChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

@@ -509,16 +509,20 @@ internal sealed class SecureUdpProtectedSession : IDisposable
     private bool CanSend(SecureUdpProtectedMessageType messageType)
     {
         return _localRole == SecureUdpPeerRole.Client
-            ? messageType == SecureUdpProtectedMessageType.Ping
+            ? messageType is SecureUdpProtectedMessageType.Ping or
+                SecureUdpProtectedMessageType.MovementInput
             : messageType is SecureUdpProtectedMessageType.Pong or
-                SecureUdpProtectedMessageType.BindingConfirm;
+                SecureUdpProtectedMessageType.BindingConfirm or
+                SecureUdpProtectedMessageType.PositionSnapshot;
     }
 
     private bool CanReceive(SecureUdpProtectedMessageType messageType)
     {
         return _localRole == SecureUdpPeerRole.Server
-            ? messageType == SecureUdpProtectedMessageType.Ping
+            ? messageType is SecureUdpProtectedMessageType.Ping or
+                SecureUdpProtectedMessageType.MovementInput
             : messageType is SecureUdpProtectedMessageType.Pong or
-                SecureUdpProtectedMessageType.BindingConfirm;
+                SecureUdpProtectedMessageType.BindingConfirm or
+                SecureUdpProtectedMessageType.PositionSnapshot;
     }
 }

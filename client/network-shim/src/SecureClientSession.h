@@ -54,6 +54,7 @@ enum class SecureClientSessionFailure : std::uint8_t {
     BridgeStart,
     BridgeTerminated,
     BridgeJoin,
+    UdpJoin,
 };
 
 struct SecureClientSessionSnapshot final {
@@ -73,6 +74,8 @@ struct SecureClientSessionSnapshot final {
 // Owns one secure outer connection and the loopback bridge used by the stock
 // client. It never falls back to the logical raw endpoint. The caller must
 // serialize Connect, Poll, Disconnect, and destruction with the stock ABI.
+// RouteLegacyMovement additionally protects worker ownership so SendMsg
+// cannot observe a worker being detached by teardown.
 class SecureClientSession final {
 public:
     explicit SecureClientSession(
@@ -87,11 +90,14 @@ public:
         const ClientBridgePlan& plan) noexcept;
     bool Poll() noexcept;
     void Disconnect() noexcept;
+    SecureRealtimeMovementRouteResult RouteLegacyMovement(
+        const void* packet,
+        int packetBytes) noexcept;
 
     SecureClientSessionSnapshot Snapshot() const noexcept;
-    // UDP status is observable but never participates in the TLS bridge
-    // health decision. Kept pure so the fallback boundary is regression
-    // tested without requiring an external TLS endpoint.
+    // UDP status never decides whether the reliable TLS bridge survives.
+    // Authoritative movement can change owner to its asynchronous TLS
+    // fallback while the bridge remains healthy.
     static bool ShouldContinueTlsBridge(
         const NativeClientBridgeSnapshot& bridge,
         const SecureUdpClientWorkerSnapshot* udp) noexcept;
@@ -104,6 +110,7 @@ private:
         std::uint16_t* tlsPort) noexcept;
     bool BeginGamePresentation() noexcept;
     void TryStartUdpWorker() noexcept;
+    SecureUdpClientWorker* DetachUdpWorker() noexcept;
     void Fail(SecureClientSessionFailure failure) noexcept;
     void ReleaseClaim() noexcept;
     void DestroyTransport(bool disconnectStock) noexcept;
@@ -124,6 +131,7 @@ private:
     SecureOuterStream* outer_ = nullptr;
     NativeClientBridge* bridge_ = nullptr;
     SecureUdpClientWorker* udpWorker_ = nullptr;
+    mutable SRWLOCK udpWorkerLock_{};
     sockaddr_storage tlsPeer_{};
     int tlsPeerBytes_ = 0;
     bool udpGrantHandled_ = false;

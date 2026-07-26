@@ -6,6 +6,8 @@ internal sealed class SecureUdpOptions
 {
     public bool Enabled { get; set; }
 
+    public bool GameplayMovementEnabled { get; set; }
+
     public string BindHost { get; set; } = "127.0.0.1";
 
     public int Port { get; set; } = 7444;
@@ -60,6 +62,9 @@ internal sealed class SecureUdpOptions
         Enabled = ReadBool(
             "GODSWAR_SECURE_UDP_ENABLED",
             Enabled);
+        GameplayMovementEnabled = ReadBool(
+            "GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED",
+            GameplayMovementEnabled);
         BindHost = ReadString(
             "GODSWAR_SECURE_UDP_BIND_HOST",
             BindHost);
@@ -169,6 +174,16 @@ internal sealed class SecureUdpOptions
         {
             throw new InvalidDataException(
                 $"Secure.Udp.MaximumDatagramBytes must be between {SecureUdpBindingConstants.DatagramBytes} and {SecureUdpBindingConstants.MaximumDatagramBytes}.");
+        }
+        var minimumGameplayDatagramBytes = checked(
+            SecureUdpProtectedConstants.HeaderBytes +
+            SecureUdpProtectedConstants.PositionSnapshotPayloadBytes +
+            SecureUdpProtectedConstants.TagBytes);
+        if (GameplayMovementEnabled &&
+            MaximumDatagramBytes < minimumGameplayDatagramBytes)
+        {
+            throw new InvalidDataException(
+                $"Secure.Udp.MaximumDatagramBytes must be at least {minimumGameplayDatagramBytes} when authoritative gameplay movement is enabled.");
         }
         if (CookieLifetimeSeconds is < 5 or > 30)
         {

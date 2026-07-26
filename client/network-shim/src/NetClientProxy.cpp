@@ -227,6 +227,18 @@ void* NetClientProxy::PickMsg() {
 }
 
 bool NetClientProxy::SendMsg(const void* data, int size) {
+    if (secureSession_ != nullptr) {
+        const auto routed =
+            secureSession_->RouteLegacyMovement(data, size);
+        if (routed ==
+            SecureRealtimeMovementRouteResult::Accepted) {
+            return true;
+        }
+        if (routed ==
+            SecureRealtimeMovementRouteResult::Rejected) {
+            return false;
+        }
+    }
     return legacyClient_->SendMsg(data, size);
 }
 

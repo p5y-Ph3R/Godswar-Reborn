@@ -123,3 +123,21 @@ This is the version ledger for
   metrics, native grant retention, and a loopback-tested listener. Activation
   remains fail-closed; AEAD, replay windows, key epochs, NAT rebinding,
   keepalive, and the native UDP worker remain required.
+- `1.22` (`2026-07-26`): Completed Slice 9C's protected UDP foundation with
+  AES-GCM direction separation, replay windows, key epochs and rotation,
+  authenticated NAT rebinding, native keepalive/pacing, bounded endpoint
+  runtime, low-cardinality telemetry, adversarial/loopback tests, and a
+  provider-neutral activation boundary. Managed `121/121`, native Release
+  `/W4 /WX`, five offline passes, and the capped local UDP baseline passed.
+  UDP stayed disabled, no shim was installed, and gameplay stayed on TLS.
+- `1.23` (`2026-07-26`): Implemented the default-off first authoritative
+  movement slice. Added exact 52-byte input and 64-byte snapshot envelopes,
+  protected UDP types `4/5`, TLS fallback frame `0x0300`, capability-gated
+  native interception, capacity-one ingress/egress, one-way UDP-to-TLS epoch
+  handoff, global input dedupe, 20 Hz server authority, 10 Hz snapshots,
+  one-second keyframes, reliable stock-client corrections, deferred bounded
+  persistence, and world/revive sequence preservation. Deterministic
+  latency/jitter/loss/duplication/reordering/UDP-blocking checks, handler
+  integration, full managed `126/126`, two identical native Release builds,
+  and five offline passes succeeded. The shim remains uninstalled and every
+  secure/gameplay setting remains disabled pending controlled-host acceptance.

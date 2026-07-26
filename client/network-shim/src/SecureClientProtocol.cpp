@@ -114,6 +114,11 @@ bool IsPayloadValid(
             return role == SecureEndpointRole::Game &&
                 direction == SecureFrameDirection::ServerToClient &&
                 payloadBytes == SecureUdpBindingGrantPayloadBytes;
+        case SecureFrameType::RealtimeMovementInput:
+            return role == SecureEndpointRole::Game &&
+                direction == SecureFrameDirection::ClientToServer &&
+                payloadBytes ==
+                    SecureRealtimeMovementInputPayloadBytes;
     }
     return false;
 }
