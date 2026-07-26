@@ -23,16 +23,22 @@ is forbidden. Packet loss would desynchronise that stream.
 Source/offline completion was verified on `2026-07-26`:
 
 - managed Release build: zero warnings/errors;
-- focused Phase 4 checks: `5/5`;
-- full managed protocol checks: `126/126`;
+- focused Phase 4 checks: `6/6`;
+- full managed protocol checks: `127/127`;
 - native Win32 Release: `/W4 /WX`, two identical clean builds;
 - native wrapper: five consecutive offline passes;
 - candidate shim SHA-256:
   `1069EC944B64DE7AD3DFBBB07C9D2E42E9840173682F1F145F0AFD371D45F6A2`.
 
-These are local compatibility and security results, not controlled-host or
-production-capacity acceptance. The candidate was not installed and every
-checked-in secure/gameplay option remains disabled.
+These are local compatibility and security results, not production-capacity
+claims. A later disposable controlled-host run accepted the original client's
+TLS authentication, authenticated UDP binding, and world entry with candidate
+SHA-256
+`0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B`.
+Mandatory rollback restored every checked-in secure/gameplay option to off.
+A bounded Docker reference client later passed live authoritative UDP movement
+and snapshot acknowledgement. Original-client movement, forced fallback,
+parity, and soak remain unaccepted.
 
 ## Evidence-based local defaults
 
@@ -248,6 +254,68 @@ stale endpoint.
 The default global protected-candidate allowance is a development setting and
 is not a scale claim. At 20 packets/s it requires measurement and deliberate
 capacity configuration before supporting many concurrent moving players.
+
+## Controlled-host fallback and correction evidence
+
+Phase 4 includes a server-only, one-shot acceptance fault for proving the
+post-cutover UDP-to-TLS fallback without changing Windows Firewall, Norton, or
+any network interface. It is disabled by default and cannot be enabled from
+JSON. The only activation flag is:
+
+```text
+GODSWAR_SECURE_PHASE4_ACCEPTANCE_FAULTS_ENABLED=true
+```
+
+Activation fails closed unless every one of these conditions is also true:
+
+- `DOTNET_ENVIRONMENT=Development`;
+- if `ASPNETCORE_ENVIRONMENT` is set, it is also `Development`;
+- secure TLS, UDP, and authoritative gameplay movement are enabled;
+- the secure login TLS, secure game TLS, and UDP bind hosts are all literal
+  IPv4 or IPv6 loopback addresses.
+
+The campaign is process-global and selects only the first secure connection
+whose normal epoch-one snapshot acknowledges a movement input. For that
+connection, matching acknowledgement snapshots are suppressed for the full
+1,500 ms window. The evidence counter and per-drop metric saturate at 32;
+additional high-rate snapshots remain suppressed silently until the time
+deadline. Other connections are unaffected.
+
+The next ordinary movement input on the adjacent TLS transport epoch proves
+fallback and receives exactly one correction through the existing
+authoritative `NotReady` rejection path. That path acknowledges the input,
+publishes a correction snapshot, and sends the canonical reliable legacy
+`10194` correction. It does not mutate position, broadcast viewer movement,
+or enqueue position persistence. It does not enter authentication, inventory,
+or database code. A later higher input ID on the same TLS epoch proves the
+one-way transport remains on TLS and completes the campaign. There is no
+switchback and no rearming; an incomplete campaign expires after 15 seconds.
+A process restart resets all campaign state.
+
+Expected fixed log evidence, in campaign order, is:
+
+```text
+[secure-acceptance] phase4 fault campaign enabled
+[secure-acceptance] snapshot ACK drop started window_ms=1500 max_recorded_drops=32
+[secure-acceptance] one-way TLS fallback observed
+[secure-acceptance] authoritative correction forced reason=not_ready
+[secure-acceptance] post-fallback TLS movement observed no_switchback=true
+```
+
+If no fallback input arrives, the server can instead report the drop-window
+completion and, after the lifetime bound, campaign expiry. Every evidence
+counter uses the single fixed tag
+`network.secure.acceptance.phase4.outcome` on instrument
+`godswar.server.network.secure.acceptance.phase4`. Logs and metric tags contain
+no account, session, connection, or IP identifiers.
+
+The drop metric proves server intent, not client or wire behavior. Acceptance
+must also capture the client's transition to the TLS realtime frame, the
+reliable correction, continued epoch-two TLS movement, and the absence of
+epoch-one UDP movement after fallback. Run an ordinary no-fault baseline
+first. After this one-shot check, remove the activation flag, restart the
+server, and perform the normal ten-minute movement soak with fault injection
+off.
 
 ## Verification and acceptance
 

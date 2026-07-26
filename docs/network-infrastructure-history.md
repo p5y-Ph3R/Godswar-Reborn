@@ -141,3 +141,17 @@ This is the version ledger for
   integration, full managed `126/126`, two identical native Release builds,
   and five offline passes succeeded. The shim remains uninstalled and every
   secure/gameplay setting remains disabled pending controlled-host acceptance.
+- `1.24` (`2026-07-27`): Completed the guarded disposable-client acceptance
+  for the selected in-process shim. The original client negotiated the pinned
+  TLS policy, received the secure preface, authenticated, bound its encrypted
+  UDP endpoint, and entered the world. The accepted candidate SHA-256 is
+  `0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B`.
+  Mandatory rollback restored the stock DLL, exact hosts bytes, development
+  trust, manifest keys, and checked-in public-key placeholder. Added an
+  isolated secure Docker profile with read-only certificate secrets, durable
+  database selection, loopback-only TLS/UDP publication, and a dual-transport
+  healthcheck. A live reference probe exposed and fixed a dual-network Docker
+  forwarding defect, then passed TLS login/authentication, ticket redemption,
+  authenticated UDP binding, world entry, authoritative movement, and
+  snapshot acknowledgement with zero retained test accounts. Original-client
+  Phase 4 movement/fallback/soak evidence remains open.

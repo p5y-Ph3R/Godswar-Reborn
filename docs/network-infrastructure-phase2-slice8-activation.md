@@ -138,9 +138,11 @@ mode exposes no raw compatibility listener.
 6. Runs the native offline suite, candidate-bound manifest probe, and isolated
    stock-delegation probe. Sockets require explicit
    `-ControlledHostSocketChecks`.
-7. Creates a checksummed schema-2 receipt and an exact stock `Net.dll` backup.
-   Exact file names, policy, manifest metadata, predecessor state, hashes, and
-   absence of predecessor `NetLegacy.dll`/manifest are validated on restore.
+7. Creates a checksummed schema-3 receipt, an exact stock `Net.dll` backup,
+   and recovery copies of the pinned candidate, signed manifest, and public
+   trust descriptor. Exact file names, policy, manifest metadata, predecessor
+   state, hashes, and absence of predecessor `NetLegacy.dll`/manifest are
+   validated on restore.
 8. Acquires an exclusive Origin image handle, then rechecks the process while
    holding it.
 9. Advances the irreversible floor while activation remains `Disabled`.
@@ -158,6 +160,17 @@ disabled and a durable backup receipt for recovery.
 Restore disables routing first, retains the monotonic floor from current state
 and the freshly verified signed manifest, restores the pinned stock DLL,
 removes only the exact absent predecessor files, and validates the result.
+It reads recovery inputs only from the protected Apply backup. Restore ignores
+the signed manifest's time window so an expired development manifest cannot
+strand the client, but still enforces its exact pinned hashes, signature,
+structure, environment, sequence, receipt metadata, and monotonic floor.
+Status and Apply continue to reject a manifest outside its validity interval.
+Before disabling routing or changing any file, Restore also requires the live
+managed files and activation state to be one exact state attributable to that
+receipt: its predecessor Stock state, idempotent disabled Stock, an interrupted
+Apply after manifest/legacy/candidate publication, or `InstalledExact`. An
+unknown DLL, altered manifest, mismatched activation state, or stale receipt
+for a newer transaction is rejected without mutation.
 
 ## Development signing workflow
 
@@ -228,9 +241,12 @@ Current results:
 - password, TLS mux, authenticated grant/principal, and coherent listener
   checks: passed.
 
-Not executed against the live machine: operational key creation, certificate
-trust installation, HKLM Apply/Restore, secure server startup, the full socket
-suite, account migration, or original-client smoke.
+Executed on the disposable `20260727-011921` controlled-host fixture:
+development key creation, temporary certificate trust, guarded Apply/Restore,
+secure server startup, original-client TLS authentication, game-world entry,
+and authenticated UDP binding. Mandatory cleanup restored the stock client,
+hosts bytes, generated-key placeholder, trust store, and CNG keys. See the
+[acceptance record](network-infrastructure-controlled-host-acceptance.md).
 
 ## Controlled-host acceptance
 
@@ -255,19 +271,16 @@ security.
 8. Retain the guarded Apply receipt.
 9. Enable the secure server profile and verify only `6599/7443` listen, never
    raw `5999/7000`.
-10. Test original-client login, grant-before-redirect, bind, world entry,
-   account switching, disconnect/reconnect, parity, and soak.
-11. Guarded Restore must reproduce exact predecessor files and remove exact
-   temporary trust.
+10. Original-client login, grant-before-redirect, bind, and world entry passed.
+    Repeated parity and the Phase 4 movement/fallback soak remain open.
+11. Guarded Restore reproduced the exact predecessor files and removed the
+    exact temporary trust and development keys.
 
 ## UDP timeline
 
-Slice 9B's bounded cookie-plus-TLS endpoint-binding foundation now passes
-offline, but its listener and capability remain inactive. Remaining Slice 9
-work adds reviewed AEAD, sequence/replay windows, key epochs, NAT rebinding,
-keepalive, pacing, and production metrics. Gameplay stays on TLS and
-UDP-blocked clients fall back to authenticated TLS.
-
-Slice 10 / Phase 4 moves the first gameplay slice: sequenced movement meaning
-for opcode `10194`, authoritative snapshots/keyframes, reconciliation,
-transport epochs and deduplication, TLS fallback, and network-emulation tests.
+Phase 3 is implemented and the original client completed authenticated,
+encrypted UDP endpoint binding in the controlled-host run. Phase 4 implements
+sequenced movement meaning for opcode `10194`, authoritative
+snapshots/keyframes, reconciliation, transport epochs and deduplication, TLS
+fallback, and network-emulation tests. Its live movement/fallback/soak gate is
+the remaining acceptance work.

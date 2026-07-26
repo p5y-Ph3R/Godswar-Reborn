@@ -2,15 +2,17 @@
 
 ## Version and status
 
-- Document version: `1.23`
-- Last updated: `2026-07-26`
+- Document version: `1.24`
+- Last updated: `2026-07-27`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 4 authoritative movement passes offline gates.
-  Defaults remain off; controlled-host acceptance is pending. Slice 8 also
-  awaits acceptance; V1-V4 and Phase 1 are unaccepted.
+- Current milestone: controlled-host testing accepted original-client TLS,
+  authenticated UDP binding, and world entry, followed by exact rollback.
+  The secure Docker reference client passes live authoritative UDP movement
+  and snapshot acknowledgement. Phase 4's original-client movement,
+  forced-fallback, parity, and soak gate remains open.
 - Production capacity is not guaranteed; workload and hosting inputs remain open.
 
 This document is the durable reference for the networking migration. Update its
@@ -73,10 +75,11 @@ Conservative defaults until measurements replace them:
 
 ## Threat model and target trust boundaries
 
-The following is the target, not the current security state. In particular,
-the legacy server still accepts absolute client position samples, the secure
-client path is not installed or activated, and default mode exposes only raw
-ingress. The mutually exclusive secure profile suppresses it.
+The following is the target architecture. The secure path has been accepted
+on a disposable original client and is available through a mutually exclusive
+Docker profile, but checked-in defaults remain off after exact rollback. The
+legacy path still accepts absolute client position samples when raw mode is
+selected.
 
 ```text
 Untrusted player / network
@@ -296,8 +299,9 @@ Exact wire protocol and client lifecycle:
   They remain disabled/uninstalled.
 - Slice 8 source/offline work is complete: signed Login/Game routing and secure
   sessions are exported behind guarded monotonic activation and exact restore.
-  Live account/trust/original-client acceptance remains pending; see the
-  [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
+  Controlled-host acceptance proved original-client TLS authentication and
+  world entry, then restored the stock client and temporary trust exactly; see
+  the [acceptance record](network-infrastructure-controlled-host-acceptance.md).
 - Slice 9 source/offline work is complete; see its
   [overview](network-infrastructure-phase3-slice9c-protected-udp.md).
 
@@ -320,8 +324,9 @@ Records: [9A](network-infrastructure-phase3-slice9a-udp-foundation.md),
   global `10000/10000`, unvalidated `6000/6000`, proof `2000/2000`,
   protected-candidate `2000/2000`, authenticated-session `128/128`. This is
   not a production or DDoS-capacity claim.
-- Checked-in UDP remains disabled, no shim was installed, and gameplay remains
-  on TLS. Phase 4 owns gameplay migration.
+- Checked-in UDP remains disabled after rollback. Controlled-host evidence
+  proves authenticated UDP endpoint binding through the original client.
+  Phase 4 owns live gameplay migration.
 
 Exit gate: offline/loopback security, MTU, bounds, rebinding, emulation,
 admission, and TLS-fallback checks are covered. Staggered maximum-capacity key
@@ -333,11 +338,15 @@ rotation remains Phase 5 production scalability work.
   movement/snapshots, TLS fallback, fixed-step authority, bounded queues,
   dedupe, correction, and world-transition protection. See the
   [Phase 4 record](network-infrastructure-phase4-authoritative-movement.md).
-- Release is warning-free; managed `126/126`, native `/W4 /WX`, reproducible
-  clean builds, and five offline passes are green. Defaults remain off.
+- Release is warning-free; managed `131/131`, native `/W4 /WX`, reproducible
+  clean builds, and five offline passes are green. Controlled-host TLS, UDP
+  binding, and world entry passed; defaults were restored off. The bounded
+  Docker reference client also passes TLS login, ticket redemption,
+  authenticated UDP binding, world entry, movement, and snapshot
+  acknowledgement against the live container.
 
-Exit gate: controlled-host parity, map/mount/revive, UDP block/unblock, and
-soak remain pending.
+Exit gate: original-client UDP movement/snapshot evidence, forced one-way TLS
+fallback, map/mount/revive parity, UDP block/unblock, and soak remain pending.
 
 ### Phase 5 — extension, hardening, and operations
 
@@ -363,9 +372,11 @@ and incident-response gates pass. Local results are not production guarantees.
   Phase 5 must move the ordered AOI commit/send effects behind a bounded
   single-owner queue without permitting visibility rollback.
 - Client signing/distribution remain undecided.
-- Production manifest keys/floors/signature, installed trust, blank-account
-  reset tooling, live-database backup rehearsal, controlled-host socket tests,
-  and original-client secure parity remain activation gates.
+- Production manifest keys/floors/signature, production trust, blank-account
+  reset policy, and upstream deployment controls remain activation gates.
+- The disposable controlled-host run accepted TLS, UDP binding, and world
+  entry, and the Docker reference client accepted live movement. Original-
+  client Phase 4 movement/fallback/soak evidence remains incomplete.
 - Hosting region/provider, expected concurrency, tick/snapshot rates, latency
   target, packet-loss target, and budget remain open capacity inputs.
 - Provider-specific infrastructure and paid deployment require approval.

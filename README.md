@@ -31,11 +31,14 @@ Release native build with `/W4 /WX`, and five consecutive native offline
 passes. These are local/offline results: checked-in UDP remains disabled, no
 client shim was installed, and gameplay remains on TLS.
 
-Phase 4 source/offline closeout passed a zero-warning managed Release build,
-the full managed suite (`126/126`), two identical native Win32 Release builds,
-and five consecutive offline wrapper passes. The first authoritative movement
-slice remains default-off and uninstalled until controlled-host stock-client
-acceptance; see the
+Phase 4 source/offline closeout now passes a zero-warning managed Release
+build and the full managed suite (`131/131`). Controlled-host testing proved
+the original client can authenticate over TLS, bind authenticated UDP, and
+enter the world; exact rollback then restored the stock client, hosts file,
+development trust, and manifest keys. The first authoritative movement slice
+also passes a live Docker reference-client movement/snapshot round trip. It
+remains default-off while the original-client fallback/parity/soak gate is
+completed; see the
 [protocol/runtime record](docs/network-infrastructure-phase4-authoritative-movement.md).
 
 ## Docker
@@ -43,6 +46,11 @@ acceptance; see the
 ```powershell
 docker compose up --build
 ```
+
+The opt-in TLS plus authenticated-UDP Docker profile is documented in
+[`docs/network-infrastructure-secure-docker.md`](docs/network-infrastructure-secure-docker.md).
+It replaces the raw server container, publishes only loopback secure ports,
+and keeps certificate material in read-only Compose secrets.
 
 This starts:
 
@@ -98,7 +106,7 @@ Implemented:
 - Ordinary equipment forging with the client's 611 `EquipForge` rules, Sapphire quality upgrades through Q20/Boundless, Emerald grade upgrades through G25, optional Crystal probability boosts, atomic inventory/silver persistence, and an allowlisted material-grant command
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
-- Secure networking: Slice 8 TLS activation remains uninstalled and gated to controlled-host acceptance ([runbook](docs/network-infrastructure-phase2-slice8-activation.md)); Slice 9's authenticated, encrypted UDP foundation and Phase 4's first authoritative movement slice are implemented and verified offline, but checked-in TLS/UDP/gameplay settings remain disabled and no shim was installed ([Slice 9 overview](docs/network-infrastructure-phase3-slice9c-protected-udp.md), [Phase 4 record](docs/network-infrastructure-phase4-authoritative-movement.md))
+- Secure networking: the original client completed controlled-host TLS authentication, authenticated encrypted UDP binding, and world entry using the in-process shim; the disposable activation was then rolled back exactly ([acceptance record](docs/network-infrastructure-controlled-host-acceptance.md)). The secure Docker profile publishes only loopback `6599/TCP`, `7443/TCP`, and `7444/UDP`, and its bounded reference client passes authoritative UDP movement/snapshot verification. Checked-in secure settings remain default-off, and Phase 4 still requires original-client movement/parity, forced TLS fallback, and soak acceptance ([Slice 9 overview](docs/network-infrastructure-phase3-slice9c-protected-udp.md), [Phase 4 record](docs/network-infrastructure-phase4-authoritative-movement.md)).
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 
