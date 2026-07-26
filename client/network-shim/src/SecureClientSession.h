@@ -20,9 +20,18 @@ namespace godswar::network {
 inline constexpr std::size_t SecureSessionClientInstanceIdBytes = 16;
 inline constexpr std::size_t SecureSessionOriginSha256Bytes = 32;
 
+struct SecureClientSessionSnapshot;
+
+using SecureClientSessionSnapshotRecorder =
+    void (*)(
+        void* context,
+        const SecureClientSessionSnapshot& snapshot) noexcept;
+
 struct SecureClientSessionConfiguration final {
     EndpointManifest manifest{};
     SecureGameGrantRegistry* grantRegistry = nullptr;
+    void* snapshotContext = nullptr;
+    SecureClientSessionSnapshotRecorder snapshotRecorder = nullptr;
     std::uint8_t
         clientInstanceId[SecureSessionClientInstanceIdBytes]{};
     std::uint8_t originSha256[SecureSessionOriginSha256Bytes]{};

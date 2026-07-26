@@ -3,6 +3,7 @@
 #include "ClientRoute.h"
 #include "EndpointManifestLoader.h"
 #include "SecureGameGrantRegistry.h"
+#include "SecureClientSession.h"
 
 #include <Windows.h>
 
@@ -102,6 +103,12 @@ struct SecureClientRuntimeSnapshot final {
     std::uint64_t manifestSequence = 0;
 };
 
+struct SecureClientSessionRetentionSnapshot final {
+    bool available = false;
+    std::uint64_t generation = 0;
+    SecureClientSessionSnapshot session{};
+};
+
 // Reads the process-wide activation contract from the native 64-bit registry
 // view. This function never writes registry state. A missing key means the
 // explicit Disabled baseline; a present but malformed key fails.
@@ -151,6 +158,10 @@ public:
     SecureGameGrantRegistry* GrantRegistry() noexcept;
 
     SecureClientRuntimeSnapshot Snapshot() const noexcept;
+    void RetainSessionSnapshot(
+        const SecureClientSessionSnapshot& snapshot) noexcept;
+    SecureClientSessionRetentionSnapshot
+    LastSessionSnapshot() const noexcept;
 
 private:
     struct InitializationCall final {
@@ -203,6 +214,8 @@ private:
     DWORD activationSystemError_ = ERROR_SUCCESS;
     std::uint8_t
         clientInstanceId_[SecureClientInstanceIdBytes]{};
+    mutable SRWLOCK lastSessionLock_{};
+    SecureClientSessionRetentionSnapshot lastSession_{};
 };
 
 SecureClientRuntime& ProcessSecureClientRuntime() noexcept;

@@ -55,6 +55,17 @@ enum class SchannelClientFailure : std::uint8_t {
     RenegotiationRejected,
     TruncatedStream,
     Stopped,
+    PostHandshakeRead,
+    PostHandshakeWrite,
+    PostHandshakeProtocol,
+    PostHandshakePolicy,
+    PostHandshakeDeadline,
+    PostHandshakeLimit,
+};
+
+enum class SchannelRevocationPolicy : std::uint8_t {
+    Strict = 0,
+    AllowMissingSourceForDevelopment,
 };
 
 struct SchannelClientSnapshot final {
@@ -78,6 +89,12 @@ bool IsAcceptedSchannelProtocolAndCipher(
     DWORD protocol,
     DWORD cipherSuite) noexcept;
 
+bool HasRequiredSchannelStreamAttributes(
+    ULONG returnedAttributes) noexcept;
+
+DWORD GetSchannelCredentialFlags(
+    SchannelRevocationPolicy revocationPolicy) noexcept;
+
 // Owns an already-connected socket and exposes authenticated TLS plaintext.
 // Stop only shuts down the descriptor; destruction and SSPI-handle release
 // must occur after all concurrent Read/Write calls have returned.
@@ -95,6 +112,7 @@ public:
     bool IsValid() const noexcept;
     bool Establish(
         const wchar_t* targetName,
+        SchannelRevocationPolicy revocationPolicy,
         DWORD timeoutMilliseconds =
             DefaultHandshakeDeadlineMilliseconds) noexcept;
 

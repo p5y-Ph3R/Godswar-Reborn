@@ -4,6 +4,7 @@
 #define SCHANNEL_USE_BLACKLISTS
 
 #include "SchannelClientStream.h"
+#include "SchannelClientStreamPostHandshake.h"
 
 #include <winternl.h>
 #include <security.h>
@@ -45,7 +46,8 @@ struct SchannelClientStream::State final {
     bool IsEstablished() const noexcept;
     void MarkEstablished(
         DWORD protocol,
-        DWORD cipherSuite) noexcept;
+        DWORD cipherSuite,
+        bool validatedAlpn) noexcept;
     void Fail(SchannelClientFailure reason) noexcept;
     SchannelClientSnapshot Snapshot() const noexcept;
     bool WaitForReady(
@@ -59,10 +61,17 @@ struct SchannelClientStream::State final {
         const void* source,
         std::size_t bytes,
         ULONGLONG deadline) noexcept;
+    bool ContinueTls13PostHandshake(
+        const SecBuffer* decryptBuffers,
+        std::size_t decryptBufferCount,
+        ULONGLONG deadline) noexcept;
+    bool ValidateTls13PostHandshakeContext(
+        ULONG returnedAttributes) noexcept;
 
     SocketHandle socket;
     SRWLOCK readLock{};
     SRWLOCK writeLock{};
+    SRWLOCK contextLock{};
     mutable SRWLOCK snapshotLock{};
     CredHandle credentials{};
     CtxtHandle context{};
@@ -83,6 +92,7 @@ struct SchannelClientStream::State final {
     SchannelClientFailure failure = SchannelClientFailure::None;
     DWORD negotiatedProtocol = 0;
     DWORD negotiatedCipherSuite = 0;
+    bool alpnValidated = false;
 };
 
 } // namespace godswar::network

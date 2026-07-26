@@ -19,10 +19,7 @@
 namespace godswar::network {
 namespace {
 
-constexpr std::uint8_t RequiredAlpn[] = {
-    'g', 'o', 'd', 's', 'w', 'a', 'r',
-    '-', 's', 'h', 'i', 'm', '/', '1',
-};
+using schannel_detail::RequiredAlpn;
 constexpr DWORD TlsEcdheRsaAes128GcmSha256 = 0xC02F;
 constexpr DWORD TlsEcdheRsaAes256GcmSha384 = 0xC030;
 constexpr DWORD TlsAes128GcmSha256 = 0x1301;
@@ -101,36 +98,6 @@ bool RequiresComplete(SECURITY_STATUS status) noexcept {
         status == SEC_I_COMPLETE_AND_CONTINUE;
 }
 
-bool IsAcceptedCertificate(PCCERT_CONTEXT certificate) noexcept {
-    if (certificate == nullptr ||
-        certificate->pCertInfo == nullptr) {
-        return false;
-    }
-
-    const auto& publicKey =
-        certificate->pCertInfo->SubjectPublicKeyInfo;
-    const char* publicKeyOid =
-        publicKey.Algorithm.pszObjId;
-    const char* signatureOid =
-        certificate->pCertInfo->SignatureAlgorithm.pszObjId;
-    if (publicKeyOid == nullptr ||
-        signatureOid == nullptr ||
-        std::strcmp(publicKeyOid, szOID_RSA_RSA) != 0) {
-        return false;
-    }
-
-    const bool acceptedSignature =
-        std::strcmp(signatureOid, szOID_RSA_SHA256RSA) == 0;
-    if (!acceptedSignature) {
-        return false;
-    }
-
-    const DWORD bits = CertGetPublicKeyLength(
-        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-        const_cast<PCERT_PUBLIC_KEY_INFO>(&publicKey));
-    return bits >= 2048;
-}
-
 } // namespace
 
 bool IsValidSchannelTargetName(const wchar_t* targetName) noexcept {
@@ -178,6 +145,37 @@ bool IsAcceptedSchannelProtocolAndCipher(
     return false;
 }
 
+bool HasRequiredSchannelStreamAttributes(
+    ULONG returnedAttributes) noexcept {
+    // Schannel does not consistently echo ISC_RET_INTEGRITY for TLS stream
+    // contexts. Record integrity is still mandatory below through the
+    // TLS 1.2/1.3 AEAD cipher-suite allowlist.
+    constexpr ULONG requiredAttributes =
+        ISC_RET_CONFIDENTIALITY |
+        ISC_RET_STREAM;
+    return (returnedAttributes & requiredAttributes) ==
+        requiredAttributes;
+}
+
+DWORD GetSchannelCredentialFlags(
+    SchannelRevocationPolicy revocationPolicy) noexcept {
+    constexpr DWORD baseFlags =
+        SCH_CRED_NO_DEFAULT_CREDS |
+        SCH_CRED_AUTO_CRED_VALIDATION |
+        SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT |
+        SCH_USE_STRONG_CRYPTO;
+    switch (revocationPolicy) {
+        case SchannelRevocationPolicy::Strict:
+            return baseFlags;
+        case SchannelRevocationPolicy::
+                AllowMissingSourceForDevelopment:
+            return baseFlags |
+                SCH_CRED_IGNORE_NO_REVOCATION_CHECK;
+        default:
+            return 0;
+    }
+}
+
 SchannelClientStream::SchannelClientStream(
     SocketHandle&& socket) noexcept
     : state_(new (std::nothrow) State(
@@ -196,9 +194,13 @@ bool SchannelClientStream::IsValid() const noexcept {
 
 bool SchannelClientStream::Establish(
     const wchar_t* targetName,
+    SchannelRevocationPolicy revocationPolicy,
     DWORD timeoutMilliseconds) noexcept {
+    const DWORD credentialFlags =
+        GetSchannelCredentialFlags(revocationPolicy);
     if (!IsValid() ||
         !IsValidSchannelTargetName(targetName) ||
+        credentialFlags == 0 ||
         timeoutMilliseconds == 0 ||
         timeoutMilliseconds == INFINITE ||
         state_->IsEstablished() ||
@@ -228,11 +230,7 @@ bool SchannelClientStream::Establish(
 
     SCH_CREDENTIALS credentials{};
     credentials.dwVersion = SCH_CREDENTIALS_VERSION;
-    credentials.dwFlags =
-        SCH_CRED_NO_DEFAULT_CREDS |
-        SCH_CRED_AUTO_CRED_VALIDATION |
-        SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT |
-        SCH_USE_STRONG_CRYPTO;
+    credentials.dwFlags = credentialFlags;
     credentials.cTlsParameters = 1;
     credentials.pTlsParameters = &tlsParameters;
 
@@ -269,12 +267,7 @@ bool SchannelClientStream::Establish(
     initialInput.pBuffers = &initialInputBuffer;
 
     constexpr ULONG RequestedAttributes =
-        ISC_REQ_REPLAY_DETECT |
-        ISC_REQ_SEQUENCE_DETECT |
-        ISC_REQ_CONFIDENTIALITY |
-        ISC_REQ_INTEGRITY |
-        ISC_REQ_ALLOCATE_MEMORY |
-        ISC_REQ_STREAM;
+        schannel_detail::RequestedContextAttributes;
     ULONG returnedAttributes = 0;
     TimeStamp contextExpiry{};
     bool firstCall = true;
@@ -465,12 +458,8 @@ bool SchannelClientStream::Establish(
         }
     }
 
-    constexpr ULONG RequiredAttributes =
-        ISC_RET_CONFIDENTIALITY |
-        ISC_RET_INTEGRITY |
-        ISC_RET_STREAM;
-    if ((returnedAttributes & RequiredAttributes) !=
-        RequiredAttributes) {
+    if (!HasRequiredSchannelStreamAttributes(
+            returnedAttributes)) {
         state_->Fail(SchannelClientFailure::ContextAttributes);
         return false;
     }
@@ -518,7 +507,8 @@ bool SchannelClientStream::Establish(
             &certificate);
     const bool acceptedCertificate =
         certificateStatus == SEC_E_OK &&
-        IsAcceptedCertificate(certificate);
+        schannel_detail::IsAcceptedSchannelCertificate(
+            certificate);
     if (certificate != nullptr) {
         CertFreeCertificateContext(certificate);
     }
@@ -548,7 +538,8 @@ bool SchannelClientStream::Establish(
 
     state_->MarkEstablished(
         connection.dwProtocol,
-        cipher.dwCipherSuite);
+        cipher.dwCipherSuite,
+        true);
     return true;
 }
 

@@ -20,6 +20,7 @@ SchannelClientStream::State::State(SocketHandle&& value) noexcept
     : socket(static_cast<SocketHandle&&>(value)) {
     InitializeSRWLock(&readLock);
     InitializeSRWLock(&writeLock);
+    InitializeSRWLock(&contextLock);
     InitializeSRWLock(&snapshotLock);
     SecInvalidateHandle(&credentials);
     SecInvalidateHandle(&context);
@@ -66,10 +67,12 @@ bool SchannelClientStream::State::IsEstablished() const noexcept {
 
 void SchannelClientStream::State::MarkEstablished(
     DWORD protocol,
-    DWORD cipherSuite) noexcept {
+    DWORD cipherSuite,
+    bool validatedAlpn) noexcept {
     AcquireSRWLockExclusive(&snapshotLock);
     negotiatedProtocol = protocol;
     negotiatedCipherSuite = cipherSuite;
+    alpnValidated = validatedAlpn;
     established = true;
     ReleaseSRWLockExclusive(&snapshotLock);
 }
@@ -233,6 +236,7 @@ DeadlineStreamResult SchannelClientStream::Read(
     AcquireSRWLockExclusive(&state_->readLock);
     DeadlineStreamResult result{DeadlineStreamStatus::Failed, 0};
     unsigned emptyRecords = 0;
+    unsigned postHandshakeTransitions = 0;
     while (!state_->IsStopped()) {
         if (state_->plaintextBytes > 0) {
             const std::size_t copied = (std::min)(
@@ -284,11 +288,33 @@ DeadlineStreamResult SchannelClientStream::Read(
         message.cBuffers = 4;
         message.pBuffers = buffers;
 
+        AcquireSRWLockExclusive(&state_->contextLock);
         const SECURITY_STATUS status = DecryptMessage(
             &state_->context,
             &message,
             0,
             nullptr);
+        if (status == SEC_I_RENEGOTIATE) {
+            ++postHandshakeTransitions;
+            bool continued = false;
+            if (postHandshakeTransitions <=
+                schannel_detail::
+                    MaximumPostHandshakeTransitionsPerRead) {
+                continued = state_->ContinueTls13PostHandshake(
+                    buffers,
+                    4,
+                    absoluteDeadline);
+            } else {
+                state_->Fail(
+                    SchannelClientFailure::PostHandshakeLimit);
+            }
+            ReleaseSRWLockExclusive(&state_->contextLock);
+            if (!continued) {
+                break;
+            }
+            continue;
+        }
+        ReleaseSRWLockExclusive(&state_->contextLock);
         if (status == SEC_E_INCOMPLETE_MESSAGE) {
             if (state_->encryptedInputBytes ==
                 sizeof(state_->encryptedInput)) {
@@ -321,15 +347,6 @@ DeadlineStreamResult SchannelClientStream::Read(
                 state_->encryptedInputBytes);
             state_->encryptedInputBytes = 0;
             result = {DeadlineStreamStatus::EndOfStream, 0};
-            break;
-        }
-        if (status == SEC_I_RENEGOTIATE) {
-            SecureZeroMemory(
-                state_->encryptedInput,
-                state_->encryptedInputBytes);
-            state_->encryptedInputBytes = 0;
-            state_->Fail(
-                SchannelClientFailure::RenegotiationRejected);
             break;
         }
         if (status != SEC_E_OK) {
@@ -419,6 +436,7 @@ bool SchannelClientStream::WriteAll(
             break;
         }
 
+        AcquireSRWLockExclusive(&state_->contextLock);
         const std::size_t chunk = (std::min)(
             sourceBytes - offset,
             static_cast<std::size_t>(
@@ -450,23 +468,25 @@ bool SchannelClientStream::WriteAll(
         message.cBuffers = 4;
         message.pBuffers = buffers;
 
-        if (EncryptMessage(
+        const bool recordWritten = EncryptMessage(
                 &state_->context,
                 0,
                 &message,
-                0) != SEC_E_OK ||
-            !state_->RawWriteAll(
+                0) == SEC_E_OK &&
+            state_->RawWriteAll(
                 buffers[0].pvBuffer,
                 buffers[0].cbBuffer,
-                absoluteDeadline) ||
-            !state_->RawWriteAll(
+                absoluteDeadline) &&
+            state_->RawWriteAll(
                 buffers[1].pvBuffer,
                 buffers[1].cbBuffer,
-                absoluteDeadline) ||
-            !state_->RawWriteAll(
+                absoluteDeadline) &&
+            state_->RawWriteAll(
                 buffers[2].pvBuffer,
                 buffers[2].cbBuffer,
-                absoluteDeadline)) {
+                absoluteDeadline);
+        ReleaseSRWLockExclusive(&state_->contextLock);
+        if (!recordWritten) {
             succeeded = false;
             break;
         }

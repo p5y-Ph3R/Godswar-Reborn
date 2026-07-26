@@ -118,7 +118,13 @@ bool SecureClientSession::Connect(
         Fail(SecureClientSessionFailure::TlsAllocation);
         return false;
     }
-    if (!tls_->Establish(tlsHost)) {
+    const auto revocationPolicy =
+        configuration_.manifest.environment ==
+            EndpointManifestEnvironment::Development
+        ? SchannelRevocationPolicy::
+            AllowMissingSourceForDevelopment
+        : SchannelRevocationPolicy::Strict;
+    if (!tls_->Establish(tlsHost, revocationPolicy)) {
         Fail(SecureClientSessionFailure::TlsHandshake);
         return false;
     }
@@ -384,6 +390,11 @@ void SecureClientSession::Fail(
         failure_ = failure;
     }
     state_ = SecureClientSessionState::Failed;
+    if (configuration_.snapshotRecorder != nullptr) {
+        configuration_.snapshotRecorder(
+            configuration_.snapshotContext,
+            Snapshot());
+    }
     ReleaseClaim();
 
     bool disconnectStock = false;

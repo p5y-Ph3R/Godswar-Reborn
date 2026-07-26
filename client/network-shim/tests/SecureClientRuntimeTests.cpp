@@ -2,6 +2,7 @@
 
 #include "SecureGameControlTestSupport.h"
 
+#include "../src/NetClientProxy.h"
 #include "../src/SecureClientRuntime.h"
 
 #include <Windows.h>
@@ -15,6 +16,9 @@ namespace {
 
 using godswar::network::ClientRoute;
 using godswar::network::ClientRouteDecision;
+using godswar::network::ILegacyNetClient;
+using godswar::network::NativeClientCoordinator;
+using godswar::network::NetClientProxy;
 using godswar::network::EndpointManifest;
 using godswar::network::EndpointManifestEnvironment;
 using godswar::network::EndpointManifestLoadError;
@@ -27,6 +31,9 @@ using godswar::network::SecureClientRuntime;
 using godswar::network::SecureClientRuntimeDependencies;
 using godswar::network::SecureClientRuntimeFailure;
 using godswar::network::SecureClientRuntimeState;
+using godswar::network::SecureClientSessionFailure;
+using godswar::network::SecureClientSessionSnapshot;
+using godswar::network::SecureClientSessionState;
 using godswar::network::SecureGameGrantClaim;
 using godswar::network::SecureGameGrantResult;
 using godswar::network::TryCopyClientRoute;
@@ -44,6 +51,43 @@ void Check(bool condition, const char* message) {
         ++Failures;
     }
 }
+
+class RetentionProbeLegacyClient final : public ILegacyNetClient {
+public:
+    std::uint32_t Release() override {
+        ++releaseCalls;
+        return 1;
+    }
+    void SetHost(const char*, std::uint16_t) override {
+        ++setHostCalls;
+    }
+    bool Connect() override {
+        ++connectCalls;
+        return true;
+    }
+    void DisConnect() override {
+        ++disconnectCalls;
+    }
+    void Process() override {
+    }
+    std::uint32_t GetStatus() const override {
+        return 0;
+    }
+    void* PickMsg() override {
+        return nullptr;
+    }
+    bool SendMsg(const void*, int) override {
+        return false;
+    }
+    long GetMsgNum() override {
+        return 0;
+    }
+
+    int releaseCalls = 0;
+    int setHostCalls = 0;
+    int connectCalls = 0;
+    int disconnectCalls = 0;
+};
 
 struct RuntimeFixture final {
     SecureClientActivationReadResult activationResult =
@@ -312,6 +356,98 @@ void CheckEmbeddedTrustBoundary() {
         "placeholder development trust leaked into production");
 }
 
+void CheckBoundedSessionSnapshotRetention() {
+    SecureClientRuntime runtime;
+    Check(
+        !runtime.LastSessionSnapshot().available &&
+            runtime.LastSessionSnapshot().generation == 0,
+        "empty runtime exposed a retained session snapshot");
+
+    SecureClientSessionSnapshot first{};
+    first.state = SecureClientSessionState::Failed;
+    first.failure = SecureClientSessionFailure::TlsHandshake;
+    first.tls.failure =
+        godswar::network::SchannelClientFailure::CertificatePolicy;
+    runtime.RetainSessionSnapshot(first);
+
+    const auto retainedFirst = runtime.LastSessionSnapshot();
+    Check(
+        retainedFirst.available &&
+            retainedFirst.generation == 1 &&
+            retainedFirst.session.failure ==
+                SecureClientSessionFailure::TlsHandshake &&
+            retainedFirst.session.tls.failure ==
+                godswar::network::SchannelClientFailure::
+                    CertificatePolicy,
+        "runtime did not retain the first failure snapshot");
+
+    SecureClientSessionSnapshot second{};
+    second.state = SecureClientSessionState::Failed;
+    second.failure =
+        SecureClientSessionFailure::BridgeTerminated;
+    second.bridge.state =
+        godswar::network::NativeBridgeState::Failed;
+    second.bridge.failure =
+        godswar::network::NativeBridgeFailure::PumpTerminated;
+    runtime.RetainSessionSnapshot(second);
+
+    const auto retainedSecond = runtime.LastSessionSnapshot();
+    Check(
+        retainedSecond.available &&
+            retainedSecond.generation == 2 &&
+            retainedSecond.session.failure ==
+                SecureClientSessionFailure::BridgeTerminated &&
+            retainedSecond.session.bridge.failure ==
+                godswar::network::NativeBridgeFailure::
+                    PumpTerminated,
+        "runtime retention was not bounded to the newest snapshot");
+}
+
+void CheckFailedProxyConnectSurvivesSessionDeletion() {
+    auto fixture = ReadyFixture();
+    fixture.manifest.tlsLoginHost.bytes[0] = ' ';
+    SecureClientRuntime runtime(Dependencies(&fixture));
+    Check(
+        runtime.Initialize(reinterpret_cast<HMODULE>(1)),
+        "retained-connect runtime fixture did not initialize");
+
+    NativeClientCoordinator coordinator(runtime.RoutePolicy());
+    RetentionProbeLegacyClient legacy;
+    auto* client = NetClientProxy::CreateWithRuntimeForTesting(
+        &legacy,
+        &coordinator,
+        &runtime);
+    Check(client != nullptr, "retained-connect proxy was not created");
+    if (client == nullptr) {
+        return;
+    }
+
+    client->SetHost("login-route.reborn.test", 5999);
+    Check(
+        !client->Connect(),
+        "invalid secure target unexpectedly connected");
+    const auto retained = runtime.LastSessionSnapshot();
+    Check(
+        retained.available &&
+            retained.generation == 1 &&
+            retained.session.state ==
+                SecureClientSessionState::Failed &&
+            retained.session.failure ==
+                SecureClientSessionFailure::TargetName,
+        "failed ConnectSecure snapshot did not survive deletion");
+    Check(
+        legacy.setHostCalls == 0 &&
+            legacy.connectCalls == 0 &&
+            legacy.disconnectCalls == 0,
+        "failed secure connect touched the stock endpoint");
+
+    static_cast<void>(client->Release());
+    Check(
+        legacy.releaseCalls == 1 &&
+            runtime.LastSessionSnapshot().generation == 1,
+        "proxy release changed retained failure diagnostics");
+}
+
 } // namespace
 
 int RunSecureClientRuntimeTests() {
@@ -320,5 +456,7 @@ int RunSecureClientRuntimeTests() {
     CheckReadyRoutesAndIdentity();
     CheckInitializationFailures();
     CheckEmbeddedTrustBoundary();
+    CheckBoundedSessionSnapshotRetention();
+    CheckFailedProxyConnectSurvivesSessionDeletion();
     return Failures;
 }

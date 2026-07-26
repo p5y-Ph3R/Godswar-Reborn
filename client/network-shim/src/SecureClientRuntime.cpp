@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <new>
 
 namespace godswar::network {
@@ -43,11 +44,14 @@ bool ExactRoute(
 
 } // namespace
 
-SecureClientRuntime::SecureClientRuntime() noexcept = default;
+SecureClientRuntime::SecureClientRuntime() noexcept {
+    InitializeSRWLock(&lastSessionLock_);
+}
 
 SecureClientRuntime::SecureClientRuntime(
     SecureClientRuntimeDependencies dependencies) noexcept
     : dependencies_(dependencies) {
+    InitializeSRWLock(&lastSessionLock_);
 }
 
 SecureClientRuntime::~SecureClientRuntime() noexcept {
@@ -167,6 +171,26 @@ SecureClientRuntime::Snapshot() const noexcept {
     snapshot.activationSystemError = activationSystemError_;
     snapshot.manifestLoad = manifestLoad_;
     snapshot.manifestSequence = manifest_.sequence;
+    return snapshot;
+}
+
+void SecureClientRuntime::RetainSessionSnapshot(
+    const SecureClientSessionSnapshot& snapshot) noexcept {
+    AcquireSRWLockExclusive(&lastSessionLock_);
+    if (lastSession_.generation !=
+        (std::numeric_limits<std::uint64_t>::max)()) {
+        ++lastSession_.generation;
+    }
+    lastSession_.available = true;
+    lastSession_.session = snapshot;
+    ReleaseSRWLockExclusive(&lastSessionLock_);
+}
+
+SecureClientSessionRetentionSnapshot
+SecureClientRuntime::LastSessionSnapshot() const noexcept {
+    AcquireSRWLockShared(&lastSessionLock_);
+    const auto snapshot = lastSession_;
+    ReleaseSRWLockShared(&lastSessionLock_);
     return snapshot;
 }
 

@@ -19,6 +19,7 @@ using godswar::network::NativeClientBridgeSnapshot;
 using godswar::network::SecureClientSession;
 using godswar::network::SecureClientSessionConfiguration;
 using godswar::network::SecureClientSessionFailure;
+using godswar::network::SecureClientSessionSnapshot;
 using godswar::network::SecureClientSessionState;
 using godswar::network::SecureUdpClientWorkerSnapshot;
 using godswar::network::SecureUdpClientWorkerState;
@@ -75,6 +76,21 @@ public:
     int disconnectCalls = 0;
 };
 
+struct FailureRecorder final {
+    int calls = 0;
+    SecureClientSessionSnapshot snapshot{};
+};
+
+void RecordFailure(
+    void* context,
+    const SecureClientSessionSnapshot& snapshot) noexcept {
+    auto* recorder = static_cast<FailureRecorder*>(context);
+    if (recorder != nullptr) {
+        ++recorder->calls;
+        recorder->snapshot = snapshot;
+    }
+}
+
 SecureClientSessionConfiguration Configuration(
     SecureGameGrantRegistry* registry,
     bool validIdentity = true) noexcept {
@@ -129,7 +145,11 @@ void CheckInvalidIdentityNeverTouchesStock() {
         BuildSecureGrantTestManifest(),
         &clock,
         TestClock});
-    SecureClientSession session(Configuration(&registry, false));
+    auto configuration = Configuration(&registry, false);
+    FailureRecorder recorder{};
+    configuration.snapshotContext = &recorder;
+    configuration.snapshotRecorder = RecordFailure;
+    SecureClientSession session(configuration);
     ProbeLegacyClient legacy;
     Check(
         !session.Connect(&legacy, LoginPlan()),
@@ -140,6 +160,13 @@ void CheckInvalidIdentityNeverTouchesStock() {
             snapshot.failure ==
                 SecureClientSessionFailure::InvalidArgument,
         "invalid identity returned unstable session state");
+    Check(
+        recorder.calls == 1 &&
+            recorder.snapshot.state ==
+                SecureClientSessionState::Failed &&
+            recorder.snapshot.failure ==
+                SecureClientSessionFailure::InvalidArgument,
+        "session failure was not published before teardown");
     Check(
         legacy.setHostCalls == 0 &&
             legacy.connectCalls == 0 &&

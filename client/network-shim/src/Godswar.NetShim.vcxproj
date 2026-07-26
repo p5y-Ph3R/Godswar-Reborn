@@ -85,6 +85,7 @@
     <ClInclude Include="SocketHandle.h" />
     <ClInclude Include="SchannelClientStream.h" />
     <ClInclude Include="SchannelClientStreamInternal.h" />
+    <ClInclude Include="SchannelClientStreamPostHandshake.h" />
     <ClInclude Include="SecureClientManifestDevelopmentKeys.generated.h" />
     <ClInclude Include="SecureClientManifestBuildContract.h" />
     <ClInclude Include="SecureClientRuntime.h" />
@@ -125,6 +126,7 @@
     <ClCompile Include="OpaqueDuplexPump.cpp" />
     <ClCompile Include="SchannelClientStream.cpp" />
     <ClCompile Include="SchannelClientStreamIo.cpp" />
+    <ClCompile Include="SchannelClientStreamPostHandshake.cpp" />
     <ClCompile Include="SecureClientRuntime.cpp" />
     <ClCompile Include="SecureClientManifestBuildContract.cpp" />
     <ClCompile Include="SecureClientRuntime.Platform.cpp" />

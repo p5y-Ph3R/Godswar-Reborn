@@ -309,6 +309,16 @@ bool NetClientProxy::TryBuildSecureConfiguration(
 
     configuration->grantRegistry =
         secureRuntime_->GrantRegistry();
+    configuration->snapshotContext = secureRuntime_;
+    configuration->snapshotRecorder =
+        [](void* context,
+           const SecureClientSessionSnapshot& snapshot) noexcept {
+            auto* runtime =
+                static_cast<SecureClientRuntime*>(context);
+            if (runtime != nullptr) {
+                runtime->RetainSessionSnapshot(snapshot);
+            }
+        };
     return configuration->grantRegistry != nullptr;
 }
 
