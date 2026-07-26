@@ -8,6 +8,11 @@
 # This overrides the existing `server` service instead of defining a second
 # game server, so the raw and secure listener profiles cannot run together.
 services:
+  postgres:
+    networks:
+      default: {}
+      secure-runtime: {}
+
   server:
     profiles: ["secure"]
     container_name: godswar-server
@@ -56,8 +61,7 @@ services:
       - source: reborn-secure-certificate-password
         target: reborn-secure-certificate-password
         mode: 0400
-    networks:
-      default: {}
+    networks: !override
       secure-runtime:
         ipv4_address: "${GODSWAR_SECURE_CONTAINER_BIND_ADDRESS:-172.31.250.10}"
     healthcheck:

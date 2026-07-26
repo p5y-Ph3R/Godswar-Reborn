@@ -61,6 +61,7 @@ try {
     $secure =
         ($secureJson -join [Environment]::NewLine) | ConvertFrom-Json
     $baseServer = $base.services.server
+    $postgres = $secure.services.postgres
     $server = $secure.services.server
 
     Assert-Condition `
@@ -83,6 +84,16 @@ try {
 
     $containerAddress =
         [string]$server.networks.'secure-runtime'.ipv4_address
+    $serverNetworkNames =
+        @($server.networks.PSObject.Properties.Name)
+    Assert-Condition `
+        ($serverNetworkNames.Count -eq 1 -and
+            $serverNetworkNames[0] -ceq 'secure-runtime') `
+        'The secure server must use only the fixed secure-runtime network.'
+    Assert-Condition `
+        (@($postgres.networks.PSObject.Properties.Name) -ccontains
+            'secure-runtime') `
+        'PostgreSQL must share secure-runtime with the fixed-address server.'
     foreach ($name in @(
         'GODSWAR_SECURE_LOGIN_BIND_HOST',
         'GODSWAR_SECURE_GAME_BIND_HOST',

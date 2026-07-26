@@ -8,6 +8,14 @@ project, service name, and `godswar-server` container identity, so the raw and
 secure game-server profiles are never started as two competing containers.
 PostgreSQL remains the existing durable Compose service and volume.
 
+The secure server is attached only to the `secure-runtime` bridge. PostgreSQL
+joins both that bridge and the base project bridge, so the server's fixed
+`172.31.250.10` address is its sole container interface and the `postgres`
+service remains reachable by name. This is required for Docker's published
+loopback ports to target the same interface that owns the TLS and UDP
+listeners; attaching the server to the implicit default network as well would
+make Docker forward through a different primary address.
+
 Docker Desktop supplies useful process, port, health, and log visibility. The
 container healthcheck proves that both TLS listeners and the UDP listener are
 bound. It is not a substitute for the client TLS, ticket-binding, UDP
@@ -55,6 +63,12 @@ Linux container receives it read-only at
 in the container environment or Docker inspection output. The PFX is also
 mounted read-only.
 
+Docker Desktop for Windows may warn that Compose secret `uid`, `gid`, and
+`mode` are ignored. Its 9P mount can also report synthetic `0777` mode bits.
+The required property is a `ro` mount in `/proc/mounts`; the Windows source
+files must still have a protected ACL because their host permissions are the
+actual confidentiality boundary.
+
 The client-side development root remains in the Windows trust store, and the
 hosts file must retain:
 
@@ -87,6 +101,8 @@ docker compose `
 
 docker logs --tail 100 godswar-server
 docker inspect godswar-server --format '{{.State.Health.Status}}'
+docker exec godswar-server sh -c `
+  "grep '/run/secrets/reborn-secure' /proc/mounts"
 ```
 
 Expected server output states that raw compatibility is disabled, reports TLS
@@ -126,8 +142,8 @@ Never run base and secure server commands concurrently.
 ## Verification
 
 The static Compose contract test renders both profiles and verifies the exact
-ports, fixed private binding, secret paths, durable database default,
-healthcheck, and absence of raw host mappings:
+ports, sole fixed private server network, shared PostgreSQL network, secret
+paths, durable database default, healthcheck, and absence of raw host mappings:
 
 ```powershell
 powershell -NoProfile -File tools/TestSecureDockerProfile.ps1
@@ -151,6 +167,19 @@ docker compose `
   build server
 ```
 
-Final acceptance still requires the original launcher to authenticate, enter
-the world, bind UDP, move through the authoritative path, exercise TLS
-fallback, and reconnect while the Docker container remains healthy.
+The bounded live smoke creates a random versioned account and character only
+in `godswar_secure_dev`, validates the complete TLS/ticket/UDP flow, enters
+the world, sends one authoritative movement input, requires its acknowledged
+snapshot, waits for server teardown, and deletes the fixture:
+
+```powershell
+.\tools\InvokeSecureDockerSmoke.ps1 `
+  -RootCertificatePath 'C:\private\reborn-development-root.cer'
+```
+
+The probe refuses non-loopback endpoints and any database other than
+`godswar_secure_dev`; it has a 20-second default deadline and never prints its
+random credential. Final Phase 4 acceptance still requires the original
+launcher to move through the authoritative path, exercise forced TLS fallback,
+cover map/mount/revive and UDP block/unblock parity, reconnect, and complete
+the normal soak while the Docker container remains healthy.
