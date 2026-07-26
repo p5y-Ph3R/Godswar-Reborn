@@ -13,11 +13,13 @@ internal static partial class SecureTlsTransportChecks
     public static async Task RunAsync()
     {
         CheckOptionsAndCertificatePolicy();
+        CheckCertificatePasswordSources();
         await CheckLoadedCertificateRoundTripAsync();
         CheckPrefacePolicy();
         // The gate is exercised after live TLS checks so Schannel setup is not
         // coupled to a preceding cancellation test on this process.
         await CheckLoginTlsMuxRoundTripAsync();
+        await CheckControlledHostAcceptanceEvidenceAsync();
         await CheckAuthenticatedHeartbeatAsync();
         await CheckHeartbeatWriteDeadlineAsync();
         await CheckUnsupportedBuildFailsClosedAsync();

@@ -108,7 +108,9 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
         SecureNetworkOptions secureOptions,
         SecureGameTarget gameTarget,
         SecureUdpRuntimeCapabilities capabilities,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SecurePhase4AcceptanceFaults?
+            phase4AcceptanceFaults = null)
     {
         ArgumentNullException.ThrowIfNull(secureOptions);
         ArgumentNullException.ThrowIfNull(gameTarget);
@@ -128,7 +130,8 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
             gameTarget,
             timeProvider ?? TimeProvider.System,
             listenerPortOverride: null,
-            maintenanceOverride: null);
+            maintenanceOverride: null,
+            phase4AcceptanceFaults);
     }
 
     internal static SecureUdpRuntime CreateForLoopbackTest(
@@ -151,7 +154,8 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
             gameTarget,
             timeProvider ?? TimeProvider.System,
             listenerPortOverride: 0,
-            maintenanceOverride);
+            maintenanceOverride,
+            phase4AcceptanceFaults: null);
     }
 
     public Task RunAsync(CancellationToken cancellationToken)
@@ -255,7 +259,9 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
         SecureGameTarget gameTarget,
         TimeProvider timeProvider,
         int? listenerPortOverride,
-        Func<SecureUdpMaintenanceSweep>? maintenanceOverride)
+        Func<SecureUdpMaintenanceSweep>? maintenanceOverride,
+        SecurePhase4AcceptanceFaults?
+            phase4AcceptanceFaults)
     {
         SecureUdpSessionAuthority? authority = null;
         SecureUdpAddressValidation? addressValidation = null;
@@ -304,7 +310,8 @@ internal sealed class SecureUdpRuntime : IAsyncDisposable
                 coordinator,
                 limiter,
                 authority,
-                timeProvider);
+                timeProvider,
+                phase4AcceptanceFaults);
             return new SecureUdpRuntime(
                 addressValidation,
                 authority,

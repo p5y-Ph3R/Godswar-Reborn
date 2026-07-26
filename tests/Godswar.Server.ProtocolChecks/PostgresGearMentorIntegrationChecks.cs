@@ -1,5 +1,4 @@
 using Godswar.Server.State;
-using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -28,6 +27,7 @@ internal static partial class PostgresGearMentorIntegrationChecks
         var username = $"gear_mentor_{token}";
         var characterName = $"Mentor{token}";
         int? accountId = null;
+        int? characterId = null;
 
         try
         {
@@ -45,6 +45,7 @@ internal static partial class PostgresGearMentorIntegrationChecks
                     Camp = GameDefaults.SpartaCamp,
                     Profession = 0
                 });
+            characterId = character.Id;
             character = await storeA.MoveEquipmentToKitBagAsync(
                     account.Id,
                     character.Id,
@@ -329,7 +330,12 @@ internal static partial class PostgresGearMentorIntegrationChecks
         {
             if (accountId.HasValue)
             {
-                await DeleteTestAccountAsync(connectionString, accountId.Value, username);
+                await PostgresIntegrationFixtureCleanup.DeleteAccountAndAuditsAsync(
+                    connectionString,
+                    accountId.Value,
+                    username,
+                    characterId,
+                    "gear-mentor-consume");
             }
         }
     }

@@ -199,20 +199,4 @@ internal static partial class PostgresGearMentorIntegrationChecks
                         ?? throw new InvalidOperationException(
                             $"PostgreSQL item row was missing from bag slot {slot}."));
     }
-
-    private static async Task DeleteTestAccountAsync(
-        string connectionString,
-        int accountId,
-        string username)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("""
-            DELETE FROM accounts
-            WHERE id = @accountId AND username = @username;
-            """, connection);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("username", username);
-        await command.ExecuteNonQueryAsync();
-    }
 }

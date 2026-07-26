@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using Godswar.Server.Networking.Secure.Realtime;
+using Godswar.Server.Operations;
 
 namespace Godswar.Server.Networking.Secure.Udp;
 
@@ -13,6 +14,8 @@ internal sealed partial class SecureUdpEndpointServer
     private readonly int _maximumDatagramBytes;
     private readonly SecureUdpSessionAuthority? _sessions;
     private readonly TimeProvider _timeProvider;
+    private readonly SecurePhase4AcceptanceFaults?
+        _phase4AcceptanceFaults;
     private readonly TaskCompletionSource<IPEndPoint> _started =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _runStarted;
@@ -24,7 +27,9 @@ internal sealed partial class SecureUdpEndpointServer
         SecureUdpBindingCoordinator coordinator,
         SecureUdpRateLimiter limiter,
         SecureUdpSessionAuthority? sessions = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SecurePhase4AcceptanceFaults?
+            phase4AcceptanceFaults = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(host);
         if (!IPAddress.TryParse(host, out _))
@@ -54,6 +59,7 @@ internal sealed partial class SecureUdpEndpointServer
             throw new ArgumentNullException(nameof(limiter));
         _sessions = sessions;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _phase4AcceptanceFaults = phase4AcceptanceFaults;
     }
 
     public int Port { get; }
@@ -251,6 +257,8 @@ internal sealed partial class SecureUdpEndpointServer
                 SecureUdpBindingProcessOutcome.AlreadyBound or
                 SecureUdpBindingProcessOutcome.Rebound)
         {
+            ControlledHostPrivacyEvidence.RecordIfActive(
+                ControlledHostEvidenceEvent.UdpEndpointBound);
             return CreateBindingConfirmation(
                 datagram,
                 remote,

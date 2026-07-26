@@ -157,6 +157,18 @@ internal static partial class Program
                 "Mutually exclusive raw or secure listener profile",
                 ServerListenerProfileChecks.RunAsync),
             (
+                "Controlled-host exact Npgsql validation",
+                ControlledHostValidationCommandChecks.RunAsync),
+            (
+                "Controlled-host exact TLS certificate policy",
+                ControlledHostCertificateValidationChecks.RunAsync),
+            (
+                "Controlled-host exact acceptance options",
+                ControlledHostAcceptancePolicyChecks.RunAsync),
+            (
+                "Controlled-host privacy-safe evidence",
+                ControlledHostPrivacyEvidenceChecks.RunAsync),
+            (
                 "Secure Phase 3 UDP Slice 9A/9B binding foundation",
                 SecureUdpFoundationChecks.RunAsync),
             (
@@ -174,6 +186,9 @@ internal static partial class Program
             (
                 "Secure Phase 4 deterministic network emulation and overload",
                 SecurePhase4NetworkEmulationChecks.RunAsync),
+            (
+                "Secure Phase 4 controlled-host fault injection",
+                SecurePhase4AcceptanceFaultChecks.RunAsync),
             (
                 "Secure Phase 4 game-handler movement integration",
                 SecureRealtimeHandlerIntegrationChecks.RunAsync),

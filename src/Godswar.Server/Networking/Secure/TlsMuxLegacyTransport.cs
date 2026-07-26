@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Security.Cryptography;
 using Godswar.Server.Networking.Secure.Realtime;
 using Godswar.Server.Networking.Secure.Udp;
+using Godswar.Server.Operations;
 
 namespace Godswar.Server.Networking.Secure;
 
@@ -181,6 +182,8 @@ internal sealed partial class TlsMuxLegacyTransport :
             _heartbeatActive = true;
         }
         _authenticated.TrySetResult();
+        ControlledHostPrivacyEvidence.RecordIfActive(
+            ControlledHostEvidenceEvent.TlsClientAuthenticated);
     }
 
     public async ValueTask<int> ReadAsync(

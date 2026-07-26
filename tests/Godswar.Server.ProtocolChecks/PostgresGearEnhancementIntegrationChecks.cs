@@ -24,6 +24,7 @@ internal static class PostgresGearEnhancementIntegrationChecks
         var username = $"gear_enh_{token}";
         var characterName = $"Enh{token}";
         int? accountId = null;
+        int? characterId = null;
 
         try
         {
@@ -41,6 +42,7 @@ internal static class PostgresGearEnhancementIntegrationChecks
                     Camp = GameDefaults.SpartaCamp,
                     Profession = 0
                 });
+            characterId = character.Id;
             character = await storeA.MoveEquipmentToKitBagAsync(
                     account.Id,
                     character.Id,
@@ -121,7 +123,12 @@ internal static class PostgresGearEnhancementIntegrationChecks
         {
             if (accountId.HasValue)
             {
-                await DeleteTestAccountAsync(connectionString, accountId.Value, username);
+                await PostgresIntegrationFixtureCleanup.DeleteAccountAndAuditsAsync(
+                    connectionString,
+                    accountId.Value,
+                    username,
+                    characterId,
+                    "gear-enhancement-consume");
             }
         }
     }
@@ -245,21 +252,5 @@ internal static class PostgresGearEnhancementIntegrationChecks
             1,
             await command.ExecuteNonQueryAsync(),
             $"PostgreSQL enhancement material {itemId} staged");
-    }
-
-    private static async Task DeleteTestAccountAsync(
-        string connectionString,
-        int accountId,
-        string username)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("""
-            DELETE FROM accounts
-            WHERE id = @accountId AND username = @username;
-            """, connection);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("username", username);
-        await command.ExecuteNonQueryAsync();
     }
 }

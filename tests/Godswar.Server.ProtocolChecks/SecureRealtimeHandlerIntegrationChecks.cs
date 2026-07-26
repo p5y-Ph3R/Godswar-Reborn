@@ -3,6 +3,7 @@ using System.Reflection;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Realtime;
+using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -26,6 +27,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
     public static async Task RunAsync()
     {
         await CheckAuthoritativeMovementAndFallbackAsync();
+        await CheckAcceptanceFaultCorrectionAsync();
         await CheckFirstRejectedInputUsesServerStateAsync();
         await CheckWorldRehydrationPreservesTransportAsync();
         await CheckLegacyMovementRejectedAfterCutoverAsync();
@@ -265,12 +267,16 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
     private static GameClientHandler CreateReadyHandler(
         ClientSession session,
         GameSessionRegistry registry,
-        GameCharacter character)
+        GameCharacter character,
+        SecurePhase4AcceptanceFaults?
+            phase4AcceptanceFaults = null)
     {
         var handler = new GameClientHandler(
             session,
             new NoopMovementStore(),
-            registry);
+            registry,
+            phase4AcceptanceFaults:
+                phase4AcceptanceFaults);
         SetField(
             handler,
             "_account",

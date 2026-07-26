@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using Godswar.Server.Networking.Secure.Udp;
+using Godswar.Server.Operations;
 
 namespace Godswar.Server.Networking.Secure;
 
@@ -341,6 +342,8 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
             }
 
             outcome = SecureHandshakeOutcome.Accepted;
+            ControlledHostPrivacyEvidence.RecordIfActive(
+                ControlledHostEvidenceEvent.TlsPolicyAccepted);
         }
         catch (OperationCanceledException)
             when (deadline.IsCancellationRequested &&
@@ -441,6 +444,9 @@ internal sealed partial class TlsMuxLegacyTransportFactory :
             throw new SecureTransportException(
                 $"Secure client preface rejected with finite outcome '{outcome.ToMetricTag()}'.");
         }
+        ControlledHostPrivacyEvidence.RecordIfActive(
+            ControlledHostEvidenceEvent
+                .AcceptedSecurePrefaceResponseWritten);
 
         return new SecureConnectionContext(
             preface!.Role,

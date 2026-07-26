@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Networking;
+using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -60,12 +61,15 @@ internal sealed partial class GameClientHandler : IClientHandler
         ClientSession session,
         IGameStore store,
         GameSessionRegistry registry,
-        DeveloperCommandOptions? developerCommands = null)
+        DeveloperCommandOptions? developerCommands = null,
+        SecurePhase4AcceptanceFaults?
+            phase4AcceptanceFaults = null)
     {
         _session = session;
         _store = store;
         _registry = registry;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
+        _phase4AcceptanceFaults = phase4AcceptanceFaults;
     }
 
     private byte[] BuildLocalPlayerStatusUpdate()

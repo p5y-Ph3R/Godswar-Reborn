@@ -3,11 +3,23 @@ using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
+using Godswar.Server.Operations;
 using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
 
+using var controlledHostEvidence =
+    ControlledHostPrivacyEvidence.TryInstallFromEnvironment();
+
+if (await ControlledHostValidationCommand.TryRunAsync(args))
+{
+    return;
+}
+
 var optionsPath = args.Length > 0 ? args[0] : "appsettings.json";
 var options = ServerOptions.Load(optionsPath);
+var phase4AcceptanceFaults =
+    SecurePhase4AcceptanceFaults.Create(
+        options.Secure.Phase4AcceptanceFaults);
 await using IGameStore store = options.Storage.Provider.Equals("postgres", StringComparison.OrdinalIgnoreCase)
     ? new PostgresGameStore(options.Storage.PostgresConnectionString)
     : new JsonGameStore(options.DataPath);
@@ -69,7 +81,9 @@ await using SecureUdpRuntime? secureUdpRuntime =
         ? SecureUdpRuntime.TryCreate(
             options.Secure,
             secureGameTarget,
-            SecureUdpRuntimeCapabilities.Current)
+            SecureUdpRuntimeCapabilities.Current,
+            phase4AcceptanceFaults:
+                phase4AcceptanceFaults)
         : null;
 using InMemoryGameTicketStore? secureGameTickets =
     options.Secure.Enabled
@@ -126,7 +140,8 @@ var secureGameServer = secureTransportFactory is null
             session,
             store,
             registry,
-            options.Game.DeveloperCommands),
+            options.Game.DeveloperCommands,
+            phase4AcceptanceFaults),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
@@ -225,6 +240,8 @@ try
         server => server.WaitUntilStartedAsync(shutdown.Token))).WaitAsync(
         TimeSpan.FromSeconds(10),
         shutdown.Token);
+    ControlledHostPrivacyEvidence.RecordIfActive(
+        ControlledHostEvidenceEvent.SecureListenersReady);
     Console.WriteLine(
         $"Listener profile ready: {listenerProfile.Transport} " +
         $"({listenerProfile.Login.Port}/{listenerProfile.Game.Port})");

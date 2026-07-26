@@ -4,10 +4,13 @@ using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Networking.Secure;
 
-internal sealed class SecureNetworkOptions
+internal sealed partial class SecureNetworkOptions
 {
     internal const string DefaultCertificatePasswordEnvironmentVariable =
         "GODSWAR_SECURE_CERTIFICATE_PASSWORD";
+
+    internal const string DefaultCertificatePasswordFileEnvironmentVariable =
+        "GODSWAR_SECURE_CERTIFICATE_PASSWORD_FILE";
 
     internal const string PredecessorOriginSha256 =
         "753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79";
@@ -31,6 +34,12 @@ internal sealed class SecureNetworkOptions
     public SecureGameTicketOptions Tickets { get; set; } = new();
 
     public SecureUdpOptions Udp { get; set; } = new();
+
+    [JsonIgnore]
+    public SecurePhase4AcceptanceFaultOptions Phase4AcceptanceFaults
+    {
+        get;
+    } = new();
 
     public string CertificatePath { get; set; } = string.Empty;
 
@@ -83,13 +92,12 @@ internal sealed class SecureNetworkOptions
             "GODSWAR_SECURE_TICKET_CAPACITY",
             Tickets.Capacity);
         Udp.ApplyEnvironment();
+        Phase4AcceptanceFaults.ApplyEnvironment();
         CertificatePath = ReadString(
             "GODSWAR_SECURE_CERTIFICATE_PATH",
             CertificatePath);
-        CertificatePassword =
-            Environment.GetEnvironmentVariable(
-                DefaultCertificatePasswordEnvironmentVariable)
-            ?? CertificatePassword;
+        CertificatePassword = ResolveCertificatePassword(
+            CertificatePassword);
 
         var allowedBuilds =
             Environment.GetEnvironmentVariable(
@@ -132,6 +140,7 @@ internal sealed class SecureNetworkOptions
             throw new InvalidDataException(
                 "Secure.Udp.GameplayMovementEnabled requires Secure.Udp.Enabled.");
         }
+        Phase4AcceptanceFaults.Validate(this);
         CertificatePath = CertificatePath?.Trim() ?? string.Empty;
 
         if (!Enabled)
@@ -189,7 +198,9 @@ internal sealed class SecureNetworkOptions
         if (string.IsNullOrEmpty(CertificatePassword))
         {
             throw new InvalidDataException(
-                $"Secure networking requires a nonempty PKCS#12 password supplied through {DefaultCertificatePasswordEnvironmentVariable}.");
+                "Secure networking requires a nonempty PKCS#12 password " +
+                $"supplied through {DefaultCertificatePasswordEnvironmentVariable} " +
+                $"or {DefaultCertificatePasswordFileEnvironmentVariable}.");
         }
     }
 

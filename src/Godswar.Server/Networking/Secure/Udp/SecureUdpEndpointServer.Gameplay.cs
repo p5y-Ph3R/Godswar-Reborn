@@ -24,6 +24,11 @@ internal sealed partial class SecureUdpEndpointServer
                 {
                     return;
                 }
+                if (_phase4AcceptanceFaults?.ShouldDropSnapshot(
+                        dispatch.Value) == true)
+                {
+                    continue;
+                }
 
                 payload.AsSpan().Clear();
                 datagram.AsSpan().Clear();

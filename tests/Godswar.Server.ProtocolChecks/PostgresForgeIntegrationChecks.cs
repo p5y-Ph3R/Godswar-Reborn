@@ -20,6 +20,7 @@ internal static class PostgresForgeIntegrationChecks
         var username = $"forge_sec_{token}";
         var characterName = $"Forge{token}";
         int? accountId = null;
+        int? characterId = null;
 
         try
         {
@@ -38,6 +39,7 @@ internal static class PostgresForgeIntegrationChecks
                     Profession = 0,
                     Silver = 1_000
                 });
+            characterId = character.Id;
 
             character = await storeA.MoveEquipmentToKitBagAsync(
                     account.Id,
@@ -229,7 +231,12 @@ internal static class PostgresForgeIntegrationChecks
         {
             if (accountId.HasValue)
             {
-                await DeleteTestAccountAsync(connectionString, accountId.Value, username);
+                await PostgresIntegrationFixtureCleanup.DeleteAccountAndAuditsAsync(
+                    connectionString,
+                    accountId.Value,
+                    username,
+                    characterId,
+                    "forge-consume");
             }
         }
     }
@@ -299,21 +306,5 @@ internal static class PostgresForgeIntegrationChecks
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("slotIndex", checked((short)kitBagSlot));
         Check.Equal(1, await command.ExecuteNonQueryAsync(), "test equipment quality/grade boundary seeded");
-    }
-
-    private static async Task DeleteTestAccountAsync(
-        string connectionString,
-        int accountId,
-        string username)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("""
-            DELETE FROM accounts
-            WHERE id = @accountId AND username = @username;
-            """, connection);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("username", username);
-        await command.ExecuteNonQueryAsync();
     }
 }
