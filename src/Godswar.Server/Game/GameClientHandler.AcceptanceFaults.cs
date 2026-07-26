@@ -21,4 +21,22 @@ internal sealed partial class GameClientHandler
                 connectionId,
                 ingress);
     }
+
+    private void ConfirmPhase4AcceptanceCorrectionWrite(
+        ulong inputId)
+    {
+        var context = _session.SecureConnectionContext;
+        if (_phase4AcceptanceFaults is null ||
+            context is null ||
+            !SecureUdpConnectionKey.TryCreate(
+                context.ConnectionId.Span,
+                out var connectionId) ||
+            !_phase4AcceptanceFaults.ConfirmReliableCorrectionWrite(
+                connectionId,
+                inputId))
+        {
+            throw new InvalidOperationException(
+                "Acceptance correction write confirmation was rejected.");
+        }
+    }
 }

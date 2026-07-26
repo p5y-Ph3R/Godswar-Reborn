@@ -53,6 +53,7 @@ internal sealed class SecurePhase4AcceptanceFaults
     private int _recordedDroppedSnapshots;
     private int _forcedCorrections;
     private bool _hasSelectedConnection;
+    private bool _correctionWritePending;
     private bool _tlsFallbackObserved;
     private bool _tlsNoSwitchbackObserved;
     private bool _expired;
@@ -174,8 +175,6 @@ internal sealed class SecurePhase4AcceptanceFaults
 
         var primary =
             (SecurePhase4AcceptanceFaultEvidence?)null;
-        var secondary =
-            (SecurePhase4AcceptanceFaultEvidence?)null;
         var force = false;
         lock (_gate)
         {
@@ -206,18 +205,13 @@ internal sealed class SecurePhase4AcceptanceFaults
                 }
 
                 if (_forcedCorrections == 0 &&
+                    !_correctionWritePending &&
                     ingress.Input.InputId >
                         _triggerAcknowledgedInputId)
                 {
-                    _forcedCorrections = 1;
                     _forcedInputId = ingress.Input.InputId;
-                    _state =
-                        SecurePhase4AcceptanceFaultState
-                            .CorrectionForced;
+                    _correctionWritePending = true;
                     force = true;
-                    secondary =
-                        SecurePhase4AcceptanceFaultEvidence
-                            .CorrectionForced;
                 }
                 else if (_forcedCorrections == 1 &&
                          !_tlsNoSwitchbackObserved &&
@@ -228,7 +222,7 @@ internal sealed class SecurePhase4AcceptanceFaults
                     _state =
                         SecurePhase4AcceptanceFaultState
                             .Complete;
-                    secondary =
+                    primary =
                         SecurePhase4AcceptanceFaultEvidence
                             .TlsNoSwitchbackObserved;
                 }
@@ -236,8 +230,42 @@ internal sealed class SecurePhase4AcceptanceFaults
         }
 
         Record(primary);
-        Record(secondary);
         return force;
+    }
+
+    internal bool ConfirmReliableCorrectionWrite(
+        SecureUdpConnectionKey connectionId,
+        ulong inputId)
+    {
+        SecurePhase4AcceptanceFaultEvidence? evidence = null;
+        var confirmed = false;
+        lock (_gate)
+        {
+            if (TryExpireLocked(_timeProvider.GetUtcNow()))
+            {
+                evidence =
+                    SecurePhase4AcceptanceFaultEvidence
+                        .CampaignExpired;
+            }
+            else if (MatchesSelected(connectionId) &&
+                     _correctionWritePending &&
+                     _forcedCorrections == 0 &&
+                     inputId == _forcedInputId)
+            {
+                _correctionWritePending = false;
+                _forcedCorrections = 1;
+                _state =
+                    SecurePhase4AcceptanceFaultState
+                        .CorrectionForced;
+                evidence =
+                    SecurePhase4AcceptanceFaultEvidence
+                        .CorrectionForced;
+                confirmed = true;
+            }
+        }
+
+        Record(evidence);
+        return confirmed;
     }
 
     internal SecurePhase4AcceptanceFaultSnapshot GetSnapshot()

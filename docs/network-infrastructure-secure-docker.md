@@ -179,7 +179,12 @@ snapshot, waits for server teardown, and deletes the fixture:
 
 The probe refuses non-loopback endpoints and any database other than
 `godswar_secure_dev`; it has a 20-second default deadline and never prints its
-random credential. Final Phase 4 acceptance still requires the original
-launcher to move through the authoritative path, exercise forced TLS fallback,
-cover map/mount/revive and UDP block/unblock parity, reconnect, and complete
-the normal soak while the Docker container remains healthy.
+random credential. Final Phase 4 acceptance first keeps this profile healthy
+while the receipt-bound client campaign applies, then temporarily stops only
+Docker `server`. The current Release runs Baseline, Fallback, and ten-minute
+Soak profiles in the foreground against the same Docker PFX/password file and
+`godswar_secure_dev`; PostgreSQL remains healthy. Fallback uses the one-shot
+logical snapshot-ACK-drop campaign. Do not disable Norton, change Windows
+Firewall, alter adapters/routes, or interrupt the machine's internet
+connection. Restart and revalidate this exact secure-Docker profile before
+the receipt-bound client/hosts/root campaign Restore.

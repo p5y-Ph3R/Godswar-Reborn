@@ -146,6 +146,9 @@ internal static partial class SecurePhase4AcceptanceFaultChecks
                 SecureRealtimeMovementIngressKind.Input,
                 epoch: 2,
                 inputId: 2));
+        completion.ConfirmReliableCorrectionWrite(
+            selected,
+            inputId: 2);
         completion.ShouldForceCorrection(
             selected,
             CreateIngress(

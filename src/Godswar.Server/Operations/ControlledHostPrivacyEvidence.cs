@@ -17,7 +17,9 @@ internal enum ControlledHostEvidenceEvent : byte
     Phase4FaultCampaignExpired = 10,
     SecureServerStopping = 11,
     TlsPolicyAccepted = 12,
-    AcceptedSecurePrefaceResponseWritten = 13
+    AcceptedSecurePrefaceResponseWritten = 13,
+    AuthoritativeUdpMovementAccepted = 14,
+    AuthoritativeUdpSnapshotQueued = 15
 }
 
 internal static class ControlledHostPrivacyEvidence
@@ -138,6 +140,12 @@ internal static class ControlledHostPrivacyEvidence
             ControlledHostEvidenceEvent
                     .AcceptedSecurePrefaceResponseWritten =>
                 "[controlled-host] accepted secure preface response written",
+            ControlledHostEvidenceEvent
+                    .AuthoritativeUdpMovementAccepted =>
+                "[secure-acceptance] authoritative UDP movement accepted",
+            ControlledHostEvidenceEvent
+                    .AuthoritativeUdpSnapshotQueued =>
+                "[secure-acceptance] authoritative UDP snapshot queued",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(evidence),
                 evidence,
@@ -147,7 +155,7 @@ internal static class ControlledHostPrivacyEvidence
     private sealed class ControlledHostPrivacyEvidenceSession :
         IDisposable
     {
-        private const int MaximumEvidenceEvents = 14;
+        private const int MaximumEvidenceEvents = 16;
         private const int MaximumEvidenceBytes = 1_536;
 
         private readonly object _gate = new();

@@ -139,6 +139,13 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             character.PositionX == 0.5f &&
             character.PositionZ == 0.25f,
             "forced correction leaves authoritative position unchanged");
+        var pendingEvidence = faults.GetSnapshot();
+        Check.True(
+            pendingEvidence.ForcedCorrections == 0 &&
+            pendingEvidence.State ==
+                SecurePhase4AcceptanceFaultState
+                    .AwaitingTlsFallback,
+            "correction intent is not counted before reliable egress");
 
         var correctionSnapshot = transport.Snapshots.Last();
         Check.True(
@@ -159,6 +166,13 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             transport.TakeClearLegacyWrites()
                 .SequenceEqual(reliableCorrection),
             "forced correction is delivered on the reliable TLS stream");
+        var deliveredEvidence = faults.GetSnapshot();
+        Check.True(
+            deliveredEvidence.ForcedCorrections == 1 &&
+            deliveredEvidence.State ==
+                SecurePhase4AcceptanceFaultState
+                    .CorrectionForced,
+            "successful reliable write commits correction evidence");
 
         transport.EnqueueMovement(
             CreateIngress(
@@ -197,6 +211,105 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             evidence.ForcedCorrections == 1 &&
             evidence.TlsNoSwitchbackObserved,
             "handler path completes one fallback and one correction");
+
+        registry.Remove(session);
+    }
+
+    private static async Task
+        CheckFailedAcceptanceCorrectionEgressAsync()
+    {
+        await using var transport =
+            new RealtimeMovementControlTransport();
+        await using var session =
+            new ClientSession(transport);
+        var character = CreateCharacter(
+            CharacterId + 31,
+            AccountId + 31,
+            "RealtimeFailedFaultEgress");
+        var registry = new GameSessionRegistry();
+        registry.InitializeMapMonsters(
+            character.CurrentMap,
+            [],
+            TestTime);
+        registry.JoinMap(
+            session,
+            character.AccountId,
+            character,
+            WorldObjectIds.ForPlayer(character.Id));
+        var faults = new SecurePhase4AcceptanceFaults(
+            new ManualTimeProvider());
+        var handler = CreateReadyHandler(
+            session,
+            registry,
+            character,
+            faults);
+
+        await ProcessTickAsync(handler);
+        var initial = transport.Snapshots.Single();
+        transport.EnqueueMovement(
+            CreateIngress(
+                SecureRealtimeTransportSource.Udp,
+                SecureRealtimeMovementIngressKind.Input,
+                transportEpoch: 1,
+                inputId: 1,
+                initial.WorldGeneration,
+                legacyState: 0xCAFE_0001,
+                x: 0.5f,
+                z: 0.25f,
+                TimeSpan.FromMilliseconds(100)));
+        await ProcessTickAsync(handler);
+        Check.True(
+            SecureUdpConnectionKey.TryCreate(
+                transport.ConnectionContext.ConnectionId.Span,
+                out var connectionId),
+            "failed-egress test maps its secure connection ID");
+        Check.True(
+            faults.ShouldDropSnapshot(
+                new SecureRealtimeSnapshotDispatch(
+                    connectionId,
+                    new IPEndPoint(IPAddress.Loopback, 7444),
+                    BindingRevision: 1,
+                    transport.Snapshots.Last())),
+            "failed-egress test arms the acceptance campaign");
+
+        transport.EnqueueMovement(
+            CreateIngress(
+                SecureRealtimeTransportSource.Tls,
+                SecureRealtimeMovementIngressKind.Input,
+                transportEpoch: 2,
+                inputId: 2,
+                initial.WorldGeneration,
+                legacyState: 0xBEEF_0002,
+                x: 0.75f,
+                z: 0.5f,
+                TimeSpan.FromMilliseconds(200)));
+        var effects = await ProcessTickAsync(handler);
+        Check.True(
+            GetEffectPacket(
+                effects,
+                "ReliableCorrection") is not null,
+            "failed-egress setup produces a reliable correction");
+
+        transport.FailNextWrite();
+        Exception? failure = null;
+        try
+        {
+            await PublishEffectsAsync(handler, effects);
+        }
+        catch (Exception error)
+        {
+            failure = error;
+        }
+        Check.True(
+            failure is IOException,
+            "failed reliable correction write reaches the handler");
+        var evidence = faults.GetSnapshot();
+        Check.True(
+            evidence.ForcedCorrections == 0 &&
+            evidence.State ==
+                SecurePhase4AcceptanceFaultState
+                    .AwaitingTlsFallback,
+            "failed reliable write cannot commit correction evidence");
 
         registry.Remove(session);
     }

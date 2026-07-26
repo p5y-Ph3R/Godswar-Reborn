@@ -283,6 +283,33 @@ internal static partial class SecurePhase4AcceptanceFaultChecks
             forcedCalls,
             "concurrent fallback delivery forces exactly one correction");
 
+        var pending = faults.GetSnapshot();
+        Check.True(
+            pending.State ==
+                SecurePhase4AcceptanceFaultState
+                    .AwaitingTlsFallback &&
+            pending.ForcedCorrections == 0 &&
+            !pending.TlsNoSwitchbackObserved,
+            "correction intent is not evidence before reliable egress");
+        Check.True(
+            !faults.ShouldForceCorrection(
+                selected,
+                CreateIngress(
+                    SecureRealtimeTransportSource.Tls,
+                    SecureRealtimeMovementIngressKind.Input,
+                    epoch: 2,
+                    inputId: 3)),
+            "movement cannot complete fallback while correction egress is pending");
+        Check.True(
+            faults.ConfirmReliableCorrectionWrite(
+                selected,
+                correctionIngress.Input.InputId),
+            "successful reliable correction egress is confirmed once");
+        Check.True(
+            !faults.ConfirmReliableCorrectionWrite(
+                selected,
+                correctionIngress.Input.InputId),
+            "repeated correction egress confirmation is rejected");
         Check.True(
             !faults.ShouldForceCorrection(
                 selected,

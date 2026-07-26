@@ -1,71 +1,82 @@
-# Controlled-host offline gates
+# Phase 4 controlled-host offline gates
 
-Run the common variable/pin block from the
-[command reference](network-infrastructure-controlled-host-commands.md) first.
-Use an ordinary `powershell.exe -NoLogo -NoProfile`.
+Run these from an ordinary `powershell.exe -NoLogo -NoProfile` before client
+Apply. They are read-only except for ordinary build outputs and bounded test
+fixtures. The secure-Docker server and PostgreSQL must already be healthy.
 
-## Build, managed integration, native, and transaction suites
+## Build and focused suites
 
 ```powershell
-dotnet build .\src\Godswar.Server\Godswar.Server.csproj --configuration Release
+Set-Location C:\Reborn
+$ErrorActionPreference='Stop'
+
+dotnet build .\src\Godswar.Server\Godswar.Server.csproj `
+ --configuration Release
 if($LASTEXITCODE){throw 'Managed Release build failed.'}
-.\tools\RunControlledHostPostgresProtocolChecks.ps1 `
- -ExpectedDatabaseName $dbName -PostgresConnectionSecretPath $pgSecret `
- -ExpectedPostgresConnectionSecretSha256 $pins[11][1]
-.\tools\TestClientNetworkShim.ps1
-.\tools\TestControlledHostPrivacyEvidence.ps1
-.\tools\TestControlledHostActivationSecurity.ps1
-.\tools\TestControlledHostCleanupPolicy.ps1
-.\tools\TestControlledHostDatabaseBackup.ps1
-.\tools\TestControlledHostFinalCleanupDependencies.ps1
-.\tools\TestControlledHostManagedRelease.ps1
-.\tools\TestControlledHostRuntimeCleanup.ps1
-.\tools\TestControlledHostServerValidation.ps1
-.\tools\TestDevelopmentEndpointManifestKeyRemoval.ps1
-.\tools\TestDevelopmentNetworkHosts.ps1
-.\tools\TestDevelopmentNetworkHostsAcl.ps1
-.\tools\TestDevelopmentNetworkHostsHardLinks.ps1
-.\tools\TestDevelopmentNetworkHostsRuntimeGate.ps1
-.\tools\TestDevelopmentNetworkTrustReceipt.ps1
-.\tools\TestSecureNetworkActivationCommit.ps1
-.\tools\TestSecureNetworkBundleRestoreState.ps1
-.\tools\TestSecureNetworkBundleTransaction.ps1
-.\tools\TestSecureNetworkOperationLock.ps1
-.\tools\TestControlledHostInstalledCertificateValidation.ps1 `
- -ServerAssemblyPath $server -CertificatePath $pfx `
- -RootCertificatePath $rootCer -TrustReceiptPath $trustSource `
- -CertificatePasswordSecretPath $certSecret
-$runtimeSource=& .\tools\PrepareControlledHostServerRuntime.ps1 @runtimeArgs `
- -Mode Status
-if($runtimeSource.State -cne 'SourceVerified' -or
-   $runtimeSource.RuntimeRoot -cne $runtime -or $runtimeSource.Elevated){
- throw 'Controlled-host runtime source preflight failed.'
-}
+
+dotnet run --project .\tests\Godswar.Server.ProtocolChecks `
+ --configuration Release
+if($LASTEXITCODE){throw 'Managed protocol checks failed.'}
+
+& .\tools\TestClientNetworkShim.ps1
+& .\tools\RestorePhase4AcceptedNetworkShimArtifacts.ps1
+& .\tools\TestControlledHostPrivacyEvidence.ps1
+& .\tools\TestControlledHostActivationSecurity.ps1
+& .\tools\TestPhase4SecureDockerClientCampaign.ps1
+& .\tools\TestPhase4LoopbackAcceptanceRunner.ps1
+& .\tools\TestSecureDockerProfile.ps1
 ```
 
-The PostgreSQL wrapper builds the protocol-check project before decrypting the
-secret, validates literal `127.0.0.1:5432` plus the exact disposable database,
-sets the connection only in process environment for the child, runs all `131`
-checks including the ten environment-gated PostgreSQL integrations plus the
-static migration-foundation check, and clears it in `finally`. Require the
-literal `Protocol checks: 131 passed, 0 failed` summary and no PostgreSQL
-`SKIP` line.
+Require zero build warnings/errors, the complete protocol-check pass summary,
+native client checks, accepted-artifact restore/probes, the privacy-evidence
+profile tests, the repeatable Apply/Restore campaign tests, the isolated
+loopback-runner profile/result tests, and both rendered Docker-profile checks.
+
+`TestClientNetworkShim.ps1` deliberately builds and tests the checked-in
+source with the public-key placeholder header; that source build is not the
+accepted signed Phase 4 client candidate. Immediately afterward,
+`RestorePhase4AcceptedNetworkShimArtifacts.ps1` atomically restores exact
+reviewed artifacts from the immutable `20260727-011921` fixture:
+
+```text
+source placeholder Net.dll  BEB6ED3A0582C1F2D1C64D548C143C690ED3BEED0D3208AB8812F10210BBD5BD
+accepted signed Net.dll     0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B
+accepted native checks      D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0
+```
+
+The restore tool rechecks those source hashes and the signed manifest, then
+runs the accepted offline, manifest-verification, and stock-delegation probes.
+Do not run another native source build between that restore and campaign
+Status/Apply.
+
+The Phase 4 campaign test uses temporary paths and synthetic Docker inspection
+objects. It must not modify the live client, CurrentUser root store, hosts
+file, HKLM activation, Docker containers, or firewall.
 
 ## Parser, diff, JSON, and repository-size gates
 
 ```powershell
 $parseFailures=@()
-Get-ChildItem .\tools -Recurse -File|? Extension -in '.ps1','.psm1'|%{
- $tokens=$null;$errors=$null
- [Management.Automation.Language.Parser]::ParseFile(
-  $_.FullName,[ref]$tokens,[ref]$errors)|Out-Null
- foreach($error in $errors){$parseFailures+="$(($_.FullName)): $($error.Message)"}
+Get-ChildItem .\tools -Recurse -File |
+ Where-Object Extension -in '.ps1','.psm1' |
+ ForEach-Object {
+  $tokens=$null
+  $errors=$null
+  [Management.Automation.Language.Parser]::ParseFile(
+   $_.FullName,[ref]$tokens,[ref]$errors)|Out-Null
+  foreach($error in $errors){
+   $parseFailures+="$(($_.FullName)): $($error.Message)"
+  }
+ }
+if($parseFailures.Count){
+ throw ($parseFailures -join [Environment]::NewLine)
 }
-if($parseFailures.Count){throw ($parseFailures -join [Environment]::NewLine)}
+
 & git diff --check
 if($LASTEXITCODE){throw 'git diff --check failed.'}
 & git diff --cached --check
 if($LASTEXITCODE){throw 'git diff --cached --check failed.'}
+
 Get-Content .\appsettings.json -Raw|ConvertFrom-Json|Out-Null
 Get-Content .\appsettings.docker.json -Raw|ConvertFrom-Json|Out-Null
 
@@ -85,67 +96,65 @@ foreach($relative in @($paths|Sort-Object -Unique)){
   $oversized+="$relative projectedBytes=$projected lines=$lines"
  }
 }
-if($oversized.Count){throw ($oversized -join [Environment]::NewLine)}
+if($oversized.Count){
+ throw ($oversized -join [Environment]::NewLine)
+}
 ```
 
-## Process, listener, hosts, and activation baseline
+## Exact safe-disabled runtime baseline
 
 ```powershell
 if(@(Get-Process Origin -ErrorAction SilentlyContinue).Count){
- throw 'Origin.exe must be closed before controlled-host preparation.'
+ throw 'Origin.exe must be closed before Phase 4 Apply.'
 }
-if(@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|? `
- LocalPort -in 6599,7443).Count -or
-   @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue|? LocalPort -eq 7444).Count){
- throw 'A secure acceptance listener is already active.'
+
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -notin @('Ready','Restored') -or
+   $status.DockerState -cne 'HealthyExact' -or
+   $status.BundleState -cne 'Stock' -or
+   $status.HostsState -cne 'Absent' -or
+   $status.RootState -cne 'Absent' -or
+   $status.ActivationMode -ne 0 -or
+   $status.ActivationEnvironment -ne 1 -or
+   $status.SequenceFloor -ne 3 -or
+   $status.ManifestSequence -ne 3){
+ throw 'Phase 4 safe-disabled baseline is not exact.'
 }
-if((& docker inspect -f '{{.State.Running}}' godswar-server).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Running}}' godswar-postgres).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Health.Status}}' godswar-postgres).Trim() -cne
-    'healthy'){
- throw 'The original Docker server/PostgreSQL baseline is not healthy.'
+
+$keys=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 -Mode Status
+if($keys.CurrentExists -or $keys.NextExists -or
+   $keys.PrivateKeysExportable){
+ throw 'Development signing keys must remain absent.'
 }
-$raw=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|? `
- LocalPort -in 5998,5999,7000)
-foreach($port in 5998,7000){
- $match=@($raw|? LocalPort -eq $port)
- if($match.Count -ne 1 -or $match[0].LocalAddress -cne '127.1.1.110'){
-  throw "Original raw listener $port is not exact."
- }
+
+$candidate='C:\Reborn\client\network-shim\bin\Release\Win32\Net.dll'
+$checks=(
+ 'C:\Reborn\client\network-shim\bin\Release\Win32\' +
+ 'Godswar.NetShim.Checks.exe')
+$candidateSha=(Get-FileHash $candidate -Algorithm SHA256).Hash
+$checksSha=(Get-FileHash $checks -Algorithm SHA256).Hash
+if($candidateSha -cne
+   '0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B' -or
+   $checksSha -cne
+   'D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0'){
+ throw 'Accepted native Phase 4 outputs changed.'
 }
-if(@($raw|? LocalPort -eq 5999).Count){
- throw 'Unexpected raw listener 5999 exists before acceptance.'
-}
-$hosts='C:\Windows\System32\drivers\etc\hosts'
-if((Get-FileHash $hosts -Algorithm SHA256).Hash -cne $expectedHosts){
- throw 'Original hosts bytes changed before acceptance.'
-}
-$hostsStatus=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Status
-if($hostsStatus.State -cne 'Absent' -or $hostsStatus.ReceiptExists){
- throw 'A development hosts transaction is already active.'
-}
-if(Test-Path 'HKLM:\SOFTWARE\Reborn\NetworkManifest'){
- throw 'Secure-network HKLM activation is already present.'
-}
-if(Test-Path $runtime){
- throw 'The controlled-host protected runtime already exists.'
-}
-$candidateActual=(Get-FileHash $candidate -Algorithm SHA256).Hash
-$checksActual=(Get-FileHash $nativeChecks -Algorithm SHA256).Hash
-if($candidateActual -cne $pins[1][1] -or $checksActual -cne $pins[2][1]){
- throw 'Native output changed after reproducibility checks.'
-}
-$release=Get-RebornControlledHostManagedReleaseSet $managed
-$managedSetSha=$release.SetSha256
-$serverSha=(Get-FileHash $server -Algorithm SHA256).Hash
-$optionsSha=(Get-FileHash $options -Algorithm SHA256).Hash
+
+& .\tools\InvokeSecureDockerSmoke.ps1 `
+ -RootCertificatePath `
+ 'C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921\tls\reborn-development-root.cer'
+
 [pscustomobject]@{
  Result='OfflineGatesPassed'
- ManagedReleaseSetSha256=$managedSetSha
- ServerSha256=$serverSha
- OptionsSha256=$optionsSha
- CandidateSha256=$candidateActual
- NativeChecksSha256=$checksActual
- HostsSha256=$expectedHosts
+ CampaignState=$status.State
+ DockerState=$status.DockerState
+ SequenceFloor=$status.SequenceFloor
+ CandidateSha256=$candidateSha
+ NativeChecksSha256=$checksSha
+ SigningKeysPresent=$false
 }|Format-List
 ```
+
+The smoke is the machine-verifiable secure-Docker reference baseline. The
+original-client Baseline, Fallback, and Soak profiles are separate foreground
+gates and still require the manual acceptance matrix.

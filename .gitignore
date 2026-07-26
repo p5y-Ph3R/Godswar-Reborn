@@ -30,6 +30,7 @@ coverage/
 # Generated and captured research output
 artifacts/
 captures/
+phase4-completion/
 .tmp*
 client/network-shim/diagnostics/
 **/__pycache__/

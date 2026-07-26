@@ -11,12 +11,14 @@ Import-Module (
 $script:MaximumEvidenceBytes = 1536
 $script:AllowedEvidenceLines = @(
     '[controlled-host] privacy-safe evidence channel started',
+    '[secure-acceptance] phase4 fault campaign enabled',
     '[controlled-host] secure listeners ready',
     '[controlled-host] TLS policy accepted',
     '[controlled-host] accepted secure preface response written',
     '[controlled-host] TLS client authenticated',
     '[controlled-host] UDP endpoint authenticated and bound',
-    '[secure-acceptance] phase4 fault campaign enabled',
+    '[secure-acceptance] authoritative UDP movement accepted',
+    '[secure-acceptance] authoritative UDP snapshot queued',
     '[secure-acceptance] snapshot ACK drop started window_ms=1500 max_recorded_drops=32',
     '[secure-acceptance] snapshot ACK drop window completed',
     '[secure-acceptance] one-way TLS fallback observed',
@@ -24,6 +26,33 @@ $script:AllowedEvidenceLines = @(
     '[secure-acceptance] post-fallback TLS movement observed no_switchback=true',
     '[secure-acceptance] phase4 fault campaign expired',
     '[controlled-host] secure server stopping'
+)
+$script:RequiredProfileEvidenceLines = @(
+    '[controlled-host] privacy-safe evidence channel started',
+    '[controlled-host] secure listeners ready',
+    '[controlled-host] TLS policy accepted',
+    '[controlled-host] accepted secure preface response written',
+    '[controlled-host] TLS client authenticated',
+    '[controlled-host] UDP endpoint authenticated and bound',
+    '[secure-acceptance] authoritative UDP movement accepted',
+    '[secure-acceptance] authoritative UDP snapshot queued',
+    '[controlled-host] secure server stopping'
+)
+$script:FaultEvidenceLines = @(
+    '[secure-acceptance] phase4 fault campaign enabled',
+    '[secure-acceptance] snapshot ACK drop started window_ms=1500 max_recorded_drops=32',
+    '[secure-acceptance] snapshot ACK drop window completed',
+    '[secure-acceptance] one-way TLS fallback observed',
+    '[secure-acceptance] authoritative correction forced reason=not_ready',
+    '[secure-acceptance] post-fallback TLS movement observed no_switchback=true',
+    '[secure-acceptance] phase4 fault campaign expired'
+)
+$script:RequiredFallbackEvidenceLines = @(
+    $script:FaultEvidenceLines[0],
+    $script:FaultEvidenceLines[1],
+    $script:FaultEvidenceLines[3],
+    $script:FaultEvidenceLines[4],
+    $script:FaultEvidenceLines[5]
 )
 
 function New-RebornControlledHostEvidencePath {
@@ -51,6 +80,9 @@ function New-RebornControlledHostEvidencePath {
 function Assert-RebornControlledHostPrivacyEvidence {
     param(
         [Parameter(Mandatory)][string]$Path,
+        [ValidateSet('None', 'Baseline', 'Fallback', 'Soak')]
+        [string]$Profile = 'None',
+        [TimeSpan]$ObservedDuration = [TimeSpan]::MinValue,
         [switch]$RequireStopped
     )
 
@@ -96,6 +128,16 @@ function Assert-RebornControlledHostPrivacyEvidence {
                 'duplicate event.')
         }
     }
+    $previousEventIndex = -1
+    foreach ($line in $lines) {
+        $eventIndex = [Array]::IndexOf(
+            [string[]]$script:AllowedEvidenceLines,
+            [string]$line)
+        if ($eventIndex -le $previousEventIndex) {
+            throw 'Controlled-host evidence events are out of order.'
+        }
+        $previousEventIndex = $eventIndex
+    }
     if ($lines[0] -cne
         '[controlled-host] privacy-safe evidence channel started') {
         throw 'Controlled-host evidence does not start at the privacy gate.'
@@ -104,6 +146,36 @@ function Assert-RebornControlledHostPrivacyEvidence {
         $lines[-1] -cne
         '[controlled-host] secure server stopping') {
         throw 'Controlled-host evidence lacks the final stopping event.'
+    }
+    if ($Profile -ne 'None') {
+        foreach ($requiredLine in $script:RequiredProfileEvidenceLines) {
+            if (-not $seen.Contains($requiredLine)) {
+                throw "Controlled-host $Profile evidence lacks a required event."
+            }
+        }
+        if ($Profile -eq 'Fallback') {
+            foreach ($requiredLine in
+                $script:RequiredFallbackEvidenceLines) {
+                if (-not $seen.Contains($requiredLine)) {
+                    throw 'Controlled-host Fallback evidence is incomplete.'
+                }
+            }
+            if ($seen.Contains($script:FaultEvidenceLines[-1])) {
+                throw 'Controlled-host Fallback evidence expired.'
+            }
+        }
+        else {
+            foreach ($faultLine in $script:FaultEvidenceLines) {
+                if ($seen.Contains($faultLine)) {
+                    throw "Controlled-host $Profile evidence contains a fault event."
+                }
+            }
+        }
+
+        if ($Profile -eq 'Soak' -and
+            $ObservedDuration -lt [TimeSpan]::FromMinutes(10)) {
+            throw 'Controlled-host Soak evidence is shorter than 10 minutes.'
+        }
     }
 
     [pscustomobject]@{
@@ -114,6 +186,14 @@ function Assert-RebornControlledHostPrivacyEvidence {
         Stopped =
             $lines[-1] -ceq
                 '[controlled-host] secure server stopping'
+        Profile = $Profile
+        ObservedDurationSeconds =
+            if ($ObservedDuration -eq [TimeSpan]::MinValue) {
+                $null
+            }
+            else {
+                $ObservedDuration.TotalSeconds
+            }
     }
 }
 

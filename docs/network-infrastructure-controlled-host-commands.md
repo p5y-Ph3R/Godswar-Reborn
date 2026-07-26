@@ -1,419 +1,363 @@
-# Controlled-host acceptance command reference
+# Phase 4 controlled-host command reference
 
 Use this only with the
-[controlled-host acceptance runbook](network-infrastructure-controlled-host-acceptance.md).
-Every command is fail-closed and local to the fixed disposable fixture.
+[Phase 4 controlled-host acceptance runbook](network-infrastructure-controlled-host-acceptance.md).
+The current campaign is repeatable and remains limited to the disposable
+client, exact loopback endpoints, `godswar_secure_dev`, and the protected
+campaign receipt.
 
-## Common variables and pins
+Do not disable Norton or Windows Firewall, add a firewall rule, change a
+network adapter or route, or stop PostgreSQL. Do not run the original
+launcher/patcher. The only client executable used here is
+`C:\RebornNetworkAcceptanceClient\Origin.exe`.
 
-Start each console with the required token stated by the relevant gate:
+## Gate 1: offline and secure-Docker baseline
+
+From an ordinary `powershell.exe -NoLogo -NoProfile`:
 
 ```powershell
 Set-Location C:\Reborn
 $ErrorActionPreference='Stop'
-$dbName='godswar_secure_acceptance_20260727_011921'
-$fixture='C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921'
-$tls=Join-Path $fixture 'tls'
-$dump='C:\Reborn\artifacts\controlled-host-acceptance\20260726-141154\godswar-20260726-141154.dump'
-$managed='C:\Reborn\src\Godswar.Server\bin\Release\net10.0'
-$options='C:\Reborn\appsettings.json'
-$server=Join-Path $managed 'Godswar.Server.dll'
-$pfx=Join-Path $tls 'reborn-development-server.pfx'
-$rootCer=Join-Path $tls 'reborn-development-root.cer'
-$trustSource=Join-Path $tls 'current-user-trust-receipt.json'
-$certSecret=Join-Path $tls 'certificate-password.dpapi.clixml'
-$pgSecret=Join-Path $tls 'postgres-connection.dpapi.clixml'
-$manifest='C:\Reborn\artifacts\secure-network\RebornNetwork.gwem'
-$manifestTrust='C:\Reborn\artifacts\secure-network\development-manifest-trust.json'
-$nextTrust='C:\Reborn\artifacts\secure-network\development-manifest-next-trust.json'
-$keyReceiptSource='C:\Reborn\artifacts\secure-network\development-manifest-key-receipt.json'
-$candidate='C:\Reborn\client\network-shim\bin\Release\Win32\Net.dll'
-$nativeChecks='C:\Reborn\client\network-shim\bin\Release\Win32\Godswar.NetShim.Checks.exe'
-$header='C:\Reborn\client\network-shim\src\SecureClientManifestDevelopmentKeys.generated.h'
-$runtime='C:\ProgramData\RebornSecureNetworkRuntime\20260727-011921'
-$evidence=Join-Path $fixture 'server-evidence'
-$expectedHosts='96B8714EAEB906C50EA8282A44C5A0A239BCAC1F723A89B5C4476957B496ADA3'
-$pins=@(
- @($dump,'7EC9775B2F6F08361F606FEC2968623573A632D2FCD02EBDD12327B6407F4AAE'),
- @($candidate,'0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B'),
- @($nativeChecks,'D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0'),
- @($manifest,'3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C'),
- @($manifestTrust,'A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07'),
- @($nextTrust,'582C252D31DE3361157C7625FB21DD104F907EA762FB77044E1CCEF2EA51E571'),
- @($keyReceiptSource,'A5C286694AA1361A8A18E9E42594A4D56563F9E4DD0563D5A464DC0941B39B50'),
- @($pfx,'C498666CC8D6ECF09DF92C217169A6F2CDA788DEDA60E5DD17B1EA9CA6C6BC0F'),
- @($rootCer,'911E3CF444B631AAB9EDCC5980DF65243CAAC42B9000C5E2410C7DADFEB54DED'),
- @($trustSource,'57FF8F9D9A5701E6AB3E79C243F69D412DE30BA085F9DAD0EED473208748BCF4'),
- @($certSecret,'58B26CCF6AE4B3311571B48F9A788B03245D8C11959BCFC79D840C9C74719A9D'),
- @($pgSecret,'C38710F43DBD73A164746F6530FF8B556F863D8D393094B8E577E932C84CABEE'),
- @($header,'D72E7E218E2DD6D1730C1A5194965600DEBECDC9232BCF3DAA86494D863519D1')
+
+& .\tools\TestClientNetworkShim.ps1
+& .\tools\RestorePhase4AcceptedNetworkShimArtifacts.ps1
+& .\tools\TestControlledHostPrivacyEvidence.ps1
+& .\tools\TestPhase4SecureDockerClientCampaign.ps1
+& .\tools\TestPhase4LoopbackAcceptanceRunner.ps1
+& .\tools\TestSecureDockerProfile.ps1
+
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -notin @('Ready','Restored')){
+ throw "Phase 4 campaign is not ready: $($status.State)"
+}
+if($status.DockerState -cne 'HealthyExact' -or
+   $status.BundleState -cne 'Stock' -or
+   $status.HostsState -cne 'Absent' -or
+   $status.RootState -cne 'Absent' -or
+   $status.ActivationMode -ne 0 -or
+   $status.ActivationEnvironment -ne 1 -or
+   $status.SequenceFloor -ne 3 -or
+   $status.ManifestSequence -ne 3){
+ throw 'Phase 4 safe-disabled baseline is not exact.'
+}
+
+$keys=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 -Mode Status
+if($keys.CurrentExists -or $keys.NextExists -or
+   $keys.PrivateKeysExportable){
+ throw 'Development signing keys must remain absent.'
+}
+
+& .\tools\InvokeSecureDockerSmoke.ps1 `
+ -RootCertificatePath `
+ 'C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921\tls\reborn-development-root.cer'
+```
+
+The smoke must authenticate through TLS, bind authenticated UDP, send one
+authoritative input, receive its acknowledged snapshot, clean up its random
+fixture, and leave secure Docker healthy with zero restarts.
+
+The accepted candidate and native-check pins are:
+
+```text
+Net.dll                    0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B
+Godswar.NetShim.Checks.exe D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0
+RebornNetwork.gwem         3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C
+```
+
+The already-signed manifest and compiled public verification keys are all the
+runtime needs. The two development CNG private signing keys are intentionally
+absent and are never recreated by this campaign.
+
+## Gate 2: receipt-bound client Apply
+
+Close `Origin.exe`. Open a fresh elevated
+`powershell.exe -NoLogo -NoProfile` under the issued user account, not SYSTEM:
+
+```powershell
+Set-Location C:\Reborn
+$ErrorActionPreference='Stop'
+
+$apply=& .\tools\ManagePhase4SecureDockerClient.ps1 `
+ -Mode Apply -AllowMutation -Confirm:$false
+if($apply.Result -notin @('InstalledExact','AlreadyInstalledExact')){
+ throw "Phase 4 Apply failed: $($apply.Result)"
+}
+
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -cne 'InstalledExact' -or
+   $status.DockerState -cne 'HealthyExact' -or
+   $status.BundleState -cne 'InstalledExact' -or
+   $status.HostsState -cne 'InstalledExact' -or
+   $status.RootState -cne 'InstalledExact' -or
+   $status.ActivationMode -ne 1 -or
+   $status.ActivationEnvironment -ne 1 -or
+   $status.SequenceFloor -ne 3 -or
+   $status.ManifestSequence -ne 3 -or
+   [string]::IsNullOrWhiteSpace($status.HandoffPath)){
+ throw 'Phase 4 installed campaign state is not exact.'
+}
+$apply,$status|Format-List
+```
+
+`Apply` keeps secure Docker running. It installs only:
+
+- the exact public development root in the issued user's CurrentUser store;
+- the checked, receipt-bound loopback hosts mapping;
+- the hash-pinned client bundle; and
+- the monotonic HKLM activation state at environment 1, mode 1, floor 3.
+
+The campaign writes independent protected cleanup authority beneath
+`C:\ProgramData\RebornSecureNetworkPhase4Docker`. Record the displayed
+campaign ID and handoff path. No reboot is needed because this operation does
+not change the already-hardened client inventory or its accepted reboot epoch.
+
+Close the elevated console.
+
+## Gate 3: Docker-to-foreground handoff
+
+First confirm the installed state from a fresh ordinary console:
+
+```powershell
+Set-Location C:\Reborn
+$ErrorActionPreference='Stop'
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -cne 'InstalledExact' -or
+   $status.DockerState -cne 'HealthyExact'){
+ throw 'Installed client or secure-Docker baseline drifted.'
+}
+```
+
+Do not launch the client yet. Stop only the secure-Docker server and leave
+PostgreSQL healthy:
+
+```powershell
+$secureCompose=@(
+ '--env-file','.env.secure.local',
+ '-f','docker-compose.yml',
+ '-f','docker-compose.secure.yml',
+ '--profile','secure'
 )
-foreach($pin in $pins){
- if(-not(Test-Path -LiteralPath $pin[0] -PathType Leaf)-or
-    (Get-FileHash -LiteralPath $pin[0] -Algorithm SHA256).Hash -cne $pin[1]){
-   throw "Pinned fixture mismatch: $($pin[0])"
- }
+& docker compose @secureCompose stop server
+if($LASTEXITCODE){throw 'Stopping secure-Docker server failed.'}
+
+$serverRunning=(& docker inspect -f '{{.State.Running}}' `
+ godswar-server).Trim()
+$postgresRunning=(& docker inspect -f '{{.State.Running}}' `
+ godswar-postgres).Trim()
+$postgresHealth=(& docker inspect -f '{{.State.Health.Status}}' `
+ godswar-postgres).Trim()
+if($serverRunning -cne 'false' -or
+   $postgresRunning -cne 'true' -or $postgresHealth -cne 'healthy'){
+ throw 'Docker-to-foreground handoff is not exact.'
 }
-Import-Module .\tools\ControlledHostManagedRelease.psm1 -Force
-$release=Get-RebornControlledHostManagedReleaseSet $managed
-$managedSetSha=$release.SetSha256
-$serverSha=(Get-FileHash $server -Algorithm SHA256).Hash
-$optionsSha=(Get-FileHash $options -Algorithm SHA256).Hash
-$runtimeArgs=@{
- ExpectedDatabaseName=$dbName;ManagedReleaseDirectory=$managed;OptionsPath=$options
- CertificatePath=$pfx;RootCertificatePath=$rootCer;TrustReceiptPath=$trustSource
- ManifestPath=$manifest;ManifestTrustPath=$manifestTrust
- ManifestKeyReceiptPath=$keyReceiptSource;NativeChecksPath=$nativeChecks
- CertificatePasswordSecretPath=$certSecret;PostgresConnectionSecretPath=$pgSecret
- ExpectedManagedReleaseSetSha256=$managedSetSha;ExpectedOptionsSha256=$optionsSha
- ExpectedCertificateSha256=$pins[7][1];ExpectedRootCertificateSha256=$pins[8][1]
- ExpectedTrustReceiptSha256=$pins[9][1];ExpectedCertificateSecretSha256=$pins[10][1]
- ExpectedPostgresSecretSha256=$pins[11][1];ExpectedManifestSha256=$pins[3][1]
- ExpectedManifestTrustSha256=$pins[4][1];ExpectedManifestKeyReceiptSha256=$pins[6][1]
- ExpectedNativeChecksSha256=$pins[2][1]
+if(@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+     Where-Object LocalPort -in 5998,5999,6599,7000,7443).Count -or
+   @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue |
+     Where-Object LocalPort -eq 7444).Count){
+ throw 'A game listener remains after secure-Docker stop.'
 }
 ```
 
-## Gate 1: ordinary-token offline verification
+If this block fails, do not start a foreground server. Restart the exact
+secure-Docker profile using the recovery block below.
 
-Run the exact
-[offline-gate commands](network-infrastructure-controlled-host-offline-gates.md)
-after the common block above. Do not continue if any check is skipped or
-fails.
+## Gate 4: Baseline evidence profile
 
-## Gate 2: protected preparation
-
-Open a fresh elevated `powershell.exe -NoLogo -NoProfile`, run the common
-block, then:
+In the same ordinary server console:
 
 ```powershell
-$prep=& .\tools\PrepareControlledHostAcceptance.ps1 `
- -DatabaseBackupPath $dump -ExpectedDatabaseBackupSha256 $pins[0][1] `
- -ClientRoot C:\RebornNetworkAcceptanceClient `
- -EvidenceDirectory (Join-Path $fixture 'client-acl') `
- -AllowPreparation -Confirm:$false
-if($prep.Result -cne 'Prepared' -or -not $prep.ClientInventoryReceiptPath -or
-   -not $prep.ClientInventoryReceiptSha256){throw 'Preparation handoff failed.'}
-$runtimePrep=& .\tools\PrepareControlledHostServerRuntime.ps1 @runtimeArgs `
- -Mode Apply -AllowRuntimeWrite -Confirm:$false
-if($runtimePrep.Result -notin @('Protected','AlreadyProtected') -or
-   $runtimePrep.RuntimeRoot -cne $runtime){throw 'Runtime preparation failed.'}
-$prep,$runtimePrep,[pscustomobject]@{
- ManagedReleaseSetSha256=$managedSetSha
- ServerSha256=$serverSha
- OptionsSha256=$optionsSha
-}|Format-List
+& .\tools\RunPhase4LoopbackAcceptanceServer.ps1 `
+ -EvidenceProfile Baseline -AllowLoopbackAcceptance
 ```
 
-Record the output, close the elevated console, and stop for operator approval
-before the mandatory reboot.
-
-## Gate 3: post-reboot ordinary-token validation
-
-Open a fresh ordinary `powershell.exe -NoLogo -NoProfile`, run the common
-block, then:
+The command remains in the foreground. In a second ordinary console, launch:
 
 ```powershell
-$id=[Security.Principal.WindowsIdentity]::GetCurrent()
-$wp=[Security.Principal.WindowsPrincipal]::new($id)
-if($wp.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
- throw 'Post-reboot validation must use an ordinary token.'
-}
-$clientStatus=& .\tools\PrepareControlledHostClient.ps1 -Mode Status `
- -ClientRoot C:\RebornNetworkAcceptanceClient
-if($clientStatus.State -cne 'Hardened' -or $clientStatus.Elevated){
- throw 'Client ACL gate failed.'
-}
-& .\tools\TestControlledHostClientAcl.ps1
-$dbStatus=& .\tools\ProtectControlledHostDatabaseBackup.ps1 -Mode Status `
- -SourcePath $dump -ExpectedSha256 $pins[0][1]
-if($dbStatus.State -cne 'Protected' -or $dbStatus.Elevated){
- throw 'Protected database gate failed.'
-}
-$runtimeStatus=& .\tools\PrepareControlledHostServerRuntime.ps1 @runtimeArgs `
- -Mode Status
-if($runtimeStatus.State -cne 'Protected' -or $runtimeStatus.Elevated){
- throw 'Protected runtime gate failed.'
-}
-& .\tools\TestControlledHostInstalledCertificateValidation.ps1 `
- -ServerAssemblyPath "$runtime\managed\Godswar.Server.dll" `
- -CertificatePath "$runtime\tls\reborn-development-server.pfx" `
- -RootCertificatePath "$runtime\tls\reborn-development-root.cer" `
- -TrustReceiptPath "$runtime\tls\current-user-trust-receipt.json" `
- -CertificatePasswordSecretPath "$runtime\tls\certificate-password.dpapi.clixml"
-$trustStatus=& .\tools\RemoveDevelopmentNetworkTrust.ps1 -Mode Status `
- -ReceiptPath "$runtime\tls\current-user-trust-receipt.json"
-if($trustStatus.State -cne 'Installed' -or -not $trustStatus.InstalledByScript){
- throw 'Staged trust authority is not Installed.'
-}
-$keyStatus=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 `
- -Mode ValidateReceipt `
- -ReceiptPath "$runtime\bundle\development-manifest-key-receipt.json" `
- -RuntimeRoot $runtime
-if($keyStatus.Result -cne 'Validated' -or
-   $keyStatus.ReceiptState -cne 'Issued' -or
-   -not $keyStatus.PublicCoordinatesBound -or
-   $keyStatus.PrivateKeysExportable){throw 'Manifest key gate failed.'}
-$dbExists=(& docker exec godswar-postgres psql -U godswar -d postgres -tAc `
- "SELECT 1 FROM pg_database WHERE datname='$dbName'").Trim()
-if($LASTEXITCODE -ne 0 -or $dbExists -cne '1'){
- throw 'Acceptance database is absent.'
-}
-if(@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|? `
- LocalPort -in 6599,7443).Count -or
-   @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue|? LocalPort -eq 7444).Count){
- throw 'A secure listener conflicts before activation.'
-}
-$hostsStatus=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Status
-if($hostsStatus.State -cne 'Absent' -or $hostsStatus.ReceiptExists -or
-   $hostsStatus.HostsSha256 -cne $expectedHosts){
- throw 'Original hosts bytes drifted after protected preparation.'
-}
-if(Test-Path 'HKLM:\SOFTWARE\Reborn\NetworkManifest'){
- throw 'HKLM activation appeared after protected preparation.'
-}
-if((& docker inspect -f '{{.State.Running}}' godswar-server).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Running}}' godswar-postgres).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Health.Status}}' godswar-postgres).Trim() -cne
-    'healthy'){
- throw 'Original Docker services did not survive reboot exactly.'
-}
-$raw=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|? `
- LocalPort -in 5998,5999,7000)
-foreach($port in 5998,7000){
- $match=@($raw|? LocalPort -eq $port)
- if($match.Count -ne 1 -or $match[0].LocalAddress -cne '127.1.1.110'){
-  throw "Post-reboot raw listener $port is not exact."
- }
-}
-if(@($raw|? LocalPort -eq 5999).Count){
- throw 'Unexpected post-reboot raw listener 5999 exists.'
-}
+Start-Process `
+ -FilePath 'C:\RebornNetworkAcceptanceClient\Origin.exe' `
+ -WorkingDirectory 'C:\RebornNetworkAcceptanceClient'
 ```
 
-## Gate 4: activation
+Perform the non-fault rows in the
+[manual acceptance matrix](network-infrastructure-controlled-host-acceptance.md#manual-acceptance-matrix),
+including five alternating account 7/13 entries, preview readiness, unmounted
+and mounted movement, map transition, death/revive, lifecycle, and viewer
+parity when a second client is available.
 
-Open a fresh elevated console and run the common block. Stop only the raw
-server, then apply hosts and bundle serially:
+Close the client and stop the server gracefully. The runner must return
+`Result: Accepted`, `EvidenceProfile: Baseline`, database
+`godswar_secure_dev`, and a protected evidence path. Baseline evidence must
+contain accepted UDP movement followed by a queued UDP snapshot and must
+contain no fault-campaign event.
+
+## Gate 5: one-shot fallback profile
+
+Restart the foreground server:
 
 ```powershell
-$hostsPre=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Status
-if($hostsPre.State -cne 'Absent' -or $hostsPre.ReceiptExists -or
-   $hostsPre.HostsSha256 -cne $expectedHosts){
- throw 'Original hosts bytes drifted immediately before activation.'
-}
-Import-Module .\tools\SecureNetworkActivationState.psm1 -Force
-$activationPre=Get-RebornActivationState -Provider Hklm
-if($activationPre.Exists -and
-   (-not $activationPre.Complete -or $activationPre.Mode -ne 0 -or
-    $activationPre.Environment -ne 1 -or
-    $activationPre.SequenceFloor -ne 1)){
- throw 'HKLM activation is neither absent nor exact safe-disabled state.'
-}
-if((& docker inspect -f '{{.State.Running}}' godswar-server).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Running}}' godswar-postgres).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Health.Status}}' godswar-postgres).Trim() -cne
-    'healthy'){
- throw 'Original Docker services drifted immediately before activation.'
-}
-$rawPre=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|? `
- LocalPort -in 5998,5999,7000)
-foreach($port in 5998,7000){
- $match=@($rawPre|? LocalPort -eq $port)
- if($match.Count -ne 1 -or $match[0].LocalAddress -cne '127.1.1.110'){
-  throw "Pre-activation raw listener $port is not exact."
- }
-}
-if(@($rawPre|? LocalPort -eq 5999).Count){
- throw 'Unexpected pre-activation raw listener 5999 exists.'
-}
-& docker compose stop server
-if($LASTEXITCODE){throw 'Stopping Docker server failed.'}
-if((& docker inspect -f '{{.State.Running}}' godswar-server).Trim() -cne 'false'){
- throw 'Raw server is still running.'
-}
-if((& docker inspect -f '{{.State.Running}}' godswar-postgres).Trim() -cne 'true' -or
-   (& docker inspect -f '{{.State.Health.Status}}' godswar-postgres).Trim() -cne 'healthy'){
- throw 'PostgreSQL is not healthy.'
-}
-if(@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|? `
- LocalPort -in 5998,5999,7000,6599,7443).Count -or
-   @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue|? LocalPort -eq 7444).Count){
- throw 'Acceptance ports are not free.'
-}
-Import-Module .\tools\ControlledHostClientInventoryReceipt.psm1 -Force
-$inventory=Read-RebornControlledHostActiveClientInventoryReceipt
-$inventoryPath=$inventory.ReceiptPath
-$inventorySha=$inventory.ReceiptSha256
-$hostsApply=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Apply `
- -AllowHostsWrite -Confirm:$false
-if($hostsApply.Result -cne 'Applied'){throw 'Hosts Apply failed.'}
-$bundleArgs=@{
- ClientRoot='C:\RebornNetworkAcceptanceClient';CandidatePath=$candidate
- ManifestPath=$manifest;TrustPath=$manifestTrust
- ExpectedCandidateSha256=$pins[1][1];ExpectedChecksSha256=$pins[2][1]
- ExpectedManifestSha256=$pins[3][1];ExpectedTrustSha256=$pins[4][1]
- ClientInventoryReceiptPath=$inventoryPath
- ExpectedClientInventoryReceiptSha256=$inventorySha
-}
-$bundleApply=& .\tools\InstallSecureNetworkBundle.ps1 @bundleArgs -Mode Apply `
- -AllowHklmWrite -ControlledHostSocketChecks -Confirm:$false
-if($bundleApply.Result -cne 'InstalledExact' -or -not $bundleApply.BackupPath){
- throw 'Bundle Apply did not return rollback authority.'
-}
-$handoff=[pscustomobject]@{
- ApplyBackupPath=$bundleApply.BackupPath
- ApplyReceiptSha256=(Get-FileHash `
-   (Join-Path $bundleApply.BackupPath 'receipt.json') -Algorithm SHA256).Hash
- ApplyChecksumSha256=(Get-FileHash `
-   (Join-Path $bundleApply.BackupPath 'receipt.sha256') -Algorithm SHA256).Hash
- ClientInventoryReceiptPath=$inventoryPath
- ClientInventoryReceiptSha256=$inventorySha
- HostsReceiptPath=$hostsApply.ReceiptPath
- HostsReceiptSha256=(Get-FileHash $hostsApply.ReceiptPath -Algorithm SHA256).Hash
- HostsBackupPath=$hostsApply.BackupPath
- HostsBackupSha256=(Get-FileHash $hostsApply.BackupPath -Algorithm SHA256).Hash
-}
-$bundleApply,$hostsApply,$handoff|Format-List
+& .\tools\RunPhase4LoopbackAcceptanceServer.ps1 `
+ -EvidenceProfile Fallback -AllowLoopbackAcceptance
 ```
 
-Record the complete displayed handoff object in the acceptance record. On any
-failure after hosts Apply, restore completed operations and restart Docker.
-Close the elevated console only after recording those rollback authorities.
+Launch the same disposable `Origin.exe`, enter the world, and move
+continuously. The server logically suppresses the selected epoch-one snapshot
+acknowledgement for 1.5 seconds. Do not simulate loss with Norton, Windows
+Firewall, an adapter, or a route.
 
-If any Gate 4 command fails before the complete handoff is displayed, do not
-close that elevated console. Run this pre-handoff recovery block. It restores a
-successfully applied bundle when `$bundleApply` contains its rollback authority,
-restores hosts only when the checked active receipt is exact, then restarts and
-revalidates the original raw server:
+The client must switch once to the adjacent TLS epoch, accept one
+authoritative `NotReady` correction, keep moving on TLS, and never switch back
+in that session. These five fixed events must complete within 15 seconds after
+the eligible UDP snapshot triggers the campaign:
+
+```text
+[secure-acceptance] phase4 fault campaign enabled
+[secure-acceptance] snapshot ACK drop started window_ms=1500 max_recorded_drops=32
+[secure-acceptance] one-way TLS fallback observed
+[secure-acceptance] authoritative correction forced reason=not_ready
+[secure-acceptance] post-fallback TLS movement observed no_switchback=true
+```
+
+Close the client and stop the server gracefully after the behavior completes.
+The runner must return `Result: Accepted` and `EvidenceProfile: Fallback`.
+An incomplete or expired campaign fails closed.
+
+## Gate 6: ten-minute Soak profile
+
+Restart without the fault switch:
 
 ```powershell
-if($null -ne $bundleApply -and
-   $bundleApply.Result -ceq 'InstalledExact' -and
-   $bundleApply.BackupPath){
- $bundleRestore=& .\tools\InstallSecureNetworkBundle.ps1 @bundleArgs `
-  -Mode Restore -ApplyBackupPath $bundleApply.BackupPath `
-  -AllowHklmWrite -Confirm:$false
- if($bundleRestore.Result -cne 'StockFilesRestored'){
-  throw 'Pre-handoff bundle recovery failed.'
- }
-}
-$hostsStatus=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Status
-if($hostsStatus.State -ceq 'InstalledExact' -and
-   $hostsStatus.ReceiptExists -and
-   $hostsStatus.ReceiptState -ceq 'InstalledExact'){
- $hostsRestore=& .\tools\ManageDevelopmentNetworkHosts.ps1 -Mode Restore `
-  -AllowHostsWrite -Confirm:$false
- if($hostsRestore.Result -notin @('Restored','AlreadyRestored')){
-  throw 'Pre-handoff hosts recovery failed.'
- }
-}elseif($hostsStatus.State -cne 'Absent' -or $hostsStatus.ReceiptExists){
- throw 'Hosts state is ambiguous; do not restart or close this console.'
-}
-& docker compose up -d server
-if($LASTEXITCODE){throw 'Raw server restart failed.'}
+& .\tools\RunPhase4LoopbackAcceptanceServer.ps1 `
+ -EvidenceProfile Soak -AllowLoopbackAcceptance
+```
+
+Launch the disposable client and perform normal movement for at least ten
+measured minutes, including mount/dismount, one map transition, and reconnect.
+Close the client and stop the server gracefully. The runner rejects an
+observed foreground lifetime below ten minutes, any fault event, missing UDP
+movement/snapshot evidence, or malformed/repeating evidence.
+
+Record the returned evidence path, Release set SHA-256, server SHA-256,
+options SHA-256, and observed duration. A server event does not replace the
+operator's visual result for the manual matrix.
+
+## Gate 7: restore secure Docker
+
+With every foreground server stopped:
+
+```powershell
+& docker compose @secureCompose up -d server
+if($LASTEXITCODE){throw 'Secure-Docker restart failed.'}
+
 for($i=0;$i -lt 30;$i++){
- $running=(& docker inspect -f '{{.State.Running}}' godswar-server 2>$null).Trim()
- $probe=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|? `
-  LocalPort -in 5998,5999,7000)
- $rawReady=$running -ceq 'true' -and
-  @($probe|? { $_.LocalPort -eq 5998 -and
-    $_.LocalAddress -ceq '127.1.1.110' }).Count -eq 1 -and
-  @($probe|? { $_.LocalPort -eq 7000 -and
-    $_.LocalAddress -ceq '127.1.1.110' }).Count -eq 1 -and
-  @($probe|? LocalPort -eq 5999).Count -eq 0
- if($rawReady){break}
+ $running=(& docker inspect -f '{{.State.Running}}' `
+  godswar-server 2>$null).Trim()
+ $health=(& docker inspect -f '{{.State.Health.Status}}' `
+  godswar-server 2>$null).Trim()
+ $restarts=(& docker inspect -f '{{.RestartCount}}' `
+  godswar-server 2>$null).Trim()
+ if($running -ceq 'true' -and $health -ceq 'healthy' -and
+    $restarts -ceq '0'){break}
  Start-Sleep -Seconds 1
 }
-if(-not $rawReady){throw 'Original raw server recovery did not validate.'}
-if(@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|? `
-   LocalPort -in 6599,7443).Count -or
-   @(Get-NetUDPEndpoint -ErrorAction SilentlyContinue|? LocalPort -eq 7444).Count){
- throw 'A secure listener remained after pre-handoff recovery.'
+if($running -cne 'true' -or $health -cne 'healthy' -or
+   $restarts -cne '0'){
+ throw 'Secure-Docker server did not recover exactly.'
 }
+
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -cne 'InstalledExact' -or
+   $status.DockerState -cne 'HealthyExact'){
+ throw 'Secure-Docker recovery or active client campaign drifted.'
+}
+
+& .\tools\InvokeSecureDockerSmoke.ps1 `
+ -RootCertificatePath `
+ 'C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921\tls\reborn-development-root.cer'
 ```
 
-If bundle or hosts restoration throws, recovery is incomplete and intentionally
-stops before restarting Docker. Keep the console open and preserve its output
-for exact recovery; do not improvise a raw-server restart over ambiguous state.
+If a foreground start or evidence profile fails, use this same recovery block
+before mandatory Restore. Do not run raw Docker Compose or improvise alternate
+ports.
 
-## Launcher preflight and foreground run
+## Gate 8: mandatory campaign Restore
 
-Open a fresh ordinary console, run the common block, then use hashes from the
-staged runtime; not a mutable source directory:
+Close `Origin.exe`. From a fresh elevated console under the issued user:
 
 ```powershell
-Import-Module .\tools\ControlledHostManagedRelease.psm1 -Force
-Import-Module .\tools\ControlledHostClientInventoryReceipt.psm1 -Force
-$stagedSet=Get-RebornControlledHostManagedReleaseSet "$runtime\managed"
-$stagedServerSha=(Get-FileHash "$runtime\managed\Godswar.Server.dll" -Algorithm SHA256).Hash
-$stagedOptionsSha=(Get-FileHash "$runtime\appsettings.json" -Algorithm SHA256).Hash
-$inventory=Read-RebornControlledHostActiveClientInventoryReceipt
-$inventoryPath=$inventory.ReceiptPath
-$inventorySha=$inventory.ReceiptSha256
-$serverArgs=@{
- ServerAssembly="$runtime\managed\Godswar.Server.dll"
- OptionsPath="$runtime\appsettings.json"
- CertificatePath="$runtime\tls\reborn-development-server.pfx"
- RootCertificatePath="$runtime\tls\reborn-development-root.cer"
- TrustReceiptPath="$runtime\tls\current-user-trust-receipt.json"
- ManifestTrustPath="$runtime\bundle\development-manifest-trust.json"
- ManifestKeyReceiptPath="$runtime\bundle\development-manifest-key-receipt.json"
- NativeChecksPath="$runtime\bundle\Godswar.NetShim.Checks.exe"
- CertificatePasswordSecretPath="$runtime\tls\certificate-password.dpapi.clixml"
- PostgresConnectionSecretPath="$runtime\tls\postgres-connection.dpapi.clixml"
- ClientInventoryReceiptPath=$inventoryPath;EvidenceDirectory=$evidence
- ExpectedServerSha256=$stagedServerSha
- ExpectedManagedReleaseSetSha256=$stagedSet.SetSha256
- ExpectedOptionsSha256=$stagedOptionsSha;ExpectedCandidateSha256=$pins[1][1]
- ExpectedManifestSha256=$pins[3][1];ExpectedCertificateSha256=$pins[7][1]
- ExpectedCertificateSecretSha256=$pins[10][1]
- ExpectedPostgresSecretSha256=$pins[11][1]
- ExpectedRootCertificateSha256=$pins[8][1]
- ExpectedTrustReceiptSha256=$pins[9][1]
- ExpectedManifestTrustSha256=$pins[4][1]
- ExpectedManifestKeyReceiptSha256=$pins[6][1]
- ExpectedNativeChecksSha256=$pins[2][1]
- ExpectedClientInventoryReceiptSha256=$inventorySha
- ExpectedDatabaseName=$dbName;ClientRoot='C:\RebornNetworkAcceptanceClient'
- AllowControlledHostActivation=$true
+Set-Location C:\Reborn
+$ErrorActionPreference='Stop'
+
+$restore=& .\tools\ManagePhase4SecureDockerClient.ps1 `
+ -Mode Restore -AllowMutation -Confirm:$false
+if($restore.Result -notin @('Restored','AlreadyRestored')){
+ throw "Phase 4 Restore failed: $($restore.Result)"
 }
-& .\tools\RunControlledHostSecureServer.ps1 @serverArgs -PreflightOnly
-& .\tools\RunControlledHostSecureServer.ps1 @serverArgs
+
+$status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
+if($status.State -cne 'Restored' -or
+   $status.DockerState -cne 'HealthyExact' -or
+   $status.BundleState -cne 'Stock' -or
+   $status.HostsState -cne 'Absent' -or
+   $status.RootState -cne 'Absent' -or
+   $status.ActivationMode -ne 0 -or
+   $status.ActivationEnvironment -ne 1 -or
+   $status.SequenceFloor -ne 3 -or
+   $status.ManifestSequence -ne 3){
+ throw 'Mandatory Phase 4 Restore is not exact.'
+}
+
+$keys=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 -Mode Status
+if($keys.CurrentExists -or $keys.NextExists -or
+   $keys.PrivateKeysExportable){
+ throw 'Development signing-key absence changed.'
+}
+$restore,$status,$keys|Format-List
 ```
 
-While it runs, use a second ordinary console:
+Restore is intentionally blocked until secure Docker is healthy again. It
+uses the checksummed campaign handoff to restore stock client files and
+original hosts bytes, remove only the exact CurrentUser public root installed
+by Apply, disable activation, and retain the monotonic floor at sequence 3.
+It does not create, use, or remove a CNG private signing key.
+
+Preserve the campaign receipt and the three protected evidence files for
+review. Do not delete `godswar_secure_dev`, its Docker volume, the disposable
+client, or the prior historical acceptance record as part of this rollback.
+
+## Gate 9: issue the Phase 4 completion receipt
+
+Each foreground profile returns `ProfileResultPath`,
+`ProfileResultChecksumPath`, and `ProfileResultSha256` after its evidence has
+been validated and protected. Keep those three profile-result paths. After
+Gate 8 reports the exact Restored state, run the completion gate from a fresh
+elevated console under the same issued user:
 
 ```powershell
-$tcp=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|? `
- LocalPort -in 5998,5999,6599,7000,7443)
-$udp=@(Get-NetUDPEndpoint -ErrorAction Stop|? LocalPort -eq 7444)
-foreach($port in 6599,7443){
- $match=@($tcp|? LocalPort -eq $port)
- if($match.Count -ne 1 -or $match[0].LocalAddress -cne '127.0.0.1'){
-  throw "Secure TCP listener $port is not exact loopback."
- }
-}
-if($udp.Count -ne 1 -or $udp[0].LocalAddress -cne '127.0.0.1'){
- throw 'Secure UDP listener 7444 is not exact loopback.'
-}
-if(@($tcp|? LocalPort -in 5998,5999,7000).Count){
- throw 'A raw listener remained during secure acceptance.'
-}
-$tcp,$udp|Sort-Object LocalPort|Format-Table LocalAddress,LocalPort,OwningProcess
+$completion=& .\tools\CompletePhase4LoopbackAcceptance.ps1 `
+ -BaselineProfileResultPath $baselineProfileResultPath `
+ -FallbackProfileResultPath $fallbackProfileResultPath `
+ -SoakProfileResultPath $soakProfileResultPath `
+ -AttestAlternatingAccounts `
+ -AttestPreviewReadiness `
+ -AttestUnmountedMovement `
+ -AttestMountedMovement `
+ -AttestWorldGenerationChanges `
+ -AttestDeathAndRevive `
+ -AttestSessionLifecycle `
+ -AttestFallbackCorrection `
+ -AttestSoakStability `
+ -AttestDatabaseMutationReviewed `
+ -ViewerParity Passed `
+ -AllowCompletion
+$completion|Format-List
 ```
 
-Launch only `C:\RebornNetworkAcceptanceClient\Origin.exe`, never the
-patcher/launcher.
-
-For the one-shot fault run, gracefully stop, then invoke:
-
-```powershell
-& .\tools\RunControlledHostSecureServer.ps1 @serverArgs `
- -EnablePhase4AcceptanceFaults
-```
-
-## Mandatory rollback
-
-Follow the exact
-[rollback command sequence](network-infrastructure-controlled-host-rollback-commands.md).
+Use `-ViewerParity Unavailable` only when the documented second-client check
+could not be run. The gate revalidates every checksummed profile and evidence
+file, their profile/duration policy, campaign/user/build/client/manifest pins,
+the healthy secure-Docker inspection, and the successful stock-client
+Restore. It then creates one bounded, BOM-free, checksummed, read-only
+`completion-<campaign-id>.json` receipt in the protected campaign root.
+Existing or partial completion output is never overwritten. This command
+does not change listeners, trust, hosts, adapters, firewall, Norton, Docker,
+or client files; its only mutation is the final protected receipt.

@@ -60,6 +60,8 @@ param(
     [string]$ExpectedDatabaseName,
 
     [string]$ClientRoot = 'C:\RebornNetworkAcceptanceClient',
+    [ValidateSet('Baseline', 'Fallback', 'Soak')]
+    [string]$EvidenceProfile = 'Baseline',
     [switch]$PreflightOnly,
     [switch]$EnablePhase4AcceptanceFaults,
     [switch]$AllowControlledHostActivation
@@ -82,6 +84,15 @@ Import-Module (
     Join-Path $PSScriptRoot `
         'ControlledHostServerLauncherDependencies.psm1'
 ) -Force
+
+if ($EvidenceProfile -eq 'Fallback' -and
+    -not $EnablePhase4AcceptanceFaults) {
+    throw 'Fallback evidence requires -EnablePhase4AcceptanceFaults.'
+}
+if ($EvidenceProfile -ne 'Fallback' -and
+    $EnablePhase4AcceptanceFaults) {
+    throw "$EvidenceProfile evidence forbids Phase 4 acceptance faults."
+}
 
 function Get-Sha256 {
     param([Parameter(Mandatory)][string]$Path)
@@ -400,6 +411,7 @@ try {
             ManifestSequence = $activation.ManifestSequence
             Phase4AcceptanceFaults =
                 [bool]$EnablePhase4AcceptanceFaults
+            EvidenceProfile = $EvidenceProfile
             TlsPorts = $secureTcpPorts -join ','
             UdpPort = $secureUdpPort
             RawListeners = 0
@@ -437,16 +449,21 @@ try {
 
         $serverExitCode = $null
         $evidenceResult = $null
+        $runTimer = [Diagnostics.Stopwatch]::StartNew()
         try {
             & $dotnet $assembly $options
             $serverExitCode = $LASTEXITCODE
         }
         finally {
+            $runTimer.Stop()
             if (Test-Path -LiteralPath $evidenceFile -PathType Leaf) {
                 try {
                     $evidenceResult =
                         Assert-RebornControlledHostPrivacyEvidence `
-                            $evidenceFile -RequireStopped
+                            $evidenceFile `
+                            -Profile $EvidenceProfile `
+                            -ObservedDuration $runTimer.Elapsed `
+                            -RequireStopped
                 }
                 finally {
                     Protect-RebornControlledHostPrivacyEvidence `
@@ -471,6 +488,9 @@ try {
             EvidencePath = $evidenceResult.Path
             EvidenceBytes = $evidenceResult.Bytes
             EvidenceEvents = $evidenceResult.Events
+            EvidenceProfile = $evidenceResult.Profile
+            ObservedDurationSeconds =
+                $evidenceResult.ObservedDurationSeconds
         } | Format-List
     }
     finally {

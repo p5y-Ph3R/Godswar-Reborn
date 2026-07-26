@@ -25,6 +25,7 @@ internal sealed class RealtimeMovementControlTransport :
     private int _active;
     private int _disconnected;
     private int _disposed;
+    private int _failNextWrite;
 
     public RealtimeMovementControlTransport()
     {
@@ -103,6 +104,9 @@ internal sealed class RealtimeMovementControlTransport :
     public void ActivateRealtimeMovement() =>
         Volatile.Write(ref _active, 1);
 
+    public void FailNextWrite() =>
+        Volatile.Write(ref _failNextWrite, 1);
+
     public bool TryTakeRealtimeMovement(
         out SecureRealtimeMovementIngress ingress) =>
         _movementIngress.TryDequeue(out ingress);
@@ -130,6 +134,11 @@ internal sealed class RealtimeMovementControlTransport :
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Exchange(ref _failNextWrite, 0) != 0)
+        {
+            return ValueTask.FromException(
+                new IOException("Simulated reliable egress failure."));
+        }
         lock (_gate)
         {
             _legacyWrites.Write(source.Span);

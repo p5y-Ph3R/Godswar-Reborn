@@ -103,6 +103,12 @@ internal static class ControlledHostPrivacyEvidenceChecks
                         .TlsClientAuthenticated));
             ControlledHostPrivacyEvidence.RecordIfActive(
                 ControlledHostEvidenceEvent.UdpEndpointBound);
+            ControlledHostPrivacyEvidence.RecordIfActive(
+                ControlledHostEvidenceEvent
+                    .AuthoritativeUdpMovementAccepted);
+            ControlledHostPrivacyEvidence.RecordIfActive(
+                ControlledHostEvidenceEvent
+                    .AuthoritativeUdpSnapshotQueued);
             ControlledHostPrivacyEvidence.Record(
                 ControlledHostEvidenceEvent
                     .Phase4TlsFallbackObserved);
@@ -138,6 +144,8 @@ internal static class ControlledHostPrivacyEvidenceChecks
                 "[controlled-host] accepted secure preface response written",
                 "[controlled-host] TLS client authenticated",
                 "[controlled-host] UDP endpoint authenticated and bound",
+                "[secure-acceptance] authoritative UDP movement accepted",
+                "[secure-acceptance] authoritative UDP snapshot queued",
                 "[secure-acceptance] one-way TLS fallback observed",
                 "[controlled-host] secure server stopping"
             };

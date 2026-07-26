@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Godswar.Server.Networking.Secure.Realtime;
+using Godswar.Server.Operations;
 using Godswar.Server.Packets;
 using Godswar.Server.World.Systems.Players;
 
@@ -28,6 +29,9 @@ internal sealed partial class GameClientHandler
     private TimeSpan _realtimeLastIngressElapsed;
     private bool _realtimeSnapshotDirty;
     private bool _realtimeKeyframePending;
+    private bool _phase4UdpEvidencePending;
+    private ulong _phase4UdpEvidenceInputId;
+    private uint _phase4UdpEvidenceTransportEpoch;
 
     private void StartRealtimeMovement(
         CancellationToken hostCancellation)
@@ -138,6 +142,7 @@ internal sealed partial class GameClientHandler
         byte[]? viewerMovement = null;
         byte[]? reliableCorrection = null;
         RealtimePositionSave? positionSave = null;
+        ulong? acceptanceCorrectionInputId = null;
 
         if (_session.TryTakeRealtimeMovement(out var ingress))
         {
@@ -179,6 +184,11 @@ internal sealed partial class GameClientHandler
                 var forceAcceptanceCorrection =
                     ShouldForcePhase4AcceptanceCorrection(
                         ingress);
+                if (forceAcceptanceCorrection)
+                {
+                    acceptanceCorrectionInputId =
+                        ingress.Input.InputId;
+                }
                 var status =
                     _registry.GetRuntimeStatusAggregate(
                         _session,
@@ -203,6 +213,18 @@ internal sealed partial class GameClientHandler
             if (decision is { } movementDecision &&
                 movementDecision.Accepted)
             {
+                if ((movementDecision.Source &
+                        AuthoritativePlayerMovementSource.Udp) != 0)
+                {
+                    ControlledHostPrivacyEvidence.RecordIfActive(
+                        ControlledHostEvidenceEvent
+                            .AuthoritativeUdpMovementAccepted);
+                    _phase4UdpEvidencePending = true;
+                    _phase4UdpEvidenceInputId =
+                        movementDecision.InputId;
+                    _phase4UdpEvidenceTransportEpoch =
+                        movementDecision.TransportEpoch;
+                }
                 _character.PositionX =
                     movementDecision.AuthoritativeX;
                 _character.PositionZ =
@@ -251,7 +273,8 @@ internal sealed partial class GameClientHandler
             _character.CurrentMap,
             viewerMovement,
             reliableCorrection,
-            positionSave);
+            positionSave,
+            acceptanceCorrectionInputId);
     }
 
     private void EnsureRealtimeWorld()
@@ -310,6 +333,7 @@ internal sealed partial class GameClientHandler
         _realtimeCharacterId = 0;
         _realtimeSnapshotDirty = false;
         _realtimeKeyframePending = false;
+        _phase4UdpEvidencePending = false;
     }
 
     private void EnsureRealtimeAuthority(
@@ -459,6 +483,19 @@ internal sealed partial class GameClientHandler
             rejection);
         if (_session.TryPublishRealtimeSnapshot(snapshot))
         {
+            if (_phase4UdpEvidencePending &&
+                snapshot.Rejection ==
+                    SecureRealtimeMovementRejection.None &&
+                snapshot.TransportEpoch ==
+                    _phase4UdpEvidenceTransportEpoch &&
+                snapshot.AcknowledgedInputId >=
+                    _phase4UdpEvidenceInputId)
+            {
+                ControlledHostPrivacyEvidence.RecordIfActive(
+                    ControlledHostEvidenceEvent
+                        .AuthoritativeUdpSnapshotQueued);
+                _phase4UdpEvidencePending = false;
+            }
             if (keyframe)
             {
                 _realtimeKeyframePending = false;
@@ -480,6 +517,10 @@ internal sealed partial class GameClientHandler
                 effects.ReliableCorrection,
                 cancellationToken,
                 "RealtimeMovementCorrection");
+            if (effects.AcceptanceCorrectionInputId is { } inputId)
+            {
+                ConfirmPhase4AcceptanceCorrectionWrite(inputId);
+            }
         }
         if (effects.ViewerMovement is not null)
         {

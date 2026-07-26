@@ -73,5 +73,6 @@ internal sealed partial class GameClientHandler
         byte MapId,
         byte[]? ViewerMovement,
         byte[]? ReliableCorrection,
-        RealtimePositionSave? PositionSave);
+        RealtimePositionSave? PositionSave,
+        ulong? AcceptanceCorrectionInputId);
 }

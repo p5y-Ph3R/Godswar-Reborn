@@ -345,8 +345,12 @@ rotation remains Phase 5 production scalability work.
   authenticated UDP binding, world entry, movement, and snapshot
   acknowledgement against the live container.
 
-Exit gate: original-client UDP movement/snapshot evidence, forced one-way TLS
-fallback, map/mount/revive parity, UDP block/unblock, and soak remain pending.
+Exit gate: the secure-Docker reference smoke plus original-client foreground
+Baseline, Fallback, and ten-minute Soak profiles remain pending, including
+map/mount/revive parity and privacy-safe UDP movement/snapshot evidence. The
+Fallback profile uses the logical snapshot-ACK-drop campaign and must not
+change Norton, Windows Firewall, adapters, routes, or the host's internet
+connectivity.
 
 ### Phase 5 — extension, hardening, and operations
 

@@ -24,7 +24,7 @@ Source/offline completion was verified on `2026-07-26`:
 
 - managed Release build: zero warnings/errors;
 - focused Phase 4 checks: `6/6`;
-- full managed protocol checks: `127/127`;
+- full managed protocol checks: `131/131`;
 - native Win32 Release: `/W4 /WX`, two identical clean builds;
 - native wrapper: five consecutive offline passes;
 - candidate shim SHA-256:
@@ -285,9 +285,11 @@ The next ordinary movement input on the adjacent TLS transport epoch proves
 fallback and receives exactly one correction through the existing
 authoritative `NotReady` rejection path. That path acknowledges the input,
 publishes a correction snapshot, and sends the canonical reliable legacy
-`10194` correction. It does not mutate position, broadcast viewer movement,
-or enqueue position persistence. It does not enter authentication, inventory,
-or database code. A later higher input ID on the same TLS epoch proves the
+`10194` correction. Correction evidence is committed only after that bounded
+reliable write completes; a rejected or failed egress cannot claim success.
+The path does not mutate position, broadcast viewer movement, or enqueue
+position persistence. It does not enter authentication, inventory, or
+database code. A later higher input ID on the same TLS epoch proves the
 one-way transport remains on TLS and completes the campaign. There is no
 switchback and no rearming; an incomplete campaign expires after 15 seconds.
 A process restart resets all campaign state.
@@ -340,9 +342,14 @@ map/revive rehydration.
 
 Offline and loopback verification cannot accept the final stock-client gate.
 Controlled-host acceptance still requires five alternating account 7/13
-login/world cycles, mounted and unmounted movement, a map transition, UDP
-block/unblock fallback, correct viewer movement/correction, and a ten-minute
-movement soak without a blank model, crash, or server-unavailable regression.
+login/world cycles, mounted and unmounted movement, a map transition, correct
+viewer movement/correction, and foreground Baseline plus ten-minute Soak
+profiles without a blank model, crash, or server-unavailable regression. The
+foreground Fallback profile runs the receipt-bound logical snapshot-ACK-drop
+campaign. The logical campaign replaces an operating-system UDP block:
+acceptance must not alter Norton, Windows Firewall, adapters, routes, or the
+machine's internet connection. The complete operator matrix is in
+[controlled-host secure-network acceptance](network-infrastructure-controlled-host-acceptance.md#manual-acceptance-matrix).
 
 One production-readiness gap is explicit: AOI visibility refresh currently
 awaits bounded reliable remove/spawn writes while holding the character-state

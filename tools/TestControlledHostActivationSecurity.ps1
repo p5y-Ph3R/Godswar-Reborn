@@ -437,7 +437,7 @@ try {
         [IO.FileShare]::None)
     try {
         Assert-Rejected {
-            Get-RebornControlledHostClientInventory $clientFixture
+            Get-RebornControlledHostClientInventory $clientFixture 2>$null
         } 'inventory reopening an exclusively locked Origin'
         $lockedInventory =
             Get-RebornControlledHostClientInventory `
