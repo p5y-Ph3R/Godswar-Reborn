@@ -11,12 +11,21 @@ authenticated UDP binding, and world entry, then completed exact rollback.
 Its later repeat-entry campaign failed: five apparent successful previews were
 followed by three persistent blank previews. Those records remain preserved
 but are not accepted evidence. PreviewReadyV1 is retained as a historical,
-read-only generation. The new PreviewReadyV2/schema-2 campaign uses the
-refreshed deterministic candidate while reusing the reviewed
-certificate boundary without recreating private signing keys. All Baseline,
-movement, forced-fallback, and soak scenarios must run again. The executable
-command sequence is in the
-[controlled-host command reference](network-infrastructure-controlled-host-commands.md).
+read-only generation. PreviewReadyV2 is also rejected: its Baseline server
+profile completed, but the manual character-preview gate failed and produced
+dump `20260728001641.dmp`; it was restored without a completion receipt. The
+PreviewReadyV3 barrier removed that premature trigger but was manually
+rejected after a null-resource crash and a second authenticated pre-world
+disconnect; its later successful retry did not cure either first-attempt
+  failure. Exact V3 rollback succeeded and that generation is frozen read-only.
+  PreviewReadyV4 was rejected after TLS policy completed without a secure
+  preface. PreviewReadyV5 was rejected when live Net sent the stock Origin
+  identity while the server allowed only patched Origin; its exact restore is
+  recorded by `handoff-000024.json`. The active PreviewReadyV6 campaign binds
+  that identity through `GWKEY02` and paired-file offline gates. Its live
+  Baseline is sealed `Pass`; Fallback, Soak, and exact rollback remain
+  pending, so no complete V6 acceptance is claimed. The commands are in the
+  [controlled-host command reference](network-infrastructure-controlled-host-commands.md).
 
 This exercise is a local compatibility/security result. It is not a production
 capacity claim and does not replace upstream L3/L4 DDoS protection.
@@ -28,9 +37,9 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
 - Certificate/database fixture:
   `artifacts\controlled-host-acceptance\20260727-011921`.
 - Preview-ready candidate/evidence fixture:
-  `artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2`.
+  `artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6`.
 - Campaign handoff:
-  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`.
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`.
 - DNS: `login.reborn.test` and `game.reborn.test` to literal loopback.
 - Secure endpoints: TCP `127.0.0.1:6599`, TCP `127.0.0.1:7443`, and
   UDP `127.0.0.1:7444`.
@@ -41,7 +50,7 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
   Docker `server` is stopped; it uses the same Docker PFX/password file and
   `godswar_secure_dev`.
 - Evidence:
-  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`.
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\server-evidence`.
 
 The procedure does not alter Norton, Windows Firewall, network adapters,
 routes, or internet connectivity. It does not mutate `C:\Godswar Origin` or
@@ -53,10 +62,16 @@ deploy paid infrastructure, or recreate the removed historical runtime.
 | Artifact | SHA-256 |
 | --- | --- |
 | database dump | `7EC9775B2F6F08361F606FEC2968623573A632D2FCD02EBDD12327B6407F4AAE` |
-| stock `Origin.exe` | `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79` |
+| stock predecessor `Origin.exe` | `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79` |
 | stock predecessor `Net.dll` | `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C` |
-| active PreviewReadyV2 candidate `Net.dll` | `EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE` |
-| active PreviewReadyV2 native checks | `237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187` |
+| failed PreviewReadyV2 candidate `Net.dll` | `EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE` |
+| failed PreviewReadyV2 native checks | `237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187` |
+| rejected PreviewReadyV3 candidate `Net.dll` | `5FD6A0C37801A393689AF523854AD5BE258616BF52809D8FEA04437D34B7CA85` |
+| rejected PreviewReadyV3 native checks | `ABB81E184CA54DD9ECFFDC1F2DB690E122F81A4B394050AF4F7B6095FC34308B` |
+| rejected V5 public-trust `Net.dll` | `0A34613ED9E4F6AC82608DA17570D905579F44A37CC6B08CAC8AA75B1A6DAA1A` |
+| active V6 guarded `Origin.exe` | `E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C` |
+| active V6 `GWKEY02` `Net.dll` | `2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97` |
+| active V6 native checks | `FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75` |
 | endpoint manifest | `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C` |
 | current manifest trust | `A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07` |
 | next manifest trust | `582C252D31DE3361157C7625FB21DD104F907EA762FB77044E1CCEF2EA51E571` |
@@ -82,9 +97,9 @@ and PostgreSQL boundary without printing credentials.
    bounded TLS/ticket/UDP/movement smoke. It initially owns `6599`, `7443`,
    and `7444`.
 3. In one elevated console, run the repeat-entry campaign Apply. It validates
-   the retained floor at manifest sequence 3, installs the exact public
-   development root, applies the receipt-bound hosts transaction, and applies
-   the hash-pinned client bundle while secure Docker remains healthy. The two
+   the retained floor at manifest sequence 3, keeps CurrentUser trust absent,
+   applies the receipt-bound hosts transaction, and applies the hash-pinned
+   paired Origin/Net bundle while secure Docker remains healthy. The two
    development CNG signing keys intentionally remain absent: the
    already-signed manifest and compiled public verification keys do not
    require signing authority at runtime.
@@ -98,8 +113,8 @@ and PostgreSQL boundary without printing credentials.
    so its bounded evidence can be validated and protected.
 6. Restart and revalidate the exact secure-Docker profile.
 7. Perform campaign Restore even if every scenario passes. It restores stock
-   client files and original hosts bytes, removes only the exact public root
-   installed by that campaign, retains the monotonic sequence floor at 3,
+   Origin and Net predecessors plus original hosts bytes, removes only the
+   exact public root installed by that campaign, retains sequence floor 3,
    and requires secure Docker to be healthy.
 
 No operation may be skipped or run concurrently. If any gate differs from its
@@ -117,7 +132,7 @@ the server event alone does not attest a visual client result.
 | --- | --- | --- |
 | Docker reference baseline | Run the bounded secure-Docker smoke before client Apply. | TLS login, game bind, authenticated UDP movement, and snapshot acknowledgement pass; container remains healthy with zero restarts. |
 | Alternating accounts | Complete five login, selection, and world-entry cycles alternating accounts 7 and 13. | Every cycle enters the world; no crash, blank model, false full/unavailable result, or second-launch workaround. |
-| Preview readiness | Wait at character selection without dismissing or relaunching. | The 3D model appears automatically before the normal connection deadline. |
+| Preview readiness | Wait at character selection without dismissing or relaunching. | The 3D model appears automatically before the normal connection deadline; no second launch or manual workaround is needed. |
 | Unmounted movement | Move continuously, stop, turn, and change direction. | Local movement remains responsive and authoritative movement is visible to a second client when available. |
 | Mounted movement | Mount, move, turn, stop, and dismount. | Mounted movement uses the server-owned speed multiplier; dismount restores ordinary movement. |
 | World-generation changes | Change map, then move before and after the transition. | No old-world correction or stale position is applied; movement resumes on the new baseline. |
@@ -199,7 +214,8 @@ compromise of that same local user.
 3. Restart and health-check the exact secure-Docker profile.
 4. Run campaign Restore from a fresh elevated issued-user console. It uses
    only its protected checksummed handoff.
-5. Verify stock `Origin.exe`/`Net.dll`, no `NetLegacy.dll`/manifest, exact
+5. Verify stock predecessor `Origin.exe` and `Net.dll`, no
+   `NetLegacy.dll`/manifest, exact
    original hosts bytes, public-root absence, activation Mode `0`,
    development Environment `1`, and retained sequence floor `3`.
 6. Verify the two development CNG keys remain absent. They are not recreated
@@ -217,9 +233,13 @@ requiring explicit approval.
   known-good provenance exists for `Origin.exe`, stock `Net.dll`, and the
   reviewed candidate; not for every one of roughly 21,000 client files.
 - The writable `Log`, `Dump`, `ScreensHot`, and per-user settings islands are
-  treated as data-only. The stock executable and shim must not load executable
-  code from them. The gate is not WDAC, AppLocker, or a defense against
-  compromise of the issued current user.
+  treated as data-only. During an installed campaign, only the exact
+  `patcher\patcher.log` file is additionally writable; its parent remains
+  read-only, it is bounded to 16 MiB, and executable/MZ content is rejected.
+  Restore returns that file to the protected read-only state. The stock
+  executable and shim must not load executable code from any writable output.
+  The gate is not WDAC, AppLocker, or a defense against compromise of the
+  issued current user.
 - The local loopback result does not measure internet loss, jitter, regional
   latency, provider mitigation, packet-per-second capacity, or production
   concurrency.
@@ -242,15 +262,57 @@ returned to the checked-in placeholder; and the protected runtime was removed.
 The external cleanup receipt is
 `C:\ProgramData\RebornSecureNetworkCleanupReceipts\runtime-cleanup-20260727-011921.json`.
 
-That accepted record does not close Phase 4. Original-client movement,
-forced fallback, parity, and soak remain unaccepted until every applicable
-row in the manual acceptance matrix passes and mandatory rollback completes.
+That accepted record does not close Phase 4. Original-client preview readiness,
+movement, forced fallback, parity, and soak remain unaccepted until every
+applicable row in the manual acceptance matrix passes and mandatory rollback
+completes.
 
 The subsequent legacy repeat-entry campaign under
 `C:\ProgramData\RebornSecureNetworkPhase4Docker` is also preserved as failed
 evidence. It produced five apparent successful preview cycles followed by
 three persistent blank-model retries. The later blanks invalidate the earlier
-cycles; no completion receipt may treat that campaign as accepted. Active
-work first moved to PreviewReadyV1 and now moves to the independent
-PreviewReadyV2/schema-2 root and evidence fixture listed above. Both older
-generations remain readable but cannot receive new production receipts.
+cycles; no completion receipt may treat that campaign as accepted.
+PreviewReadyV1 is likewise preserved as historical and read-only.
+
+PreviewReadyV2 is preserved under
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`, with fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2`.
+Its candidate and native-check hashes are the failed V2 rows in the pin table.
+The manual Baseline showed no usable 3D character preview and the
+server-unavailable path, then produced
+`C:\RebornNetworkAcceptanceClient\Dump\20260728001641.dmp`, SHA-256
+`271942FB737D57F24468369114C563ECECE281362FA64D26245A77D5720CDE36`.
+Dump analysis observed x86 access violation `C0000005` at `EIP=0x005F58BC`,
+with `ECX=0`, `ESI=0`, dereferencing avatar resource slot `0x015760A0` while
+it remained null. From that state and the wire order, the failure is attributed
+to V2 invoking native initialization on the first of 63 AfterLogin records
+before Origin consumed the remaining 62.
+
+PreviewReadyV3 is preserved under
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV3`, with fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260728-004030-preview-ready-v3`.
+Its first failed start produced `20260728011349.dmp`, SHA-256
+`18176B45640DADB220EA090D718927CB742029352405ACA71791183B3E280B7A`,
+at `0x005F58BC` with resource slot `0x015760A0` null. The next start
+authenticated but disconnected before world entry without a dump; a third
+start entered the world. The protected manual-rejection record is
+`F6211A83FFCEDA06E9E634CFF8F83619E5A466B256B234C4D7ECFD06A0E43804`,
+and the Baseline profile is
+`F5234D4C20ECF769822F3E4418A5E20BA75A35D6FBF34F825C77AE02E1393A2`.
+Handoff revision 13 records exact `Restored`: stock Origin/Net, absent
+legacy/manifest, restored hosts, and removed trust. V3 is historical,
+read-only, and cannot receive new production campaign or completion receipts.
+
+V5's Net runtime sent stock Origin identity `753BE49F...ED79`, so the server
+correctly rejected it while allowing only patched `E177D94D...CC76C`. Its
+native probe passed only because the CLI supplied the patched identity. Exact
+V5 restore is preserved at protected `handoff-000024.json`.
+
+Active work uses the independent PreviewReadyV6 root and fixture listed
+above. Its `GWKEY02` contract carries the complete Origin SHA-256; runtime and
+preview guard consume it, while build and installer gates verify the paired
+files. The state-2 two-root retry guard and exact embedded-root CryptoAPI
+validation remain, with CurrentUser trust absent. V6's live Baseline passed;
+Fallback, Soak, and exact rollback remain required before complete
+acceptance. The leaf/root expire on `2026-08-09/10` UTC. V5 and earlier
+generations remain readable history.

@@ -9,6 +9,20 @@ param(
         Join-Path $PSScriptRoot `
             '..\client\network-shim\bin\Release\Win32\Net.dll'),
 
+    [string]$CandidateOriginPath,
+
+    [ValidateScript({
+        [string]::IsNullOrEmpty($_) -or
+        $_ -cmatch '^[0-9A-Fa-f]{64}$'
+    })]
+    [string]$ExpectedCandidateOriginSha256,
+
+    [ValidateScript({
+        [string]::IsNullOrEmpty($_) -or
+        $_ -cmatch '^[0-9A-Fa-f]{64}$'
+    })]
+    [string]$ExpectedOriginSha256,
+
     [string]$ManifestPath,
 
     [string]$TrustPath,
@@ -53,6 +67,16 @@ $supportedOriginSha256 =
     '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
 $supportedLegacySha256 =
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
+$expectedOrigin = if (
+    [string]::IsNullOrWhiteSpace($ExpectedOriginSha256)) {
+    $supportedOriginSha256
+}
+else {
+    $ExpectedOriginSha256.ToUpperInvariant()
+}
+if ($expectedOrigin -cne $supportedOriginSha256) {
+    throw 'Expected stock Origin SHA-256 is unsupported.'
+}
 
 Import-Module (
     Join-Path $PSScriptRoot 'SecureNetworkBundleTransaction.psm1'
@@ -67,25 +91,23 @@ Import-Module (
     Join-Path $PSScriptRoot 'ControlledHostRuntimeLock.psm1'
 ) -Force
 Import-Module (
-    Join-Path $PSScriptRoot 'SecureNetworkBundleFiles.psm1'
+    Join-Path $PSScriptRoot 'SecureNetworkPathSafety.psm1'
 ) -Force
 Import-Module (
-    Join-Path $PSScriptRoot 'SecureNetworkPathSafety.psm1'
+    Join-Path $PSScriptRoot 'SecureNetworkNativeOfflineGate.psm1'
 ) -Force
 
 $requiredDependencyCommands = @(
     'Assert-RebornControlledHostClientInventoryReceipt'
     'Assert-RebornControlledHostClientPostInventoryReboot'
-    'Assert-RebornDirectChildDirectory'
     'Assert-RebornProtectedDirectoryPath'
-    'Assert-RebornRegularFilePath'
-    'Copy-RebornFileAtomic'
     'Enter-RebornControlledHostRuntimeSetLock'
     'Enter-RebornSecureNetworkOperationLock'
     'Exit-RebornControlledHostRuntimeSetLock'
     'Exit-RebornSecureNetworkOperationLock'
     'Get-RebornSecureBundleStatus'
     'Initialize-RebornProtectedDirectoryPath'
+    'Invoke-RebornSecureBundleNativeOfflineGate'
     'Invoke-RebornSecureBundleApply'
     'Invoke-RebornSecureBundleRestore'
     'New-RebornSecureBundlePolicy'
@@ -126,158 +148,23 @@ function Enter-SecureBundleMutation {
     }
 }
 
-function Get-SecureStreamSha256 {
-    param([Parameter(Mandatory)][IO.FileStream]$Stream)
-
-    if (-not $Stream.CanRead -or -not $Stream.CanSeek) {
-        throw 'Secure staged-file verification requires a readable seekable stream.'
-    }
-    $originalPosition = $Stream.Position
-    $algorithm = $null
-    $hash = $null
-    try {
-        $Stream.Position = 0
-        $algorithm = [Security.Cryptography.SHA256]::Create()
-        $hash = $algorithm.ComputeHash($Stream)
-        return ([BitConverter]::ToString($hash)).Replace('-', '')
-    }
-    finally {
-        $Stream.Position = $originalPosition
-        if ($null -ne $hash) {
-            [Array]::Clear($hash, 0, $hash.Length)
-        }
-        if ($null -ne $algorithm) {
-            $algorithm.Dispose()
-        }
-    }
-}
-
-function Invoke-NativeOfflineGate {
-    param(
-        [Parameter(Mandatory)][string]$Candidate,
-        [Parameter(Mandatory)][string]$StockNet,
-        [Parameter(Mandatory)][string]$Manifest,
-        [Parameter(Mandatory)][string]$ScratchRoot,
-        [Parameter(Mandatory)][string]$ExpectedCandidate,
-        [Parameter(Mandatory)][string]$ExpectedStockNet,
-        [Parameter(Mandatory)][string]$ExpectedChecks,
-        [Parameter(Mandatory)][string]$ExpectedManifest,
-        [switch]$IncludeSockets
-    )
-
-    $candidateFile = [IO.Path]::GetFullPath($Candidate)
-    $outputDirectory = Split-Path -Parent $candidateFile
-    $checksSource =
-        Join-Path $outputDirectory 'Godswar.NetShim.Checks.exe'
-
-    $scratchBase = [IO.Path]::GetFullPath($ScratchRoot).TrimEnd('\')
-    $filesystemRoot =
-        [IO.Path]::GetPathRoot($scratchBase).TrimEnd('\')
-    if ($scratchBase.Equals(
-            $filesystemRoot,
-            [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'ScratchRoot cannot be a filesystem root.'
-    }
-    $scratchBase = Initialize-RebornProtectedDirectoryPath `
-        $scratchBase 'secure probe scratch root'
-    $probe = Join-Path $scratchBase (
-        'secure-bundle-offline-probe-' +
-        [Guid]::NewGuid().ToString('N'))
-    $probe = Initialize-RebornProtectedDirectoryPath `
-        $probe 'secure probe directory'
-    $stagedChecks = Join-Path $probe 'Godswar.NetShim.Checks.exe'
-    $stagedCandidate = Join-Path $probe 'Net.dll'
-    $stagedLegacy = Join-Path $probe 'NetLegacy.dll'
-    $stagedManifest = Join-Path $probe 'RebornNetwork.gwem'
-    $locks = @()
-    try {
-        Copy-RebornFileAtomic `
-            $checksSource $stagedChecks $ExpectedChecks
-        Copy-RebornFileAtomic `
-            $candidateFile $stagedCandidate $ExpectedCandidate
-        Copy-RebornFileAtomic `
-            $StockNet $stagedLegacy $ExpectedStockNet
-        Copy-RebornFileAtomic `
-            $Manifest $stagedManifest $ExpectedManifest
-
-        foreach ($input in @(
-            @($stagedChecks, $ExpectedChecks, 'verification executable'),
-            @($stagedCandidate, $ExpectedCandidate, 'candidate Net.dll'),
-            @($stagedLegacy, $ExpectedStockNet, 'stock Net.dll'),
-            @($stagedManifest, $ExpectedManifest, 'endpoint manifest')
-        )) {
-            $lock = $null
-            try {
-                $lock = [IO.File]::Open(
-                    [string]$input[0],
-                    [IO.FileMode]::Open,
-                    [IO.FileAccess]::Read,
-                    [IO.FileShare]::Read)
-                if ((Get-SecureStreamSha256 $lock) -cne
-                        [string]$input[1]) {
-                    throw "Locked staged $($input[2]) SHA-256 mismatch."
-                }
-                $locks += $lock
-                $lock = $null
-            }
-            finally {
-                if ($null -ne $lock) {
-                    $lock.Dispose()
-                }
-            }
-        }
-
-        if ($IncludeSockets) {
-            & $stagedChecks
-        } else {
-            & $stagedChecks --offline
-        }
-        if ($LASTEXITCODE -ne 0) {
-            throw "Native candidate checks failed with exit code $LASTEXITCODE."
-        }
-
-        & $stagedChecks `
-            --offline-manifest-probe `
-            $stagedCandidate `
-            $stagedManifest
-        if ($LASTEXITCODE -ne 0) {
-            throw (
-                'Manifest does not match the candidate build verification ' +
-                "key; probe exit code $LASTEXITCODE.")
-        }
-
-        & $stagedChecks --offline-probe $stagedCandidate
-        if ($LASTEXITCODE -ne 0) {
-            throw (
-                'Offline stock-delegation probe failed with exit code ' +
-                "$LASTEXITCODE."
-            )
-        }
-    }
-    finally {
-        foreach ($lock in $locks) {
-            $lock.Dispose()
-        }
-        Assert-RebornDirectChildDirectory `
-            $probe $scratchBase 'secure probe cleanup directory' `
-            -RequireProtected | Out-Null
-        foreach ($staged in @(
-            $stagedChecks,
-            $stagedCandidate,
-            $stagedLegacy,
-            $stagedManifest
-        )) {
-            if (Test-Path -LiteralPath $staged -PathType Leaf) {
-                Assert-RebornRegularFilePath `
-                    $staged 'secure probe cleanup file' | Out-Null
-                [IO.File]::Delete($staged)
-            }
-        }
-        [IO.Directory]::Delete($probe, $false)
-    }
-}
-
 $candidate = [IO.Path]::GetFullPath($CandidatePath)
+$pairedOrigin =
+    -not [string]::IsNullOrWhiteSpace($ExpectedCandidateOriginSha256)
+$hasCandidateOriginPath =
+    -not [string]::IsNullOrWhiteSpace($CandidateOriginPath)
+if (($hasCandidateOriginPath -and -not $pairedOrigin) -or
+    ($Mode -ne 'Restore' -and
+        $pairedOrigin -ne $hasCandidateOriginPath)) {
+    throw (
+        'Candidate Origin path and expected SHA-256 must be supplied ' +
+        'together.')
+}
+$candidateOrigin = if ($hasCandidateOriginPath) {
+    [IO.Path]::GetFullPath($CandidateOriginPath)
+} else {
+    ''
+}
 if ($Mode -ne 'Restore' -and
     ([string]::IsNullOrWhiteSpace($ManifestPath) -or
         [string]::IsNullOrWhiteSpace($TrustPath))) {
@@ -296,14 +183,20 @@ $trust = if ([string]::IsNullOrWhiteSpace($TrustPath)) {
 $client = [IO.Path]::GetFullPath($ClientRoot).TrimEnd('\')
 $backup = [IO.Path]::GetFullPath($BackupRoot).TrimEnd('\')
 $policy = New-RebornSecureBundlePolicy `
-    -OriginSha256 $supportedOriginSha256 `
+    -OriginSha256 $expectedOrigin `
     -LegacyNetSha256 $supportedLegacySha256 `
     -CandidateNetSha256 (
         $ExpectedCandidateSha256.ToUpperInvariant()) `
     -ManifestSha256 (
         $ExpectedManifestSha256.ToUpperInvariant()) `
     -ManifestTrustSha256 (
-        $ExpectedTrustSha256.ToUpperInvariant())
+        $ExpectedTrustSha256.ToUpperInvariant()) `
+    -CandidateOriginSha256 $(
+        if ($pairedOrigin) {
+            $ExpectedCandidateOriginSha256.ToUpperInvariant()
+        } else {
+            $supportedOriginSha256
+        })
 $controlledClient =
     $client.Equals(
         'C:\RebornNetworkAcceptanceClient',
@@ -330,7 +223,8 @@ if ($Mode -eq 'Status') {
         -CandidatePath $candidate `
         -ManifestPath $manifest `
         -TrustPath $trust `
-        -StateProvider Hklm
+        -StateProvider Hklm `
+        -CandidateOriginPath $candidateOrigin
     if ($controlledClient -and
         $bundleStatus.State -in @('Stock', 'InstalledExact')) {
         $inventoryMode = if (
@@ -342,7 +236,12 @@ if ($Mode -eq 'Status') {
             $inventoryMode `
             $policy.CandidateNetSha256 `
             $policy.LegacyNetSha256 `
-            $policy.ManifestSha256 | Out-Null
+            $policy.ManifestSha256 `
+            $(if ($pairedOrigin) {
+                $policy.CandidateOriginSha256
+            } else {
+                $null
+            }) | Out-Null
     }
     $bundleStatus
     return
@@ -362,7 +261,8 @@ if ($Mode -eq 'Apply') {
         -CandidatePath $candidate `
         -ManifestPath $manifest `
         -TrustPath $trust `
-        -StateProvider Hklm
+        -StateProvider Hklm `
+        -CandidateOriginPath $candidateOrigin
     if ($preflight.State -ne 'Stock') {
         throw "Secure bundle Apply requires exact Stock state, got $($preflight.State)."
     }
@@ -392,7 +292,8 @@ if ($Mode -eq 'Apply') {
             -CandidatePath $candidate `
             -ManifestPath $manifest `
             -TrustPath $trust `
-            -StateProvider Hklm
+            -StateProvider Hklm `
+            -CandidateOriginPath $candidateOrigin
         if ($lockedPreflight.State -ne 'Stock') {
             throw (
                 'Secure bundle state changed before the operation lock; ' +
@@ -410,12 +311,19 @@ if ($Mode -eq 'Apply') {
             }
             $backup = Initialize-RebornProtectedDirectoryPath `
                 $backup 'BackupRoot'
-            Invoke-NativeOfflineGate `
+            Invoke-RebornSecureBundleNativeOfflineGate `
                 -Candidate $candidate `
+                -CandidateOrigin $(if ($pairedOrigin) {
+                    $candidateOrigin
+                } else {
+                    Join-Path $client 'Origin.exe'
+                }) `
                 -StockNet (Join-Path $client 'Net.dll') `
                 -Manifest $manifest `
                 -ScratchRoot (Join-Path $backup '.staging') `
                 -ExpectedCandidate $policy.CandidateNetSha256 `
+                -ExpectedCandidateOrigin `
+                    $policy.CandidateOriginSha256 `
                 -ExpectedStockNet $policy.LegacyNetSha256 `
                 -ExpectedChecks $ExpectedChecksSha256.ToUpperInvariant() `
                 -ExpectedManifest $policy.ManifestSha256 `
@@ -431,6 +339,7 @@ if ($Mode -eq 'Apply') {
                 -BackupRoot $backup `
                 -StateProvider Hklm `
                 -AllowHklmWrite `
+                -CandidateOriginPath $candidateOrigin `
                 -PreCommitValidation {
                     param([IO.FileStream]$LockedOriginStream)
                     if ($controlledClient) {
@@ -441,6 +350,11 @@ if ($Mode -eq 'Apply') {
                             $policy.CandidateNetSha256 `
                             $policy.LegacyNetSha256 `
                             $policy.ManifestSha256 `
+                            $(if ($pairedOrigin) {
+                                $policy.CandidateOriginSha256
+                            } else {
+                                $null
+                            }) `
                             -LockedOriginStream $LockedOriginStream | Out-Null
                     }
                 }

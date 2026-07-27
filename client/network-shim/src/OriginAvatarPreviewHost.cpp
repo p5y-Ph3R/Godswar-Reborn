@@ -1,5 +1,6 @@
 #include "AvatarPreviewGate.h"
 #include "FileSha256.h"
+#include "SecureClientManifestBuildContract.h"
 
 #include <Windows.h>
 
@@ -13,13 +14,6 @@ constexpr std::uintptr_t OriginImageBase = 0x00400000;
 constexpr DWORD OriginTimestamp = 0x52AA79CA;
 constexpr DWORD OriginImageSize = 0x011DE000;
 constexpr DWORD OriginEntryPointRva = 0x003BF68D;
-
-constexpr std::uint8_t SupportedOriginSha256[] = {
-    0x75, 0x3B, 0xE4, 0x9F, 0xE9, 0x4B, 0x6F, 0x4C,
-    0x0E, 0x33, 0x29, 0xBC, 0x89, 0x05, 0x94, 0x5B,
-    0xD9, 0xB0, 0xF1, 0xA7, 0x90, 0xB4, 0xB9, 0x03,
-    0x8E, 0x69, 0xC2, 0xA5, 0xAD, 0x49, 0xED, 0x79,
-};
 
 constexpr std::uintptr_t ResourceSlotRvas[] = {
     0x01176088,
@@ -66,6 +60,24 @@ constexpr std::uint8_t PrimaryGuardCave[] = {
     0x33, 0xC9, 0xE9, 0xA1, 0x17, 0xC3, 0xFF, 0xE9,
     0x79, 0x1E, 0xC3, 0xFF,
 };
+constexpr std::uint8_t TimeoutGuardHook[] = {
+    0xE9, 0x64, 0xDB, 0x3C, 0x00, 0x90,
+};
+constexpr std::uint8_t TimeoutGuardCave[] = {
+    0x83, 0x3D, 0x4C, 0x5F, 0x57, 0x01, 0x02, 0x75,
+    0x12, 0xA1, 0xA0, 0x60, 0x57, 0x01, 0x85, 0xC0,
+    0x74, 0x14, 0xA1, 0x8C, 0x60, 0x57, 0x01, 0x85,
+    0xC0, 0x74, 0x0B, 0x8B, 0x0D, 0xA0, 0x60, 0x57,
+    0x01, 0xE9, 0x77, 0x24, 0xC3, 0xFF, 0xBF, 0x02,
+    0x00, 0x00, 0x00, 0xC6, 0x05, 0x66, 0x5C, 0x57,
+    0x01, 0x01, 0x89, 0x3D, 0x50, 0x5F, 0x57, 0x01,
+    0xE9, 0x8E, 0x24, 0xC3, 0xFF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00,
+};
 constexpr std::uint8_t NativeInitializerPrefix[] = {
     0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8, 0x6A, 0xFF,
     0x68, 0x60, 0x78, 0x81, 0x00, 0x64, 0xA1, 0x00,
@@ -88,6 +100,8 @@ constexpr std::uintptr_t SecondaryGuardHookRva = 0x001F05C2;
 constexpr std::uintptr_t SecondaryGuardCaveRva = 0x005C3320;
 constexpr std::uintptr_t PrimaryGuardHookRva = 0x001F4A82;
 constexpr std::uintptr_t PrimaryGuardCaveRva = 0x005C32B0;
+constexpr std::uintptr_t TimeoutGuardHookRva = 0x001F58B6;
+constexpr std::uintptr_t TimeoutGuardCaveRva = 0x005C341F;
 constexpr std::uintptr_t NativeInitializerRva = 0x00067280;
 constexpr std::uintptr_t StateObjectRva = 0x005E5A04;
 constexpr std::uintptr_t StateObjectVtableRva = 0x0055203C;
@@ -108,6 +122,7 @@ constexpr std::uint8_t CharacterPreviewCount = 1;
 static_assert(sizeof(LifecycleCave) == 17);
 static_assert(sizeof(SecondaryGuardCave) == 70);
 static_assert(sizeof(PrimaryGuardCave) == 68);
+static_assert(sizeof(TimeoutGuardCave) == 96);
 
 bool HasReadableProtection(DWORD protection) noexcept {
     if ((protection & (PAGE_GUARD | PAGE_NOACCESS)) != 0) {
@@ -236,7 +251,7 @@ bool HasSupportedPeIdentity(const std::uint8_t* image) noexcept {
     }
 }
 
-bool HasSupportedV3RuntimeImage(const std::uint8_t* image) noexcept {
+bool HasSupportedRuntimeImage(const std::uint8_t* image) noexcept {
     return HasSupportedPeIdentity(image) &&
         HasBytes(
             image,
@@ -268,6 +283,16 @@ bool HasSupportedV3RuntimeImage(const std::uint8_t* image) noexcept {
             PrimaryGuardCaveRva,
             PrimaryGuardCave,
             sizeof(PrimaryGuardCave)) &&
+        HasBytes(
+            image,
+            TimeoutGuardHookRva,
+            TimeoutGuardHook,
+            sizeof(TimeoutGuardHook)) &&
+        HasBytes(
+            image,
+            TimeoutGuardCaveRva,
+            TimeoutGuardCave,
+            sizeof(TimeoutGuardCave)) &&
         HasBytes(
             image,
             NativeInitializerRva,
@@ -326,8 +351,12 @@ bool HasUsableStateManager(
 namespace godswar::network {
 
 bool IsSupportedOriginAvatarHost() noexcept {
+    const auto& contract =
+        godswar::network::GetSecureClientManifestBuildContract();
     const auto module = GetModuleHandleW(nullptr);
-    if (module == nullptr) {
+    if (module == nullptr ||
+        !godswar::network::
+            IsValidSecureClientManifestBuildContract(contract)) {
         return false;
     }
 
@@ -344,11 +373,11 @@ bool IsSupportedOriginAvatarHost() noexcept {
 
     const auto* image =
         reinterpret_cast<const std::uint8_t*>(module);
-    return HasSupportedV3RuntimeImage(image) &&
+    return HasSupportedRuntimeImage(image) &&
         FileMatchesSha256(
             path,
-            SupportedOriginSha256,
-            sizeof(SupportedOriginSha256));
+            contract.originSha256,
+            sizeof(contract.originSha256));
 }
 
 bool AreOriginAvatarResourcesReady() noexcept {
@@ -386,7 +415,7 @@ AvatarPreloadResult RequestOriginAvatarPreload() noexcept {
     }
 
     auto* const image = reinterpret_cast<std::uint8_t*>(module);
-    if (!HasSupportedV3RuntimeImage(image)) {
+    if (!HasSupportedRuntimeImage(image)) {
         return AvatarPreloadResult::NotInvoked;
     }
     if (AreOriginAvatarResourcesReady()) {

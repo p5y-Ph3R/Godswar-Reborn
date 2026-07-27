@@ -2,6 +2,7 @@
 
 #include "SchannelClientStreamTests.h"
 
+#include "../src/DevelopmentTlsCertificate.h"
 #include "../src/SchannelClientStream.h"
 #include "../src/SchannelClientStreamPostHandshake.h"
 #include "../src/WinSockRuntime.h"
@@ -17,6 +18,7 @@
 namespace {
 
 using godswar::network::IsAcceptedSchannelProtocolAndCipher;
+using godswar::network::IsEmbeddedDevelopmentTlsRootValid;
 using godswar::network::IsValidSchannelTargetName;
 using godswar::network::GetSchannelCredentialFlags;
 using godswar::network::HasRequiredSchannelStreamAttributes;
@@ -135,18 +137,35 @@ void CheckPolicy() {
     const DWORD developmentFlags = GetSchannelCredentialFlags(
         SchannelRevocationPolicy::
             AllowMissingSourceForDevelopment);
+    const DWORD pinnedDevelopmentFlags =
+        GetSchannelCredentialFlags(
+            SchannelRevocationPolicy::
+                PinnedRootForDevelopment);
     Check(
         (strictFlags &
             SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT) != 0 &&
+            (strictFlags &
+                SCH_CRED_AUTO_CRED_VALIDATION) != 0 &&
+            (strictFlags &
+                SCH_CRED_MANUAL_CRED_VALIDATION) == 0 &&
             (strictFlags &
                 SCH_CRED_IGNORE_NO_REVOCATION_CHECK) == 0 &&
             (developmentFlags &
                 SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT) != 0 &&
             (developmentFlags &
                 SCH_CRED_IGNORE_NO_REVOCATION_CHECK) != 0 &&
+            (pinnedDevelopmentFlags &
+                SCH_CRED_MANUAL_CRED_VALIDATION) != 0 &&
+            (pinnedDevelopmentFlags &
+                SCH_CRED_AUTO_CRED_VALIDATION) == 0 &&
+            (pinnedDevelopmentFlags &
+                SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT) == 0 &&
             GetSchannelCredentialFlags(
                 static_cast<SchannelRevocationPolicy>(0xFF)) == 0,
         "Schannel revocation policy flags are not environment-scoped");
+    Check(
+        IsEmbeddedDevelopmentTlsRootValid(),
+        "embedded development TLS root failed its identity check");
 }
 
 void CheckPostHandshakePolicy() {

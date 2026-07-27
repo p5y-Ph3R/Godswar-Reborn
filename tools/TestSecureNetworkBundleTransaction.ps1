@@ -395,4 +395,6 @@ finally {
 
 & (Join-Path $PSScriptRoot 'TestSecureNetworkBundleRestoreState.ps1')
 & (Join-Path $PSScriptRoot 'TestSecureNetworkActivationCommit.ps1')
+& (Join-Path $PSScriptRoot 'TestSecureNetworkPairedOriginBundle.ps1')
+& (Join-Path $PSScriptRoot 'TestSecureNetworkOriginContractGate.ps1')
 Write-Host 'Secure network bundle transaction checks passed.'

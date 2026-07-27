@@ -95,6 +95,53 @@ function Invoke-RebornControlledHostNativeCheck {
     }
 }
 
+function Assert-RebornControlledHostActivationOriginBinding {
+    param(
+        [Parameter(Mandatory)][object]$InventoryReceipt,
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$ActualOriginSha256,
+        [Parameter(Mandatory)]
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$ExpectedOriginSha256,
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$ExpectedStockOriginSha256
+    )
+
+    $originEntries = @($InventoryReceipt.Inventory.Files | Where-Object {
+        [string]$_.RelativePath -ceq 'Origin.exe'
+    })
+    if ($originEntries.Count -ne 1) {
+        throw 'Stock inventory does not contain one exact Origin.exe.'
+    }
+    $inventoryStock = [string]$originEntries[0].Sha256
+    $expectedLive = $ExpectedOriginSha256.ToUpperInvariant()
+    $expectedStock = if (
+        [string]::IsNullOrWhiteSpace($ExpectedStockOriginSha256)) {
+        $expectedLive
+    }
+    else {
+        $ExpectedStockOriginSha256.ToUpperInvariant()
+    }
+    $actual = $ActualOriginSha256.ToUpperInvariant()
+    $paired =
+        -not [string]::IsNullOrWhiteSpace($ExpectedStockOriginSha256)
+    if ($inventoryStock -cne $expectedStock) {
+        throw 'Expected stock Origin does not match the inventory authority.'
+    }
+    if ($actual -cne $expectedLive) {
+        throw 'Installed Origin does not match its live activation pin.'
+    }
+    if ($paired -and $expectedLive -ceq $expectedStock) {
+        throw 'Paired activation requires distinct stock and live Origin pins.'
+    }
+    return [pscustomobject]@{
+        Paired = $paired
+        StockOriginSha256 = $expectedStock
+        LiveOriginSha256 = $expectedLive
+    }
+}
+
 function Assert-RebornControlledHostClientActivation {
     param(
         [Parameter(Mandatory)][string]$ClientRoot,
@@ -121,7 +168,9 @@ function Assert-RebornControlledHostClientActivation {
         [string]$ExpectedManifestTrustSha256,
         [Parameter(Mandatory)]
         [ValidatePattern('^[0-9A-Fa-f]{64}$')]
-        [string]$ExpectedNativeChecksSha256
+        [string]$ExpectedNativeChecksSha256,
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$ExpectedStockOriginSha256
     )
 
     $client = [IO.Path]::GetFullPath($ClientRoot).TrimEnd('\')
@@ -158,22 +207,45 @@ function Assert-RebornControlledHostClientActivation {
             $InventoryReceiptPath `
             $ExpectedInventoryReceiptSha256
     $receipt = $rebootGate.Receipt
+    $originBinding =
+        Assert-RebornControlledHostActivationOriginBinding `
+            $receipt `
+            (Get-FileHash -LiteralPath (
+                Join-Path $client 'Origin.exe') -Algorithm SHA256).Hash `
+            $ExpectedOriginSha256 `
+            $ExpectedStockOriginSha256
     $inventory = Assert-RebornControlledHostClientInventoryReceipt `
         $receipt `
         $client `
         InstalledExact `
         $ExpectedCandidateSha256 `
         $ExpectedLegacyNetSha256 `
-        $ExpectedManifestSha256
+        $ExpectedManifestSha256 `
+        $(if (
+            -not [string]::IsNullOrWhiteSpace(
+                $ExpectedStockOriginSha256)
+        ) {
+            $ExpectedOriginSha256
+        } else {
+            $null
+        })
 
     $candidate = Join-Path $client 'Net.dll'
     $manifest = Join-Path $client 'RebornNetwork.gwem'
     $policy = New-RebornSecureBundlePolicy `
-        $ExpectedOriginSha256 `
+        $originBinding.StockOriginSha256 `
         $ExpectedLegacyNetSha256 `
         $ExpectedCandidateSha256 `
         $ExpectedManifestSha256 `
-        $ExpectedManifestTrustSha256
+        $ExpectedManifestTrustSha256 `
+        $ExpectedOriginSha256
+    $candidateOriginPath = if (
+        [string]::IsNullOrWhiteSpace($ExpectedStockOriginSha256)
+    ) {
+        $null
+    } else {
+        Join-Path $client 'Origin.exe'
+    }
     $activationBefore = Assert-RebornProtectedHklmActivationState
     $status = Get-RebornSecureBundleStatus `
         $policy `
@@ -181,7 +253,8 @@ function Assert-RebornControlledHostClientActivation {
         $candidate `
         $manifest `
         $trust `
-        Hklm
+        Hklm `
+        -CandidateOriginPath $candidateOriginPath
     $activationAfter = Assert-RebornProtectedHklmActivationState
     if (-not (Test-RebornControlledHostActivationStateEqual `
             $activationBefore $activationAfter)) {
@@ -231,5 +304,6 @@ function Assert-RebornControlledHostClientActivation {
 Export-ModuleMember -Function @(
     'Test-RebornControlledHostActivationStateEqual',
     'Invoke-RebornControlledHostNativeCheck',
+    'Assert-RebornControlledHostActivationOriginBinding',
     'Assert-RebornControlledHostClientActivation'
 )

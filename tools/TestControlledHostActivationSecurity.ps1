@@ -4,6 +4,9 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+Import-Module (
+    Join-Path $PSScriptRoot 'ControlledHostClientActivation.psm1'
+) -Force
 foreach ($moduleName in @(
     'ControlledHostProcessEnvironment.psm1',
     'ControlledHostClientInventoryReceipt.psm1',
@@ -44,6 +47,39 @@ function Assert-Rejected {
         throw "Unsafe controlled-host case was accepted: $Label"
     }
 }
+
+$stockOriginHash = 'A' * 64
+$candidateOriginHash = 'B' * 64
+$otherOriginHash = 'C' * 64
+$originReceipt = [pscustomobject]@{
+    Inventory = [pscustomobject]@{
+        Files = @([pscustomobject]@{
+            RelativePath = 'Origin.exe'
+            Sha256 = $stockOriginHash
+        })
+    }
+}
+$originBinding =
+    Assert-RebornControlledHostActivationOriginBinding `
+        $originReceipt `
+        $candidateOriginHash `
+        $candidateOriginHash `
+        $stockOriginHash
+Assert-True `
+    ($originBinding.Paired -and
+        $originBinding.StockOriginSha256 -ceq $stockOriginHash -and
+        $originBinding.LiveOriginSha256 -ceq $candidateOriginHash) `
+    'paired activation binds stock inventory and live Origin separately'
+Assert-Rejected {
+    Assert-RebornControlledHostActivationOriginBinding `
+        $originReceipt $candidateOriginHash `
+        $candidateOriginHash $otherOriginHash
+} 'paired activation with a wrong stock Origin'
+Assert-Rejected {
+    Assert-RebornControlledHostActivationOriginBinding `
+        $originReceipt $candidateOriginHash `
+        $otherOriginHash $stockOriginHash
+} 'paired activation with a wrong live Origin'
 
 function ConvertTo-EncodedCommand {
     param([Parameter(Mandatory)][string]$Script)

@@ -56,23 +56,35 @@ public static class RebornSecureBundleAtomicNativeV1
 '@
 }
 
-$script:RecoveryInputSpecifications = @(
-    [pscustomobject]@{
+function Get-RebornRecoveryInputSpecifications {
+    param([Parameter(Mandatory)][object]$Policy)
+
+    $specifications = [Collections.Generic.List[object]]::new()
+    $specifications.Add([pscustomobject]@{
         Role = 'Candidate'
         FileName = 'candidate-Net.dll'
         PolicyHash = 'CandidateNetSha256'
-    },
-    [pscustomobject]@{
+    })
+    $specifications.Add([pscustomobject]@{
         Role = 'Manifest'
         FileName = 'endpoint-manifest.gwem'
         PolicyHash = 'ManifestSha256'
-    },
-    [pscustomobject]@{
+    })
+    $specifications.Add([pscustomobject]@{
         Role = 'Trust'
         FileName = 'manifest-trust.json'
         PolicyHash = 'ManifestTrustSha256'
+    })
+    if ([string]$Policy.CandidateOriginSha256 -cne
+        [string]$Policy.OriginSha256) {
+        $specifications.Add([pscustomobject]@{
+            Role = 'OriginCandidate'
+            FileName = 'candidate-Origin.exe'
+            PolicyHash = 'CandidateOriginSha256'
+        })
     }
-)
+    return $specifications.ToArray()
+}
 
 function Get-RebornBundleFileSha256 {
     param([Parameter(Mandatory)][string]$Path)
@@ -307,15 +319,19 @@ function New-RebornRecoveryInputSet {
         [string]$Directory,
         [string]$CandidatePath,
         [string]$ManifestPath,
-        [string]$TrustPath
+        [string]$TrustPath,
+        [string]$CandidateOriginPath
     )
 
     $sources = @{
         Candidate = $CandidatePath
         Manifest = $ManifestPath
         Trust = $TrustPath
+        OriginCandidate = $CandidateOriginPath
     }
-    foreach ($specification in $script:RecoveryInputSpecifications) {
+    foreach ($specification in (
+        Get-RebornRecoveryInputSpecifications $Policy
+    )) {
         $expectedHash =
             [string]$Policy.($specification.PolicyHash)
         Copy-RebornFileAtomic `
@@ -337,7 +353,9 @@ function Get-RebornRecoveryInputSet {
     )
 
     $paths = @{}
-    foreach ($specification in $script:RecoveryInputSpecifications) {
+    foreach ($specification in (
+        Get-RebornRecoveryInputSpecifications $Policy
+    )) {
         $path = Join-Path $Directory $specification.FileName
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Secure-bundle recovery input is missing: $path"
@@ -358,6 +376,11 @@ function Get-RebornRecoveryInputSet {
         Candidate = $paths.Candidate
         Manifest = $paths.Manifest
         Trust = $paths.Trust
+        CandidateOrigin = if ($paths.ContainsKey('OriginCandidate')) {
+            $paths.OriginCandidate
+        } else {
+            $null
+        }
     }
 }
 
@@ -396,160 +419,9 @@ function Write-RebornBackupReceipt {
         (Join-Path $Directory 'receipt.sha256')
 }
 
-function Assert-RebornReceiptPolicy {
-    param(
-        [object]$Receipt,
-        [object]$Policy,
-        [object]$VerifiedManifest
-    )
-
-    if ([string]$VerifiedManifest.ManifestSha256 -cne
-            [string]$Policy.ManifestSha256 -or
-        [string]$VerifiedManifest.TrustSha256 -cne
-            [string]$Policy.ManifestTrustSha256) {
-        throw 'Receipt manifest is not bound to the reviewed bundle policy.'
-    }
-    foreach ($name in @(
-        'OriginSha256',
-        'LegacyNetSha256',
-        'CandidateNetSha256',
-        'ManifestSha256',
-        'ManifestTrustSha256'
-    )) {
-        if ([string]$Receipt.policy.$name -cne [string]$Policy.$name) {
-            throw "Secure-bundle receipt policy mismatch: $name"
-        }
-    }
-
-    $recoveryEntries = @($Receipt.recoveryInputs)
-    if ($recoveryEntries.Count -ne
-            $script:RecoveryInputSpecifications.Count) {
-        throw 'Secure-bundle receipt recovery input count is invalid.'
-    }
-    foreach ($specification in $script:RecoveryInputSpecifications) {
-        $matches = @($recoveryEntries | Where-Object {
-            $_.role -is [string] -and
-            $_.role -ceq $specification.Role
-        })
-        $expectedHash =
-            [string]$Policy.($specification.PolicyHash)
-        if ($matches.Count -ne 1 -or
-            $matches[0].path -cne $specification.FileName -or
-            $matches[0].sha256 -cne $expectedHash) {
-            throw (
-                'Secure-bundle receipt recovery input violates policy: ' +
-                $specification.Role)
-        }
-    }
-
-    $entries = @($Receipt.files)
-    if ($entries.Count -ne 3) {
-        throw 'Secure-bundle receipt must contain exactly three file entries.'
-    }
-    $specifications = @(
-        @('Net.dll', $true, 'Net.dll', $Policy.LegacyNetSha256),
-        @('NetLegacy.dll', $false, $null, $null),
-        @('RebornNetwork.gwem', $false, $null, $null)
-    )
-    foreach ($specification in $specifications) {
-        $matches = @($entries | Where-Object {
-            $_.path -is [string] -and
-            $_.path -ceq $specification[0]
-        })
-        if ($matches.Count -ne 1) {
-            throw "Secure-bundle receipt entry is missing or duplicated: $($specification[0])"
-        }
-        $entry = $matches[0]
-        if ($entry.existed -isnot [bool] -or
-            $entry.existed -ne $specification[1] -or
-            $entry.backup -cne $specification[2] -or
-            $entry.sha256 -cne $specification[3]) {
-            throw "Secure-bundle receipt entry violates policy: $($specification[0])"
-        }
-    }
-
-    if ([string]$Receipt.manifest.sha256 -cne
-            [string]$VerifiedManifest.ManifestSha256 -or
-        [string]$Receipt.manifest.trustSha256 -cne
-            [string]$VerifiedManifest.TrustSha256 -or
-        [string]$Receipt.manifest.environment -cne
-            $VerifiedManifest.Environment.ToString() -or
-        [string]$Receipt.manifest.sequence -cne
-            $VerifiedManifest.Sequence.ToString()) {
-        throw 'Secure-bundle receipt manifest metadata is not authoritative.'
-    }
-    $beforeMode = [UInt64]0
-    $beforeEnvironment = [UInt64]0
-    $beforeFloor = [UInt64]0
-    if ($Receipt.stateBefore.existed -isnot [bool] -or
-        -not [UInt64]::TryParse(
-            [string]$Receipt.stateBefore.activationMode,
-            [ref]$beforeMode) -or
-        -not [UInt64]::TryParse(
-            [string]$Receipt.stateBefore.environment,
-            [ref]$beforeEnvironment) -or
-        -not [UInt64]::TryParse(
-            [string]$Receipt.stateBefore.sequenceFloor,
-            [ref]$beforeFloor) -or
-        $beforeMode -ne 0 -or
-        $beforeEnvironment -gt 3 -or
-        $beforeFloor -gt $VerifiedManifest.Sequence) {
-        throw 'Secure-bundle receipt predecessor state is invalid.'
-    }
-}
-
-function Read-RebornBackupReceipt {
-    param(
-        [string]$Directory,
-        [string]$ExpectedClient,
-        [object]$Policy,
-        [object]$VerifiedManifest
-    )
-
-    $resolved = Resolve-RebornReceiptDirectory $Directory
-    $receiptPath = Join-Path $resolved 'receipt.json'
-    $checksumPath = Join-Path $resolved 'receipt.sha256'
-    foreach ($path in @($receiptPath, $checksumPath)) {
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "Secure-bundle backup is incomplete: $path"
-        }
-        Assert-RebornRegularFilePath `
-            $path 'secure-bundle receipt file' | Out-Null
-    }
-    $expected = (Get-Content -LiteralPath $checksumPath -Raw).Trim()
-    if (-not (Test-RebornBundleSha256 $expected) -or
-        (Get-RebornBundleFileSha256 $receiptPath) -cne $expected) {
-        throw 'Secure-bundle backup receipt checksum failed.'
-    }
-
-    $receipt = Get-Content -LiteralPath $receiptPath -Raw |
-        ConvertFrom-Json
-    if ($receipt.schemaVersion -ne 3 -or
-        $receipt.mode -cne 'Apply' -or
-        -not ([IO.Path]::GetFullPath([string]$receipt.clientRoot)).Equals(
-            $ExpectedClient,
-            [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Secure-bundle backup receipt is not applicable.'
-    }
-    Assert-RebornReceiptPolicy $receipt $Policy $VerifiedManifest
-
-    $net = Join-Path $resolved 'Net.dll'
-    if (-not (Test-Path -LiteralPath $net -PathType Leaf)) {
-        throw 'Secure-bundle predecessor backup is missing.'
-    }
-    Assert-RebornRegularFilePath `
-        $net 'secure-bundle predecessor backup' | Out-Null
-    if ((Get-RebornBundleFileSha256 $net) -cne
-            $Policy.LegacyNetSha256) {
-        throw 'Secure-bundle predecessor backup failed validation.'
-    }
-    [pscustomobject]@{
-        Directory = $resolved
-        Receipt = $receipt
-    }
-}
-
 Export-ModuleMember -Function @(
+    'Get-RebornBundleFileSha256',
+    'Get-RebornRecoveryInputSpecifications',
     'Move-RebornStagedFileAtomic',
     'Copy-RebornFileAtomic',
     'Write-RebornJsonAtomic',
@@ -557,6 +429,5 @@ Export-ModuleMember -Function @(
     'New-RebornRecoveryInputSet',
     'Get-RebornRecoveryInputSet',
     'New-RebornFileBackupEntry',
-    'Write-RebornBackupReceipt',
-    'Read-RebornBackupReceipt'
+    'Write-RebornBackupReceipt'
 )

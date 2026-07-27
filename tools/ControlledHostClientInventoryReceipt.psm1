@@ -5,6 +5,9 @@ Import-Module (
     Join-Path $moduleRoot 'ControlledHostClientInventoryCore.psm1'
 )
 Import-Module (
+    Join-Path $moduleRoot 'ControlledHostClientInstalledInventory.psm1'
+)
+Import-Module (
     Join-Path $moduleRoot 'SecureNetworkPathSafety.psm1'
 )
 Import-Module (
@@ -280,6 +283,11 @@ function Assert-RebornControlledHostClientInventoryReceipt {
         [string]$LegacyNetSha256,
         [ValidatePattern('^[0-9A-Fa-f]{64}$')]
         [string]$ManifestSha256,
+        [ValidateScript({
+            [string]::IsNullOrEmpty($_) -or
+            $_ -cmatch '^[0-9A-Fa-f]{64}$'
+        })]
+        [string]$CandidateOriginSha256,
         [IO.FileStream]$LockedOriginStream,
         [switch]$AllowTestPath
     )
@@ -331,6 +339,14 @@ function Assert-RebornControlledHostClientInventoryReceipt {
             Assert-RebornSingleLinkRegularFilePath `
                 $path 'installed client inventory delta' | Out-Null
         }
+        $origin = Join-Path $resolvedClient 'Origin.exe'
+        $originLength = $null
+        if (-not [string]::IsNullOrWhiteSpace($CandidateOriginSha256)) {
+            Assert-RebornSingleLinkRegularFilePath `
+                $origin 'installed client Origin delta' | Out-Null
+            $originLength =
+                [Nullable[Int64]](Get-Item -LiteralPath $origin -Force).Length
+        }
         $expected = New-RebornControlledHostInstalledInventory `
             $Receipt.Inventory `
             $CandidateSha256 `
@@ -338,7 +354,9 @@ function Assert-RebornControlledHostClientInventoryReceipt {
             $ManifestSha256 `
             (Get-Item -LiteralPath $candidate -Force).Length `
             (Get-Item -LiteralPath $legacy -Force).Length `
-            (Get-Item -LiteralPath $manifest -Force).Length
+            (Get-Item -LiteralPath $manifest -Force).Length `
+            $CandidateOriginSha256 `
+            $originLength
     }
     Assert-RebornControlledHostInventoryEqual `
         $expected $current "controlled-host $Mode client inventory" |

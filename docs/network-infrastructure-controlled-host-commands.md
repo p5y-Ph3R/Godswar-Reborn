@@ -13,10 +13,13 @@ disposable client only through
 `C:\RebornNetworkAcceptanceClient\Launch.exe`; the validated chain is
 `Launch.exe` -> `patcher.exe autorun` -> `Origin.exe` within that same tree.
 
-The active PreviewReadyV2/schema-2 campaign writes only beneath
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`; its foreground
+The active PreviewReadyV6 campaign writes only beneath
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`; its foreground
 profiles write beneath
-`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`.
+`C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\server-evidence`.
+V6 Baseline is sealed `Pass`; Fallback, Soak, and exact rollback remain
+pending. See the
+[V6 candidate note](network-infrastructure-preview-ready-v6.md).
 
 ## Gate 1: offline and secure-Docker baseline
 
@@ -26,14 +29,26 @@ From an ordinary `powershell.exe -NoLogo -NoProfile`:
 Set-Location C:\Reborn
 $ErrorActionPreference='Stop'
 
-$previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1
+$guardedOrigin=(
+ 'C:\Reborn\artifacts\controlled-host-acceptance\' +
+ '20260728-102640-preview-ready-v6\candidate\Origin.exe')
+if((Get-FileHash $guardedOrigin -Algorithm SHA256).Hash -cne
+ 'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C'){
+  throw 'Guarded V6 Origin fixture changed.'
+}
+$previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1 `
+ -CandidateOriginPath $guardedOrigin
 if($previewBuild.CandidateSha256 -cne
-   'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE' -or
+   '2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97' -or
    $previewBuild.NativeChecksSha256 -cne
-   '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187'){
+   'FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75'){
  throw 'Preview-ready public-trust build changed.'
 }
+& .\tools\TestClientAvatarTimeoutRetryGuardPatch.ps1
+& .\tools\TestSecureNetworkPairedOriginBundle.ps1
 & .\tools\TestControlledHostPrivacyEvidence.ps1
+& .\tools\TestControlledHostMutableOutput.ps1
+& .\tools\TestPhase4SecureDockerClientBundle.ps1
 & .\tools\TestPhase4SecureDockerClientCampaign.ps1
 & .\tools\TestPhase4CompletionReceipt.ps1
 & .\tools\TestPhase4LoopbackAcceptanceRunner.ps1
@@ -47,6 +62,7 @@ if($status.DockerState -cne 'HealthyExact' -or
    $status.BundleState -cne 'Stock' -or
    $status.HostsState -cne 'Absent' -or
    $status.RootState -cne 'Absent' -or
+   $status.MutableOutputState -cne 'Inactive' -or
    $status.ActivationMode -ne 0 -or
    $status.ActivationEnvironment -ne 1 -or
    $status.SequenceFloor -ne 3 -or
@@ -63,19 +79,52 @@ if($keys.CurrentExists -or $keys.NextExists -or
 & .\tools\InvokeSecureDockerSmoke.ps1 `
  -RootCertificatePath `
  'C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921\tls\reborn-development-root.cer'
+
+$checks=(
+ 'C:\Reborn\artifacts\controlled-host-acceptance\' +
+ '20260728-102640-preview-ready-v6\candidate\' +
+ 'Godswar.NetShim.Checks.exe')
+$candidateNet=Join-Path (Split-Path $checks) 'Net.dll'
+& $checks --offline-origin-contract-probe $candidateNet $guardedOrigin
+if($LASTEXITCODE){throw 'Paired Origin/Net identity probe failed.'}
+& $checks --controlled-host-tls-probe `
+ 753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79
+if($LASTEXITCODE){throw 'Native TLS/preface probe failed.'}
 ```
 
 The smoke must authenticate through TLS, bind authenticated UDP, send one
 authoritative input, receive its acknowledged snapshot, clean up its random
 fixture, and leave secure Docker healthy with zero restarts.
+The native probe separately proves the x86 Schannel client path and secure
+preface while the Windows development root remains absent.
 
-The active preview-ready candidate and native-check pins are:
+The active paired V6 candidate pins are:
 
 ```text
-Net.dll                    EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE
-Godswar.NetShim.Checks.exe 237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187
+Origin.exe                 E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C
+Net.dll                    2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97
+Godswar.NetShim.Checks.exe FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75
 RebornNetwork.gwem         3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C
 ```
+
+PreviewReadyV5 is rejected and frozen under
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV5`, with fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260728-031445-preview-ready-v5`.
+Its protected terminal restore is `handoff-000024.json`; do not use it for a
+new Apply.
+
+The rejected PreviewReadyV3 campaign is frozen under
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV3`, with fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260728-004030-preview-ready-v3`.
+Do not use it for a new Apply.
+
+The failed PreviewReadyV2 campaign remains immutable under
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`, with fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2`
+and historical Net/check hashes
+`EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE` /
+`237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187`.
+Do not use that fixture for a new Apply.
 
 The already-signed manifest and compiled public verification keys are all the
 runtime needs. The two development CNG private signing keys are intentionally
@@ -101,7 +150,9 @@ if($status.State -cne 'InstalledExact' -or
    $status.DockerState -cne 'HealthyExact' -or
    $status.BundleState -cne 'InstalledExact' -or
    $status.HostsState -cne 'InstalledExact' -or
-   $status.RootState -cne 'InstalledExact' -or
+   $status.RootState -cne 'Absent' -or
+   $status.TlsTrustMode -cne 'EmbeddedDevelopmentRoot' -or
+   $status.MutableOutputState -cne 'Active' -or
    $status.ActivationMode -ne 1 -or
    $status.ActivationEnvironment -ne 1 -or
    $status.SequenceFloor -ne 3 -or
@@ -109,22 +160,28 @@ if($status.State -cne 'InstalledExact' -or
    [string]::IsNullOrWhiteSpace($status.HandoffPath)){
  throw 'Phase 4 installed campaign state is not exact.'
 }
+if((Get-FileHash `
+ 'C:\RebornNetworkAcceptanceClient\Origin.exe' -Algorithm SHA256).Hash -cne
+ 'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C'){
+  throw 'Guarded V6 Origin was not installed.'
+}
 $apply,$status|Format-List
 ```
 
 `Apply` keeps secure Docker running. It installs only:
 
-- the exact public development root in the issued user's CurrentUser store;
+- no Windows trust-store certificate; V6 pins its development root in Net;
 - the checked, receipt-bound loopback hosts mapping;
-- the hash-pinned client bundle; and
+- the schema-4 paired guarded-Origin/public-trust-Net bundle;
+- bounded read/write access to the existing `patcher\patcher.log` file only;
+  its parent directory remains protected and read-only; and
 - the monotonic HKLM activation state at environment 1, mode 1, floor 3.
 
 The campaign writes independent protected cleanup authority beneath
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`. Record the
-displayed PreviewReadyV2 campaign ID and handoff path. Both PreviewReadyV1
-and the unsuffixed LegacyV1 campaign are historical and read-only. No reboot
-is needed because this operation does not change the already-hardened client
-inventory or its accepted reboot epoch.
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`. Record the
+displayed PreviewReadyV6 campaign ID and handoff path. PreviewReadyV5 and
+earlier generations are historical and read-only. No reboot is needed
+because Apply preserves the accepted inventory epoch.
 
 Close the elevated console.
 
@@ -137,6 +194,7 @@ Set-Location C:\Reborn
 $ErrorActionPreference='Stop'
 $status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
 if($status.State -cne 'InstalledExact' -or
+   $status.MutableOutputState -cne 'Active' -or
    $status.DockerState -cne 'HealthyExact'){
  throw 'Installed client or secure-Docker baseline drifted.'
 }
@@ -305,6 +363,7 @@ if($running -cne 'true' -or $health -cne 'healthy' -or
 
 $status=& .\tools\ManagePhase4SecureDockerClient.ps1 -Mode Status
 if($status.State -cne 'InstalledExact' -or
+   $status.MutableOutputState -cne 'Active' -or
    $status.DockerState -cne 'HealthyExact'){
  throw 'Secure-Docker recovery or active client campaign drifted.'
 }
@@ -338,11 +397,20 @@ if($status.State -cne 'Restored' -or
    $status.BundleState -cne 'Stock' -or
    $status.HostsState -cne 'Absent' -or
    $status.RootState -cne 'Absent' -or
+   $status.MutableOutputState -cne 'Inactive' -or
    $status.ActivationMode -ne 0 -or
    $status.ActivationEnvironment -ne 1 -or
    $status.SequenceFloor -ne 3 -or
    $status.ManifestSequence -ne 3){
  throw 'Mandatory Phase 4 Restore is not exact.'
+}
+if((Get-FileHash `
+ 'C:\RebornNetworkAcceptanceClient\Origin.exe' -Algorithm SHA256).Hash -cne
+ '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79' -or
+   (Get-FileHash `
+ 'C:\RebornNetworkAcceptanceClient\Net.dll' -Algorithm SHA256).Hash -cne
+ '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'){
+ throw 'Paired client predecessors were not restored.'
 }
 
 $keys=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 -Mode Status
@@ -356,8 +424,9 @@ $restore,$status,$keys|Format-List
 Restore is intentionally blocked until secure Docker is healthy again. It
 uses the checksummed campaign handoff to restore stock client files and
 original hosts bytes, remove only the exact CurrentUser public root installed
-by Apply, disable activation, and retain the monotonic floor at sequence 3.
-It does not create, use, or remove a CNG private signing key.
+by Apply, return `patcher\patcher.log` to read-only, disable activation, and
+retain the monotonic floor at sequence 3. It does not create, use, or remove a
+CNG private signing key.
 
 Preserve the campaign receipt and the three protected evidence files for
 review. Do not delete `godswar_secure_dev`, its Docker volume, the disposable
@@ -394,8 +463,9 @@ $completion|Format-List
 Use `-ViewerParity Unavailable` only when the documented second-client check
 could not be run. The gate revalidates every checksummed profile and evidence
 file, their profile/duration policy, campaign/user/build/client/manifest pins,
-the healthy secure-Docker inspection, and the successful stock-client
-Restore. It then creates one bounded, BOM-free, checksummed, read-only
+including the guarded candidate Origin, the healthy secure-Docker inspection,
+and the successful paired-predecessor Restore. It then creates one bounded,
+BOM-free, checksummed, read-only
 `completion-<campaign-id>.json` receipt in the protected campaign root.
 Existing or partial completion output is never overwritten. This command
 does not change listeners, trust, hosts, adapters, firewall, Norton, Docker,

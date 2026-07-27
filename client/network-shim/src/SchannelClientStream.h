@@ -66,6 +66,7 @@ enum class SchannelClientFailure : std::uint8_t {
 enum class SchannelRevocationPolicy : std::uint8_t {
     Strict = 0,
     AllowMissingSourceForDevelopment,
+    PinnedRootForDevelopment,
 };
 
 struct SchannelClientSnapshot final {
@@ -73,6 +74,7 @@ struct SchannelClientSnapshot final {
     bool established = false;
     bool stopped = false;
     SchannelClientFailure failure = SchannelClientFailure::None;
+    LONG securityStatus = 0;
     DWORD negotiatedProtocol = 0;
     DWORD negotiatedCipherSuite = 0;
 };

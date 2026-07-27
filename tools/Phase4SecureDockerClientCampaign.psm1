@@ -21,6 +21,22 @@ function Get-RebornPhase4HistoricalSecureDockerPins {
     return Get-RebornPhase4HistoricalSecureDockerPinsCore
 }
 
+function Get-RebornPhase4PreviewReadyV5SecureDockerPins {
+    return Get-RebornPhase4PreviewReadyV5SecureDockerPinsCore
+}
+
+function Get-RebornPhase4PreviewReadyV4SecureDockerPins {
+    return Get-RebornPhase4PreviewReadyV4SecureDockerPinsCore
+}
+
+function Get-RebornPhase4PreviewReadyV3SecureDockerPins {
+    return Get-RebornPhase4PreviewReadyV3SecureDockerPinsCore
+}
+
+function Get-RebornPhase4PreviewReadyV2SecureDockerPins {
+    return Get-RebornPhase4PreviewReadyV2SecureDockerPinsCore
+}
+
 function Get-RebornPhase4PreviewReadyV1SecureDockerPins {
     return Get-RebornPhase4PreviewReadyV1SecureDockerPinsCore
 }
@@ -29,6 +45,33 @@ function Assert-RebornPhase4PinnedInputs {
     param([object]$Pins = (Get-RebornPhase4SecureDockerPins))
 
     return Assert-RebornPhase4PinnedInputsCore $Pins
+}
+
+function Test-RebornPhase4PairedOriginPins {
+    param([Parameter(Mandatory)][object]$Pins)
+
+    return (
+        $null -ne
+            $Pins.PSObject.Properties['CandidateOriginSha256'])
+}
+
+function Test-RebornPhase4ClientTlsTrustPins {
+    param([Parameter(Mandatory)][object]$Pins)
+
+    return (
+        $null -ne
+            $Pins.PSObject.Properties['ClientTlsTrustMode'])
+}
+
+function Test-RebornPhase4CurrentCampaignPins {
+    param([Parameter(Mandatory)][object]$Pins)
+
+    $current = Get-RebornPhase4SecureDockerPins
+    return (
+        [string]$Pins.CampaignGeneration -ceq
+            [string]$current.CampaignGeneration -and
+        [string]$Pins.CampaignMode -ceq
+            [string]$current.CampaignMode)
 }
 
 function Grant-RebornPhase4CampaignReadAccess {
@@ -140,6 +183,12 @@ function Assert-RebornPhase4CampaignRecord {
     $generationProperty = $Record.PSObject.Properties['generation']
     $nextTrustProperty =
         $Record.PSObject.Properties['nextManifestTrustSha256']
+    $stockOriginProperty =
+        $Record.PSObject.Properties['stockOriginSha256']
+    $candidateOriginProperty =
+        $Record.PSObject.Properties['candidateOriginSha256']
+    $tlsTrustProperty =
+        $Record.PSObject.Properties['tlsTrustMode']
     $generationValid = if (
         [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
         $null -eq $generationProperty -and
@@ -152,7 +201,30 @@ function Assert-RebornPhase4CampaignRecord {
             [string]$Record.nextManifestTrustSha256 -ceq
                 [string]$Pins.NextManifestTrustSha256
     }
+    $originPinsValid = if (
+        Test-RebornPhase4PairedOriginPins $Pins) {
+        $null -ne $stockOriginProperty -and
+            [string]$stockOriginProperty.Value -ceq
+                [string]$Pins.OriginSha256 -and
+            $null -ne $candidateOriginProperty -and
+            [string]$candidateOriginProperty.Value -ceq
+                [string]$Pins.CandidateOriginSha256
+    } else {
+        $null -eq $stockOriginProperty -and
+            $null -eq $candidateOriginProperty
+    }
+    $tlsTrustValid = if (
+        Test-RebornPhase4ClientTlsTrustPins $Pins) {
+        $null -ne $tlsTrustProperty -and
+            [string]$tlsTrustProperty.Value -ceq
+                [string]$Pins.ClientTlsTrustMode
+    }
+    else {
+        $null -eq $tlsTrustProperty
+    }
     if (-not $generationValid -or
+        -not $originPinsValid -or
+        -not $tlsTrustValid -or
         $Record.schemaVersion -ne $Pins.CampaignSchemaVersion -or
         $Record.mode -cne $Pins.CampaignMode -or
         $Record.state -notin $states -or
@@ -254,7 +326,7 @@ function Write-RebornPhase4CampaignReceipt {
     )
 
     if (-not $AllowTestPath -and
-        [string]$Pins.CampaignGeneration -cne 'PreviewReadyV2') {
+        -not (Test-RebornPhase4CurrentCampaignPins $Pins)) {
         throw 'Historical campaign receipts are read-only.'
     }
     $root = Resolve-RebornPhase4CampaignRoot `
@@ -356,11 +428,24 @@ function New-RebornPhase4CampaignRecord {
             'nextManifestTrustSha256',
             $Pins.NextManifestTrustSha256)
     }
+    if (Test-RebornPhase4PairedOriginPins $Pins) {
+        $record.Add('stockOriginSha256', $Pins.OriginSha256)
+        $record.Add(
+            'candidateOriginSha256',
+            $Pins.CandidateOriginSha256)
+    }
+    if (Test-RebornPhase4ClientTlsTrustPins $Pins) {
+        $record.Add('tlsTrustMode', $Pins.ClientTlsTrustMode)
+    }
     return [pscustomobject]$record
 }
 
 Export-ModuleMember -Function @(
     'Get-RebornPhase4SecureDockerPins',
+    'Get-RebornPhase4PreviewReadyV5SecureDockerPins',
+    'Get-RebornPhase4PreviewReadyV4SecureDockerPins',
+    'Get-RebornPhase4PreviewReadyV3SecureDockerPins',
+    'Get-RebornPhase4PreviewReadyV2SecureDockerPins',
     'Get-RebornPhase4PreviewReadyV1SecureDockerPins',
     'Get-RebornPhase4HistoricalSecureDockerPins',
     'Assert-RebornPhase4PinnedInputs',

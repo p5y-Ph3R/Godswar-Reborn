@@ -57,12 +57,8 @@ void* AvatarPreviewGate::Filter(void* message) noexcept {
             resourcesWereReady_ = false;
             preloadResult_ = AvatarPreloadResult::NotInvoked;
         }
-        const auto generation = generation_;
-        TryRequestPreload();
-        if (generation_ != generation) {
-            messageDisposer_(message);
-            return nullptr;
-        }
+        // Origin must consume every ordered bootstrap record before native
+        // initialization. The following preview is the invocation barrier.
         return message;
     }
 

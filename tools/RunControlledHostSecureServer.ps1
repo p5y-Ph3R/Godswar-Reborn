@@ -70,8 +70,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$originSha256 =
+$stockOriginSha256 =
     '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
+$candidateOriginSha256 =
+    'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C'
 $stockNetSha256 =
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
 $expectedClientRoot = 'C:\RebornNetworkAcceptanceClient'
@@ -289,12 +291,13 @@ try {
         $ExpectedClientInventoryReceiptSha256 `
         $manifestTrust `
         $nativeChecks `
-        $originSha256 `
+        $candidateOriginSha256 `
         $stockNetSha256 `
         $ExpectedCandidateSha256 `
         $ExpectedManifestSha256 `
         $ExpectedManifestTrustSha256 `
-        $ExpectedNativeChecksSha256
+        $ExpectedNativeChecksSha256 `
+        -ExpectedStockOriginSha256 $stockOriginSha256
     Assert-RebornControlledHostClientRootLease $clientLease |
         Out-Null
 
@@ -336,7 +339,8 @@ try {
         GODSWAR_SECURE_UDP_PORT = '7444'
         GODSWAR_SECURE_CERTIFICATE_PATH = $certificate
         GODSWAR_SECURE_CERTIFICATE_PASSWORD = $certificatePassword
-        GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256 = $originSha256
+        GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256 =
+            $candidateOriginSha256
         GODSWAR_AUTH_ALLOW_REGISTRATION = 'false'
         GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION = 'true'
         GODSWAR_AUTH_MAXIMUM_CONCURRENT_KDFS = '4'

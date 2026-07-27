@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$LegacyDllPath =
-        'C:\RebornNetworkAcceptanceClient\Net.dll'
+        'C:\RebornNetworkAcceptanceClient\Net.dll',
+
+    [string]$CandidateOriginPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +32,17 @@ Import-Module (
 Import-Module (
     Join-Path $PSScriptRoot 'DevelopmentEndpointManifestKeyReceipt.psm1'
 ) -Force
+
+$candidateOrigin = if (
+    [string]::IsNullOrWhiteSpace($CandidateOriginPath)) {
+    ''
+} else {
+    [IO.Path]::GetFullPath($CandidateOriginPath)
+}
+if (-not [string]::IsNullOrWhiteSpace($candidateOrigin) -and
+    -not (Test-Path -LiteralPath $candidateOrigin -PathType Leaf)) {
+    throw "Candidate Origin does not exist: $candidateOrigin"
+}
 
 function Assert-FileHash {
     param([string]$Path, [string]$Expected)
@@ -164,6 +177,17 @@ try {
     & $second.TestPath --offline-contract-probe $second.ShimPath
     if ($LASTEXITCODE -ne 0) {
         throw 'Public-trust candidate failed its embedded contract probe.'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($candidateOrigin)) {
+        & $second.TestPath `
+            --offline-origin-contract-probe `
+            $second.ShimPath `
+            $candidateOrigin
+        if ($LASTEXITCODE -ne 0) {
+            throw (
+                'Public-trust candidate rejected the supplied Origin ' +
+                'build identity.')
+        }
     }
 
     [pscustomobject]@{

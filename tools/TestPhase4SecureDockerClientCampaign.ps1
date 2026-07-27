@@ -10,7 +10,7 @@ Import-Module (
 )
 
 $passed = 0
-$expectedChecks = 14
+$expectedChecks = 30
 
 function Invoke-Check {
     param(
@@ -52,23 +52,38 @@ try {
             $manifest.TlsLoginHost -cne 'login.reborn.test' -or
             $pins.CampaignRoot -cne (
                 'C:\ProgramData\' +
-                'RebornSecureNetworkPhase4DockerPreviewReadyV2') -or
+                'RebornSecureNetworkPhase4DockerPreviewReadyV6') -or
             $pins.CandidatePath -cne (
                 'C:\Reborn\artifacts\controlled-host-acceptance\' +
-                '20260727-185522-preview-ready-v2\candidate\Net.dll') -or
+                '20260728-102640-preview-ready-v6\candidate\Net.dll') -or
             $pins.NativeChecksPath -cne (
                 'C:\Reborn\artifacts\controlled-host-acceptance\' +
-                '20260727-185522-preview-ready-v2\candidate\' +
+                '20260728-102640-preview-ready-v6\candidate\' +
                 'Godswar.NetShim.Checks.exe') -or
+            $pins.CandidateOriginPath -cne (
+                'C:\Reborn\artifacts\controlled-host-acceptance\' +
+                '20260728-102640-preview-ready-v6\candidate\Origin.exe') -or
+            $pins.OriginSha256 -cne
+                '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79' -or
+            $pins.CandidateOriginSha256 -cne
+                'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C' -or
             $pins.CandidateSha256 -cne
-                'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE' -or
+                '2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97' -or
             $pins.NativeChecksSha256 -cne
-                '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187' -or
+                'FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75' -or
+            $pins.ClientTlsTrustMode -cne
+                'EmbeddedDevelopmentRoot' -or
             (Split-Path -Leaf $pins.NextManifestTrustPath) -cne
                 'development-manifest-next-trust.json') {
             throw 'Pinned manifest result changed.'
         }
     } 'exact source pins and signed manifest'
+
+    Assert-Throws {
+        $tamperedPins = $pins | Select-Object *
+        $tamperedPins.CandidateOriginSha256 = ('0' * 64)
+        Assert-RebornPhase4PinnedInputs $tamperedPins | Out-Null
+    } 'pinned inputs reject a changed candidate Origin hash'
 
     Invoke-Check {
         $record = New-RebornPhase4CampaignRecord `
@@ -78,14 +93,19 @@ try {
             [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         if (@($record.bundleBackupBaselineNames).Count -ne 0 -or
             $record.issuedUserSid -cne $currentSid -or
-            $record.schemaVersion -ne 2 -or
+            $record.schemaVersion -ne 4 -or
             $record.mode -cne $pins.CampaignMode -or
-            $record.generation -cne 'PreviewReadyV2' -or
+            $record.generation -cne 'PreviewReadyV6' -or
+            $record.stockOriginSha256 -cne $pins.OriginSha256 -or
+            $record.candidateOriginSha256 -cne
+                $pins.CandidateOriginSha256 -or
             $record.nextManifestTrustSha256 -cne
-                $pins.NextManifestTrustSha256) {
+                $pins.NextManifestTrustSha256 -or
+            $record.tlsTrustMode -cne
+                $pins.ClientTlsTrustMode) {
             throw 'An empty first-campaign backup baseline was not preserved.'
         }
-    } 'PreviewReadyV2 schema and empty revision-one baseline'
+    } 'PreviewReadyV6 schema, paired Origin, and embedded trust pins'
 
     Invoke-Check {
         $record = New-RebornPhase4CampaignRecord `
@@ -102,7 +122,7 @@ try {
         $secondRecord =
             Copy-RebornPhase4CampaignRecord $first.Record
         $secondRecord.state = 'TrustInstalled'
-        $secondRecord.trustState = 'Installed'
+        $secondRecord.trustState = 'EmbeddedRootPinned'
         $second = Write-RebornPhase4CampaignReceipt `
             $secondRecord $temporary -AllowTestPath -Pins $pins
         if ([UInt64]$second.Record.revision -ne 2 -or
@@ -130,12 +150,40 @@ try {
             $tampered $temporary -AllowTestPath -Pins $pins | Out-Null
     } 'handoff rejects a changed candidate pin'
 
+    Assert-Throws {
+        $record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $pins
+        $record.stockOriginSha256 = ('0' * 64)
+        Write-RebornPhase4CampaignReceipt `
+            $record $temporary -AllowTestPath -Pins $pins | Out-Null
+    } 'handoff rejects a changed stock Origin pin'
+
+    Assert-Throws {
+        $record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $pins
+        $record.candidateOriginSha256 = ('0' * 64)
+        Write-RebornPhase4CampaignReceipt `
+            $record $temporary -AllowTestPath -Pins $pins | Out-Null
+    } 'handoff rejects a changed candidate Origin pin'
+
+    $previewReadyV5Pins =
+        Get-RebornPhase4PreviewReadyV5SecureDockerPins
+    $previewReadyV4Pins =
+        Get-RebornPhase4PreviewReadyV4SecureDockerPins
+    $previewReadyV3Pins =
+        Get-RebornPhase4PreviewReadyV3SecureDockerPins
+    $previewReadyV2Pins =
+        Get-RebornPhase4PreviewReadyV2SecureDockerPins
     $previewReadyV1Pins =
         Get-RebornPhase4PreviewReadyV1SecureDockerPins
     $legacyPins = Get-RebornPhase4HistoricalSecureDockerPins
     $legacyRoot = Join-Path $temporary 'legacy-v1'
+    $previewReadyV5Root = Join-Path $temporary 'preview-ready-v5'
+    $previewReadyV4Root = Join-Path $temporary 'preview-ready-v4'
+    $previewReadyV3Root = Join-Path $temporary 'preview-ready-v3'
+    $previewReadyV2Root = Join-Path $temporary 'preview-ready-v2'
     $previewReadyV1Root = Join-Path $temporary 'preview-ready-v1'
-    $activeRoot = Join-Path $temporary 'preview-ready-v2'
+    $activeRoot = Join-Path $temporary 'preview-ready-v6'
     Invoke-Check {
         $legacyRecord = New-RebornPhase4CampaignRecord `
             -BackupBaselineNames @() -Pins $legacyPins
@@ -166,6 +214,75 @@ try {
         }
     } 'PreviewReadyV1 receipts remain readable with pinned historical accessor'
 
+    Invoke-Check {
+        $v2Record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV2Pins
+        $v2 = Write-RebornPhase4CampaignReceipt `
+            $v2Record $previewReadyV2Root -AllowTestPath `
+            -Pins $previewReadyV2Pins
+        if ($v2.Record.schemaVersion -ne 2 -or
+            $v2.Record.generation -cne 'PreviewReadyV2' -or
+            $v2.Record.mode -cne
+                'Phase4SecureDockerClientCampaign.PreviewReadyV2' -or
+            $previewReadyV2Pins.CandidateSha256 -cne
+                'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE') {
+            throw 'PreviewReadyV2 receipt compatibility changed.'
+        }
+    } 'PreviewReadyV2 receipts remain readable with pinned historical accessor'
+
+    Invoke-Check {
+        $v3Record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV3Pins
+        $v3 = Write-RebornPhase4CampaignReceipt `
+            $v3Record $previewReadyV3Root -AllowTestPath `
+            -Pins $previewReadyV3Pins
+        if ($v3.Record.schemaVersion -ne 2 -or
+            $v3.Record.generation -cne 'PreviewReadyV3' -or
+            $v3.Record.mode -cne
+                'Phase4SecureDockerClientCampaign.PreviewReadyV3' -or
+            $previewReadyV3Pins.CandidateSha256 -cne
+                '5FD6A0C37801A393689AF523854AD5BE258616BF52809D8FEA04437D34B7CA85' -or
+            $null -ne $previewReadyV3Pins.PSObject.Properties[
+                'CandidateOriginSha256'] -or
+            $null -ne $v3.Record.PSObject.Properties[
+                'candidateOriginSha256']) {
+            throw 'PreviewReadyV3 receipt compatibility changed.'
+        }
+    } 'PreviewReadyV3 remains exact and readable with frozen pins'
+
+    Invoke-Check {
+        $v4Record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV4Pins
+        $v4 = Write-RebornPhase4CampaignReceipt `
+            $v4Record $previewReadyV4Root -AllowTestPath `
+            -Pins $previewReadyV4Pins
+        if ($v4.Record.schemaVersion -ne 3 -or
+            $v4.Record.generation -cne 'PreviewReadyV4' -or
+            $v4.Record.candidateOriginSha256 -cne
+                '1D1AA8768CC42655D4EF000237A301231B629D806FDCE99882C1D5888BBB3A5A' -or
+            $null -ne $v4.Record.PSObject.Properties['tlsTrustMode']) {
+            throw 'PreviewReadyV4 receipt compatibility changed.'
+        }
+    } 'PreviewReadyV4 remains exact and readable with frozen pins'
+
+    Invoke-Check {
+        $v5Record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV5Pins
+        $v5 = Write-RebornPhase4CampaignReceipt `
+            $v5Record $previewReadyV5Root -AllowTestPath `
+            -Pins $previewReadyV5Pins
+        if ($v5.Record.schemaVersion -ne 4 -or
+            $v5.Record.generation -cne 'PreviewReadyV5' -or
+            $v5.Record.candidateSha256 -cne
+                '0A34613ED9E4F6AC82608DA17570D905579F44A37CC6B08CAC8AA75B1A6DAA1A' -or
+            $v5.Record.candidateOriginSha256 -cne
+                'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C' -or
+            $v5.Record.tlsTrustMode -cne
+                'EmbeddedDevelopmentRoot') {
+            throw 'PreviewReadyV5 receipt compatibility changed.'
+        }
+    } 'PreviewReadyV5 remains exact and readable with frozen pins'
+
     $activeRecord = New-RebornPhase4CampaignRecord `
         -BackupBaselineNames @() -Pins $pins
     Write-RebornPhase4CampaignReceipt `
@@ -173,24 +290,84 @@ try {
     Assert-Throws {
         Read-RebornPhase4CampaignReceipt `
             $activeRoot -AllowTestPath -Pins $legacyPins | Out-Null
-    } 'LegacyV1 pins reject PreviewReadyV2 receipts'
+    } 'LegacyV1 pins reject PreviewReadyV6 receipts'
 
     Assert-Throws {
         Read-RebornPhase4CampaignReceipt `
             $activeRoot -AllowTestPath -Pins $previewReadyV1Pins |
                 Out-Null
-    } 'PreviewReadyV1 pins reject PreviewReadyV2 receipts'
+    } 'PreviewReadyV1 pins reject PreviewReadyV6 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $activeRoot -AllowTestPath -Pins $previewReadyV2Pins |
+                Out-Null
+    } 'PreviewReadyV2 pins reject PreviewReadyV6 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $activeRoot -AllowTestPath -Pins $previewReadyV3Pins |
+                Out-Null
+    } 'PreviewReadyV3 pins reject PreviewReadyV6 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $activeRoot -AllowTestPath -Pins $previewReadyV5Pins |
+                Out-Null
+    } 'PreviewReadyV5 pins reject PreviewReadyV6 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $previewReadyV5Root -AllowTestPath -Pins $pins |
+                Out-Null
+    } 'PreviewReadyV6 pins reject PreviewReadyV5 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $previewReadyV3Root -AllowTestPath -Pins $pins |
+                Out-Null
+    } 'PreviewReadyV6 pins reject PreviewReadyV3 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $previewReadyV2Root -AllowTestPath -Pins $pins |
+                Out-Null
+    } 'PreviewReadyV6 pins reject PreviewReadyV2 receipts'
 
     Assert-Throws {
         Read-RebornPhase4CampaignReceipt `
             $previewReadyV1Root -AllowTestPath -Pins $pins |
                 Out-Null
-    } 'PreviewReadyV2 pins reject PreviewReadyV1 receipts'
+    } 'PreviewReadyV6 pins reject PreviewReadyV1 receipts'
 
     Assert-Throws {
         Read-RebornPhase4CampaignReceipt `
             $legacyRoot -AllowTestPath -Pins $pins | Out-Null
-    } 'PreviewReadyV2 pins reject LegacyV1 receipts'
+    } 'PreviewReadyV6 pins reject LegacyV1 receipts'
+
+    Assert-Throws {
+        $record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV5Pins
+        Write-RebornPhase4CampaignReceipt `
+            $record $previewReadyV5Root -Pins $previewReadyV5Pins |
+                Out-Null
+    } 'PreviewReadyV5 production campaign writes are read-only'
+
+    Assert-Throws {
+        $record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV3Pins
+        Write-RebornPhase4CampaignReceipt `
+            $record $previewReadyV3Root -Pins $previewReadyV3Pins |
+                Out-Null
+    } 'PreviewReadyV3 production campaign writes are read-only'
+
+    Assert-Throws {
+        $record = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $previewReadyV2Pins
+        Write-RebornPhase4CampaignReceipt `
+            $record $previewReadyV2Root -Pins $previewReadyV2Pins |
+                Out-Null
+    } 'PreviewReadyV2 production campaign writes are read-only'
 
     Assert-Throws {
         $record = New-RebornPhase4CampaignRecord `

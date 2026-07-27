@@ -27,7 +27,8 @@ function New-RebornSecureBundlePolicyCore {
         [Parameter(Mandatory)][string]$LegacyNetSha256,
         [Parameter(Mandatory)][string]$CandidateNetSha256,
         [Parameter(Mandatory)][string]$ManifestSha256,
-        [Parameter(Mandatory)][string]$ManifestTrustSha256
+        [Parameter(Mandatory)][string]$ManifestTrustSha256,
+        [AllowNull()][AllowEmptyString()][string]$CandidateOriginSha256
     )
 
     $values = @(
@@ -35,7 +36,12 @@ function New-RebornSecureBundlePolicyCore {
         $LegacyNetSha256,
         $CandidateNetSha256,
         $ManifestSha256,
-        $ManifestTrustSha256
+        $ManifestTrustSha256,
+        $(if ([string]::IsNullOrWhiteSpace($CandidateOriginSha256)) {
+            $OriginSha256
+        } else {
+            $CandidateOriginSha256
+        })
     ) | ForEach-Object { $_.Trim().ToUpperInvariant() }
     foreach ($value in $values) {
         if (-not (Test-RebornHash $value)) {
@@ -49,6 +55,7 @@ function New-RebornSecureBundlePolicyCore {
         CandidateNetSha256 = $values[2]
         ManifestSha256 = $values[3]
         ManifestTrustSha256 = $values[4]
+        CandidateOriginSha256 = $values[5]
     }
 }
 
@@ -71,7 +78,8 @@ function Assert-RebornBundleInputs {
         [string]$ClientRoot,
         [string]$CandidatePath,
         [string]$ManifestPath,
-        [string]$TrustPath
+        [string]$TrustPath,
+        [AllowNull()][AllowEmptyString()][string]$CandidateOriginPath
     )
 
     $client =
@@ -89,8 +97,12 @@ function Assert-RebornBundleInputs {
             $path 'secure-bundle input' | Out-Null
     }
 
-    if ((Get-RebornSha256 $origin) -ne $Policy.OriginSha256) {
-        throw 'Origin.exe is not the pinned supported predecessor.'
+    $originHash = Get-RebornSha256 $origin
+    if ($originHash -notin @(
+            $Policy.OriginSha256,
+            $Policy.CandidateOriginSha256
+        )) {
+        throw 'Origin.exe is outside the pinned predecessor/candidate pair.'
     }
     if ((Get-RebornSha256 $candidate) -ne $Policy.CandidateNetSha256) {
         throw 'Candidate Net.dll does not match its reviewed SHA-256.'
@@ -102,6 +114,28 @@ function Assert-RebornBundleInputs {
         throw 'Manifest trust descriptor does not match its reviewed SHA-256.'
     }
 
+    $pairedOrigin =
+        [string]$Policy.CandidateOriginSha256 -cne
+        [string]$Policy.OriginSha256
+    $candidateOrigin = $null
+    if ($pairedOrigin) {
+        if ([string]::IsNullOrWhiteSpace($CandidateOriginPath)) {
+            throw 'Paired secure bundle requires a candidate Origin.exe.'
+        }
+        $candidateOrigin = [IO.Path]::GetFullPath($CandidateOriginPath)
+        if (-not (Test-Path -LiteralPath $candidateOrigin -PathType Leaf)) {
+            throw "Candidate Origin.exe is missing: $candidateOrigin"
+        }
+        Assert-RebornRegularFilePath `
+            $candidateOrigin 'candidate Origin.exe' | Out-Null
+        if ((Get-RebornSha256 $candidateOrigin) -cne
+            $Policy.CandidateOriginSha256) {
+            throw 'Candidate Origin.exe does not match its reviewed SHA-256.'
+        }
+    } elseif (-not [string]::IsNullOrWhiteSpace($CandidateOriginPath)) {
+        throw 'Net-only bundle cannot accept a candidate Origin path.'
+    }
+
     [pscustomobject]@{
         Client = $client
         Origin = $origin
@@ -111,6 +145,8 @@ function Assert-RebornBundleInputs {
         Candidate = $candidate
         Manifest = $manifest
         Trust = $trust
+        CandidateOrigin = $candidateOrigin
+        OriginSha256 = $originHash
     }
 }
 
@@ -244,25 +280,47 @@ function Assert-RebornRestoreSourceState {
         [object]$Policy,
         [object]$VerifiedManifest,
         [object]$Receipt,
-        [object]$Current
+        [object]$Current,
+        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
+        [string]$LockedOriginSha256
     )
 
+    $originHash = if (
+        [string]::IsNullOrWhiteSpace($LockedOriginSha256)
+    ) {
+        Get-RebornSha256 $Paths.Origin
+    } else {
+        $LockedOriginSha256.ToUpperInvariant()
+    }
     $netHash = Get-RebornSha256 $Paths.Net
     $legacyHash = Get-RebornOptionalHash $Paths.Legacy
     $manifestHash = Get-RebornOptionalHash $Paths.InstalledManifest
+    $stockOrigin =
+        $originHash -ceq $Policy.OriginSha256
+    $candidateOrigin =
+        $originHash -ceq $Policy.CandidateOriginSha256
     $stockFiles = (
+        $stockOrigin -and
         $netHash -ceq $Policy.LegacyNetSha256 -and
         $null -eq $legacyHash -and
         $null -eq $manifestHash)
     $manifestFiles = (
+        $stockOrigin -and
         $netHash -ceq $Policy.LegacyNetSha256 -and
         $null -eq $legacyHash -and
         $manifestHash -ceq $Policy.ManifestSha256)
     $legacyFiles = (
+        $stockOrigin -and
         $netHash -ceq $Policy.LegacyNetSha256 -and
         $legacyHash -ceq $Policy.LegacyNetSha256 -and
         $manifestHash -ceq $Policy.ManifestSha256)
+    $candidateNetFiles = (
+        $stockOrigin -and
+        $netHash -ceq $Policy.CandidateNetSha256 -and
+        $legacyHash -ceq $Policy.LegacyNetSha256 -and
+        $manifestHash -ceq $Policy.ManifestSha256)
     $candidateFiles = (
+        $candidateOrigin -and
         $netHash -ceq $Policy.CandidateNetSha256 -and
         $legacyHash -ceq $Policy.LegacyNetSha256 -and
         $manifestHash -ceq $Policy.ManifestSha256)
@@ -301,10 +359,14 @@ function Assert-RebornRestoreSourceState {
         'AfterLegacy'
     } elseif ($legacyFiles -and $interruptedDisabledState) {
         'AfterLegacyActivationInterrupted'
-    } elseif ($candidateFiles -and $stagedState) {
+    } elseif ($candidateNetFiles -and $stagedState) {
         'AfterCandidate'
-    } elseif ($candidateFiles -and $interruptedDisabledState) {
+    } elseif ($candidateNetFiles -and $interruptedDisabledState) {
         'AfterCandidateActivationInterrupted'
+    } elseif ($candidateFiles -and $stagedState) {
+        'AfterOrigin'
+    } elseif ($candidateFiles -and $interruptedDisabledState) {
+        'AfterOriginActivationInterrupted'
     } elseif ($candidateFiles -and $installedState) {
         'InstalledExact'
     } else {
@@ -346,9 +408,14 @@ function Set-RebornSafeDisabledState {
 }
 
 function Restore-RebornBackupFiles {
-    param([object]$Backup, [object]$Paths)
+    param(
+        [object]$Backup,
+        [object]$Paths,
+        [switch]$SkipOrigin
+    )
 
     $targets = @{
+        'Origin.exe' = $Paths.Origin
         'Net.dll' = $Paths.Net
         'NetLegacy.dll' = $Paths.Legacy
         'RebornNetwork.gwem' = $Paths.InstalledManifest
@@ -357,6 +424,9 @@ function Restore-RebornBackupFiles {
         $name = [string]$entry.path
         if (-not $targets.ContainsKey($name)) {
             throw "Unsupported secure-bundle restore target: $name"
+        }
+        if ($SkipOrigin -and $name -ceq 'Origin.exe') {
+            continue
         }
         $target = $targets[$name]
         if ($entry.existed) {
@@ -372,28 +442,6 @@ function Restore-RebornBackupFiles {
     }
 }
 
-function Open-RebornOriginMutationLock {
-    param([string]$OriginPath)
-
-    try {
-        $stream = [IO.File]::Open(
-            $OriginPath,
-            [IO.FileMode]::Open,
-            [IO.FileAccess]::Read,
-            [IO.FileShare]::None)
-        if (Get-Process -Name Origin -ErrorAction SilentlyContinue) {
-            $stream.Dispose()
-            throw 'Origin.exe is already running.'
-        }
-        return $stream
-    }
-    catch {
-        throw (
-            'Origin.exe must remain closed for the entire bundle mutation. ' +
-            $_.Exception.Message)
-    }
-}
-
 Export-ModuleMember -Function @(
     'New-RebornSecureBundlePolicyCore',
     'Assert-RebornManifestPolicyBinding',
@@ -402,6 +450,5 @@ Export-ModuleMember -Function @(
     'Get-RebornOptionalHash',
     'Assert-RebornRestoreSourceState',
     'Set-RebornSafeDisabledState',
-    'Restore-RebornBackupFiles',
-    'Open-RebornOriginMutationLock'
+    'Restore-RebornBackupFiles'
 )

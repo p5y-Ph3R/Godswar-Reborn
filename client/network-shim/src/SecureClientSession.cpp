@@ -122,7 +122,7 @@ bool SecureClientSession::Connect(
         configuration_.manifest.environment ==
             EndpointManifestEnvironment::Development
         ? SchannelRevocationPolicy::
-            AllowMissingSourceForDevelopment
+            PinnedRootForDevelopment
         : SchannelRevocationPolicy::Strict;
     if (!tls_->Establish(tlsHost, revocationPolicy)) {
         Fail(SecureClientSessionFailure::TlsHandshake);

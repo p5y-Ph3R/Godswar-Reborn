@@ -190,57 +190,49 @@ void RunBootstrapRecognitionChecks() {
         "unterminated message was recognized as an AfterLogin bootstrap");
 }
 
-void RunDirectInitializationChecks() {
-    TestBootstrapMessage first;
-    TestBootstrapMessage second;
-    TestBootstrapMessage third;
-    TestBootstrapMessage fourth;
-    TestBootstrapMessage malformed;
-    malformed.length = 45;
+void RunBootstrapBarrierChecks() {
+    constexpr std::size_t BootstrapRecordCount = 63;
+    TestBootstrapMessage bootstraps[BootstrapRecordCount]{};
+    TestPreviewMessage preview;
+    TestPreviewMessage repeatedPreview;
 
-    ResetEvidence(AvatarPreloadResult::NotInvoked, false);
+    ResetEvidence(AvatarPreloadResult::Ready, true);
     AvatarPreviewGate gate(
         true,
         ProbeAvatarResources,
         DisposeTestMessage,
         InitializeAvatarResources);
 
+    bool bootstrapsPassed = true;
+    for (std::size_t index = 0;
+         index < BootstrapRecordCount;
+         ++index) {
+        bootstraps[index].manifestId =
+            static_cast<std::int32_t>(index);
+        if (!godswar::network::IsAfterLoginBootstrapMessage(
+                &bootstraps[index]) ||
+            gate.Filter(&bootstraps[index]) !=
+                &bootstraps[index] ||
+            gate.IsHolding()) {
+            bootstrapsPassed = false;
+            break;
+        }
+    }
     Check(
-        gate.Filter(&first) == &first && InitializationCalls == 1,
-        "bootstrap changed or skipped its direct initialization attempt");
-    Check(
-        gate.Filter(&malformed) == &malformed &&
-            InitializationCalls == 1,
-        "malformed bootstrap invoked the initializer");
-    Check(
-        gate.Filter(&second) == &second &&
-            InitializationCalls == 2,
-        "missing prerequisites suppressed the next direct-init retry");
-
-    InitializationResult = AvatarPreloadResult::InvokedNotReady;
-    Check(
-        gate.Filter(&third) == &third &&
-            InitializationCalls == 3 &&
+        bootstrapsPassed &&
+            InitializationCalls == 0 &&
             !AvatarResourcesReady,
-        "eligible bootstrap did not record its one native invocation");
+        "63-record bootstrap initialized before the preview barrier");
     Check(
-        gate.Filter(&fourth) == &fourth &&
-            InitializationCalls == 3,
-        "native initializer ran more than once in one lifecycle");
-
-    gate.Reset();
-    InitializationResult = AvatarPreloadResult::Ready;
-    InitializationCompletesResources = true;
-    AvatarResourcesReady = false;
+        gate.Filter(&preview) == &preview &&
+            InitializationCalls == 1 &&
+            AvatarResourcesReady &&
+            !gate.IsHolding(),
+        "preview barrier did not initialize and return its exact pointer");
     Check(
-        gate.Filter(&first) == &first &&
-            InitializationCalls == 4 &&
-            AvatarResourcesReady,
-        "next lifecycle did not allow one successful initialization");
-    Check(
-        gate.Filter(&second) == &second &&
-            InitializationCalls == 4,
-        "ready resources were initialized again");
+        gate.Filter(&repeatedPreview) == &repeatedPreview &&
+            InitializationCalls == 1,
+        "ready preview initialized one lifecycle more than once");
 }
 
 void RunPreviewRetryChecks() {
@@ -269,11 +261,11 @@ void RunPreviewRetryChecks() {
         retryingGate.Filter(&retainedPreview) == nullptr &&
             retryingGate.IsHolding() &&
             InitializationCalls == 1,
-        "unready preview was not retained after direct initialization");
+        "unready preview was not retained after initialization");
 
-    constexpr int NotReadyRetries = 64;
+    constexpr int NotInvokedRetries = 64;
     bool retained = true;
-    for (int retry = 0; retry < NotReadyRetries; ++retry) {
+    for (int retry = 0; retry < NotInvokedRetries; ++retry) {
         if (retryingGate.TryRelease() != nullptr ||
             !retryingGate.IsHolding()) {
             retained = false;
@@ -282,29 +274,29 @@ void RunPreviewRetryChecks() {
     }
     Check(
         retained &&
-            InitializationCalls == 1 + NotReadyRetries,
+            InitializationCalls == 1 + NotInvokedRetries,
         "not-invoked initialization was not retried");
 
     InitializationResult = AvatarPreloadResult::InvokedNotReady;
     Check(
         retryingGate.TryRelease() == nullptr &&
             retryingGate.IsHolding() &&
-            InitializationCalls == 2 + NotReadyRetries,
+            InitializationCalls == 2 + NotInvokedRetries,
         "eligible retry did not record its one native invocation");
 
-    for (int poll = 0; poll < NotReadyRetries; ++poll) {
+    for (int poll = 0; poll < NotInvokedRetries; ++poll) {
         static_cast<void>(retryingGate.TryRelease());
     }
     Check(
         retryingGate.IsHolding() &&
-            InitializationCalls == 2 + NotReadyRetries,
+            InitializationCalls == 2 + NotInvokedRetries,
         "partial native initialization was invoked more than once");
 
     AvatarResourcesReady = true;
     Check(
         retryingGate.TryRelease() == &retainedPreview &&
             !retryingGate.IsHolding() &&
-            InitializationCalls == 2 + NotReadyRetries,
+            InitializationCalls == 2 + NotInvokedRetries,
         "later readiness did not release the exact retained pointer");
 }
 
@@ -334,13 +326,13 @@ void RunProxyOrderingChecks() {
     Check(
         client->PickMsg() == &bootstrap &&
             legacy.pickCalls == 1 &&
-            InitializationCalls == 1,
-        "proxy did not pass the bootstrap through unchanged");
+            InitializationCalls == 0,
+        "proxy initialized before passing the bootstrap through");
     InitializationResult = AvatarPreloadResult::InvokedNotReady;
     Check(
         client->PickMsg() == nullptr &&
             legacy.pickCalls == 2 &&
-            InitializationCalls == 2 &&
+            InitializationCalls == 1 &&
             client->GetMsgNum() == 20,
         "proxy did not retain the following unready preview");
 
@@ -357,14 +349,14 @@ void RunProxyOrderingChecks() {
     Check(
         stayedOrdered &&
             legacy.processCalls == SchedulingCycles &&
-            InitializationCalls == 2 &&
+            InitializationCalls == 1 &&
             DisposedMessageCount == 0,
         "bounded invocation changed legacy Process, order, or ownership");
 
     AvatarResourcesReady = true;
     Check(
         client->PickMsg() == &preview &&
-            InitializationCalls == 2,
+            InitializationCalls == 1,
         "later readiness did not return the retained preview first");
     Check(
         client->PickMsg() == &later && legacy.pickCalls == 3,
@@ -378,11 +370,11 @@ void RunProxyOrderingChecks() {
 }
 
 void RunPickPathAndLifecycleChecks() {
-    TestBootstrapMessage bootstrap;
+    TestPreviewMessage preview;
     FakeLegacyClient legacy;
-    legacy.nextMessage = &bootstrap;
+    legacy.nextMessage = &preview;
 
-    ResetEvidence(AvatarPreloadResult::InvokedNotReady, false);
+    ResetEvidence(AvatarPreloadResult::Ready, true);
     auto* client = NetClientProxy::CreateForTesting(
         &legacy,
         true,
@@ -402,11 +394,11 @@ void RunPickPathAndLifecycleChecks() {
         "non-PickMsg proxy methods invoked the native initializer");
 
     Check(
-        client->PickMsg() == &bootstrap &&
+        client->PickMsg() == &preview &&
             InitializationCalls == 1,
-        "PickMsg did not invoke direct initialization");
+        "PickMsg did not invoke initialization at the preview barrier");
     Check(
-        client->PickMsg() == &bootstrap &&
+        client->PickMsg() == &preview &&
             InitializationCalls == 1,
         "initializer ran twice before lifecycle reset");
     Check(client->Connect(), "proxy reconnect was not delegated");
@@ -414,19 +406,21 @@ void RunPickPathAndLifecycleChecks() {
         InitializationCalls == 1,
         "connect invoked the native initializer");
 
+    AvatarResourcesReady = false;
     client->Process();
     Check(
-        client->PickMsg() == &bootstrap &&
+        client->PickMsg() == &preview &&
             InitializationCalls == 2,
-        "post-connect lifecycle did not allow one initialization");
+        "post-connect preview did not allow one initialization");
     client->DisConnect();
     Check(
         InitializationCalls == 2,
         "disconnect invoked the native initializer");
+    AvatarResourcesReady = false;
     Check(
-        client->PickMsg() == &bootstrap &&
+        client->PickMsg() == &preview &&
             InitializationCalls == 3,
-        "post-disconnect lifecycle did not allow one initialization");
+        "post-disconnect preview did not allow one initialization");
 
     client->Release();
     Check(
@@ -435,8 +429,9 @@ void RunPickPathAndLifecycleChecks() {
             legacy.releaseCalls == 1 &&
             legacy.processCalls == 2 &&
             legacy.sendCalls == 1 &&
-            legacy.messageCountCalls == 1,
-        "direct initialization changed legacy lifecycle delegation");
+            legacy.messageCountCalls == 1 &&
+            DisposedMessageCount == 0,
+        "preview initialization changed legacy lifecycle delegation");
 }
 
 } // namespace
@@ -444,7 +439,7 @@ void RunPickPathAndLifecycleChecks() {
 int RunAvatarPreloadTests() {
     RunUnsupportedHostChecks();
     RunBootstrapRecognitionChecks();
-    RunDirectInitializationChecks();
+    RunBootstrapBarrierChecks();
     RunPreviewRetryChecks();
     RunProxyOrderingChecks();
     RunPickPathAndLifecycleChecks();

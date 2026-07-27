@@ -141,11 +141,13 @@ ILegacyNetClient* CreateClient(FakeLegacyClient* legacy) {
 
 void RunReentrantResetCheck() {
     PreviewMessage stalePreview;
-    BootstrapMessage nextLifecycle;
+    BootstrapMessage nextBootstrap;
+    PreviewMessage nextPreview;
     FakeLegacyClient legacy;
     legacy.queuedMessages[0] = &stalePreview;
-    legacy.queuedMessages[1] = &nextLifecycle;
-    legacy.queuedCount = 2;
+    legacy.queuedMessages[1] = &nextBootstrap;
+    legacy.queuedMessages[2] = &nextPreview;
+    legacy.queuedCount = 3;
 
     ResetEvidence(AvatarPreloadResult::InvokedNotReady, false);
     auto* client = CreateClient(&legacy);
@@ -165,9 +167,16 @@ void RunReentrantResetCheck() {
             DisposedMessages == 1,
         "re-entrant disconnect retained an old-lifecycle preview");
     Check(
-        client->PickMsg() == &nextLifecycle &&
-            InitializationCalls == 2,
-        "re-entrant reset committed an old initialization result");
+        client->PickMsg() == &nextBootstrap &&
+            InitializationCalls == 1,
+        "post-reset bootstrap invoked native initialization");
+    InitializationResult = AvatarPreloadResult::Ready;
+    InitializationCompletes = true;
+    Check(
+        client->PickMsg() == &nextPreview &&
+            InitializationCalls == 2 &&
+            ResourcesReady,
+        "post-reset preview retained an old initialization result");
     client->Release();
 }
 
@@ -222,6 +231,7 @@ void RunReentrantOrderingCheck() {
 void RunSameTransportLifecycleCheck() {
     PreviewMessage firstPreview;
     BootstrapMessage nextLifecycle;
+    PreviewMessage nextPreview;
     PreviewMessage previewOnlyLifecycle;
     BootstrapMessage repeatedBootstrap;
 
@@ -240,9 +250,18 @@ void RunSameTransportLifecycleCheck() {
     ResourcesReady = false;
     Check(
         gate.Filter(&nextLifecycle) == &nextLifecycle &&
+            InitializationCalls == 1 &&
+            !ResourcesReady,
+        "same-transport bootstrap initialized before its preview");
+    Check(
+        gate.Filter(&nextPreview) == &nextPreview &&
             InitializationCalls == 2 &&
             ResourcesReady,
-        "same-transport selection re-entry did not initialize once");
+        "same-transport preview did not initialize once");
+    Check(
+        gate.Filter(&repeatedBootstrap) == &repeatedBootstrap &&
+            InitializationCalls == 2,
+        "ready lifecycle bootstrap initialized more than once");
 
     ResourcesReady = false;
     Check(
@@ -250,10 +269,6 @@ void RunSameTransportLifecycleCheck() {
             InitializationCalls == 3 &&
             ResourcesReady,
         "preview-only selection re-entry did not initialize once");
-    Check(
-        gate.Filter(&repeatedBootstrap) == &repeatedBootstrap &&
-            InitializationCalls == 3,
-        "repeated bootstrap initialized one lifecycle twice");
 }
 
 void RunRetainedPreviewReleaseCheck() {

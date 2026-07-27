@@ -48,6 +48,7 @@ struct SchannelClientStream::State final {
         DWORD protocol,
         DWORD cipherSuite,
         bool validatedAlpn) noexcept;
+    void RecordSecurityStatus(SECURITY_STATUS status) noexcept;
     void Fail(SchannelClientFailure reason) noexcept;
     SchannelClientSnapshot Snapshot() const noexcept;
     bool WaitForReady(
@@ -90,9 +91,12 @@ struct SchannelClientStream::State final {
     bool configured = false;
     bool established = false;
     SchannelClientFailure failure = SchannelClientFailure::None;
+    SECURITY_STATUS securityStatus = SEC_E_OK;
     DWORD negotiatedProtocol = 0;
     DWORD negotiatedCipherSuite = 0;
     bool alpnValidated = false;
+    bool manualCertificateValidation = false;
+    bool developmentRootValidated = false;
 };
 
 } // namespace godswar::network

@@ -11,10 +11,16 @@ Import-Module (
     Join-Path $moduleRoot 'SecureNetworkBundleFiles.psm1'
 ) -Force
 Import-Module (
+    Join-Path $moduleRoot 'SecureNetworkBundleReceipt.psm1'
+) -Force
+Import-Module (
     Join-Path $moduleRoot 'SecureNetworkPathSafety.psm1'
 ) -Force
 Import-Module (
     Join-Path $moduleRoot 'SecureNetworkBundleTransactionCore.psm1'
+) -Force
+Import-Module (
+    Join-Path $moduleRoot 'SecureNetworkOriginFileTransaction.psm1'
 ) -Force
 
 function New-RebornSecureBundlePolicy {
@@ -23,7 +29,8 @@ function New-RebornSecureBundlePolicy {
         [Parameter(Mandatory)][string]$LegacyNetSha256,
         [Parameter(Mandatory)][string]$CandidateNetSha256,
         [Parameter(Mandatory)][string]$ManifestSha256,
-        [Parameter(Mandatory)][string]$ManifestTrustSha256
+        [Parameter(Mandatory)][string]$ManifestTrustSha256,
+        [AllowNull()][AllowEmptyString()][string]$CandidateOriginSha256
     )
 
     New-RebornSecureBundlePolicyCore `
@@ -31,7 +38,8 @@ function New-RebornSecureBundlePolicy {
         $LegacyNetSha256 `
         $CandidateNetSha256 `
         $ManifestSha256 `
-        $ManifestTrustSha256
+        $ManifestTrustSha256 `
+        $CandidateOriginSha256
 }
 
 function Get-RebornSecureBundleStatus {
@@ -44,11 +52,13 @@ function Get-RebornSecureBundleStatus {
         [Parameter(Mandatory)]
         [ValidateSet('OfflineFile', 'Hklm')][string]$StateProvider,
         [string]$StatePath,
-        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow,
+        [AllowNull()][AllowEmptyString()][string]$CandidateOriginPath
     )
 
     $paths = Assert-RebornBundleInputs `
-        $Policy $ClientRoot $CandidatePath $ManifestPath $TrustPath
+        $Policy $ClientRoot $CandidatePath $ManifestPath $TrustPath `
+        $CandidateOriginPath
     $state = Get-RebornActivationState `
         -Provider $StateProvider `
         -Path $StatePath
@@ -59,6 +69,7 @@ function Get-RebornSecureBundleStatus {
         -Now $Now
     Assert-RebornManifestPolicyBinding $manifest $Policy
     $manifestHash = $manifest.ManifestSha256
+    $originHash = Get-RebornSha256 $paths.Origin
     $netHash = Get-RebornSha256 $paths.Net
     $legacyHash = Get-RebornOptionalHash $paths.Legacy
     $installedManifestHash =
@@ -76,6 +87,7 @@ function Get-RebornSecureBundleStatus {
 
     $status = if (
         $netHash -eq $Policy.LegacyNetSha256 -and
+        $originHash -eq $Policy.OriginSha256 -and
         $null -eq $legacyHash -and
         $null -eq $installedManifestHash -and
         $stockActivation
@@ -83,6 +95,7 @@ function Get-RebornSecureBundleStatus {
         'Stock'
     } elseif (
         $netHash -eq $Policy.CandidateNetSha256 -and
+        $originHash -eq $Policy.CandidateOriginSha256 -and
         $legacyHash -eq $Policy.LegacyNetSha256 -and
         $installedManifestHash -eq $manifestHash -and
         $state.Mode -eq 1 -and
@@ -97,7 +110,10 @@ function Get-RebornSecureBundleStatus {
     [pscustomobject]@{
         State = $status
         ClientRoot = $paths.Client
-        OriginSha256 = $Policy.OriginSha256
+        OriginSha256 = $originHash
+        ExpectedStockOriginSha256 = $Policy.OriginSha256
+        ExpectedCandidateOriginSha256 =
+            $Policy.CandidateOriginSha256
         NetSha256 = $netHash
         NetLegacySha256 = $legacyHash
         ManifestSha256 = $installedManifestHash
@@ -126,11 +142,13 @@ function Invoke-RebornSecureBundleApply {
             'AfterState',
             'AfterManifest',
             'AfterLegacy',
-            'AfterCandidate')]
+            'AfterCandidate',
+            'AfterOrigin')]
         [string]$FailurePoint = 'None',
         [switch]$LeaveInterrupted,
         [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow,
-        [scriptblock]$PreCommitValidation
+        [scriptblock]$PreCommitValidation,
+        [AllowNull()][AllowEmptyString()][string]$CandidateOriginPath
     )
 
     if ($StateProvider -eq 'Hklm') {
@@ -138,7 +156,8 @@ function Invoke-RebornSecureBundleApply {
             $ClientRoot 'ClientRoot' -ProtectContents | Out-Null
     }
     $paths = Assert-RebornBundleInputs `
-        $Policy $ClientRoot $CandidatePath $ManifestPath $TrustPath
+        $Policy $ClientRoot $CandidatePath $ManifestPath $TrustPath `
+        $CandidateOriginPath
     if ($StateProvider -eq 'Hklm') {
         Assert-RebornProtectedFileSet `
             @($paths.Origin, $paths.Net, $paths.Legacy,
@@ -151,7 +170,8 @@ function Invoke-RebornSecureBundleApply {
     Assert-RebornManifestPolicyBinding $manifest $Policy
     $status = Get-RebornSecureBundleStatus `
         $Policy $paths.Client $paths.Candidate $paths.Manifest $paths.Trust `
-        $StateProvider $StatePath -Now $Now
+        $StateProvider $StatePath -Now $Now `
+        -CandidateOriginPath $paths.CandidateOrigin
     if ($status.State -eq 'InstalledExact') {
         return [pscustomobject]@{
             Result = 'AlreadyInstalled'
@@ -184,7 +204,13 @@ function Invoke-RebornSecureBundleApply {
         $backup = Assert-RebornDirectChildDirectory `
             $backup $backupBase 'Apply backup'
     }
+    $pairedOrigin =
+        $Policy.CandidateOriginSha256 -cne $Policy.OriginSha256
     $files = @(
+        if ($pairedOrigin) {
+            New-RebornFileBackupEntry `
+                $paths.Origin 'Origin.exe' $backup
+        }
         New-RebornFileBackupEntry $paths.Net 'Net.dll' $backup
         New-RebornFileBackupEntry $paths.Legacy 'NetLegacy.dll' $backup
         New-RebornFileBackupEntry `
@@ -192,10 +218,11 @@ function Invoke-RebornSecureBundleApply {
     )
     $recoveryInputs = @(
         New-RebornRecoveryInputSet `
-            $Policy $backup $paths.Candidate $paths.Manifest $paths.Trust
+            $Policy $backup $paths.Candidate $paths.Manifest $paths.Trust `
+            $paths.CandidateOrigin
     )
     $receipt = [ordered]@{
-        schemaVersion = 3
+        schemaVersion = if ($pairedOrigin) { 4 } else { 3 }
         mode = 'Apply'
         createdUtc = [DateTimeOffset]::UtcNow.ToString('O')
         clientRoot = $paths.Client
@@ -249,6 +276,21 @@ function Invoke-RebornSecureBundleApply {
                 $paths.Candidate $paths.Net $Policy.CandidateNetSha256
             if ($FailurePoint -eq 'AfterCandidate') { throw 'Simulated interruption.' }
 
+            if ($pairedOrigin) {
+                $handoff = Switch-RebornOriginFileAtomic `
+                    $paths.CandidateOrigin `
+                    $paths.Origin `
+                    $Policy.CandidateOriginSha256 `
+                    $originLock `
+                    $Policy.OriginSha256
+                $previousLock = $originLock
+                $originLock = $handoff.CurrentLock
+                $previousLock.Dispose()
+            }
+            if ($FailurePoint -eq 'AfterOrigin') {
+                throw 'Simulated interruption.'
+            }
+
             $installedManifest = Read-RebornSecureEndpointManifest `
                 $paths.InstalledManifest $paths.Trust $manifest.Sequence `
                 -Now $Now
@@ -257,7 +299,9 @@ function Invoke-RebornSecureBundleApply {
                 (Get-RebornSha256 $paths.Legacy) -ne
                     $Policy.LegacyNetSha256 -or
                 (Get-RebornSha256 $paths.Net) -ne
-                    $Policy.CandidateNetSha256) {
+                    $Policy.CandidateNetSha256 -or
+                (Get-RebornLockedFileSha256 $originLock) -ne
+                    $Policy.CandidateOriginSha256) {
                 throw 'Secure bundle staged files failed final validation.'
             }
             if ($StateProvider -eq 'Hklm') {
@@ -304,7 +348,23 @@ function Invoke-RebornSecureBundleApply {
                 Set-RebornSafeDisabledState `
                     $current $manifest $Policy $StateProvider $StatePath `
                     -AllowHklmWrite:$AllowHklmWrite
-                Restore-RebornBackupFiles $loaded $paths
+                if ($pairedOrigin -and
+                    (Get-RebornLockedFileSha256 $originLock) -cne
+                        $Policy.OriginSha256) {
+                    $stockOrigin =
+                        Join-Path $loaded.Directory 'Origin.exe'
+                    $handoff = Switch-RebornOriginFileAtomic `
+                        $stockOrigin `
+                        $paths.Origin `
+                        $Policy.OriginSha256 `
+                        $originLock `
+                        $Policy.CandidateOriginSha256
+                    $previousLock = $originLock
+                    $originLock = $handoff.CurrentLock
+                    $previousLock.Dispose()
+                }
+                Restore-RebornBackupFiles `
+                    $loaded $paths -SkipOrigin:$pairedOrigin
                 throw $saved
             }
             throw
@@ -355,7 +415,8 @@ function Invoke-RebornSecureBundleRestore {
         $ApplyBackupPath $Policy
     $paths = Assert-RebornBundleInputs `
         $Policy $ClientRoot $recovery.Candidate `
-        $recovery.Manifest $recovery.Trust
+        $recovery.Manifest $recovery.Trust `
+        $recovery.CandidateOrigin
     if ($StateProvider -eq 'Hklm') {
         Assert-RebornProtectedFileSet `
             @($paths.Origin, $paths.Net, $paths.Legacy,
@@ -374,16 +435,36 @@ function Invoke-RebornSecureBundleRestore {
     try {
         $current = Get-RebornActivationState $StateProvider $StatePath
         $sourceState = Assert-RebornRestoreSourceState `
-            $paths $Policy $manifest $backup.Receipt $current
+            $paths $Policy $manifest $backup.Receipt $current `
+            (Get-RebornLockedFileSha256 $originLock)
         Set-RebornSafeDisabledState `
             $current $manifest $Policy $StateProvider $StatePath `
             -AllowHklmWrite:$AllowHklmWrite
-        Restore-RebornBackupFiles $backup $paths
+        $pairedOrigin =
+            $Policy.CandidateOriginSha256 -cne $Policy.OriginSha256
+        if ($pairedOrigin -and
+            (Get-RebornLockedFileSha256 $originLock) -cne
+                $Policy.OriginSha256) {
+            $stockOrigin = Join-Path $backup.Directory 'Origin.exe'
+            $handoff = Switch-RebornOriginFileAtomic `
+                $stockOrigin `
+                $paths.Origin `
+                $Policy.OriginSha256 `
+                $originLock `
+                $Policy.CandidateOriginSha256
+            $previousLock = $originLock
+            $originLock = $handoff.CurrentLock
+            $previousLock.Dispose()
+        }
+        Restore-RebornBackupFiles `
+            $backup $paths -SkipOrigin:$pairedOrigin
 
+        $originHash = Get-RebornLockedFileSha256 $originLock
         $netHash = Get-RebornSha256 $paths.Net
         $legacyHash = Get-RebornOptionalHash $paths.Legacy
         $manifestHash = Get-RebornOptionalHash $paths.InstalledManifest
-        if ($netHash -ne $Policy.LegacyNetSha256 -or
+        if ($originHash -ne $Policy.OriginSha256 -or
+            $netHash -ne $Policy.LegacyNetSha256 -or
             $null -ne $legacyHash -or
             $null -ne $manifestHash) {
             throw 'Secure bundle Restore did not reproduce the exact predecessor files.'

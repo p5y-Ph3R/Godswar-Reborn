@@ -2,6 +2,7 @@
 #include "AvatarPreloadLifecycleTests.h"
 #include "AvatarPreloadTests.h"
 #include "BoundedChunkQueueTests.h"
+#include "ControlledHostTlsProbe.h"
 #include "EndpointManifestTests.h"
 #include "ExternalTcpConnectorTests.h"
 #include "LoopbackAcceptorTests.h"
@@ -460,22 +461,35 @@ int wmain(int argumentCount, wchar_t** arguments) {
         std::wcscmp(
             arguments[1],
             L"--offline-contract-probe") == 0;
+    const bool originContractProbe =
+        argumentCount == 4 &&
+        std::wcscmp(
+            arguments[1],
+            L"--offline-origin-contract-probe") == 0;
     const bool foreignPeerHelper =
         argumentCount == 4 &&
         std::wcscmp(
             arguments[1],
             L"--foreign-loopback-connect") == 0;
+    const bool controlledHostTlsProbe =
+        argumentCount == 3 &&
+        std::wcscmp(
+            arguments[1],
+            L"--controlled-host-tls-probe") == 0;
     if (!full && !offline && !probe && !rejectedProbe &&
         !manifestProbe && !contractProbe &&
-        !foreignPeerHelper) {
+        !originContractProbe &&
+        !foreignPeerHelper && !controlledHostTlsProbe) {
         std::fprintf(
             stderr,
             "Usage: Godswar.NetShim.Checks.exe "
             "[--offline | --offline-probe <Net.dll> | "
             "--offline-contract-probe <Net.dll> | "
+            "--offline-origin-contract-probe <Net.dll> <Origin.exe> | "
             "--offline-manifest-probe <Net.dll> <RebornNetwork.gwem> | "
             "--probe <Net.dll> | "
-            "--probe-rejected <Net.dll> <Win32Error>]\n");
+            "--probe-rejected <Net.dll> <Win32Error> | "
+            "--controlled-host-tls-probe <OriginSha256>]\n");
         return 2;
     }
     if (foreignPeerHelper) {
@@ -483,8 +497,16 @@ int wmain(int argumentCount, wchar_t** arguments) {
             arguments[2],
             arguments[3]);
     }
+    if (controlledHostTlsProbe) {
+        return RunControlledHostTlsProbe(arguments[2]);
+    }
     if (contractProbe) {
         return RunSecureCandidateContractProbe(arguments[2]);
+    }
+    if (originContractProbe) {
+        return RunSecureCandidateOriginContractProbe(
+            arguments[2],
+            arguments[3]);
     }
     if (manifestProbe) {
         return RunSecureManifestProbe(

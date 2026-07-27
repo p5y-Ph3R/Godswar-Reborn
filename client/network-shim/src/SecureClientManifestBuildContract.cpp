@@ -15,7 +15,13 @@ namespace {
 constexpr std::uint64_t MaximumCandidateBytes =
     16ULL * 1024ULL * 1024ULL;
 constexpr char ContractMagic[8] = {
-    'G', 'W', 'K', 'E', 'Y', '0', '1', '\0',
+    'G', 'W', 'K', 'E', 'Y', '0', '2', '\0',
+};
+constexpr std::uint8_t SupportedOriginSha256[32] = {
+    0xE1, 0x77, 0xD9, 0x4D, 0xC7, 0x0C, 0xCF, 0x65,
+    0x7D, 0x19, 0x0C, 0x85, 0xB1, 0xEB, 0xAC, 0xE5,
+    0xC8, 0xE7, 0x90, 0xD5, 0x2D, 0xBC, 0x01, 0x48,
+    0x54, 0xE0, 0x3A, 0x57, 0x23, 0x4C, 0xC7, 0x6C,
 };
 
 constexpr SecureClientManifestBuildContract MakeContract() noexcept {
@@ -23,7 +29,7 @@ constexpr SecureClientManifestBuildContract MakeContract() noexcept {
     for (std::size_t index = 0; index < sizeof(ContractMagic); ++index) {
         contract.magic[index] = ContractMagic[index];
     }
-    contract.version = 1;
+    contract.version = 2;
     contract.structureBytes =
         sizeof(SecureClientManifestBuildContract);
     contract.environment =
@@ -41,6 +47,8 @@ constexpr SecureClientManifestBuildContract MakeContract() noexcept {
             development_manifest_keys::NextX[index];
         contract.nextKey.y[index] =
             development_manifest_keys::NextY[index];
+        contract.originSha256[index] =
+            SupportedOriginSha256[index];
     }
     return contract;
 }
@@ -68,11 +76,15 @@ GetSecureClientManifestBuildContract() noexcept {
 bool IsValidSecureClientManifestBuildContract(
     const SecureClientManifestBuildContract& contract) noexcept {
     const std::uint8_t zero[sizeof(contract.reserved)]{};
+    std::uint8_t originCombined = 0;
+    for (const auto value : contract.originSha256) {
+        originCombined |= value;
+    }
     return std::memcmp(
                contract.magic,
                ContractMagic,
                sizeof(ContractMagic)) == 0 &&
-        contract.version == 1 &&
+        contract.version == 2 &&
         contract.structureBytes == sizeof(contract) &&
         contract.environment ==
             static_cast<std::uint8_t>(
@@ -83,7 +95,8 @@ bool IsValidSecureClientManifestBuildContract(
             sizeof(zero)) == 0 &&
         contract.currentKeyId == 0xD001 &&
         contract.nextKeyId == 0xD002 &&
-        contract.compiledMinimumSequence != 0;
+        contract.compiledMinimumSequence != 0 &&
+        originCombined != 0;
 }
 
 bool ReadSecureClientManifestBuildContract(

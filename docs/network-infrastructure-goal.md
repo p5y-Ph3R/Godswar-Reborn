@@ -2,22 +2,20 @@
 
 ## Version and status
 
-- Document version: `1.24`
-- Last updated: `2026-07-27`
+- Document version: `1.32`
+- Last updated: `2026-07-28`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: controlled-host testing accepted original-client TLS,
-  authenticated UDP binding, and world entry, followed by exact rollback.
-  The secure Docker reference client passes live authoritative UDP movement
-  and snapshot acknowledgement. Phase 4's original-client movement,
-  forced-fallback, parity, and soak gate remains open.
-- Production capacity is not guaranteed; workload and hosting inputs remain open.
+- Current milestone: run PreviewReadyV6's Fallback and ten-minute Soak, then
+  exact rollback; its live Baseline is sealed `Pass`.
+- Map, traversal, and AOI optimization remain deferred until Phase 4
+  acceptance and the Phase 5A baseline are complete.
+- Production capacity and hosting inputs remain open.
 
-This document is the durable reference for the networking migration. Update its
-phase ledger and version history as work is accepted. Do not silently weaken the
-security or compatibility gates.
+This is the durable migration reference; do not weaken its security or
+compatibility gates.
 
 ## Goal
 
@@ -58,10 +56,9 @@ has the following pinned contract:
   `Release`, `SetHost`, `Connect`, `DisConnect`, `Process`, `GetStatus`,
   `PickMsg`, `SendMsg`, and `GetMsgNum`
 
-The current predecessor `Origin.exe` SHA-256 is
-`753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`.
-An unknown client or legacy DLL is a new compatibility target and must be
-audited instead of forced through the installer.
+V6 pairs Origin `E177D94D...CC76C` with `GWKEY02` Net
+`21695893...CAE97`. See
+[`network-infrastructure-preview-ready-v6.md`](network-infrastructure-preview-ready-v6.md).
 
 Conservative defaults until measurements replace them:
 
@@ -151,7 +148,7 @@ The shim will run a loopback bridge inside the `Origin.exe` process. It will
 point the verified `NetLegacy.dll` at that private listener, preserve the stock
 XOR/framing parser and proprietary `CMsg` allocation, and carry the unwrapped
 stream externally over TLS. Phase 2 starts from predecessor Origin plus stock
-Net; the rejected V4 `PickMsg` preview gate is not installed or accepted.
+Net; Phase 1's rejected V4 `PickMsg` preview gate is not installed or accepted.
 Phase 2 must preserve stock `PickMsg` ownership unless a separately reviewed
 and accepted correction supersedes this parked issue. There is no launcher or
 separate gateway process.
@@ -345,19 +342,22 @@ rotation remains Phase 5 production scalability work.
   authenticated UDP binding, world entry, movement, and snapshot
   acknowledgement against the live container.
 
-Exit gate: the secure-Docker reference smoke plus original-client foreground
-Baseline, Fallback, and ten-minute Soak profiles remain pending, including
-map/mount/revive parity and privacy-safe UDP movement/snapshot evidence. The
-Fallback profile uses the logical snapshot-ACK-drop campaign and must not
-change Norton, Windows Firewall, adapters, routes, or the host's internet
-connectivity.
+Exit gate: the secure-Docker reference smoke is complete. Original-client
+foreground Baseline is sealed `Pass`; Fallback, ten-minute Soak, remaining
+manual parity, and exact rollback remain pending. V3 through V5 were rejected
+and restored. V5 sent stock Origin
+identity while the server allowed patched Origin; `handoff-000024.json`
+records exact restore. V6 binds the identity through `GWKEY02` and a paired
+probe. Fallback uses logical ACK-drop.
 
 ### Phase 5 — extension, hardening, and operations
 
 - Extend realtime traffic only with explicit recovery semantics.
-- Add fixed-step deterministic replay, bounded bot load/soak tests, dashboards,
-  alerts, and runbooks; extend the decoder fuzzing and metrics introduced in
+- Phase 5A establishes fixed-step deterministic replay, bounded bot load/soak
+  tests, reproducible resource/tick/network baselines, dashboards, alerts, and
+  runbooks; it also extends the decoder fuzzing and metrics introduced in
   their owning phases.
+- Keep the deferred map/AOI work behind Phase 4 and Phase 5A.
 - Produce provider-neutral deployment controls until hosting is selected.
 - Integrate an upstream TCP/arbitrary-UDP protection provider only after
   approval.
@@ -367,20 +367,16 @@ and incident-response gates pass. Local results are not production guarantees.
 
 ## Known limitations and unresolved decisions
 
-- The shim sees legacy absolute position samples, not keyboard intent. It can
-  authenticate, sequence, validate, and reconcile movement, but true input-level
-  prediction may require a later targeted `Origin.exe` hook.
-- Phase 4 AOI visibility transitions still await bounded reliable remove/spawn
-  writes while holding the character-state gate. A slow client is bounded by
-  transport deadlines, but can delay that session's fixed-step movement.
-  Phase 5 must move the ordered AOI commit/send effects behind a bounded
-  single-owner queue without permitting visibility rollback.
+- The shim sees absolute positions, not keyboard intent. True input-level
+  prediction may require a later `Origin.exe` hook.
+- Phase 4 AOI remove/spawn writes are bounded but can delay that session's
+  fixed-step movement. A later Phase 5 slice must move ordered AOI effects
+  behind a bounded single-owner queue without permitting visibility rollback.
 - Client signing/distribution remain undecided.
-- Production manifest keys/floors/signature, production trust, blank-account
-  reset policy, and upstream deployment controls remain activation gates.
-- The disposable controlled-host run accepted TLS, UDP binding, and world
-  entry, and the Docker reference client accepted live movement. Original-
-  client Phase 4 movement/fallback/soak evidence remains incomplete.
+- Production manifest signing/trust, blank-account reset policy, and upstream
+  controls remain activation gates.
+- TLS, UDP binding, world entry, and Docker movement pass; the original-client
+  Phase 4 movement/fallback/soak gate remains open.
 - Hosting region/provider, expected concurrency, tick/snapshot rates, latency
   target, packet-loss target, and budget remain open capacity inputs.
 - Provider-specific infrastructure and paid deployment require approval.

@@ -123,7 +123,16 @@ function Assert-ClientActivation {
     Assert-RebornPhase4PinnedInputs $pins | Out-Null
     $root = Get-RebornPhase4RootStatus $pins
     $activation = Get-Phase4LoopbackActivationState
-    if ($root.State -cne 'InstalledExact' -or
+    $expectedRootState = if (
+        $pins.PSObject.Properties['ClientTlsTrustMode'] -and
+        [string]$pins.ClientTlsTrustMode -ceq
+            'EmbeddedDevelopmentRoot') {
+        'Absent'
+    }
+    else {
+        'InstalledExact'
+    }
+    if ($root.State -cne $expectedRootState -or
         -not $activation.Complete -or
         [UInt64]$activation.Mode -ne 1 -or
         [UInt64]$activation.Environment -ne
@@ -136,7 +145,8 @@ function Assert-ClientActivation {
     $clientNet = Join-Path $pins.ClientRoot 'Net.dll'
     $clientLegacy = Join-Path $pins.ClientRoot 'NetLegacy.dll'
     $clientManifest = Join-Path $pins.ClientRoot 'RebornNetwork.gwem'
-    if ((Get-Sha256 $clientOrigin) -cne $pins.OriginSha256 -or
+    if ((Get-Sha256 $clientOrigin) -cne
+            $pins.CandidateOriginSha256 -or
         (Get-Sha256 $clientNet) -cne $pins.CandidateSha256 -or
         (Get-Sha256 $clientLegacy) -cne $pins.StockNetSha256 -or
         (Get-Sha256 $clientManifest) -cne $pins.ManifestSha256) {
@@ -288,7 +298,8 @@ $environment = [ordered]@{
     GODSWAR_SECURE_CERTIFICATE_PATH = $certificatePath
     GODSWAR_SECURE_CERTIFICATE_PASSWORD_FILE =
         $certificatePasswordPath
-    GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256 = $pins.OriginSha256
+    GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256 =
+        $pins.CandidateOriginSha256
     GODSWAR_AUTH_ALLOW_REGISTRATION = 'false'
     GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION = 'true'
     GODSWAR_AUTH_MAXIMUM_CONCURRENT_KDFS = '4'

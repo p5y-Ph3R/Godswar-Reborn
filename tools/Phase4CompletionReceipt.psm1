@@ -10,102 +10,71 @@ Import-Module (
 Import-Module (
     Join-Path $moduleRoot 'ControlledHostReadOnlyArtifactAcl.psm1'
 )
+Import-Module (
+    Join-Path $moduleRoot 'Phase4CompletionWriteSupport.psm1'
+)
 
-$script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2'
+$script:IssuedRoot = (
+    Get-RebornPhase4SecureDockerPins).CampaignRoot
 $script:MaximumCompletionBytes = 24KB
 
-function Assert-RebornPhase4CompletionWriteAuthority {
-    param([switch]$AllowTestPath)
+function Test-RebornPhase4CompletionPairedOrigin {
+    param([Parameter(Mandatory)][object]$Pins)
 
-    if ($AllowTestPath) {
-        return
-    }
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    if ($null -eq $identity.User -or
-        $identity.User.Value -ceq 'S-1-5-18' -or
-        -not $principal.IsInRole(
-            [Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Completion writes require an elevated issued-user token.'
-    }
+    return (
+        $null -ne $Pins.PSObject.Properties['CandidateOriginSha256'])
 }
 
-function Assert-RebornPhase4FinalStatus {
-    param(
-        [Parameter(Mandatory)][object]$Status,
-        [Parameter(Mandatory)][object]$DockerStatus,
-        [Parameter(Mandatory)][object]$Campaign,
-        [Parameter(Mandatory)][object]$Pins
-    )
+function Test-RebornPhase4CompletionTlsTrust {
+    param([Parameter(Mandatory)][object]$Pins)
 
-    if ([string]$Status.State -cne 'Restored' -or
-        [string]$Status.DockerState -cne 'HealthyExact' -or
-        [string]$Status.BundleState -cne 'Stock' -or
-        [string]$Status.HostsState -cne 'Absent' -or
-        [string]$Status.RootState -cne 'Absent' -or
-        [UInt64]$Status.ActivationMode -ne 0 -or
-        [UInt64]$Status.ActivationEnvironment -ne
-            $Pins.ActivationEnvironment -or
-        [UInt64]$Status.SequenceFloor -ne $Pins.ManifestSequence -or
-        [UInt64]$Status.ManifestSequence -ne $Pins.ManifestSequence -or
-        [string]$Status.HandoffState -cne 'Restored' -or
-        -not ([IO.Path]::GetFullPath(
-            [string]$Status.HandoffPath)).Equals(
-                $Campaign.Path,
-                [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Final Phase 4 client Restore state is not exact.'
-    }
-    if ([string]$DockerStatus.State -cne 'HealthyExact' -or
-        [string]$DockerStatus.Profile -cne $Pins.DockerProfile -or
-        [string]$DockerStatus.Database -cne $Pins.DockerDatabase -or
-        [int]$DockerStatus.RestartCount -ne 0 -or
-        [int]$DockerStatus.UdpPort -ne 7444 -or
-        @($DockerStatus.TcpPorts).Count -ne 2 -or
-        6599 -notin @($DockerStatus.TcpPorts) -or
-        7443 -notin @($DockerStatus.TcpPorts)) {
-        throw 'Final Phase 4 secure-Docker state is not exact.'
-    }
+    return (
+        $null -ne $Pins.PSObject.Properties['ClientTlsTrustMode'])
 }
 
-function Write-RebornPhase4CompletionFile {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][byte[]]$Bytes
-    )
+function Test-RebornPhase4CurrentCompletionPins {
+    param([Parameter(Mandatory)][object]$Pins)
 
-    $stream = [IO.FileStream]::new(
-        $Path,
-        [IO.FileMode]::CreateNew,
-        [IO.FileAccess]::Write,
-        [IO.FileShare]::None)
-    try {
-        $stream.Write($Bytes, 0, $Bytes.Length)
-        $stream.Flush($true)
-    }
-    finally {
-        $stream.Dispose()
-    }
+    $current = Get-RebornPhase4SecureDockerPins
+    return (
+        [string]$Pins.CampaignGeneration -ceq
+            [string]$current.CampaignGeneration -and
+        [string]$Pins.CompletionMode -ceq
+            [string]$current.CompletionMode)
 }
 
-function New-RebornPhase4CompletionProfileBindings {
-    param([Parameter(Mandatory)][object[]]$Results)
+function New-RebornPhase4CompletionPinsRecord {
+    param([Parameter(Mandatory)][object]$Pins)
 
-    return @(
-        foreach ($name in @('Baseline', 'Fallback', 'Soak')) {
-            $result = @(
-                $Results |
-                    Where-Object { $_.Record.profile -ceq $name })[0]
-            [pscustomobject][ordered]@{
-                profile = $name
-                profileResultPath = $result.Path
-                profileResultSha256 = $result.Sha256
-                evidencePath = [string]$result.Record.evidencePath
-                evidenceSha256 = [string]$result.Record.evidenceSha256
-                observedDurationSeconds =
-                    [double]$result.Record.observedDurationSeconds
-            }
-        })
+    $values = [ordered]@{
+        clientRoot = $Pins.ClientRoot
+    }
+    if (Test-RebornPhase4CompletionPairedOrigin $Pins) {
+        $values.stockOriginSha256 = $Pins.OriginSha256
+        $values.candidateOriginSha256 = $Pins.CandidateOriginSha256
+    }
+    else {
+        $values.originSha256 = $Pins.OriginSha256
+    }
+    if (Test-RebornPhase4CompletionTlsTrust $Pins) {
+        $values.tlsTrustMode = $Pins.ClientTlsTrustMode
+    }
+    foreach ($binding in ([ordered]@{
+        stockNetSha256 = $Pins.StockNetSha256
+        candidateSha256 = $Pins.CandidateSha256
+        nativeChecksSha256 = $Pins.NativeChecksSha256
+        manifestSha256 = $Pins.ManifestSha256
+        manifestTrustSha256 = $Pins.ManifestTrustSha256
+        inventorySetSha256 = $Pins.InventorySetSha256
+        rootCertificateSha256 = $Pins.RootCertificateSha256
+        serverPfxSha256 = $Pins.ServerPfxSha256
+        manifestSequence = [UInt64]$Pins.ManifestSequence
+        dockerProfile = $Pins.DockerProfile
+        databaseName = $Pins.DockerDatabase
+    }).GetEnumerator()) {
+        $values[$binding.Key] = $binding.Value
+    }
+    return [pscustomobject]$values
 }
 
 function Write-RebornPhase4CompletionReceipt {
@@ -120,7 +89,7 @@ function Write-RebornPhase4CompletionReceipt {
     )
 
     if (-not $AllowTestPath -and
-        [string]$Pins.CampaignGeneration -cne 'PreviewReadyV2') {
+        -not (Test-RebornPhase4CurrentCompletionPins $Pins)) {
         throw 'Historical completion receipts are read-only.'
     }
     Assert-RebornPhase4CompletionWriteAuthority `
@@ -179,21 +148,7 @@ function Write-RebornPhase4CompletionReceipt {
             revision = [UInt64]$campaign.Record.revision
             state = 'Restored'
         }
-        pins = [pscustomobject][ordered]@{
-            clientRoot = $Pins.ClientRoot
-            originSha256 = $Pins.OriginSha256
-            stockNetSha256 = $Pins.StockNetSha256
-            candidateSha256 = $Pins.CandidateSha256
-            nativeChecksSha256 = $Pins.NativeChecksSha256
-            manifestSha256 = $Pins.ManifestSha256
-            manifestTrustSha256 = $Pins.ManifestTrustSha256
-            inventorySetSha256 = $Pins.InventorySetSha256
-            rootCertificateSha256 = $Pins.RootCertificateSha256
-            serverPfxSha256 = $Pins.ServerPfxSha256
-            manifestSequence = [UInt64]$Pins.ManifestSequence
-            dockerProfile = $Pins.DockerProfile
-            databaseName = $Pins.DockerDatabase
-        }
+        pins = New-RebornPhase4CompletionPinsRecord $Pins
         build = [pscustomobject][ordered]@{
             serverSha256 = [string]$first.serverSha256
             managedReleaseSetSha256 =
@@ -271,8 +226,15 @@ function Assert-RebornPhase4CompletionRecord {
         'schemaVersion', 'mode', 'result', 'completedUtc',
         'campaign', 'pins', 'build', 'profiles',
         'manualAttestation', 'finalState')
+    $originPinProperties = if (
+        Test-RebornPhase4CompletionPairedOrigin $Pins) {
+        @('stockOriginSha256', 'candidateOriginSha256')
+    }
+    else {
+        @('originSha256')
+    }
     $pinProperties = @(
-        'clientRoot', 'originSha256', 'stockNetSha256',
+        'clientRoot') + $originPinProperties + @('stockNetSha256',
         'candidateSha256', 'nativeChecksSha256', 'manifestSha256',
         'manifestTrustSha256', 'inventorySetSha256',
         'rootCertificateSha256', 'serverPfxSha256',
@@ -280,6 +242,9 @@ function Assert-RebornPhase4CompletionRecord {
     if ([string]$Pins.CampaignGeneration -cne 'LegacyV1') {
         $recordProperties += 'generation'
         $pinProperties += 'nextManifestTrustSha256'
+    }
+    if (Test-RebornPhase4CompletionTlsTrust $Pins) {
+        $pinProperties += 'tlsTrustMode'
     }
     Assert-RebornPhase4CompletionProperties `
         $Record $recordProperties 'Phase 4 completion receipt'
@@ -337,7 +302,7 @@ function Assert-RebornPhase4CompletionRecord {
         throw 'Phase 4 completion campaign binding is invalid.'
     }
     $pinNames = @(
-        'clientRoot', 'originSha256', 'stockNetSha256',
+        'clientRoot') + $originPinProperties + @('stockNetSha256',
         'candidateSha256', 'nativeChecksSha256', 'manifestSha256',
         'manifestTrustSha256', 'inventorySetSha256',
         'rootCertificateSha256', 'serverPfxSha256',
@@ -345,6 +310,8 @@ function Assert-RebornPhase4CompletionRecord {
     foreach ($name in $pinNames) {
         $expected = switch ($name) {
             'clientRoot' { $Pins.ClientRoot }
+            'stockOriginSha256' { $Pins.OriginSha256 }
+            'candidateOriginSha256' { $Pins.CandidateOriginSha256 }
             'originSha256' { $Pins.OriginSha256 }
             'stockNetSha256' { $Pins.StockNetSha256 }
             'candidateSha256' { $Pins.CandidateSha256 }
@@ -365,6 +332,11 @@ function Assert-RebornPhase4CompletionRecord {
         [string]$Record.pins.nextManifestTrustSha256 -cne
             [string]$Pins.NextManifestTrustSha256) {
         throw 'Phase 4 completion next-trust pin changed.'
+    }
+    if ((Test-RebornPhase4CompletionTlsTrust $Pins) -and
+        [string]$Record.pins.tlsTrustMode -cne
+            [string]$Pins.ClientTlsTrustMode) {
+        throw 'Phase 4 completion TLS trust mode changed.'
     }
     if ([UInt64]$Record.pins.manifestSequence -ne
         $Pins.ManifestSequence) {

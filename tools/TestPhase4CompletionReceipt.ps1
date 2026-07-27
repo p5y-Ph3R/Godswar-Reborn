@@ -6,7 +6,8 @@ foreach ($moduleName in @(
     'Phase4LoopbackAcceptanceProfile.psm1',
     'ControlledHostPrivacyEvidence.psm1',
     'Phase4CompletionValidation.psm1',
-    'Phase4CompletionReceipt.psm1'
+    'Phase4CompletionReceipt.psm1',
+    'Phase4CompletionReceiptTestSupport.psm1'
 )) {
     Import-Module (Join-Path $PSScriptRoot $moduleName) -Force
 }
@@ -23,7 +24,7 @@ Import-Module (
 ) -Force
 
 $passed = 0
-$expectedChecks = 13
+$expectedChecks = 20
 
 function Invoke-Check {
     param(
@@ -56,6 +57,8 @@ function Assert-Throws {
 $root = Join-Path (
     [IO.Path]::GetTempPath()
 ) ('reborn-phase4-completion-test-' + [Guid]::NewGuid().ToString('N'))
+$v3Root = $null
+$v2Root = $null
 $pins = Get-RebornPhase4SecureDockerPins
 $serverHash = 'A' * 64
 $releaseHash = 'B' * 64
@@ -149,7 +152,7 @@ try {
     $campaignRecord = New-RebornPhase4CampaignRecord `
         -BackupBaselineNames @() -Pins $pins
     $campaignRecord.state = 'Restored'
-    $campaignRecord.trustState = 'Removed'
+    $campaignRecord.trustState = 'EmbeddedRootReleased'
     $campaignRecord.hostsState = 'Restored'
     $campaignRecord.bundleState = 'Restored'
     $campaign = Write-RebornPhase4CampaignReceipt `
@@ -259,12 +262,18 @@ try {
                 $profilePaths $manual $status $docker `
                 $root -AllowTestPath -Pins $pins
         if ($completion.Record.result -cne 'Pass' -or
-            $completion.Record.schemaVersion -ne 2 -or
+            $completion.Record.schemaVersion -ne 4 -or
             $completion.Record.mode -cne $pins.CompletionMode -or
             $completion.Record.generation -cne
                 $pins.CampaignGeneration -or
+            $completion.Record.pins.stockOriginSha256 -cne
+                $pins.OriginSha256 -or
+            $completion.Record.pins.candidateOriginSha256 -cne
+                $pins.CandidateOriginSha256 -or
             $completion.Record.pins.nextManifestTrustSha256 -cne
                 $pins.NextManifestTrustSha256 -or
+            $completion.Record.pins.tlsTrustMode -cne
+                $pins.ClientTlsTrustMode -or
             $completion.Record.campaign.id -cne
                 $campaign.Record.campaignId -or
             @($completion.Record.profiles).Count -ne 3 -or
@@ -273,19 +282,159 @@ try {
         }
     } 'bounded checksummed completion receipt'
 
+    Invoke-Check {
+        Assert-RebornPhase4CompletionOriginPinTamperRejected `
+            $completion.Path $pins {
+                param($Path, $BoundPins)
+                Read-RebornPhase4CompletionReceipt `
+                    $Path -AllowTestPath -Pins $BoundPins
+            }
+    } 'both checksummed Origin pin changes are rejected'
+
+    $previewReadyV5Pins =
+        Get-RebornPhase4PreviewReadyV5SecureDockerPins
     Assert-Throws {
         Read-RebornPhase4CompletionReceipt `
             $completion.Path -AllowTestPath `
-            -Pins (Get-RebornPhase4HistoricalSecureDockerPins) |
-                Out-Null
-    } 'LegacyV1 pins reject a PreviewReadyV2 completion'
+            -Pins $previewReadyV5Pins | Out-Null
+    } 'PreviewReadyV5 pins reject a PreviewReadyV6 completion'
 
     Assert-Throws {
         Read-RebornPhase4CompletionReceipt `
             $completion.Path -AllowTestPath `
             -Pins (Get-RebornPhase4PreviewReadyV1SecureDockerPins) |
                 Out-Null
-    } 'PreviewReadyV1 pins reject a PreviewReadyV2 completion'
+    } 'PreviewReadyV1 pins reject a PreviewReadyV6 completion'
+
+    $previewReadyV2Pins =
+        Get-RebornPhase4PreviewReadyV2SecureDockerPins
+    Assert-Throws {
+        Read-RebornPhase4CompletionReceipt `
+            $completion.Path -AllowTestPath `
+            -Pins $previewReadyV2Pins | Out-Null
+    } 'PreviewReadyV2 pins reject a PreviewReadyV6 completion'
+
+    $previewReadyV3Pins =
+        Get-RebornPhase4PreviewReadyV3SecureDockerPins
+    Assert-Throws {
+        Read-RebornPhase4CompletionReceipt `
+            $completion.Path -AllowTestPath `
+            -Pins $previewReadyV3Pins | Out-Null
+    } 'PreviewReadyV3 pins reject a PreviewReadyV6 completion'
+
+    Invoke-Check {
+        $savedRoot = $script:root
+        $savedPins = $script:pins
+        $savedCampaign = $script:campaign
+        try {
+            $script:v3Root = Join-Path (
+                [IO.Path]::GetTempPath()
+            ) ('reborn-phase4-completion-test-' +
+                [Guid]::NewGuid().ToString('N'))
+            $script:root = $script:v3Root
+            $script:pins = $previewReadyV3Pins
+            [IO.Directory]::CreateDirectory($script:root) | Out-Null
+            $v3CampaignRecord = New-RebornPhase4CampaignRecord `
+                -BackupBaselineNames @() -Pins $script:pins
+            $v3CampaignRecord.state = 'Restored'
+            $v3CampaignRecord.trustState = 'Removed'
+            $v3CampaignRecord.hostsState = 'Restored'
+            $v3CampaignRecord.bundleState = 'Restored'
+            $script:campaign = Write-RebornPhase4CampaignReceipt `
+                $v3CampaignRecord $script:root `
+                -AllowTestPath -Pins $script:pins
+            $v3Baseline = New-TestProfileResult Baseline v3-baseline 30
+            $v3Fallback = New-TestProfileResult Fallback v3-fallback 20
+            $v3Soak = New-TestProfileResult Soak v3-soak 600
+            $v3Status = $status | Select-Object *
+            $v3Status.HandoffPath = $script:campaign.Path
+            $v3Completion = Write-RebornPhase4CompletionReceipt `
+                @(
+                    $v3Baseline.ProfileResultPath,
+                    $v3Fallback.ProfileResultPath,
+                    $v3Soak.ProfileResultPath) `
+                $manual $v3Status $docker $script:root `
+                -AllowTestPath -Pins $script:pins
+            $reopened = Read-RebornPhase4CompletionReceipt `
+                $v3Completion.Path -AllowTestPath -Pins $script:pins
+            $v6Accepted = $true
+            try {
+                Read-RebornPhase4CompletionReceipt `
+                    $v3Completion.Path -AllowTestPath -Pins $savedPins |
+                    Out-Null
+            }
+            catch {
+                $v6Accepted = $false
+            }
+            if ($v6Accepted -or
+                $reopened.Record.schemaVersion -ne 2 -or
+                $reopened.Record.generation -cne 'PreviewReadyV3' -or
+                $null -eq
+                    $reopened.Record.pins.PSObject.Properties[
+                        'originSha256'] -or
+                $null -ne
+                    $reopened.Record.pins.PSObject.Properties[
+                        'stockOriginSha256'] -or
+                $null -ne
+                    $reopened.Record.pins.PSObject.Properties[
+                        'candidateOriginSha256']) {
+                throw 'PreviewReadyV3 completion compatibility changed.'
+            }
+        }
+        finally {
+            $script:root = $savedRoot
+            $script:pins = $savedPins
+            $script:campaign = $savedCampaign
+        }
+    } 'PreviewReadyV3 completion remains exact and rejects V6 pins'
+
+    Invoke-Check {
+        $savedRoot = $script:root
+        $savedPins = $script:pins
+        $savedCampaign = $script:campaign
+        try {
+            $script:v2Root = Join-Path (
+                [IO.Path]::GetTempPath()
+            ) ('reborn-phase4-completion-test-' +
+                [Guid]::NewGuid().ToString('N'))
+            $script:root = $script:v2Root
+            $script:pins = $previewReadyV2Pins
+            [IO.Directory]::CreateDirectory($script:root) | Out-Null
+            $v2CampaignRecord = New-RebornPhase4CampaignRecord `
+                -BackupBaselineNames @() -Pins $script:pins
+            $v2CampaignRecord.state = 'Restored'
+            $v2CampaignRecord.trustState = 'Removed'
+            $v2CampaignRecord.hostsState = 'Restored'
+            $v2CampaignRecord.bundleState = 'Restored'
+            $script:campaign = Write-RebornPhase4CampaignReceipt `
+                $v2CampaignRecord $script:root `
+                -AllowTestPath -Pins $script:pins
+            $v2Baseline = New-TestProfileResult Baseline v2-baseline 30
+            $v2Fallback = New-TestProfileResult Fallback v2-fallback 20
+            $v2Soak = New-TestProfileResult Soak v2-soak 600
+            $v2Status = $status | Select-Object *
+            $v2Status.HandoffPath = $script:campaign.Path
+            $v2Completion = Write-RebornPhase4CompletionReceipt `
+                @(
+                    $v2Baseline.ProfileResultPath,
+                    $v2Fallback.ProfileResultPath,
+                    $v2Soak.ProfileResultPath) `
+                $manual $v2Status $docker $script:root `
+                -AllowTestPath -Pins $script:pins
+            $reopened = Read-RebornPhase4CompletionReceipt `
+                $v2Completion.Path -AllowTestPath -Pins $script:pins
+            if ($reopened.Record.generation -cne 'PreviewReadyV2' -or
+                $reopened.Record.mode -cne
+                    'Phase4LoopbackAcceptanceCompletion.PreviewReadyV2') {
+                throw 'PreviewReadyV2 completion compatibility changed.'
+            }
+        }
+        finally {
+            $script:root = $savedRoot
+            $script:pins = $savedPins
+            $script:campaign = $savedCampaign
+        }
+    } 'PreviewReadyV2 completion remains readable with historical pins'
 
     Assert-Throws {
         Write-RebornPhase4CompletionReceipt `
@@ -302,6 +451,18 @@ try {
             -Pins (Get-RebornPhase4PreviewReadyV1SecureDockerPins) |
                 Out-Null
     } 'PreviewReadyV1 production completion writes are read-only'
+
+    Assert-Throws {
+        Write-RebornPhase4CompletionReceipt `
+            $profilePaths $manual $status $docker `
+            $root -Pins $previewReadyV2Pins | Out-Null
+    } 'PreviewReadyV2 production completion writes are read-only'
+
+    Assert-Throws {
+        Write-RebornPhase4CompletionReceipt `
+            $profilePaths $manual $status $docker `
+            $root -Pins $previewReadyV5Pins | Out-Null
+    } 'PreviewReadyV5 production completion writes are read-only'
 
     Assert-Throws {
         Write-RebornPhase4CompletionReceipt `
@@ -338,8 +499,12 @@ try {
     Write-Host "Phase 4 completion receipt checks passed: $passed"
 }
 finally {
-    if (Test-Path -LiteralPath $root) {
-        $resolved = [IO.Path]::GetFullPath($root).TrimEnd('\')
+    foreach ($cleanupRoot in @($root, $v3Root, $v2Root)) {
+        if ([string]::IsNullOrWhiteSpace($cleanupRoot) -or
+            -not (Test-Path -LiteralPath $cleanupRoot)) {
+            continue
+        }
+        $resolved = [IO.Path]::GetFullPath($cleanupRoot).TrimEnd('\')
         $temp = [IO.Path]::GetFullPath(
             [IO.Path]::GetTempPath()).TrimEnd('\') + '\'
         if (-not $resolved.StartsWith(
@@ -354,7 +519,7 @@ finally {
                 if ($_.IsReadOnly) {
                     $_.IsReadOnly = $false
                 }
-            }
+        }
         Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }

@@ -3,6 +3,7 @@
 #include "SecureGameControlTestSupport.h"
 
 #include "../src/NetClientProxy.h"
+#include "../src/SecureClientManifestBuildContract.h"
 #include "../src/SecureClientRuntime.h"
 
 #include <Windows.h>
@@ -10,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
 namespace {
@@ -237,6 +239,12 @@ void CheckDisabledAndFailedClosedModes() {
 }
 
 void CheckReadyRoutesAndIdentity() {
+    constexpr std::uint8_t ExpectedOriginSha256[32] = {
+        0xE1, 0x77, 0xD9, 0x4D, 0xC7, 0x0C, 0xCF, 0x65,
+        0x7D, 0x19, 0x0C, 0x85, 0xB1, 0xEB, 0xAC, 0xE5,
+        0xC8, 0xE7, 0x90, 0xD5, 0x2D, 0xBC, 0x01, 0x48,
+        0x54, 0xE0, 0x3A, 0x57, 0x23, 0x4C, 0xC7, 0x6C,
+    };
     auto fixture = ReadyFixture();
     SecureClientRuntime runtime(Dependencies(&fixture));
     Check(
@@ -259,6 +267,8 @@ void CheckReadyRoutesAndIdentity() {
     std::uint8_t instance[16]{};
     std::uint8_t origin[32]{};
     EndpointManifest manifest{};
+    const auto& buildContract =
+        godswar::network::GetSecureClientManifestBuildContract();
     Check(
         runtime.TryCopyManifest(&manifest) &&
             runtime.TryCopyClientInstanceId(
@@ -269,7 +279,17 @@ void CheckReadyRoutesAndIdentity() {
                 sizeof(origin)) &&
             instance[0] == 1 &&
             instance[15] == 16 &&
-            origin[0] == 0x75 &&
+            godswar::network::
+                IsValidSecureClientManifestBuildContract(
+                    buildContract) &&
+            std::memcmp(
+                buildContract.originSha256,
+                ExpectedOriginSha256,
+                sizeof(ExpectedOriginSha256)) == 0 &&
+            std::memcmp(
+                origin,
+                buildContract.originSha256,
+                sizeof(origin)) == 0 &&
             manifest.sequence == 7 &&
             runtime.GrantRegistry() != nullptr,
         "ready runtime did not publish immutable session inputs");

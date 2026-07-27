@@ -3,8 +3,7 @@ param(
     [ValidateSet('Status', 'Apply', 'Restore')]
     [string]$Mode = 'Status',
 
-    [string]$CampaignRoot =
-        'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2',
+    [string]$CampaignRoot,
 
     [switch]$AllowMutation
 )
@@ -14,7 +13,8 @@ Set-StrictMode -Version Latest
 
 foreach ($moduleName in @(
     'Phase4SecureDockerClientCampaign.psm1',
-    'Phase4SecureDockerClientRuntime.psm1'
+    'Phase4SecureDockerClientRuntime.psm1',
+    'Phase4SecureDockerClientBundle.psm1'
 )) {
     Import-Module (Join-Path $PSScriptRoot $moduleName) -Force
 }
@@ -24,13 +24,24 @@ Import-Module (
 Import-Module (
     Join-Path $PSScriptRoot 'SecureNetworkOperationLock.psm1'
 ) -Force
+Import-Module (
+    Join-Path $PSScriptRoot 'ControlledHostClientMutableOutput.psm1'
+) -Force
 
 $activationModulePath =
     Join-Path $PSScriptRoot 'SecureNetworkActivationState.psm1'
 $pins = Get-RebornPhase4SecureDockerPins
+$CampaignRoot = Resolve-RebornPhase4ManagerCampaignRoot `
+    $CampaignRoot $pins
 $bundleTool = Join-Path $PSScriptRoot 'InstallSecureNetworkBundle.ps1'
 $hostsTool = Join-Path $PSScriptRoot 'ManageDevelopmentNetworkHosts.ps1'
 $bundleBackupRoot = Join-Path $CampaignRoot 'bundle-backups'
+
+function Test-EmbeddedDevelopmentRoot {
+    $property = $pins.PSObject.Properties['ClientTlsTrustMode']
+    return $null -ne $property -and
+        [string]$property.Value -ceq 'EmbeddedDevelopmentRoot'
+}
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -76,20 +87,8 @@ function Get-Phase4ActivationState {
 }
 
 function Get-BundleArguments {
-    @{
-        ClientRoot = $pins.ClientRoot
-        CandidatePath = $pins.CandidatePath
-        ManifestPath = $pins.ManifestPath
-        TrustPath = $pins.ManifestTrustPath
-        ExpectedCandidateSha256 = $pins.CandidateSha256
-        ExpectedChecksSha256 = $pins.NativeChecksSha256
-        ExpectedManifestSha256 = $pins.ManifestSha256
-        ExpectedTrustSha256 = $pins.ManifestTrustSha256
-        ClientInventoryReceiptPath = $pins.InventoryReceiptPath
-        ExpectedClientInventoryReceiptSha256 =
-            $pins.InventoryReceiptSha256
-        BackupRoot = $bundleBackupRoot
-    }
+    return Get-RebornPhase4BundleArguments `
+        $pins $bundleBackupRoot
 }
 
 function Get-ResultObject {
@@ -125,6 +124,10 @@ function Get-BundleStatus {
     return $objects[0]
 }
 
+function Get-RecoveryBundleState {
+    return Get-RebornPhase4LiveBundleRecoveryState $pins
+}
+
 function Get-HostsStatus {
     return & $hostsTool -Mode Status
 }
@@ -146,15 +149,8 @@ function Assert-ActivationState {
 }
 
 function Get-BackupBaselineNames {
-    if (-not (Test-Path -LiteralPath $bundleBackupRoot -PathType Container)) {
-        return @()
-    }
     return @(
-        Get-ChildItem -LiteralPath $bundleBackupRoot -Directory |
-            Where-Object Name -match
-                '^client-secure-bundle-v2-Apply-' |
-            Select-Object -ExpandProperty Name |
-            Sort-Object)
+        Get-RebornPhase4BundleBackupBaselineNames $bundleBackupRoot)
 }
 
 function Update-Campaign {
@@ -183,33 +179,8 @@ function Get-ReceiptFileHash {
 function Resolve-BundleBackupPath {
     param([Parameter(Mandatory)][object]$Record)
 
-    if (-not [string]::IsNullOrWhiteSpace(
-            [string]$Record.bundleBackupPath)) {
-        return [IO.Path]::GetFullPath(
-            [string]$Record.bundleBackupPath).TrimEnd('\')
-    }
-    if (-not (Test-Path -LiteralPath $bundleBackupRoot -PathType Container)) {
-        throw 'Bundle backup root is absent during recovery.'
-    }
-
-    $baseline = @($Record.bundleBackupBaselineNames)
-    $candidates = @(
-        Get-ChildItem -LiteralPath $bundleBackupRoot -Directory |
-            Where-Object {
-                $_.Name -match '^client-secure-bundle-v2-Apply-' -and
-                $_.Name -notin $baseline
-            })
-    if ($candidates.Count -ne 1) {
-        throw 'Bundle recovery could not identify one new Apply backup.'
-    }
-
-    foreach ($name in 'receipt.json', 'receipt.sha256', 'Net.dll') {
-        if (-not (Test-Path -LiteralPath (
-                    Join-Path $candidates[0].FullName $name) -PathType Leaf)) {
-            throw 'Discovered bundle backup is incomplete.'
-        }
-    }
-    return $candidates[0].FullName
+    return Resolve-RebornPhase4BundleBackupPath `
+        $Record $bundleBackupRoot $pins
 }
 
 function Assert-ReadyForApply {
@@ -220,11 +191,14 @@ function Assert-ReadyForApply {
     $bundle = Get-BundleStatus
     $hosts = Get-HostsStatus
     $root = Get-RebornPhase4RootStatus $pins
+    $mutableOutput =
+        Get-RebornControlledHostWritableOutputFileState $pins.ClientRoot
     if ($bundle.State -cne 'Stock' -or
         $hosts.State -cne 'Absent' -or
         $hosts.ReceiptExists -or
         $hosts.HostsSha256 -cne $pins.OriginalHostsSha256 -or
-        $root.State -cne 'Absent') {
+        $root.State -cne 'Absent' -or
+        $mutableOutput -cne 'Inactive') {
         throw 'Phase 4 Apply prerequisites are not exact stock/absent state.'
     }
 }
@@ -235,25 +209,44 @@ function Assert-InstalledExact {
     $bundle = Get-BundleStatus
     $hosts = Get-HostsStatus
     $root = Get-RebornPhase4RootStatus $pins
+    $mutableOutput =
+        Get-RebornControlledHostWritableOutputFileState $pins.ClientRoot
+    $expectedRootState = if (Test-EmbeddedDevelopmentRoot) {
+        'Absent'
+    }
+    else {
+        'InstalledExact'
+    }
     if ($bundle.State -cne 'InstalledExact' -or
         $hosts.State -cne 'InstalledExact' -or
         $hosts.ReceiptState -cne 'InstalledExact' -or
-        $root.State -cne 'InstalledExact') {
+        $root.State -cne $expectedRootState -or
+        $mutableOutput -cne 'Active') {
         throw 'Phase 4 client campaign did not reach exact installed state.'
     }
 }
 
 function Assert-RestoredExact {
+    param([switch]$RecoverySafe)
+
     Assert-RebornPhase4SecureDockerRuntime $pins | Out-Null
     Assert-ActivationState 0 | Out-Null
-    $bundle = Get-BundleStatus
+    $bundleState = if ($RecoverySafe) {
+        Get-RecoveryBundleState
+    }
+    else {
+        (Get-BundleStatus).State
+    }
     $hosts = Get-HostsStatus
     $root = Get-RebornPhase4RootStatus $pins
-    if ($bundle.State -cne 'Stock' -or
+    $mutableOutput =
+        Get-RebornControlledHostWritableOutputFileState $pins.ClientRoot
+    if ($bundleState -cne 'Stock' -or
         $hosts.State -cne 'Absent' -or
         $hosts.ReceiptExists -or
         $hosts.HostsSha256 -cne $pins.OriginalHostsSha256 -or
-        $root.State -cne 'Absent') {
+        $root.State -cne 'Absent' -or
+        $mutableOutput -cne 'Inactive') {
         throw 'Phase 4 client campaign did not restore exact predecessor state.'
     }
 }
@@ -262,11 +255,11 @@ function Invoke-CampaignRestore {
     param([Parameter(Mandatory)][object]$Record)
 
     $current = Update-Campaign $Record 'RestorePending'
-    $bundle = Get-BundleStatus
-    if ($bundle.State -ne 'Stock') {
-        if ($bundle.State -ne 'InstalledExact' -and
-            $bundle.State -ne 'RecoverablePartial') {
-            throw "Unsupported bundle recovery state: $($bundle.State)"
+    $bundleState = Get-RecoveryBundleState
+    if ($bundleState -ne 'Stock') {
+        if ($bundleState -ne 'InstalledExact' -and
+            $bundleState -ne 'RecoverablePartial') {
+            throw "Unsupported bundle recovery state: $bundleState"
         }
         $backupPath = Resolve-BundleBackupPath $current
         $bundleArguments = Get-BundleArguments
@@ -303,20 +296,29 @@ function Invoke-CampaignRestore {
     $current = Update-Campaign $current 'HostsRestored'
 
     $root = Get-RebornPhase4RootStatus $pins
-    if ($root.State -eq 'InstalledExact') {
-        if ($current.trustState -notin @(
-                'PendingInstall', 'Installed', 'RemovalPending')) {
-            throw 'Campaign receipt does not authorize root removal.'
+    if (Test-EmbeddedDevelopmentRoot) {
+        if ($root.State -cne 'Absent') {
+            throw 'Embedded-root campaign found unexpected CurrentUser trust.'
         }
-        $current.trustState = 'RemovalPending'
-        $current = Update-Campaign $current 'HostsRestored'
-        Remove-RebornPhase4Root $pins | Out-Null
-    } elseif ($root.State -ne 'Absent') {
-        throw 'CurrentUser development root is ambiguous during Restore.'
+        $current.trustState = 'EmbeddedRootReleased'
     }
-    $current.trustState = 'Removed'
+    else {
+        if ($root.State -eq 'InstalledExact') {
+            if ($current.trustState -notin @(
+                    'PendingInstall', 'Installed', 'RemovalPending')) {
+                throw 'Campaign receipt does not authorize root removal.'
+            }
+            $current.trustState = 'RemovalPending'
+            $current = Update-Campaign $current 'HostsRestored'
+            Remove-RebornPhase4Root $pins | Out-Null
+        } elseif ($root.State -ne 'Absent') {
+            throw 'CurrentUser development root is ambiguous during Restore.'
+        }
+        $current.trustState = 'Removed'
+    }
     $current = Update-Campaign $current 'TrustRemoved'
-    Assert-RestoredExact
+    Disable-RebornControlledHostWritableOutputFile $pins.ClientRoot
+    Assert-RestoredExact -RecoverySafe
     return Update-Campaign $current 'Restored'
 }
 
@@ -327,13 +329,22 @@ function Get-CampaignStatus {
     $bundle = Get-BundleStatus
     $hosts = Get-HostsStatus
     $root = Get-RebornPhase4RootStatus $pins
+    $mutableOutput =
+        Get-RebornControlledHostWritableOutputFileState $pins.ClientRoot
     $handoff = Read-RebornPhase4CampaignReceipt `
         $CampaignRoot -Pins $pins
+    $installedRootState = if (Test-EmbeddedDevelopmentRoot) {
+        'Absent'
+    }
+    else {
+        'InstalledExact'
+    }
     $campaignState = if (
         $bundle.State -eq 'Stock' -and
         $hosts.State -eq 'Absent' -and
         -not $hosts.ReceiptExists -and
         $root.State -eq 'Absent' -and
+        $mutableOutput -eq 'Inactive' -and
         [UInt64]$activation.Mode -eq 0
     ) {
         if ($null -ne $handoff -and
@@ -345,7 +356,8 @@ function Get-CampaignStatus {
     } elseif (
         $bundle.State -eq 'InstalledExact' -and
         $hosts.State -eq 'InstalledExact' -and
-        $root.State -eq 'InstalledExact' -and
+        $root.State -eq $installedRootState -and
+        $mutableOutput -eq 'Active' -and
         [UInt64]$activation.Mode -eq 1 -and
         $null -ne $handoff -and
         $handoff.Record.state -eq 'InstalledExact'
@@ -360,6 +372,13 @@ function Get-CampaignStatus {
         BundleState = $bundle.State
         HostsState = $hosts.State
         RootState = $root.State
+        TlsTrustMode = if (Test-EmbeddedDevelopmentRoot) {
+            'EmbeddedDevelopmentRoot'
+        }
+        else {
+            'CurrentUserRoot'
+        }
+        MutableOutputState = $mutableOutput
         ActivationMode = [UInt64]$activation.Mode
         ActivationEnvironment = [UInt64]$activation.Environment
         SequenceFloor = [UInt64]$activation.SequenceFloor
@@ -420,8 +439,17 @@ try {
                 $record $CampaignRoot -Pins $pins
         ).Record
         try {
-            Add-RebornPhase4Root $pins
-            $record.trustState = 'Installed'
+            Enable-RebornControlledHostWritableOutputFile $pins.ClientRoot
+            if (Test-EmbeddedDevelopmentRoot) {
+                if ((Get-RebornPhase4RootStatus $pins).State -cne 'Absent') {
+                    throw 'Embedded-root Apply requires an absent trust-store root.'
+                }
+                $record.trustState = 'EmbeddedRootPinned'
+            }
+            else {
+                Add-RebornPhase4Root $pins
+                $record.trustState = 'Installed'
+            }
             $record = Update-Campaign $record 'TrustInstalled'
 
             $record.hostsState = 'Pending'
@@ -503,9 +531,11 @@ try {
 
     $handoff = Read-RebornPhase4CampaignReceipt `
         $CampaignRoot -Pins $pins
-    $current = Get-CampaignStatus
-    if ($current.State -eq 'Restored' -or
-        ($current.State -eq 'Ready' -and $null -eq $handoff)) {
+    if ($null -eq $handoff) {
+        $current = Get-CampaignStatus
+        if ($current.State -ne 'Ready') {
+            throw 'Restore requires the protected checksummed campaign handoff.'
+        }
         [pscustomobject]@{
             Result = 'AlreadyRestored'
             State = $current.State
@@ -514,12 +544,26 @@ try {
         }
         return
     }
-    if ($null -eq $handoff) {
-        throw 'Restore requires the protected checksummed campaign handoff.'
+    if ([string]$handoff.Record.state -ceq 'Restored') {
+        Assert-RestoredExact -RecoverySafe
+        $activation = Assert-ActivationState 0
+        [pscustomobject]@{
+            Result = 'AlreadyRestored'
+            State = 'Restored'
+            SequenceFloor = [UInt64]$activation.SequenceFloor
+            DockerState = 'HealthyExact'
+        }
+        return
+    }
+    $restoreDescription = if (Test-EmbeddedDevelopmentRoot) {
+        'Restore exact stock client and hosts'
+    }
+    else {
+        'Restore exact stock client, hosts, and CurrentUser trust'
     }
     if (-not $PSCmdlet.ShouldProcess(
             $pins.ClientRoot,
-            'Restore exact stock client, hosts, and CurrentUser trust')) {
+            $restoreDescription)) {
         return
     }
     $restored = Invoke-CampaignRestore $handoff.Record

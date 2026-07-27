@@ -6,6 +6,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+Import-Module (
+    Join-Path $PSScriptRoot 'ControlledHostClientMutableOutput.psm1'
+) -Force
+
 $expectedClientRoot = 'C:\RebornNetworkAcceptanceClient'
 $originSha256 =
     '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
@@ -102,6 +106,8 @@ $status = & (
 if ($status.State -ne 'Hardened') {
     throw "Acceptance-client ACL is not hardened: $($status.Reason)"
 }
+Assert-RebornControlledHostWritableOutputFileInactive `
+    $client | Out-Null
 
 $probeName = ".reborn-write-probe-$([guid]::NewGuid().ToString('N')).tmp"
 Assert-WriteDenied `
@@ -109,6 +115,9 @@ Assert-WriteDenied `
     Create
 $netBefore = Get-Sha256 $net
 Assert-WriteDenied $net Open
+Assert-WriteDenied (
+    Join-Path $client 'patcher\patcher.log'
+) Open
 if ((Get-Sha256 $net) -cne $netBefore) {
     throw 'Net.dll changed during its denial probe.'
 }
@@ -153,6 +162,7 @@ foreach ($locale in @('en_us', 'zh_cn')) {
     ClientRoot = $client
     RootCreateDenied = $true
     NetWriteDenied = $true
+    InactivePatcherLogWriteDenied = $true
     WritableOutputDirectories = $writableOutputRelativePaths.Count
     SystemSettingsCreateDenied = $true
 }

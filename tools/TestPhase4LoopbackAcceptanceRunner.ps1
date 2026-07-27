@@ -9,7 +9,7 @@ Import-Module (
 ) -Force
 
 $passed = 0
-$expectedChecks = 13
+$expectedChecks = 15
 
 function Invoke-Check {
     param(
@@ -140,6 +140,70 @@ Invoke-Check {
         }
     }
 } 'runner wires reviewed profile and durable-result functions'
+
+Invoke-Check {
+    $runnerText = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'RunPhase4LoopbackAcceptanceServer.ps1'
+    ) -Raw
+    $candidatePin = [regex]::Escape(
+        '$pins.CandidateOriginSha256')
+    if ($runnerText -notmatch (
+            [regex]::Escape('(Get-Sha256 $clientOrigin)') +
+            '\s+-cne\s+' + $candidatePin) -or
+        $runnerText -notmatch (
+            'GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256\s*=\s*' +
+            $candidatePin)) {
+        throw 'Loopback live-Origin candidate wiring changed.'
+    }
+} 'loopback runner uses the candidate Origin for disk and server allowlist'
+
+Invoke-Check {
+    $runnerPath =
+        Join-Path $PSScriptRoot 'RunControlledHostSecureServer.ps1'
+    $runnerText = Get-Content -LiteralPath $runnerPath -Raw
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile(
+        $runnerPath,
+        [ref]$tokens,
+        [ref]$errors)
+    $activationCommands = @(
+        $ast.FindAll(
+            {
+                param($node)
+                $node -is [Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -ceq
+                    'Assert-RebornControlledHostClientActivation'
+            },
+            $true))
+    $arguments = if ($activationCommands.Count -eq 1) {
+        @($activationCommands[0].CommandElements |
+            Select-Object -Skip 1 |
+            ForEach-Object { $_.Extent.Text })
+    } else {
+        @()
+    }
+    $stock =
+        '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
+    $candidate =
+        'E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C'
+    if ($errors.Count -ne 0 -or
+        $arguments.Count -ne 13 -or
+        $arguments[5] -cne '$candidateOriginSha256' -or
+        $arguments[11] -cne '-ExpectedStockOriginSha256' -or
+        $arguments[12] -cne '$stockOriginSha256' -or
+        $runnerText -notmatch (
+            [regex]::Escape('$stockOriginSha256') +
+            "\s*=\s*'$stock'") -or
+        $runnerText -notmatch (
+            [regex]::Escape('$candidateOriginSha256') +
+            "\s*=\s*'$candidate'") -or
+        $runnerText -notmatch (
+            'GODSWAR_SECURE_ALLOWED_ORIGIN_SHA256\s*=\s*' +
+            [regex]::Escape('$candidateOriginSha256'))) {
+        throw 'Controlled-host paired Origin wiring changed.'
+    }
+} 'controlled-host runner passes candidate live and stock predecessor'
 
 Invoke-Check {
     $runnerPath =

@@ -67,6 +67,7 @@
     <ClCompile Include="AvatarPreloadTests.cpp" />
     <ClCompile Include="AvatarPreviewGateTests.cpp" />
     <ClCompile Include="BoundedChunkQueueTests.cpp" />
+    <ClCompile Include="ControlledHostTlsProbe.cpp" />
     <ClCompile Include="EndpointManifestLoaderTests.cpp" />
     <ClCompile Include="EndpointManifestTests.cpp" />
     <ClCompile Include="EndpointManifestTestSupport.cpp" />
@@ -100,6 +101,7 @@
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
     <ClCompile Include="..\src\OriginAvatarPreviewHost.cpp" />
     <ClCompile Include="..\src\BoundedChunkQueue.cpp" />
+    <ClCompile Include="..\src\DevelopmentTlsCertificate.cpp" />
     <ClCompile Include="..\src\EndpointManifest.cpp" />
     <ClCompile Include="..\src\EndpointManifestCrypto.cpp" />
     <ClCompile Include="..\src\EndpointManifestLoader.cpp" />
@@ -148,6 +150,7 @@
     <ClInclude Include="AvatarPreloadTests.h" />
     <ClInclude Include="AvatarPreviewGateTests.h" />
     <ClInclude Include="BoundedChunkQueueTests.h" />
+    <ClInclude Include="ControlledHostTlsProbe.h" />
     <ClInclude Include="EndpointManifestLoaderTests.h" />
     <ClInclude Include="EndpointManifestTests.h" />
     <ClInclude Include="EndpointManifestTestSupport.h" />
@@ -181,6 +184,7 @@
     <ClInclude Include="..\src\AvatarPreviewGate.h" />
     <ClInclude Include="..\src\BoundedChunkQueue.h" />
     <ClInclude Include="..\src\ClientRoute.h" />
+    <ClInclude Include="..\src\DevelopmentTlsCertificate.h" />
     <ClInclude Include="..\src\EndpointManifest.h" />
     <ClInclude Include="..\src\EndpointManifestCrypto.h" />
     <ClInclude Include="..\src\EndpointManifestLoader.h" />

@@ -4,7 +4,8 @@ This is the mandatory rollback and the recovery path after a failed Phase 4
 profile. It is deliberately narrow: close the disposable client, stop the
 foreground loopback server gracefully, restore the exact secure-Docker
 profile, then use the protected campaign handoff to restore the stock client,
-hosts bytes, CurrentUser trust, and safe-disabled activation state.
+including both Origin and Net predecessors, hosts bytes, an absent CurrentUser
+development root, and safe-disabled activation state.
 
 Do not change Norton, Windows Firewall, adapters, routes, or internet
 connectivity. Do not start the raw Docker profile. Do not stop PostgreSQL.
@@ -87,6 +88,15 @@ if($status.State -cne 'Restored' -or
    $status.ManifestSequence -ne 3){
  throw 'Mandatory Phase 4 Restore is not exact.'
 }
+$client='C:\RebornNetworkAcceptanceClient'
+if((Get-FileHash (Join-Path $client 'Origin.exe') -Algorithm SHA256).Hash -cne
+   '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79' -or
+   (Get-FileHash (Join-Path $client 'Net.dll') -Algorithm SHA256).Hash -cne
+   '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C' -or
+   (Test-Path (Join-Path $client 'NetLegacy.dll')) -or
+   (Test-Path (Join-Path $client 'RebornNetwork.gwem'))){
+ throw 'Paired client rollback is not exact.'
+}
 
 $keys=& .\tools\ManageDevelopmentEndpointManifestKeys.ps1 -Mode Status
 if($keys.CurrentExists -or $keys.NextExists -or
@@ -99,21 +109,49 @@ $restore,$status,$keys|Format-List
 
 The two development CNG private signing keys were absent before Apply and are
 not needed by an already-signed manifest. The campaign never recreates them.
-Restore removes only the exact public CurrentUser root authorized by its own
-protected receipt, restores the original hosts bytes and stock client bundle,
-sets activation mode to 0, and retains environment 1 and monotonic floor 3.
+V6 never installs a CurrentUser root. Restore requires that root to remain
+absent, atomically restores stock Origin and Net plus original hosts bytes,
+sets activation mode to 0, and retains environment 1 and floor 3.
 
 Retain:
 
-- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2` as the active
-  PreviewReadyV2/schema-2 protected campaign audit/recovery record;
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6` as the active
+  paired-Origin protected campaign audit/recovery record;
 - the protected evidence files under
-  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`;
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\server-evidence`;
   and
-- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1` and
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV5`, whose exact
+  rejected terminal restore is protected as `handoff-000024.json`;
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV4`,
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV3`,
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`,
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`, and
   `C:\ProgramData\RebornSecureNetworkPhase4Docker` as read-only historical
-  campaign records. The LegacyV1 campaign's five apparent successful previews
-  followed by three persistent blank previews are not accepted.
+  campaign records.
+
+The failed PreviewReadyV2 fixture
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2`
+retains candidate/check hashes
+`EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE` /
+`237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187`
+and dump `20260728001641.dmp`; do not move them into a later generation.
+
+PreviewReadyV3 was manually rejected after dump `20260728011349.dmp`,
+SHA-256
+`18176B45640DADB220EA090D718927CB742029352405ACA71791183B3E280B7A`,
+and a second authenticated pre-world disconnect. Its protected revision-13
+handoff records exact `Restored`; keep its fixture
+`20260728-004030-preview-ready-v3` and evidence read-only. The LegacyV1
+campaign's five apparent successful previews followed by three persistent
+blank previews are also not accepted.
+
+PreviewReadyV5 was rejected because live Net sent stock Origin identity
+`753BE49F...ED79` while the server allowed patched `E177D94D...CC76C`; its
+native probe masked that mismatch through CLI identity injection.
+PreviewReadyV6 binds the identity through `GWKEY02` and a paired-file offline
+probe, but has not completed live acceptance. Rollback remains mandatory
+after any failure, and no retry may be documented as accepted without the
+full foreground matrix.
 
 Deleting the disposable client, database, Docker volume, or evidence is a
 separate destructive action and is not part of Phase 4 rollback.

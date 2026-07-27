@@ -1,5 +1,6 @@
 #include "SecureClientRuntime.h"
 #include "SecureClientRuntimeInternal.h"
+#include "SecureClientManifestBuildContract.h"
 
 #include <Windows.h>
 
@@ -14,13 +15,6 @@ namespace {
 
 constexpr std::uint8_t DevelopmentLegacyPassthroughFlag = 0x01;
 constexpr unsigned RandomGenerationAttempts = 4;
-constexpr std::uint8_t SupportedOriginSha256[
-    SecureClientOriginSha256Bytes] = {
-    0x75, 0x3B, 0xE4, 0x9F, 0xE9, 0x4B, 0x6F, 0x4C,
-    0x0E, 0x33, 0x29, 0xBC, 0x89, 0x05, 0x94, 0x5B,
-    0xD9, 0xB0, 0xF1, 0xA7, 0x90, 0xB4, 0xB9, 0x03,
-    0x8E, 0x69, 0xC2, 0xA5, 0xAD, 0x49, 0xED, 0x79,
-};
 
 bool ContainsNonzero(
     const std::uint8_t* bytes,
@@ -141,16 +135,23 @@ bool SecureClientRuntime::TryCopyClientInstanceId(
 bool SecureClientRuntime::TryCopyOriginSha256(
     void* destination,
     std::size_t destinationBytes) const noexcept {
+    const auto& contract =
+        GetSecureClientManifestBuildContract();
+    static_assert(
+        sizeof(contract.originSha256) ==
+            SecureClientOriginSha256Bytes,
+        "runtime Origin identity size changed");
     if (destination == nullptr ||
-        destinationBytes != sizeof(SupportedOriginSha256) ||
+        destinationBytes != sizeof(contract.originSha256) ||
+        !IsValidSecureClientManifestBuildContract(contract) ||
         ReadState() !=
             SecureClientRuntimeState::SecureRequiredReady) {
         return false;
     }
     std::memcpy(
         destination,
-        SupportedOriginSha256,
-        sizeof(SupportedOriginSha256));
+        contract.originSha256,
+        sizeof(contract.originSha256));
     return true;
 }
 

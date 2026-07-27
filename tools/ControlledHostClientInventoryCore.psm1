@@ -9,6 +9,7 @@ $script:MaximumInventoryFiles = 100000
 $script:MaximumInventoryEntries = 100000
 $script:MaximumInventoryDepth = 64
 $script:MaximumWritableOutputBytes = 4GB
+$script:MaximumWritableOutputFileBytes = 16MB
 $script:MaximumProtectedBytes = 4GB
 $script:MaximumProtectedFileBytes = 64MB
 $script:WritableOutputRelativePaths = @(
@@ -17,6 +18,9 @@ $script:WritableOutputRelativePaths = @(
     'Localization\zh_cn\Settings\User',
     'Log',
     'ScreensHot'
+)
+$script:WritableOutputFileRelativePaths = @(
+    'patcher\patcher.log'
 )
 $script:ExecutableExtensions =
     [Collections.Generic.HashSet[string]]::new(
@@ -35,6 +39,14 @@ function Get-RebornControlledHostWritableOutputRelativePaths {
     return @($script:WritableOutputRelativePaths)
 }
 
+function Get-RebornControlledHostWritableOutputFileRelativePaths {
+    return @($script:WritableOutputFileRelativePaths)
+}
+
+function Get-RebornControlledHostMaximumWritableOutputFileBytes {
+    return [Int64]$script:MaximumWritableOutputFileBytes
+}
+
 function Test-RebornControlledHostWritableRelativePath {
     param([Parameter(Mandatory)][string]$RelativePath)
 
@@ -49,6 +61,16 @@ function Test-RebornControlledHostWritableRelativePath {
         }
     }
     return $false
+}
+
+function Test-RebornControlledHostWritableOutputFileRelativePath {
+    param([Parameter(Mandatory)][string]$RelativePath)
+
+    return @($script:WritableOutputFileRelativePaths | Where-Object {
+        $RelativePath.Equals(
+            $_,
+            [StringComparison]::OrdinalIgnoreCase)
+    }).Count -eq 1
 }
 
 function Assert-RebornControlledHostSafeRelativePath {
@@ -197,6 +219,9 @@ function Get-RebornControlledHostClientInventory {
         [Int64]$MaximumWritableBytes =
             $script:MaximumWritableOutputBytes,
         [ValidateRange(0, 4294967296)]
+        [Int64]$MaximumWritableFileBytes =
+            $script:MaximumWritableOutputFileBytes,
+        [ValidateRange(0, 4294967296)]
         [Int64]$MaximumProtectedBytes =
             $script:MaximumProtectedBytes,
         [ValidateRange(0, 4294967296)]
@@ -254,7 +279,18 @@ function Get-RebornControlledHostClientInventory {
 
             $path = Assert-RebornSingleLinkRegularFilePath `
                 $entry.FullName 'controlled-host client file'
-            if (Test-RebornControlledHostWritableRelativePath $relative) {
+            $writableDirectory =
+                Test-RebornControlledHostWritableRelativePath $relative
+            $writableFile =
+                Test-RebornControlledHostWritableOutputFileRelativePath `
+                    $relative
+            if ($writableDirectory -or $writableFile) {
+                if ($writableFile -and
+                    [Int64]$entry.Length -gt $MaximumWritableFileBytes) {
+                    throw (
+                        'Exact writable client output exceeds its bounded ' +
+                        "file size: $relative")
+                }
                 if ([Int64]$entry.Length -gt
                     $MaximumWritableBytes - $writableBytes) {
                     throw (
@@ -264,24 +300,28 @@ function Get-RebornControlledHostClientInventory {
                 $writableBytes += [Int64]$entry.Length
                 Assert-RebornControlledHostWritableFileIsDataOnly `
                     $path $relative
-                continue
+                if ($writableDirectory) {
+                    continue
+                }
             }
             if ($files.Count -ge $script:MaximumInventoryFiles) {
                 throw 'Client inventory exceeds its bounded file count.'
             }
 
             $before = Get-Item -LiteralPath $path -Force
-            if ([Int64]$before.Length -gt
+            if (-not $writableFile -and [Int64]$before.Length -gt
                 $MaximumProtectedFileBytes) {
                 throw (
                     'Protected client file exceeds its bounded size: ' +
                     $relative)
             }
-            if ([Int64]$before.Length -gt
+            if (-not $writableFile -and [Int64]$before.Length -gt
                 $MaximumProtectedBytes - $protectedBytes) {
                 throw 'Protected client files exceed their byte budget.'
             }
-            $protectedBytes += [Int64]$before.Length
+            if (-not $writableFile) {
+                $protectedBytes += [Int64]$before.Length
+            }
             $sha256 = if (
                 $relative.Equals(
                     'Origin.exe',
@@ -340,6 +380,8 @@ function Get-RebornControlledHostClientInventory {
         WritableBytes = $writableBytes
         WritableOutputRelativePaths =
             Get-RebornControlledHostWritableOutputRelativePaths
+        WritableOutputFileRelativePaths =
+            Get-RebornControlledHostWritableOutputFileRelativePaths
     }
 }
 
@@ -350,76 +392,60 @@ function Assert-RebornControlledHostInventoryEqual {
         [string]$Label = 'controlled-host client inventory'
     )
 
-    if ([string]$Expected.SetSha256 -cne
-            [string]$Actual.SetSha256 -or
-        @($Expected.Files).Count -ne @($Actual.Files).Count) {
+    $expectedSet =
+        Get-RebornControlledHostInventorySetSha256 @($Expected.Files)
+    $actualSet =
+        Get-RebornControlledHostInventorySetSha256 @($Actual.Files)
+    if ([string]$Expected.SetSha256 -cne $expectedSet.SetSha256 -or
+        [string]$Actual.SetSha256 -cne $actualSet.SetSha256 -or
+        $expectedSet.Files.Count -ne $actualSet.Files.Count) {
         throw "$Label does not match its exact protected file set."
+    }
+    if ($expectedSet.SetSha256 -ceq $actualSet.SetSha256) {
+        return $true
+    }
+
+    $actualByPath =
+        [Collections.Generic.Dictionary[string, object]]::new(
+            [StringComparer]::OrdinalIgnoreCase)
+    foreach ($file in $actualSet.Files) {
+        $actualByPath.Add([string]$file.RelativePath, $file)
+    }
+    foreach ($expectedFile in $expectedSet.Files) {
+        $relative = [string]$expectedFile.RelativePath
+        $actualFile = $null
+        if (-not $actualByPath.TryGetValue(
+                $relative,
+                [ref]$actualFile)) {
+            throw "$Label does not match its exact protected file set."
+        }
+        if (Test-RebornControlledHostWritableOutputFileRelativePath `
+                $relative) {
+            if ([Int64]$actualFile.Length -gt
+                $script:MaximumWritableOutputFileBytes) {
+                throw "$Label exact writable output exceeds its bound."
+            }
+            continue
+        }
+        if ([Int64]$expectedFile.Length -ne [Int64]$actualFile.Length -or
+            [string]$expectedFile.Sha256 -cne
+                [string]$actualFile.Sha256) {
+            throw "$Label does not match its exact protected file set."
+        }
     }
     return $true
 }
 
-function New-RebornControlledHostInstalledInventory {
-    param(
-        [Parameter(Mandatory)][object]$StockInventory,
-        [Parameter(Mandatory)]
-        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
-        [string]$CandidateSha256,
-        [Parameter(Mandatory)]
-        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
-        [string]$LegacyNetSha256,
-        [Parameter(Mandatory)]
-        [ValidatePattern('^[0-9A-Fa-f]{64}$')]
-        [string]$ManifestSha256,
-        [Parameter(Mandatory)][Int64]$CandidateLength,
-        [Parameter(Mandatory)][Int64]$LegacyNetLength,
-        [Parameter(Mandatory)][Int64]$ManifestLength
-    )
-
-    $files = [Collections.Generic.List[object]]::new()
-    $foundNet = $false
-    foreach ($file in @($StockInventory.Files)) {
-        if ([string]$file.RelativePath -ceq 'Net.dll') {
-            $files.Add([pscustomobject]@{
-                RelativePath = 'Net.dll'
-                Length = $CandidateLength
-                Sha256 = $CandidateSha256.ToUpperInvariant()
-            })
-            $foundNet = $true
-        } else {
-            $files.Add($file)
-        }
-    }
-    if (-not $foundNet) {
-        throw 'Stock client inventory does not contain Net.dll.'
-    }
-    $files.Add([pscustomobject]@{
-        RelativePath = 'NetLegacy.dll'
-        Length = $LegacyNetLength
-        Sha256 = $LegacyNetSha256.ToUpperInvariant()
-    })
-    $files.Add([pscustomobject]@{
-        RelativePath = 'RebornNetwork.gwem'
-        Length = $ManifestLength
-        Sha256 = $ManifestSha256.ToUpperInvariant()
-    })
-    $set = Get-RebornControlledHostInventorySetSha256 $files.ToArray()
-    return [pscustomobject]@{
-        ClientRoot = $StockInventory.ClientRoot
-        SetSha256 = $set.SetSha256
-        Files = $set.Files
-        WritableOutputRelativePaths =
-            Get-RebornControlledHostWritableOutputRelativePaths
-    }
-}
-
 Export-ModuleMember -Function @(
     'Get-RebornControlledHostWritableOutputRelativePaths',
+    'Get-RebornControlledHostWritableOutputFileRelativePaths',
+    'Get-RebornControlledHostMaximumWritableOutputFileBytes',
     'Test-RebornControlledHostWritableRelativePath',
+    'Test-RebornControlledHostWritableOutputFileRelativePath',
     'Assert-RebornControlledHostSafeRelativePath',
     'Test-RebornControlledHostFileHasMzHeader',
     'Assert-RebornControlledHostWritableFileIsDataOnly',
     'Get-RebornControlledHostInventorySetSha256',
     'Get-RebornControlledHostClientInventory',
-    'Assert-RebornControlledHostInventoryEqual',
-    'New-RebornControlledHostInstalledInventory'
+    'Assert-RebornControlledHostInventoryEqual'
 )

@@ -1,6 +1,7 @@
 #include "SecureManifestProbe.h"
 
 #include "../src/EndpointManifest.h"
+#include "../src/FileSha256.h"
 #include "../src/SecureClientManifestBuildContract.h"
 #include "../src/SecureClientRuntimeInternal.h"
 
@@ -138,6 +139,32 @@ int RunSecureCandidateContractProbe(
         return 1;
     }
     std::puts("Candidate manifest-key build contract is valid.");
+    return 0;
+}
+
+int RunSecureCandidateOriginContractProbe(
+    const wchar_t* candidatePath,
+    const wchar_t* originPath) noexcept {
+    godswar::network::SecureClientManifestBuildContract contract{};
+    if (!godswar::network::ReadSecureClientManifestBuildContract(
+            candidatePath,
+            &contract)) {
+        std::fprintf(
+            stderr,
+            "Candidate Origin probe could not read the client build contract.\n");
+        return 1;
+    }
+    if (!godswar::network::FileMatchesSha256(
+            originPath,
+            contract.originSha256,
+            sizeof(contract.originSha256))) {
+        std::fprintf(
+            stderr,
+            "Candidate Origin does not match the client build contract (%lu).\n",
+            static_cast<unsigned long>(GetLastError()));
+        return 1;
+    }
+    std::puts("Candidate Origin matches the client build contract.");
     return 0;
 }
 

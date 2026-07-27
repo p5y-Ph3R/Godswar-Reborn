@@ -19,11 +19,12 @@ struct SecureClientManifestBuildContract final {
     std::uint64_t compiledMinimumSequence = 0;
     EndpointManifestPublicKey currentKey{};
     EndpointManifestPublicKey nextKey{};
+    std::uint8_t originSha256[32]{};
 };
 #pragma pack(pop)
 
 static_assert(
-    sizeof(SecureClientManifestBuildContract) == 156,
+    sizeof(SecureClientManifestBuildContract) == 188,
     "manifest build contract layout changed");
 
 const SecureClientManifestBuildContract&

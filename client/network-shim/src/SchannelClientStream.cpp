@@ -4,6 +4,7 @@
 #include "SchannelClientStream.h"
 #include "SchannelClientStreamInternal.h"
 
+#include "DevelopmentTlsCertificate.h"
 #include "WinSockRuntime.h"
 
 #include <winternl.h>
@@ -159,18 +160,25 @@ bool HasRequiredSchannelStreamAttributes(
 
 DWORD GetSchannelCredentialFlags(
     SchannelRevocationPolicy revocationPolicy) noexcept {
-    constexpr DWORD baseFlags =
+    constexpr DWORD automaticFlags =
         SCH_CRED_NO_DEFAULT_CREDS |
         SCH_CRED_AUTO_CRED_VALIDATION |
         SCH_CRED_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT |
         SCH_USE_STRONG_CRYPTO;
+    constexpr DWORD pinnedDevelopmentFlags =
+        SCH_CRED_NO_DEFAULT_CREDS |
+        SCH_CRED_MANUAL_CRED_VALIDATION |
+        SCH_USE_STRONG_CRYPTO;
     switch (revocationPolicy) {
         case SchannelRevocationPolicy::Strict:
-            return baseFlags;
+            return automaticFlags;
         case SchannelRevocationPolicy::
                 AllowMissingSourceForDevelopment:
-            return baseFlags |
+            return automaticFlags |
                 SCH_CRED_IGNORE_NO_REVOCATION_CHECK;
+        case SchannelRevocationPolicy::
+                PinnedRootForDevelopment:
+            return pinnedDevelopmentFlags;
         default:
             return 0;
     }
@@ -213,6 +221,10 @@ bool SchannelClientStream::Establish(
 
     const ULONGLONG deadline =
         GetTickCount64() + timeoutMilliseconds;
+    state_->manualCertificateValidation =
+        revocationPolicy == SchannelRevocationPolicy::
+            PinnedRootForDevelopment;
+    state_->developmentRootValidated = false;
     const std::size_t targetLength = std::wcslen(targetName);
     std::memcpy(
         state_->targetName,
@@ -245,6 +257,7 @@ bool SchannelClientStream::Establish(
         nullptr,
         &state_->credentials,
         &credentialExpiry);
+    state_->RecordSecurityStatus(status);
     if (status != SEC_E_OK) {
         state_->Fail(SchannelClientFailure::CredentialAcquisition);
         return false;
@@ -266,8 +279,11 @@ bool SchannelClientStream::Establish(
     initialInput.cBuffers = 1;
     initialInput.pBuffers = &initialInputBuffer;
 
-    constexpr ULONG RequestedAttributes =
-        schannel_detail::RequestedContextAttributes;
+    const ULONG requestedAttributes =
+        schannel_detail::RequestedContextAttributes |
+        (state_->manualCertificateValidation
+            ? ISC_REQ_MANUAL_CRED_VALIDATION
+            : 0);
     ULONG returnedAttributes = 0;
     TimeStamp contextExpiry{};
     bool firstCall = true;
@@ -311,7 +327,7 @@ bool SchannelClientStream::Establish(
             &state_->credentials,
             firstCall ? nullptr : &state_->context,
             state_->targetName,
-            RequestedAttributes,
+            requestedAttributes,
             0,
             0,
             inputPointer,
@@ -320,11 +336,13 @@ bool SchannelClientStream::Establish(
             &output,
             &returnedAttributes,
             &contextExpiry);
+        state_->RecordSecurityStatus(status);
 
         if (RequiresComplete(status)) {
             const SECURITY_STATUS completeStatus =
                 CompleteAuthToken(&state_->context, &output);
             if (completeStatus != SEC_E_OK) {
+                state_->RecordSecurityStatus(completeStatus);
                 for (auto& outputBuffer : outputBuffers) {
                     if (outputBuffer.pvBuffer != nullptr) {
                         FreeContextBuffer(outputBuffer.pvBuffer);
@@ -508,7 +526,15 @@ bool SchannelClientStream::Establish(
     const bool acceptedCertificate =
         certificateStatus == SEC_E_OK &&
         schannel_detail::IsAcceptedSchannelCertificate(
-            certificate);
+            certificate) &&
+        (!state_->manualCertificateValidation ||
+            ValidateDevelopmentTlsServerCertificate(
+                certificate,
+                state_->targetName) ==
+                DevelopmentTlsCertificateResult::Accepted);
+    state_->developmentRootValidated =
+        state_->manualCertificateValidation &&
+        acceptedCertificate;
     if (certificate != nullptr) {
         CertFreeCertificateContext(certificate);
     }

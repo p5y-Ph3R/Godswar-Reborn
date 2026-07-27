@@ -17,11 +17,9 @@ Import-Module (
     Join-Path $moduleRoot 'ControlledHostReadOnlyArtifactAcl.psm1'
 )
 
-$script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2'
-$script:IssuedEvidenceRoot = (
-    'C:\Reborn\artifacts\controlled-host-acceptance\' +
-    '20260727-185522-preview-ready-v2\server-evidence')
+$script:IssuedPins = Get-RebornPhase4SecureDockerPins
+$script:IssuedRoot = $script:IssuedPins.CampaignRoot
+$script:IssuedEvidenceRoot = $script:IssuedPins.EvidenceRoot
 $script:MaximumProfileBytes = 8KB
 $script:HashPattern = '^[0-9A-F]{64}$'
 

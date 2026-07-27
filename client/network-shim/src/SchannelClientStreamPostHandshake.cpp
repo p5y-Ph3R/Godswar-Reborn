@@ -4,6 +4,8 @@
 #include "SchannelClientStreamInternal.h"
 #include "SchannelClientStreamPostHandshake.h"
 
+#include "DevelopmentTlsCertificate.h"
+
 #include <cstring>
 
 namespace godswar::network {
@@ -155,7 +157,13 @@ ValidateTls13PostHandshakeContext(
     const bool acceptedCertificate =
         certificateStatus == SEC_E_OK &&
         schannel_detail::IsAcceptedSchannelCertificate(
-            certificate);
+            certificate) &&
+        (!manualCertificateValidation ||
+            (developmentRootValidated &&
+                ValidateDevelopmentTlsServerCertificate(
+                    certificate,
+                    targetName) ==
+                    DevelopmentTlsCertificateResult::Accepted));
     if (certificate != nullptr) {
         CertFreeCertificateContext(certificate);
     }
@@ -253,7 +261,10 @@ bool SchannelClientStream::State::ContinueTls13PostHandshake(
                 &credentials,
                 &context,
                 targetName,
-                schannel_detail::RequestedContextAttributes,
+                schannel_detail::RequestedContextAttributes |
+                    (manualCertificateValidation
+                        ? ISC_REQ_MANUAL_CRED_VALIDATION
+                        : 0),
                 0,
                 0,
                 &input,
@@ -262,11 +273,16 @@ bool SchannelClientStream::State::ContinueTls13PostHandshake(
                 &output,
                 &returnedAttributes,
                 nullptr);
+        RecordSecurityStatus(status);
 
         bool outputAccepted = true;
-        if (schannel_detail::RequiresComplete(status) &&
-            CompleteAuthToken(&context, &output) != SEC_E_OK) {
-            outputAccepted = false;
+        if (schannel_detail::RequiresComplete(status)) {
+            const SECURITY_STATUS completeStatus =
+                CompleteAuthToken(&context, &output);
+            if (completeStatus != SEC_E_OK) {
+                RecordSecurityStatus(completeStatus);
+                outputAccepted = false;
+            }
         }
         for (auto& buffer : outputBuffers) {
             if (buffer.pvBuffer == nullptr) {

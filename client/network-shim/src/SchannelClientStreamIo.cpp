@@ -77,6 +77,13 @@ void SchannelClientStream::State::MarkEstablished(
     ReleaseSRWLockExclusive(&snapshotLock);
 }
 
+void SchannelClientStream::State::RecordSecurityStatus(
+    SECURITY_STATUS status) noexcept {
+    AcquireSRWLockExclusive(&snapshotLock);
+    securityStatus = status;
+    ReleaseSRWLockExclusive(&snapshotLock);
+}
+
 void SchannelClientStream::State::Fail(
     SchannelClientFailure reason) noexcept {
     AcquireSRWLockExclusive(&snapshotLock);
@@ -95,6 +102,7 @@ SchannelClientStream::State::Snapshot() const noexcept {
     snapshot.valid = configured;
     snapshot.established = established;
     snapshot.failure = failure;
+    snapshot.securityStatus = securityStatus;
     snapshot.negotiatedProtocol = negotiatedProtocol;
     snapshot.negotiatedCipherSuite = negotiatedCipherSuite;
     ReleaseSRWLockShared(&snapshotLock);
