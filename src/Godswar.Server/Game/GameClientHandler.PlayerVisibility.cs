@@ -89,6 +89,12 @@ internal sealed partial class GameClientHandler
             BuildLocalPlayerStatusUpdate(),
             cancellationToken,
             "PlayerStatusUpdate");
+        if (await HandleMapTransitionPlayerDetailSentAsync(
+                cancellationToken))
+        {
+            return;
+        }
+
         _playerDetailSent = true;
         await SendPostEnterBootstrapAsync(cancellationToken);
     }
@@ -310,13 +316,19 @@ internal sealed partial class GameClientHandler
         Console.WriteLine($"[stats] refreshed reason={reason} character={character.Name} {stats.ToLogSummary()}");
     }
 
-    private bool UpdateCharacterPositionFromWalk(GamePacket packet)
+    private bool UpdateCharacterPositionFromWalk(
+        GamePacket packet,
+        out AcceptedMapMovementSegment movement)
     {
+        movement = default;
         if (_character is null || packet.Payload.Length < 12)
         {
             return false;
         }
 
+        var previousX = _character.PositionX;
+        var previousZ = _character.PositionZ;
+        var mapId = _character.CurrentMap;
         var positionX = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(4, 4));
         var positionZ = BinaryPrimitives.ReadSingleLittleEndian(packet.Payload.Slice(8, 4));
         if (!WorldSectorVisibilityTracker<NpcSpawnDefinition>.TryGetCell(positionX, positionZ, out _))
@@ -330,6 +342,10 @@ internal sealed partial class GameClientHandler
         _character.PositionZ = positionZ;
         _positionDirty = true;
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        movement = new AcceptedMapMovementSegment(
+            mapId,
+            new MapTraversalPosition(previousX, previousZ),
+            new MapTraversalPosition(positionX, positionZ));
         return true;
     }
 
@@ -346,19 +362,40 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var accountId = _account.Id;
+        var characterId = _character.Id;
+        var mapId = _character.CurrentMap;
+        var x = _character.PositionX;
+        var z = _character.PositionZ;
+        var epoch = _positionPersistence.CaptureEpoch();
         try
         {
-            await _store.SaveCharacterPositionAsync(
-                _account.Id,
-                _character.Id,
-                _character.CurrentMap,
-                _character.PositionX,
-                _character.PositionZ,
-                cancellationToken);
-            _positionDirty = false;
+            var persisted =
+                await _positionPersistence.PersistIfCurrentAsync(
+                    epoch,
+                    token => _store.SaveCharacterPositionAsync(
+                        accountId,
+                        characterId,
+                        mapId,
+                        x,
+                        z,
+                        token),
+                    cancellationToken);
+            if (!persisted)
+            {
+                return;
+            }
+
+            if (_character.Id == characterId &&
+                _character.CurrentMap == mapId &&
+                _character.PositionX == x &&
+                _character.PositionZ == z)
+            {
+                _positionDirty = false;
+            }
             _lastPositionPersistUtc = now;
             Console.WriteLine(
-                $"[world] saved position character={_character.Name} map={_character.CurrentMap} x={_character.PositionX:F2} z={_character.PositionZ:F2} force={force}");
+                $"[world] saved position character={_character.Name} map={mapId} x={x:F2} z={z:F2} force={force} epoch={epoch}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

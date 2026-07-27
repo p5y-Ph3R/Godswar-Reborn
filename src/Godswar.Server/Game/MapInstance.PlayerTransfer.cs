@@ -1,21 +1,17 @@
 using Godswar.Server.Networking;
+using Godswar.Server.World.Components.Players;
 
 namespace Godswar.Server.Game;
 
 internal sealed partial class MapInstance
 {
     internal PlayerTransfer StagePlayerTransfer(
-        GameSessionContext context)
+        GameSessionContext context,
+        PlayerTransformOverride? transformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         lock (_membershipGate)
         {
-            if (_playerRuntimeMode != PlayerRuntimeMode.Ecs)
-            {
-                throw new InvalidOperationException(
-                    "Atomic player transfer staging requires the ECS player runtime.");
-            }
-
             if (_sessions.ContainsKey(context.Session) ||
                 _ecsShadow.ContainsPlayer(context.Session))
             {
@@ -28,7 +24,9 @@ internal sealed partial class MapInstance
                 EnsurePlayerObjectIdDoesNotCollideWithNpcs(context);
             }
 
-            if (!_ecsShadow.TryAddOrUpdatePlayer(context))
+            if (!_ecsShadow.TryAddOrUpdatePlayer(
+                    context,
+                    transformOverride))
             {
                 _ecsShadow.ClearPlayerFault(context.Session);
                 throw new InvalidOperationException(

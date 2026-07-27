@@ -40,6 +40,14 @@ A bounded Docker reference client later passed live authoritative UDP movement
 and snapshot acknowledgement. Original-client movement, forced fallback,
 parity, and soak remain unaccepted.
 
+Authoritative map transition support is tracked separately in
+[`map-runtime-and-travel-support.md`](map-runtime-and-travel-support.md).
+It implements the statically recovered stock-client reliable scene-change
+handshake and advances the secure realtime world generation, but does not move
+scene loading or durable map admission onto UDP. Synthetic protocol coverage
+passes; the complete live path remains provisional until the recorded
+`0 -> 4 -> 0` stock-client acceptance succeeds.
+
 ## Evidence-based local defaults
 
 The starting policy is based on 12,666 captured client-to-server movement

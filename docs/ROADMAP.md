@@ -37,6 +37,12 @@ and operations are next. Phase 1 remains unaccepted. Records:
 - The later world-target crash at `0x00493A4E` was isolated to a null QuestView root in the client's target-reset path. `tools/PatchClientQuestViewTargetGuard.ps1` now guards both roots without re-entering the UI loader; an empty opcode-10090 packet was explicitly rejected as unsafe.
 - Multiplayer synchronization itself remains server-side and requires no game client change; the avatar patch is a separate native stability correction.
 - Continue two-account testing around reconnects, equipment changes, and future map transitions.
+- All 81 stock-client runtime map IDs are catalogued. Ordinary authoritative
+  walking transitions cover the verified reciprocal city/world graph for IDs
+  `0-22`; dungeon, event, arena, and test maps remain gated behind explicit
+  server admission rules. The support/content boundary and live
+  `0 -> 4 -> 0` acceptance route are recorded in
+  `docs/map-runtime-and-travel-support.md`.
 - Defer a separate map-server process until the in-process map boundary is clean.
 
 ## 2. Character Stats

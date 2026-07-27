@@ -25,10 +25,24 @@ internal sealed partial class GameClientHandler
 
         var updated = _registry.PlayerRuntimeMode ==
             PlayerRuntimeMode.Ecs
-            ? UpdateCharacterPositionFromWalkEcs(packet)
-            : UpdateCharacterPositionFromWalk(packet);
+            ? UpdateCharacterPositionFromWalkEcs(
+                packet,
+                out var movement)
+            : UpdateCharacterPositionFromWalk(
+                packet,
+                out movement);
         if (!updated)
         {
+            return false;
+        }
+
+        if (await TryBeginMapTransitionAsync(
+                movement,
+                cancellationToken))
+        {
+            // The source map receives an explicit removal during the
+            // transition. Never broadcast the triggering walk into either
+            // the old or the still-hidden destination world.
             return false;
         }
 
@@ -126,12 +140,18 @@ internal sealed partial class GameClientHandler
         _lastPositionPersistUtc = DateTime.UtcNow;
 
         var accountId = _account?.Id ?? _character.AccountId;
-        await _store.SaveCharacterPositionAsync(
-            accountId,
-            _character.Id,
-            _character.CurrentMap,
-            _character.PositionX,
-            _character.PositionZ,
+        var characterId = _character.Id;
+        var mapId = _character.CurrentMap;
+        var positionX = _character.PositionX;
+        var positionZ = _character.PositionZ;
+        await _positionPersistence.AdvanceAndPersistAsync(
+            token => _store.SaveCharacterPositionAsync(
+                accountId,
+                characterId,
+                mapId,
+                positionX,
+                positionZ,
+                token),
             cancellationToken);
         int revivedHp;
         int revivedMp;

@@ -31,6 +31,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         await CheckFailedAcceptanceCorrectionEgressAsync();
         await CheckFirstRejectedInputUsesServerStateAsync();
         await CheckWorldRehydrationPreservesTransportAsync();
+        await CheckSecureRealtimeMapTransitionAsync();
         await CheckLegacyMovementRejectedAfterCutoverAsync();
     }
 

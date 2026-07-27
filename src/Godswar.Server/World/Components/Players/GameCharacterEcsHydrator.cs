@@ -32,7 +32,8 @@ internal static class GameCharacterEcsHydrator
         GameCharacter character,
         uint objectId,
         long worldRevision,
-        PlayerStatusSnapshot status)
+        PlayerStatusSnapshot status,
+        PlayerTransformOverride? transformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(character);
@@ -47,8 +48,14 @@ internal static class GameCharacterEcsHydrator
         }
 
         ArgumentOutOfRangeException.ThrowIfNegative(worldRevision);
-        if (!float.IsFinite(character.PositionX) ||
-            !float.IsFinite(character.PositionZ))
+        var mapId =
+            transformOverride?.MapId ?? character.CurrentMap;
+        var positionX =
+            transformOverride?.X ?? character.PositionX;
+        var positionZ =
+            transformOverride?.Z ?? character.PositionZ;
+        if (!float.IsFinite(positionX) ||
+            !float.IsFinite(positionZ))
         {
             throw new ArgumentException(
                 "A player ECS entity requires finite world coordinates.",
@@ -94,9 +101,9 @@ internal static class GameCharacterEcsHydrator
         world.Add(
             entity,
             new PlayerTransformComponent(
-                character.CurrentMap,
-                character.PositionX,
-                character.PositionZ));
+                mapId,
+                positionX,
+                positionZ));
         world.Add(
             entity,
             new PlayerVitalsComponent(
@@ -194,3 +201,8 @@ internal static class GameCharacterEcsHydrator
             stats.ArmorAuraEffect,
             stats.LearnedSkillCount);
 }
+
+internal readonly record struct PlayerTransformOverride(
+    byte MapId,
+    float X,
+    float Z);

@@ -44,7 +44,9 @@ internal sealed partial class MapEcsShadow
 
     public byte MapId { get; }
 
-    public bool TryAddOrUpdatePlayer(GameSessionContext context)
+    public bool TryAddOrUpdatePlayer(
+        GameSessionContext context,
+        PlayerTransformOverride? transformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -53,13 +55,14 @@ internal sealed partial class MapEcsShadow
             var stagedEntity = EntityId.None;
             try
             {
-                ValidatePlayerContext(context);
+                ValidatePlayerContext(context, transformOverride);
                 stagedEntity = GameCharacterEcsHydrator.Hydrate(
                     _world,
                     context.Character,
                     context.ObjectId,
                     context.WorldRevision,
-                    NeutralPlayerStatus);
+                    NeutralPlayerStatus,
+                    transformOverride);
                 _world.Add(
                     stagedEntity,
                     new MapPlayerPresenceComponent(context.WorldReady));
@@ -341,10 +344,15 @@ internal sealed partial class MapEcsShadow
         return true;
     }
 
-    private void ValidatePlayerContext(GameSessionContext context)
+    private void ValidatePlayerContext(
+        GameSessionContext context,
+        PlayerTransformOverride? transformOverride)
     {
         if (context.MapId != MapId ||
-            context.Character.CurrentMap != MapId)
+            (transformOverride is null &&
+             context.Character.CurrentMap != MapId) ||
+            (transformOverride is { } transform &&
+             transform.MapId != MapId))
         {
             throw new ArgumentException(
                 $"Player {context.CharacterId} does not belong to map {MapId}.",

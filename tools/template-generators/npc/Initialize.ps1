@@ -81,11 +81,11 @@ function Get-AttributeValue($attributes, [string]$name) {
 }
 
 function Get-NpcKey([string]$templateKey) {
-    if ($templateKey -match '^(?<scene>[A-Za-z]+_Newbie)_(?<id>\d+)') {
-        return "$($Matches.scene)_$($Matches.id)"
-    }
-
-    if ($templateKey -match '^(?<scene>[A-Za-z]+)_(?<id>\d+)') {
+    # Scene keys legitimately contain underscores and digits
+    # (Parnitha_1, Field_Test2, Colosseu1, and others). Capture the
+    # rightmost "_<actor-id>" segment instead of truncating the scene at
+    # its first numeric component.
+    if ($templateKey -match '^(?<scene>.+)_(?<id>\d+)(?:_|$)') {
         return "$($Matches.scene)_$($Matches.id)"
     }
 

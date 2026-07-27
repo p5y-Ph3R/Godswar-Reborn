@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
+using Godswar.Server.World.Components.Players;
 
 namespace Godswar.Server.Game;
 
@@ -15,6 +16,18 @@ internal sealed partial class GameSessionRegistry
     private MapInstance.PlayerTransfer StageMapTransfer(
         GameSessionContext context) =>
         GetOrCreateMap(context.MapId).StagePlayerTransfer(context);
+
+    private MapInstance.PlayerTransfer StageMapTransfer(
+        GameSessionContext context,
+        byte targetMapId,
+        float targetX,
+        float targetZ) =>
+        GetOrCreateMap(context.MapId).StagePlayerTransfer(
+            context,
+            new PlayerTransformOverride(
+                targetMapId,
+                targetX,
+                targetZ));
 
     private MapInstance GetOrCreateMap(byte mapId) =>
         _maps.GetOrAdd(

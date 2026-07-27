@@ -14,12 +14,18 @@ internal sealed partial class GameClientHandler
         _playerMovementEcs.Snapshot();
 
     private bool UpdateCharacterPositionFromWalkEcs(
-        GamePacket packet)
+        GamePacket packet,
+        out AcceptedMapMovementSegment movement)
     {
+        movement = default;
         if (_character is null || packet.Payload.Length < 12)
         {
             return false;
         }
+
+        var previousX = _character.PositionX;
+        var previousZ = _character.PositionZ;
+        var mapId = _character.CurrentMap;
 
         // Payload bytes 0..3 are an opaque client movement-state word. The
         // server rewrites its low bits only for outbound world projection, but
@@ -50,6 +56,12 @@ internal sealed partial class GameClientHandler
             _session,
             _character,
             advanceWorldRevision: false);
+        movement = new AcceptedMapMovementSegment(
+            mapId,
+            new MapTraversalPosition(previousX, previousZ),
+            new MapTraversalPosition(
+                decision.CurrentX,
+                decision.CurrentZ));
         return true;
     }
 

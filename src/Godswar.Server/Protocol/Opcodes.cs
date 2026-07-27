@@ -17,6 +17,10 @@ internal static class Opcodes
     public const ushort GameServerInfo = 10008;
     public const ushort WalkBegin = 10013;
     public const ushort WalkEnd = 10014;
+    // The native client overloads this opcode by object identity. A 28-byte
+    // packet for another world object is its captured death notification,
+    // while a 24-byte packet for the local player loads a new scene.
+    public const ushort SceneChange = 10018;
     public const ushort Revive = 10019;
     public const ushort Kitbag = 10022;
     public const ushort Storage = 10023;
@@ -86,6 +90,7 @@ internal static class Opcodes
             GameServerInfo => nameof(GameServerInfo),
             WalkBegin => nameof(WalkBegin),
             WalkEnd => nameof(WalkEnd),
+            SceneChange => nameof(SceneChange),
             Revive => nameof(Revive),
             Kitbag => nameof(Kitbag),
             Storage => nameof(Storage),

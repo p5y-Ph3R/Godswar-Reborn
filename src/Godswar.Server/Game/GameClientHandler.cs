@@ -63,13 +63,16 @@ internal sealed partial class GameClientHandler : IClientHandler
         GameSessionRegistry registry,
         DeveloperCommandOptions? developerCommands = null,
         SecurePhase4AcceptanceFaults?
-            phase4AcceptanceFaults = null)
+            phase4AcceptanceFaults = null,
+        TimeSpan? mapTransitionReadyTimeout = null)
     {
         _session = session;
         _store = store;
         _registry = registry;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _phase4AcceptanceFaults = phase4AcceptanceFaults;
+        _mapTransitionReadyTimeout =
+            mapTransitionReadyTimeout ?? DefaultMapTransitionReadyTimeout;
     }
 
     private byte[] BuildLocalPlayerStatusUpdate()
@@ -213,6 +216,12 @@ internal sealed partial class GameClientHandler : IClientHandler
             return;
         }
 
+        if (IsMapTransitionPending &&
+            !IsAllowedDuringMapTransition(packet.Opcode))
+        {
+            return;
+        }
+
         switch (packet.Opcode)
         {
             case Opcodes.LoginGameServer:
@@ -246,6 +255,10 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.WalkBegin:
             case Opcodes.WalkEnd:
             case Opcodes.Walk:
+                if (IsMapTransitionPending)
+                {
+                    break;
+                }
                 if (packet.Opcode == Opcodes.Walk)
                 {
                     if (!await HandleWalkAsync(packet, cancellationToken))
@@ -344,9 +357,7 @@ internal sealed partial class GameClientHandler : IClientHandler
                 await _session.SendAsync(PacketBuilder.ServerTime(), cancellationToken, "ServerTime");
                 break;
             case Opcodes.ClientReady:
-                _clientReadyReceived = true;
-                Console.WriteLine($"[game] ClientReady character={_character?.Name ?? "<none>"}");
-                await SendPostEnterBootstrapAsync(cancellationToken);
+                await HandleClientReadyAsync(cancellationToken);
                 break;
             case Opcodes.PlayerDetailRequest:
                 await HandlePlayerDetailRequestAsync(packet, cancellationToken);

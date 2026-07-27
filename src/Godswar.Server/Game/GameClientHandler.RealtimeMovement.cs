@@ -74,10 +74,14 @@ internal sealed partial class GameClientHandler
         await ObserveRealtimeTaskAsync(
             _realtimePositionSaveTask,
             "position persistence");
+        await ObserveRealtimeTaskAsync(
+            _mapTransitionTimeoutTask,
+            "map-transition deadline");
         _realtimeMovementLifetime?.Dispose();
         _realtimeMovementLifetime = null;
         _realtimeMovementTask = null;
         _realtimePositionSaveTask = null;
+        _mapTransitionTimeoutTask = null;
         _realtimeMovementStop.Dispose();
     }
 
@@ -213,43 +217,25 @@ internal sealed partial class GameClientHandler
             if (decision is { } movementDecision &&
                 movementDecision.Accepted)
             {
-                if ((movementDecision.Source &
-                        AuthoritativePlayerMovementSource.Udp) != 0)
+                var accepted =
+                    await ApplyAcceptedRealtimeMovementAsync(
+                        movementDecision,
+                        cancellationToken);
+                if (accepted.TransitionStarted)
                 {
-                    ControlledHostPrivacyEvidence.RecordIfActive(
-                        ControlledHostEvidenceEvent
-                            .AuthoritativeUdpMovementAccepted);
-                    _phase4UdpEvidencePending = true;
-                    _phase4UdpEvidenceInputId =
-                        movementDecision.InputId;
-                    _phase4UdpEvidenceTransportEpoch =
-                        movementDecision.TransportEpoch;
+                    // Preserve the accepted-input acknowledgement in the
+                    // movement authority, but hold all world egress until the
+                    // native client completes its fresh scene-ready handshake.
+                    return new RealtimeMovementEffects(
+                        _character.CurrentMap,
+                        null,
+                        null,
+                        null,
+                        acceptanceCorrectionInputId);
                 }
-                _character.PositionX =
-                    movementDecision.AuthoritativeX;
-                _character.PositionZ =
-                    movementDecision.AuthoritativeZ;
-                _positionDirty = true;
-                _realtimeSnapshotDirty = true;
-                _registry.UpdateCharacter(
-                    _session,
-                    _character,
-                    advanceWorldRevision: false);
-                await RefreshNearbyWorldObjectsAsync(
-                    "realtime-walk",
-                    cancellationToken);
-                viewerMovement = BuildRealtimeLegacyMovement(
-                    movementDecision.OpaqueState,
-                    movementDecision.AuthoritativeX,
-                    movementDecision.AuthoritativeZ,
-                    movementDecision.AuthoritativeAuxiliary,
-                    WorldObjectIds.ForPlayer(_character.Id));
-                positionSave = new RealtimePositionSave(
-                    _account.Id,
-                    _character.Id,
-                    _character.CurrentMap,
-                    _character.PositionX,
-                    _character.PositionZ);
+
+                viewerMovement = accepted.ViewerMovement;
+                positionSave = accepted.PositionSave;
             }
             else if (decision is { } rejectedMovement)
             {

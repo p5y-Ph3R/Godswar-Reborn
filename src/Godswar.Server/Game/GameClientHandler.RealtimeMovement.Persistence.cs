@@ -33,14 +33,22 @@ internal sealed partial class GameClientHandler
 
                 try
                 {
-                    await _store.SaveCharacterPositionAsync(
-                        save.AccountId,
-                        save.CharacterId,
-                        save.MapId,
-                        save.X,
-                        save.Z,
-                        cancellationToken);
-                    failureLogged = false;
+                    var persisted =
+                        await _positionPersistence.PersistIfCurrentAsync(
+                            save.Epoch,
+                            token => _store.SaveCharacterPositionAsync(
+                                save.AccountId,
+                                save.CharacterId,
+                                save.MapId,
+                                save.X,
+                                save.Z,
+                                token),
+                            cancellationToken);
+                    if (persisted)
+                    {
+                        failureLogged = false;
+                        lastSaveUtc = DateTime.UtcNow;
+                    }
                 }
                 catch (Exception error)
                     when (error is not OperationCanceledException)
@@ -51,10 +59,6 @@ internal sealed partial class GameClientHandler
                             $"[realtime] position persistence temporarily failed: {error.Message}");
                         failureLogged = true;
                     }
-                }
-                finally
-                {
-                    lastSaveUtc = DateTime.UtcNow;
                 }
             }
         }
@@ -83,5 +87,6 @@ internal sealed partial class GameClientHandler
         int CharacterId,
         byte MapId,
         float X,
-        float Z);
+        float Z,
+        long Epoch);
 }
