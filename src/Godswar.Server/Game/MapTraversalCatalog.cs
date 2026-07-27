@@ -17,10 +17,14 @@ internal sealed class MapTraversalCatalog
     private readonly IReadOnlyDictionary<
         short,
         IReadOnlyList<MapTraversalLinkEvidence>> _automaticBySource;
+    private readonly IReadOnlyDictionary<
+        (short SourceMapId, short TargetMapId),
+        MapTraversalArrivalEvidence> _arrivalsByPair;
 
     private MapTraversalCatalog(
         IReadOnlyList<MapTraversalMap> maps,
-        IReadOnlyList<MapTraversalLinkEvidence> evidenceLinks)
+        IReadOnlyList<MapTraversalLinkEvidence> evidenceLinks,
+        IReadOnlyList<MapTraversalArrivalEvidence> arrivalEvidence)
     {
         ValidateMapSet(maps);
 
@@ -52,8 +56,16 @@ internal sealed class MapTraversalCatalog
                 static group => group.Key,
                 static group => (IReadOnlyList<MapTraversalLinkEvidence>)
                     group.OrderBy(static link => link.TargetMapId).ToArray());
+        ArrivalEvidence = arrivalEvidence
+            .OrderBy(static arrival => arrival.SourceMapId)
+            .ThenBy(static arrival => arrival.TargetMapId)
+            .ToArray();
+        _arrivalsByPair = ArrivalEvidence.ToDictionary(
+            static arrival =>
+                (arrival.SourceMapId, arrival.TargetMapId));
 
         ValidateAutomaticReciprocity();
+        ValidateArrivals();
     }
 
     public static MapTraversalCatalog Default { get; } = CreateDefault();
@@ -65,6 +77,11 @@ internal sealed class MapTraversalCatalog
     public IReadOnlyList<MapTraversalLinkEvidence> AutomaticLinks { get; }
 
     public IReadOnlyList<MapTraversalLinkEvidence> GatedLinks { get; }
+
+    public IReadOnlyList<MapTraversalArrivalEvidence> ArrivalEvidence
+    {
+        get;
+    }
 
     public bool TryGetMap(short mapId, out MapTraversalMap map) =>
         _mapsById.TryGetValue(mapId, out map!);
@@ -84,9 +101,10 @@ internal sealed class MapTraversalCatalog
             out link!);
 
     /// <summary>
-    /// Resolves an arrival beside the matching reciprocal portal. The offset
-    /// points toward the target map's origin and clears the trigger radius, so
-    /// the player cannot immediately bounce back through the same boundary.
+    /// Resolves a reviewed authored arrival beside the matching reciprocal
+    /// portal when available. Otherwise, the bounded fallback points toward
+    /// the target map's origin. Every arrival clears all portal triggers so
+    /// the player cannot immediately bounce through the same boundary.
     /// </summary>
     public bool TryResolveTargetArrival(
         MapTraversalLinkEvidence sourceLink,
@@ -112,6 +130,26 @@ internal sealed class MapTraversalCatalog
 
         var towardCenterX = targetMap.Center.X - reciprocal.Portal.X;
         var towardCenterZ = targetMap.Center.Z - reciprocal.Portal.Z;
+        if (_arrivalsByPair.TryGetValue(
+                (sourceLink.SourceMapId, sourceLink.TargetMapId),
+                out var authoredArrival) &&
+            !IsInsideAnyPortalTrigger(
+                sourceLink.TargetMapId,
+                authoredArrival.Arrival,
+                triggerRadius))
+        {
+            resolution = new MapTraversalResolution(
+                sourceLink.SourceMapId,
+                sourceLink.TargetMapId,
+                sourceLink.Portal,
+                reciprocal.Portal,
+                authoredArrival.Arrival,
+                triggerRadius,
+                authoredArrival.Source,
+                authoredArrival.Confidence);
+            return true;
+        }
+
         var length = Math.Sqrt(
             (double)towardCenterX * towardCenterX +
             (double)towardCenterZ * towardCenterZ);
@@ -160,7 +198,35 @@ internal sealed class MapTraversalCatalog
 
         var evidence = BuildCapturedLinks();
         evidence.AddRange(CreateNorthernAddressLinks());
-        return new MapTraversalCatalog(maps, evidence);
+        return new MapTraversalCatalog(
+            maps,
+            evidence,
+            BuildCapturedArrivals());
+    }
+
+    private static IReadOnlyList<MapTraversalArrivalEvidence>
+        BuildCapturedArrivals()
+    {
+        var spartaGate = MapTemplateSeeds.AddressPoints.Single(
+            static point =>
+                point.MapId == 0 &&
+                point.GroupIndex == 0 &&
+                point.PointIndex == 1 &&
+                point.Name == "Suburb of Sparta");
+        return
+        [
+            new MapTraversalArrivalEvidence(
+                SourceMapId: 4,
+                TargetMapId: 0,
+                new MapTraversalPosition(
+                    spartaGate.X,
+                    spartaGate.Z),
+                spartaGate.Source,
+                MapTraversalEvidenceConfidence
+                    .ReciprocalAddressPoint,
+                "Client-authored Sparta gate anchor, corroborated by the " +
+                "accepted outbound walking corridor.")
+        ];
     }
 
     private static List<MapTraversalLinkEvidence> BuildCapturedLinks()
@@ -320,6 +386,41 @@ internal sealed class MapTraversalCatalog
                 throw new InvalidDataException(
                     $"Automatic map link {link.SourceMapId} -> " +
                     $"{link.TargetMapId} has no reciprocal boundary.");
+            }
+        }
+    }
+
+    private void ValidateArrivals()
+    {
+        foreach (var arrival in ArrivalEvidence)
+        {
+            if (!_automaticByPair.TryGetValue(
+                    (arrival.SourceMapId, arrival.TargetMapId),
+                    out var sourceLink) ||
+                !_automaticByPair.TryGetValue(
+                    (arrival.TargetMapId, arrival.SourceMapId),
+                    out var reciprocal) ||
+                !MapTraversalLimits.IsFiniteAndBounded(
+                    arrival.Arrival) ||
+                string.IsNullOrWhiteSpace(arrival.Source) ||
+                string.IsNullOrWhiteSpace(arrival.Note))
+            {
+                throw new InvalidDataException(
+                    $"Invalid map arrival evidence " +
+                    $"{arrival.SourceMapId}->{arrival.TargetMapId}.");
+            }
+
+            var deltaX =
+                (double)arrival.Arrival.X - reciprocal.Portal.X;
+            var deltaZ =
+                (double)arrival.Arrival.Z - reciprocal.Portal.Z;
+            if (deltaX * deltaX + deltaZ * deltaZ <=
+                (double)MapTraversalLimits.MinimumTriggerRadius *
+                MapTraversalLimits.MinimumTriggerRadius)
+            {
+                throw new InvalidDataException(
+                    $"Map arrival evidence remains on its target portal " +
+                    $"{sourceLink.SourceMapId}->{sourceLink.TargetMapId}.");
             }
         }
     }

@@ -13,12 +13,40 @@ internal static class MapTraversalCatalogChecks
         CheckCapturedDeduplication(catalog);
         CheckNorthernChain(catalog);
         CheckConflictingEvidenceIsGated(catalog);
+        CheckCapturedArrivalEvidence(catalog);
         CheckReciprocalArrival(catalog);
         CheckSpecialMapsHaveNoWalkingLinks(catalog);
         CheckMalformedMovementIsRejected(catalog);
         CheckNonTriggerMovement(catalog);
 
         return Task.CompletedTask;
+    }
+
+    private static void CheckCapturedArrivalEvidence(
+        MapTraversalCatalog catalog)
+    {
+        Check.Equal(
+            1,
+            catalog.ArrivalEvidence.Count,
+            "only live-corroborated arrival override is active");
+        var arrival = catalog.ArrivalEvidence.Single();
+        Check.Equal(
+            (short)4,
+            arrival.SourceMapId,
+            "captured arrival source map");
+        Check.Equal(
+            (short)0,
+            arrival.TargetMapId,
+            "captured arrival target map");
+        Check.Equal(
+            new MapTraversalPosition(193f, -120f),
+            arrival.Arrival,
+            "captured Sparta gate arrival");
+        Check.True(
+            arrival.Source.EndsWith(
+                "/Sparta/Address.ini",
+                StringComparison.Ordinal),
+            "captured arrival retains exact client source");
     }
 
     private static void CheckMapSetAndClassification(
@@ -214,6 +242,29 @@ internal static class MapTraversalCatalogChecks
             offsetX * -direct.TargetPortal.X +
             offsetZ * -direct.TargetPortal.Z > 0f,
             "arrival offset points toward map center");
+
+        Check.True(
+            catalog.TryGetAutomaticLink(4, 0, out var reverseLink),
+            "suburb-to-Sparta source link exists");
+        Check.True(
+            catalog.TryResolveTargetArrival(
+                reverseLink,
+                6f,
+                out var reverse),
+            "captured Sparta target arrival resolves");
+        Check.Equal(
+            new MapTraversalPosition(204f, -120f),
+            reverse.TargetPortal,
+            "Sparta arrival uses reciprocal city portal");
+        Check.Equal(
+            new MapTraversalPosition(193f, -120f),
+            reverse.TargetArrival,
+            "Sparta arrival uses client-authored walkable anchor");
+        Check.True(
+            reverse.Confidence ==
+                MapTraversalEvidenceConfidence
+                    .ReciprocalAddressPoint,
+            "Sparta arrival retains address evidence confidence");
 
         var movement = new AcceptedMapMovementSegment(
             0,

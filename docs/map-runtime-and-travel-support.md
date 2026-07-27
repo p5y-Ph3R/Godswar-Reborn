@@ -88,8 +88,10 @@ portal. The client never chooses the destination map or arrival coordinates.
 
 1. Validate the source map, finite bounded coordinates, accepted segment
    length, and a six-unit portal radius.
-2. Resolve the reciprocal target portal and place the player four units
-   beyond the trigger radius toward the target map's center.
+2. Resolve the reciprocal target portal. Prefer a reviewed client-authored
+   arrival anchor where live movement corroborates it; otherwise place the
+   player four units beyond the trigger radius toward the target map's
+   origin as a bounded fallback.
 3. Serialize position persistence and commit the destination map/coordinates
    as a new epoch. Queued saves from the old epoch are discarded.
 4. Atomically remove the source ECS ownership and stage the destination
@@ -204,3 +206,10 @@ destination AOI, source removal, continued movement, relog persistence, and
 secure stale-generation rejection. The remaining evidence-backed ordinary
 links can then be accepted as one bounded campaign. Special maps require
 their own admission/content acceptance.
+
+The live reverse-route check found that the synthesized Sparta landing
+`(195.38,-114.93)` intersects the client gate collision. Suburb-to-Sparta now
+uses the client-authored `Suburb of Sparta` anchor `(193,-120)`, corroborated
+by the accepted outbound walking corridor. The already-working outward
+arrival remains on the bounded fallback until its authored point is separately
+accepted.

@@ -174,6 +174,10 @@ internal static partial class MapTransitionHandlerChecks
             catalog,
             SpartaSuburbMapId,
             SpartaMapId);
+        Check.Equal(
+            new MapTraversalPosition(193f, -120f),
+            reverse.TargetArrival,
+            "reverse transition uses walkable Sparta gate anchor");
         await InvokePacketAsync(
             handler,
             CreateWalkPacket(

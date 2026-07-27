@@ -60,6 +60,14 @@ internal sealed record MapTraversalLinkEvidence(
     MapTraversalActivation Activation,
     string Note);
 
+internal sealed record MapTraversalArrivalEvidence(
+    short SourceMapId,
+    short TargetMapId,
+    MapTraversalPosition Arrival,
+    string Source,
+    MapTraversalEvidenceConfidence Confidence,
+    string Note);
+
 /// <summary>
 /// A movement segment supplied only after the authoritative movement system
 /// accepts both endpoints in the same map generation.
