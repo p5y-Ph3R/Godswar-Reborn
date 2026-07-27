@@ -4,8 +4,9 @@ Run these from an ordinary `powershell.exe -NoLogo -NoProfile` before client
 Apply. They are read-only except for ordinary build outputs and bounded test
 fixtures. The secure-Docker server and PostgreSQL must already be healthy.
 The active protected handoff is
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`; the legacy
-handoff without the `PreviewReadyV1` suffix is historical and read-only.
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`; both the
+PreviewReadyV1 handoff and the unsuffixed LegacyV1 handoff are historical and
+read-only.
 
 ## Build and focused suites
 
@@ -23,9 +24,9 @@ if($LASTEXITCODE){throw 'Managed protocol checks failed.'}
 
 $previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1
 if($previewBuild.CandidateSha256 -cne
-   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
+   'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE' -or
    $previewBuild.NativeChecksSha256 -cne
-   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+   '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187'){
  throw 'Preview-ready public-trust build changed.'
 }
 & .\tools\TestControlledHostPrivacyEvidence.ps1
@@ -47,11 +48,11 @@ header from only the pinned current and next public trusts, performs two clean
 deterministic builds, runs the native offline/manifest/contract probes, and
 restores the checked-in placeholder header exactly. It never accesses a
 private signing key. The active immutable
-`20260727-004151-preview-ready-v1\candidate` fixture is pinned as:
+`20260727-185522-preview-ready-v2\candidate` fixture is pinned as:
 
 ```text
-preview-ready Net.dll       A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75
-preview-ready native checks 294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F
+preview-ready Net.dll       EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE
+preview-ready native checks 237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187
 placeholder header          D72E7E218E2DD6D1730C1A5194965600DEBECDC9232BCF3DAA86494D863519D1
 ```
 
@@ -138,17 +139,17 @@ if($keys.CurrentExists -or $keys.NextExists -or
 
 $candidate=(
  'C:\Reborn\artifacts\controlled-host-acceptance\' +
- '20260727-004151-preview-ready-v1\candidate\Net.dll')
+ '20260727-185522-preview-ready-v2\candidate\Net.dll')
 $checks=(
  'C:\Reborn\artifacts\controlled-host-acceptance\' +
- '20260727-004151-preview-ready-v1\candidate\' +
+ '20260727-185522-preview-ready-v2\candidate\' +
  'Godswar.NetShim.Checks.exe')
 $candidateSha=(Get-FileHash $candidate -Algorithm SHA256).Hash
 $checksSha=(Get-FileHash $checks -Algorithm SHA256).Hash
 if($candidateSha -cne
-   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
+   'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE' -or
    $checksSha -cne
-   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+   '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187'){
  throw 'Preview-ready Phase 4 fixture changed.'
 }
 
@@ -179,6 +180,6 @@ The smoke is the machine-verifiable secure-Docker reference baseline. The
 original-client Baseline, Fallback, and Soak profiles are separate foreground
 gates and still require the manual acceptance matrix. Their active evidence
 root is
-`C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`;
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`;
 the earlier campaign's five apparent successful previews followed by three
 persistent blank previews remain preserved failed evidence, not acceptance.

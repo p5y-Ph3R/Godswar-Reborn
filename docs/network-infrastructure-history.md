@@ -166,3 +166,12 @@ This is the version ledger for
   `294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F`,
   immutable evidence root, and bounded same-user graceful-stop control. A
   fresh Baseline/Fallback/Soak campaign remains required.
+- `1.26` (`2026-07-27`): Superseded the unaccepted PreviewReadyV1 campaign
+  with receipt-bound PreviewReadyV2. Pinned candidate
+  `EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE`
+  and native checks
+  `237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187`
+  under the independent PreviewReadyV2 campaign/evidence roots. Preserved
+  both PreviewReadyV1 and LegacyV1 through generation-specific read-only
+  accessors; neither can receive new production campaign or completion
+  receipts. Live acceptance remains required.

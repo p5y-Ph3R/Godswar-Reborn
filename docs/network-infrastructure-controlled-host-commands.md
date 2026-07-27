@@ -7,14 +7,16 @@ client, exact loopback endpoints, `godswar_secure_dev`, and the protected
 campaign receipt.
 
 Do not disable Norton or Windows Firewall, add a firewall rule, change a
-network adapter or route, or stop PostgreSQL. Do not run the original
-launcher/patcher. The only client executable used here is
-`C:\RebornNetworkAcceptanceClient\Origin.exe`.
+network adapter or route, or stop PostgreSQL. Do not run anything from the
+original client tree or approve launcher elevation or an update. Start the
+disposable client only through
+`C:\RebornNetworkAcceptanceClient\Launch.exe`; the validated chain is
+`Launch.exe` -> `patcher.exe autorun` -> `Origin.exe` within that same tree.
 
-The active PreviewReadyV1/schema-2 campaign writes only beneath
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`; its foreground
+The active PreviewReadyV2/schema-2 campaign writes only beneath
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`; its foreground
 profiles write beneath
-`C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`.
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`.
 
 ## Gate 1: offline and secure-Docker baseline
 
@@ -26,9 +28,9 @@ $ErrorActionPreference='Stop'
 
 $previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1
 if($previewBuild.CandidateSha256 -cne
-   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
+   'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE' -or
    $previewBuild.NativeChecksSha256 -cne
-   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+   '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187'){
  throw 'Preview-ready public-trust build changed.'
 }
 & .\tools\TestControlledHostPrivacyEvidence.ps1
@@ -70,8 +72,8 @@ fixture, and leave secure Docker healthy with zero restarts.
 The active preview-ready candidate and native-check pins are:
 
 ```text
-Net.dll                    A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75
-Godswar.NetShim.Checks.exe 294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F
+Net.dll                    EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE
+Godswar.NetShim.Checks.exe 237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187
 RebornNetwork.gwem         3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C
 ```
 
@@ -118,13 +120,11 @@ $apply,$status|Format-List
 - the monotonic HKLM activation state at environment 1, mode 1, floor 3.
 
 The campaign writes independent protected cleanup authority beneath
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`. Record the
-displayed PreviewReadyV1 campaign ID and handoff path. The earlier
-`C:\ProgramData\RebornSecureNetworkPhase4Docker` campaign is historical and
-read-only; its five apparent successful previews followed by three persistent
-blank previews failed acceptance. No reboot is needed because this operation
-does not change the already-hardened client inventory or its accepted reboot
-epoch.
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`. Record the
+displayed PreviewReadyV2 campaign ID and handoff path. Both PreviewReadyV1
+and the unsuffixed LegacyV1 campaign are historical and read-only. No reboot
+is needed because this operation does not change the already-hardened client
+inventory or its accepted reboot epoch.
 
 Close the elevated console.
 
@@ -185,13 +185,19 @@ In the same ordinary server console:
  -EvidenceProfile Baseline -AllowLoopbackAcceptance
 ```
 
-The command remains in the foreground. In a second ordinary console, launch:
+The command remains in the foreground. In a second ordinary console, start
+the validated disposable launcher chain:
 
 ```powershell
 Start-Process `
- -FilePath 'C:\RebornNetworkAcceptanceClient\Origin.exe' `
+ -FilePath 'C:\RebornNetworkAcceptanceClient\Launch.exe' `
  -WorkingDirectory 'C:\RebornNetworkAcceptanceClient'
 ```
+
+Do not approve launcher elevation or an update. The launcher must hand off to
+the disposable `patcher.exe` and then the disposable `Origin.exe`; direct
+`Origin.exe` startup is not accepted because it can omit required client
+initialization.
 
 Perform the non-fault rows in the
 [manual acceptance matrix](network-infrastructure-controlled-host-acceptance.md#manual-acceptance-matrix),
@@ -221,7 +227,7 @@ Restart the foreground server:
  -EvidenceProfile Fallback -AllowLoopbackAcceptance
 ```
 
-Launch the same disposable `Origin.exe`, enter the world, and move
+Launch the same disposable `Launch.exe` chain, enter the world, and move
 continuously. The server logically suppresses the selected epoch-one snapshot
 acknowledgement for 1.5 seconds. Do not simulate loss with Norton, Windows
 Firewall, an adapter, or a route.

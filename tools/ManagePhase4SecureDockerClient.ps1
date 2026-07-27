@@ -4,7 +4,7 @@ param(
     [string]$Mode = 'Status',
 
     [string]$CampaignRoot =
-        'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1',
+        'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2',
 
     [switch]$AllowMutation
 )

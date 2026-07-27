@@ -225,7 +225,7 @@ void CheckPostHandshakePolicy() {
         encrypted[index] = static_cast<std::uint8_t>(index + 1);
     }
     const std::uint8_t expected[] = {
-        9, 10, 11, 12, 13, 14, 15, 16,
+        25, 26, 27, 28, 29, 30, 31, 32,
     };
     SecBuffer buffers[4]{};
     buffers[0].BufferType = SECBUFFER_DATA;
@@ -233,7 +233,7 @@ void CheckPostHandshakePolicy() {
     buffers[0].cbBuffer =
         static_cast<unsigned long>(sizeof(encrypted));
     buffers[1].BufferType = SECBUFFER_EXTRA;
-    buffers[1].pvBuffer = encrypted + 8;
+    buffers[1].pvBuffer = encrypted + 24;
     buffers[1].cbBuffer =
         static_cast<unsigned long>(sizeof(expected));
     bool found = false;
@@ -254,6 +254,29 @@ void CheckPostHandshakePolicy() {
                 expected,
                 sizeof(expected)) == 0,
         "valid Schannel post-handshake EXTRA was not retained");
+
+    for (std::size_t index = 0; index < sizeof(encrypted); ++index) {
+        encrypted[index] = static_cast<std::uint8_t>(index + 1);
+    }
+    buffers[1].pvBuffer = nullptr;
+    found = false;
+    retained = 0;
+    Check(
+        schannel_detail::TryRetainSchannelExtraBuffer(
+            buffers,
+            4,
+            encrypted,
+            sizeof(encrypted),
+            sizeof(encrypted),
+            &found,
+            &retained) &&
+            found &&
+            retained == sizeof(expected) &&
+            std::memcmp(
+                encrypted,
+                expected,
+                sizeof(expected)) == 0,
+        "size-only Schannel EXTRA tail was not retained");
 
     std::uint8_t noExtraInput[] = {1, 3, 5, 7};
     SecBuffer noExtraBuffers[2]{};
@@ -277,6 +300,66 @@ void CheckPostHandshakePolicy() {
             noExtraInput[0] == 1 &&
             noExtraInput[3] == 7,
         "valid no-EXTRA Schannel continuation was rejected");
+
+    std::uint8_t continuation[] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    };
+    SecBuffer continuationBuffers[4]{};
+    continuationBuffers[0] = {
+        2,
+        SECBUFFER_STREAM_HEADER,
+        continuation + 2,
+    };
+    continuationBuffers[1] = {
+        3,
+        SECBUFFER_DATA,
+        continuation + 4,
+    };
+    continuationBuffers[2] = {
+        3,
+        SECBUFFER_STREAM_TRAILER,
+        continuation + 7,
+    };
+    std::size_t tokenBytes = 0;
+    const std::uint8_t expectedToken[] = {
+        3, 4, 5, 6, 7, 8, 9, 10,
+    };
+    Check(
+        schannel_detail::TryPrepareSchannelPostHandshakeToken(
+            continuationBuffers,
+            4,
+            continuation,
+            sizeof(continuation),
+            sizeof(continuation),
+            &tokenBytes) &&
+            tokenBytes == sizeof(expectedToken) &&
+            std::memcmp(
+                continuation,
+                expectedToken,
+                sizeof(expectedToken)) == 0 &&
+            continuation[sizeof(expectedToken)] == 0,
+        "no-EXTRA Schannel continuation slice was not compacted");
+
+    continuationBuffers[0] = {
+        2,
+        SECBUFFER_STREAM_HEADER,
+        continuation,
+    };
+    continuationBuffers[1] = {
+        2,
+        SECBUFFER_STREAM_TRAILER,
+        continuation + 3,
+    };
+    continuationBuffers[2] = {};
+    Check(
+        !schannel_detail::TryPrepareSchannelPostHandshakeToken(
+            continuationBuffers,
+            4,
+            continuation,
+            sizeof(continuation),
+            sizeof(continuation),
+            &tokenBytes),
+        "gapped Schannel continuation slices were accepted");
 
     buffers[2] = buffers[1];
     Check(
@@ -302,6 +385,19 @@ void CheckPostHandshakePolicy() {
             &found,
             &retained),
         "out-of-range Schannel EXTRA was accepted");
+    buffers[1].pvBuffer = nullptr;
+    buffers[1].cbBuffer =
+        static_cast<unsigned long>(sizeof(encrypted) + 1);
+    Check(
+        !schannel_detail::TryRetainSchannelExtraBuffer(
+            buffers,
+            4,
+            encrypted,
+            sizeof(encrypted),
+            sizeof(encrypted),
+            &found,
+            &retained),
+        "oversized size-only Schannel EXTRA was accepted");
 }
 
 void CheckInvalidSocket() {

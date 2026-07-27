@@ -10,8 +10,9 @@ The historical `20260727-011921` run accepted TLS authentication,
 authenticated UDP binding, and world entry, then completed exact rollback.
 Its later repeat-entry campaign failed: five apparent successful previews were
 followed by three persistent blank previews. Those records remain preserved
-but are not accepted evidence. The new PreviewReadyV1/schema-2 campaign uses a
-deterministic preview-readiness candidate while reusing the reviewed
+but are not accepted evidence. PreviewReadyV1 is retained as a historical,
+read-only generation. The new PreviewReadyV2/schema-2 campaign uses the
+refreshed deterministic candidate while reusing the reviewed
 certificate boundary without recreating private signing keys. All Baseline,
 movement, forced-fallback, and soak scenarios must run again. The executable
 command sequence is in the
@@ -27,9 +28,9 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
 - Certificate/database fixture:
   `artifacts\controlled-host-acceptance\20260727-011921`.
 - Preview-ready candidate/evidence fixture:
-  `artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1`.
+  `artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2`.
 - Campaign handoff:
-  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`.
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`.
 - DNS: `login.reborn.test` and `game.reborn.test` to literal loopback.
 - Secure endpoints: TCP `127.0.0.1:6599`, TCP `127.0.0.1:7443`, and
   UDP `127.0.0.1:7444`.
@@ -40,7 +41,7 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
   Docker `server` is stopped; it uses the same Docker PFX/password file and
   `godswar_secure_dev`.
 - Evidence:
-  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`.
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`.
 
 The procedure does not alter Norton, Windows Firewall, network adapters,
 routes, or internet connectivity. It does not mutate `C:\Godswar Origin` or
@@ -54,8 +55,8 @@ deploy paid infrastructure, or recreate the removed historical runtime.
 | database dump | `7EC9775B2F6F08361F606FEC2968623573A632D2FCD02EBDD12327B6407F4AAE` |
 | stock `Origin.exe` | `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79` |
 | stock predecessor `Net.dll` | `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C` |
-| active PreviewReadyV1 candidate `Net.dll` | `A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75` |
-| active PreviewReadyV1 native checks | `294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F` |
+| active PreviewReadyV2 candidate `Net.dll` | `EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE` |
+| active PreviewReadyV2 native checks | `237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187` |
 | endpoint manifest | `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C` |
 | current manifest trust | `A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07` |
 | next manifest trust | `582C252D31DE3361157C7625FB21DD104F907EA762FB77044E1CCEF2EA51E571` |
@@ -250,5 +251,6 @@ The subsequent legacy repeat-entry campaign under
 evidence. It produced five apparent successful preview cycles followed by
 three persistent blank-model retries. The later blanks invalidate the earlier
 cycles; no completion receipt may treat that campaign as accepted. Active
-work moved to the independent PreviewReadyV1/schema-2 root and evidence
-fixture listed above.
+work first moved to PreviewReadyV1 and now moves to the independent
+PreviewReadyV2/schema-2 root and evidence fixture listed above. Both older
+generations remain readable but cannot receive new production receipts.

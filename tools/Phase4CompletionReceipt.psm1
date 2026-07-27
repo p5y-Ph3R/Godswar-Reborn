@@ -12,7 +12,7 @@ Import-Module (
 )
 
 $script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1'
+    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2'
 $script:MaximumCompletionBytes = 24KB
 
 function Assert-RebornPhase4CompletionWriteAuthority {
@@ -120,7 +120,7 @@ function Write-RebornPhase4CompletionReceipt {
     )
 
     if (-not $AllowTestPath -and
-        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        [string]$Pins.CampaignGeneration -cne 'PreviewReadyV2') {
         throw 'Historical completion receipts are read-only.'
     }
     Assert-RebornPhase4CompletionWriteAuthority `

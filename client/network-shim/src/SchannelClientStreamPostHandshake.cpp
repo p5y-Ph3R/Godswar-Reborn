@@ -5,13 +5,10 @@
 #include "SchannelClientStreamPostHandshake.h"
 
 #include <cstring>
-#include <limits>
 
 namespace godswar::network {
 namespace schannel_detail {
 namespace {
-
-constexpr std::size_t MaximumSchannelBuffers = 8;
 
 bool RequiresComplete(SECURITY_STATUS status) noexcept {
     return status == SEC_I_COMPLETE_NEEDED ||
@@ -72,74 +69,6 @@ bool IsAcceptedTls13PostHandshakeAlpn(
             SecApplicationProtocolNegotiationExt_None &&
         queriedAlpn.ProtocolIdSize == 0;
     return expected || clearedBySchannel;
-}
-
-bool TryRetainSchannelExtraBuffer(
-    const SecBuffer* buffers,
-    std::size_t bufferCount,
-    void* encryptedInput,
-    std::size_t encryptedInputBytes,
-    std::size_t encryptedInputCapacity,
-    bool* found,
-    std::size_t* retainedBytes) noexcept {
-    if (buffers == nullptr ||
-        bufferCount == 0 ||
-        bufferCount > MaximumSchannelBuffers ||
-        encryptedInput == nullptr ||
-        encryptedInputBytes > encryptedInputCapacity ||
-        found == nullptr ||
-        retainedBytes == nullptr) {
-        return false;
-    }
-
-    *found = false;
-    *retainedBytes = 0;
-    const auto allocationStart =
-        reinterpret_cast<std::uintptr_t>(encryptedInput);
-    if (encryptedInputBytes >
-        (std::numeric_limits<std::uintptr_t>::max)() -
-            allocationStart) {
-        return false;
-    }
-    const auto inputEnd = allocationStart + encryptedInputBytes;
-
-    const SecBuffer* extra = nullptr;
-    for (std::size_t index = 0; index < bufferCount; ++index) {
-        if (buffers[index].BufferType != SECBUFFER_EXTRA) {
-            continue;
-        }
-        if (extra != nullptr) {
-            return false;
-        }
-        extra = &buffers[index];
-    }
-    if (extra == nullptr) {
-        return true;
-    }
-    if (extra->pvBuffer == nullptr ||
-        extra->cbBuffer == 0 ||
-        extra->cbBuffer > encryptedInputCapacity) {
-        return false;
-    }
-
-    const auto extraStart =
-        reinterpret_cast<std::uintptr_t>(extra->pvBuffer);
-    const std::size_t extraBytes = extra->cbBuffer;
-    if (extraStart < allocationStart ||
-        extraStart > inputEnd ||
-        extraBytes > inputEnd - extraStart) {
-        return false;
-    }
-
-    std::memmove(encryptedInput, extra->pvBuffer, extraBytes);
-    if (encryptedInputBytes > extraBytes) {
-        SecureZeroMemory(
-            static_cast<std::uint8_t*>(encryptedInput) + extraBytes,
-            encryptedInputBytes - extraBytes);
-    }
-    *found = true;
-    *retainedBytes = extraBytes;
-    return true;
 }
 
 bool IsAcceptedSchannelCertificate(
@@ -271,16 +200,14 @@ bool SchannelClientStream::State::ContinueTls13PostHandshake(
         return false;
     }
 
-    bool extraFound = false;
-    std::size_t retainedBytes = 0;
-    if (!schannel_detail::TryRetainSchannelExtraBuffer(
+    std::size_t continuationBytes = 0;
+    if (!schannel_detail::TryPrepareSchannelPostHandshakeToken(
             decryptBuffers,
             decryptBufferCount,
             encryptedInput,
             encryptedInputBytes,
             sizeof(encryptedInput),
-            &extraFound,
-            &retainedBytes)) {
+            &continuationBytes)) {
         SecureZeroMemory(
             encryptedInput,
             encryptedInputBytes);
@@ -288,12 +215,12 @@ bool SchannelClientStream::State::ContinueTls13PostHandshake(
         Fail(SchannelClientFailure::PostHandshakeProtocol);
         return false;
     }
-    if (extraFound) {
-        encryptedInputBytes = retainedBytes;
-    }
+    encryptedInputBytes = continuationBytes;
 
     ULONG returnedAttributes = 0;
     std::size_t cumulativeOutputBytes = 0;
+    bool extraFound = false;
+    std::size_t retainedBytes = 0;
     for (unsigned step = 0;
          step < schannel_detail::MaximumPostHandshakeSteps;
          ++step) {

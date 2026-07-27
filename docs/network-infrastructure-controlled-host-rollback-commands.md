@@ -105,14 +105,15 @@ sets activation mode to 0, and retains environment 1 and monotonic floor 3.
 
 Retain:
 
-- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1` as the active
-  PreviewReadyV1/schema-2 protected campaign audit/recovery record;
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2` as the active
+  PreviewReadyV2/schema-2 protected campaign audit/recovery record;
 - the protected evidence files under
-  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`;
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\server-evidence`;
   and
-- `C:\ProgramData\RebornSecureNetworkPhase4Docker` plus its earlier evidence
-  as the read-only failed legacy campaign record. Its five apparent successful
-  previews followed by three persistent blank previews are not accepted.
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1` and
+  `C:\ProgramData\RebornSecureNetworkPhase4Docker` as read-only historical
+  campaign records. The LegacyV1 campaign's five apparent successful previews
+  followed by three persistent blank previews are not accepted.
 
 Deleting the disposable client, database, Docker volume, or evidence is a
 separate destructive action and is not part of Phase 4 rollback.

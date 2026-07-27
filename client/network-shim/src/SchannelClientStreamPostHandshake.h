@@ -50,9 +50,21 @@ bool IsAcceptedTls13PostHandshakeAlpn(
     const SecPkgContext_ApplicationProtocol&
         queriedAlpn) noexcept;
 
+// Selects the exact continuation token described by the buffers that
+// DecryptMessage modified after SEC_I_RENEGOTIATE. An EXTRA slice wins;
+// otherwise the allowed, nonempty slices must form one contiguous range.
+bool TryPrepareSchannelPostHandshakeToken(
+    const SecBuffer* buffers,
+    std::size_t bufferCount,
+    void* encryptedInput,
+    std::size_t encryptedInputBytes,
+    std::size_t encryptedInputCapacity,
+    std::size_t* tokenBytes) noexcept;
+
 // Retains zero or one SECBUFFER_EXTRA region at the beginning of the
-// original encrypted-input allocation. Multiple, empty, or out-of-range
-// regions are rejected. Callers decide whether zero regions are permitted.
+// original encrypted-input allocation. Schannel may report only cbBuffer,
+// so a null pvBuffer denotes that many trailing input bytes. Multiple,
+// empty, or out-of-range regions are rejected.
 bool TryRetainSchannelExtraBuffer(
     const SecBuffer* buffers,
     std::size_t bufferCount,

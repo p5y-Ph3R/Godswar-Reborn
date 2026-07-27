@@ -126,6 +126,7 @@
     <ClCompile Include="NetShim.cpp" />
     <ClCompile Include="OpaqueDuplexPump.cpp" />
     <ClCompile Include="SchannelClientStream.cpp" />
+    <ClCompile Include="SchannelClientStreamBuffers.cpp" />
     <ClCompile Include="SchannelClientStreamIo.cpp" />
     <ClCompile Include="SchannelClientStreamPostHandshake.cpp" />
     <ClCompile Include="SecureClientRuntime.cpp" />

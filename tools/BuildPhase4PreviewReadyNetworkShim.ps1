@@ -149,6 +149,7 @@ try {
         -Configuration Release `
         -LegacyDllPath $LegacyDllPath `
         -CandidateShimPath $second.ShimPath `
+        -EndpointManifestPath $manifestPath `
         -SkipBuild | Out-Host
 
     & $second.TestPath --offline

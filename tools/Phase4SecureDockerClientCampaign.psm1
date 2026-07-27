@@ -21,6 +21,10 @@ function Get-RebornPhase4HistoricalSecureDockerPins {
     return Get-RebornPhase4HistoricalSecureDockerPinsCore
 }
 
+function Get-RebornPhase4PreviewReadyV1SecureDockerPins {
+    return Get-RebornPhase4PreviewReadyV1SecureDockerPinsCore
+}
+
 function Assert-RebornPhase4PinnedInputs {
     param([object]$Pins = (Get-RebornPhase4SecureDockerPins))
 
@@ -250,7 +254,7 @@ function Write-RebornPhase4CampaignReceipt {
     )
 
     if (-not $AllowTestPath -and
-        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        [string]$Pins.CampaignGeneration -cne 'PreviewReadyV2') {
         throw 'Historical campaign receipts are read-only.'
     }
     $root = Resolve-RebornPhase4CampaignRoot `
@@ -357,6 +361,7 @@ function New-RebornPhase4CampaignRecord {
 
 Export-ModuleMember -Function @(
     'Get-RebornPhase4SecureDockerPins',
+    'Get-RebornPhase4PreviewReadyV1SecureDockerPins',
     'Get-RebornPhase4HistoricalSecureDockerPins',
     'Assert-RebornPhase4PinnedInputs',
     'Resolve-RebornPhase4CampaignRoot',

@@ -18,10 +18,10 @@ Import-Module (
 )
 
 $script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1'
+    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2'
 $script:IssuedEvidenceRoot = (
     'C:\Reborn\artifacts\controlled-host-acceptance\' +
-    '20260727-004151-preview-ready-v1\server-evidence')
+    '20260727-185522-preview-ready-v2\server-evidence')
 $script:MaximumProfileBytes = 8KB
 $script:HashPattern = '^[0-9A-F]{64}$'
 

@@ -23,7 +23,7 @@ Import-Module (
 ) -Force
 
 $passed = 0
-$expectedChecks = 11
+$expectedChecks = 13
 
 function Invoke-Check {
     param(
@@ -278,7 +278,14 @@ try {
             $completion.Path -AllowTestPath `
             -Pins (Get-RebornPhase4HistoricalSecureDockerPins) |
                 Out-Null
-    } 'historical pins reject a PreviewReadyV1 completion'
+    } 'LegacyV1 pins reject a PreviewReadyV2 completion'
+
+    Assert-Throws {
+        Read-RebornPhase4CompletionReceipt `
+            $completion.Path -AllowTestPath `
+            -Pins (Get-RebornPhase4PreviewReadyV1SecureDockerPins) |
+                Out-Null
+    } 'PreviewReadyV1 pins reject a PreviewReadyV2 completion'
 
     Assert-Throws {
         Write-RebornPhase4CompletionReceipt `
@@ -287,6 +294,14 @@ try {
             -Pins (Get-RebornPhase4HistoricalSecureDockerPins) |
                 Out-Null
     } 'historical production completion writes are read-only'
+
+    Assert-Throws {
+        Write-RebornPhase4CompletionReceipt `
+            $profilePaths $manual $status $docker `
+            $root `
+            -Pins (Get-RebornPhase4PreviewReadyV1SecureDockerPins) |
+                Out-Null
+    } 'PreviewReadyV1 production completion writes are read-only'
 
     Assert-Throws {
         Write-RebornPhase4CompletionReceipt `

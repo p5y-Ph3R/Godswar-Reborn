@@ -6,25 +6,30 @@ Import-Module (
 ) -Force
 
 $script:ActiveCampaignRoot =
+    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2'
+$script:PreviewReadyV1CampaignRoot =
     'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1'
-$script:HistoricalCampaignRoot =
+$script:LegacyV1CampaignRoot =
     'C:\ProgramData\RebornSecureNetworkPhase4Docker'
 $script:ActiveFixture = (
     'C:\Reborn\artifacts\controlled-host-acceptance\' +
+    '20260727-185522-preview-ready-v2')
+$script:PreviewReadyV1Fixture = (
+    'C:\Reborn\artifacts\controlled-host-acceptance\' +
     '20260727-004151-preview-ready-v1')
-$script:HistoricalFixture = (
+$script:LegacyV1Fixture = (
     'C:\Reborn\artifacts\controlled-host-acceptance\20260727-011921')
 $script:RootSubject = 'CN=Reborn Development Root CA'
 
 function Get-RebornPhase4SecureDockerPinsCore {
     [pscustomobject]@{
-        CampaignGeneration = 'PreviewReadyV1'
+        CampaignGeneration = 'PreviewReadyV2'
         CampaignSchemaVersion = 2
         CampaignMode =
-            'Phase4SecureDockerClientCampaign.PreviewReadyV1'
+            'Phase4SecureDockerClientCampaign.PreviewReadyV2'
         CompletionSchemaVersion = 2
         CompletionMode =
-            'Phase4LoopbackAcceptanceCompletion.PreviewReadyV1'
+            'Phase4LoopbackAcceptanceCompletion.PreviewReadyV2'
         CampaignRoot = $script:ActiveCampaignRoot
         EvidenceRoot = "$script:ActiveFixture\server-evidence"
         ClientRoot = 'C:\RebornNetworkAcceptanceClient'
@@ -59,9 +64,9 @@ function Get-RebornPhase4SecureDockerPinsCore {
         StockNetSha256 =
             '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
         CandidateSha256 =
-            'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75'
+            'EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE'
         NativeChecksSha256 =
-            '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'
+            '237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187'
         ManifestSha256 =
             '3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C'
         ManifestTrustSha256 =
@@ -91,20 +96,42 @@ function Get-RebornPhase4SecureDockerPinsCore {
     }
 }
 
-function Get-RebornPhase4HistoricalSecureDockerPinsCore {
+function Get-RebornPhase4PreviewReadyV1SecureDockerPinsCore {
     $pins = Get-RebornPhase4SecureDockerPinsCore
+    $pins.CampaignGeneration = 'PreviewReadyV1'
+    $pins.CampaignMode =
+        'Phase4SecureDockerClientCampaign.PreviewReadyV1'
+    $pins.CompletionMode =
+        'Phase4LoopbackAcceptanceCompletion.PreviewReadyV1'
+    $pins.CampaignRoot = $script:PreviewReadyV1CampaignRoot
+    $pins.EvidenceRoot =
+        "$script:PreviewReadyV1Fixture\server-evidence"
+    $pins.CandidatePath =
+        "$script:PreviewReadyV1Fixture\candidate\Net.dll"
+    $pins.NativeChecksPath = (
+        "$script:PreviewReadyV1Fixture\candidate\" +
+        'Godswar.NetShim.Checks.exe')
+    $pins.CandidateSha256 =
+        'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75'
+    $pins.NativeChecksSha256 =
+        '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'
+    return $pins
+}
+
+function Get-RebornPhase4HistoricalSecureDockerPinsCore {
+    $pins = Get-RebornPhase4PreviewReadyV1SecureDockerPinsCore
     $pins.CampaignGeneration = 'LegacyV1'
     $pins.CampaignSchemaVersion = 1
     $pins.CampaignMode = 'Phase4SecureDockerClientCampaign'
     $pins.CompletionSchemaVersion = 1
     $pins.CompletionMode = 'Phase4LoopbackAcceptanceCompletion'
-    $pins.CampaignRoot = $script:HistoricalCampaignRoot
-    $pins.EvidenceRoot = "$script:HistoricalFixture\server-evidence"
+    $pins.CampaignRoot = $script:LegacyV1CampaignRoot
+    $pins.EvidenceRoot = "$script:LegacyV1Fixture\server-evidence"
     $pins.CandidatePath = (
-        "$script:HistoricalFixture\" +
+        "$script:LegacyV1Fixture\" +
         'candidate-posthandshake-alpn-fix\Net.dll')
     $pins.NativeChecksPath = (
-        "$script:HistoricalFixture\candidate-posthandshake-alpn-fix\" +
+        "$script:LegacyV1Fixture\candidate-posthandshake-alpn-fix\" +
         'Godswar.NetShim.Checks.New.exe')
     $pins.CandidateSha256 =
         '0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B'
@@ -188,6 +215,7 @@ function Assert-RebornPhase4PinnedInputsCore {
 
 Export-ModuleMember -Function @(
     'Get-RebornPhase4SecureDockerPinsCore',
+    'Get-RebornPhase4PreviewReadyV1SecureDockerPinsCore',
     'Get-RebornPhase4HistoricalSecureDockerPinsCore',
     'Assert-RebornPhase4PinnedInputsCore'
 )

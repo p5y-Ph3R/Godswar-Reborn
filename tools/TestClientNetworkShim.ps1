@@ -7,6 +7,8 @@ param(
 
     [string]$CandidateShimPath,
 
+    [string]$EndpointManifestPath,
+
     [switch]$SkipBuild
 )
 
@@ -57,6 +59,10 @@ foreach ($requiredPath in @($LegacyDllPath, $shimPath, $testPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required file not found: $requiredPath"
     }
+}
+if ($EndpointManifestPath -and
+    -not (Test-Path -LiteralPath $EndpointManifestPath -PathType Leaf)) {
+    throw "Endpoint manifest not found: $EndpointManifestPath"
 }
 
 $legacyHash = (
@@ -149,6 +155,10 @@ try {
     $stagedLegacy = Join-Path $validStage 'NetLegacy.dll'
     Copy-Item -LiteralPath $shimPath -Destination $stagedShim
     Copy-Item -LiteralPath $LegacyDllPath -Destination $stagedLegacy
+    if ($EndpointManifestPath) {
+        Copy-Item -LiteralPath $EndpointManifestPath -Destination (
+            Join-Path $validStage 'RebornNetwork.gwem')
+    }
 
     & $testPath --probe $stagedShim
     if ($LASTEXITCODE -ne 0) {
@@ -159,6 +169,10 @@ try {
     New-Item -ItemType Directory -Path $missingStage | Out-Null
     $missingShim = Join-Path $missingStage 'Net.dll'
     Copy-Item -LiteralPath $shimPath -Destination $missingShim
+    if ($EndpointManifestPath) {
+        Copy-Item -LiteralPath $EndpointManifestPath -Destination (
+            Join-Path $missingStage 'RebornNetwork.gwem')
+    }
     & $testPath --probe-rejected $missingShim 2
     if ($LASTEXITCODE -ne 0) {
         throw "Missing-legacy rejection failed with exit code $LASTEXITCODE."
@@ -170,6 +184,10 @@ try {
     $tamperedLegacy = Join-Path $tamperedStage 'NetLegacy.dll'
     Copy-Item -LiteralPath $shimPath -Destination $tamperedShim
     Copy-Item -LiteralPath $LegacyDllPath -Destination $tamperedLegacy
+    if ($EndpointManifestPath) {
+        Copy-Item -LiteralPath $EndpointManifestPath -Destination (
+            Join-Path $tamperedStage 'RebornNetwork.gwem')
+    }
     $tamperedBytes = [IO.File]::ReadAllBytes($tamperedLegacy)
     $tamperedBytes[$tamperedBytes.Length - 1] = [byte](
         $tamperedBytes[$tamperedBytes.Length - 1] -bxor 0xFF

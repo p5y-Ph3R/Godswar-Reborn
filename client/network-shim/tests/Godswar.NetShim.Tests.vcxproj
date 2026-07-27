@@ -112,6 +112,7 @@
     <ClCompile Include="..\src\NetClientProxy.cpp" />
     <ClCompile Include="..\src\OpaqueDuplexPump.cpp" />
     <ClCompile Include="..\src\SchannelClientStream.cpp" />
+    <ClCompile Include="..\src\SchannelClientStreamBuffers.cpp" />
     <ClCompile Include="..\src\SchannelClientStreamIo.cpp" />
     <ClCompile Include="..\src\SchannelClientStreamPostHandshake.cpp" />
     <ClCompile Include="..\src\SecureClientRuntime.cpp" />

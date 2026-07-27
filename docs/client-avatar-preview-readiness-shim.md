@@ -9,8 +9,9 @@ unchanged under:
 
 `C:\ProgramData\RebornSecureNetworkPhase4Docker`
 
-The replacement is the `PreviewReadyV1` candidate. It is scoped to the exact
-predecessor `Origin.exe` SHA-256:
+PreviewReadyV1 is now a historical, read-only campaign generation. The active
+receipt-bound candidate is `PreviewReadyV2`; it retains the preview-readiness
+scope for the exact predecessor `Origin.exe` SHA-256:
 
 `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`
 
@@ -62,16 +63,20 @@ the signed endpoint manifest and embedded build contract, and restores the
 checked-in placeholder header exactly. It never opens, creates, exports, or
 requires a private signing key.
 
-The locally archived candidate is:
+The historical PreviewReadyV1 fixture is:
 
 `C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\candidate`
+
+The active fixture is:
+
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-185522-preview-ready-v2\candidate`
 
 Pinned hashes:
 
 - `Net.dll`:
-  `A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75`
+  `EFFC21D1500C39352ADEFB2B2D6388912A7EF50505BD3AD8CB043D32D7D956CE`
 - `Godswar.NetShim.Checks.exe`:
-  `294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F`
+  `237EA0A3B90A4642DADA1170B1A740B966984C8004B99698F752491EC6732187`
 - signed endpoint manifest:
   `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C`
 
@@ -79,7 +84,7 @@ Pinned hashes:
 
 The new campaign uses the sibling root:
 
-`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV2`
 
 It must pass five first-attempt alternating-account cold cycles, fallback, and
 at least ten minutes of soak without a blank preview, relaunch, server-full or
