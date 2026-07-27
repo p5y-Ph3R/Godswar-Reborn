@@ -137,6 +137,22 @@ foreach ($line in Get-Content $skillInfoPath) {
     }
 }
 
+$backhaulMagicIds = @()
+foreach ($line in Get-Content $skillIniPath) {
+    if ($line.Trim() -match '^backhaul_magic=([^;]+)') {
+        $backhaulMagicIds = @(
+            $Matches[1].Split(
+                ',',
+                [StringSplitOptions]::RemoveEmptyEntries) |
+                ForEach-Object { [int]$_.Trim() }
+        )
+        break
+    }
+}
+if ($backhaulMagicIds.Count -eq 0) {
+    throw "Skill.ini does not define any backhaul_magic skills."
+}
+
 [xml]$itemBase = Get-Content $itemBasePath -Raw
 $skillBooks = @(
     foreach ($node in $itemBase.SelectNodes('/ItemBaseAttribute//*[@SkillID]')) {
@@ -166,6 +182,9 @@ $skillBooks = @(
     }
 ) | Sort-Object SkillId, ItemId
 
+$bookBackedSkillIds =
+    [System.Collections.Generic.HashSet[int]]::new(
+        [int[]]@($skillBooks | ForEach-Object { $_.SkillId }))
 $skills = @(
     foreach ($group in ($skillBooks | Group-Object SkillId | Sort-Object { [int]$_.Name })) {
         $books = @($group.Group | Sort-Object ItemId)
@@ -214,4 +233,48 @@ $skills = @(
             StatsJson = ($stats | ConvertTo-Json -Compress)
         }
     }
-)
+
+    # The client includes permanent return skills that are learned without an
+    # item-backed skill-book row. Preserve those native protocol IDs in the
+    # authoritative template catalog instead of silently dropping them.
+    foreach ($skillId in ($backhaulMagicIds | Sort-Object -Unique)) {
+        if ($bookBackedSkillIds.Contains($skillId)) {
+            continue
+        }
+
+        $magic = $magicSections[[string]$skillId]
+        if ($null -eq $magic) {
+            throw "Magic.ini does not contain a backhaul definition for skill ID $skillId."
+        }
+
+        $stats = [ordered]@{
+            Source = "Magic.ini+Skill.ini.backhaul_magic+SkillInfo.dat"
+            ScriptID = Get-AttributeValue $magic "ScriptID"
+            Kind = ConvertTo-RequiredMagicInt $magic "Kind" $skillId
+            IntonateTime = ConvertTo-RequiredMagicInt $magic "IntonateTime" $skillId
+            CoolingTime = ConvertTo-RequiredMagicInt $magic "CoolingTime" $skillId
+        }
+        $displayName = Get-AttributeValue $magic "Name"
+
+        [pscustomobject]@{
+            SkillId = $skillId
+            DisplayName = $displayName
+            BaseName = $displayName
+            SkillLevel = $null
+            ClassIds = [Int16[]]@(0, 1, 2, 3)
+            PreviousSkillId = $null
+            MinLevel = 1
+            MaxLevel = 200
+            Description = if ($skillDescriptions.ContainsKey($skillId)) { $skillDescriptions[$skillId] } else { "" }
+            Target = ConvertTo-RequiredMagicInt $magic "Target" $skillId
+            AffectObj = ConvertTo-RequiredMagicInt $magic "AffectObj" $skillId
+            Distance = ConvertTo-RequiredMagicDecimal $magic "Distance" $skillId
+            Range = ConvertTo-RequiredMagicDecimal $magic "Range" $skillId
+            Property = ConvertTo-RequiredMagicInt $magic "Property" $skillId
+            Mp = ConvertTo-RequiredMagicInt $magic "MP" $skillId
+            Power1 = ConvertTo-RequiredMagicDecimal $magic "Power1" $skillId
+            Power2 = ConvertTo-RequiredMagicDecimal $magic "Power2" $skillId
+            StatsJson = ($stats | ConvertTo-Json -Compress)
+        }
+    }
+) | Sort-Object SkillId

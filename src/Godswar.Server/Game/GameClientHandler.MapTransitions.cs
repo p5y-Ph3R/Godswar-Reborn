@@ -35,10 +35,7 @@ internal sealed partial class GameClientHandler
             return true;
         }
 
-        if (_account is null ||
-            _character is null ||
-            !_registered ||
-            !_worldPresenceAnnounced ||
+        if (_character is null ||
             movement.MapId != _character.CurrentMap ||
             !MapTraversalDetector.TryDetectAndResolve(
                 MapTraversalCatalog.Default,
@@ -51,12 +48,41 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
-        var sourceMapId = checked((byte)resolution.SourceMapId);
         var targetMapId = checked((byte)resolution.TargetMapId);
+        return await TryBeginMapTransitionAsync(
+            targetMapId,
+            resolution.TargetArrival.X,
+            resolution.TargetArrival.Z,
+            resolution.Source,
+            cancellationToken);
+    }
+
+    private async Task<bool> TryBeginMapTransitionAsync(
+        byte targetMapId,
+        float targetX,
+        float targetZ,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        if (_pendingMapTransition is not null ||
+            _account is null ||
+            _character is null ||
+            !_registered ||
+            !_worldPresenceAnnounced ||
+            _character.CurrentMap == targetMapId ||
+            !MapTraversalCatalog.Default.TryGetMap(
+                _character.CurrentMap,
+                out _) ||
+            !MapTraversalCatalog.Default.TryGetMap(targetMapId, out _) ||
+            !MapTraversalLimits.IsFiniteAndBounded(
+                new MapTraversalPosition(targetX, targetZ)))
+        {
+            return false;
+        }
+
+        var sourceMapId = _character.CurrentMap;
         var sourceX = _character.PositionX;
         var sourceZ = _character.PositionZ;
-        var targetX = resolution.TargetArrival.X;
-        var targetZ = resolution.TargetArrival.Z;
         var accountId = _account.Id;
         var characterId = _character.Id;
 
@@ -174,7 +200,7 @@ internal sealed partial class GameClientHandler
             $"[map] scene change queued character={_character.Name} " +
             $"map={sourceMapId}->{targetMapId} " +
             $"arrival={targetX:F2},{targetZ:F2} " +
-            $"source={resolution.Source}");
+            $"source={source}");
         return true;
     }
 

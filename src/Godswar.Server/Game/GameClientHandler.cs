@@ -64,8 +64,15 @@ internal sealed partial class GameClientHandler : IClientHandler
         DeveloperCommandOptions? developerCommands = null,
         SecurePhase4AcceptanceFaults?
             phase4AcceptanceFaults = null,
-        TimeSpan? mapTransitionReadyTimeout = null)
+        TimeSpan? mapTransitionReadyTimeout = null,
+        TimeSpan? backhaulSkillCastTime = null)
     {
+        if (backhaulSkillCastTime < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(backhaulSkillCastTime));
+        }
+
         _session = session;
         _store = store;
         _registry = registry;
@@ -73,6 +80,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         _phase4AcceptanceFaults = phase4AcceptanceFaults;
         _mapTransitionReadyTimeout =
             mapTransitionReadyTimeout ?? DefaultMapTransitionReadyTimeout;
+        _backhaulSkillCastTime = backhaulSkillCastTime;
     }
 
     private byte[] BuildLocalPlayerStatusUpdate()
@@ -125,9 +133,14 @@ internal sealed partial class GameClientHandler : IClientHandler
             await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
             _rideCastLifetime.Cancel();
+            _backhaulCastLifetime.Cancel();
             if (_rideCastCompletionTask is { } rideCastCompletionTask)
             {
                 await rideCastCompletionTask;
+            }
+            if (_backhaulCastCompletionTask is { } backhaulCompletionTask)
+            {
+                await backhaulCompletionTask;
             }
 
             ClearGearEnhancerSelection();
@@ -195,6 +208,7 @@ internal sealed partial class GameClientHandler : IClientHandler
 
             _characterStateGate.Dispose();
             _rideCastLifetime.Dispose();
+            _backhaulCastLifetime.Dispose();
         }
     }
 

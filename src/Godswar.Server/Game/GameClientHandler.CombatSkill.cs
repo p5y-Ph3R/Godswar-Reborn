@@ -49,6 +49,18 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (BackhaulSkillCatalog.TryGet(
+                cast.SkillId,
+                out var backhaul))
+        {
+            await HandleBackhaulSkillCastAsync(
+                packet,
+                cast,
+                backhaul,
+                cancellationToken);
+            return;
+        }
+
         if (cast.SkillId <= int.MaxValue &&
             SkillStatusEffectCatalog.TryGet((int)cast.SkillId, out var statusEffect))
         {

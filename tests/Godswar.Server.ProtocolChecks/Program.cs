@@ -32,6 +32,8 @@ internal static partial class Program
             ("Cross-map ECS transfer rollback state", MapEcsTransferRollbackChecks.RunAsync),
             ("Authoritative hidden live-map transfer", MapLiveTransferChecks.RunAsync),
             ("Native handler map-transition readiness", MapTransitionHandlerChecks.RunAsync),
+            ("Native Sparta backhaul skill catalog", BackhaulSkillCatalogChecks.RunAsync),
+            ("Authoritative Sparta backhaul casting", BackhaulSkillHandlerChecks.RunAsync),
             ("Authoritative map traversal catalog", MapTraversalCatalogChecks.RunAsync),
             ("Native local-player scene-change packet", MapSceneChangePacketChecks.RunAsync),
             ("Character position persistence epoch ordering", CharacterPositionPersistenceCoordinatorChecks.RunAsync),
