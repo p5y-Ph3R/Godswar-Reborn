@@ -12,7 +12,7 @@ internal static class MapTraversalCatalogChecks
         CheckMapSetAndClassification(catalog);
         CheckCapturedDeduplication(catalog);
         CheckNorthernChain(catalog);
-        CheckConflictingEvidenceIsGated(catalog);
+        CheckMycenaeWalkingTopology(catalog);
         CheckCapturedArrivalEvidence(catalog);
         CheckReciprocalArrival(catalog);
         CheckSpecialMapsHaveNoWalkingLinks(catalog);
@@ -94,7 +94,10 @@ internal static class MapTraversalCatalogChecks
         Check.Equal(40, distinctRawCount, "raw SpanMap identity count");
         Check.Equal(50, catalog.EvidenceLinks.Count, "deduped raw plus north evidence");
         Check.Equal(48, catalog.AutomaticLinks.Count, "automatic reciprocal links");
-        Check.Equal(2, catalog.GatedLinks.Count, "conflicting links remain gated");
+        Check.Equal(
+            2,
+            catalog.DisabledLinks.Count,
+            "nonwalking Mycenae rows remain disabled");
         Check.True(
             catalog.EvidenceLinks
                 .GroupBy(static link =>
@@ -152,9 +155,22 @@ internal static class MapTraversalCatalogChecks
         }
     }
 
-    private static void CheckConflictingEvidenceIsGated(
+    private static void CheckMycenaeWalkingTopology(
         MapTraversalCatalog catalog)
     {
+        var entry = catalog.AutomaticLinks
+            .Single(static link => link.TargetMapId == 6);
+        Check.Equal(
+            (short)7,
+            entry.SourceMapId,
+            "only Olympia enters Mycenae by walking portal");
+
+        var exit = catalog.GetAutomaticLinks(6).Single();
+        Check.Equal(
+            (short)7,
+            exit.TargetMapId,
+            "Mycenae walking portal returns only to Olympia");
+
         foreach (var target in new short[] { 9, 15 })
         {
             var evidence = catalog.EvidenceLinks.Single(link =>
@@ -162,21 +178,25 @@ internal static class MapTraversalCatalogChecks
                 link.TargetMapId == target);
             Check.True(
                 evidence.Activation ==
-                MapTraversalActivation.ManualApprovalRequired,
-                $"Mycenae->{target} requires approval");
+                MapTraversalActivation.DisabledByWorldTopology,
+                $"Mycenae->{target} is disabled by world topology");
             Check.True(
                 evidence.Confidence ==
-                MapTraversalEvidenceConfidence.ConflictingGated,
-                $"Mycenae->{target} conflict is explicit");
+                MapTraversalEvidenceConfidence
+                    .ExcludedByObservedTopology,
+                $"Mycenae->{target} exclusion is explicit");
             Check.True(
                 !catalog.TryGetAutomaticLink(6, target, out _),
                 $"Mycenae->{target} is excluded from walking traversal");
+            Check.True(
+                !catalog.TryGetAutomaticLink(target, 6, out _),
+                $"{target}->Mycenae is excluded from walking traversal");
             Check.True(
                 !catalog.TryResolveTargetArrival(
                     evidence,
                     6f,
                     out _),
-                $"gated Mycenae->{target} has no automatic arrival");
+                $"disabled Mycenae->{target} has no automatic arrival");
         }
     }
 

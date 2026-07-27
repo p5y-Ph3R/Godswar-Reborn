@@ -40,10 +40,10 @@ internal sealed class MapTraversalCatalog
             .Where(static link =>
                 link.Activation == MapTraversalActivation.Automatic)
             .ToArray();
-        GatedLinks = EvidenceLinks
+        DisabledLinks = EvidenceLinks
             .Where(static link =>
                 link.Activation ==
-                MapTraversalActivation.ManualApprovalRequired)
+                MapTraversalActivation.DisabledByWorldTopology)
             .ToArray();
 
         ValidateLinks(EvidenceLinks);
@@ -76,7 +76,7 @@ internal sealed class MapTraversalCatalog
 
     public IReadOnlyList<MapTraversalLinkEvidence> AutomaticLinks { get; }
 
-    public IReadOnlyList<MapTraversalLinkEvidence> GatedLinks { get; }
+    public IReadOnlyList<MapTraversalLinkEvidence> DisabledLinks { get; }
 
     public IReadOnlyList<MapTraversalArrivalEvidence> ArrivalEvidence
     {
@@ -245,22 +245,23 @@ internal sealed class MapTraversalCatalog
                 continue;
             }
 
-            var gated = seed.MapId == 6 &&
-                        seed.TargetMapId is 9 or 15;
+            var disabled = seed.MapId == 6 &&
+                           seed.TargetMapId is 9 or 15;
             evidence.Add(new MapTraversalLinkEvidence(
                 seed.MapId,
                 seed.TargetMapId,
                 new MapTraversalPosition(seed.X, seed.Z),
                 seed.Source,
-                gated
-                    ? MapTraversalEvidenceConfidence.ConflictingGated
+                disabled
+                    ? MapTraversalEvidenceConfidence
+                        .ExcludedByObservedTopology
                     : MapTraversalEvidenceConfidence.CapturedSpanMap,
-                gated
-                    ? MapTraversalActivation.ManualApprovalRequired
+                disabled
+                    ? MapTraversalActivation.DisabledByWorldTopology
                     : MapTraversalActivation.Automatic,
-                gated
-                    ? "One-way SpanMap evidence conflicts with Mycenae " +
-                      "Address.ini labels; requires client observation."
+                disabled
+                    ? "Disabled walking edge: observed world topology " +
+                      "permits Mycenae access only through Olympia."
                     : "Captured SpanMap boundary with a matching reciprocal."));
         }
 

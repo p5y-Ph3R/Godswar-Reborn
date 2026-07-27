@@ -50,11 +50,13 @@ authoritative NPC, monster, boss, dungeon, reward, or return-location state.
 | 22 | `Elasson_All` | Core world |
 
 The source `SpanMapConfig.xml` supplies 44 raw rows. Duplicate portal rows are
-collapsed, and five reciprocal pairs (ten directed links) recovered from the northern maps'
-`Address.ini` files complete the connected ordinary-world graph. The
-one-direction `Mycenae_All -> Thebes_All` and
-`Mycenae_All -> Derveni_All` rows conflict with the address labels and remain
-recorded but gated until live observation establishes their intended use.
+collapsed, and five reciprocal pairs (ten directed links) recovered from the
+northern maps' `Address.ini` files form the northern walking component.
+Observed world topology confirms that Mycenae can be entered by walking only
+from Olympia and returns only to Olympia. The one-direction
+`Mycenae_All -> Thebes_All` and `Mycenae_All -> Derveni_All` raw rows remain
+recorded as evidence but are permanently excluded from walking traversal.
+NPC-owned teleport operations are a separate admission mechanism.
 
 ## Special map IDs
 

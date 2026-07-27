@@ -11,13 +11,13 @@ internal enum MapTraversalEvidenceConfidence : byte
 {
     CapturedSpanMap = 0,
     ReciprocalAddressPoint = 1,
-    ConflictingGated = 2
+    ExcludedByObservedTopology = 2
 }
 
 internal enum MapTraversalActivation : byte
 {
     Automatic = 0,
-    ManualApprovalRequired = 1
+    DisabledByWorldTopology = 1
 }
 
 internal static class MapTraversalLimits
