@@ -9,7 +9,7 @@ Import-Module (
 ) -Force
 
 $passed = 0
-$expectedChecks = 10
+$expectedChecks = 13
 
 function Invoke-Check {
     param(
@@ -142,12 +142,87 @@ Invoke-Check {
 } 'runner wires reviewed profile and durable-result functions'
 
 Invoke-Check {
+    $runnerPath =
+        Join-Path $PSScriptRoot 'RunPhase4LoopbackAcceptanceServer.ps1'
+    $runnerText = Get-Content -LiteralPath $runnerPath -Raw
+    if ($runnerText -notmatch
+            [regex]::Escape(
+                'GODSWAR_CONTROLLED_HOST_SHUTDOWN_ENABLED') -or
+        $runnerText -notmatch
+            [regex]::Escape(
+                'StopPhase4LoopbackAcceptanceServer.ps1') -or
+        $runnerText -notmatch
+            '\$pins\.EvidenceRoot' -or
+        $runnerText -match
+            '(?i)\b(Stop-Process|taskkill|kill|netsh|Set-Net|Disable-Net)\b') {
+        throw 'The exact local graceful-stop wiring changed.'
+    }
+} 'runner uses pinned evidence and the local graceful-stop control'
+
+Invoke-Check {
+    $modulePath =
+        Join-Path $PSScriptRoot 'Phase4LoopbackStopControl.psm1'
+    $scriptPath =
+        Join-Path $PSScriptRoot 'StopPhase4LoopbackAcceptanceServer.ps1'
+    foreach ($path in @($modulePath, $scriptPath)) {
+        $tokens = $null
+        $errors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile(
+            $path,
+            [ref]$tokens,
+            [ref]$errors)
+        if ($errors.Count -ne 0) {
+            throw "Graceful-stop tool does not parse: $path"
+        }
+        $commands = @(
+            $ast.FindAll(
+                {
+                    param($node)
+                    $node -is [Management.Automation.Language.CommandAst]
+                },
+                $true) |
+                ForEach-Object { $_.GetCommandName() })
+        if (@($commands | Where-Object {
+                $_ -match
+                    '^(Stop-Process|taskkill|netsh|Set-Net|Disable-Net)'
+            }).Count -ne 0) {
+            throw "Graceful-stop tool contains a forbidden command: $path"
+        }
+    }
+    $moduleText = Get-Content -LiteralPath $modulePath -Raw
+    if ($moduleText -notmatch
+            'reborn-phase4-controlled-host-shutdown-v1' -or
+        $moduleText -notmatch 'REBORN_PHASE4_STOP_V1' -or
+        $moduleText -notmatch 'REBORN_PHASE4_STOP_ACCEPTED_V1') {
+        throw 'Graceful-stop pipe protocol changed.'
+    }
+} 'graceful-stop tools are bounded local pipe operations'
+
+Invoke-Check {
     if ($runtimeNames.Count -ne 2 -or
         $runtimeNames -notcontains 'DOTNET_ENVIRONMENT' -or
         $runtimeNames -notcontains 'ASPNETCORE_ENVIRONMENT') {
         throw 'The reviewed runtime-environment set changed.'
     }
 } 'exact runtime-environment isolation set'
+
+Invoke-Check {
+    $password = 'phase4;runtime="quoted" password'
+    $connection = New-RebornPhase4PostgresConnectionString `
+        -Username 'phase4_runtime_user' `
+        -Password $password `
+        -DatabaseName 'godswar_secure_dev'
+    $parsed = [Data.Common.DbConnectionStringBuilder]::new()
+    $parsed.set_ConnectionString($connection)
+    if ([string]$parsed['Host'] -cne '127.0.0.1' -or
+        [int]$parsed['Port'] -ne 5432 -or
+        [string]$parsed['Database'] -cne 'godswar_secure_dev' -or
+        [string]$parsed['Username'] -cne 'phase4_runtime_user' -or
+        [string]$parsed['Password'] -cne $password -or
+        -not [bool]$parsed['Pooling']) {
+        throw 'Runtime PostgreSQL connection policy changed.'
+    }
+} 'framework connection builder safely quotes PostgreSQL values'
 
 Invoke-Check {
     $policy = Get-RebornPhase4AcceptanceProfilePolicy 'baseline'

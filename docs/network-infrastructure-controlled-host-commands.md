@@ -11,6 +11,11 @@ network adapter or route, or stop PostgreSQL. Do not run the original
 launcher/patcher. The only client executable used here is
 `C:\RebornNetworkAcceptanceClient\Origin.exe`.
 
+The active PreviewReadyV1/schema-2 campaign writes only beneath
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`; its foreground
+profiles write beneath
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`.
+
 ## Gate 1: offline and secure-Docker baseline
 
 From an ordinary `powershell.exe -NoLogo -NoProfile`:
@@ -19,10 +24,16 @@ From an ordinary `powershell.exe -NoLogo -NoProfile`:
 Set-Location C:\Reborn
 $ErrorActionPreference='Stop'
 
-& .\tools\TestClientNetworkShim.ps1
-& .\tools\RestorePhase4AcceptedNetworkShimArtifacts.ps1
+$previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1
+if($previewBuild.CandidateSha256 -cne
+   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
+   $previewBuild.NativeChecksSha256 -cne
+   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+ throw 'Preview-ready public-trust build changed.'
+}
 & .\tools\TestControlledHostPrivacyEvidence.ps1
 & .\tools\TestPhase4SecureDockerClientCampaign.ps1
+& .\tools\TestPhase4CompletionReceipt.ps1
 & .\tools\TestPhase4LoopbackAcceptanceRunner.ps1
 & .\tools\TestSecureDockerProfile.ps1
 
@@ -56,11 +67,11 @@ The smoke must authenticate through TLS, bind authenticated UDP, send one
 authoritative input, receive its acknowledged snapshot, clean up its random
 fixture, and leave secure Docker healthy with zero restarts.
 
-The accepted candidate and native-check pins are:
+The active preview-ready candidate and native-check pins are:
 
 ```text
-Net.dll                    0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B
-Godswar.NetShim.Checks.exe D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0
+Net.dll                    A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75
+Godswar.NetShim.Checks.exe 294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F
 RebornNetwork.gwem         3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C
 ```
 
@@ -107,9 +118,13 @@ $apply,$status|Format-List
 - the monotonic HKLM activation state at environment 1, mode 1, floor 3.
 
 The campaign writes independent protected cleanup authority beneath
-`C:\ProgramData\RebornSecureNetworkPhase4Docker`. Record the displayed
-campaign ID and handoff path. No reboot is needed because this operation does
-not change the already-hardened client inventory or its accepted reboot epoch.
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`. Record the
+displayed PreviewReadyV1 campaign ID and handoff path. The earlier
+`C:\ProgramData\RebornSecureNetworkPhase4Docker` campaign is historical and
+read-only; its five apparent successful previews followed by three persistent
+blank previews failed acceptance. No reboot is needed because this operation
+does not change the already-hardened client inventory or its accepted reboot
+epoch.
 
 Close the elevated console.
 
@@ -184,7 +199,14 @@ including five alternating account 7/13 entries, preview readiness, unmounted
 and mounted movement, map transition, death/revive, lifecycle, and viewer
 parity when a second client is available.
 
-Close the client and stop the server gracefully. The runner must return
+Close the client, then request the bounded same-user graceful stop from a
+second ordinary console:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"
+```
+
+The runner must return
 `Result: Accepted`, `EvidenceProfile: Baseline`, database
 `godswar_secure_dev`, and a protected evidence path. Baseline evidence must
 contain accepted UDP movement followed by a queued UDP snapshot and must
@@ -217,7 +239,12 @@ the eligible UDP snapshot triggers the campaign:
 [secure-acceptance] post-fallback TLS movement observed no_switchback=true
 ```
 
-Close the client and stop the server gracefully after the behavior completes.
+Close the client and, after the behavior completes, run:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"
+```
+
 The runner must return `Result: Accepted` and `EvidenceProfile: Fallback`.
 An incomplete or expired campaign fails closed.
 
@@ -232,7 +259,13 @@ Restart without the fault switch:
 
 Launch the disposable client and perform normal movement for at least ten
 measured minutes, including mount/dismount, one map transition, and reconnect.
-Close the client and stop the server gracefully. The runner rejects an
+Close the client, then run:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"
+```
+
+The runner rejects an
 observed foreground lifetime below ten minutes, any fault event, missing UDP
 movement/snapshot evidence, or malformed/repeating evidence.
 

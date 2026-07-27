@@ -23,7 +23,7 @@ Import-Module (
 ) -Force
 
 $passed = 0
-$expectedChecks = 9
+$expectedChecks = 11
 
 function Invoke-Check {
     param(
@@ -259,6 +259,12 @@ try {
                 $profilePaths $manual $status $docker `
                 $root -AllowTestPath -Pins $pins
         if ($completion.Record.result -cne 'Pass' -or
+            $completion.Record.schemaVersion -ne 2 -or
+            $completion.Record.mode -cne $pins.CompletionMode -or
+            $completion.Record.generation -cne
+                $pins.CampaignGeneration -or
+            $completion.Record.pins.nextManifestTrustSha256 -cne
+                $pins.NextManifestTrustSha256 -or
             $completion.Record.campaign.id -cne
                 $campaign.Record.campaignId -or
             @($completion.Record.profiles).Count -ne 3 -or
@@ -266,6 +272,21 @@ try {
             throw 'The completion receipt is outside policy.'
         }
     } 'bounded checksummed completion receipt'
+
+    Assert-Throws {
+        Read-RebornPhase4CompletionReceipt `
+            $completion.Path -AllowTestPath `
+            -Pins (Get-RebornPhase4HistoricalSecureDockerPins) |
+                Out-Null
+    } 'historical pins reject a PreviewReadyV1 completion'
+
+    Assert-Throws {
+        Write-RebornPhase4CompletionReceipt `
+            $profilePaths $manual $status $docker `
+            $root `
+            -Pins (Get-RebornPhase4HistoricalSecureDockerPins) |
+                Out-Null
+    } 'historical production completion writes are read-only'
 
     Assert-Throws {
         Write-RebornPhase4CompletionReceipt `

@@ -169,6 +169,9 @@ internal static partial class Program
                 "Controlled-host privacy-safe evidence",
                 ControlledHostPrivacyEvidenceChecks.RunAsync),
             (
+                "Controlled-host same-user graceful shutdown",
+                ControlledHostShutdownControlChecks.RunAsync),
+            (
                 "Secure Phase 3 UDP Slice 9A/9B binding foundation",
                 SecureUdpFoundationChecks.RunAsync),
             (

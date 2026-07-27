@@ -8,10 +8,13 @@ first authoritative-movement slice.
 
 The historical `20260727-011921` run accepted TLS authentication,
 authenticated UDP binding, and world entry, then completed exact rollback.
-The repeatable Phase 4 campaign now reuses its reviewed client and certificate
-artifacts without recreating the removed protected runtime or private signing
-keys. Movement, forced fallback, and soak scenarios remain open until the
-manual gate runs. The executable command sequence is in the
+Its later repeat-entry campaign failed: five apparent successful previews were
+followed by three persistent blank previews. Those records remain preserved
+but are not accepted evidence. The new PreviewReadyV1/schema-2 campaign uses a
+deterministic preview-readiness candidate while reusing the reviewed
+certificate boundary without recreating private signing keys. All Baseline,
+movement, forced-fallback, and soak scenarios must run again. The executable
+command sequence is in the
 [controlled-host command reference](network-infrastructure-controlled-host-commands.md).
 
 This exercise is a local compatibility/security result. It is not a production
@@ -21,9 +24,12 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
 
 - Client: `C:\RebornNetworkAcceptanceClient` only.
 - Database: Docker-owned `godswar_secure_dev` only.
-- Fixture: `artifacts\controlled-host-acceptance\20260727-011921`.
+- Certificate/database fixture:
+  `artifacts\controlled-host-acceptance\20260727-011921`.
+- Preview-ready candidate/evidence fixture:
+  `artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1`.
 - Campaign handoff:
-  `C:\ProgramData\RebornSecureNetworkPhase4Docker`.
+  `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`.
 - DNS: `login.reborn.test` and `game.reborn.test` to literal loopback.
 - Secure endpoints: TCP `127.0.0.1:6599`, TCP `127.0.0.1:7443`, and
   UDP `127.0.0.1:7444`.
@@ -34,7 +40,7 @@ capacity claim and does not replace upstream L3/L4 DDoS protection.
   Docker `server` is stopped; it uses the same Docker PFX/password file and
   `godswar_secure_dev`.
 - Evidence:
-  `artifacts\controlled-host-acceptance\20260727-011921\server-evidence`.
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`.
 
 The procedure does not alter Norton, Windows Firewall, network adapters,
 routes, or internet connectivity. It does not mutate `C:\Godswar Origin` or
@@ -48,8 +54,8 @@ deploy paid infrastructure, or recreate the removed historical runtime.
 | database dump | `7EC9775B2F6F08361F606FEC2968623573A632D2FCD02EBDD12327B6407F4AAE` |
 | stock `Origin.exe` | `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79` |
 | stock predecessor `Net.dll` | `1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C` |
-| accepted candidate `Net.dll` | `0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B` |
-| accepted native checks | `D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0` |
+| active PreviewReadyV1 candidate `Net.dll` | `A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75` |
+| active PreviewReadyV1 native checks | `294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F` |
 | endpoint manifest | `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C` |
 | current manifest trust | `A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07` |
 | next manifest trust | `582C252D31DE3361157C7625FB21DD104F907EA762FB77044E1CCEF2EA51E571` |
@@ -86,8 +92,9 @@ and PostgreSQL boundary without printing credentials.
    Baseline, Fallback, and Soak evidence profiles serially. The runner refuses
    an elevated or SYSTEM token, enables faults only for Fallback, and enforces
    at least ten measured minutes for Soak.
-5. Close the client after each profile and stop the foreground server
-   gracefully so its bounded evidence can be validated and protected.
+5. Close the client after each profile and stop the foreground server with
+   `powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"`
+   so its bounded evidence can be validated and protected.
 6. Restart and revalidate the exact secure-Docker profile.
 7. Perform campaign Restore even if every scenario passes. It restores stock
    client files and original hosts bytes, removes only the exact public root
@@ -132,7 +139,9 @@ unbounded/repeating error, or non-allowlisted evidence fails the gate.
 
 ## Forced fallback and correction
 
-Stop the ordinary server gracefully and restart it once with the explicit
+Stop the ordinary server with
+`powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"`
+and restart it once with the explicit
 one-shot Phase 4 acceptance-fault switch. It remains Development,
 loopback-only, TLS-enabled, UDP-enabled, and authoritative-movement-enabled.
 
@@ -161,9 +170,10 @@ Required fixed evidence is:
 ```
 
 The five fallback/correction events must complete within the campaign's
-15-second post-trigger lifetime. Stop gracefully after they appear; the
-Fallback profile rejects an expired or incomplete campaign. Restart with the
-Soak profile, which forbids fault state and enforces a measured foreground
+15-second post-trigger lifetime. After they appear, close the client and run
+`powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"`;
+the Fallback profile rejects an expired or incomplete campaign. Restart with
+the Soak profile, which forbids fault state and enforces a measured foreground
 lifetime of at least ten minutes.
 
 ## Privacy-safe evidence
@@ -183,7 +193,8 @@ compromise of that same local user.
 ## Mandatory rollback order
 
 1. Close disposable `Origin.exe`.
-2. Stop the foreground secure server gracefully.
+2. Stop the foreground secure server with
+   `powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"`.
 3. Restart and health-check the exact secure-Docker profile.
 4. Run campaign Restore from a fresh elevated issued-user console. It uses
    only its protected checksummed handoff.
@@ -233,3 +244,11 @@ The external cleanup receipt is
 That accepted record does not close Phase 4. Original-client movement,
 forced fallback, parity, and soak remain unaccepted until every applicable
 row in the manual acceptance matrix passes and mandatory rollback completes.
+
+The subsequent legacy repeat-entry campaign under
+`C:\ProgramData\RebornSecureNetworkPhase4Docker` is also preserved as failed
+evidence. It produced five apparent successful preview cycles followed by
+three persistent blank-model retries. The later blanks invalidate the earlier
+cycles; no completion receipt may treat that campaign as accepted. Active
+work moved to the independent PreviewReadyV1/schema-2 root and evidence
+fixture listed above.

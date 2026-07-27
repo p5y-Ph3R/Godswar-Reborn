@@ -3,6 +3,9 @@
 Run these from an ordinary `powershell.exe -NoLogo -NoProfile` before client
 Apply. They are read-only except for ordinary build outputs and bounded test
 fixtures. The secure-Docker server and PostgreSQL must already be healthy.
+The active protected handoff is
+`C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1`; the legacy
+handoff without the `PreviewReadyV1` suffix is historical and read-only.
 
 ## Build and focused suites
 
@@ -18,36 +21,42 @@ dotnet run --project .\tests\Godswar.Server.ProtocolChecks `
  --configuration Release
 if($LASTEXITCODE){throw 'Managed protocol checks failed.'}
 
-& .\tools\TestClientNetworkShim.ps1
-& .\tools\RestorePhase4AcceptedNetworkShimArtifacts.ps1
+$previewBuild=& .\tools\BuildPhase4PreviewReadyNetworkShim.ps1
+if($previewBuild.CandidateSha256 -cne
+   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
+   $previewBuild.NativeChecksSha256 -cne
+   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+ throw 'Preview-ready public-trust build changed.'
+}
 & .\tools\TestControlledHostPrivacyEvidence.ps1
 & .\tools\TestControlledHostActivationSecurity.ps1
 & .\tools\TestPhase4SecureDockerClientCampaign.ps1
+& .\tools\TestPhase4CompletionReceipt.ps1
 & .\tools\TestPhase4LoopbackAcceptanceRunner.ps1
 & .\tools\TestSecureDockerProfile.ps1
 ```
 
 Require zero build warnings/errors, the complete protocol-check pass summary,
-native client checks, accepted-artifact restore/probes, the privacy-evidence
-profile tests, the repeatable Apply/Restore campaign tests, the isolated
-loopback-runner profile/result tests, and both rendered Docker-profile checks.
+native client checks, deterministic public-trust build/probes, the
+privacy-evidence profile tests, the repeatable Apply/Restore campaign tests,
+the isolated loopback-runner profile/result tests, and both rendered
+Docker-profile checks.
 
-`TestClientNetworkShim.ps1` deliberately builds and tests the checked-in
-source with the public-key placeholder header; that source build is not the
-accepted signed Phase 4 client candidate. Immediately afterward,
-`RestorePhase4AcceptedNetworkShimArtifacts.ps1` atomically restores exact
-reviewed artifacts from the immutable `20260727-011921` fixture:
+`BuildPhase4PreviewReadyNetworkShim.ps1` temporarily generates a verification
+header from only the pinned current and next public trusts, performs two clean
+deterministic builds, runs the native offline/manifest/contract probes, and
+restores the checked-in placeholder header exactly. It never accesses a
+private signing key. The active immutable
+`20260727-004151-preview-ready-v1\candidate` fixture is pinned as:
 
 ```text
-source placeholder Net.dll  BEB6ED3A0582C1F2D1C64D548C143C690ED3BEED0D3208AB8812F10210BBD5BD
-accepted signed Net.dll     0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B
-accepted native checks      D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0
+preview-ready Net.dll       A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75
+preview-ready native checks 294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F
+placeholder header          D72E7E218E2DD6D1730C1A5194965600DEBECDC9232BCF3DAA86494D863519D1
 ```
 
-The restore tool rechecks those source hashes and the signed manifest, then
-runs the accepted offline, manifest-verification, and stock-delegation probes.
-Do not run another native source build between that restore and campaign
-Status/Apply.
+The active campaign reads that immutable fixture directly, so a later ordinary
+native build cannot silently replace its candidate.
 
 The Phase 4 campaign test uses temporary paths and synthetic Docker inspection
 objects. It must not modify the live client, CurrentUser root store, hosts
@@ -127,18 +136,29 @@ if($keys.CurrentExists -or $keys.NextExists -or
  throw 'Development signing keys must remain absent.'
 }
 
-$candidate='C:\Reborn\client\network-shim\bin\Release\Win32\Net.dll'
+$candidate=(
+ 'C:\Reborn\artifacts\controlled-host-acceptance\' +
+ '20260727-004151-preview-ready-v1\candidate\Net.dll')
 $checks=(
- 'C:\Reborn\client\network-shim\bin\Release\Win32\' +
+ 'C:\Reborn\artifacts\controlled-host-acceptance\' +
+ '20260727-004151-preview-ready-v1\candidate\' +
  'Godswar.NetShim.Checks.exe')
 $candidateSha=(Get-FileHash $candidate -Algorithm SHA256).Hash
 $checksSha=(Get-FileHash $checks -Algorithm SHA256).Hash
 if($candidateSha -cne
-   '0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B' -or
+   'A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75' -or
    $checksSha -cne
-   'D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0'){
- throw 'Accepted native Phase 4 outputs changed.'
+   '294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F'){
+ throw 'Preview-ready Phase 4 fixture changed.'
 }
+
+& $checks --offline
+if($LASTEXITCODE){throw 'Preview-ready native offline checks failed.'}
+& $checks --offline-manifest-probe $candidate `
+ 'C:\Reborn\artifacts\secure-network\RebornNetwork.gwem'
+if($LASTEXITCODE){throw 'Preview-ready manifest probe failed.'}
+& $checks --offline-contract-probe $candidate
+if($LASTEXITCODE){throw 'Preview-ready contract probe failed.'}
 
 & .\tools\InvokeSecureDockerSmoke.ps1 `
  -RootCertificatePath `
@@ -157,4 +177,8 @@ if($candidateSha -cne
 
 The smoke is the machine-verifiable secure-Docker reference baseline. The
 original-client Baseline, Fallback, and Soak profiles are separate foreground
-gates and still require the manual acceptance matrix.
+gates and still require the manual acceptance matrix. Their active evidence
+root is
+`C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`;
+the earlier campaign's five apparent successful previews followed by three
+persistent blank previews remain preserved failed evidence, not acceptance.

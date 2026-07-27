@@ -36,12 +36,13 @@ $managedRoot = Join-Path $repositoryRoot (
     'src\Godswar.Server\bin\Release\net10.0')
 $serverAssembly = Join-Path $managedRoot 'Godswar.Server.dll'
 $optionsPath = Join-Path $repositoryRoot 'appsettings.json'
-$evidenceDirectory = Join-Path $repositoryRoot (
-    'artifacts\controlled-host-acceptance\' +
-    '20260727-011921\server-evidence')
+$evidenceDirectory = [IO.Path]::GetFullPath(
+    [string]$pins.EvidenceRoot)
 $secureTcpPorts = @(6599, 7443)
 $secureUdpPort = 7444
 $rawPorts = @(5998, 5999, 7000)
+$shutdownEnvironmentName =
+    'GODSWAR_CONTROLLED_HOST_SHUTDOWN_ENABLED'
 
 function Assert-OrdinaryUser {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -212,16 +213,10 @@ function New-PostgresConnectionString {
         $ContainerEnvironment 'POSTGRES_USER'
     $password = Get-RequiredEnvironmentValue `
         $ContainerEnvironment 'POSTGRES_PASSWORD'
-    $npgsqlPath = Join-Path $managedRoot 'Npgsql.dll'
-    [Reflection.Assembly]::LoadFrom($npgsqlPath) | Out-Null
-    $builder = [Npgsql.NpgsqlConnectionStringBuilder]::new()
-    $builder.Host = '127.0.0.1'
-    $builder.Port = 5432
-    $builder.Database = $pins.DockerDatabase
-    $builder.Username = $user
-    $builder.Password = $password
-    $builder.Pooling = $true
-    return $builder.ConnectionString
+    return New-RebornPhase4PostgresConnectionString `
+        -Username $user `
+        -Password $password `
+        -DatabaseName $pins.DockerDatabase
 }
 
 if (-not $AllowLoopbackAcceptance) {
@@ -229,8 +224,9 @@ if (-not $AllowLoopbackAcceptance) {
 }
 Assert-OrdinaryUser
 Assert-RebornControlledHostSafeProcessEnvironment | Out-Null
-Assert-RebornControlledHostUnsetEnvironmentNames (
-    Get-RebornPhase4AcceptanceRuntimeEnvironmentNames
+Assert-RebornControlledHostUnsetEnvironmentNames @(
+    @(Get-RebornPhase4AcceptanceRuntimeEnvironmentNames) +
+    @($shutdownEnvironmentName)
 ) | Out-Null
 Assert-ClientActivation
 $campaignAuthority = Read-RebornPhase4CampaignReceipt -Pins $pins
@@ -298,6 +294,7 @@ $environment = [ordered]@{
     GODSWAR_AUTH_MAXIMUM_CONCURRENT_KDFS = '4'
     GODSWAR_CONTROLLED_HOST_EVIDENCE_PATH = $evidencePath
 }
+$environment[$shutdownEnvironmentName] = 'true'
 foreach ($entry in (
     Get-RebornControlledHostDiagnosticsDisabledEnvironment
 ).GetEnumerator()) {
@@ -325,6 +322,11 @@ try {
         $applied.Add($entry.Key)
     }
 
+    $stopScript = Join-Path $PSScriptRoot (
+        'StopPhase4LoopbackAcceptanceServer.ps1')
+    Write-Host (
+        'Graceful stop command: powershell.exe -NoProfile -File "' +
+        $stopScript + '"')
     & (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe') `
         $serverAssembly $optionsPath
     $exitCode = $LASTEXITCODE

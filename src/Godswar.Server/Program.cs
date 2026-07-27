@@ -31,6 +31,11 @@ Console.CancelKeyPress += (_, eventArgs) =>
     eventArgs.Cancel = true;
     shutdown.Cancel();
 };
+var controlledHostShutdown =
+    ControlledHostShutdownControl.TryCreateFromEnvironment(
+        options,
+        controlledHostEvidence is not null,
+        shutdown);
 
 var registry = new GameSessionRegistry(
     store,
@@ -245,6 +250,22 @@ try
     Console.WriteLine(
         $"Listener profile ready: {listenerProfile.Transport} " +
         $"({listenerProfile.Login.Port}/{listenerProfile.Game.Port})");
+
+    if (controlledHostShutdown is not null)
+    {
+        var controlTask =
+            controlledHostShutdown.RunAsync(shutdown.Token);
+        runtimeTasks.Add(controlTask);
+        _ = controlTask.ContinueWith(
+            static (_, state) =>
+                ((CancellationTokenSource)state!).Cancel(),
+            shutdown,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted |
+                TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
     await Task.WhenAll(runtimeTasks);
 }
 catch

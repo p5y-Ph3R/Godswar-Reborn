@@ -65,7 +65,7 @@ ILegacyNetClient* NetClientProxy::CreateWithRuntimeForTesting(
         coordinator,
         secureRuntime,
         proxyId,
-        false,
+        IsSupportedOriginAvatarHost(),
         AreOriginAvatarResourcesReady,
         DestroyLegacyMessage,
         RequestOriginAvatarPreload);
@@ -219,7 +219,7 @@ std::uint32_t NetClientProxy::GetStatus() const {
 }
 
 void* NetClientProxy::PickMsg() {
-    if (avatarPreviewGate_.IsHolding()) {
+    if (avatarPreviewGate_.BlocksLegacyPolling()) {
         return avatarPreviewGate_.TryRelease();
     }
 

@@ -9,6 +9,20 @@ hosts bytes, CurrentUser trust, and safe-disabled activation state.
 Do not change Norton, Windows Firewall, adapters, routes, or internet
 connectivity. Do not start the raw Docker profile. Do not stop PostgreSQL.
 
+## Stop the controlled-host server
+
+Close `C:\RebornNetworkAcceptanceClient\Origin.exe`. From a second ordinary
+console under the same issued user, request the runner's bounded graceful
+shutdown:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Reborn\tools\StopPhase4LoopbackAcceptanceServer.ps1"
+```
+
+Wait for the foreground runner to return its result before restoring Docker.
+If no controlled-host runner is active, preserve the stop error and verify
+that no foreground game listener remains; do not kill an unrelated process.
+
 ## Restore the secure-Docker owner
 
 From `C:\Reborn`, with no foreground game server running:
@@ -91,11 +105,14 @@ sets activation mode to 0, and retains environment 1 and monotonic floor 3.
 
 Retain:
 
-- `C:\ProgramData\RebornSecureNetworkPhase4Docker` as the protected campaign
-  audit/recovery record;
+- `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1` as the active
+  PreviewReadyV1/schema-2 protected campaign audit/recovery record;
 - the protected evidence files under
-  `artifacts\controlled-host-acceptance\20260727-011921\server-evidence`; and
-- the prior historical acceptance record.
+  `C:\Reborn\artifacts\controlled-host-acceptance\20260727-004151-preview-ready-v1\server-evidence`;
+  and
+- `C:\ProgramData\RebornSecureNetworkPhase4Docker` plus its earlier evidence
+  as the read-only failed legacy campaign record. Its five apparent successful
+  previews followed by three persistent blank previews are not accepted.
 
 Deleting the disposable client, database, Docker volume, or evidence is a
 separate destructive action and is not part of Phase 4 rollback.

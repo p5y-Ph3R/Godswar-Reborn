@@ -155,3 +155,14 @@ This is the version ledger for
   authenticated UDP binding, world entry, authoritative movement, and
   snapshot acknowledgement with zero retained test accounts. Original-client
   Phase 4 movement/fallback/soak evidence remains open.
+- `1.25` (`2026-07-27`): Rejected the legacy repeat-entry campaign after five
+  apparent successful preview cycles were followed by three persistent
+  blank-model retries; the later failures invalidate the earlier cycles.
+  Preserved that campaign and its evidence as historical, read-only, and not
+  accepted. Added the independent PreviewReadyV1/schema-2 campaign root,
+  deterministic avatar-preview readiness candidate
+  `A3D042C6BC73AF4E9CAAA3B1BC1B5EE9EC9BD47E002B1A5BAE781A6AD43CFC75`,
+  native-check pin
+  `294BE833851FB89468ECB011D01AE1A9B476DA25EB18A68D6B0544FC5374242F`,
+  immutable evidence root, and bounded same-user graceful-stop control. A
+  fresh Baseline/Fallback/Soak campaign remains required.

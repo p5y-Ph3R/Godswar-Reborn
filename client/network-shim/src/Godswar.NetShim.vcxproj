@@ -110,6 +110,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="AvatarPreviewGate.cpp" />
+    <ClCompile Include="OriginAvatarPreviewHost.cpp" />
     <ClCompile Include="BoundedChunkQueue.cpp" />
     <ClCompile Include="EndpointManifest.cpp" />
     <ClCompile Include="EndpointManifestCrypto.cpp" />

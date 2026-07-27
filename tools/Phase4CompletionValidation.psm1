@@ -18,10 +18,10 @@ Import-Module (
 )
 
 $script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4Docker'
+    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1'
 $script:IssuedEvidenceRoot = (
     'C:\Reborn\artifacts\controlled-host-acceptance\' +
-    '20260727-011921\server-evidence')
+    '20260727-004151-preview-ready-v1\server-evidence')
 $script:MaximumProfileBytes = 8KB
 $script:HashPattern = '^[0-9A-F]{64}$'
 
@@ -67,13 +67,14 @@ function Assert-RebornPhase4CompletionHash {
 function Resolve-RebornPhase4CompletionRoot {
     param(
         [string]$Root = $script:IssuedRoot,
-        [switch]$AllowTestPath
+        [switch]$AllowTestPath,
+        [object]$Pins = (Get-RebornPhase4SecureDockerPins)
     )
 
     $resolved = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     if (-not $AllowTestPath) {
         if (-not $resolved.Equals(
-                $script:IssuedRoot,
+                [string]$Pins.CampaignRoot,
                 [StringComparison]::OrdinalIgnoreCase)) {
             throw 'Phase 4 completion output is outside its issued root.'
         }
@@ -174,7 +175,7 @@ function Read-RebornPhase4ProfileResult {
             [StringComparison]::OrdinalIgnoreCase) -or
         (-not $AllowTestPath -and
             -not $profileRoot.Equals(
-                $script:IssuedEvidenceRoot,
+                [string]$Pins.EvidenceRoot,
                 [StringComparison]::OrdinalIgnoreCase))) {
         throw 'Phase 4 profile and evidence are outside one issued root.'
     }

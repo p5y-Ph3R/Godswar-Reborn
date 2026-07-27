@@ -63,6 +63,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AvatarPreloadLifecycleTests.cpp" />
     <ClCompile Include="AvatarPreloadTests.cpp" />
     <ClCompile Include="AvatarPreviewGateTests.cpp" />
     <ClCompile Include="BoundedChunkQueueTests.cpp" />
@@ -97,6 +98,7 @@
     <ClCompile Include="VerifiedImageFileTests.cpp" />
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
+    <ClCompile Include="..\src\OriginAvatarPreviewHost.cpp" />
     <ClCompile Include="..\src\BoundedChunkQueue.cpp" />
     <ClCompile Include="..\src\EndpointManifest.cpp" />
     <ClCompile Include="..\src\EndpointManifestCrypto.cpp" />
@@ -141,6 +143,7 @@
     <ClCompile Include="..\src\WinSockRuntime.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AvatarPreloadLifecycleTests.h" />
     <ClInclude Include="AvatarPreloadTests.h" />
     <ClInclude Include="AvatarPreviewGateTests.h" />
     <ClInclude Include="BoundedChunkQueueTests.h" />

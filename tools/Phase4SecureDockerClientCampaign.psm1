@@ -2,148 +2,29 @@ Set-StrictMode -Version Latest
 
 $moduleRoot = Split-Path -Parent $PSCommandPath
 Import-Module (
-    Join-Path $moduleRoot 'SecureEndpointManifestValidation.psm1'
+    Join-Path $moduleRoot 'Phase4SecureDockerClientPins.psm1'
 ) -Force
 Import-Module (
     Join-Path $moduleRoot 'SecureNetworkPathSafety.psm1'
 ) -Force
 
-$script:IssuedCampaignRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4Docker'
-$script:RootSubject = 'CN=Reborn Development Root CA'
-$script:MaximumDockerOutputBytes = 1MB
+$script:IssuedCampaignRoot = (
+    Get-RebornPhase4SecureDockerPinsCore).CampaignRoot
 $script:MaximumReceiptBytes = 64KB
 $script:MaximumReceiptRevisions = 256
 
 function Get-RebornPhase4SecureDockerPins {
-    [pscustomobject]@{
-        ClientRoot = 'C:\RebornNetworkAcceptanceClient'
-        CandidatePath =
-            'C:\Reborn\client\network-shim\bin\Release\Win32\Net.dll'
-        NativeChecksPath = (
-            'C:\Reborn\client\network-shim\bin\Release\Win32\' +
-            'Godswar.NetShim.Checks.exe')
-        ManifestPath =
-            'C:\Reborn\artifacts\secure-network\RebornNetwork.gwem'
-        ManifestTrustPath = (
-            'C:\Reborn\artifacts\secure-network\' +
-            'development-manifest-trust.json')
-        RootCertificatePath = (
-            'C:\Reborn\artifacts\controlled-host-acceptance\' +
-            '20260727-011921\tls\reborn-development-root.cer')
-        ServerPfxPath = (
-            'C:\Reborn\artifacts\controlled-host-acceptance\' +
-            '20260727-011921\tls\reborn-development-server.pfx')
-        SourceTrustReceiptPath = (
-            'C:\Reborn\artifacts\controlled-host-acceptance\' +
-            '20260727-011921\tls\current-user-trust-receipt.json')
-        InventoryReceiptPath = (
-            'C:\ProgramData\RebornSecureNetworkClientInventory\' +
-            'client-stock-inventory-' +
-            '6C076E54CE10B28D81F1EBBE22EA068B889DE71B06D3B2A04B03B367A9920FEB-' +
-            '4eae4f12100e42d4ad131dea0b47ca27.json')
-        OriginSha256 =
-            '753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79'
-        StockNetSha256 =
-            '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
-        CandidateSha256 =
-            '0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B'
-        NativeChecksSha256 =
-            'D583309B921C7AA795F7A044F096762703AA2DB376A1D07B9EEB4F44312208D0'
-        ManifestSha256 =
-            '3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C'
-        ManifestTrustSha256 =
-            'A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07'
-        RootCertificateSha256 =
-            '911E3CF444B631AAB9EDCC5980DF65243CAAC42B9000C5E2410C7DADFEB54DED'
-        ServerPfxSha256 =
-            'C498666CC8D6ECF09DF92C217169A6F2CDA788DEDA60E5DD17B1EA9CA6C6BC0F'
-        SourceTrustReceiptSha256 =
-            '57FF8F9D9A5701E6AB3E79C243F69D412DE30BA085F9DAD0EED473208748BCF4'
-        InventoryReceiptSha256 =
-            '978A7AA78F3898290F63994E2958004AF0026ADBD7EE3E66C0E6B4491FF71FE1'
-        InventorySetSha256 =
-            '6C076E54CE10B28D81F1EBBE22EA068B889DE71B06D3B2A04B03B367A9920FEB'
-        OriginalHostsSha256 =
-            '96B8714EAEB906C50EA8282A44C5A0A239BCAC1F723A89B5C4476957B496ADA3'
-        RootThumbprint = 'C8FBF5F5B3DB9A50707ED70094C9C04F25039737'
-        ManifestSequence = [UInt64]3
-        ActivationEnvironment = [UInt64]1
-        ServerContainer = 'godswar-server'
-        PostgresContainer = 'godswar-postgres'
-        DockerProfile = 'secure-hybrid'
-        DockerNetwork = 'reborn_secure_runtime'
-        DockerDatabase = 'godswar_secure_dev'
-    }
+    return Get-RebornPhase4SecureDockerPinsCore
 }
 
-function Get-RebornPhase4FileSha256 {
-    param([Parameter(Mandatory)][string]$LiteralPath)
-
-    if (-not (Test-Path -LiteralPath $LiteralPath -PathType Leaf)) {
-        throw "Pinned Phase 4 input is absent: $LiteralPath"
-    }
-    return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash
+function Get-RebornPhase4HistoricalSecureDockerPins {
+    return Get-RebornPhase4HistoricalSecureDockerPinsCore
 }
 
 function Assert-RebornPhase4PinnedInputs {
     param([object]$Pins = (Get-RebornPhase4SecureDockerPins))
 
-    foreach ($binding in @(
-        @($Pins.CandidatePath, $Pins.CandidateSha256),
-        @($Pins.NativeChecksPath, $Pins.NativeChecksSha256),
-        @($Pins.ManifestPath, $Pins.ManifestSha256),
-        @($Pins.ManifestTrustPath, $Pins.ManifestTrustSha256),
-        @($Pins.RootCertificatePath, $Pins.RootCertificateSha256),
-        @($Pins.ServerPfxPath, $Pins.ServerPfxSha256),
-        @($Pins.SourceTrustReceiptPath, $Pins.SourceTrustReceiptSha256),
-        @($Pins.InventoryReceiptPath, $Pins.InventoryReceiptSha256)
-    )) {
-        if ((Get-RebornPhase4FileSha256 $binding[0]) -cne $binding[1]) {
-            throw "Pinned Phase 4 SHA-256 mismatch: $($binding[0])"
-        }
-    }
-
-    $manifest = Read-RebornSecureEndpointManifest `
-        -ManifestPath $Pins.ManifestPath `
-        -TrustPath $Pins.ManifestTrustPath `
-        -InstalledSequenceFloor $Pins.ManifestSequence
-    if ([UInt64]$manifest.Sequence -ne $Pins.ManifestSequence -or
-        [UInt64]$manifest.Environment -ne $Pins.ActivationEnvironment -or
-        $manifest.TlsLoginHost -cne 'login.reborn.test' -or
-        [UInt16]$manifest.TlsLoginPort -ne 6599) {
-        throw 'Pinned Phase 4 endpoint manifest contract changed.'
-    }
-
-    $sourceReceipt =
-        Get-Content -LiteralPath $Pins.SourceTrustReceiptPath -Raw |
-            ConvertFrom-Json
-    if ($sourceReceipt.schemaVersion -ne 2 -or
-        $sourceReceipt.state -cne 'Installed' -or
-        $sourceReceipt.installedByScript -isnot [bool] -or
-        -not $sourceReceipt.installedByScript -or
-        $sourceReceipt.subject -cne $script:RootSubject -or
-        $sourceReceipt.thumbprint -cne $Pins.RootThumbprint -or
-        $sourceReceipt.rootCertificateSha256 -cne
-            $Pins.RootCertificateSha256 -or
-        $sourceReceipt.serverPfxSha256 -cne $Pins.ServerPfxSha256) {
-        throw 'Pinned Phase 4 source trust receipt contract changed.'
-    }
-
-    $root = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-        $Pins.RootCertificatePath)
-    try {
-        if ($root.HasPrivateKey -or
-            $root.Subject -cne $script:RootSubject -or
-            $root.Issuer -cne $script:RootSubject -or
-            $root.Thumbprint -cne $Pins.RootThumbprint) {
-            throw 'Pinned Phase 4 public root certificate is not exact.'
-        }
-    }
-    finally {
-        $root.Dispose()
-    }
-    return $manifest
+    return Assert-RebornPhase4PinnedInputsCore $Pins
 }
 
 function Grant-RebornPhase4CampaignReadAccess {
@@ -152,7 +33,7 @@ function Grant-RebornPhase4CampaignReadAccess {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     if ($null -eq $identity.User -or
         $identity.User.Value -ceq 'S-1-5-18') {
-        throw 'Phase 4 campaign read access requires an issued user.'
+        throw 'Campaign read access requires an issued user.'
     }
 
     $security = Get-Acl -LiteralPath $CampaignRoot
@@ -177,15 +58,16 @@ function Resolve-RebornPhase4CampaignRoot {
     param(
         [string]$CampaignRoot = $script:IssuedCampaignRoot,
         [switch]$AllowTestPath,
-        [switch]$Create
+        [switch]$Create,
+        [object]$Pins = (Get-RebornPhase4SecureDockerPins)
     )
 
     $resolved = [IO.Path]::GetFullPath($CampaignRoot).TrimEnd('\')
     if (-not $AllowTestPath -and
         -not $resolved.Equals(
-            $script:IssuedCampaignRoot,
+            [string]$Pins.CampaignRoot,
             [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Production Phase 4 campaign root is not the issued path.'
+        throw 'Campaign root is not the issued path.'
     }
     if ($Create) {
         if ($AllowTestPath) {
@@ -251,8 +133,24 @@ function Assert-RebornPhase4CampaignRecord {
         'TrustRemoved', 'Restored')
     $issuedUserSid =
         [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    if ($Record.schemaVersion -ne 1 -or
-        $Record.mode -cne 'Phase4SecureDockerClientCampaign' -or
+    $generationProperty = $Record.PSObject.Properties['generation']
+    $nextTrustProperty =
+        $Record.PSObject.Properties['nextManifestTrustSha256']
+    $generationValid = if (
+        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        $null -eq $generationProperty -and
+            $null -eq $nextTrustProperty
+    } else {
+        $null -ne $generationProperty -and
+            [string]$Record.generation -ceq
+                [string]$Pins.CampaignGeneration -and
+            $null -ne $nextTrustProperty -and
+            [string]$Record.nextManifestTrustSha256 -ceq
+                [string]$Pins.NextManifestTrustSha256
+    }
+    if (-not $generationValid -or
+        $Record.schemaVersion -ne $Pins.CampaignSchemaVersion -or
+        $Record.mode -cne $Pins.CampaignMode -or
         $Record.state -notin $states -or
         [string]$Record.issuedUserSid -cne $issuedUserSid -or
         [string]$Record.clientRoot -cne $Pins.ClientRoot -or
@@ -270,13 +168,13 @@ function Assert-RebornPhase4CampaignRecord {
         [UInt64]$Record.activationFloorBefore -ne
             $Pins.ManifestSequence -or
         [string]$Record.dockerProfile -cne $Pins.DockerProfile) {
-        throw 'Phase 4 campaign receipt is outside its exact pinned policy.'
+        throw 'Campaign receipt is outside its pinned policy.'
     }
     $campaignId = [Guid]::Empty
     if (-not [Guid]::TryParse([string]$Record.campaignId, [ref]$campaignId) -or
         $campaignId -eq [Guid]::Empty -or
         [UInt64]$Record.revision -eq 0) {
-        throw 'Phase 4 campaign receipt identity is invalid.'
+        throw 'Campaign identity is invalid.'
     }
 }
 
@@ -288,7 +186,7 @@ function Read-RebornPhase4CampaignReceipt {
     )
 
     $root = Resolve-RebornPhase4CampaignRoot `
-        $CampaignRoot -AllowTestPath:$AllowTestPath
+        $CampaignRoot -AllowTestPath:$AllowTestPath -Pins $Pins
     if (-not (Test-Path -LiteralPath $root -PathType Container)) {
         return $null
     }
@@ -298,11 +196,11 @@ function Read-RebornPhase4CampaignReceipt {
         Get-ChildItem -LiteralPath $root -File -Filter 'handoff-*.json' |
             Sort-Object Name)
     if ($jsonFiles.Count -gt $script:MaximumReceiptRevisions) {
-        throw 'Phase 4 campaign receipt revision bound was exceeded.'
+        throw 'Campaign receipt revision bound was exceeded.'
     }
     foreach ($file in $jsonFiles) {
         if ($file.Name -notmatch '^handoff-(\d{6})\.json$') {
-            throw "Unexpected Phase 4 receipt name: $($file.Name)"
+            throw "Unexpected receipt name: $($file.Name)"
         }
         $revision = [UInt64]$matches[1]
         $checksumPath = [IO.Path]::ChangeExtension(
@@ -313,7 +211,7 @@ function Read-RebornPhase4CampaignReceipt {
         }
         if ($file.Length -le 0 -or
             $file.Length -gt $script:MaximumReceiptBytes) {
-            throw 'Phase 4 campaign receipt size is invalid.'
+            throw 'Campaign receipt size is invalid.'
         }
         $expected = (
             Get-Content -LiteralPath $checksumPath -Raw).Trim()
@@ -321,7 +219,7 @@ function Read-RebornPhase4CampaignReceipt {
         try {
             if ($expected -notmatch '^[0-9A-F]{64}$' -or
                 (Get-RebornPhase4ReceiptSha256 $bytes) -cne $expected) {
-                throw 'Phase 4 campaign receipt checksum failed.'
+                throw 'Campaign receipt checksum failed.'
             }
             $record = [Text.Encoding]::UTF8.GetString($bytes) |
                 ConvertFrom-Json
@@ -331,7 +229,7 @@ function Read-RebornPhase4CampaignReceipt {
         }
         Assert-RebornPhase4CampaignRecord $record $Pins
         if ([UInt64]$record.revision -ne $revision) {
-            throw 'Phase 4 campaign receipt revision mismatch.'
+            throw 'Campaign receipt revision mismatch.'
         }
         $latest = [pscustomobject]@{
             Path = $file.FullName
@@ -351,12 +249,16 @@ function Write-RebornPhase4CampaignReceipt {
         [object]$Pins = (Get-RebornPhase4SecureDockerPins)
     )
 
+    if (-not $AllowTestPath -and
+        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        throw 'Historical campaign receipts are read-only.'
+    }
     $root = Resolve-RebornPhase4CampaignRoot `
-        $CampaignRoot -AllowTestPath:$AllowTestPath -Create
+        $CampaignRoot -AllowTestPath:$AllowTestPath -Create -Pins $Pins
     $all = @(
         Get-ChildItem -LiteralPath $root -File -Filter 'handoff-*.*')
     if ($all.Count -ge ($script:MaximumReceiptRevisions * 2)) {
-        throw 'Phase 4 campaign receipt file bound was exceeded.'
+        throw 'Campaign receipt file bound was exceeded.'
     }
     $maximum = [UInt64]0
     foreach ($file in $all) {
@@ -375,7 +277,7 @@ function Write-RebornPhase4CampaignReceipt {
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes($json)
     try {
         if ($bytes.Length -gt $script:MaximumReceiptBytes) {
-            throw 'Phase 4 campaign receipt exceeds its size bound.'
+            throw 'Campaign receipt exceeds its size bound.'
         }
         $sha = Get-RebornPhase4ReceiptSha256 $bytes
         $base = Join-Path $root ('handoff-{0:D6}' -f $next)
@@ -412,9 +314,9 @@ function New-RebornPhase4CampaignRecord {
     $now = [DateTimeOffset]::UtcNow.ToString('O')
     $issuedUserSid =
         [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    [pscustomobject][ordered]@{
-        schemaVersion = 1
-        mode = 'Phase4SecureDockerClientCampaign'
+    $record = [ordered]@{
+        schemaVersion = $Pins.CampaignSchemaVersion
+        mode = $Pins.CampaignMode
         campaignId = [Guid]::NewGuid().ToString('D')
         issuedUserSid = $issuedUserSid
         revision = [UInt64]1
@@ -444,10 +346,18 @@ function New-RebornPhase4CampaignRecord {
         hostsBackupPath = ''
         hostsBackupSha256 = ''
     }
+    if ([string]$Pins.CampaignGeneration -cne 'LegacyV1') {
+        $record.Insert(2, 'generation', $Pins.CampaignGeneration)
+        $record.Add(
+            'nextManifestTrustSha256',
+            $Pins.NextManifestTrustSha256)
+    }
+    return [pscustomobject]$record
 }
 
 Export-ModuleMember -Function @(
     'Get-RebornPhase4SecureDockerPins',
+    'Get-RebornPhase4HistoricalSecureDockerPins',
     'Assert-RebornPhase4PinnedInputs',
     'Resolve-RebornPhase4CampaignRoot',
     'Assert-RebornPhase4CampaignRecord',

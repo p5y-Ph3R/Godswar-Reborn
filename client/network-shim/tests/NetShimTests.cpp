@@ -1,4 +1,5 @@
 #include "AvatarPreviewGateTests.h"
+#include "AvatarPreloadLifecycleTests.h"
 #include "AvatarPreloadTests.h"
 #include "BoundedChunkQueueTests.h"
 #include "EndpointManifestTests.h"
@@ -512,6 +513,7 @@ int wmain(int argumentCount, wchar_t** arguments) {
     RunProxyUnitChecks();
     RunProxyNoDowngradeChecks();
     Failures += RunAvatarPreviewGateTests();
+    Failures += RunAvatarPreloadLifecycleTests();
     Failures += RunAvatarPreloadTests();
     Failures += RunBoundedChunkQueueTests();
     Failures += RunEndpointManifestTests();

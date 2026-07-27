@@ -75,6 +75,29 @@ function Set-RebornPhase4AcceptanceProfileEnvironment {
     }
 }
 
+function New-RebornPhase4PostgresConnectionString {
+    param(
+        [Parameter(Mandatory)][string]$Username,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$DatabaseName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Username) -or
+        [string]::IsNullOrEmpty($Password) -or
+        [string]::IsNullOrWhiteSpace($DatabaseName)) {
+        throw 'The Phase 4 PostgreSQL connection input is invalid.'
+    }
+
+    $builder = [Data.Common.DbConnectionStringBuilder]::new()
+    $builder['Host'] = '127.0.0.1'
+    $builder['Port'] = 5432
+    $builder['Database'] = $DatabaseName
+    $builder['Username'] = $Username
+    $builder['Password'] = $Password
+    $builder['Pooling'] = $true
+    return [string]$builder.ConnectionString
+}
+
 function Test-RebornPhase4AcceptanceSha256 {
     param([Parameter(Mandatory)][string]$Value)
 
@@ -453,6 +476,7 @@ Export-ModuleMember -Function @(
     'Get-RebornPhase4AcceptanceRuntimeEnvironmentNames',
     'Get-RebornPhase4AcceptanceProfilePolicy',
     'Set-RebornPhase4AcceptanceProfileEnvironment',
+    'New-RebornPhase4PostgresConnectionString',
     'Assert-RebornPhase4AcceptanceProfileRecord',
     'New-RebornPhase4AcceptanceProfileRecord',
     'Get-RebornPhase4AcceptanceProfileResultPaths',

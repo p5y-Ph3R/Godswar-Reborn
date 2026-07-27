@@ -12,7 +12,7 @@ Import-Module (
 )
 
 $script:IssuedRoot =
-    'C:\ProgramData\RebornSecureNetworkPhase4Docker'
+    'C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV1'
 $script:MaximumCompletionBytes = 24KB
 
 function Assert-RebornPhase4CompletionWriteAuthority {
@@ -119,10 +119,14 @@ function Write-RebornPhase4CompletionReceipt {
         [object]$Pins = (Get-RebornPhase4SecureDockerPins)
     )
 
+    if (-not $AllowTestPath -and
+        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        throw 'Historical completion receipts are read-only.'
+    }
     Assert-RebornPhase4CompletionWriteAuthority `
         -AllowTestPath:$AllowTestPath
     $root = Resolve-RebornPhase4CompletionRoot `
-        $CompletionRoot -AllowTestPath:$AllowTestPath
+        $CompletionRoot -AllowTestPath:$AllowTestPath -Pins $Pins
     $campaign = Read-RebornPhase4CampaignReceipt `
         $root -AllowTestPath:$AllowTestPath -Pins $Pins
     if ($null -eq $campaign -or
@@ -162,9 +166,9 @@ function Write-RebornPhase4CompletionReceipt {
     }
 
     $first = $results[0].Record
-    $record = [pscustomobject][ordered]@{
-        schemaVersion = 1
-        mode = 'Phase4LoopbackAcceptanceCompletion'
+    $recordValues = [ordered]@{
+        schemaVersion = $Pins.CompletionSchemaVersion
+        mode = $Pins.CompletionMode
         result = 'Pass'
         completedUtc = [DateTimeOffset]::UtcNow.ToString('O')
         campaign = [pscustomobject][ordered]@{
@@ -211,6 +215,14 @@ function Write-RebornPhase4CompletionReceipt {
             sequenceFloor = [UInt64]$Pins.ManifestSequence
         }
     }
+    if ([string]$Pins.CampaignGeneration -cne 'LegacyV1') {
+        $recordValues.Insert(
+            2, 'generation', $Pins.CampaignGeneration)
+        $recordValues.pins | Add-Member `
+            -NotePropertyName nextManifestTrustSha256 `
+            -NotePropertyValue $Pins.NextManifestTrustSha256
+    }
+    $record = [pscustomobject]$recordValues
     $bytes = [Text.UTF8Encoding]::new($false).GetBytes(
         ($record | ConvertTo-Json -Compress -Depth 8))
     try {
@@ -255,20 +267,27 @@ function Assert-RebornPhase4CompletionRecord {
         [switch]$AllowTestPath
     )
 
-    Assert-RebornPhase4CompletionProperties $Record @(
+    $recordProperties = @(
         'schemaVersion', 'mode', 'result', 'completedUtc',
         'campaign', 'pins', 'build', 'profiles',
-        'manualAttestation', 'finalState') 'Phase 4 completion receipt'
-    Assert-RebornPhase4CompletionProperties $Record.campaign @(
-        'id', 'issuedUserSid', 'handoffPath', 'handoffSha256',
-        'revision', 'state') 'Phase 4 completion campaign'
-    Assert-RebornPhase4CompletionProperties $Record.pins @(
+        'manualAttestation', 'finalState')
+    $pinProperties = @(
         'clientRoot', 'originSha256', 'stockNetSha256',
         'candidateSha256', 'nativeChecksSha256', 'manifestSha256',
         'manifestTrustSha256', 'inventorySetSha256',
         'rootCertificateSha256', 'serverPfxSha256',
-        'manifestSequence', 'dockerProfile',
-        'databaseName') 'Phase 4 completion pins'
+        'manifestSequence', 'dockerProfile', 'databaseName')
+    if ([string]$Pins.CampaignGeneration -cne 'LegacyV1') {
+        $recordProperties += 'generation'
+        $pinProperties += 'nextManifestTrustSha256'
+    }
+    Assert-RebornPhase4CompletionProperties `
+        $Record $recordProperties 'Phase 4 completion receipt'
+    Assert-RebornPhase4CompletionProperties $Record.campaign @(
+        'id', 'issuedUserSid', 'handoffPath', 'handoffSha256',
+        'revision', 'state') 'Phase 4 completion campaign'
+    Assert-RebornPhase4CompletionProperties `
+        $Record.pins $pinProperties 'Phase 4 completion pins'
     Assert-RebornPhase4CompletionProperties $Record.build @(
         'serverSha256', 'managedReleaseSetSha256',
         'optionsSha256') 'Phase 4 completion build'
@@ -278,9 +297,18 @@ function Assert-RebornPhase4CompletionRecord {
         'activationMode', 'activationEnvironment',
         'sequenceFloor') 'Phase 4 completion final state'
     $completed = [DateTimeOffset]::MinValue
-    if ($Record.schemaVersion -ne 1 -or
-        [string]$Record.mode -cne
-            'Phase4LoopbackAcceptanceCompletion' -or
+    $generationProperty = $Record.PSObject.Properties['generation']
+    $generationValid = if (
+        [string]$Pins.CampaignGeneration -ceq 'LegacyV1') {
+        $null -eq $generationProperty
+    } else {
+        $null -ne $generationProperty -and
+            [string]$Record.generation -ceq
+                [string]$Pins.CampaignGeneration
+    }
+    if (-not $generationValid -or
+        $Record.schemaVersion -ne $Pins.CompletionSchemaVersion -or
+        [string]$Record.mode -cne $Pins.CompletionMode -or
         [string]$Record.result -cne 'Pass' -or
         @($Record.profiles).Count -ne 3 -or
         -not [DateTimeOffset]::TryParseExact(
@@ -332,6 +360,11 @@ function Assert-RebornPhase4CompletionRecord {
         if ([string]$Record.pins.$name -cne [string]$expected) {
             throw "Phase 4 completion pin changed: $name"
         }
+    }
+    if ([string]$Pins.CampaignGeneration -cne 'LegacyV1' -and
+        [string]$Record.pins.nextManifestTrustSha256 -cne
+            [string]$Pins.NextManifestTrustSha256) {
+        throw 'Phase 4 completion next-trust pin changed.'
     }
     if ([UInt64]$Record.pins.manifestSequence -ne
         $Pins.ManifestSequence) {
@@ -409,7 +442,7 @@ function Read-RebornPhase4CompletionReceipt {
 
     $root = Resolve-RebornPhase4CompletionRoot `
         (Split-Path -Parent ([IO.Path]::GetFullPath($Path))) `
-        -AllowTestPath:$AllowTestPath
+        -AllowTestPath:$AllowTestPath -Pins $Pins
     $artifact = Read-RebornPhase4ChecksummedJson `
         $Path $script:MaximumCompletionBytes 'Phase 4 completion receipt'
     $campaign = Read-RebornPhase4CampaignReceipt `

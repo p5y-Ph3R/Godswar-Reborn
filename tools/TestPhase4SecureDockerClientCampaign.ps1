@@ -10,7 +10,7 @@ Import-Module (
 )
 
 $passed = 0
-$expectedChecks = 7
+$expectedChecks = 10
 
 function Invoke-Check {
     param(
@@ -49,7 +49,19 @@ try {
     Invoke-Check {
         $manifest = Assert-RebornPhase4PinnedInputs $pins
         if ([UInt64]$manifest.Sequence -ne 3 -or
-            $manifest.TlsLoginHost -cne 'login.reborn.test') {
+            $manifest.TlsLoginHost -cne 'login.reborn.test' -or
+            $pins.CampaignRoot -cne (
+                'C:\ProgramData\' +
+                'RebornSecureNetworkPhase4DockerPreviewReadyV1') -or
+            $pins.CandidatePath -cne (
+                'C:\Reborn\artifacts\controlled-host-acceptance\' +
+                '20260727-004151-preview-ready-v1\candidate\Net.dll') -or
+            $pins.NativeChecksPath -cne (
+                'C:\Reborn\artifacts\controlled-host-acceptance\' +
+                '20260727-004151-preview-ready-v1\candidate\' +
+                'Godswar.NetShim.Checks.exe') -or
+            (Split-Path -Leaf $pins.NextManifestTrustPath) -cne
+                'development-manifest-next-trust.json') {
             throw 'Pinned manifest result changed.'
         }
     } 'exact source pins and signed manifest'
@@ -61,10 +73,15 @@ try {
         $currentSid =
             [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         if (@($record.bundleBackupBaselineNames).Count -ne 0 -or
-            $record.issuedUserSid -cne $currentSid) {
+            $record.issuedUserSid -cne $currentSid -or
+            $record.schemaVersion -ne 2 -or
+            $record.mode -cne $pins.CampaignMode -or
+            $record.generation -cne 'PreviewReadyV1' -or
+            $record.nextManifestTrustSha256 -cne
+                $pins.NextManifestTrustSha256) {
             throw 'An empty first-campaign backup baseline was not preserved.'
         }
-    } 'empty backup baseline remains a valid first campaign'
+    } 'PreviewReadyV1 schema and empty revision-one baseline'
 
     Invoke-Check {
         $record = New-RebornPhase4CampaignRecord `
@@ -108,6 +125,37 @@ try {
         Write-RebornPhase4CampaignReceipt `
             $tampered $temporary -AllowTestPath -Pins $pins | Out-Null
     } 'handoff rejects a changed candidate pin'
+
+    $legacyPins = Get-RebornPhase4HistoricalSecureDockerPins
+    $legacyRoot = Join-Path $temporary 'legacy-v1'
+    $activeRoot = Join-Path $temporary 'preview-ready-v1'
+    Invoke-Check {
+        $legacyRecord = New-RebornPhase4CampaignRecord `
+            -BackupBaselineNames @() -Pins $legacyPins
+        $legacy = Write-RebornPhase4CampaignReceipt `
+            $legacyRecord $legacyRoot -AllowTestPath -Pins $legacyPins
+        if ($legacy.Record.schemaVersion -ne 1 -or
+            $legacy.Record.mode -cne
+                'Phase4SecureDockerClientCampaign' -or
+            $null -ne $legacy.Record.PSObject.Properties['generation'] -or
+            [UInt64]$legacy.Record.revision -ne 1) {
+            throw 'Historical V1 receipt compatibility changed.'
+        }
+    } 'historical V1 receipts remain readable with historical pins'
+
+    $activeRecord = New-RebornPhase4CampaignRecord `
+        -BackupBaselineNames @() -Pins $pins
+    Write-RebornPhase4CampaignReceipt `
+        $activeRecord $activeRoot -AllowTestPath -Pins $pins | Out-Null
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $activeRoot -AllowTestPath -Pins $legacyPins | Out-Null
+    } 'historical pins reject PreviewReadyV1 receipts'
+
+    Assert-Throws {
+        Read-RebornPhase4CampaignReceipt `
+            $legacyRoot -AllowTestPath -Pins $pins | Out-Null
+    } 'PreviewReadyV1 pins reject historical receipts'
 
     $containers = @(
         @'
