@@ -80,7 +80,9 @@ internal sealed partial class PlayerCombatEcsAdapter
                     request.Kind,
                     request.RequestedAt,
                     request.TargetObjectId,
-                    selectedTarget?.SpawnGeneration ?? 0,
+                    request.ExpectedTargetSpawnGeneration ??
+                        selectedTarget?.SpawnGeneration ??
+                        0,
                     selectedTarget?.HealthRevision ?? 0,
                     request.ReportedAttackerX,
                     request.ReportedAttackerZ,

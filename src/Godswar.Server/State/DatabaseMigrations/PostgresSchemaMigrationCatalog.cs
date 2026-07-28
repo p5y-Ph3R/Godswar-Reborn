@@ -191,6 +191,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateStarterConsumableTemplates(),
         CreateArchiveLegacyCharacterKitbag(),
         CreateCharacterItemTemplateForeignKey(),
-        CreateZodiacSkillGridState()
+        CreateZodiacSkillGridState(),
+        CreateSkillCastInterruptOpcode()
     ];
 }

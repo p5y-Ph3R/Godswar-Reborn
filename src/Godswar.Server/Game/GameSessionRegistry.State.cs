@@ -70,6 +70,8 @@ internal sealed partial class GameSessionRegistry
 
         public Dictionary<int, ActiveRuntimeStatus> RuntimeStatuses { get; } = [];
 
+        public ActiveRuntimeStatus[] SkillCastControlStatuses = [];
+
         public ExperienceBoostState ExperienceBoosts { get; set; } = ExperienceBoostState.Empty;
 
         public string? LastFingerprint { get; set; }

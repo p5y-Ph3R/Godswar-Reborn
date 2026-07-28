@@ -16,7 +16,9 @@ internal readonly record struct SkillCombatDefinition(
     int Property,
     int Mp,
     decimal Power1,
-    decimal Power2);
+    decimal Power2,
+    TimeSpan CastTime = default,
+    TimeSpan Cooldown = default);
 
 internal static class SkillCombatCatalog
 {
@@ -32,7 +34,9 @@ internal static class SkillCombatCatalog
                 skill.Property,
                 skill.Mp,
                 skill.Power1,
-                skill.Power2));
+                skill.Power2,
+                TimeSpan.FromSeconds((double)skill.IntonateTime),
+                TimeSpan.FromSeconds((double)skill.CoolingTime)));
 
     public static int Count => Definitions.Count;
 

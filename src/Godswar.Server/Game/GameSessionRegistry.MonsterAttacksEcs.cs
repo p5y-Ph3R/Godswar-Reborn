@@ -43,6 +43,7 @@ internal sealed partial class GameSessionRegistry
         }
         PlayerMonsterDamageEcsDecision decision = default;
         uint damage = 0;
+        var deathInterruptionTask = Task.CompletedTask;
         lock (_gate)
         {
             targetContext = map.Snapshot().FirstOrDefault(context =>
@@ -83,10 +84,22 @@ internal sealed partial class GameSessionRegistry
                                 targetContext.ObjectId,
                             attack.TargetLifeRevision ??
                                 currentLifeRevision,
-                            attack.TargetVitalsRevision ??
-                                targetContext.Character
-                                    .VitalsRevision,
-                            damage));
+                             attack.TargetVitalsRevision ??
+                                 targetContext.Character
+                                     .VitalsRevision,
+                             damage),
+                        beforeLethalCommit: () =>
+                        {
+                            // The ECS decision is accepted and lethal, but
+                            // vitals have not been committed yet. Claim the
+                            // cast interruption synchronously at that
+                            // authoritative boundary.
+                            deathInterruptionTask =
+                                RequestSkillCastInterruptionAsync(
+                                    targetContext.Session,
+                                    SkillCastInterruptionReason.Death,
+                                    cancellationToken);
+                        });
                 }
             }
         }
@@ -118,6 +131,11 @@ internal sealed partial class GameSessionRegistry
         }
 
         var killed = decision.Killed;
+        if (killed)
+        {
+            await deathInterruptionTask;
+        }
+
         var monster = attack.Monster;
         var target = targetContext.Character;
         var worldTargetObjectId =

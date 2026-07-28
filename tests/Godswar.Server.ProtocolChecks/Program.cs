@@ -60,6 +60,8 @@ internal static partial class Program
             ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),
             ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
             ("Skill combat catalog", CheckSkillCombatCatalogAsync),
+            ("Skill combat cast and cooldown timing", SkillCombatTimingCatalogChecks.RunAsync),
+            ("Ordinary intoned combat skill lifecycle", IntonedCombatSkillHandlerChecks.RunAsync),
             ("Native mount Ride status and spawn protocol", CheckMountRideProtocolAsync),
             ("Mount and mount-gear Q20/G25 stat progression", MountEquipmentProgressionChecks.RunAsync),
             ("Immediate mount Ride dismount toggle", CheckImmediateMountRideDismountAsync),
@@ -67,6 +69,14 @@ internal static partial class Program
             ("Sacred Zeal runtime-status composition", CheckSacredZealStatusCompositionAsync),
             ("Holy Ward runtime-status mitigation", CheckHolyWardStatusCompositionAsync),
             ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
+            ("Native skill-cast interruption packet", SkillCastInterruptPacketChecks.RunAsync),
+            (
+                "Skill cast lifecycle cancellation races",
+                BackhaulSkillHandlerChecks.RunCastingLifecycleRacesAsync),
+            (
+                "Skill cast authoritative interruption boundaries",
+                BackhaulSkillHandlerChecks
+                    .RunAuthoritativeInterruptionBoundariesAsync),
             ("Basic and monster attack packet layouts", CheckAttackPacketLayoutsAsync),
             ("Dynamic original-server time response", CheckServerTimePacketAsync),
             ("Zodiac full-sync and accumulation protocol", CheckZodiacProtocolAsync),

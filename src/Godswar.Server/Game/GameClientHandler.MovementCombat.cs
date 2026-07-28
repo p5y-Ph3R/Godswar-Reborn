@@ -36,6 +36,10 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        await InterruptPendingSkillCastAsync(
+            SkillCastInterruptionReason.Movement,
+            cancellationToken);
+
         if (await TryBeginMapTransitionAsync(
                 movement,
                 cancellationToken))

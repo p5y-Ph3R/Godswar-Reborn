@@ -125,48 +125,92 @@ internal sealed partial class GameSessionRegistry
         }
 
         ActiveRuntimeStatus? appliedStatus = null;
-        await state.Gate.WaitAsync(cancellationToken);
+        var applied = false;
+        var interruptionTask = Task.CompletedTask;
+        TaskCompletionSource? interruptionNotificationBarrier = null;
         try
         {
-            if (state.RuntimeStatuses.TryGetValue(definition.Kind, out var existing) &&
-                existing.ExpiresAt > now &&
-                existing.Priority > definition.Priority)
+            await state.Gate.WaitAsync(cancellationToken);
+            try
             {
-                return false;
-            }
+                if (state.RuntimeStatuses.TryGetValue(
+                        definition.Kind,
+                        out var existing) &&
+                    existing.ExpiresAt > now &&
+                    existing.Priority > definition.Priority)
+                {
+                    return false;
+                }
 
-            appliedStatus = new ActiveRuntimeStatus(
-                definition.StatusId,
-                definition.Kind,
-                definition.Priority,
-                definition.Beneficial,
-                now + definition.Duration,
-                new ClientStatusAggregate(
-                    definition.HitBonus,
-                    definition.CriticalAppendBonus,
-                    0f),
-                checked(++state.Revision),
-                definition.PhysicalDamageReduction,
-                definition.MagicDamageReduction);
-            state.RuntimeStatuses[definition.Kind] = appliedStatus;
-            await PublishStatusSnapshotLockedAsync(
-                session,
-                state,
-                now,
-                reason,
-                force: true,
-                broadcast: true,
-                cancellationToken);
-            return true;
+                var interruptionReason =
+                    PlayerSkillCastControlCatalog
+                        .ResolveAppliedInterruption(
+                            definition.StatusId);
+                if (interruptionReason is not null)
+                {
+                    interruptionNotificationBarrier =
+                        new TaskCompletionSource(
+                            TaskCreationOptions
+                                .RunContinuationsAsynchronously);
+                    // The handler claims the pending generation
+                    // synchronously before its first await. Claim before
+                    // mutating the status so completion and interruption
+                    // have one authoritative order even at the deadline.
+                    interruptionTask =
+                        RequestSkillCastInterruptionAsync(
+                            session,
+                            interruptionReason.Value,
+                            cancellationToken,
+                            interruptionNotificationBarrier.Task);
+                }
+
+                appliedStatus = new ActiveRuntimeStatus(
+                    definition.StatusId,
+                    definition.Kind,
+                    definition.Priority,
+                    definition.Beneficial,
+                    now + definition.Duration,
+                    new ClientStatusAggregate(
+                        definition.HitBonus,
+                        definition.CriticalAppendBonus,
+                        0f),
+                    checked(++state.Revision),
+                    definition.PhysicalDamageReduction,
+                    definition.MagicDamageReduction);
+                state.RuntimeStatuses[definition.Kind] = appliedStatus;
+                RefreshSkillCastControlSnapshot(state);
+                await PublishStatusSnapshotLockedAsync(
+                    session,
+                    state,
+                    now,
+                    reason,
+                    force: true,
+                    broadcast: true,
+                    cancellationToken);
+                applied = true;
+            }
+            finally
+            {
+                state.Gate.Release();
+                if (appliedStatus is not null)
+                {
+                    ScheduleRuntimeStatusExpiry(
+                        session,
+                        state,
+                        appliedStatus);
+                }
+            }
         }
         finally
         {
-            state.Gate.Release();
-            if (appliedStatus is not null)
-            {
-                ScheduleRuntimeStatusExpiry(session, state, appliedStatus);
-            }
+            // Preserve status-before-interruption packet ordering while
+            // claiming the pending generation before status mutation.
+            // Always release the notice if status publication fails.
+            interruptionNotificationBarrier?.TrySetResult();
+            await interruptionTask;
         }
+
+        return applied;
     }
 
     public bool IsRuntimeStatusActive(
@@ -268,6 +312,7 @@ internal sealed partial class GameSessionRegistry
                 return false;
             }
 
+            RefreshSkillCastControlSnapshot(state);
             await PublishStatusSnapshotLockedAsync(
                 session,
                 state,

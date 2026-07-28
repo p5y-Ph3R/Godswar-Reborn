@@ -13,7 +13,8 @@ internal sealed partial class GameSessionRegistry
         long expectedLifeRevision,
         MountRideDefinition mount,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool castCompletionClaimed = false)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!TryGetOrCreatePlayerStatusState(session, out var state))
@@ -35,7 +36,8 @@ internal sealed partial class GameSessionRegistry
                     !context.WorldReady ||
                     context.CharacterId != expectedCharacterId ||
                     !_playerLifeRevisions.TryGetValue(session, out var lifeRevision) ||
-                    lifeRevision != expectedLifeRevision)
+                    (!castCompletionClaimed &&
+                     lifeRevision != expectedLifeRevision))
                 {
                     return null;
                 }
@@ -44,7 +46,8 @@ internal sealed partial class GameSessionRegistry
                 accountId = context.AccountId;
                 lock (character.VitalsSync)
                 {
-                    if (character.CurrentHp <= 0 ||
+                    if ((!castCompletionClaimed &&
+                         character.CurrentHp <= 0) ||
                         character.Level < mount.MountLevel ||
                         !MountCatalog.TryGetEquippedRideDefinition(character, out var currentMount) ||
                         currentMount != mount ||
@@ -73,6 +76,7 @@ internal sealed partial class GameSessionRegistry
                     vitalsRevision = character.VitalsRevision;
                     state.Revision = statusRevision;
                     state.RuntimeStatuses[MountCatalog.RuntimeStatusKind] = status;
+                    RefreshSkillCastControlSnapshot(state);
                 }
             }
 
@@ -94,6 +98,7 @@ internal sealed partial class GameSessionRegistry
                 catch
                 {
                     state.RuntimeStatuses.Remove(MountCatalog.RuntimeStatusKind);
+                    RefreshSkillCastControlSnapshot(state);
                     int rollbackHp;
                     int rollbackMana;
                     long rollbackRevision;
@@ -130,6 +135,7 @@ internal sealed partial class GameSessionRegistry
                 }
             }
 
+            RefreshSkillCastControlSnapshot(state);
             await PublishStatusSnapshotLockedAsync(
                 session,
                 state,
@@ -175,6 +181,7 @@ internal sealed partial class GameSessionRegistry
                 }
             }
 
+            RefreshSkillCastControlSnapshot(state);
             await PublishStatusSnapshotLockedAsync(
                 session,
                 state,

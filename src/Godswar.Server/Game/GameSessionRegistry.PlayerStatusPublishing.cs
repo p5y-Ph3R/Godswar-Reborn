@@ -90,6 +90,7 @@ internal sealed partial class GameSessionRegistry
             {
                 state.RuntimeStatuses.Remove(expiredKind);
             }
+            RefreshSkillCastControlSnapshot(state);
 
             snapshot = PlayerStatusComposer.Compose(
                 state.ExperienceBoosts,
@@ -203,6 +204,7 @@ internal sealed partial class GameSessionRegistry
                 }
 
                 state.RuntimeStatuses.Remove(expected.Kind);
+                RefreshSkillCastControlSnapshot(state);
                 await PublishStatusSnapshotLockedAsync(
                     session,
                     state,

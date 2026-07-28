@@ -10,7 +10,11 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private async Task HandleSkillCastAsync(GamePacket packet, CancellationToken cancellationToken)
+    private async Task HandleSkillCastAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken,
+        bool intonationCompleted = false,
+        uint? expectedTargetSpawnGeneration = null)
     {
         if (_character is null)
         {
@@ -18,7 +22,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (_character.CurrentHp <= 0)
+        if (!intonationCompleted &&
+            _character.CurrentHp <= 0)
         {
             Console.WriteLine($"[skill] ignored cast from dead character={_character.Name}");
             return;
@@ -28,6 +33,36 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine($"[skill] ignored cast payload too short len={packet.Length} hex={packet.ToHexPreview()}");
             return;
+        }
+
+        var control = _registry.GetPlayerSkillCastControl(
+            _session,
+            DateTimeOffset.UtcNow);
+        // The coordinator validates control statuses before atomically
+        // claiming completion. A status applied after that claim belongs to
+        // the next action and must not discard this already-completed cast.
+        if (!intonationCompleted &&
+            control != PlayerSkillCastControl.None)
+        {
+            var hadPendingCast = HasPendingSkillCast;
+            await InterruptPendingSkillCastAsync(
+                PlayerSkillCastControlCatalog.ToInterruptionReason(
+                    control),
+                cancellationToken);
+            if (!hadPendingCast)
+            {
+                await SendBlockedSkillCastNoticeAsync(
+                    control,
+                    cancellationToken);
+            }
+            return;
+        }
+
+        if (!intonationCompleted && HasPendingSkillCast)
+        {
+            await InterruptPendingSkillCastAsync(
+                SkillCastInterruptionReason.Replaced,
+                cancellationToken);
         }
 
         var castX = float.IsFinite(cast.CasterX) ? cast.CasterX : _character.PositionX;
@@ -81,12 +116,24 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!intonationCompleted &&
+            combat.CastTime > TimeSpan.Zero)
+        {
+            await BeginIntonedCombatSkillCastAsync(
+                packet,
+                cast,
+                combat,
+                cancellationToken);
+            return;
+        }
+
         if (SkillCombatResolver.IsHostileMonsterAreaSkill(combat))
         {
             await HandleHostileMonsterAreaSkillCastAsync(
                 packet,
                 cast,
                 combat,
+                publishCastVisual: !intonationCompleted,
                 cancellationToken);
             return;
         }
@@ -103,6 +150,8 @@ internal sealed partial class GameClientHandler
                 packet,
                 cast,
                 combat,
+                publishCastVisual: !intonationCompleted,
+                expectedTargetSpawnGeneration,
                 cancellationToken);
             return;
         }
@@ -111,6 +160,8 @@ internal sealed partial class GameClientHandler
                 _character.CurrentMap,
                 cast.TargetObjectId,
                 out var target) ||
+            expectedTargetSpawnGeneration is { } expectedGeneration &&
+            target.SpawnGeneration != expectedGeneration ||
             !_registry.IsMonsterVisibleTo(
                 _session,
                 cast.TargetObjectId,
@@ -143,7 +194,8 @@ internal sealed partial class GameClientHandler
                 cast,
                 combat,
                 stun,
-                target.SpawnGeneration,
+                expectedTargetSpawnGeneration ??
+                    target.SpawnGeneration,
                 cancellationToken);
             return;
         }
@@ -184,7 +236,8 @@ internal sealed partial class GameClientHandler
                 cast.TargetObjectId,
                 requestedDamage,
                 _character.Id,
-                target.SpawnGeneration,
+                expectedTargetSpawnGeneration ??
+                    target.SpawnGeneration,
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
@@ -238,7 +291,10 @@ internal sealed partial class GameClientHandler
         var reportedDamage = requestedDamage;
         var targetX = damageResult.Monster.X;
         var targetZ = damageResult.Monster.Z;
-        var selfVisual = PacketBuilder.SkillCastVisual(packet.Buffer, LocalPlayerObjectId);
+        var publishCastVisual = !intonationCompleted;
+        var selfVisual = PacketBuilder.SkillCastVisual(
+            packet.Buffer,
+            LocalPlayerObjectId);
         var selfDamage = PacketBuilder.SkillDamage(
             attackerObjectId: LocalPlayerObjectId,
             targetObjectId: cast.TargetObjectId,
@@ -257,14 +313,17 @@ internal sealed partial class GameClientHandler
         var casterNotified = true;
         try
         {
-            await _registry.DeliverMonsterPacketToViewerAsync(
-                _session,
-                _character.CurrentMap,
-                cast.TargetObjectId,
-                selfVisual,
-                damageResult.Monster.SpawnGeneration,
-                cancellationToken,
-                "SkillCastSelf");
+            if (publishCastVisual)
+            {
+                await _registry.DeliverMonsterPacketToViewerAsync(
+                    _session,
+                    _character.CurrentMap,
+                    cast.TargetObjectId,
+                    selfVisual,
+                    damageResult.Monster.SpawnGeneration,
+                    cancellationToken,
+                    "SkillCastSelf");
+            }
             await _registry.DeliverMonsterHealthPacketToViewerAsync(
                 _session,
                 _character.CurrentMap,
@@ -304,14 +363,19 @@ internal sealed partial class GameClientHandler
         }
 
         var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
-        var visualRecipients = await _registry.BroadcastToMonsterViewersAsync(
-            _character.CurrentMap,
-            cast.TargetObjectId,
-            PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId),
-            cancellationToken,
-            _session,
-            "SkillCastWorld",
-            expectedSpawnGeneration: damageResult.Monster.SpawnGeneration);
+        var visualRecipients = publishCastVisual
+            ? await _registry.BroadcastToMonsterViewersAsync(
+                _character.CurrentMap,
+                cast.TargetObjectId,
+                PacketBuilder.SkillCastVisual(
+                    packet.Buffer,
+                    worldObjectId),
+                cancellationToken,
+                _session,
+                "SkillCastWorld",
+                expectedSpawnGeneration:
+                    damageResult.Monster.SpawnGeneration)
+            : 0;
         var damageRecipients = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
             cast.TargetObjectId,

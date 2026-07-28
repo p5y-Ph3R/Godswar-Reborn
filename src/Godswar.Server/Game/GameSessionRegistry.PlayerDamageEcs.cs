@@ -10,7 +10,8 @@ internal sealed partial class GameSessionRegistry
             ClientSession session,
             GameCharacter character,
             uint playerObjectId,
-            in PlayerMonsterDamageEcsRequest request)
+            in PlayerMonsterDamageEcsRequest request,
+            Action? beforeLethalCommit = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(character);
@@ -40,7 +41,8 @@ internal sealed partial class GameSessionRegistry
                     character,
                     playerObjectId,
                     lifeRevision,
-                    request);
+                    request,
+                    beforeLethalCommit);
             if (decision.Applied &&
                 decision.Killed)
             {

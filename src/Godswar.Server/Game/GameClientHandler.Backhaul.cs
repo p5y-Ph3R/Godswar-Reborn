@@ -8,11 +8,8 @@ internal sealed partial class GameClientHandler
 {
     private const float BackhaulMovementTolerance = 0.05f;
 
-    private readonly CancellationTokenSource _backhaulCastLifetime = new();
     private readonly Dictionary<uint, DateTimeOffset> _nextBackhaulCastAt = [];
     private readonly TimeSpan? _backhaulSkillCastTime;
-    private Task? _backhaulCastCompletionTask;
-    private int _backhaulCastPending;
 
     private async Task HandleBackhaulSkillCastAsync(
         GamePacket packet,
@@ -46,7 +43,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (Volatile.Read(ref _backhaulCastPending) != 0)
+        if (HasPendingSkillCast)
         {
             Console.WriteLine(
                 $"[backhaul] rejected while another return cast is pending " +
@@ -88,16 +85,6 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (Interlocked.CompareExchange(
-                ref _backhaulCastPending,
-                1,
-                0) != 0)
-        {
-            return;
-        }
-
-        _nextBackhaulCastAt[definition.SkillId] =
-            now + definition.Cooldown;
         _registry.UpdateCharacter(
             _session,
             character,
@@ -112,214 +99,180 @@ internal sealed partial class GameClientHandler
         var expectedLifeRevision =
             _registry.GetPlayerLifeRevision(_session);
 
-        int visualRecipients;
-        try
-        {
-            await _session.SendAsync(
-                PacketBuilder.SelfTargetSkillCastVisual(
-                    packet.Buffer,
-                    LocalPlayerObjectId),
-                cancellationToken,
-                "BackhaulSkillCastSelf");
-            visualRecipients = await _registry.BroadcastToMapAsync(
+        var visualRecipients = 0;
+        var started = await TryBeginPendingSkillCastAsync(
+            definition.SkillId,
+            _backhaulSkillCastTime ?? definition.CastTime,
+            "backhaul",
+            async token =>
+            {
+                await _session.SendAsync(
+                    PacketBuilder.SelfTargetSkillCastVisual(
+                        packet.Buffer,
+                        LocalPlayerObjectId),
+                    token,
+                    "BackhaulSkillCastSelf");
+                visualRecipients =
+                    await _registry.BroadcastToMapAsync(
+                        sourceMapId,
+                        PacketBuilder.SelfTargetSkillCastVisual(
+                            packet.Buffer,
+                            worldObjectId),
+                        token,
+                        _session,
+                        "BackhaulSkillCastWorld");
+            },
+            token => CompleteBackhaulCastAsync(
+                definition,
+                characterName,
                 sourceMapId,
-                PacketBuilder.SelfTargetSkillCastVisual(
-                    packet.Buffer,
-                    worldObjectId),
-                cancellationToken,
-                _session,
-                "BackhaulSkillCastWorld");
-        }
-        catch
+                sourceX,
+                sourceZ,
+                worldObjectId,
+                visualRecipients,
+                token),
+            cancellationToken,
+            () => IsBackhaulCastStillValid(
+                _character,
+                characterId,
+                sourceMapId,
+                sourceX,
+                sourceZ,
+                expectedLifeRevision));
+        if (!started)
         {
-            _nextBackhaulCastAt.Remove(definition.SkillId);
-            Interlocked.Exchange(ref _backhaulCastPending, 0);
-            throw;
+            Console.WriteLine(
+                $"[backhaul] rejected while another intonation is " +
+                $"pending character={character.Name} " +
+                $"skill={definition.SkillId}");
         }
-
-        _backhaulCastCompletionTask = CompleteBackhaulCastAsync(
-            definition,
-            characterId,
-            characterName,
-            sourceMapId,
-            sourceX,
-            sourceZ,
-            expectedLifeRevision,
-            worldObjectId,
-            visualRecipients);
     }
 
     private async Task CompleteBackhaulCastAsync(
         BackhaulSkillDefinition definition,
-        int characterId,
         string characterName,
         byte sourceMapId,
         float sourceX,
         float sourceZ,
-        long expectedLifeRevision,
         uint worldObjectId,
-        int visualRecipients)
+        int visualRecipients,
+        CancellationToken cancellationToken)
     {
-        var cancellationToken = _backhaulCastLifetime.Token;
-        try
+        // The shared coordinator already revalidated identity, life, map,
+        // movement, and control state before atomically claiming completion.
+        // A death or status applied after that claim belongs to the next
+        // action and must not silently discard this completed return cast.
+        var character = _character!;
+
+        int currentMana;
+        var manaReserved = false;
+        lock (character.VitalsSync)
         {
-            await Task.Delay(
-                _backhaulSkillCastTime ?? definition.CastTime,
+            if (character.CurrentMp >= definition.ManaCost)
+            {
+                character.CurrentMp -= definition.ManaCost;
+                currentMana = character.CurrentMp;
+                if (definition.ManaCost > 0)
+                {
+                    character.MarkVitalsChanged();
+                }
+                manaReserved = true;
+            }
+            else
+            {
+                currentMana = character.CurrentMp;
+            }
+        }
+
+        if (!manaReserved)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(
+                    LocalPlayerObjectId,
+                    currentMana),
+                cancellationToken,
+                "BackhaulManaCompletionRejected");
+            Console.WriteLine(
+                $"[backhaul] rejected at completion " +
+                $"character={characterName} " +
+                $"skill={definition.SkillId} mp={currentMana} " +
+                $"cost={definition.ManaCost}");
+            return;
+        }
+
+        _registry.UpdateCharacter(
+            _session,
+            character,
+            advanceWorldRevision: false);
+        await _session.SendAsync(
+            PacketBuilder.SkillCastImpact(
+                LocalPlayerObjectId,
+                LocalPlayerObjectId,
+                definition.SkillId,
+                sourceX,
+                sourceZ),
+            cancellationToken,
+            "BackhaulSkillImpactSelf");
+        var impactRecipients =
+            await _registry.BroadcastToMapAsync(
+                sourceMapId,
+                PacketBuilder.SkillCastImpact(
+                    worldObjectId,
+                    worldObjectId,
+                    definition.SkillId,
+                    sourceX,
+                    sourceZ),
+                cancellationToken,
+                _session,
+                "BackhaulSkillImpactWorld");
+        await _session.SendAsync(
+            PacketBuilder.PlayerManaUpdate(
+                LocalPlayerObjectId,
+                currentMana),
+            cancellationToken,
+            "BackhaulManaSelf");
+        await _registry.BroadcastToMapAsync(
+            sourceMapId,
+            PacketBuilder.PlayerManaUpdate(
+                worldObjectId,
+                currentMana),
+            cancellationToken,
+            _session,
+            "BackhaulManaWorld");
+        await PersistBackhaulVitalsAsync(
+            character,
+            cancellationToken);
+
+        var transitioned = await TryBeginMapTransitionAsync(
+            definition.TargetMapId,
+            definition.TargetX,
+            definition.TargetZ,
+            $"backhaul:{definition.ScriptId}",
+            cancellationToken);
+        if (!transitioned)
+        {
+            await RefundBackhaulManaAsync(
+                character,
+                definition.ManaCost,
+                sourceMapId,
+                worldObjectId,
                 cancellationToken);
-            await _characterStateGate.WaitAsync(cancellationToken);
-            try
-            {
-                var character = _character;
-                if (!IsBackhaulCastStillValid(
-                        character,
-                        characterId,
-                        sourceMapId,
-                        sourceX,
-                        sourceZ,
-                        expectedLifeRevision))
-                {
-                    await SendCurrentBackhaulManaAsync(
-                        character,
-                        cancellationToken,
-                        "BackhaulManaInterrupted");
-                    Console.WriteLine(
-                        $"[backhaul] interrupted by character, life, map, " +
-                        $"or movement state character={characterName} " +
-                        $"skill={definition.SkillId}");
-                    return;
-                }
-
-                int currentMana;
-                var manaReserved = false;
-                lock (character!.VitalsSync)
-                {
-                    if (character.CurrentHp > 0 &&
-                        character.CurrentMp >= definition.ManaCost)
-                    {
-                        character.CurrentMp -= definition.ManaCost;
-                        currentMana = character.CurrentMp;
-                        if (definition.ManaCost > 0)
-                        {
-                            character.MarkVitalsChanged();
-                        }
-                        manaReserved = true;
-                    }
-                    else
-                    {
-                        currentMana = character.CurrentMp;
-                    }
-                }
-
-                if (!manaReserved)
-                {
-                    await _session.SendAsync(
-                        PacketBuilder.PlayerManaUpdate(
-                            LocalPlayerObjectId,
-                            currentMana),
-                        cancellationToken,
-                        "BackhaulManaCompletionRejected");
-                    Console.WriteLine(
-                        $"[backhaul] rejected at completion " +
-                        $"character={characterName} " +
-                        $"skill={definition.SkillId} mp={currentMana} " +
-                        $"cost={definition.ManaCost}");
-                    return;
-                }
-
-                _registry.UpdateCharacter(
-                    _session,
-                    character,
-                    advanceWorldRevision: false);
-                await _session.SendAsync(
-                    PacketBuilder.SkillCastImpact(
-                        LocalPlayerObjectId,
-                        LocalPlayerObjectId,
-                        definition.SkillId,
-                        sourceX,
-                        sourceZ),
-                    cancellationToken,
-                    "BackhaulSkillImpactSelf");
-                var impactRecipients =
-                    await _registry.BroadcastToMapAsync(
-                        sourceMapId,
-                        PacketBuilder.SkillCastImpact(
-                            worldObjectId,
-                            worldObjectId,
-                            definition.SkillId,
-                            sourceX,
-                            sourceZ),
-                        cancellationToken,
-                        _session,
-                        "BackhaulSkillImpactWorld");
-                await _session.SendAsync(
-                    PacketBuilder.PlayerManaUpdate(
-                        LocalPlayerObjectId,
-                        currentMana),
-                    cancellationToken,
-                    "BackhaulManaSelf");
-                await _registry.BroadcastToMapAsync(
-                    sourceMapId,
-                    PacketBuilder.PlayerManaUpdate(
-                        worldObjectId,
-                        currentMana),
-                    cancellationToken,
-                    _session,
-                    "BackhaulManaWorld");
-                await PersistBackhaulVitalsAsync(
-                    character,
-                    cancellationToken);
-
-                var transitioned = await TryBeginMapTransitionAsync(
-                    definition.TargetMapId,
-                    definition.TargetX,
-                    definition.TargetZ,
-                    $"backhaul:{definition.ScriptId}",
-                    cancellationToken);
-                if (!transitioned)
-                {
-                    await RefundBackhaulManaAsync(
-                        character,
-                        definition.ManaCost,
-                        sourceMapId,
-                        worldObjectId,
-                        cancellationToken);
-                    Console.WriteLine(
-                        $"[backhaul] authoritative transition rejected " +
-                        $"character={characterName} " +
-                        $"skill={definition.SkillId}");
-                    return;
-                }
-
-                Console.WriteLine(
-                    $"[backhaul] transition started character={characterName} " +
-                    $"skill={definition.SkillId} " +
-                    $"map={sourceMapId}->{definition.TargetMapId} " +
-                    $"arrival={definition.TargetX:F2},{definition.TargetZ:F2} " +
-                    $"mp={currentMana}/{character.MaxMp} " +
-                    $"viewers={Math.Max(visualRecipients, impactRecipients)}");
-            }
-            finally
-            {
-                _characterStateGate.Release();
-            }
-        }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
             Console.WriteLine(
-                $"[backhaul] cast cancelled character={characterName} " +
+                $"[backhaul] authoritative transition rejected " +
+                $"character={characterName} " +
                 $"skill={definition.SkillId}");
+            return;
         }
-        catch (Exception error)
-        {
-            Console.WriteLine(
-                $"[backhaul] cast failed character={characterName} " +
-                $"skill={definition.SkillId}: {error.Message}");
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _backhaulCastPending, 0);
-        }
+
+        _nextBackhaulCastAt[definition.SkillId] =
+            DateTimeOffset.UtcNow + definition.Cooldown;
+        Console.WriteLine(
+            $"[backhaul] transition started character={characterName} " +
+            $"skill={definition.SkillId} " +
+            $"map={sourceMapId}->{definition.TargetMapId} " +
+            $"arrival={definition.TargetX:F2},{definition.TargetZ:F2} " +
+            $"mp={currentMana}/{character.MaxMp} " +
+            $"viewers={Math.Max(visualRecipients, impactRecipients)}");
     }
 
     private bool IsBackhaulCastStillValid(
@@ -354,28 +307,6 @@ internal sealed partial class GameClientHandler
 
         return ReferenceEquals(context.Session, _session) &&
                ReferenceEquals(context.Character, character);
-    }
-
-    private async Task SendCurrentBackhaulManaAsync(
-        GameCharacter? character,
-        CancellationToken cancellationToken,
-        string label)
-    {
-        var currentMana = 0;
-        if (character is not null)
-        {
-            lock (character.VitalsSync)
-            {
-                currentMana = character.CurrentMp;
-            }
-        }
-
-        await _session.SendAsync(
-            PacketBuilder.PlayerManaUpdate(
-                LocalPlayerObjectId,
-                currentMana),
-            cancellationToken,
-            label);
     }
 
     private async Task RefundBackhaulManaAsync(

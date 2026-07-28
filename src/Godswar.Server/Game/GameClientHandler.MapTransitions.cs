@@ -80,6 +80,10 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        await InterruptPendingSkillCastAsync(
+            SkillCastInterruptionReason.MapTransition,
+            cancellationToken);
+
         var sourceMapId = _character.CurrentMap;
         var sourceX = _character.PositionX;
         var sourceZ = _character.PositionZ;

@@ -19,6 +19,9 @@ internal sealed partial class GameClientHandler
         var previousX = _character.PositionX;
         var previousZ = _character.PositionZ;
         var previousMapId = _character.CurrentMap;
+        await InterruptPendingSkillCastAsync(
+            SkillCastInterruptionReason.Movement,
+            cancellationToken);
         if ((decision.Source &
                 AuthoritativePlayerMovementSource.Udp) != 0)
         {

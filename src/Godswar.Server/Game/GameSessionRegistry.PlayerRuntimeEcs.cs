@@ -133,6 +133,7 @@ internal sealed partial class GameSessionRegistry
         {
             state.RuntimeStatuses.Add(status.Kind, status);
         }
+        RefreshSkillCastControlSnapshot(state);
 
         return decision;
     }

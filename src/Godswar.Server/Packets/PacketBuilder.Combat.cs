@@ -82,6 +82,17 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] SkillCastInterrupt(uint playerObjectId)
+    {
+        var packet = new byte[8];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, 2),
+            Opcodes.SkillCastInterrupt);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), playerObjectId);
+        return packet;
+    }
+
     public static byte[] SkillDamage(
         uint attackerObjectId,
         uint targetObjectId,

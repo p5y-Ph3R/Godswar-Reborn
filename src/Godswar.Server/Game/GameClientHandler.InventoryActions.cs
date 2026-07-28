@@ -345,7 +345,7 @@ internal sealed partial class GameClientHandler
         }
 
         if (equipmentSlot == EquipmentSlots.Mount &&
-            (Volatile.Read(ref _rideCastPending) != 0 ||
+            (IsSkillCastPending(MountCatalog.RideSkillId) ||
              _registry.IsRuntimeStatusActive(
                  _session,
                  MountCatalog.RuntimeStatusKind,

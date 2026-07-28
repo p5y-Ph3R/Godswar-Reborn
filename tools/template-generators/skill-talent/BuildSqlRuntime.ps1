@@ -237,9 +237,64 @@ for ($i = 0; $i -lt $skillBooks.Count; $i++) {
 [void]$sql.AppendLine(" AND cb.profession = ANY(st.class_ids)")
 [void]$sql.AppendLine("ON CONFLICT (user_id, skill_id) DO NOTHING;")
 
-[System.IO.File]::WriteAllText($CSharpOutputPath, $csharp.ToString(), [System.Text.Encoding]::UTF8)
-[System.IO.File]::WriteAllText($SqlOutputPath, $sql.ToString(), [System.Text.Encoding]::UTF8)
+$generatedCSharpPaths =
+    [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($generatedFile in $csharpGeneratedFiles.GetEnumerator()) {
+    [System.IO.File]::WriteAllText(
+        $generatedFile.Key,
+        $generatedFile.Value,
+        [System.Text.Encoding]::UTF8)
+    [void]$generatedCSharpPaths.Add(
+        [System.IO.Path]::GetFullPath($generatedFile.Key))
+}
+
+[System.IO.File]::WriteAllText(
+    $SqlOutputPath,
+    $sql.ToString(),
+    [System.Text.Encoding]::UTF8)
+
+$removedStaleCSharpChunks = 0
+foreach (
+    $candidate in
+        [System.IO.Directory]::EnumerateFiles(
+            $csharpChunkOutputDirectory,
+            "*.cs",
+            [System.IO.SearchOption]::TopDirectoryOnly)
+) {
+    $candidatePath = [System.IO.Path]::GetFullPath($candidate)
+    if ($generatedCSharpPaths.Contains($candidatePath)) {
+        continue
+    }
+
+    $candidateName = [System.IO.Path]::GetFileName($candidatePath)
+    if (-not [System.Text.RegularExpressions.Regex]::IsMatch(
+        $candidateName,
+        $csharpChunkFileNamePattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )) {
+        continue
+    }
+
+    $reader = $null
+    try {
+        $reader = [System.IO.File]::OpenText($candidatePath)
+        $firstLine = $reader.ReadLine()
+    } finally {
+        if ($null -ne $reader) {
+            $reader.Dispose()
+        }
+    }
+
+    if ($firstLine -ne $csharpChunkOwnershipMarker) {
+        continue
+    }
+
+    [System.IO.File]::Delete($candidatePath)
+    $removedStaleCSharpChunks++
+}
 
 Write-Host "Generated $($classes.Count) classes, $($talentEffects.Count) talent effects, $($talents.Count) talents, $($skills.Count) skills, and $($skillBooks.Count) skill books."
-Write-Host "C#:  $CSharpOutputPath"
+Write-Host "C#:  $CSharpOutputPath + $($csharpGeneratedFiles.Count - 1) chunks"
+Write-Host "Removed stale owned C# chunks: $removedStaleCSharpChunks"
 Write-Host "SQL: $SqlOutputPath"

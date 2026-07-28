@@ -12,6 +12,8 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         SkillCastRequest cast,
         SkillCombatDefinition combat,
+        bool publishCastVisual,
+        uint? expectedTargetSpawnGeneration,
         CancellationToken cancellationToken)
     {
         var character = _character;
@@ -30,7 +32,8 @@ internal sealed partial class GameClientHandler
                 PlayerCombatIntentKind.SingleTargetSkill,
                 DateTimeOffset.UtcNow,
                 cast.TargetObjectId,
-                combat));
+                combat,
+                expectedTargetSpawnGeneration));
 
         if (!decision.IntentAccepted)
         {
@@ -98,14 +101,17 @@ internal sealed partial class GameClientHandler
         var casterNotified = true;
         try
         {
-            await _registry.DeliverMonsterPacketToViewerAsync(
-                _session,
-                character.CurrentMap,
-                cast.TargetObjectId,
-                selfVisual,
-                damageResult.Monster.SpawnGeneration,
-                cancellationToken,
-                "SkillCastSelf");
+            if (publishCastVisual)
+            {
+                await _registry.DeliverMonsterPacketToViewerAsync(
+                    _session,
+                    character.CurrentMap,
+                    cast.TargetObjectId,
+                    selfVisual,
+                    damageResult.Monster.SpawnGeneration,
+                    cancellationToken,
+                    "SkillCastSelf");
+            }
             await _registry.DeliverMonsterHealthPacketToViewerAsync(
                 _session,
                 character.CurrentMap,
@@ -147,8 +153,8 @@ internal sealed partial class GameClientHandler
         }
 
         var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
-        var visualRecipients =
-            await _registry.BroadcastToMonsterViewersAsync(
+        var visualRecipients = publishCastVisual
+            ? await _registry.BroadcastToMonsterViewersAsync(
                 character.CurrentMap,
                 cast.TargetObjectId,
                 PacketBuilder.SkillCastVisual(
@@ -158,7 +164,8 @@ internal sealed partial class GameClientHandler
                 _session,
                 "SkillCastWorld",
                 expectedSpawnGeneration:
-                    damageResult.Monster.SpawnGeneration);
+                    damageResult.Monster.SpawnGeneration)
+            : 0;
         var damageRecipients =
             await _registry.BroadcastToMonsterViewersAsync(
                 character.CurrentMap,

@@ -105,6 +105,9 @@ internal sealed partial class GameClientHandler : IClientHandler
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        _registry.RegisterSkillCastInterruptionSink(
+            _session,
+            InterruptPendingSkillCastAsync);
         try
         {
             StartNpcCatalogUpdates();
@@ -132,16 +135,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         {
             await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
-            _rideCastLifetime.Cancel();
-            _backhaulCastLifetime.Cancel();
-            if (_rideCastCompletionTask is { } rideCastCompletionTask)
-            {
-                await rideCastCompletionTask;
-            }
-            if (_backhaulCastCompletionTask is { } backhaulCompletionTask)
-            {
-                await backhaulCompletionTask;
-            }
+            _registry.UnregisterSkillCastInterruptionSink(_session);
+            await StopPendingSkillCastsAsync();
 
             ClearGearEnhancerSelection();
             try
@@ -207,8 +202,6 @@ internal sealed partial class GameClientHandler : IClientHandler
             }
 
             _characterStateGate.Dispose();
-            _rideCastLifetime.Dispose();
-            _backhaulCastLifetime.Dispose();
         }
     }
 
@@ -273,6 +266,12 @@ internal sealed partial class GameClientHandler : IClientHandler
                 {
                     break;
                 }
+                if (packet.Opcode == Opcodes.WalkBegin)
+                {
+                    await InterruptPendingSkillCastAsync(
+                        SkillCastInterruptionReason.Movement,
+                        cancellationToken);
+                }
                 if (packet.Opcode == Opcodes.Walk)
                 {
                     if (!await HandleWalkAsync(packet, cancellationToken))
@@ -290,10 +289,18 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.SkillCast:
                 await HandleSkillCastAsync(packet, cancellationToken);
                 break;
+            case Opcodes.SkillCastInterrupt:
+                await HandleSkillCastInterruptRequestAsync(
+                    packet,
+                    cancellationToken);
+                break;
             case Opcodes.PlayerStateAction:
                 await HandlePlayerStateActionAsync(packet, cancellationToken);
                 break;
             case Opcodes.BasicAttack:
+                await InterruptPendingSkillCastAsync(
+                    SkillCastInterruptionReason.Replaced,
+                    cancellationToken);
                 await HandleBasicAttackAsync(packet, cancellationToken);
                 break;
             case Opcodes.Revive:

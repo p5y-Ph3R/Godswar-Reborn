@@ -33,6 +33,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         await CheckWorldRehydrationPreservesTransportAsync();
         await CheckSecureRealtimeMapTransitionAsync();
         await CheckLegacyMovementRejectedAfterCutoverAsync();
+        await CheckAcceptedRealtimeMovementInterruptsCastAsync();
     }
 
     private static async Task

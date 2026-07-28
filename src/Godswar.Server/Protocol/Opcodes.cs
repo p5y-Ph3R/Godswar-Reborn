@@ -51,7 +51,11 @@ internal static class Opcodes
     public const ushort ItemInfoRequest = 10114;
     public const ushort ForgeCancel = 10117;
     public const ushort PlayerNameInspectRequest = 10125;
-    public const ushort SkillCastFinishRequest = 10171;
+    // Cast interruption is bidirectional in the native protocol. Both the
+    // client report and the authoritative server notification use the same
+    // eight-byte frame: length, opcode, and caster ID in the receiver's
+    // object namespace (0x1448 for self; authoritative world ID for viewers).
+    public const ushort SkillCastInterrupt = 10171;
     public const ushort PlayerInspectRequest = 10191;
     // The native Gear Mentor sends one of these whenever an item is inserted
     // into or removed from its three operation controls. The 12-byte payload
@@ -117,7 +121,7 @@ internal static class Opcodes
             ItemInfoRequest => nameof(ItemInfoRequest),
             ForgeCancel => nameof(ForgeCancel),
             PlayerNameInspectRequest => nameof(PlayerNameInspectRequest),
-            SkillCastFinishRequest => nameof(SkillCastFinishRequest),
+            SkillCastInterrupt => nameof(SkillCastInterrupt),
             PlayerInspectRequest => nameof(PlayerInspectRequest),
             GearEnhancerItemSelection => nameof(GearEnhancerItemSelection),
             PlayerDetailRequest => nameof(PlayerDetailRequest),

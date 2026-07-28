@@ -293,17 +293,20 @@ internal sealed partial class GameSessionRegistry
         IReadOnlyList<MonsterAreaDamageBroadcastHit> hits,
         CancellationToken cancellationToken,
         ClientSession? excludeSession = null,
-        string labelPrefix = "AreaSkill")
+        string labelPrefix = "AreaSkill",
+        bool publishCastVisual = true)
     {
         ArgumentNullException.ThrowIfNull(hits);
         if (hits.Count == 0)
         {
-            var visualRecipients = await BroadcastToMapAsync(
-                mapId,
-                visualPacket,
-                cancellationToken,
-                excludeSession,
-                $"{labelPrefix}CastWorld");
+            var visualRecipients = publishCastVisual
+                ? await BroadcastToMapAsync(
+                    mapId,
+                    visualPacket,
+                    cancellationToken,
+                    excludeSession,
+                    $"{labelPrefix}CastWorld")
+                : 0;
             var impactRecipients = await BroadcastToMapAsync(
                 mapId,
                 impactPacket,
@@ -339,6 +342,14 @@ internal sealed partial class GameSessionRegistry
                         cancellationToken);
                 if (deliveryLease is null)
                 {
+                    if (!publishCastVisual)
+                    {
+                        await context.Session.SendAsync(
+                            impactPacket,
+                            cancellationToken,
+                            $"{labelPrefix}ImpactWorld");
+                        sent++;
+                    }
                     continue;
                 }
 
@@ -351,6 +362,7 @@ internal sealed partial class GameSessionRegistry
                         labelPrefix);
                 }
 
+                var impactPublished = false;
                 if (deliveryLease.DirectHealthMutations.Count > 0)
                 {
                     var directHits = deliveryLease.DirectHealthMutations
@@ -359,14 +371,18 @@ internal sealed partial class GameSessionRegistry
                             hit.HealthMutation.ObjectId,
                             hit.ReportedDamage))
                         .ToArray();
-                    await context.Session.SendAsync(
-                        visualPacket,
-                        cancellationToken,
-                        $"{labelPrefix}CastWorld");
+                    if (publishCastVisual)
+                    {
+                        await context.Session.SendAsync(
+                            visualPacket,
+                            cancellationToken,
+                            $"{labelPrefix}CastWorld");
+                    }
                     await context.Session.SendAsync(
                         impactPacket,
                         cancellationToken,
                         $"{labelPrefix}ImpactWorld");
+                    impactPublished = true;
                     await context.Session.SendAsync(
                         PacketBuilder.SkillClusterDamage(
                             attackerObjectId,
@@ -374,6 +390,14 @@ internal sealed partial class GameSessionRegistry
                             directHits),
                         cancellationToken,
                         $"{labelPrefix}DamageWorld");
+                }
+
+                if (!publishCastVisual && !impactPublished)
+                {
+                    await context.Session.SendAsync(
+                        impactPacket,
+                        cancellationToken,
+                        $"{labelPrefix}ImpactWorld");
                 }
 
                 deliveryLease.Commit();

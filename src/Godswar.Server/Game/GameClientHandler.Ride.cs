@@ -8,10 +8,6 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private readonly CancellationTokenSource _rideCastLifetime = new();
-    private Task? _rideCastCompletionTask;
-    private int _rideCastPending;
-
     private async Task HandleRideSkillCastAsync(
         GamePacket packet,
         SkillCastRequest cast,
@@ -47,7 +43,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (Volatile.Read(ref _rideCastPending) != 0)
+        if (HasPendingSkillCast)
         {
             Console.WriteLine(
                 $"[mount] rejected Ride while activation is pending character={character.Name}");
@@ -94,52 +90,55 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _rideCastPending, 1, 0) != 0)
-        {
-            Console.WriteLine(
-                $"[mount] rejected Ride while activation is pending character={character.Name}");
-            return;
-        }
-
-        _nextSkillCastAt[cast.SkillId] = now + MountCatalog.RideCooldown;
-
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
         var targetX = float.IsFinite(cast.TargetX) ? cast.TargetX : character.PositionX;
         var targetZ = float.IsFinite(cast.TargetZ) ? cast.TargetZ : character.PositionZ;
         var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
         var lifeRevision = _registry.GetPlayerLifeRevision(_session);
 
-        int visualRecipients;
-        try
-        {
-            await _session.SendAsync(
-                PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, LocalPlayerObjectId),
-                cancellationToken,
-                "RideSkillCastSelf");
-            visualRecipients = await _registry.BroadcastToMapAsync(
-                character.CurrentMap,
-                PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, worldObjectId),
-                cancellationToken,
-                _session,
-                "RideSkillCastWorld");
-        }
-        catch
-        {
-            Interlocked.Exchange(ref _rideCastPending, 0);
-
-            throw;
-        }
-
-        _rideCastCompletionTask = CompleteRideActivationAsync(
-            character.Id,
-            character.Name,
-            mount,
+        var visualRecipients = 0;
+        var started = await TryBeginPendingSkillCastAsync(
             cast.SkillId,
-            targetX,
-            targetZ,
-            worldObjectId,
-            lifeRevision,
-            visualRecipients);
+            MountCatalog.RideCastTime,
+            "ride",
+            async token =>
+            {
+                await _session.SendAsync(
+                    PacketBuilder.SelfTargetSkillCastVisual(
+                        packet.Buffer,
+                        LocalPlayerObjectId),
+                    token,
+                    "RideSkillCastSelf");
+                visualRecipients = await _registry.BroadcastToMapAsync(
+                    character.CurrentMap,
+                    PacketBuilder.SelfTargetSkillCastVisual(
+                        packet.Buffer,
+                        worldObjectId),
+                    token,
+                    _session,
+                    "RideSkillCastWorld");
+            },
+            token => CompleteRideActivationAsync(
+                character.Id,
+                character.Name,
+                mount,
+                cast.SkillId,
+                targetX,
+                targetZ,
+                worldObjectId,
+                lifeRevision,
+                visualRecipients,
+                token),
+            cancellationToken,
+            () => IsRideActivationStillValid(
+                character.Id,
+                mount));
+        if (!started)
+        {
+            Console.WriteLine(
+                $"[mount] rejected Ride while another intonation is " +
+                $"pending character={character.Name}");
+        }
     }
 
     private async Task HandlePlayerStateActionAsync(
@@ -192,80 +191,89 @@ internal sealed partial class GameClientHandler
         float targetZ,
         uint worldObjectId,
         long expectedLifeRevision,
-        int visualRecipients)
+        int visualRecipients,
+        CancellationToken cancellationToken)
     {
-        var cancellationToken = _rideCastLifetime.Token;
-        try
+        var activation =
+            await _registry.TryActivateMountRideAndPublishAsync(
+                _session,
+                characterId,
+                expectedLifeRevision,
+                mount,
+                DateTimeOffset.UtcNow,
+                cancellationToken,
+                castCompletionClaimed: true);
+        if (activation is null)
         {
-            await Task.Delay(MountCatalog.RideCastTime, cancellationToken);
-            await _characterStateGate.WaitAsync(cancellationToken);
-            try
+            var currentMana = 0;
+            var currentCharacter = _character;
+            if (currentCharacter is not null)
             {
-                var activation = await _registry.TryActivateMountRideAndPublishAsync(
-                    _session,
-                    characterId,
-                    expectedLifeRevision,
-                    mount,
-                    DateTimeOffset.UtcNow,
-                    cancellationToken);
-                if (activation is null)
+                lock (currentCharacter.VitalsSync)
                 {
-                    var currentMana = 0;
-                    var currentCharacter = _character;
-                    if (currentCharacter is not null)
-                    {
-                        lock (currentCharacter.VitalsSync)
-                        {
-                            currentMana = currentCharacter.CurrentMp;
-                        }
-                    }
-
-                    Console.WriteLine(
-                        $"[mount] Ride interrupted by character, life, mount, or MP state character={characterName} mount={mount.ItemId}");
-                    await _session.SendAsync(
-                        PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
-                        cancellationToken,
-                        "RideManaInterrupted");
-                    return;
+                    currentMana = currentCharacter.CurrentMp;
                 }
-
-                var character = activation.Value.Character;
-                if (!ReferenceEquals(_character, character))
-                {
-                    _character = character;
-                }
-
-                await PublishRideActivationCompletionAsync(
-                    character,
-                    mount,
-                    skillId,
-                    targetX,
-                    targetZ,
-                    worldObjectId,
-                    activated: true,
-                    activation.Value.CurrentMana,
-                    activation.Value.StatusChanged,
-                    visualRecipients,
-                    cancellationToken);
             }
-            finally
-            {
-                _characterStateGate.Release();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
+
             Console.WriteLine(
-                $"[mount] Ride activation cancelled character={characterName} mount={mount.ItemId}");
+                $"[mount] Ride completion rejected by character, " +
+                $"life, mount, or MP state character={characterName} " +
+                $"mount={mount.ItemId}");
+            await _session.SendAsync(
+                PacketBuilder.PlayerManaUpdate(
+                    LocalPlayerObjectId,
+                    currentMana),
+                cancellationToken,
+                "RideManaCompletionRejected");
+            return;
         }
-        catch (Exception ex)
+
+        _nextSkillCastAt[skillId] =
+            DateTimeOffset.UtcNow + MountCatalog.RideCooldown;
+        var character = activation.Value.Character;
+        if (!ReferenceEquals(_character, character))
         {
-            Console.WriteLine(
-                $"[mount] Ride activation failed character={characterName} mount={mount.ItemId}: {ex.Message}");
+            _character = character;
         }
-        finally
+
+        await PublishRideActivationCompletionAsync(
+            character,
+            mount,
+            skillId,
+            targetX,
+            targetZ,
+            worldObjectId,
+            activated: true,
+            activation.Value.CurrentMana,
+            activation.Value.StatusChanged,
+            visualRecipients,
+            cancellationToken);
+    }
+
+    private bool IsRideActivationStillValid(
+        int characterId,
+        MountRideDefinition expectedMount)
+    {
+        var character = _character;
+        if (character is null ||
+            character.Id != characterId ||
+            character.Level < expectedMount.MountLevel ||
+            _registry.IsRuntimeStatusActive(
+                _session,
+                MountCatalog.RuntimeStatusKind,
+                DateTimeOffset.UtcNow) ||
+            !MountCatalog.TryGetEquippedRideDefinition(
+                character,
+                out var equippedMount) ||
+            equippedMount.ItemId != expectedMount.ItemId)
         {
-            Interlocked.Exchange(ref _rideCastPending, 0);
+            return false;
+        }
+
+        lock (character.VitalsSync)
+        {
+            return character.CurrentHp > 0 &&
+                   character.CurrentMp >= MountCatalog.RideManaCost;
         }
     }
 

@@ -18,7 +18,7 @@ internal static class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(9, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(10, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -48,7 +48,8 @@ internal static class PostgresMigrationFoundationChecks
                     "20260723_005_starter_consumable_templates",
                     "20260723_006_archive_legacy_character_kitbag",
                     "20260723_007_character_item_template_foreign_key",
-                    "20260723_008_zodiac_skill_grid_state"
+                    "20260723_008_zodiac_skill_grid_state",
+                    "20260728_009_skill_cast_interrupt_opcode"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(
@@ -211,6 +212,28 @@ internal static class PostgresMigrationFoundationChecks
                 "ON DELETE CASCADE",
                 StringComparison.Ordinal),
             "Zodiac grid migration bounds all sixteen rows and owns their lifecycle");
+
+        var skillCastInterrupt = PostgresSchemaMigrationCatalog.All.Single(
+            migration =>
+                migration.Id ==
+                "20260728_009_skill_cast_interrupt_opcode");
+        Check.True(
+            skillCastInterrupt.Sql.Contains(
+                "'C2S'",
+                StringComparison.Ordinal) &&
+            skillCastInterrupt.Sql.Contains(
+                "'S2C'",
+                StringComparison.Ordinal) &&
+            skillCastInterrupt.Sql.Contains(
+                "'SkillCastInterrupt'",
+                StringComparison.Ordinal) &&
+            skillCastInterrupt.Sql.Contains(
+                "ON CONFLICT (opcode, direction) DO UPDATE",
+                StringComparison.Ordinal) &&
+            skillCastInterrupt.Sql.Contains(
+                "WHERE opcode = 10171",
+                StringComparison.Ordinal),
+            "existing and fresh databases reconcile the bidirectional cast-interruption opcode");
 
         foreach (var migration in PostgresSchemaMigrationCatalog.All)
         {

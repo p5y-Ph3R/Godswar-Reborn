@@ -74,7 +74,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
         GameCharacter character,
         uint playerObjectId,
         long currentLifeRevision,
-        in PlayerMonsterDamageEcsRequest request)
+        in PlayerMonsterDamageEcsRequest request,
+        Action? beforeLethalCommit = null)
     {
         ArgumentNullException.ThrowIfNull(character);
         ArgumentOutOfRangeException.ThrowIfNegative(
@@ -131,6 +132,11 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                     {
                         throw new InvalidOperationException(
                             "Incoming damage ECS emitted an inconsistent death decision.");
+                    }
+
+                    if (result.Killed)
+                    {
+                        beforeLethalCommit?.Invoke();
                     }
 
                     character.CurrentHp = result.AfterHealth;

@@ -206,6 +206,8 @@ $skills = @(
         $mp = ConvertTo-RequiredMagicInt $magic "MP" $skillId
         $power1 = ConvertTo-RequiredMagicDecimal $magic "Power1" $skillId
         $power2 = ConvertTo-RequiredMagicDecimal $magic "Power2" $skillId
+        $intonateTime = ConvertTo-RequiredMagicDecimal $magic "IntonateTime" $skillId
+        $coolingTime = ConvertTo-RequiredMagicDecimal $magic "CoolingTime" $skillId
         $stats = [ordered]@{
             Source = "Magic.ini+ItemBaseAttribute.SkillBook+SkillInfo.dat"
             BookItemIds = $bookItemIds
@@ -230,6 +232,8 @@ $skills = @(
             Mp = $mp
             Power1 = $power1
             Power2 = $power2
+            IntonateTime = $intonateTime
+            CoolingTime = $coolingTime
             StatsJson = ($stats | ConvertTo-Json -Compress)
         }
     }
@@ -251,8 +255,8 @@ $skills = @(
             Source = "Magic.ini+Skill.ini.backhaul_magic+SkillInfo.dat"
             ScriptID = Get-AttributeValue $magic "ScriptID"
             Kind = ConvertTo-RequiredMagicInt $magic "Kind" $skillId
-            IntonateTime = ConvertTo-RequiredMagicInt $magic "IntonateTime" $skillId
-            CoolingTime = ConvertTo-RequiredMagicInt $magic "CoolingTime" $skillId
+            IntonateTime = ConvertTo-RequiredMagicDecimal $magic "IntonateTime" $skillId
+            CoolingTime = ConvertTo-RequiredMagicDecimal $magic "CoolingTime" $skillId
         }
         $displayName = Get-AttributeValue $magic "Name"
 
@@ -274,6 +278,8 @@ $skills = @(
             Mp = ConvertTo-RequiredMagicInt $magic "MP" $skillId
             Power1 = ConvertTo-RequiredMagicDecimal $magic "Power1" $skillId
             Power2 = ConvertTo-RequiredMagicDecimal $magic "Power2" $skillId
+            IntonateTime = ConvertTo-RequiredMagicDecimal $magic "IntonateTime" $skillId
+            CoolingTime = ConvertTo-RequiredMagicDecimal $magic "CoolingTime" $skillId
             StatsJson = ($stats | ConvertTo-Json -Compress)
         }
     }

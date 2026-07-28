@@ -50,6 +50,7 @@ internal sealed partial class GameSessionRegistry
         uint damage;
         var killed = false;
         long? deathLifeRevision = null;
+        var deathInterruptionTask = Task.CompletedTask;
         lock (_gate)
         {
             targetContext = map.Snapshot().FirstOrDefault(context =>
@@ -80,11 +81,24 @@ internal sealed partial class GameSessionRegistry
                             targetContext.Character,
                             physicalDamageReduction);
                         var beforeHealth = targetContext.Character.CurrentHp;
+                        killed = damage >= (uint)beforeHealth;
+                        if (killed)
+                        {
+                            // Claim before the lethal vitals commit. The
+                            // handler does no asynchronous work before this
+                            // claim, so a deadline completion and death have
+                            // one authoritative order.
+                            deathInterruptionTask =
+                                RequestSkillCastInterruptionAsync(
+                                    targetContext.Session,
+                                    SkillCastInterruptionReason.Death,
+                                    cancellationToken);
+                        }
+
                         targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
                             ? 0
                             : beforeHealth - (int)damage;
                         targetContext.Character.MarkVitalsChanged();
-                        killed = targetContext.Character.CurrentHp == 0;
                         if (killed)
                         {
                             deathLifeRevision = _playerLifeRevisions.AddOrUpdate(
@@ -101,6 +115,11 @@ internal sealed partial class GameSessionRegistry
         {
             map.ClearMonsterAggroForCharacter(targetCharacterId, DateTimeOffset.UtcNow);
             return;
+        }
+
+        if (killed)
+        {
+            await deathInterruptionTask;
         }
 
         var monster = attack.Monster;

@@ -11,7 +11,8 @@ internal readonly record struct PlayerCombatEcsRequest(
     uint TargetObjectId,
     float ReportedAttackerX,
     float ReportedAttackerZ,
-    PlayerCombatSkillSnapshot Skill)
+    PlayerCombatSkillSnapshot Skill,
+    uint? ExpectedTargetSpawnGeneration = null)
 {
     public static PlayerCombatEcsRequest BasicAttack(
         DateTimeOffset requestedAt,
@@ -30,7 +31,8 @@ internal readonly record struct PlayerCombatEcsRequest(
         PlayerCombatIntentKind kind,
         DateTimeOffset requestedAt,
         uint targetObjectId,
-        in SkillCombatDefinition skill) =>
+        in SkillCombatDefinition skill,
+        uint? expectedTargetSpawnGeneration = null) =>
         new(
             kind,
             requestedAt,
@@ -46,7 +48,8 @@ internal readonly record struct PlayerCombatEcsRequest(
                 skill.Mp,
                 skill.Property,
                 skill.Power1,
-                skill.Power2));
+                skill.Power2),
+            expectedTargetSpawnGeneration);
 }
 
 internal sealed record PlayerCombatEcsHit(

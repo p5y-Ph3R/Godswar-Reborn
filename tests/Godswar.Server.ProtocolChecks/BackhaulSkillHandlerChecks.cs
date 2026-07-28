@@ -10,7 +10,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class BackhaulSkillHandlerChecks
+internal static partial class BackhaulSkillHandlerChecks
 {
     private const int AccountId = 413;
     private const int CharacterId = 4_013;
@@ -34,6 +34,13 @@ internal static class BackhaulSkillHandlerChecks
         ?? throw new InvalidOperationException(
             "GameClientHandler.StopRealtimeMovementAsync was not found.");
 
+    private static readonly MethodInfo StopPendingSkillCastsMethod =
+        typeof(GameClientHandler).GetMethod(
+            "StopPendingSkillCastsAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException(
+            "GameClientHandler.StopPendingSkillCastsAsync was not found.");
+
     public static async Task RunAsync()
     {
         await CheckSuccessfulCastAsync(
@@ -41,6 +48,11 @@ internal static class BackhaulSkillHandlerChecks
         await CheckSuccessfulCastAsync(
             BackhaulSkillCatalog.SuburbSkillId);
         await CheckUnlearnedCastRejectedAsync();
+        await CheckNativeCastInterruptionAsync();
+        await CheckMovementCastInterruptionAsync();
+        await CheckBasicAttackCastInterruptionAsync();
+        await CheckInterruptionBroadcastIdentityAsync();
+        await CheckControlStatusCastInterruptionsAsync();
     }
 
     private static async Task CheckSuccessfulCastAsync(uint skillId)
@@ -221,14 +233,16 @@ internal static class BackhaulSkillHandlerChecks
         ClientSession session,
         IGameStore store,
         GameSessionRegistry registry,
-        GameCharacter character)
+        GameCharacter character,
+        TimeSpan? backhaulSkillCastTime = null)
     {
         var handler = new GameClientHandler(
             session,
             store,
             registry,
             mapTransitionReadyTimeout: TimeSpan.FromSeconds(5),
-            backhaulSkillCastTime: TimeSpan.Zero);
+            backhaulSkillCastTime:
+                backhaulSkillCastTime ?? TimeSpan.Zero);
         SetField(
             handler,
             "_account",
@@ -371,6 +385,13 @@ internal static class BackhaulSkillHandlerChecks
     private static async Task StopHandlerAsync(
         GameClientHandler handler)
     {
+        var stopCastsTask = StopPendingSkillCastsMethod.Invoke(
+            handler,
+            null) as Task
+            ?? throw new InvalidOperationException(
+                "GameClientHandler.StopPendingSkillCastsAsync returned no task.");
+        await stopCastsTask;
+
         var task = StopRealtimeMethod.Invoke(
             handler,
             null) as Task

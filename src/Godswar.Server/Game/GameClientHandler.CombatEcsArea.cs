@@ -12,6 +12,7 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         SkillCastRequest cast,
         SkillCombatDefinition combat,
+        bool publishCastVisual,
         CancellationToken cancellationToken)
     {
         var character = _character;
@@ -81,10 +82,13 @@ internal sealed partial class GameClientHandler
         var casterNotified = true;
         try
         {
-            await _session.SendAsync(
-                selfVisual,
-                cancellationToken,
-                "AreaSkillCastSelf");
+            if (publishCastVisual)
+            {
+                await _session.SendAsync(
+                    selfVisual,
+                    cancellationToken,
+                    "AreaSkillCastSelf");
+            }
             await _session.SendAsync(
                 selfImpact,
                 cancellationToken,
@@ -152,7 +156,8 @@ internal sealed partial class GameClientHandler
                     .ToArray(),
                 cancellationToken,
                 _session,
-                "AreaSkill");
+                "AreaSkill",
+                publishCastVisual);
 
         foreach (var hit in hits)
         {

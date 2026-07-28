@@ -279,5 +279,7 @@ internal static partial class Program
         {
             listener.Stop();
         }
+
+        await CheckIntonedMonsterAreaCompletionCohortAsync();
     }
 }
