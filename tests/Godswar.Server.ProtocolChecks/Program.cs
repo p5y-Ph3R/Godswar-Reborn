@@ -44,6 +44,7 @@ internal static partial class Program
             ("Monster-to-player damage ECS parity", MonsterPlayerDamageEcsParityChecks.RunAsync),
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
+            ("Authoritative pet-system foundation", PetSystemFoundationChecks.RunAsync),
             ("PostgreSQL forward-only database cleanup", PostgresDatabaseCleanupIntegrationChecks.RunAsync),
             ("PostgreSQL captured-monster ECS parity", PostgresMonsterEcsParityIntegrationChecks.RunAsync),
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
