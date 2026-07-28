@@ -1,0 +1,66 @@
+# 18. Implementation backlog
+
+## 18.1 Prioritized tickets
+
+| ID / ticket title | Purpose | Scope and expected files/modules | Dependencies | Acceptance criteria | Required tests | Observability | Rollback | Complexity | Risk |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| B01A - Inventory schema/build/backup state read-only | Establish evidence without changing history | Read migration rows/checksums, dirty-tree catalog, schema/row invariants and backup restore; publish manifest | None | Exact mismatch list and verified restore report; no DB/source mutation | Read-only history comparison and restore verification | Migration/schema mismatch count | Delete report only | Small | Low |
+| B01B - Cut a coherent schema release | Restore release reproducibility | Reconcile intended applied pet migrations/code, repair empty-bootstrap packet metadata, commit/tag matching build, reconcile Compose init path | B01A and owner confirmation of intended WIP | Empty/restored DB reaches exact history; binary/schema compatibility manifest passes | Prefix/checksum/ahead, empty/bootstrap dependency, restore rehearsal, row invariants | Migration version/duration/mismatch | Prior matching tag + verified backup; never rewrite applied checksums | Medium | High |
+| B02 - Enforce data-boundary architecture | Prevent new direct coupling | Add ownership ADR and a ratcheting architecture check with an explicit baseline allowlist for existing `_store` callers; define `Application`/`Infrastructure` dependency rules | B01A, section 4 accepted | No new forbidden dependency is added; allowlist shrinks as each slice migrates and cannot grow without review | Build-time namespace/reference ratchet | Current/baseline/new violation counts | Freeze the prior allowlist, not remove the gate | Small | Low |
+| B03 - Mandatory disposable PostgreSQL CI | Make persistence evidence trustworthy | Testcontainers/equivalent PG 17 job, fail on skip, repaired empty bootstrap and restored fixture migrations, workflow | B01A; B01B required before the empty path can pass | Every PR runs PG tests and publishes machine-readable result | Migration/repository/concurrency smoke | CI duration/failure category | Keep local env-based runner while CI job is repaired | Medium | Low |
+| B04 - Fail-closed storage and security profiles | Remove silent JSON fallback and immediately contain raw auth | `ServerOptions`, `Program.cs`, listener/login composition, appsettings/Compose | B01A and controlled-client compatibility plan | Unknown/missing production provider fails; JSON and raw `LoginOrCreateAccountAsync`/username-only bind run only in an explicit local-development profile | Config/listener/auth startup matrix plus controlled client smoke | Startup rejection reason and raw-profile attempts | Restore controlled local-dev profile only; never expose it as production | Small/Medium | Medium |
+| B05 - Extract `IWorldContentReader` | First boundary vertical slice | `PostgresGameStore.WorldSync`, map/NPC/monster initialization, composition | B01B, B02-B03 | Same reviewed content packets/definitions; one authoring input and runtime revision pinned per family | Golden content, source/PG checksum, missing/revision tests | Load latency/missing/fallback | Delegate to legacy store reader | Medium | Medium |
+| B06 - Extract consistent `ICharacterSnapshotReader` | Prevent mixed login snapshots | Character store files, short read-only transaction, login handler, hydrators | B01B, B02-B03, pet schema baseline | One closed transaction returns one snapshot/version before hydration; account slot semantics are explicit | Concurrent update/login, old/new contract, preview client | Load latency/query count/failure | Legacy multi-query reader flag | Large | Medium |
+| B07 - Resolve legacy operation identity and add command envelope | Separate transport identity from business retry | compatibility spike for shim operation ID/server token/limited semantics, then codecs/handlers/application envelope for one command | B01B, B02 and client compatibility decision | Chosen command has a stable cross-reconnect operation identity or explicitly documented weaker guarantee; auth IDs are server-derived | malformed, legitimate repeated command, duplicate, reconnect, request-hash conflict | command outcomes/duplicates/unsupported legacy retries | Per-command legacy adapter | Medium | Medium |
+| B08 - PostgreSQL inbox/outbox foundation | Make retries/events safe | new migrations, Npgsql helpers/worker, operation-specific transaction, versioned/ordered consumer policy | B03, B07 | Same transaction as sample mutation; restart resumes outbox; consumers handle stale/gap ordering correctly | crash at all commit/delivery points, concurrent pollers, v2-before-v1 | backlog/age/retry/poison/gaps | Disable dispatcher; authoritative rows/inbox remain | Large | High |
+| B09 - Inventory/currency ledger migration | Protect economy | inventory/crafting/mentor/GM handlers, wallet schema, audits | B08 | Existing valuable commands are idempotent, constrained, audited | races, duplicate, overflow, disconnect-after-commit, reconciliation | economy command/ledger mismatch | Feature-specific compatibility adapter | Large | High |
+| B10 - Checkpoint versions and bounded workers | Keep I/O off ticks and reject stale saves | position/vitals coordinators, background loops, PG columns, task supervisor | B02-B03 | Bounded queues; position transfer requires exactly one affected row; stale owner/revision cannot overwrite; loop faults stop readiness | zero-row/wrong-owner, delay/reorder/crash/queue/critical fault | dirty age, queue, conflicts, heartbeat | Single-instance legacy coordinator flag | Large | High |
+| B11 - Character lifecycle/tombstone | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
+| B12 - Progression/reward/pet durability | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
+| B13 - Structured logs, traces, readiness | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | all section 16 signals | Disable exporter/sink, keep audits | Medium | Medium |
+| B14 - Raw authentication retirement | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
+| B15 - PostgreSQL player ownership fence | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Single-process PG/local owner implementation | Large | High |
+| B16 - Redis decision ADR | Avoid premature infrastructure | measurements, capacity inputs, section 7 ADR | B13-B15 and product scale decision | Explicit defer/approve with SLO/TTL/outage/cost | failure model prototype if approved | candidate load/latency | Defer Redis | Small | Low |
+| B17 - Redis coordination adapter, conditional | Enable measured multi-process session/routing needs | Redis package/config/key library/Lua, tickets/presence/routing and leases carrying PG-issued fences | Approved B16, B15 | Cross-instance ticket/lease/reconnect safe; Redis restart cannot reset fence; PG remains value owner | Redis restart/eviction/slow, fence reinstall, split ownership | latency/errors/lease/presence | Drain to one process/PG-local adapter | Large | High |
+| B18 - Fair map mailboxes and replication | Complete ECS/I/O isolation | `MapInstance`, `GameSessionRegistry`, movement/monster loops, broadcast | B02, B10 | Only owner loop mutates map ECS; DB/socket fanout off tick; bounded fairness | deterministic replay, slow client, overload | tick/queue/fanout | Per-map legacy mode | Large | High |
+| B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
+| B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
+| B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
+
+## 18.2 First three low-risk implementation tasks
+
+1. **B01A:** inventory the applied migration/build/backup state read-only and publish the exact mismatch manifest.
+2. **B02:** add a ratcheting dependency/ownership architecture check and application contract skeleton without changing behavior.
+3. **B03:** add mandatory disposable PostgreSQL CI scaffolding and fail-on-skip reporting; B01B then repairs the already-discovered empty-bootstrap defect so the gate can become green.
+
+## 18.3 Dependency and parallelization notes
+
+- **Blocks most PG/application work:** B01B, B02, B03, B07, and B08.
+- **Blocks scale-out/Redis and multi-owner writes specifically:** B15.
+- **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
+- **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
+- **Requires architectural decision first:** B14 raw-auth support policy; B16 Redis; B17 process placement/routing; B21 MongoDB; character deletion retention; reward failure semantics.
+- **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
+
+## 18.4 Architectural mistakes to avoid
+
+- Persisting every ECS component or a complete ECS world snapshot.
+- Treating mutable `GameCharacter`, an ECS projection, JSON file, and PG row as simultaneous authorities.
+- Calling Npgsql/Redis directly from arbitrary packet handlers or ECS systems.
+- Retaining one universal `IGameStore`/`IRepository<T>` that hides transaction semantics.
+- Acknowledging item/currency/progression success before PG commit.
+- Adding Redis before ownership/fencing and then relying on a lock for economy correctness.
+- Storing valuable state only in Redis.
+- Writing PG and Redis/Mongo independently in one request.
+- Introducing MongoDB as a miscellaneous JSON store.
+- Using account names, IP addresses, UDP ports, or runtime ECS IDs as durable identity.
+- Assuming TCP and UDP relative ordering.
+- Using packet replay protection as a substitute for business idempotency.
+- Blocking a fixed-step ECS/map loop on database calls or sequential client fanout.
+- Letting background, persistence, logging, limiter, or retry queues grow without bounds.
+- Editing an applied migration or allowing a database to be ahead of its binary.
+- Running multiple server/content versions that overwrite mutable startup seeds.
+- Treating skipped DB integration tests as passed.
+- Logging raw payloads, credentials, tickets, keys, or high-cardinality player/network labels.
+- Claiming ordinary autoscaling/firewalls replace upstream arbitrary-UDP/TCP DDoS protection.
+- Designing tables and infrastructure for hypothetical features before their invariants and access patterns exist.

@@ -1,0 +1,54 @@
+# Godswar Server Data Architecture Roadmap
+
+Status: implementation-ready, modular planning document.
+
+Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
+the preserved working tree on 2026-07-29.
+
+The roadmap is split into linked modules to comply with `AGENTS.md`'s 20 KB
+file limit. This file remains the stable entry point. Splitting changed only
+document organization; the assessment and recommendations remain intact.
+
+## Implementation evidence
+
+- [B01A schema/build/backup inventory](docs/data-architecture-b01a-schema-build-backup-inventory-20260729.md)
+- [B01B coherent schema release](docs/data-architecture-b01b-schema-release-20260729.md)
+
+## Roadmap sections
+
+1. [Executive summary](docs/data-architecture-roadmap/01-executive-summary.md)
+2. [Current-state architecture](docs/data-architecture-roadmap/02-current-state-architecture.md)
+3. [Target architecture](docs/data-architecture-roadmap/03-target-architecture.md)
+4. [Data ownership matrix](docs/data-architecture-roadmap/04-data-ownership-matrix.md)
+5. [ECS persistence strategy](docs/data-architecture-roadmap/05-ecs-persistence-strategy.md)
+6. [PostgreSQL design](docs/data-architecture-roadmap/06-postgresql-design.md)
+7. [Redis design](docs/data-architecture-roadmap/07-redis-design.md)
+8. [MongoDB justification](docs/data-architecture-roadmap/08-mongodb-justification.md)
+9. [UDP and TCP integration](docs/data-architecture-roadmap/09-udp-tcp-integration.md)
+10. [Consistency and messaging strategy](docs/data-architecture-roadmap/10-consistency-messaging-strategy.md)
+11. [Future-feature placement playbook](docs/data-architecture-roadmap/11-future-feature-placement-playbook.md)
+12. [Extension conventions for new features](docs/data-architecture-roadmap/12-extension-conventions.md)
+13. Migration strategy:
+    - [Phases 0-8](docs/data-architecture-roadmap/13a-migration-strategy-phases-00-08.md)
+    - [Phases 9-16](docs/data-architecture-roadmap/13b-migration-strategy-phases-09-16.md)
+14. [Testing strategy](docs/data-architecture-roadmap/14-testing-strategy.md)
+15. [Security and abuse prevention](docs/data-architecture-roadmap/15-security-abuse-prevention.md)
+16. [Deployment and operations](docs/data-architecture-roadmap/16-deployment-operations.md)
+17. [Risks, decisions, and unresolved questions](docs/data-architecture-roadmap/17-risks-decisions-questions.md)
+18. [Implementation backlog](docs/data-architecture-roadmap/18-implementation-backlog.md)
+
+## Evidence and status convention
+
+- **Existing** means the symbol and behavior are present in the repository.
+- **Partially implemented** means a real implementation exists but is
+  incomplete, optional, development-only, or lacks an end-to-end production
+  boundary.
+- **Planned or inferred** means repository direction supports the idea, but
+  no complete feature exists.
+- **Missing** means no implementation was found.
+- **Requires clarification** means a product, capacity, reliability, or
+  operational decision materially affects the design.
+
+The roadmap records the repository state at assessment time. Later completion
+evidence belongs in the B-series reports linked above rather than silently
+rewriting historical findings.
