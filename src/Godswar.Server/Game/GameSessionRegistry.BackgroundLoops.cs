@@ -10,30 +10,52 @@ internal sealed partial class GameSessionRegistry
     public async Task RunMonsterRoamingAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(MonsterMapRuntime.TickInterval);
+        using var observation = new SimulationLoopObservation(
+            SimulationLoopKind.MonsterWorld,
+            MonsterMapRuntime.TickInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                var tick = observation.BeginTick();
                 await AdvanceMonsterWorldOnceAsync(DateTimeOffset.UtcNow, cancellationToken);
+                tick.Complete();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            observation.MarkCancelled();
+        }
+        catch
+        {
+            observation.MarkFaulted();
+            throw;
         }
     }
 
     public async Task RunPlayerRecoveryAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(PlayerRecoveryPollInterval);
+        using var observation = new SimulationLoopObservation(
+            SimulationLoopKind.PlayerRecovery,
+            PlayerRecoveryPollInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                var tick = observation.BeginTick();
                 await AdvancePlayerRecoveryOnceAsync(DateTimeOffset.UtcNow, cancellationToken);
+                tick.Complete();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            observation.MarkCancelled();
+        }
+        catch
+        {
+            observation.MarkFaulted();
+            throw;
         }
     }
 

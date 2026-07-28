@@ -2,3 +2,4 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Godswar.Server.ProtocolChecks")]
 [assembly: InternalsVisibleTo("Godswar.Server.SecureSmoke")]
+[assembly: InternalsVisibleTo("Godswar.Server.Phase5A")]

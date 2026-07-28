@@ -15,6 +15,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Godswar.Server.SecureSmoke", "tools\Godswar.Server.SecureSmoke\Godswar.Server.SecureSmoke.csproj", "{52C50B7E-C0B2-421B-9A36-6F76844EFFE2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Godswar.Server.Phase5A", "tools\Godswar.Server.Phase5A\Godswar.Server.Phase5A.csproj", "{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,6 +63,18 @@ Global
 		{52C50B7E-C0B2-421B-9A36-6F76844EFFE2}.Release|x64.Build.0 = Release|Any CPU
 		{52C50B7E-C0B2-421B-9A36-6F76844EFFE2}.Release|x86.ActiveCfg = Release|Any CPU
 		{52C50B7E-C0B2-421B-9A36-6F76844EFFE2}.Release|x86.Build.0 = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|x64.Build.0 = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Debug|x86.Build.0 = Debug|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|x64.ActiveCfg = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|x64.Build.0 = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|x86.ActiveCfg = Release|Any CPU
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -69,5 +83,6 @@ Global
 		{385AB544-60DB-4473-BB7A-67E0E021041A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{9B69C831-0E5B-4C08-A3D5-2FF3EF68A7BE} = {A4878F30-09B7-446F-9A6B-D761E02DEB84}
 		{52C50B7E-C0B2-421B-9A36-6F76844EFFE2} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{BC99D7E0-40D5-4B72-A5F1-D188A86F2748} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

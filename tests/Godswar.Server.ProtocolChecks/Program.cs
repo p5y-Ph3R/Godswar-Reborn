@@ -213,6 +213,18 @@ internal static partial class Program
             (
                 "Secure Phase 4 game-handler movement integration",
                 SecureRealtimeHandlerIntegrationChecks.RunAsync),
+            (
+                "Secure Phase 5A deterministic movement replay",
+                Phase5DeterministicMovementReplayChecks.RunAsync),
+            (
+                "Secure Phase 5A realtime decoder fuzz",
+                Phase5RealtimeDecoderFuzzChecks.RunAsync),
+            (
+                "Secure Phase 5A simulation loop observability",
+                SimulationLoopMetricsChecks.RunAsync),
+            (
+                "Secure Phase 5A operational state metrics",
+                OperationalStateMetricsChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
         };
 

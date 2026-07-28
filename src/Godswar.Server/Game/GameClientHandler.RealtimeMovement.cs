@@ -90,11 +90,15 @@ internal sealed partial class GameClientHandler
     {
         using var timer = new PeriodicTimer(
             AuthoritativePlayerMovementPolicy.FixedStep);
+        using var observation = new SimulationLoopObservation(
+            SimulationLoopKind.RealtimeMovement,
+            AuthoritativePlayerMovementPolicy.FixedStep);
         try
         {
             while (await timer.WaitForNextTickAsync(
                        cancellationToken))
             {
+                var tick = observation.BeginTick();
                 RealtimeMovementEffects effects;
                 await _characterStateGate.WaitAsync(
                     cancellationToken);
@@ -112,14 +116,17 @@ internal sealed partial class GameClientHandler
                 await PublishRealtimeMovementEffectsAsync(
                     effects,
                     cancellationToken);
+                tick.Complete();
             }
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
+            observation.MarkCancelled();
         }
         catch (Exception error)
         {
+            observation.MarkFaulted();
             Console.WriteLine(
                 $"[realtime] movement pump failed: {error.Message}");
             _session.Disconnect();

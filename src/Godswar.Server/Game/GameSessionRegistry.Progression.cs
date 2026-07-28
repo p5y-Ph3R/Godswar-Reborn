@@ -11,17 +11,28 @@ internal sealed partial class GameSessionRegistry
         CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(ExperienceBoostStatusReconciliationInterval);
+        using var observation = new SimulationLoopObservation(
+            SimulationLoopKind.ExperienceBoostReconciliation,
+            ExperienceBoostStatusReconciliationInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                var tick = observation.BeginTick();
                 await ReconcileExperienceBoostStatusesOnceAsync(
                     DateTimeOffset.UtcNow,
                     cancellationToken);
+                tick.Complete();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            observation.MarkCancelled();
+        }
+        catch
+        {
+            observation.MarkFaulted();
+            throw;
         }
     }
 
@@ -155,17 +166,28 @@ internal sealed partial class GameSessionRegistry
         }
 
         using var timer = new PeriodicTimer(_zodiacPersistenceInterval);
+        using var observation = new SimulationLoopObservation(
+            SimulationLoopKind.ZodiacEnergyAccrual,
+            _zodiacPersistenceInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                var tick = observation.BeginTick();
                 await AdvanceZodiacEnergyAccrualOnceAsync(
                     DateTimeOffset.UtcNow,
                     cancellationToken);
+                tick.Complete();
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            observation.MarkCancelled();
+        }
+        catch
+        {
+            observation.MarkFaulted();
+            throw;
         }
     }
 

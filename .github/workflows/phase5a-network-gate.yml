@@ -1,0 +1,54 @@
+name: Phase 5A network gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-network-gate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore GodswarServer.sln
+
+      - name: Release build
+        shell: pwsh
+        run: dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
+
+      - name: Replay, fuzz, metrics, overload, and admission checks
+        shell: pwsh
+        run: |
+          dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.ProtocolChecks.dll `
+            "Secure Phase 5A" `
+            "deterministic network emulation and overload" `
+            "UDP bounded loopback baseline"
+
+      - name: Bounded load self-check
+        shell: pwsh
+        run: |
+          dotnet tools/Godswar.Server.Phase5A/bin/Release/net10.0/Godswar.Server.Phase5A.dll `
+            --self-check
+
+      - name: Two-second targetless paced probe
+        shell: pwsh
+        run: |
+          dotnet tools/Godswar.Server.Phase5A/bin/Release/net10.0/Godswar.Server.Phase5A.dll `
+            --mode paced-soak `
+            --bots 16 `
+            --duration-seconds 2 `
+            --seed 20260728

@@ -96,6 +96,10 @@ using InMemoryGameTicketStore? secureGameTickets =
             options.Secure.Tickets.Capacity,
             options.Secure.Tickets.Ttl)
         : null;
+using var operationalStateMetrics = new OperationalStateMetrics(
+    admission,
+    secureGameTickets,
+    secureUdpRuntime);
 await using AccountAuthenticationService? secureAuthentication =
     options.Secure.Enabled
         ? new AccountAuthenticationService(
