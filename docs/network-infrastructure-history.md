@@ -266,8 +266,10 @@ This is the version ledger for
   finite tick/heartbeat metrics; three grouped admission, ticket, and UDP
   gauges expose 19 finite `operational.state` series. Release built with zero
   warnings/errors, the full managed suite passed `149/149`, and the 64-bot
-  ten-second paced baseline completed 76,800 operations in 10,013.6829 ms
+  ten-second paced baseline completed 76,800 operations in 10,007.6551 ms
   with zero rejected movement and zero pacing misses. Implementation commit
-  `2986466cfbdb641fe849ce62c7cfd951f2715de8` is the recorded source.
+  `2986466cfbdb641fe849ce62c7cfd951f2715de8` contains the code; clean
+  receipt commit `19247006df2b95b52f344dafe2bbf48ab5fb9f36` and its source
+  manifest are preserved in the baseline record.
   Results are synthetic local evidence, not production capacity; live
   exporter/load, upstream DDoS integration, and deferred AOI work remain.

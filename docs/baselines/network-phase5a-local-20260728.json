@@ -1,7 +1,23 @@
 {
   "schemaVersion": "reborn.network.phase5a.local-baseline.v1",
-  "recordedAtUtc": "2026-07-28T04:27:56.3649423Z",
-  "sourceRevision": "2986466cfbdb641fe849ce62c7cfd951f2715de8",
+  "recordedAtUtc": "2026-07-28T04:32:33.2430000Z",
+  "sourceRevision": "19247006df2b95b52f344dafe2bbf48ab5fb9f36",
+  "sourceEvidence": {
+    "receiptSchemaVersion": "reborn.phase5a.baseline-receipt.v2",
+    "workingTreeDirty": false,
+    "sourceManifest": {
+      "schemaVersion": "reborn.repository-source-manifest.v1",
+      "algorithm": "SHA-256",
+      "sha256": "1FF0E1AE2F134E543FF0AF16E0A0C07879316D3573E1D938DA89059927F279C9",
+      "enumeration": "git ls-files --cached --others --exclude-standard",
+      "pathOrder": "ordinal",
+      "pathEncoding": "UTF-8",
+      "entryCount": 1174,
+      "fileCount": 1174,
+      "missingPathCount": 0,
+      "totalBytes": 19365126
+    }
+  },
   "environment": {
     "operatingSystem": "Microsoft Windows 10.0.26200",
     "framework": ".NET 10.0.0-rc.2.25502.107",
@@ -43,15 +59,15 @@
       "percentileSampleCapacity": 2048
     },
     "resources": {
-      "elapsedMilliseconds": 30.4382,
-      "processCpuMilliseconds": 46.875,
-      "normalizedCpuPercent": 4.812517658731463,
+      "elapsedMilliseconds": 32.8124,
+      "processCpuMilliseconds": 62.5,
+      "normalizedCpuPercent": 5.952399093025808,
       "allocatedBytes": 53840,
-      "workingSetStartBytes": 23515136,
-      "workingSetEndBytes": 29655040,
-      "peakWorkingSetBytes": 29655040,
-      "processHandlesStart": 197,
-      "processHandlesEnd": 209,
+      "workingSetStartBytes": 23818240,
+      "workingSetEndBytes": 29945856,
+      "peakWorkingSetBytes": 29945856,
+      "processHandlesStart": 199,
+      "processHandlesEnd": 211,
       "garbageCollections": {
         "generation0": 0,
         "generation1": 0,
@@ -67,8 +83,8 @@
       "inputBytes": 665600,
       "snapshotBytes": 819200,
       "totalBytes": 1484800,
-      "packetsPerSecond": 841048.4194203337,
-      "bytesPerSecond": 48780808.32637935
+      "packetsPerSecond": 780192.8539210786,
+      "bytesPerSecond": 45251185.52742256
     },
     "ticks": {
       "completedTicks": 200,
@@ -76,16 +92,16 @@
       "acceptedMovements": 12800,
       "rejectedMovements": 0,
       "fixedStepMilliseconds": 50,
-      "botTicksPerSecond": 420524.20971016685,
+      "botTicksPerSecond": 390096.4269605393,
       "missedPacingDeadlines": 0,
       "processingDurationMilliseconds": {
         "observations": 200,
         "retainedSamples": 200,
-        "minimum": 0.0517,
-        "p50": 0.0536,
-        "p95": 0.07830499999999999,
-        "p99": 0.12045399999997412,
-        "maximum": 9.9808
+        "minimum": 0.0525,
+        "p50": 0.054,
+        "p95": 0.06510499999999997,
+        "p99": 0.11832599999996687,
+        "maximum": 11.7734
       }
     },
     "budget": {
@@ -116,15 +132,15 @@
       "percentileSampleCapacity": 2048
     },
     "resources": {
-      "elapsedMilliseconds": 10013.6829,
+      "elapsedMilliseconds": 10007.6551,
       "processCpuMilliseconds": 171.875,
-      "normalizedCpuPercent": 0.05363754578248128,
-      "allocatedBytes": 129680,
-      "workingSetStartBytes": 23531520,
-      "workingSetEndBytes": 28114944,
-      "peakWorkingSetBytes": 34504704,
-      "processHandlesStart": 197,
-      "processHandlesEnd": 224,
+      "normalizedCpuPercent": 0.05366985269106646,
+      "allocatedBytes": 129712,
+      "workingSetStartBytes": 23785472,
+      "workingSetEndBytes": 28344320,
+      "peakWorkingSetBytes": 34689024,
+      "processHandlesStart": 199,
+      "processHandlesEnd": 226,
       "garbageCollections": {
         "generation0": 0,
         "generation1": 0,
@@ -140,8 +156,8 @@
       "inputBytes": 665600,
       "snapshotBytes": 819200,
       "totalBytes": 1484800,
-      "packetsPerSecond": 2556.5019639277775,
-      "bytesPerSecond": 148277.1139078111
+      "packetsPerSecond": 2558.0417934267143,
+      "bytesPerSecond": 148366.4240187494
     },
     "ticks": {
       "completedTicks": 200,
@@ -149,16 +165,16 @@
       "acceptedMovements": 12800,
       "rejectedMovements": 0,
       "fixedStepMilliseconds": 50,
-      "botTicksPerSecond": 1278.2509819638888,
+      "botTicksPerSecond": 1279.0208967133572,
       "missedPacingDeadlines": 0,
       "processingDurationMilliseconds": {
         "observations": 200,
         "retainedSamples": 200,
-        "minimum": 0.0146,
-        "p50": 0.030199999999999998,
-        "p95": 0.06784499999999985,
-        "p99": 0.3015539999999985,
-        "maximum": 3.1762
+        "minimum": 0.0152,
+        "p50": 0.02605,
+        "p95": 0.04833499999999985,
+        "p99": 0.3562639999999866,
+        "maximum": 3.0569
       }
     },
     "budget": {

@@ -227,22 +227,25 @@ ten-second runs or write the local provenance receipt.
 
 On 2026-07-28, Windows `10.0.26200`, x64, 32 logical processors, and
 `.NET 10.0.0-rc.2.25502.107`, using implementation commit
-`2986466cfbdb641fe849ce62c7cfd951f2715de8`:
+`2986466cfbdb641fe849ce62c7cfd951f2715de8`. The final clean-tree gate
+was recorded at documentation commit
+`19247006df2b95b52f344dafe2bbf48ab5fb9f36`:
 
 - Release solution build: 0 warnings and 0 errors.
 - Full managed protocol suite: 149 passed, 0 failed.
 - Focused Phase 5A/overload/admission gate: 6 passed, 0 failed.
 - Load self-check: 13 passed.
 - Load mode: 12,800 bot-ticks, 25,600 codec packets, 1,484,800 protocol
-  bytes, 76,800 operations, 0 rejected movements, 30.4382 ms elapsed, and
+  bytes, 76,800 operations, 0 rejected movements, 32.8124 ms elapsed, and
   53,840 allocated bytes including setup.
-- Paced soak: the same exact workload over 10,013.6829 ms, 0 rejected
-  movements, 0 pacing misses, p99 processing time 0.301554 ms, maximum
-  3.1762 ms, and 129,680 allocated bytes including setup.
+- Paced soak: the same exact workload over 10,007.6551 ms, 0 rejected
+  movements, 0 pacing misses, p99 processing time 0.356264 ms, maximum
+  3.0569 ms, and 129,712 allocated bytes including setup.
 
 Selected machine-readable values and limitations are in
 [`baselines/network-phase5a-local-20260728.json`](baselines/network-phase5a-local-20260728.json).
-These values describe one synthetic local run only.
+That record also preserves the clean receipt's HEAD, dirty flag, and source
+manifest digest. These values describe one synthetic local run only.
 
 ## Exit decision and remaining work
 
