@@ -20,8 +20,8 @@ internal static partial class Program
 
     public static async Task<int> Main(string[] args)
     {
-        var checks = new (string Name, Func<Task> Run)[]
-        {
+        (string Name, Func<Task> Run)[] checks =
+        [
             ("Strongly typed ECS kernel", EcsKernelChecks.RunAsync),
             ("Player runtime ECS shadow parity", PlayerRuntimeEcsShadowChecks.RunAsync),
             ("Reversible player runtime ECS cutover", PlayerRuntimeEcsCutoverChecks.RunAsync),
@@ -44,8 +44,9 @@ internal static partial class Program
             ("Monster-to-player damage ECS parity", MonsterPlayerDamageEcsParityChecks.RunAsync),
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
-            ("Authoritative pet-system foundation", PetSystemFoundationChecks.RunAsync),
-            ("Authoritative pet aptitude catalog", PetAptitudeCatalogChecks.RunAsync),
+            ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
+            ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),
+            .. PetProtocolCheckCatalog.All,
             ("PostgreSQL forward-only database cleanup", PostgresDatabaseCleanupIntegrationChecks.RunAsync),
             ("PostgreSQL captured-monster ECS parity", PostgresMonsterEcsParityIntegrationChecks.RunAsync),
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
@@ -228,7 +229,7 @@ internal static partial class Program
                 "Secure Phase 5A operational state metrics",
                 OperationalStateMetricsChecks.RunAsync),
             ("ClientSession concurrent send ordering", CheckConcurrentSendOrderingAsync)
-        };
+        ];
 
         var filters = args
             .Where(static value => !string.IsNullOrWhiteSpace(value))

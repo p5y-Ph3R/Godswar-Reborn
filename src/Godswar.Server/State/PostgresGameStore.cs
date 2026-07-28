@@ -73,6 +73,12 @@ internal sealed partial class PostgresGameStore : IGameStore
                     LegacySchemaBootstrap.LoadAsync,
                     PostgresSchemaMigrationCatalog.All,
                     cancellationToken);
+                await ValidatePetGrowthPolicyAsync(cancellationToken);
+                await ValidatePetGrowthStateAsync(cancellationToken);
+                await ValidatePetInitialSavvyPolicyAsync(cancellationToken);
+                await ValidatePetInitialSavvyStateAsync(cancellationToken);
+                await ValidatePetAddedSavvyPolicyAsync(cancellationToken);
+                await ValidatePetSavvyBaselineStateAsync(cancellationToken);
                 await SeedItemTemplatesAsync(cancellationToken);
                 await ApplyServerCompatibilityTemplateOverridesAsync(cancellationToken);
                 await SeedItemAttributeTemplatesAsync(cancellationToken);

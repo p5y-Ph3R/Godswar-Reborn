@@ -365,6 +365,29 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.PlayerInspectVisualRequest:
                 await HandlePlayerInspectVisualRequestAsync(packet, cancellationToken);
                 break;
+            case Opcodes.PetTakeRequest:
+                await HandlePetPresenceRequestAsync(
+                    packet,
+                    PetPresenceOperation.Take,
+                    cancellationToken);
+                break;
+            case Opcodes.PetCallOutRequest:
+                await HandlePetPresenceRequestAsync(
+                    packet,
+                    PetPresenceOperation.CallOut,
+                    cancellationToken);
+                break;
+            case Opcodes.PetRecallRequest:
+                await HandlePetPresenceRequestAsync(
+                    packet,
+                    PetPresenceOperation.Recall,
+                    cancellationToken);
+                break;
+            case Opcodes.PetLevelUpgradeRequest:
+                await HandlePetLevelUpgradeAsync(
+                    packet,
+                    cancellationToken);
+                break;
             case Opcodes.Zodiac:
                 await HandleZodiacAsync(packet, cancellationToken);
                 break;

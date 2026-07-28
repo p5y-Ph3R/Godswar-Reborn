@@ -235,9 +235,13 @@ internal static class PetSystemFoundationChecks
             IsSummoned = true,
             Rank = 20m,
             InitialSavvy = initial,
-            AddedSavvy = new PetSavvy(1m, 2m, 3m, 4m, 5m, 6m)
+            AddedSavvy =
+                new PetSavvy(42m, 43m, 44m, 45m, 46m, 47m),
+            RarityAddedSavvy =
+                new PetSavvy(40m, 41m, 42m, 43m, 44m, 45m)
         };
-        var acceleration = new PetSavvy(2m, 2m, 2m, 2m, 2m, 2m);
+        var acceleration =
+            new PetSavvy(0.15m, 0.15m, 0.15m, 0.15m, 0.15m, 0.15m);
         var outcome = new AuthoritativePetRebirthOutcome(
             CarriedExperience: 1234,
             RankAfter: 22m,
@@ -258,7 +262,10 @@ internal static class PetSystemFoundationChecks
         Check.Equal(1, plan!.PetAfter.Level, "rebirth returns pet to level one");
         Check.Equal(1234L, plan.PetAfter.Experience, "server-authored carried EXP is applied");
         Check.Equal(initial, plan.PetAfter.InitialSavvy, "rebirth preserves initial savvy");
-        Check.Equal(PetSavvy.Zero, plan.PetAfter.AddedSavvy, "rebirth clears added savvy");
+        Check.Equal(
+            pet.RarityAddedSavvy,
+            plan.PetAfter.AddedSavvy,
+            "rebirth clears only additions above the rarity floor");
         Check.Equal(acceleration, plan.PetAfter.GrowthAcceleration, "server-authored growth is applied");
         Check.Equal(2, plan.PetAfter.CompletedRebirths, "rebirth count advances");
         Check.Equal(2, plan.PetAfter.RebirthsRemaining, "one rebirth chance is consumed");
@@ -267,7 +274,7 @@ internal static class PetSystemFoundationChecks
             !PetManagerPlanner.TryPlanRebirth(
                 pet with { HasSoulContract = false },
                 pet.OwnerCharacterId,
-                new PetRebirthMaterials(0, 0),
+                new PetRebirthMaterials(5, 0),
                 outcome,
                 out _,
                 out rejection),
@@ -416,6 +423,7 @@ internal static class PetSystemFoundationChecks
             Aptitude: PetAptitude.Weak,
             InitialSavvy: PetSavvy.Zero,
             AddedSavvy: PetSavvy.Zero,
+            BaseGrowthRates: PetSavvy.Zero,
             GrowthAcceleration: PetSavvy.Zero,
             CompletedPetMerges: 0,
             CompletedRebirths: 0,

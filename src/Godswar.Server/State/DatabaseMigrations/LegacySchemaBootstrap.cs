@@ -14,7 +14,8 @@ internal static class LegacySchemaBootstrap
         "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.002.sql",
         "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.003.sql",
         "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.004.sql",
-        "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.005.sql"
+        "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.005.sql",
+        "Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.006.sql"
     ];
 
     private static readonly Encoding StrictUtf8 =
@@ -22,7 +23,7 @@ internal static class LegacySchemaBootstrap
 
     public static async ValueTask<string> LoadAsync(CancellationToken cancellationToken)
     {
-        using var content = new MemoryStream(capacity: 90_000);
+        using var content = new MemoryStream(capacity: 105_000);
         foreach (var resourceName in ResourceNames)
         {
             await using var stream =

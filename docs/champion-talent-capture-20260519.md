@@ -10,7 +10,8 @@ Capture session:
 
 Observed talent-related packets:
 - `S2C 10019 / EnterMain`: champion character enter packet.
-- `S2C 10237 / SkillUiState`: `0800fd2702000000`
+- `S2C 10237 / OwnedPetList` (historically misclassified as
+  `SkillUiState`): `0800fd2702000000`
 - `S2C 10196 / SkillList`: empty skill list packet appeared twice.
 - `S2C 10042 / TalentRankList`: 18 champion talent records.
 - `S2C 10041 / TalentSkillUnlockList`: 2 unlock records.
@@ -62,7 +63,9 @@ Important discrepancy:
 
 Local implementation note:
 - `GetTalentStatesAsync` now mirrors the captured champion order and filters class-1 talent output to the 18 captured IDs.
-- Enter bootstrap now uses the captured short `10237 SkillUiState` packet: `0800FD2702000000`.
+- Enter bootstrap used the captured empty `10237 OwnedPetList` packet:
+  `0800FD2702000000`. The server now builds this packet dynamically from
+  persisted pets.
 - Enter bootstrap now uses the captured empty `10196 SkillList` packet: `0C00D4270000000000000000`.
 - Champion `10041 TalentSkillUnlockList` now sends unlock IDs `250` and `3062` with value `0`.
 

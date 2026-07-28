@@ -313,6 +313,7 @@ internal sealed partial class GameClientHandler
         try
         {
             await SendMapWorldObjectsAsync(cancellationToken);
+            await RestorePersistedPetPresenceAsync(cancellationToken);
             await _session.SendAsync(
                 BuildLocalPlayerStatusUpdate(),
                 cancellationToken,

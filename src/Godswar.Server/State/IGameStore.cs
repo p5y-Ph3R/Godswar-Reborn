@@ -145,6 +145,30 @@ internal interface IGameStore : IAsyncDisposable
         int characterId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<PetBootstrapSnapshot>> GetOwnedPetsAsync(
+        int accountId,
+        int characterId,
+        CancellationToken cancellationToken = default);
+
+    Task<PetEggHatchResult> HatchPetEggAsync(
+        int accountId,
+        int characterId,
+        int kitBagSlot,
+        CancellationToken cancellationToken = default);
+
+    Task<PetPresenceTransitionResult> TransitionPetPresenceAsync(
+        int accountId,
+        int characterId,
+        long petId,
+        PetPresenceOperation operation,
+        CancellationToken cancellationToken = default);
+
+    Task<PetLevelUpgradeResult> UpgradePetLevelAsync(
+        int accountId,
+        int characterId,
+        long petId,
+        CancellationToken cancellationToken = default);
+
     Task<GameCharacter> CreateCharacterAsync(int accountId, GameCharacter character, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteCharacterAsync(int accountId, string characterName, CancellationToken cancellationToken = default);

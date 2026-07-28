@@ -3,8 +3,8 @@ namespace Godswar.Server.State;
 /// <summary>
 /// The six savvy values used by the stock Pet_Alter.xml operations, in the
 /// exact order presented by the pet UI. Both initial and added values use this
-/// shape; the client's rebirth contract preserves initial and clears added
-/// savvy.
+/// shape. Rarity-derived added savvy is retained as an immutable floor when a
+/// rebirth clears later trainable additions.
 /// </summary>
 internal readonly record struct PetSavvy(
     decimal Agility,
@@ -114,6 +114,7 @@ internal sealed record OwnedPet(
     PetAptitude Aptitude,
     PetSavvy InitialSavvy,
     PetSavvy AddedSavvy,
+    PetSavvy BaseGrowthRates,
     PetSavvy GrowthAcceleration,
     int CompletedPetMerges,
     int CompletedRebirths,
@@ -126,7 +127,8 @@ internal sealed record OwnedPet(
     int CurrentEnergy,
     int MaximumEnergy,
     int Amity,
-    PetOwnerMergeState? OwnerMerge)
+    PetOwnerMergeState? OwnerMerge,
+    PetSavvy RarityAddedSavvy = default)
 {
     public PetSavvy TotalSavvy => InitialSavvy + AddedSavvy;
 

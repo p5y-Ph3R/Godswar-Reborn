@@ -27,6 +27,9 @@
     <EmbeddedResource
       Include="State/DatabaseMigrations/LegacySchemaBootstrap.005.sql"
       LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.005.sql" />
+    <EmbeddedResource
+      Include="State/DatabaseMigrations/LegacySchemaBootstrap.006.sql"
+      LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.006.sql" />
   </ItemGroup>
 
 </Project>

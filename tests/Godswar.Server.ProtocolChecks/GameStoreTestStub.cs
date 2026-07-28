@@ -173,6 +173,46 @@ internal abstract class GameStoreTestStub : IGameStore
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
+    public virtual Task<IReadOnlyList<PetBootstrapSnapshot>>
+        GetOwnedPetsAsync(
+            int accountId,
+            int characterId,
+            CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PetBootstrapSnapshot>>([]);
+
+    public virtual Task<PetEggHatchResult> HatchPetEggAsync(
+        int accountId,
+        int characterId,
+        int kitBagSlot,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(
+            PetEggHatchResult.Rejected(
+                PetEggHatchStatus.CharacterNotFound));
+
+    public virtual Task<PetPresenceTransitionResult>
+        TransitionPetPresenceAsync(
+            int accountId,
+            int characterId,
+            long petId,
+            PetPresenceOperation operation,
+            CancellationToken cancellationToken = default) =>
+        Task.FromResult(
+            new PetPresenceTransitionResult(
+                PetPresenceTransitionStatus.PetNotFound,
+                petId,
+                IsCarried: false,
+                IsSummoned: false));
+
+    public virtual Task<PetLevelUpgradeResult> UpgradePetLevelAsync(
+        int accountId,
+        int characterId,
+        long petId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(
+            PetLevelUpgradeResult.Rejected(
+                PetLevelUpgradeStatus.PetNotFound,
+                petId));
+
     public virtual Task<GameCharacter> CreateCharacterAsync(
         int accountId,
         GameCharacter character,

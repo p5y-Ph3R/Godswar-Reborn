@@ -209,6 +209,14 @@ internal sealed partial class GameClientHandler
         }
 
         var itemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
+        if (PetSpeciesCatalog.TryGetByEggItemId(itemId, out _))
+        {
+            await HandlePetEggHatchAsync(
+                sourceSlot,
+                cancellationToken);
+            return;
+        }
+
         if (!EquipmentSlots.TryGetAuthoritativeSlot(itemId, out _))
         {
             Console.WriteLine(

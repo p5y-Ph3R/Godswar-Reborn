@@ -135,6 +135,7 @@ internal sealed partial class GameClientHandler
         }
 
         await SendMapWorldObjectsAsync(cancellationToken);
+        await RestorePersistedPetPresenceAsync(cancellationToken);
 
         var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
         var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);

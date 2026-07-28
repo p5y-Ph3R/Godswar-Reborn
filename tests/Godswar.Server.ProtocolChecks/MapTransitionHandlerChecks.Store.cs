@@ -14,10 +14,14 @@ internal static partial class MapTransitionHandlerChecks
     private sealed class MapTransitionStore : GameStoreTestStub
     {
         private readonly GameCharacter _character;
+        private readonly IReadOnlyList<PetBootstrapSnapshot> _pets;
 
-        public MapTransitionStore(GameCharacter character)
+        public MapTransitionStore(
+            GameCharacter character,
+            IReadOnlyList<PetBootstrapSnapshot>? pets = null)
         {
             _character = character;
+            _pets = pets ?? [];
         }
 
         public List<PositionWrite> PositionWrites { get; } = [];
@@ -31,6 +35,8 @@ internal static partial class MapTransitionHandlerChecks
         public int SkillStateRequests { get; private set; }
 
         public int TalentStateRequests { get; private set; }
+
+        public int PetPresenceReads { get; private set; }
 
         private TaskCompletionSource<bool>? _npcSpawnReadStarted;
 
@@ -142,6 +148,16 @@ internal static partial class MapTransitionHandlerChecks
         {
             TalentStateRequests++;
             return Task.FromResult<IReadOnlyList<TalentState>>([]);
+        }
+
+        public override Task<IReadOnlyList<PetBootstrapSnapshot>>
+            GetOwnedPetsAsync(
+                int accountId,
+                int characterId,
+                CancellationToken cancellationToken = default)
+        {
+            PetPresenceReads++;
+            return Task.FromResult(_pets);
         }
     }
 }

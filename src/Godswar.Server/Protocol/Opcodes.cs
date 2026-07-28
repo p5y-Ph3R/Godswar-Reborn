@@ -64,6 +64,12 @@ internal static class Opcodes
     public const ushort PlayerDetailRequest = 10200;
     public const ushort PlayerDetailAckRequest = 10202;
     public const ushort PlayerInspectVisualRequest = 10279;
+    public const ushort PetTakeRequest = 10239;
+    public const ushort PetCallOutRequest = 10240;
+    public const ushort PetRecallRequest = 10241;
+    public const ushort PetOperationResult = 10244;
+    public const ushort PetLevelUpgradeRequest = 10285;
+    public const ushort PetLevelUpgrade = 10286;
     public const ushort Zodiac = 10297;
     public const ushort Walk = 10194;
     public const ushort ServerTimeRequest = 10311;
@@ -127,6 +133,12 @@ internal static class Opcodes
             PlayerDetailRequest => nameof(PlayerDetailRequest),
             PlayerDetailAckRequest => nameof(PlayerDetailAckRequest),
             PlayerInspectVisualRequest => nameof(PlayerInspectVisualRequest),
+            PetTakeRequest => nameof(PetTakeRequest),
+            PetCallOutRequest => nameof(PetCallOutRequest),
+            PetRecallRequest => nameof(PetRecallRequest),
+            PetOperationResult => nameof(PetOperationResult),
+            PetLevelUpgradeRequest => nameof(PetLevelUpgradeRequest),
+            PetLevelUpgrade => nameof(PetLevelUpgrade),
             Zodiac => nameof(Zodiac),
             Walk => nameof(Walk),
             ServerTimeRequest => nameof(ServerTimeRequest),

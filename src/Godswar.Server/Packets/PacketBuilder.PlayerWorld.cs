@@ -90,15 +90,41 @@ internal static partial class PacketBuilder
 
     public static byte[] PlayerAppearanceExtras(GameCharacter character, uint objectId)
     {
+        // This legacy call site has no authoritative pet snapshot. A zero pet
+        // ID makes the native handler ignore the packet for remote players.
+        return BuildPetWorldPresence(petId: 0, objectId);
+    }
+
+    public static byte[] PetWorldPresence(
+        uint petId,
+        uint ownerObjectId)
+    {
+        if (petId == 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(petId),
+                petId,
+                "A visible pet must have a non-zero native ID.");
+        }
+
+        return BuildPetWorldPresence(petId, ownerObjectId);
+    }
+
+    private static byte[] BuildPetWorldPresence(
+        uint petId,
+        uint ownerObjectId)
+    {
         var packet = new byte[108];
 
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x2808);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), objectId);
-        // Working captures identify the remaining fields as character-specific
-        // guild/social appearance data (including an optional name at offset 32),
-        // not equipment-aura constants. GameCharacter does not model that data;
-        // emit the captured neutral form instead of inventing another player's ids.
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), petId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(8, 4),
+            ownerObjectId);
+        // The native 0x2808 handler consumes only pet and owner IDs before
+        // selecting and calling out the already-loaded owned-pet record.
+        // Preserve the remaining captured neutral body.
         packet[64] = 1;
         return packet;
     }

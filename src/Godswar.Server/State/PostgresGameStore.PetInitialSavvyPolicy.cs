@@ -1,0 +1,100 @@
+namespace Godswar.Server.State;
+
+internal sealed partial class PostgresGameStore
+{
+    private async Task ValidatePetInitialSavvyPolicyAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var command = _dataSource.CreateCommand(
+            """
+            SELECT
+                aptitude,
+                minimum_initial_savvy,
+                maximum_initial_savvy,
+                maximum_initial_savvy_stat_deviation,
+                initial_savvy_policy_version
+            FROM pet_aptitude_templates
+            ORDER BY aptitude;
+            """);
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+
+        foreach (var expected in PetInitialSavvyPolicy.All)
+        {
+            if (!await reader.ReadAsync(cancellationToken) ||
+                reader.GetInt16(0) != expected.AptitudeValue ||
+                reader.GetInt32(1) != expected.MinimumTotalSavvy ||
+                reader.GetInt32(2) != expected.MaximumTotalSavvy ||
+                reader.GetDecimal(3) !=
+                    expected.MaximumStatDeviationFraction ||
+                !string.Equals(
+                    reader.GetString(4),
+                    PetInitialSavvyPolicy.Version,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"Persisted pet initial-savvy policy does not match runtime aptitude {expected.AptitudeValue}.");
+            }
+        }
+
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidDataException(
+                "Persisted pet initial-savvy policy contains unexpected aptitude rows.");
+        }
+    }
+
+    private async Task ValidatePetInitialSavvyStateAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var command = _dataSource.CreateCommand(
+            """
+            SELECT pet.id
+            FROM character_pets pet
+            INNER JOIN pet_aptitude_templates aptitude
+                ON aptitude.aptitude = pet.aptitude
+            LEFT JOIN character_pet_stat_values stat
+                ON stat.pet_id = pet.id
+            GROUP BY
+                pet.id,
+                pet.initial_savvy_baseline_total,
+                pet.initial_savvy_policy_version,
+                aptitude.minimum_initial_savvy,
+                aptitude.maximum_initial_savvy
+            HAVING count(stat.stat_code) <> 6
+                OR count(DISTINCT stat.stat_code) <> 6
+                OR (
+                    pet.initial_savvy_baseline_total IS NULL
+                    AND COALESCE(sum(stat.initial_savvy), 0) = 0
+                )
+                OR (
+                    pet.initial_savvy_baseline_total IS NOT NULL
+                    AND (
+                        pet.initial_savvy_policy_version
+                            <> @policyVersion
+                        OR pet.initial_savvy_baseline_total
+                            < aptitude.minimum_initial_savvy
+                        OR pet.initial_savvy_baseline_total
+                            > aptitude.maximum_initial_savvy
+                        OR count(*) FILTER (
+                            WHERE stat.initial_savvy <= 0
+                        ) > 0
+                        OR COALESCE(sum(stat.initial_savvy), 0)
+                            < pet.initial_savvy_baseline_total
+                    )
+                )
+            ORDER BY pet.id
+            LIMIT 1;
+            """);
+        command.Parameters.AddWithValue(
+            "policyVersion",
+            PetInitialSavvyPolicy.Version);
+        var invalidPetId =
+            await command.ExecuteScalarAsync(cancellationToken);
+        if (invalidPetId is not null && invalidPetId is not DBNull)
+        {
+            throw new InvalidDataException(
+                $"Pet {invalidPetId} has invalid initial-savvy baseline or progression state.");
+        }
+    }
+}

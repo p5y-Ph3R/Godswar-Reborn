@@ -205,11 +205,21 @@ internal sealed partial class GameClientHandler
         var talentStates = _account is null
             ? []
             : await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var ownedPets = _account is null
+            ? []
+            : await _store.GetOwnedPetsAsync(
+                _account.Id,
+                _character.Id,
+                cancellationToken);
+        var ownedPetList = PacketBuilder.OwnedPetList(ownedPets);
         Console.WriteLine(
-            $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count}");
+            $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
 
         await _session.SendAsync(enterMain, cancellationToken, "EnterMain");
-        await _session.SendAsync(PacketBuilder.EnterUiBootstrap(), cancellationToken, "EnterUiBootstrap");
+        await _session.SendAsync(
+            PacketBuilder.EnterUiBootstrap(),
+            cancellationToken,
+            "EnterUiBootstrap");
 
         foreach (var packet in kitBagDetailPages)
         {
@@ -221,7 +231,10 @@ internal sealed partial class GameClientHandler
             await _session.SendAsync(packet, cancellationToken, "KitBagSlotIndex");
         }
 
-        await _session.SendAsync(PacketBuilder.SkillUiState(), cancellationToken, "SkillUiState");
+        await _session.SendAsync(
+            ownedPetList,
+            cancellationToken,
+            "OwnedPetList");
         await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
     }

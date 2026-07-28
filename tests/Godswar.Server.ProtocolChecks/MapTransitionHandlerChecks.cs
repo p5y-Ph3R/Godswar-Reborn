@@ -51,7 +51,8 @@ internal static partial class MapTransitionHandlerChecks
             SpartaMapId,
             x: 190f,
             z: -120f);
-        var store = new MapTransitionStore(character);
+        var pet = CreateSummonedPet(character);
+        var store = new MapTransitionStore(character, [pet]);
         var registry = new GameSessionRegistry(
             store: null,
             zodiacEnergyOptions: null,
@@ -164,6 +165,7 @@ internal static partial class MapTransitionHandlerChecks
         AssertNoFullBootstrapReplay(
             handler,
             store,
+            expectedPetPresenceReads: 1,
             "outward transition");
 
         // The source removal was already observed. Removing the test viewer
@@ -236,6 +238,12 @@ internal static partial class MapTransitionHandlerChecks
             CreateControlPacket(Opcodes.ClientReady));
         await AssertNextPacketAsync(
             actorSocket,
+            PacketBuilder.PetWorldPresence(
+                checked((uint)pet.PetId),
+                LocalPlayerObjectId),
+            "reverse summoned-pet restore");
+        await AssertNextPacketAsync(
+            actorSocket,
             PacketBuilder.PlayerStatusUpdate(character, 1f),
             "reverse completed player status");
         await AssertNextPacketAsync(
@@ -254,6 +262,7 @@ internal static partial class MapTransitionHandlerChecks
         AssertNoFullBootstrapReplay(
             handler,
             store,
+            expectedPetPresenceReads: 2,
             "reverse transition");
 
         Check.Equal(
@@ -422,166 +431,5 @@ internal static partial class MapTransitionHandlerChecks
             LocalPlayerObjectId);
         return new GamePacket(packet);
     }
-
-    private static async Task AssertDetailAndCompletedTransitionAsync(
-        RuntimePolicySessionSocket socket,
-        GameCharacter character,
-        string description)
-    {
-        await AssertNextPacketAsync(
-            socket,
-            PacketBuilder.PlayerDetail(character),
-            $"{description} player detail");
-        await AssertNextPacketAsync(
-            socket,
-            PacketBuilder.PlayerStatusUpdate(character, 1f),
-            $"{description} detail status");
-        await AssertNextPacketAsync(
-            socket,
-            PacketBuilder.PlayerStatusUpdate(character, 1f),
-            $"{description} completed status");
-        await AssertNextPacketAsync(
-            socket,
-            PacketBuilder.PlayerStatusEffects(
-                character,
-                [],
-                ClientStatusAggregate.Empty),
-            $"{description} completed status effects");
-    }
-
-    private static async Task AssertNextPacketAsync(
-        RuntimePolicySessionSocket socket,
-        byte[] expected,
-        string description)
-    {
-        var actual = await socket.ReadPacketAsync(expected.Length);
-        Check.True(
-            actual.SequenceEqual(expected),
-            $"{description} matches byte-for-byte");
-    }
-
-    private static void AssertPersistedPosition(
-        MapTransitionStore store,
-        int index,
-        byte expectedMapId,
-        MapTraversalPosition expected,
-        string description)
-    {
-        Check.Equal(
-            index + 1,
-            store.PositionWrites.Count,
-            $"{description} persists exactly once");
-        var write = store.PositionWrites[index];
-        Check.True(
-            write.AccountId == AccountId &&
-            write.CharacterId == CharacterId,
-            $"{description} persists the active identity");
-        Check.Equal(
-            expectedMapId,
-            write.MapId,
-            $"{description} persisted map");
-        Check.Equal(
-            expected.X,
-            write.X,
-            $"{description} persisted X");
-        Check.Equal(
-            expected.Z,
-            write.Z,
-            $"{description} persisted Z");
-    }
-
-    private static void AssertHiddenDestination(
-        GameSessionRegistry registry,
-        ClientSession session,
-        GameCharacter character,
-        byte sourceMapId,
-        byte targetMapId,
-        string description)
-    {
-        Check.Equal(
-            targetMapId,
-            character.CurrentMap,
-            $"{description} updates authoritative map");
-        Check.True(
-            !registry.GetMapSessions(
-                    sourceMapId)
-                .Any(context =>
-                    ReferenceEquals(context.Session, session)),
-            $"{description} removes source membership");
-        Check.Equal(
-            1,
-            registry.GetMapPopulation(targetMapId),
-            $"{description} destination ECS owns hidden player");
-        Check.True(
-            !registry.GetMapSessions(
-                    targetMapId)
-                .Any(context =>
-                    ReferenceEquals(context.Session, session)),
-            $"{description} hides destination from world readers");
-    }
-
-    private static void AssertActiveDestination(
-        GameSessionRegistry registry,
-        ClientSession session,
-        GameCharacter character,
-        byte mapId,
-        string description)
-    {
-        var active = registry.GetMapSessions(mapId)
-            .Single(context =>
-                ReferenceEquals(context.Session, session));
-        Check.True(
-            active.WorldReady &&
-            ReferenceEquals(active.Character, character),
-            $"{description} activates the authoritative character");
-    }
-
-    private static void AssertNoFullBootstrapReplay(
-        GameClientHandler handler,
-        MapTransitionStore store,
-        string description)
-    {
-        Check.True(
-            !GetBooleanField(handler, "_postEnterBootstrapSent"),
-            $"{description} does not mark full bootstrap sent");
-        Check.Equal(
-            0,
-            store.EnterSyncRequests,
-            $"{description} does not replay captured enter sync");
-        Check.Equal(
-            0,
-            store.SkillStateRequests,
-            $"{description} does not replay skill bootstrap");
-        Check.Equal(
-            0,
-            store.TalentStateRequests,
-            $"{description} does not replay talent bootstrap");
-    }
-
-    private static GameCharacter CreateCharacter(
-        int characterId,
-        int accountId,
-        string name,
-        byte mapId,
-        float x,
-        float z) =>
-        new()
-        {
-            Id = characterId,
-            AccountId = accountId,
-            Name = name,
-            CreatedUtc = TestTime.UtcDateTime,
-            Camp = GameDefaults.SpartaCamp,
-            CurrentMap = mapId,
-            PositionX = x,
-            PositionZ = z,
-            Level = 20,
-            CurrentHp = 2_000,
-            MaxHp = 2_500,
-            CurrentMp = 1_000,
-            MaxMp = 1_500,
-            Equipment = string.Empty,
-            KitBag = string.Empty
-        };
 
 }

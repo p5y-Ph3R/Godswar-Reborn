@@ -247,6 +247,30 @@ internal static partial class Program
             Check.Equal((byte)0, extras[offset], $"PlayerAppearanceExtras neutral byte {offset}");
         }
 
+        const uint petId = 4_665;
+        var petPresence = PacketBuilder.PetWorldPresence(
+            petId,
+            objectId);
+        Check.Equal(
+            (ushort)10248,
+            ReadUInt16(petPresence, 2),
+            "pet world-presence opcode");
+        Check.Equal(
+            petId,
+            ReadUInt32(petPresence, 4),
+            "pet world-presence pet ID");
+        Check.Equal(
+            objectId,
+            ReadUInt32(petPresence, 8),
+            "pet world-presence owner object ID");
+        Check.Equal(
+            (byte)1,
+            petPresence[64],
+            "pet world-presence captured neutral marker");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => PacketBuilder.PetWorldPresence(0, objectId),
+            "zero pet ID cannot create a presence packet");
+
         var title = PacketBuilder.PlayerTitleInfo(character, objectId);
         Check.Equal(objectId, ReadUInt32(title, 4), "PlayerTitleInfo object id");
         Check.True(

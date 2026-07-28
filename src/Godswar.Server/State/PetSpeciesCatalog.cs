@@ -58,8 +58,19 @@ internal static class PetSpeciesCatalog
     private static readonly FrozenDictionary<int, PetSpeciesDefinition> ByType =
         All.ToFrozenDictionary(static species => species.Type);
 
+    private static readonly FrozenDictionary<uint, PetSpeciesDefinition>
+        ByEggItemId = All
+            .Where(static species => species.EggItemId.HasValue)
+            .ToFrozenDictionary(
+                static species => species.EggItemId!.Value);
+
     public static bool TryGet(int type, out PetSpeciesDefinition species) =>
         ByType.TryGetValue(type, out species!);
+
+    public static bool TryGetByEggItemId(
+        uint eggItemId,
+        out PetSpeciesDefinition species) =>
+        ByEggItemId.TryGetValue(eggItemId, out species!);
 
     private static IReadOnlyList<PetSpeciesDefinition> CreateAll()
     {

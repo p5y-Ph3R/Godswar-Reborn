@@ -117,11 +117,6 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] SkillUiState()
-    {
-        return CapturedTalentSkillUiStateTemplate.ToArray();
-    }
-
     public static byte[] SkillListBootstrap()
     {
         return EmptySkillListBootstrapTemplate.ToArray();

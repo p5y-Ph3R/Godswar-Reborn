@@ -1,10 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresMigrationFoundationChecks
+internal static partial class PostgresMigrationFoundationChecks
 {
     public static async Task RunAsync()
     {
@@ -18,7 +16,7 @@ internal static class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(13, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(23, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -52,7 +50,17 @@ internal static class PostgresMigrationFoundationChecks
                     "20260728_009_skill_cast_interrupt_opcode",
                     "20260728_010_pet_foundation",
                     "20260728_011_pet_aptitude_range",
-                    "20260728_012_pet_aptitude_catalog"
+                    "20260728_012_pet_aptitude_catalog",
+                    "20260728_013_owned_pet_bootstrap_opcode",
+                    "20260728_014_pet_presence_protocol",
+                    "20260728_015_pet_presence_audit_operation",
+                    "20260728_016_pet_growth_policy",
+                    "20260728_017_pet_growth_midpoint_backfill",
+                    "20260728_018_pet_growth_policy_v2",
+                    "20260728_019_pet_initial_savvy_policy",
+                    "20260729_020_pet_savvy_semantics",
+                    "20260729_021_pet_savvy_semantics_hardening",
+                    "20260729_022_pet_level_progression"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(
@@ -368,24 +376,6 @@ internal static class PostgresMigrationFoundationChecks
         Check.Throws<InvalidOperationException>(
             () => PostgresSchemaMigrationRunner.ClassifyLegacySchema(2),
             "partial database refuses unsafe bootstrap replay");
-    }
-
-    private static async Task CheckBootstrapResourceIdentityAsync()
-    {
-        const int expectedByteCount = 87_573;
-        const string expectedSha256 =
-            "F10E4B8752506AA10E72D88C62D49850A3F9B3197ECB0E2CBD693AFC34B9B09A";
-        var strictUtf8 = new UTF8Encoding(
-            encoderShouldEmitUTF8Identifier: false,
-            throwOnInvalidBytes: true);
-        var sql = await LegacySchemaBootstrap.LoadAsync(CancellationToken.None);
-        var bytes = strictUtf8.GetBytes(sql);
-
-        Check.Equal(expectedByteCount, bytes.Length, "legacy bootstrap byte count");
-        Check.Equal(
-            expectedSha256,
-            Convert.ToHexString(SHA256.HashData(bytes)),
-            "legacy bootstrap fragment reconstruction hash");
     }
 
 }

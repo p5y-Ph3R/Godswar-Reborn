@@ -61,6 +61,8 @@ internal static class PetItemCatalog
     public const uint ContractSpirit = 10105;
     public const uint PixieTear = 10106;
     public const uint SpringWater = 10107;
+    public const uint JuiceOfRebirth = 10145;
+    public const uint RestrictedJuiceOfRebirth = 10146;
     public const uint EmptySealJade = 10108;
     public const uint PackedSealJade = 10109;
     public const uint FairyFeather = 11000;
@@ -69,6 +71,7 @@ internal static class PetItemCatalog
     public const uint PhoenixFeather = 11005;
     public const uint RestrictedSpringWater = 11010;
     public const uint GenderReverser = 11015;
+    public const uint AmbrosiaOfRebirth = 11095;
 
     public static IReadOnlyList<PetItemDefinition> Core { get; } =
         Array.AsReadOnly(
@@ -93,14 +96,15 @@ internal static class PetItemCatalog
             D(10112, "Stick: Work", PetItemPurpose.Talent),
             D(10113, "Stick: Healing", PetItemPurpose.Talent),
             D(10114, "Stick: Merge", PetItemPurpose.Talent),
-            D(10145, "Juice of Rebirth", PetItemPurpose.Rebirth),
-            D(10146, "Juice of Rebirth (Limited)", PetItemPurpose.Rebirth, true),
+            D(JuiceOfRebirth, "Juice of Rebirth", PetItemPurpose.Rebirth),
+            D(RestrictedJuiceOfRebirth, "Juice of Rebirth (Limited)", PetItemPurpose.Rebirth, true),
             D(FairyFeather, "Fairy's Feather", PetItemPurpose.SavvyReset),
             D(PetCallCharm, "Charm: Pet Call", PetItemPurpose.Summon),
             D(MergeCharm, "Charm: Merge", PetItemPurpose.OwnerMerge),
             D(PhoenixFeather, "Phoenix's Feather", PetItemPurpose.GrowthReset),
             D(RestrictedSpringWater, "Spring Water (Restricted)", PetItemPurpose.Rebirth, true),
-            D(GenderReverser, "Pet Gender Reverser", PetItemPurpose.Gender)
+            D(GenderReverser, "Pet Gender Reverser", PetItemPurpose.Gender),
+            D(AmbrosiaOfRebirth, "Ambrosia of Rebirth", PetItemPurpose.Rebirth)
         });
 
     public static IReadOnlyList<PetItemRange> Ranges { get; } =

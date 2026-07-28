@@ -14,6 +14,7 @@ internal enum PetPlanRejection
     AlreadyMergedWithOwner,
     SoulContractRequired,
     NoRebirthsRemaining,
+    MaximumRebirthsReached,
     LevelTooLow,
     InvalidMaterialCount,
     RestrictedMaterialRequiresBoundPet,
@@ -62,9 +63,9 @@ internal sealed record PetMergePlan(
 /// <summary>
 /// Validates the currently captured transport-independent Pet Manager rules
 /// and applies outcomes already calculated by trusted server policy. This
-/// class deliberately does not guess the stock client's quality/EXP
-/// restrictions, random rank, savvy, growth, or EXP formulas and does not
-/// expose packet opcodes.
+/// Project-authored rebirth growth is calculated by
+/// <see cref="PetRebirthGrowthPolicy"/>. Unrecovered stock EXP conversion and
+/// rank formulas remain outside this planner, and it exposes no packet opcodes.
 /// </summary>
 internal static class PetManagerPlanner
 {
@@ -73,6 +74,9 @@ internal static class PetManagerPlanner
     public const int MinimumOwnerMergeAmity = 40;
     public const int MaximumPetLevel = 120;
     public const int MaximumPetSkillCount = 6;
+    public const int MaximumOwnedPetCount = 8;
+    public const int MaximumRebirthCount =
+        PetRebirthGrowthPolicy.MaximumRebirthCount;
 
     public static int RequiredLevelForRebirth(int completedRebirths)
     {
@@ -183,7 +187,13 @@ internal static class PetManagerPlanner
             return false;
         }
 
-        if (!TryValidateSpiritSelection(
+        if (!HasAuthoritativeRarityAddedSavvyBaseline(pet!))
+        {
+            rejection = PetPlanRejection.InvalidPetState;
+            return false;
+        }
+
+        if (!TryValidateRebirthSpiritSelection(
                 materials.RebirthSpiritCount,
                 materials.RebornHarpyiaCount,
                 pet!.IsBound,
@@ -222,6 +232,12 @@ internal static class PetManagerPlanner
             return false;
         }
 
+        if (pet.CompletedRebirths >= MaximumRebirthCount)
+        {
+            rejection = PetPlanRejection.MaximumRebirthsReached;
+            return false;
+        }
+
         var requiredLevel = RequiredLevelForRebirth(pet.CompletedRebirths);
         if (pet.Level < requiredLevel)
         {
@@ -229,7 +245,7 @@ internal static class PetManagerPlanner
             return false;
         }
 
-        if (!IsValidRebirthOutcome(outcome, pet.Rank))
+        if (!IsValidRebirthOutcome(outcome, pet))
         {
             rejection = PetPlanRejection.InvalidAuthoritativeOutcome;
             return false;
@@ -241,7 +257,7 @@ internal static class PetManagerPlanner
                 Level = 1,
                 Experience = outcome!.CarriedExperience,
                 Rank = outcome.RankAfter,
-                AddedSavvy = PetSavvy.Zero,
+                AddedSavvy = pet.RarityAddedSavvy,
                 GrowthAcceleration = outcome.GrowthAcceleration,
                 CompletedRebirths = checked(pet.CompletedRebirths + 1),
                 RebirthsRemaining = pet.RebirthsRemaining - 1
@@ -353,9 +369,11 @@ internal static class PetManagerPlanner
             !PetAptitudeCatalog.TryGet(pet.Aptitude, out _) ||
             !pet.InitialSavvy.IsNonNegative ||
             !pet.AddedSavvy.IsNonNegative ||
+            !pet.RarityAddedSavvy.IsNonNegative ||
+            !pet.AddedSavvy.IsAtLeast(pet.RarityAddedSavvy) ||
             !pet.GrowthAcceleration.IsNonNegative ||
             pet.CompletedPetMerges < 0 ||
-            pet.CompletedRebirths < 0 ||
+            pet.CompletedRebirths is < 0 or > MaximumRebirthCount ||
             pet.RebirthsRemaining < 0 ||
             pet.CurrentEnergy < 0 ||
             pet.MaximumEnergy < 0 ||
@@ -368,6 +386,47 @@ internal static class PetManagerPlanner
 
         rejection = PetPlanRejection.None;
         return true;
+    }
+
+    private static bool HasAuthoritativeRarityAddedSavvyBaseline(
+        OwnedPet pet)
+    {
+        if (!PetAddedSavvyPolicy.TryGet(
+                pet.Aptitude,
+                out var bracket))
+        {
+            return false;
+        }
+
+        var baseline = pet.RarityAddedSavvy;
+        if (baseline.Agility <= 0m ||
+            baseline.Strength <= 0m ||
+            baseline.Accuracy <= 0m ||
+            baseline.Technique <= 0m ||
+            baseline.Wisdom <= 0m ||
+            baseline.Luck <= 0m)
+        {
+            return false;
+        }
+
+        if (baseline.Strength == baseline.Agility &&
+            baseline.Accuracy == baseline.Agility &&
+            baseline.Technique == baseline.Agility &&
+            baseline.Wisdom == baseline.Agility &&
+            baseline.Luck == baseline.Agility)
+        {
+            return false;
+        }
+
+        var total =
+            baseline.Agility +
+            baseline.Strength +
+            baseline.Accuracy +
+            baseline.Technique +
+            baseline.Wisdom +
+            baseline.Luck;
+        return total >= bracket.MinimumTotalSavvy &&
+            total <= bracket.MaximumTotalSavvy;
     }
 
     private static bool IsValidOwnerMergeOutcome(
@@ -397,11 +456,14 @@ internal static class PetManagerPlanner
 
     private static bool IsValidRebirthOutcome(
         AuthoritativePetRebirthOutcome? outcome,
-        decimal currentRank) =>
+        OwnedPet pet) =>
         outcome is not null &&
         outcome.CarriedExperience >= 0 &&
-        outcome.RankAfter >= currentRank &&
-        outcome.GrowthAcceleration.IsNonNegative;
+        outcome.RankAfter >= pet.Rank &&
+        PetRebirthGrowthPolicy.IsValidOutcome(
+            checked(pet.CompletedRebirths + 1),
+            pet.GrowthAcceleration,
+            outcome.GrowthAcceleration);
 
     private static bool IsValidPetMergeOutcome(
         AuthoritativePetMergeOutcome? outcome,
@@ -434,6 +496,31 @@ internal static class PetManagerPlanner
         }
 
         rejection = PetPlanRejection.None;
+        return true;
+    }
+
+    private static bool TryValidateRebirthSpiritSelection(
+        int standardCount,
+        int restrictedCount,
+        bool petIsBound,
+        out PetPlanRejection rejection)
+    {
+        if (!TryValidateSpiritSelection(
+                standardCount,
+                restrictedCount,
+                petIsBound,
+                out rejection))
+        {
+            return false;
+        }
+
+        if ((long)standardCount + restrictedCount !=
+            PetRebirthGrowthPolicy.RequiredSpiritCount)
+        {
+            rejection = PetPlanRejection.InvalidMaterialCount;
+            return false;
+        }
+
         return true;
     }
 }

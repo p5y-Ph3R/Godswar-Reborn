@@ -195,6 +195,16 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateSkillCastInterruptOpcode(),
         CreatePetSystemFoundation(),
         CreatePetAptitudeRangeCorrection(),
-        CreatePetAptitudeCatalog()
+        CreatePetAptitudeCatalog(),
+        CreateOwnedPetBootstrapOpcode(),
+        CreatePetPresenceProtocol(),
+        CreatePetPresenceAuditOperation(),
+        CreatePetGrowthPolicy(),
+        CreatePetGrowthMidpointBackfill(),
+        CreatePetGrowthPolicyV2(),
+        CreatePetInitialSavvyPolicy(),
+        CreatePetSavvySemanticsCorrection(),
+        CreatePetSavvySemanticsHardening(),
+        CreatePetLevelProgression()
     ];
 }
