@@ -194,6 +194,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateZodiacSkillGridState(),
         CreateSkillCastInterruptOpcode(),
         CreatePetSystemFoundation(),
-        CreatePetAptitudeRangeCorrection()
+        CreatePetAptitudeRangeCorrection(),
+        CreatePetAptitudeCatalog()
     ];
 }

@@ -21,6 +21,11 @@ is accepted. It does not yet include a store executor, inventory transaction,
 live character-stat overlay, or client packet handler. No owned-pet opcode or
 golden packet exists in the repository yet.
 
+Pet aptitude is a separate 1-16 authoritative ladder. Values 1-14 retain the
+stock names from `PETAPTITUDE1` through `PETAPTITUDE14`; values 15 and 16 are
+project extensions named **Celestial** and **Transcendent**. PostgreSQL stores
+the mapping in `pet_aptitude_templates` and references it from owned pets.
+
 ## Client-derived rules
 
 ### Owner merge

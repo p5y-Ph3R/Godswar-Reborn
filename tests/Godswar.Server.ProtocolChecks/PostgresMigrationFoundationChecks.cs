@@ -18,7 +18,7 @@ internal static class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(12, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(13, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -51,7 +51,8 @@ internal static class PostgresMigrationFoundationChecks
                     "20260723_008_zodiac_skill_grid_state",
                     "20260728_009_skill_cast_interrupt_opcode",
                     "20260728_010_pet_foundation",
-                    "20260728_011_pet_aptitude_range"
+                    "20260728_011_pet_aptitude_range",
+                    "20260728_012_pet_aptitude_catalog"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

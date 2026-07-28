@@ -111,6 +111,7 @@ internal sealed record OwnedPet(
     int Level,
     long Experience,
     decimal Rank,
+    PetAptitude Aptitude,
     PetSavvy InitialSavvy,
     PetSavvy AddedSavvy,
     PetSavvy GrowthAcceleration,

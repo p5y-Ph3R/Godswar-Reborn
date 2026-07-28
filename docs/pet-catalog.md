@@ -74,3 +74,31 @@ persistent and must not be recomputed from this column after creation.
 The server should resolve an egg through an explicit item-to-type table, not
 through arithmetic. A compatibility policy for the four defective eggs must be
 chosen and tested before egg opening is enabled.
+
+## Aptitude ladder
+
+| Value | Aptitude | Origin |
+|---:|---|---|
+| 1 | Weak | Stock client |
+| 2 | Fool | Stock client |
+| 3 | Cowish | Stock client |
+| 4 | Moderate | Stock client |
+| 5 | Rational | Stock client |
+| 6 | Calm | Stock client |
+| 7 | Smart | Stock client |
+| 8 | Zealous | Stock client |
+| 9 | Grumpy | Stock client |
+| 10 | Brave | Stock client |
+| 11 | Overbearing | Stock client |
+| 12 | Ferocious | Stock client |
+| 13 | Almighty | Stock client |
+| 14 | Godly | Stock client |
+| 15 | Celestial | Server extension |
+| 16 | Transcendent | Server extension |
+
+The installed client originally labels values 15 and 16 as `Backup`.
+`Celestial` and `Transcendent` are deliberate project extensions and must be
+kept synchronized between `PetAptitudeCatalog`, `pet_aptitude_templates`, and
+the English client localization. The patched client files are `text.lua`,
+`ItemColor.xml`, `PetDetailProc.lua`, `PetInfoProc.lua`, and
+`PetSamsaraUI.lua`.

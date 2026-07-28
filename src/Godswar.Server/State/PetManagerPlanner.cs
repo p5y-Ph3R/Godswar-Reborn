@@ -350,6 +350,7 @@ internal static class PetManagerPlanner
             pet.Level is < 1 or > MaximumPetLevel ||
             pet.Experience < 0 ||
             pet.Rank < 0m ||
+            !PetAptitudeCatalog.TryGet(pet.Aptitude, out _) ||
             !pet.InitialSavvy.IsNonNegative ||
             !pet.AddedSavvy.IsNonNegative ||
             !pet.GrowthAcceleration.IsNonNegative ||

@@ -413,6 +413,7 @@ internal static class PetSystemFoundationChecks
             Level: 1,
             Experience: 0,
             Rank: 1m,
+            Aptitude: PetAptitude.Weak,
             InitialSavvy: PetSavvy.Zero,
             AddedSavvy: PetSavvy.Zero,
             GrowthAcceleration: PetSavvy.Zero,
