@@ -468,6 +468,7 @@ internal sealed partial class SecureUdpSessionAuthority : IDisposable
         long nowTimestamp)
     {
         return entry.BoundEndpoint is not null &&
+            !IsTlsRealtimeOwner(entry) &&
             nowTimestamp >= entry.LastActivityTimestamp &&
             _timeProvider.GetElapsedTime(
                 entry.LastActivityTimestamp,

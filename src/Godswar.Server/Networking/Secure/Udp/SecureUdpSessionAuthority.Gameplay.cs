@@ -502,6 +502,18 @@ internal sealed partial class SecureUdpSessionAuthority
         SecureRealtimeMovementOfferStatus status) =>
         new(status, 0, default, 0);
 
+    private static bool IsTlsRealtimeOwner(SessionEntry entry)
+    {
+        var transport = entry.Realtime?.Transport.GetSnapshot();
+        // The authenticated TLS lease owns lifetime after the irreversible
+        // cutover. UDP idle cleanup must not tear down that live session.
+        return transport is
+        {
+            HasTransport: true,
+            TransportSource: SecureRealtimeTransportSource.Tls
+        };
+    }
+
     private SecureRealtimeSnapshotQueueStatus
         QueueRealtimeSnapshotLocked(
         SecureUdpConnectionKey connectionId,

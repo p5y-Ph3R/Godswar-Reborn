@@ -15,6 +15,7 @@ internal static partial class SecureRealtimeSessionAuthorityChecks
         CheckTlsIngressAndFallbackReconciliation();
         CheckQueuedTransitionPreservesUnappliedInput();
         CheckExpiredUdpOfferRetainsTlsFallback();
+        CheckTlsFallbackSurvivesUdpIdleCleanup();
         await CheckInitialSnapshotAndEndpointEgressAsync();
         CheckSnapshotReadyQueueBound();
     }
