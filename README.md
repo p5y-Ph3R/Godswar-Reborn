@@ -26,6 +26,23 @@ Focused Phase 4 authoritative-movement checks:
 dotnet run --project tests/Godswar.Server.ProtocolChecks/Godswar.Server.ProtocolChecks.csproj --configuration Release -- "Secure Phase 4"
 ```
 
+Phase 5A deterministic replay, metrics, decoder fuzz, and bounded local
+load/soak gate:
+
+```powershell
+dotnet restore GodswarServer.sln
+dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
+dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.ProtocolChecks.dll
+dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.ProtocolChecks.dll "Secure Phase 5A"
+.\tools\TestPhase5ABaseline.ps1 -Bots 64 -SoakSeconds 10 -Seed 20260728
+```
+
+The load runner is in-process only, opens no sockets, accepts no network
+target, and enforces a 5,000,000-operation cap. The accepted local baseline
+passed the full `149/149` managed suite against implementation commit
+`2986466cfbdb641fe849ce62c7cfd951f2715de8` and is recorded in
+[`docs/network-infrastructure-phase5a-replay-load-observability.md`](docs/network-infrastructure-phase5a-replay-load-observability.md).
+
 Slice 9 closeout passed the full managed protocol suite (`121/121`), a Win32
 Release native build with `/W4 /WX`, and five consecutive native offline
 passes. These are local/offline results: checked-in UDP remains disabled, no

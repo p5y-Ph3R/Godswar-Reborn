@@ -10,14 +10,15 @@ rejected, restored history. PreviewReadyV6 completed original-client Baseline,
 forced Fallback, ten-minute Soak, exact stock rollback, and a protected
 completion receipt under campaign
 `0a73fd79-961b-42c7-82cc-9e4a6f9e3355`. Secure defaults remain off after
-rollback. Phase 5A deterministic replay, bounded load/soak, observability, and
-operations are next; Phase 1 remains historical and unaccepted. Records:
+rollback. Phase 5A replay, bounded load/soak, observability, and operations
+now pass locally; production activation remains open. Records:
 [Phase 1](network-infrastructure-phase1.md),
 [Slice 8](network-infrastructure-phase2-slice8-activation.md),
 [Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md),
 [Slice 9B](network-infrastructure-phase3-slice9b-authenticated-binding.md), and
 [Slice 9C](network-infrastructure-phase3-slice9c-protected-udp.md), and
-[Phase 4](network-infrastructure-phase4-authoritative-movement.md).
+[Phase 4](network-infrastructure-phase4-authoritative-movement.md), and
+[Phase 5A](network-infrastructure-phase5a-replay-load-observability.md).
 
 ## 1. Map And Session Foundation — Baseline Implemented
 

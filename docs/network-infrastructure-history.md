@@ -256,3 +256,18 @@ This is the version ledger for
   zero-restart Docker passed. Completion receipt
   `completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
   `5EB6E369...F4A6F`; viewer parity is recorded `Unavailable`.
+- `1.34` (`2026-07-28`): Completed the Phase 5A bounded local baseline.
+  Added versioned 20 Hz semantic movement replay with canonical SHA-256
+  outcome chains, full-trace checkpoint identity, safe rehydration, and
+  first-divergence diagnostics. Added a targetless in-process load/soak tool
+  capped at 512 bots, 300 requested seconds, and 5,000,000 operations. Decoder
+  coverage adds exhaustive 0-through-128-byte lengths, every single-bit
+  mutation, and 20,000 seeded random payloads. Production loops now expose
+  finite tick/heartbeat metrics; three grouped admission, ticket, and UDP
+  gauges expose 19 finite `operational.state` series. Release built with zero
+  warnings/errors, the full managed suite passed `149/149`, and the 64-bot
+  ten-second paced baseline completed 76,800 operations in 10,013.6829 ms
+  with zero rejected movement and zero pacing misses. Implementation commit
+  `2986466cfbdb641fe849ce62c7cfd951f2715de8` is the recorded source.
+  Results are synthetic local evidence, not production capacity; live
+  exporter/load, upstream DDoS integration, and deferred AOI work remain.

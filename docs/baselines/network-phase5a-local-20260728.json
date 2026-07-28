@@ -1,0 +1,183 @@
+{
+  "schemaVersion": "reborn.network.phase5a.local-baseline.v1",
+  "recordedAtUtc": "2026-07-28T04:27:56.3649423Z",
+  "sourceRevision": "2986466cfbdb641fe849ce62c7cfd951f2715de8",
+  "environment": {
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "framework": ".NET 10.0.0-rc.2.25502.107",
+    "processArchitecture": "X64",
+    "operatingSystemArchitecture": "X64",
+    "processorCount": 32,
+    "serverGarbageCollection": false,
+    "garbageCollectionLatencyMode": "Interactive"
+  },
+  "commands": [
+    "dotnet build GodswarServer.sln --configuration Release --no-restore --nologo",
+    "dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.ProtocolChecks.dll",
+    "dotnet tools/Godswar.Server.Phase5A/bin/Release/net10.0/Godswar.Server.Phase5A.dll --self-check",
+    "dotnet tools/Godswar.Server.Phase5A/bin/Release/net10.0/Godswar.Server.Phase5A.dll --mode load --bots 64 --duration-seconds 10 --seed 20260728",
+    "dotnet tools/Godswar.Server.Phase5A/bin/Release/net10.0/Godswar.Server.Phase5A.dll --mode paced-soak --bots 64 --duration-seconds 10 --seed 20260728"
+  ],
+  "verification": {
+    "releaseBuildWarnings": 0,
+    "releaseBuildErrors": 0,
+    "fullProtocolChecksPassed": 149,
+    "fullProtocolChecksFailed": 0,
+    "focusedPhase5AOverloadAdmissionPassed": 6,
+    "focusedPhase5AOverloadAdmissionFailed": 0,
+    "loadToolSelfChecksPassed": 13
+  },
+  "load": {
+    "schemaVersion": "reborn.phase5a.load-report.v1",
+    "result": "passed",
+    "configuration": {
+      "mode": "load",
+      "trafficBoundary": "in-process-only; no sockets and no configurable target",
+      "bots": 64,
+      "logicalDurationSeconds": 10,
+      "tickRate": 20,
+      "seed": 20260728,
+      "plannedTicks": 200,
+      "plannedBotTicks": 12800,
+      "operationsPerBotTick": 6,
+      "percentileSampleCapacity": 2048
+    },
+    "resources": {
+      "elapsedMilliseconds": 30.4382,
+      "processCpuMilliseconds": 46.875,
+      "normalizedCpuPercent": 4.812517658731463,
+      "allocatedBytes": 53840,
+      "workingSetStartBytes": 23515136,
+      "workingSetEndBytes": 29655040,
+      "peakWorkingSetBytes": 29655040,
+      "processHandlesStart": 197,
+      "processHandlesEnd": 209,
+      "garbageCollections": {
+        "generation0": 0,
+        "generation1": 0,
+        "generation2": 0
+      }
+    },
+    "packets": {
+      "inputPackets": 12800,
+      "tlsInputPackets": 1280,
+      "udpInputPackets": 11520,
+      "snapshotPackets": 12800,
+      "totalPackets": 25600,
+      "inputBytes": 665600,
+      "snapshotBytes": 819200,
+      "totalBytes": 1484800,
+      "packetsPerSecond": 841048.4194203337,
+      "bytesPerSecond": 48780808.32637935
+    },
+    "ticks": {
+      "completedTicks": 200,
+      "completedBotTicks": 12800,
+      "acceptedMovements": 12800,
+      "rejectedMovements": 0,
+      "fixedStepMilliseconds": 50,
+      "botTicksPerSecond": 420524.20971016685,
+      "missedPacingDeadlines": 0,
+      "processingDurationMilliseconds": {
+        "observations": 200,
+        "retainedSamples": 200,
+        "minimum": 0.0517,
+        "p50": 0.0536,
+        "p95": 0.07830499999999999,
+        "p99": 0.12045399999997412,
+        "maximum": 9.9808
+      }
+    },
+    "budget": {
+      "hardOperationCap": 5000000,
+      "defaultRunOperations": 76800,
+      "runLimit": 76800,
+      "consumed": 76800,
+      "remaining": 0
+    },
+    "digest": {
+      "algorithm": "SHA-256",
+      "value": "8B6D8C9A1389D09B03FFC5A69C1E244CDA5166E5F2E4D7181C614A082D31039D"
+    }
+  },
+  "pacedSoak": {
+    "schemaVersion": "reborn.phase5a.load-report.v1",
+    "result": "passed",
+    "configuration": {
+      "mode": "paced-soak",
+      "trafficBoundary": "in-process-only; no sockets and no configurable target",
+      "bots": 64,
+      "logicalDurationSeconds": 10,
+      "tickRate": 20,
+      "seed": 20260728,
+      "plannedTicks": 200,
+      "plannedBotTicks": 12800,
+      "operationsPerBotTick": 6,
+      "percentileSampleCapacity": 2048
+    },
+    "resources": {
+      "elapsedMilliseconds": 10013.6829,
+      "processCpuMilliseconds": 171.875,
+      "normalizedCpuPercent": 0.05363754578248128,
+      "allocatedBytes": 129680,
+      "workingSetStartBytes": 23531520,
+      "workingSetEndBytes": 28114944,
+      "peakWorkingSetBytes": 34504704,
+      "processHandlesStart": 197,
+      "processHandlesEnd": 224,
+      "garbageCollections": {
+        "generation0": 0,
+        "generation1": 0,
+        "generation2": 0
+      }
+    },
+    "packets": {
+      "inputPackets": 12800,
+      "tlsInputPackets": 1280,
+      "udpInputPackets": 11520,
+      "snapshotPackets": 12800,
+      "totalPackets": 25600,
+      "inputBytes": 665600,
+      "snapshotBytes": 819200,
+      "totalBytes": 1484800,
+      "packetsPerSecond": 2556.5019639277775,
+      "bytesPerSecond": 148277.1139078111
+    },
+    "ticks": {
+      "completedTicks": 200,
+      "completedBotTicks": 12800,
+      "acceptedMovements": 12800,
+      "rejectedMovements": 0,
+      "fixedStepMilliseconds": 50,
+      "botTicksPerSecond": 1278.2509819638888,
+      "missedPacingDeadlines": 0,
+      "processingDurationMilliseconds": {
+        "observations": 200,
+        "retainedSamples": 200,
+        "minimum": 0.0146,
+        "p50": 0.030199999999999998,
+        "p95": 0.06784499999999985,
+        "p99": 0.3015539999999985,
+        "maximum": 3.1762
+      }
+    },
+    "budget": {
+      "hardOperationCap": 5000000,
+      "defaultRunOperations": 76800,
+      "runLimit": 76800,
+      "consumed": 76800,
+      "remaining": 0
+    },
+    "digest": {
+      "algorithm": "SHA-256",
+      "value": "C154D4ABCE76FA10A5E5A7293DD214ECEEE4D39FC4C462AA2C270582FFA1CFF4"
+    }
+  },
+  "limitations": [
+    "Synthetic in-process movement and codec workload only.",
+    "No real sockets, TLS handshakes, UDP AEAD, kernel networking, persistence, AOI fan-out, admission queues, or load shedding in the throughput run.",
+    "Overload and recovery are verified by separate deterministic network-emulation and UDP admission checks.",
+    "Resource totals include workload setup; processing-duration percentiles cover per-tick bot work and exclude pacing waits.",
+    "The values are a reproducible local observation, not a production capacity guarantee."
+  ]
+}

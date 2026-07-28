@@ -2,16 +2,15 @@
 
 ## Version and status
 
-- Document version: `1.33`
+- Document version: `1.34`
 - Last updated: `2026-07-28`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: Phase 4 PreviewReadyV6 controlled-host acceptance is
-  complete; proceed to the Phase 5A deterministic/load baseline.
-- Map, traversal, and AOI optimization remain deferred until Phase 4
-  acceptance and the Phase 5A baseline are complete.
+- Current milestone: Phase 5A's bounded local replay/load/observability
+  baseline is complete; production exporter/live-load gates remain.
+- Map, traversal, and AOI optimization may proceed only as a separate slice.
 - Production capacity and hosting inputs remain open.
 
 This is the durable migration reference; do not weaken its security or
@@ -353,10 +352,9 @@ remain rejected, restored history.
 ### Phase 5 — extension, hardening, and operations
 
 - Extend realtime traffic only with explicit recovery semantics.
-- Phase 5A establishes fixed-step deterministic replay, bounded bot load/soak
-  tests, reproducible resource/tick/network baselines, dashboards, alerts, and
-  runbooks; it also extends the decoder fuzzing and metrics introduced in
-  their owning phases.
+- Phase 5A established fixed-step replay, bounded targetless load/soak,
+  reproducible local baselines, metrics, a documented alert policy, and runbooks
+  ([record](network-infrastructure-phase5a-replay-load-observability.md)).
 - Keep the deferred map/AOI work behind Phase 4 and Phase 5A.
 - Produce provider-neutral deployment controls until hosting is selected.
 - Integrate an upstream TCP/arbitrary-UDP protection provider only after
@@ -369,9 +367,8 @@ and incident-response gates pass. Local results are not production guarantees.
 
 - The shim sees absolute positions, not keyboard intent. True input-level
   prediction may require a later `Origin.exe` hook.
-- Phase 4 AOI remove/spawn writes are bounded but can delay that session's
-  fixed-step movement. A later Phase 5 slice must move ordered AOI effects
-  behind a bounded single-owner queue without permitting visibility rollback.
+- Phase 4 AOI writes remain bounded but can delay fixed-step movement; a later
+  slice must move ordered effects behind a bounded single-owner queue.
 - Client signing/distribution remain undecided.
 - Production manifest signing/trust, blank-account reset policy, and upstream
   controls remain activation gates.
