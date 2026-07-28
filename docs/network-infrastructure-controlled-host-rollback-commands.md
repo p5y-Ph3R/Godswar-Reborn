@@ -149,9 +149,10 @@ PreviewReadyV5 was rejected because live Net sent stock Origin identity
 `753BE49F...ED79` while the server allowed patched `E177D94D...CC76C`; its
 native probe masked that mismatch through CLI identity injection.
 PreviewReadyV6 binds the identity through `GWKEY02` and a paired-file offline
-probe, but has not completed live acceptance. Rollback remains mandatory
-after any failure, and no retry may be documented as accepted without the
-full foreground matrix.
+probe. Final campaign `0a73fd79-961b-42c7-82cc-9e4a6f9e3355` completed the
+full foreground matrix and exact rollback; protected completion receipt
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
+`5EB6E369...F4A6F`. Rollback remains mandatory for future activations.
 
 Deleting the disposable client, database, Docker volume, or evidence is a
 separate destructive action and is not part of Phase 4 rollback.

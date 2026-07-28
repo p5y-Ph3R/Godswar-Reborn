@@ -245,3 +245,14 @@ This is the version ledger for
   `1044.613001` seconds. TLS authentication, authenticated UDP binding,
   authoritative movement/snapshot, and graceful stopping all completed.
   Fallback, Soak, and exact rollback remain pending; V6 is not fully accepted.
+- `1.33` (`2026-07-28`): Completed PreviewReadyV6 Phase 4 acceptance under
+  one final campaign, `0a73fd79-961b-42c7-82cc-9e4a6f9e3355`. Baseline,
+  forced Fallback, and Soak passed in `94.6714105`, `112.2090199`, and
+  `661.5843391` seconds on server `8B3E3134...F8E3` and release set
+  `0460C408...9EC5`. Fallback proved one-way TLS correction with no switchback;
+  commit `fc26223` retains TLS-owned authority through UDP idle cleanup, and
+  the final Soak proved it survived the former 30-second expiry.
+  Exact stock rollback, absent activation artifacts/keys, and healthy
+  zero-restart Docker passed. Completion receipt
+  `completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
+  `5EB6E369...F4A6F`; viewer parity is recorded `Unavailable`.

@@ -271,10 +271,10 @@ security.
 8. Retain the guarded Apply receipt.
 9. Enable the secure server profile and verify only `6599/7443` listen, never
    raw `5999/7000`.
-10. Original-client login, grant-before-redirect, bind, and world entry passed.
-    Repeated parity and the Phase 4 movement/fallback soak remain open.
-11. Guarded Restore reproduced the exact predecessor files and removed the
-    exact temporary trust and development keys.
+10. PreviewReadyV6 completed original-client login, bind, movement, forced
+    Fallback, and ten-minute Soak. Viewer parity was `Unavailable`.
+11. Guarded Restore reproduced exact predecessor files and removed managed
+    hosts mappings, activation artifacts, temporary trust, and development keys.
 
 ## UDP timeline
 
@@ -282,5 +282,6 @@ Phase 3 is implemented and the original client completed authenticated,
 encrypted UDP endpoint binding in the controlled-host run. Phase 4 implements
 sequenced movement meaning for opcode `10194`, authoritative
 snapshots/keyframes, reconciliation, transport epochs and deduplication, TLS
-fallback, and network-emulation tests. Its live movement/fallback/soak gate is
-the remaining acceptance work.
+fallback, and network-emulation tests. PreviewReadyV6's protected
+Baseline/Fallback/Soak, rollback, and completion receipt close the local Phase
+4 gate; production security/capacity gates remain.

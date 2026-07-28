@@ -1,9 +1,10 @@
 # PreviewReadyV6 controlled-host candidate
 
-PreviewReadyV6 is the active Phase 4 candidate. It preserves rejected V5 and
-its exact `handoff-000024.json` restore as immutable evidence. The live
-Baseline profile is sealed `Pass`. Fallback, Soak, and mandatory rollback
-remain open acceptance gates, so V6 is not yet fully accepted.
+PreviewReadyV6 is the accepted Phase 4 controlled-host candidate. It preserves
+rejected V5 and its exact `handoff-000024.json` restore as immutable evidence.
+Final campaign `0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed Baseline,
+forced Fallback, the ten-minute Soak, exact rollback, and the protected
+completion-receipt gate. Viewer parity was recorded `Unavailable`.
 
 ## Pinned artifacts
 
@@ -85,22 +86,29 @@ probe using the V6 Origin hash. A pass proves the native transport boundary;
 it does not replace live Origin, character selection, world entry, Fallback,
 Soak, or exact rollback.
 
-## Sealed live Baseline
+## Sealed live acceptance
 
-Campaign `5848b53f-24b4-4f11-a4fd-591c0c0e1a36` completed its live Baseline
-profile in `1044.613001` seconds. Its protected evidence is:
+All paths below are beneath the fixture's `server-evidence` directory.
 
-- `server-evidence\secure-server-20260727-224656-0460982.log`, SHA-256
-  `F8A2AC8AC2C8E44AEBAA6AB720184F6C7A616336C975B434DFE48EC11067A3CA`;
-- `server-evidence\secure-server-20260727-224656-0460982.profile.json`,
-  SHA-256
-  `F13470A46404401EA1AC7DFCCB0B7CE07CF0E13AB6AE7F1F27D11867491C3B16`.
+| Profile | Duration | Events | Profile result and SHA-256 |
+|---|---:|---:|---|
+| Baseline | `94.6714105` s | 9 | `secure-server-20260728-020955-8076984.profile.json` — `709FFA78D5C3ED0DA11417BBC70ACDE66BD0CC718FD55B15E871983C939CA066` |
+| Fallback | `112.2090199` s | 14 | `secure-server-20260728-021202-8420702.profile.json` — `DEACA3589559D54E9C038B432AF76657188F7FF0253F7E1F6AD3721A89EFFDAD` |
+| Soak | `661.5843391` s | 9 | `secure-server-20260728-021422-2616795.profile.json` — `94C877DAF402ED0AEC61C5F1AC7CCE042CC3F61EE1DFC7676C979368475193B6` |
 
-The profile recorded all nine required Baseline events: privacy-safe evidence
-startup, secure-listener readiness, TLS policy, accepted preface response,
-TLS client authentication, authenticated UDP binding, authoritative UDP
-movement, queued authoritative UDP snapshot, and graceful server stopping.
-This seals Baseline only; it does not attest Fallback, Soak, or rollback.
+Baseline and Soak evidence have SHA-256
+`F8A2AC8AC2C8E44AEBAA6AB720184F6C7A616336C975B434DFE48EC11067A3CA`;
+Fallback evidence has
+`FB387D34A0EC59A4029BCA10F5FA9B4BA6350CE222CDA15DEF252351CDE36F56`.
+Every profile pins server
+`8B3E313475E4EB9FE60E8917AF6BB8E7416F809C8B17150D8C3B21357F2EF8E3`
+and managed release set
+`0460C408F92F3817478E71A9FD6EA1C17E10C4AC4BF3624D7236295940499EC5`.
+
+Fallback recorded logical ACK loss, one-way TLS fallback, authoritative
+`not_ready` correction, and post-fallback TLS movement with
+`no_switchback=true`. The fixed Soak remained secure through `661.5843391`
+seconds, beyond the former 30-second idle-expiry defect.
 
 ## Apply and rollback policy
 
@@ -111,7 +119,11 @@ receipt-bound disposable client, exact hosts mapping, narrow patcher-log ACL,
 and monotonic activation state. They must not modify Norton, firewall rules,
 network adapters, routes, or a Windows certificate store.
 
-V6 remains incompletely accepted until Fallback and Soak pass and the campaign
-reaches exact `Restored` state. Any failed or interrupted remaining attempt
-requires the documented secure-Docker recovery and mandatory receipt-bound
-Restore.
+The client finished at exact `Restored`: stock Origin/Net, absent
+NetLegacy/manifest/root/private keys, original hosts restored with managed
+mappings absent, activation mode `0`, and healthy Docker with zero restarts.
+The protected receipt is
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json`, SHA-256
+`5EB6E369652605CA58A0D5CE2F01604268FAA2CE9A1323A4346F7DBFA15F4A6F`.
+This closes the local Phase 4 gate; it is not a production capacity or
+upstream-DDoS-readiness claim.

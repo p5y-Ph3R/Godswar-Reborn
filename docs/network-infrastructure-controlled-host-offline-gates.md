@@ -3,10 +3,11 @@
 Run these from an ordinary `powershell.exe -NoLogo -NoProfile` before client
 Apply. They are read-only except for ordinary build outputs and bounded test
 fixtures. The secure-Docker server and PostgreSQL must already be healthy.
-The active protected handoff is
+The accepted V6 protected root is
 `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`;
 PreviewReadyV5 and earlier generations are historical and read-only. These
-gates do not constitute live V6 acceptance.
+offline gates alone do not constitute live acceptance; the final foreground
+campaign and completion receipt do.
 
 ## Build and focused suites
 
@@ -55,14 +56,14 @@ The timeout-guard suite proves two exact stock-dereferenced root checks,
 state-2 scoping, stock ready
 continuation, preserved state-2/retry writes on the missing-root branch, and
 absence of the rejected preload hook. It cannot prove that a live retry
-reaches a rendered preview; that remains a foreground V6 gate.
+reaches a rendered preview; final V6 foreground acceptance supplied that proof.
 
 `BuildPhase4PreviewReadyNetworkShim.ps1` temporarily generates a verification
 header from only the pinned current and next public trusts, performs two clean
 deterministic builds, runs the native offline/manifest/contract probes,
 verifies the supplied paired Origin identity, and restores the checked-in
 placeholder header exactly. It never accesses a private signing key. The
-active immutable `20260728-102640-preview-ready-v6\candidate` fixture is
+accepted immutable `20260728-102640-preview-ready-v6\candidate` fixture is
 pinned as:
 
 ```text
@@ -72,7 +73,7 @@ preview-ready native checks FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE
 placeholder header          D72E7E218E2DD6D1730C1A5194965600DEBECDC9232BCF3DAA86494D863519D1
 ```
 
-The active campaign reads that immutable fixture directly, so a later ordinary
+The accepted workflow reads that immutable fixture directly, so a later ordinary
 native build cannot silently replace its candidate.
 
 The rejected PreviewReadyV5 fixture remains immutable at
@@ -218,10 +219,9 @@ if($LASTEXITCODE){throw 'Paired Origin/Net identity probe failed.'}
 }|Format-List
 ```
 
-The smoke is the machine-verifiable secure-Docker reference baseline. The
-original-client Baseline, Fallback, and Soak profiles are separate foreground
-gates and still require the manual acceptance matrix. Their active evidence
-root is
+The smoke is the machine-verifiable secure-Docker reference baseline. Final
+original-client Baseline, Fallback, and Soak profiles separately passed the
+manual acceptance gate. Their protected evidence root is
 `C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\server-evidence`.
 V3's null-slot crash and authenticated pre-world disconnect, V2's null-slot
 crash, and the earlier blank-preview campaigns remain failed evidence, not

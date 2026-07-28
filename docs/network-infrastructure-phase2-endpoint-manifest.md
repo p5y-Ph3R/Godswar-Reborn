@@ -142,8 +142,8 @@ Slice 8 does not invent security material that the project does not yet own:
 - a signed production or staging `RebornNetwork.gwem`;
 - authorized TLS trust and live installed activation.
 
-Those inputs and controlled-host acceptance remain required before live
-`SecureRequired`. The candidate is not installed into the original game client
-and does not hot-reload a changed manifest. Development key/manifest tooling is
-documented in the
+Those production inputs remain required before live production
+`SecureRequired`. Disposable-client controlled-host acceptance is complete;
+exact rollback leaves the candidate uninstalled, and it does not hot-reload a
+changed manifest. Development key/manifest tooling is documented in the
 [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).

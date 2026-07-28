@@ -284,10 +284,10 @@ failures before continuing.
    plaintext migration, grant-before-redirect ordering, hash-only bounded
    single-use tickets, game bind, authoritative bound principals, and native
    grant-registry/bind primitives.
-8. Completed in source/offline checks: signed Login/Game routes, Schannel
-   sessions, grant-gated binding, stock-DLL hardening, guarded Apply/Restore,
-   and coherent raw-or-TLS startup. Live account, trust, socket, and client
-   acceptance remain pending; see the
+8. At Slice 8 closeout, signed Login/Game routes, Schannel sessions,
+   grant-gated binding, stock-DLL hardening, guarded Apply/Restore, and
+   coherent raw-or-TLS startup passed source/offline checks. PreviewReadyV6
+   later completed the local controlled-host acceptance; see the
    [Slice 8 runbook](network-infrastructure-phase2-slice8-activation.md).
 
 Focused slice-4 check:

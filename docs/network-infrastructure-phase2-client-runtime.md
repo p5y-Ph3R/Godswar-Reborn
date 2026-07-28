@@ -290,7 +290,7 @@ Slices 6-8 preserve these ownership and bound contracts and provide:
 8. exported fail-closed Login/Game routing and secure-session ownership; and
 9. candidate-bound manifest probing plus guarded monotonic activation/restore.
 
-Live account backup/reset rehearsal, operational keys/trust, controlled-host
-socket tests, and original-client TLS world entry remain required. Slice 9B's
-binding foundation passes offline; the remaining Slice 9 work protects
-datagrams while gameplay stays on TLS.
+At Slice 8 closeout, live account rehearsal, operational keys/trust,
+controlled-host sockets, and original-client TLS world entry remained future
+gates. PreviewReadyV6 later completed the local controlled-host path; production
+keys/trust and deployment controls remain separate requirements.

@@ -17,15 +17,15 @@ dump `20260728001641.dmp`; it was restored without a completion receipt. The
 PreviewReadyV3 barrier removed that premature trigger but was manually
 rejected after a null-resource crash and a second authenticated pre-world
 disconnect; its later successful retry did not cure either first-attempt
-  failure. Exact V3 rollback succeeded and that generation is frozen read-only.
-  PreviewReadyV4 was rejected after TLS policy completed without a secure
-  preface. PreviewReadyV5 was rejected when live Net sent the stock Origin
-  identity while the server allowed only patched Origin; its exact restore is
-  recorded by `handoff-000024.json`. The active PreviewReadyV6 campaign binds
-  that identity through `GWKEY02` and paired-file offline gates. Its live
-  Baseline is sealed `Pass`; Fallback, Soak, and exact rollback remain
-  pending, so no complete V6 acceptance is claimed. The commands are in the
-  [controlled-host command reference](network-infrastructure-controlled-host-commands.md).
+failure. Exact V3 rollback succeeded and that generation is frozen read-only.
+PreviewReadyV4 was rejected after TLS policy completed without a secure
+preface. PreviewReadyV5 was rejected when live Net sent the stock Origin
+identity while the server allowed only patched Origin; its exact restore is
+recorded by `handoff-000024.json`. PreviewReadyV6 binds that identity through
+`GWKEY02` and paired-file offline gates. Final campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed all three profiles, exact
+rollback, and completion-receipt validation. The commands are in the
+[controlled-host command reference](network-infrastructure-controlled-host-commands.md).
 
 This exercise is a local compatibility/security result. It is not a production
 capacity claim and does not replace upstream L3/L4 DDoS protection.
@@ -69,9 +69,9 @@ deploy paid infrastructure, or recreate the removed historical runtime.
 | rejected PreviewReadyV3 candidate `Net.dll` | `5FD6A0C37801A393689AF523854AD5BE258616BF52809D8FEA04437D34B7CA85` |
 | rejected PreviewReadyV3 native checks | `ABB81E184CA54DD9ECFFDC1F2DB690E122F81A4B394050AF4F7B6095FC34308B` |
 | rejected V5 public-trust `Net.dll` | `0A34613ED9E4F6AC82608DA17570D905579F44A37CC6B08CAC8AA75B1A6DAA1A` |
-| active V6 guarded `Origin.exe` | `E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C` |
-| active V6 `GWKEY02` `Net.dll` | `2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97` |
-| active V6 native checks | `FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75` |
+| accepted V6 guarded `Origin.exe` | `E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C` |
+| accepted V6 `GWKEY02` `Net.dll` | `2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97` |
+| accepted V6 native checks | `FD34DD6F8FBD518D55C3833FB7E33C5DC819FD546D6799B201CE43E2A7424F75` |
 | endpoint manifest | `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C` |
 | current manifest trust | `A32B40917A01D510504528F5D6996F918A6A218991B64C50234ED84C75C75C07` |
 | next manifest trust | `582C252D31DE3361157C7625FB21DD104F907EA762FB77044E1CCEF2EA51E571` |
@@ -251,7 +251,7 @@ The accepted evidence file is
 fixture. It contains exactly the privacy-safe listener-ready, TLS-policy,
 preface-written, TLS-authenticated, UDP-bound, and stopping events. The
 original client reached the world. It does not contain the Phase 4 movement
-or forced-fallback events, so those gates remain open.
+or forced-fallback events, so that earlier record did not cover those gates.
 
 Mandatory rollback completed on `2026-07-27`: the disposable client returned
 to stock `Net.dll` with no `NetLegacy.dll` or manifest; hosts returned to
@@ -262,10 +262,9 @@ returned to the checked-in placeholder; and the protected runtime was removed.
 The external cleanup receipt is
 `C:\ProgramData\RebornSecureNetworkCleanupReceipts\runtime-cleanup-20260727-011921.json`.
 
-That accepted record does not close Phase 4. Original-client preview readiness,
-movement, forced fallback, parity, and soak remain unaccepted until every
-applicable row in the manual acceptance matrix passes and mandatory rollback
-completes.
+That earlier record did not close Phase 4 because it omitted original-client
+movement, forced fallback, parity, and soak. Final PreviewReadyV6 acceptance
+below later completed the applicable matrix and mandatory rollback.
 
 The subsequent legacy repeat-entry campaign under
 `C:\ProgramData\RebornSecureNetworkPhase4Docker` is also preserved as failed
@@ -308,11 +307,12 @@ correctly rejected it while allowing only patched `E177D94D...CC76C`. Its
 native probe passed only because the CLI supplied the patched identity. Exact
 V5 restore is preserved at protected `handoff-000024.json`.
 
-Active work uses the independent PreviewReadyV6 root and fixture listed
-above. Its `GWKEY02` contract carries the complete Origin SHA-256; runtime and
-preview guard consume it, while build and installer gates verify the paired
-files. The state-2 two-root retry guard and exact embedded-root CryptoAPI
-validation remain, with CurrentUser trust absent. V6's live Baseline passed;
-Fallback, Soak, and exact rollback remain required before complete
-acceptance. The leaf/root expire on `2026-08-09/10` UTC. V5 and earlier
-generations remain readable history.
+Final PreviewReadyV6 campaign `0a73fd79-961b-42c7-82cc-9e4a6f9e3355`
+passed Baseline, forced Fallback, and `661.5843391`-second Soak on one fixed
+server/release set. Exact rollback restored stock Origin/Net and original
+hosts, activation mode `0`, absent legacy/manifest/managed hosts
+mapping/root/private keys, and healthy zero-restart Docker. Protected receipt
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
+`5EB6E369652605CA58A0D5CE2F01604268FAA2CE9A1323A4346F7DBFA15F4A6F`.
+Viewer parity is `Unavailable`; this local acceptance is not a production
+capacity claim. The leaf/root expire on `2026-08-09/10` UTC.

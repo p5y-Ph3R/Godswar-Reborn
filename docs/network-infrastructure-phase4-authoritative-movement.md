@@ -31,14 +31,11 @@ Source/offline completion was verified on `2026-07-26`:
   `1069EC944B64DE7AD3DFBBB07C9D2E42E9840173682F1F145F0AFD371D45F6A2`.
 
 These are local compatibility and security results, not production-capacity
-claims. A later disposable controlled-host run accepted the original client's
-TLS authentication, authenticated UDP binding, and world entry with candidate
-SHA-256
-`0328D7EA84B68DD8D5A1DF7B0A291B9DC17EF3337C0114A7A396283FC4EF852B`.
-Mandatory rollback restored every checked-in secure/gameplay option to off.
-A bounded Docker reference client later passed live authoritative UDP movement
-and snapshot acknowledgement. Original-client movement, forced fallback,
-parity, and soak remain unaccepted.
+claims. Final PreviewReadyV6 campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed original-client TLS, encrypted
+UDP binding, movement, forced Fallback, and a `661.5843391`-second Soak on
+candidate `21695893...CAE97`. Mandatory rollback restored every checked-in
+secure/gameplay option to off. Viewer parity was `Unavailable`.
 
 Authoritative map transition support is tracked separately in
 [`map-runtime-and-travel-support.md`](map-runtime-and-travel-support.md).
@@ -348,16 +345,12 @@ latency, jitter, burst loss, duplication, reordering, UDP blocking, mailbox
 overload, transition retry schedules, handler projection/correction, and
 map/revive rehydration.
 
-Offline and loopback verification cannot accept the final stock-client gate.
-Controlled-host acceptance still requires five alternating account 7/13
-login/world cycles, mounted and unmounted movement, a map transition, correct
-viewer movement/correction, and foreground Baseline plus ten-minute Soak
-profiles without a blank model, crash, or server-unavailable regression. The
-foreground Fallback profile runs the receipt-bound logical snapshot-ACK-drop
-campaign. The logical campaign replaces an operating-system UDP block:
-acceptance must not alter Norton, Windows Firewall, adapters, routes, or the
-machine's internet connection. The complete operator matrix is in
-[controlled-host secure-network acceptance](network-infrastructure-controlled-host-acceptance.md#manual-acceptance-matrix).
+The final controlled-host gate passed under campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355`: original-client Baseline, logical
+snapshot-ACK-drop Fallback, ten-minute Soak, exact stock rollback, and
+protected completion-receipt validation. It did not alter Norton, Windows
+Firewall, adapters, routes, or internet connectivity. The complete result is
+in [controlled-host secure-network acceptance](network-infrastructure-controlled-host-acceptance.md).
 
 One production-readiness gap is explicit: AOI visibility refresh currently
 awaits bounded reliable remove/spawn writes while holding the character-state

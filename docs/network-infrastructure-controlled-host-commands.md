@@ -2,7 +2,7 @@
 
 Use this only with the
 [Phase 4 controlled-host acceptance runbook](network-infrastructure-controlled-host-acceptance.md).
-The current campaign is repeatable and remains limited to the disposable
+This workflow is repeatable and remains limited to the disposable
 client, exact loopback endpoints, `godswar_secure_dev`, and the protected
 campaign receipt.
 
@@ -13,12 +13,12 @@ disposable client only through
 `C:\RebornNetworkAcceptanceClient\Launch.exe`; the validated chain is
 `Launch.exe` -> `patcher.exe autorun` -> `Origin.exe` within that same tree.
 
-The active PreviewReadyV6 campaign writes only beneath
+The accepted PreviewReadyV6 workflow writes only beneath
 `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`; its foreground
 profiles write beneath
 `C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\server-evidence`.
-V6 Baseline is sealed `Pass`; Fallback, Soak, and exact rollback remain
-pending. See the
+V6 is accepted under final campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355`; see the
 [V6 candidate note](network-infrastructure-preview-ready-v6.md).
 
 ## Gate 1: offline and secure-Docker baseline
@@ -98,7 +98,7 @@ fixture, and leave secure Docker healthy with zero restarts.
 The native probe separately proves the x86 Schannel client path and secure
 preface while the Windows development root remains absent.
 
-The active paired V6 candidate pins are:
+The accepted paired V6 candidate pins are:
 
 ```text
 Origin.exe                 E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C
@@ -470,3 +470,15 @@ BOM-free, checksummed, read-only
 Existing or partial completion output is never overwritten. This command
 does not change listeners, trust, hosts, adapters, firewall, Norton, Docker,
 or client files; its only mutation is the final protected receipt.
+
+The sealed V6 run used these profile results:
+
+- `secure-server-20260728-020955-8076984.profile.json` — Baseline;
+- `secure-server-20260728-021202-8420702.profile.json` — Fallback; and
+- `secure-server-20260728-021422-2616795.profile.json` — Soak.
+
+All belong to campaign `0a73fd79-961b-42c7-82cc-9e4a6f9e3355`. Receipt
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
+`5EB6E369652605CA58A0D5CE2F01604268FAA2CE9A1323A4346F7DBFA15F4A6F`
+and records `ValidatedRestoredCampaign`, `HealthyExact`, and viewer parity
+`Unavailable`.

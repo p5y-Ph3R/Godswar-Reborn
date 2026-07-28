@@ -2,14 +2,14 @@
 
 ## Version and status
 
-- Document version: `1.32`
+- Document version: `1.33`
 - Last updated: `2026-07-28`
 - Project: Godswar Origin MMORPG emulator
 - Chosen client approach: in-process modification through an application-local
   x86 `Net.dll` compatibility shim
 - Long-term transport: TLS-protected TCP plus authenticated, encrypted UDP
-- Current milestone: run PreviewReadyV6's Fallback and ten-minute Soak, then
-  exact rollback; its live Baseline is sealed `Pass`.
+- Current milestone: Phase 4 PreviewReadyV6 controlled-host acceptance is
+  complete; proceed to the Phase 5A deterministic/load baseline.
 - Map, traversal, and AOI optimization remain deferred until Phase 4
   acceptance and the Phase 5A baseline are complete.
 - Production capacity and hosting inputs remain open.
@@ -342,13 +342,13 @@ rotation remains Phase 5 production scalability work.
   authenticated UDP binding, world entry, movement, and snapshot
   acknowledgement against the live container.
 
-Exit gate: the secure-Docker reference smoke is complete. Original-client
-foreground Baseline is sealed `Pass`; Fallback, ten-minute Soak, remaining
-manual parity, and exact rollback remain pending. V3 through V5 were rejected
-and restored. V5 sent stock Origin
-identity while the server allowed patched Origin; `handoff-000024.json`
-records exact restore. V6 binds the identity through `GWKEY02` and a paired
-probe. Fallback uses logical ACK-drop.
+Exit gate: accepted for the local controlled host. Campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed original-client Baseline,
+forced Fallback, and `661.5843391`-second Soak profiles on one fixed build,
+then restored the exact stock client. Protected completion receipt
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256
+`5EB6E369...F4A6F`; viewer parity was recorded `Unavailable`. V3 through V5
+remain rejected, restored history.
 
 ### Phase 5 — extension, hardening, and operations
 
@@ -375,8 +375,8 @@ and incident-response gates pass. Local results are not production guarantees.
 - Client signing/distribution remain undecided.
 - Production manifest signing/trust, blank-account reset policy, and upstream
   controls remain activation gates.
-- TLS, UDP binding, world entry, and Docker movement pass; the original-client
-  Phase 4 movement/fallback/soak gate remains open.
+- Original-client Phase 4 movement/fallback/soak and rollback pass. Viewer
+  parity remains unmeasured because a second client was unavailable.
 - Hosting region/provider, expected concurrency, tick/snapshot rates, latency
   target, packet-loss target, and budget remain open capacity inputs.
 - Provider-specific infrastructure and paid deployment require approval.

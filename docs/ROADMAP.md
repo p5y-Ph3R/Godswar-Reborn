@@ -5,16 +5,13 @@ This is the current step-by-step plan for moving the local C# server from packet
 The long-term secure networking migration is tracked in
 [`network-infrastructure-goal.md`](network-infrastructure-goal.md). It selects
 an in-process x86 shim, TLS control traffic, authenticated UDP realtime
-traffic, bounded overload behavior, and upstream DDoS integration. Reversible
-Origin/`Net.dll` experiments V1–V4 are rejected; V4's final smoke failed and
-was rolled back to predecessor Origin, stock `Net.dll`, and no
-`NetLegacy.dll`. Slice 8 source/offline work passes, but the shim remains
-uninstalled and secure profiles default off pending controlled-host
-acceptance. Slice 9's protected UDP foundation and Phase 4's first
-authoritative movement slice are implemented and verified offline. Checked-in
-TLS/UDP/gameplay settings remain disabled and no shim was installed; the
-controlled-host stock-client Phase 4 gate is still pending. Phase 5 hardening
-and operations are next. Phase 1 remains unaccepted. Records:
+traffic, bounded overload behavior, and upstream DDoS integration. V1–V5 are
+rejected, restored history. PreviewReadyV6 completed original-client Baseline,
+forced Fallback, ten-minute Soak, exact stock rollback, and a protected
+completion receipt under campaign
+`0a73fd79-961b-42c7-82cc-9e4a6f9e3355`. Secure defaults remain off after
+rollback. Phase 5A deterministic replay, bounded load/soak, observability, and
+operations are next; Phase 1 remains historical and unaccepted. Records:
 [Phase 1](network-infrastructure-phase1.md),
 [Slice 8](network-infrastructure-phase2-slice8-activation.md),
 [Slice 9A](network-infrastructure-phase3-slice9a-udp-foundation.md),

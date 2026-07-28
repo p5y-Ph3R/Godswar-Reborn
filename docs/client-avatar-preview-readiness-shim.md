@@ -24,7 +24,7 @@ Origin identity while the server correctly allowed only the patched Origin.
 V5 completed exact rollback at protected `handoff-000024.json`; both
 generations are historical and read-only.
 
-The active, incompletely accepted generation is `PreviewReadyV6`. It pairs:
+The accepted controlled-host generation is `PreviewReadyV6`. It pairs:
 
 - stock predecessor `Origin.exe`
   `753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79`;
@@ -34,8 +34,8 @@ The active, incompletely accepted generation is `PreviewReadyV6`. It pairs:
 - deterministic `GWKEY02` `Net.dll`
   `2169589316DE3157F999563F80A3DFE9B73A120F73AFE1723D92338B816CAE97`.
 
-V6's live Baseline is sealed `Pass`. Fallback, ten-minute Soak, and exact
-rollback remain pending, so complete V6 acceptance is not claimed.
+V6's final Baseline, forced Fallback, ten-minute Soak, exact rollback, and
+protected completion-receipt validation all passed.
 
 ## Cause and correction
 
@@ -215,11 +215,11 @@ Historical V5 pins:
 - signed endpoint manifest:
   `3B82FA5EC445B6546A2168F9E5BD83B6C2EFD57729B94C116B4EF77A2A43622C`
 
-The active PreviewReadyV6 fixture is:
+The accepted PreviewReadyV6 fixture is:
 
 `C:\Reborn\artifacts\controlled-host-acceptance\20260728-102640-preview-ready-v6\candidate`
 
-Active V6 pins:
+Accepted V6 pins:
 
 - guarded `Origin.exe`:
   `E177D94DC70CCF657D190C85B1EBACE5C8E790D52DBC014854E03A57234CC76C`
@@ -232,24 +232,19 @@ Active V6 pins:
 
 ## Live acceptance and known limitation
 
-The active V6 campaign uses the independent protected root:
+The final V6 campaign used the independent protected root:
 
 `C:\ProgramData\RebornSecureNetworkPhase4DockerPreviewReadyV6`
 
-Campaign `5848b53f-24b4-4f11-a4fd-591c0c0e1a36` sealed its live Baseline
-`Pass` in `1044.613001` seconds. Its protected log
-`secure-server-20260727-224656-0460982.log` has SHA-256
-`F8A2AC8AC2C8E44AEBAA6AB720184F6C7A616336C975B434DFE48EC11067A3CA`;
-the profile has SHA-256
-`F13470A46404401EA1AC7DFCCB0B7CE07CF0E13AB6AE7F1F27D11867491C3B16`.
-It recorded listener readiness, TLS policy, accepted preface, TLS client
-authentication, authenticated UDP binding, authoritative movement and
-snapshot, and graceful stopping.
+Final campaign `0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed Baseline,
+forced Fallback, and a `661.5843391`-second Soak on one fixed build, then
+reached exact `Restored`. Its protected completion receipt is
+`completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json`, SHA-256
+`5EB6E369652605CA58A0D5CE2F01604268FAA2CE9A1323A4346F7DBFA15F4A6F`.
+Full profile hashes are in the
+[V6 candidate note](network-infrastructure-preview-ready-v6.md).
 
-Baseline does not attest Fallback, Soak, or rollback. V6 must still complete
-those gates without a blank preview, relaunch, false server-full or
-server-unavailable dialog, crash, TLS/UDP regression, or message-order fault,
-then reach exact `Restored` state. The six-root readiness criterion still does
-not deep-validate every resource object; any remaining crash, missing preview,
-pre-world disconnect, timeout, or reliance on a second launch is an immediate
-stop-and-preserve condition.
+The six-root readiness criterion still does not deep-validate every resource
+object. Future missing previews or first-attempt regressions remain
+stop-and-preserve conditions; viewer parity was `Unavailable` in the final
+campaign.
