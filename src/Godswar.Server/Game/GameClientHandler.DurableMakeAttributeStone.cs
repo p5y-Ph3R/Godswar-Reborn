@@ -14,7 +14,8 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         uint? npcId,
         string reason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CommandFamily? commandFamily = null)
     {
         if (!packet.ClientOperationId.HasValue ||
             !_session.IsSecure)
@@ -22,25 +23,49 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        if (!commandFamily.HasValue)
+        {
+            // The v1 operation marker deliberately carries only the UUID and
+            // legacy packet boundary. If the legacy body cannot establish an
+            // exact family, guessing would send a contradictory 0x0102 and
+            // make the native retry registry fail closed. Keep the operation
+            // pending so a later authenticated retry can resolve it.
+            Console.WriteLine(
+                "[gear-mentor] preserved unrouted secure command " +
+                $"reason={reason} family=unknown");
+            return true;
+        }
+
         CommandMetrics.Record(
-            CommandFamily.GearMentorMakeAttributeStone,
+            commandFamily.Value,
             CommandIdentityStrength.ClientOperationId,
             CommandOutcome.PreconditionFailed);
+        var nativeResultSubId = commandFamily.Value switch
+        {
+            CommandFamily.GearMentorMakeAttributeStone =>
+                GearEnhancerProtocol.SelectedItemMissingResultSubId,
+            CommandFamily.GearMentorTransformCrystal or
+                CommandFamily.GearMentorCombineGemPieces =>
+                MaterialConversionInvalidResultSubId(
+                    commandFamily.Value),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(commandFamily))
+        };
         if (npcId.HasValue)
         {
             await _session.SendAsync(
                 PacketBuilder.NpcFunctionActionResponse(
                     npcId.Value,
                     GearEnhancerProtocol.DialogIndex,
-                    GearEnhancerProtocol
-                        .SelectedItemMissingResultSubId),
+                    nativeResultSubId),
                 cancellationToken,
                 "NpcFunctionActionResponse");
         }
 
-        await SendSecureMakeAttributeStoneResultAsync(
+        await SendSecureGearMentorResultAsync(
             packet.ClientOperationId.Value,
-            GearEnhancerProtocol.SelectedItemMissingResultSubId,
+            commandFamily.Value,
+            nativeResultSubId,
             SecureLegacyCommandDisposition.Rejected,
             inventoryRevision: 0,
             cancellationToken);
@@ -70,13 +95,12 @@ internal sealed partial class GameClientHandler
                 CommandFamily.GearMentorMakeAttributeStone,
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.ProviderUnavailable);
-            await SendMakeAttributeStoneTerminalAsync(
-                npcId,
-                clientOperationId,
-                GearEnhancerProtocol.SelectedItemMissingResultSubId,
-                SecureLegacyCommandDisposition.Rejected,
-                inventoryRevision: 0,
-                cancellationToken);
+            // A prior instance may already have committed this UUID. Without
+            // its inbox provider, this instance cannot truthfully reject it.
+            Console.Error.WriteLine(
+                "[gear-mentor] durable Make Attribute Stone unavailable " +
+                $"account={_account.Id} character={_character.Name}; " +
+                "operation remains pending");
             return;
         }
 
@@ -248,8 +272,7 @@ internal sealed partial class GameClientHandler
             hydrated.Character.Id != _character!.Id)
         {
             throw new InvalidDataException(
-                "The durable Make Attribute Stone character could not " +
-                "be reloaded.");
+                "The durable inventory character could not be reloaded.");
         }
 
         ApplyDeveloperItemGrantProjection(
@@ -300,10 +323,34 @@ internal sealed partial class GameClientHandler
                 "transport.");
         }
 
+        return SendSecureGearMentorResultAsync(
+            clientOperationId,
+            CommandFamily.GearMentorMakeAttributeStone,
+            nativeResultSubId,
+            disposition,
+            inventoryRevision,
+            cancellationToken);
+    }
+
+    private ValueTask SendSecureGearMentorResultAsync(
+        Guid clientOperationId,
+        CommandFamily commandFamily,
+        int nativeResultSubId,
+        SecureLegacyCommandDisposition disposition,
+        long inventoryRevision,
+        CancellationToken cancellationToken)
+    {
+        if (!_session.IsSecure)
+        {
+            throw new InvalidOperationException(
+                "Client operation identity requires the secure " +
+                "transport.");
+        }
+
         return _session.SendLegacyCommandResultAsync(
             new SecureLegacyCommandResult(
                 disposition,
-                (ushort)CommandFamily.GearMentorMakeAttributeStone,
+                (ushort)commandFamily,
                 checked((uint)nativeResultSubId),
                 checked((ulong)inventoryRevision),
                 clientOperationId),

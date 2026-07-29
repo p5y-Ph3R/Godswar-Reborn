@@ -216,13 +216,12 @@ command inbox can recognize a genuine retry.
 The matching terminal server outcome is specified in
 [secure legacy command results](network-infrastructure-secure-command-results.md).
 
-The audited stone key is login fingerprint, character ID from an exact
-authenticated `EnterMain` (`0x2723`/`0x0658`), and NPC/slot. The process
-registry keeps 16 IDs for ten minutes; character swaps retain pending A/B/A
-identities. Failed `SendMsg` cancels an unstarted descriptor; a partial one
-forces secure teardown/reset while retaining its UUID. See the
-[B09 native increment](data-architecture-b09-native-make-attribute-stone-20260729.md).
-Other native commands require explicit correlation.
+The Gear Mentor retry key includes family, login fingerprint, authenticated
+`EnterMain` character ID, NPC, and slot. Its 16-entry registry retains IDs for
+ten minutes and isolates character swaps. Families `6..8` cover Make Stone,
+Transform, and Combine; see the [first increment](data-architecture-b09-native-make-attribute-stone-20260729.md)
+and [material conversions](data-architecture-b09-native-material-conversions-20260729.md).
+Other commands require explicit correlation.
 
 ## Game grant
 

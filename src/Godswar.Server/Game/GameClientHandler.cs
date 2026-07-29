@@ -44,6 +44,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _developerBagClearCommands;
     private readonly IMakeAttributeStoneCommandExecutor?
         _makeAttributeStoneCommands;
+    private readonly IGearMentorMaterialConversionCommandExecutor?
+        _gearMentorMaterialConversionCommands;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
@@ -97,7 +99,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IDeveloperBagClearCommandExecutor?
             developerBagClearCommands = null,
         IMakeAttributeStoneCommandExecutor?
-            makeAttributeStoneCommands = null)
+            makeAttributeStoneCommands = null,
+        IGearMentorMaterialConversionCommandExecutor?
+            gearMentorMaterialConversionCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -118,6 +122,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _developerItemGrantCommands = developerItemGrantCommands;
         _developerBagClearCommands = developerBagClearCommands;
         _makeAttributeStoneCommands = makeAttributeStoneCommands;
+        _gearMentorMaterialConversionCommands =
+            gearMentorMaterialConversionCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

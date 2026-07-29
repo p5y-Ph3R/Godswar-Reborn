@@ -35,6 +35,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable Gear Mentor Make Attribute Stone command contract",
             MakeAttributeStoneCommandContractChecks.RunAsync),
         (
+            "Durable Gear Mentor material-conversion command contracts",
+            GearMentorMaterialConversionCommandContractChecks.RunAsync),
+        (
+            "Durable Gear Mentor pre-route replay handler",
+            GearMentorDurableReplayHandlerChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

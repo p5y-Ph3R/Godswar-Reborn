@@ -37,6 +37,14 @@ client does not evict an instantiated icon from detail/index refresh packets
 alone; omitting these acknowledgements leaves consumed dust or decomposed gear
 visible until relog even though the database transaction succeeded.
 
+Make Attribute Stone, Transform Crystals, and Combine Gem Pieces now use
+family-scoped secure operation UUIDs and permanent PostgreSQL command inboxes.
+For those operations, audit, item mutation, inventory revision, immutable
+ledger entries, and strict outbox publication commit atomically before the
+stock response. Exact retries replay the stored result; ambiguous failures
+leave the same native UUID pending. Decompose remains on the legacy transaction
+path pending its B09 cutover.
+
 ## Make Attribute Stones
 
 Exactly 99 dust produce one stone from the same native family. The complete

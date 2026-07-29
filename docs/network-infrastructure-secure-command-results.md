@@ -77,6 +77,14 @@ transports explicitly. The TLS mux accepts it only after bound game
 authentication and serializes it with legacy and secure control writes using
 the existing single outbound write gate.
 
-The first wired family is Gear Mentor Make Attribute Stone. Each additional
-family must define stable result codes and demonstrate durable inbox replay
-semantics before wiring the terminal result.
+The wired families and stable stock-client result codes are:
+
+| Family | Command | Success | Rejections |
+| ---: | --- | ---: | --- |
+| `6` | Gear Mentor Make Attribute Stone | `1017` | `1016`, `1022`, `1020`, `1002` |
+| `7` | Gear Mentor Transform Crystal | `1823` | `1822`, `1020` |
+| `8` | Gear Mentor Combine Gem Pieces | `304` | `301`, `302`, `303` |
+
+Every additional family must define stable finite result codes, keep retry
+identity isolated from other families, and demonstrate durable inbox replay
+semantics before wiring a terminal result.

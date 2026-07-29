@@ -476,7 +476,7 @@ void CheckLegacyCommandResult() {
         "legacy command result accepted an invalid disposition");
     encoded[1] = 1;
     encoded[2] = 0;
-    encoded[3] = 7;
+    encoded[3] = 99;
     Check(
         !TryDecodeSecureLegacyCommandResult(
             encoded,

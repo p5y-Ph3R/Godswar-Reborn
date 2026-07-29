@@ -99,10 +99,37 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if ((operation is GearMentorOperation.TransformCrystal or
+                GearMentorOperation.CombineGemPieces) &&
+            clientOperationId.HasValue)
+        {
+            await HandleDurableGearMentorMaterialConversionAsync(
+                operation,
+                npcId,
+                clientOperationId.Value,
+                canCommit && selectedSelections.Count == 1
+                    ? selectedSelections[0]
+                    : null,
+                kitBagBeforeTransaction,
+                selectionSummary,
+                cancellationToken);
+            return;
+        }
+
         if (operation == GearMentorOperation.MakeAttributeStone)
         {
             CommandMetrics.RecordUnsupportedLegacyIdentity(
                 CommandFamily.GearMentorMakeAttributeStone);
+        }
+        else if (operation == GearMentorOperation.TransformCrystal)
+        {
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.GearMentorTransformCrystal);
+        }
+        else if (operation == GearMentorOperation.CombineGemPieces)
+        {
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.GearMentorCombineGemPieces);
         }
 
         // A final action consumes the session-scoped selection before any
@@ -232,9 +259,12 @@ internal sealed partial class GameClientHandler
 
     internal static bool IsCombineGemPiecesConfirmAlias(
         int incomingSubId,
-        int? operationPageSubId) =>
+        int? operationPageSubId,
+        bool hasClientOperationId = false) =>
         incomingSubId == GearEnhancerProtocol.CombineGemPiecesMenuSubId &&
-        operationPageSubId == GearEnhancerProtocol.CombineGemPiecesActionSubId;
+        (operationPageSubId ==
+            GearEnhancerProtocol.CombineGemPiecesActionSubId ||
+         hasClientOperationId);
 
     private static GearEnhancerSelectionSnapshot CaptureGearEnhancerSelection(
         string kitBag,

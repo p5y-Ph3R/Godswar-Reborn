@@ -269,7 +269,7 @@ void CheckIdentityAndReconnect() {
     conflict.disposition =
         SecureLegacyCommandDisposition::Conflict;
     conflict.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(7);
+        static_cast<SecureLegacyCommandFamily>(99);
     std::memcpy(
         conflict.operationId,
         first.operation.operationId,
@@ -296,7 +296,7 @@ void CheckIdentityAndReconnect() {
         "terminal result did not resolve pending operation");
 
     conflict.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(7);
+        static_cast<SecureLegacyCommandFamily>(99);
     Check(
         registry.Resolve(conflict) ==
                 SecureOperationRegistryResult::FamilyConflict &&
@@ -306,14 +306,17 @@ void CheckIdentityAndReconnect() {
         SecureLegacyCommandFamily::MakeAttributeStone;
 
     LegacyPacketDescriptor fresh{};
+    SelectionPacket(27, true, 0x71, clear);
     Check(
-        Describe(&registry, final, sizeof(final), &fresh) ==
+        Describe(&registry, clear, sizeof(clear)) ==
+                SecureOperationRegistryResult::Success &&
+            Describe(&registry, final, sizeof(final), &fresh) ==
                 SecureOperationRegistryResult::Success &&
             std::memcmp(
                 fresh.operation.operationId,
                 first.operation.operationId,
                 16) != 0,
-        "terminal result did not permit a fresh operation");
+        "new selection after a terminal result did not create a fresh operation");
 
     SecureLegacyCommandResult unknown = conflict;
     unknown.operationId[0] ^= 0x7F;

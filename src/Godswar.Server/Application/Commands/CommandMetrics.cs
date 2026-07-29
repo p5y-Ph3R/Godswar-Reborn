@@ -70,6 +70,10 @@ internal static class CommandMetrics
             CommandFamily.DeveloperBagClear => "developer_bag_clear",
             CommandFamily.GearMentorMakeAttributeStone =>
                 "gear_mentor_make_attribute_stone",
+            CommandFamily.GearMentorTransformCrystal =>
+                "gear_mentor_transform_crystal",
+            CommandFamily.GearMentorCombineGemPieces =>
+                "gear_mentor_combine_gem_pieces",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

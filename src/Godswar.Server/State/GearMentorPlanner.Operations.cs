@@ -137,7 +137,8 @@ internal static partial class GearMentorPlanner
         out string reason)
     {
         var crystal = working[selection.KitBagSlot];
-        if (!CrystalTransforms.TryGetValue(crystal.Id, out var recipe) || crystal.Stack < 1)
+        if (!TryResolveCrystalTransform(crystal.Id, out var recipe) ||
+            crystal.Stack < 1)
         {
             return Fail(
                 GearMentorStatus.InvalidCrystal,
@@ -147,7 +148,7 @@ internal static partial class GearMentorPlanner
         }
 
         working[selection.KitBagSlot] = Consume(crystal, 1);
-        outputs.Add(new GearMentorOutput(recipe.ResultItemId, recipe.Quantity, crystal.Bound));
+        outputs.Add(recipe with { Bound = crystal.Bound });
         status = GearMentorStatus.Succeeded;
         reason = string.Empty;
         return true;
@@ -162,7 +163,7 @@ internal static partial class GearMentorPlanner
     {
         const int requiredPieces = 99;
         var pieces = working[selection.KitBagSlot];
-        if (!GemPieceRecipes.TryGetValue(pieces.Id, out var resultItemId))
+        if (!TryResolveGemPieceCombination(pieces.Id, out var recipe))
         {
             return Fail(
                 GearMentorStatus.InvalidGemPieces,
@@ -181,7 +182,7 @@ internal static partial class GearMentorPlanner
         }
 
         working[selection.KitBagSlot] = Consume(pieces, requiredPieces);
-        outputs.Add(new GearMentorOutput(resultItemId, 1, pieces.Bound));
+        outputs.Add(recipe with { Bound = pieces.Bound });
         status = GearMentorStatus.Succeeded;
         reason = string.Empty;
         return true;

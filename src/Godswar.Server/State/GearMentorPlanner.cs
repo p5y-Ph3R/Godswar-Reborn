@@ -112,6 +112,40 @@ internal static partial class GearMentorPlanner
             [4235] = 4234
         };
 
+    public static bool TryResolveCrystalTransform(
+        uint sourceItemId,
+        out GearMentorOutput output)
+    {
+        if (CrystalTransforms.TryGetValue(sourceItemId, out var recipe))
+        {
+            output = new GearMentorOutput(
+                recipe.ResultItemId,
+                recipe.Quantity,
+                Bound: 0);
+            return true;
+        }
+
+        output = default!;
+        return false;
+    }
+
+    public static bool TryResolveGemPieceCombination(
+        uint sourceItemId,
+        out GearMentorOutput output)
+    {
+        if (GemPieceRecipes.TryGetValue(sourceItemId, out var resultItemId))
+        {
+            output = new GearMentorOutput(
+                resultItemId,
+                Quantity: 1,
+                Bound: 0);
+            return true;
+        }
+
+        output = default!;
+        return false;
+    }
+
     public static GearMentorResult Create(
         string kitBag,
         int playerLevel,

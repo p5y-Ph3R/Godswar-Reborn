@@ -24,7 +24,11 @@ bool IsDisposition(
 bool IsCommandFamily(
     SecureLegacyCommandFamily family) noexcept {
     return family ==
-        SecureLegacyCommandFamily::MakeAttributeStone;
+            SecureLegacyCommandFamily::MakeAttributeStone ||
+        family ==
+            SecureLegacyCommandFamily::TransformCrystal ||
+        family ==
+            SecureLegacyCommandFamily::CombineGemPieces;
 }
 
 bool HasValidRevision(

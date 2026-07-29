@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Messaging;
 using Godswar.Server.Infrastructure.Inventory;
@@ -20,6 +21,10 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 MakeAttributeStonePersistenceCodec.ConsumerKey,
             "all character-inventory event types share one checkpoint");
         Check.True(
+            consumer.ConsumerKey ==
+                GearMentorMaterialConversionPersistenceCodec.ConsumerKey,
+            "material conversions share the inventory checkpoint");
+        Check.True(
             consumer.OrderingPolicy ==
                 OutboxOrderingPolicy.StrictSequence,
             "character-inventory projection uses strict ordering");
@@ -33,6 +38,11 @@ internal static class CharacterInventoryOutboxConsumerChecks
             DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
                 MakeAttributeStonePersistenceCodec.AggregateKey(CharacterId),
             "all character-inventory event types share one aggregate stream");
+        Check.True(
+            DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
+                GearMentorMaterialConversionPersistenceCodec.AggregateKey(
+                    CharacterId),
+            "material conversions share the inventory aggregate stream");
 
         var messages = CreateCompatibleSequence();
         var currentRevision = 0L;
@@ -67,6 +77,12 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckIdentityRejectionAsync(consumer, messages[2]);
         await CheckStoneIdentityRejectionAsync(consumer, messages[3]);
         await CheckStoneContractRejectionAsync(consumer, messages[3]);
+        await CheckMaterialConversionIdentityRejectionAsync(
+            consumer,
+            messages[4]);
+        await CheckMaterialConversionFamilyRejectionAsync(
+            consumer,
+            messages[5]);
         await CheckContractRejectionAsync(consumer, messages[0]);
     }
 
@@ -79,7 +95,13 @@ internal static class CharacterInventoryOutboxConsumerChecks
             revision: 2,
             DeveloperItemGrantPersistenceCodec.EventType),
         CreateBagClearMessage(revision: 3),
-        CreateMakeAttributeStoneMessage(revision: 4)
+        CreateMakeAttributeStoneMessage(revision: 4),
+        CreateMaterialConversionMessage(
+            revision: 5,
+            CommandFamily.GearMentorTransformCrystal),
+        CreateMaterialConversionMessage(
+            revision: 6,
+            CommandFamily.GearMentorCombineGemPieces)
     ];
 
     private static OutboxEventMessage CreateGrantMessage(
@@ -140,6 +162,38 @@ internal static class CharacterInventoryOutboxConsumerChecks
             MakeAttributeStonePersistenceCodec.EventType,
             MakeAttributeStonePersistenceCodec.ContractVersion,
             MakeAttributeStonePersistenceCodec.Encode(receipt));
+    }
+
+    private static OutboxEventMessage CreateMaterialConversionMessage(
+        long revision,
+        CommandFamily family)
+    {
+        var eventId = Guid.NewGuid();
+        var isTransform =
+            family == CommandFamily.GearMentorTransformCrystal;
+        var receipt =
+            new GearMentorMaterialConversionExecutionReceipt(
+                family,
+                CharacterId,
+                GearMentorMaterialConversionResultStatus.Succeeded,
+                GearMentorMaterialConversionNativeResults.GetResultSubId(
+                    family,
+                    GearMentorMaterialConversionResultStatus.Succeeded),
+                selectedKitBagSlot: 8,
+                sourceItemId: isTransform ? 4234u : 4216u,
+                outputItemId: isTransform ? 4233u : 4215u,
+                outputQuantity: isTransform ? 2 : 1,
+                isBound: true,
+                inventoryRevision: revision,
+                auditReference: $"inventory-check-{revision}",
+                outboxEventId: eventId);
+        return CreateMessage(
+            eventId,
+            revision,
+            GearMentorMaterialConversionPersistenceCodec.EventType(
+                family),
+            GearMentorMaterialConversionPersistenceCodec.ContractVersion,
+            GearMentorMaterialConversionPersistenceCodec.Encode(receipt));
     }
 
     private static OutboxEventMessage CreateMessage(
@@ -220,6 +274,39 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(unsupported).AsTask(),
             "unsupported Make Attribute Stone schema is rejected");
+    }
+
+    private static async Task
+        CheckMaterialConversionIdentityRejectionAsync(
+            CharacterInventoryOutboxConsumer consumer,
+            OutboxEventMessage conversion)
+    {
+        var inconsistent = CreateMessage(
+            Guid.NewGuid(),
+            conversion.AggregateRevision,
+            conversion.EventType,
+            conversion.SchemaVersion,
+            conversion.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "material-conversion event identity mismatch is rejected");
+    }
+
+    private static async Task
+        CheckMaterialConversionFamilyRejectionAsync(
+            CharacterInventoryOutboxConsumer consumer,
+            OutboxEventMessage combine)
+    {
+        var inconsistent = CreateMessage(
+            combine.EventId,
+            combine.AggregateRevision,
+            GearMentorMaterialConversionPersistenceCodec
+                .TransformEventType,
+            combine.SchemaVersion,
+            combine.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "material-conversion event/family mismatch is rejected");
     }
 
     private static async Task CheckThrowsAsync<TException>(

@@ -30,6 +30,31 @@ bool EqualBytes(
     return std::memcmp(first, second, bytes) == 0;
 }
 
+bool TryResolveCommandFamily(
+    LegacyGearMentorAction action,
+    SecureLegacyCommandFamily* family) noexcept {
+    if (family == nullptr) {
+        return false;
+    }
+
+    switch (action) {
+        case LegacyGearMentorAction::MakeAttributeStone:
+            *family =
+                SecureLegacyCommandFamily::MakeAttributeStone;
+            return true;
+        case LegacyGearMentorAction::TransformCrystal:
+            *family =
+                SecureLegacyCommandFamily::TransformCrystal;
+            return true;
+        case LegacyGearMentorAction::CombineGemPieces:
+            *family =
+                SecureLegacyCommandFamily::CombineGemPieces;
+            return true;
+        default:
+            return false;
+    }
+}
+
 } // namespace
 
 SecurePendingOperationRegistry::
@@ -90,6 +115,8 @@ SecurePendingOperationRegistry::DescribePacket(
     int selectionSlot = -1;
     bool selected = false;
     std::uint32_t npcId = 0;
+    LegacyGearMentorAction gearMentorAction =
+        LegacyGearMentorAction::InitialMenu;
     const bool isLogin = TryHashLegacyLoginPrincipal(
         packet,
         packetBytes,
@@ -98,12 +125,13 @@ SecurePendingOperationRegistry::DescribePacket(
     const bool isSelection = TryReadLegacyGearSelection(
         packet,
         packetBytes,
-        &selectionSlot,
-        &selected);
-    const bool isMakeStone =
-        TryReadMakeAttributeStoneAction(
+            &selectionSlot,
+            &selected);
+    const bool isGearMentorAction =
+        TryReadLegacyGearMentorAction(
             packet,
             packetBytes,
+            &gearMentorAction,
             &npcId);
 
     AcquireSRWLockExclusive(&lock_);
@@ -117,6 +145,14 @@ SecurePendingOperationRegistry::DescribePacket(
 
     if (isSelection) {
         if (selected) {
+            if (selectionGeneration_ ==
+                (std::numeric_limits<std::uint64_t>::max)()) {
+                hasSelection_ = false;
+                selectedBagSlot_ = -1;
+                ReleaseSRWLockExclusive(&lock_);
+                return SecureOperationRegistryResult::Capacity;
+            }
+            ++selectionGeneration_;
             hasSelection_ = true;
             selectedBagSlot_ = selectionSlot;
         } else if (hasSelection_ &&
@@ -126,10 +162,67 @@ SecurePendingOperationRegistry::DescribePacket(
         }
     }
 
-    if (!isMakeStone) {
+    if (!isGearMentorAction) {
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
+
+    if (gearMentorAction ==
+        LegacyGearMentorAction::InitialMenu) {
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+        hasSelection_ = false;
+        selectedBagSlot_ = -1;
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::Success;
+    }
+
+    if (gearMentorAction ==
+            LegacyGearMentorAction::CombineGemPieces &&
+        (!combinePageArmed_ || combineNpcId_ != npcId)) {
+        // Wire action 9 first asks the server to open action page 201. The
+        // stock client later reuses wire action 9 for confirmation. Navigation
+        // is not a valuable command and must also discard a stale selection.
+        if (combinePageGeneration_ ==
+            (std::numeric_limits<std::uint64_t>::max)()) {
+            combinePageArmed_ = false;
+            combineNpcId_ = 0;
+            hasSelection_ = false;
+            selectedBagSlot_ = -1;
+            ReleaseSRWLockExclusive(&lock_);
+            return SecureOperationRegistryResult::Capacity;
+        }
+        ++combinePageGeneration_;
+        combinePageArmed_ = true;
+        combineNpcId_ = npcId;
+        hasSelection_ = false;
+        selectedBagSlot_ = -1;
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::Success;
+    }
+
+    SecureLegacyCommandFamily family =
+        SecureLegacyCommandFamily::MakeAttributeStone;
+    if (!TryResolveCommandFamily(
+            gearMentorAction,
+            &family)) {
+        // A different stock Gear Mentor operation leaves page 201 and consumes
+        // its own client-side controls. It is not assigned a secure identity
+        // here, but it must not leak Combine or selection state into a later
+        // action.
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+        hasSelection_ = false;
+        selectedBagSlot_ = -1;
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::Success;
+    }
+    if (family !=
+        SecureLegacyCommandFamily::CombineGemPieces) {
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+    }
+
     if (!hasPrincipal_) {
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::NoPrincipal;
@@ -147,7 +240,10 @@ SecurePendingOperationRegistry::DescribePacket(
     // Reuse its UUID even if untrusted scratch/tail bytes change; the server
     // binds that UUID to its first canonical request hash and rejects a
     // different request instead of letting the shim guess that it is fresh.
-    Entry* entry = Find(npcId, selectedBagSlot_);
+    Entry* entry = Find(
+        family,
+        npcId,
+        selectedBagSlot_);
     if (entry == nullptr) {
         entry = FindAvailable();
         if (entry == nullptr) {
@@ -164,11 +260,16 @@ SecurePendingOperationRegistry::DescribePacket(
             entry->principal,
             principal_,
             sizeof(entry->principal));
-        entry->family =
-            SecureLegacyCommandFamily::MakeAttributeStone;
+        entry->family = family;
         entry->characterId = characterId_;
         entry->npcId = npcId;
         entry->bagSlot = selectedBagSlot_;
+        entry->selectionGeneration = selectionGeneration_;
+        entry->combinePageGeneration =
+            family ==
+                SecureLegacyCommandFamily::CombineGemPieces
+            ? combinePageGeneration_
+            : 0;
         if (now >
             (std::numeric_limits<std::uint64_t>::max)() -
                 SecurePendingOperationLifetimeMilliseconds) {
@@ -227,6 +328,28 @@ SecurePendingOperationRegistry::Resolve(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::ClockFailure;
     }
+    if (hasPrincipal_ &&
+        hasCharacter_ &&
+        characterId_ == entry->characterId &&
+        selectedBagSlot_ == entry->bagSlot &&
+        selectionGeneration_ ==
+            entry->selectionGeneration &&
+        EqualBytes(
+            principal_,
+            entry->principal,
+            sizeof(principal_))) {
+        hasSelection_ = false;
+        selectedBagSlot_ = -1;
+    }
+    if (entry->family ==
+            SecureLegacyCommandFamily::CombineGemPieces &&
+        combinePageArmed_ &&
+        combineNpcId_ == entry->npcId &&
+        combinePageGeneration_ ==
+            entry->combinePageGeneration) {
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+    }
     ClearEntry(entry);
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
@@ -247,6 +370,8 @@ SecurePendingOperationRegistry::SetCharacter(
     if (changed) {
         hasSelection_ = false;
         selectedBagSlot_ = -1;
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
     }
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
@@ -277,6 +402,8 @@ SecurePendingOperationRegistry::Snapshot() noexcept {
     snapshot.characterId = characterId_;
     snapshot.hasSelection = hasSelection_;
     snapshot.selectedBagSlot = selectedBagSlot_;
+    snapshot.combinePageArmed = combinePageArmed_;
+    snapshot.combineNpcId = combineNpcId_;
     ReleaseSRWLockExclusive(&lock_);
     return snapshot;
 }
@@ -295,6 +422,10 @@ void SecurePendingOperationRegistry::Clear() noexcept {
     characterId_ = -1;
     hasSelection_ = false;
     selectedBagSlot_ = -1;
+    selectionGeneration_ = 0;
+    combinePageArmed_ = false;
+    combineNpcId_ = 0;
+    combinePageGeneration_ = 0;
     ReleaseSRWLockExclusive(&lock_);
 }
 
@@ -322,6 +453,7 @@ void SecurePendingOperationRegistry::Prune(
 
 SecurePendingOperationRegistry::Entry*
 SecurePendingOperationRegistry::Find(
+    SecureLegacyCommandFamily family,
     std::uint32_t npcId,
     int bagSlot) noexcept {
     for (auto& entry : entries_) {
@@ -329,8 +461,7 @@ SecurePendingOperationRegistry::Find(
             entry.characterId == characterId_ &&
             entry.npcId == npcId &&
             entry.bagSlot == bagSlot &&
-            entry.family ==
-                SecureLegacyCommandFamily::MakeAttributeStone &&
+            entry.family == family &&
             EqualBytes(
                 entry.principal,
                 principal_,
@@ -466,6 +597,8 @@ void SecurePendingOperationRegistry::SetPrincipal(
         characterId_ = -1;
         hasSelection_ = false;
         selectedBagSlot_ = -1;
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
     }
 }
 

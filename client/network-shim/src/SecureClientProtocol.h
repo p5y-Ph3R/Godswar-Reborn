@@ -69,6 +69,8 @@ enum class SecureLegacyCommandDisposition : std::uint8_t {
 
 enum class SecureLegacyCommandFamily : std::uint16_t {
     MakeAttributeStone = 6,
+    TransformCrystal = 7,
+    CombineGemPieces = 8,
 };
 
 struct SecureLegacyCommandResult final {

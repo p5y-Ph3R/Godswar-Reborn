@@ -171,13 +171,15 @@ bool TryReadLegacyGearSelection(
     return true;
 }
 
-bool TryReadMakeAttributeStoneAction(
+bool TryReadLegacyGearMentorAction(
     const void* packet,
     std::size_t packetBytes,
+    LegacyGearMentorAction* action,
     std::uint32_t* npcId) noexcept {
     std::uint16_t opcode = 0;
-    if (npcId == nullptr ||
-        packetBytes != LegacyMakeAttributeStonePacketBytes ||
+    if (action == nullptr ||
+        npcId == nullptr ||
+        packetBytes != LegacyGearMentorActionPacketBytes ||
         !TryReadLegacyPacketHeader(
             packet,
             packetBytes,
@@ -189,17 +191,28 @@ bool TryReadMakeAttributeStoneAction(
     const auto* bytes =
         static_cast<const std::uint8_t*>(packet);
     const std::uint32_t npc = ReadUInt32Little(bytes + 4);
+    const auto subId = static_cast<std::int32_t>(
+        ReadUInt32Little(bytes + 16));
     if ((npc != LegacySpartaGearMentorNpc &&
             npc != LegacyAthensGearMentorNpc) ||
         static_cast<std::int32_t>(
             ReadUInt32Little(bytes + 8)) !=
             LegacyGearMentorDialog ||
-        static_cast<std::int32_t>(
-            ReadUInt32Little(bytes + 16)) !=
-            LegacyMakeAttributeStoneSubId) {
+        (subId !=
+                static_cast<std::int32_t>(
+                    LegacyGearMentorAction::InitialMenu) &&
+            (subId <
+                    static_cast<std::int32_t>(
+                        LegacyGearMentorAction::DecomposeGear) ||
+                subId >
+                    static_cast<std::int32_t>(
+                        LegacyGearMentorAction::
+                            CombineGemPieces)))) {
         return false;
     }
 
+    *action =
+        static_cast<LegacyGearMentorAction>(subId);
     *npcId = npc;
     return true;
 }

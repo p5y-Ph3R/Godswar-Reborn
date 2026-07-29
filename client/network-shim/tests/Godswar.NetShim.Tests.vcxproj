@@ -88,6 +88,7 @@
     <ClCompile Include="SecurePendingOperationRegistryTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureGearMentorCommandIdentityTests.cpp" />
     <ClCompile Include="SecureLegacyCommandResultStreamTests.cpp" />
     <ClCompile Include="SecureManifestProbe.cpp" />
     <ClCompile Include="SecureRealtimeMovementTests.cpp" />
@@ -181,6 +182,7 @@
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureGearMentorCommandIdentityTests.h" />
     <ClInclude Include="SecureLegacyCommandResultStreamTests.h" />
     <ClInclude Include="SecureManifestProbe.h" />
     <ClInclude Include="SecureRealtimeMovementTests.h" />

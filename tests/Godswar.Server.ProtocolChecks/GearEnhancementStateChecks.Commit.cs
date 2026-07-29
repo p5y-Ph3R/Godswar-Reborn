@@ -165,6 +165,12 @@ internal static partial class GearEnhancementStateChecks
                 GearEnhancerProtocol.CombineGemPiecesActionSubId),
             "stock menu action 9 is normalized to the gem-piece commit only from page 201");
         Check.True(
+            GameClientHandler.IsCombineGemPiecesConfirmAlias(
+                GearEnhancerProtocol.CombineGemPiecesMenuSubId,
+                operationPageSubId: null,
+                hasClientOperationId: true),
+            "an authenticated pending UUID can replay gem-piece action 9 after its ephemeral page expired");
+        Check.True(
             !GameClientHandler.IsCombineGemPiecesConfirmAlias(
                 GearEnhancerProtocol.CombineGemPiecesMenuSubId,
                 operationPageSubId: null) &&

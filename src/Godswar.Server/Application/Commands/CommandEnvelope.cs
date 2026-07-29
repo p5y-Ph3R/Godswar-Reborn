@@ -11,7 +11,9 @@ internal enum CommandFamily : ushort
     EquipmentForge = 3,
     DeveloperItemGrant = 4,
     DeveloperBagClear = 5,
-    GearMentorMakeAttributeStone = 6
+    GearMentorMakeAttributeStone = 6,
+    GearMentorTransformCrystal = 7,
+    GearMentorCombineGemPieces = 8
 }
 
 internal enum CommandIdentityStrength : byte

@@ -375,7 +375,7 @@ void CheckRejectedResults() {
             payload[0] = 2;
         } else {
             payload[2] = 0;
-            payload[3] = 7;
+            payload[3] = 99;
         }
 
         ScriptedStream stream(ResultInput(payload));

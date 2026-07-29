@@ -47,6 +47,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresMakeAttributeStoneCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        MaterialConversionCommands =
+            new PostgresGearMentorMaterialConversionCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -71,6 +75,10 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public IMakeAttributeStoneCommandExecutor
         MakeAttributeStoneCommands
+    { get; }
+
+    public IGearMentorMaterialConversionCommandExecutor
+        MaterialConversionCommands
     { get; }
 
     public bool OutboxEnabled { get; }

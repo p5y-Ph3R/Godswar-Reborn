@@ -23,6 +23,11 @@ internal static partial class Program
                 PostgresMakeAttributeStoneCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresGearMentorMaterialConversionIntegrationChecks
+                    .CheckName,
+                PostgresGearMentorMaterialConversionIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

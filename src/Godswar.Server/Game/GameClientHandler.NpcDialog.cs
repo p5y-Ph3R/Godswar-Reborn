@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -93,11 +94,21 @@ internal sealed partial class GameClientHandler
 
         if (!TryResolveMapNpc(npcId, out var npc))
         {
+            if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
+                    packet,
+                    npcId,
+                    subId,
+                    cancellationToken))
+            {
+                return;
+            }
+
             await TryRejectUnroutedSecureCommandAsync(
                 packet,
                 npcId,
                 "npc_not_authoritative_for_map",
-                cancellationToken);
+                cancellationToken,
+                ResolveSecureGearMentorCommandFamily(subId));
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
         }
@@ -107,11 +118,21 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         if (route is null || dialogIndex != route.DialogIndex)
         {
+            if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
+                    packet,
+                    npcId,
+                    subId,
+                    cancellationToken))
+            {
+                return;
+            }
+
             await TryRejectUnroutedSecureCommandAsync(
                 packet,
                 npcId,
                 "dialogue_route_mismatch",
-                cancellationToken);
+                cancellationToken,
+                ResolveSecureGearMentorCommandFamily(subId));
             Console.WriteLine(
                 $"[npc] function action rejected npc={npcId} " +
                 $"dialog={dialogIndex} subId={subId}");
@@ -147,7 +168,8 @@ internal sealed partial class GameClientHandler
                 // wire alias to operation 201 only while that page is active.
                 if (IsCombineGemPiecesConfirmAlias(
                         subId,
-                        _gearMentorOperationPageSubId))
+                        _gearMentorOperationPageSubId,
+                        packet.ClientOperationId.HasValue))
                 {
                     await HandleGearMentorTransactionAsync(
                         npcId,
@@ -203,11 +225,21 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
+                packet,
+                npcId,
+                subId,
+                cancellationToken))
+        {
+            return;
+        }
+
         if (await TryRejectUnroutedSecureCommandAsync(
                 packet,
                 npcId,
                 "valuable_command_wrong_npc_behavior",
-                cancellationToken))
+                cancellationToken,
+                ResolveSecureGearMentorCommandFamily(subId)))
         {
             return;
         }
@@ -356,5 +388,18 @@ internal sealed partial class GameClientHandler
             "PlayerDetailRefreshAck");
         await BroadcastEquipmentRefreshAsync($"holy-stone-{operation.Value}", cancellationToken);
     }
+
+    private static CommandFamily?
+        ResolveSecureGearMentorCommandFamily(int wireSubId) =>
+        wireSubId switch
+        {
+            GearEnhancerProtocol.MakeAttributeStoneSubId =>
+                CommandFamily.GearMentorMakeAttributeStone,
+            GearEnhancerProtocol.TransformCrystalSubId =>
+                CommandFamily.GearMentorTransformCrystal,
+            GearEnhancerProtocol.CombineGemPiecesMenuSubId =>
+                CommandFamily.GearMentorCombineGemPieces,
+            _ => null
+        };
 
 }

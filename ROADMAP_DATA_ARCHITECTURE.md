@@ -24,6 +24,7 @@ document organization; the assessment and recommendations remain intact.
 - [B08 PostgreSQL command inbox/outbox foundation](docs/data-architecture-b08-command-inbox-outbox-20260729.md)
 - [B09 economy ledger foundation and first durable inventory command](docs/data-architecture-b09-economy-ledger-increment-20260729.md)
 - [B09 secure native Make Attribute Stone increment](docs/data-architecture-b09-native-make-attribute-stone-20260729.md)
+- [B09 secure native Transform/Combine increment](docs/data-architecture-b09-native-material-conversions-20260729.md)
 
 ## Roadmap sections
 

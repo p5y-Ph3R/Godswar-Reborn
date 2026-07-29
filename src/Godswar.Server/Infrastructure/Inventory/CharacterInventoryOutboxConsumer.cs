@@ -67,6 +67,15 @@ internal sealed class CharacterInventoryOutboxConsumer :
             return ValueTask.CompletedTask;
         }
 
+        if (IsMaterialConversionEvent(message.EventType) &&
+            message.SchemaVersion ==
+                GearMentorMaterialConversionPersistenceCodec
+                    .ContractVersion)
+        {
+            ValidateMaterialConversion(message);
+            return ValueTask.CompletedTask;
+        }
+
         throw new InvalidDataException(
             "The inventory outbox event contract is unsupported.");
     }
@@ -132,6 +141,45 @@ internal sealed class CharacterInventoryOutboxConsumer :
         {
             throw new InvalidDataException(
                 "The Make Attribute Stone outbox identity is " +
+                "inconsistent.");
+        }
+    }
+
+    private static bool IsMaterialConversionEvent(string eventType) =>
+        string.Equals(
+            eventType,
+            GearMentorMaterialConversionPersistenceCodec
+                .TransformEventType,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            eventType,
+            GearMentorMaterialConversionPersistenceCodec
+                .CombineEventType,
+            StringComparison.Ordinal);
+
+    private static void ValidateMaterialConversion(
+        OutboxEventMessage message)
+    {
+        var receipt =
+            GearMentorMaterialConversionPersistenceCodec.Decode(
+                message.Payload.Span);
+        if (receipt.Status !=
+                GearMentorMaterialConversionResultStatus.Succeeded ||
+            !string.Equals(
+                GearMentorMaterialConversionPersistenceCodec.EventType(
+                    receipt.Family),
+                message.EventType,
+                StringComparison.Ordinal) ||
+            receipt.OutboxEventId != message.EventId ||
+            receipt.InventoryRevision != message.AggregateRevision ||
+            !string.Equals(
+                GearMentorMaterialConversionPersistenceCodec
+                    .AggregateKey(receipt.CharacterId),
+                message.AggregateKey,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The material-conversion outbox identity is " +
                 "inconsistent.");
         }
     }

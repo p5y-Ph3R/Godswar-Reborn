@@ -10,7 +10,9 @@ internal static class LegacyCommandIdentityPolicy
                 CommandIdentityStrength.LegacyAggregateVersion,
             CommandFamily.DeveloperItemGrant or
             CommandFamily.DeveloperBagClear or
-            CommandFamily.GearMentorMakeAttributeStone =>
+            CommandFamily.GearMentorMakeAttributeStone or
+            CommandFamily.GearMentorTransformCrystal or
+            CommandFamily.GearMentorCombineGemPieces =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade or
             CommandFamily.EquipmentForge =>

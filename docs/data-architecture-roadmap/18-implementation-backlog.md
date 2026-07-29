@@ -61,9 +61,13 @@ command-operation marker prerequisite.
 The [secure native Make Attribute Stone increment](../data-architecture-b09-native-make-attribute-stone-20260729.md)
 activates that marker with a bounded reconnect registry, authenticated terminal
 result, durable Mentor transaction, authoritative refresh, and exact replay.
-Tokenless legacy inventory, forge, mentor, reward, and currency mutations
-remain compatibility paths; B09 is not complete until those operations gain
-truthful retry identity and move behind the durable transaction boundary.
+The [secure native Transform/Combine increment](../data-architecture-b09-native-material-conversions-20260729.md)
+extends the same boundary to both material-conversion families, including all
+recipes, family-separated reconnect identity, pre-route durable replay,
+immutable ledger evidence, and strict projection events. Tokenless legacy
+inventory, forge, remaining mentor, reward, and currency mutations remain
+compatibility paths; B09 is not complete until those operations gain truthful
+retry identity and move behind the durable transaction boundary.
 
 ## 18.2 First three low-risk implementation tasks
 

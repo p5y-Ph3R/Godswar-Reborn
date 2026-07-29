@@ -45,6 +45,8 @@ struct SecurePendingOperationSnapshot final {
     int characterId = -1;
     bool hasSelection = false;
     int selectedBagSlot = -1;
+    bool combinePageArmed = false;
+    std::uint32_t combineNpcId = 0;
 };
 
 class SecurePendingOperationRegistry final {
@@ -83,6 +85,8 @@ private:
         int characterId = -1;
         std::uint32_t npcId = 0;
         int bagSlot = -1;
+        std::uint64_t selectionGeneration = 0;
+        std::uint64_t combinePageGeneration = 0;
         std::uint64_t expiresAt = 0;
         std::uint8_t operationId[16]{};
     };
@@ -98,6 +102,7 @@ private:
     bool ReadNow(std::uint64_t* now) noexcept;
     void Prune(std::uint64_t now) noexcept;
     Entry* Find(
+        SecureLegacyCommandFamily family,
         std::uint32_t npcId,
         int bagSlot) noexcept;
     Entry* FindByOperationId(
@@ -125,6 +130,10 @@ private:
     int characterId_ = -1;
     bool hasSelection_ = false;
     int selectedBagSlot_ = -1;
+    std::uint64_t selectionGeneration_ = 0;
+    bool combinePageArmed_ = false;
+    std::uint32_t combineNpcId_ = 0;
+    std::uint64_t combinePageGeneration_ = 0;
     std::uint8_t
         principal_[SecurePrincipalFingerprintBytes]{};
     Entry entries_[SecurePendingOperationCapacity]{};
