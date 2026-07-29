@@ -4,7 +4,9 @@ namespace Godswar.Server.Protocol;
 
 internal sealed class GamePacket
 {
-    public GamePacket(byte[] buffer)
+    public GamePacket(
+        byte[] buffer,
+        Guid? clientOperationId = null)
     {
         if (buffer.Length < 4)
         {
@@ -12,6 +14,7 @@ internal sealed class GamePacket
         }
 
         Buffer = buffer;
+        ClientOperationId = clientOperationId;
         Length = BinaryPrimitives.ReadUInt16LittleEndian(buffer.AsSpan(0, 2));
         Opcode = BinaryPrimitives.ReadUInt16LittleEndian(buffer.AsSpan(2, 2));
     }
@@ -21,6 +24,8 @@ internal sealed class GamePacket
     public ushort Opcode { get; }
 
     public byte[] Buffer { get; }
+
+    public Guid? ClientOperationId { get; }
 
     public ReadOnlySpan<byte> Payload => Buffer.AsSpan(4);
 

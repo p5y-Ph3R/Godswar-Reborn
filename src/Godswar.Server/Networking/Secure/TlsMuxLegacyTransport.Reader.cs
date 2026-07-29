@@ -8,6 +8,7 @@ internal sealed partial class TlsMuxLegacyTransport
     {
         var headerBytes = new byte[
             SecureProtocolConstants.FrameHeaderBytes];
+        var operationMetadataAwaitingLegacyBytes = false;
         try
         {
             while (!_lifetime.IsCancellationRequested)
@@ -17,6 +18,11 @@ internal sealed partial class TlsMuxLegacyTransport
                     _lifetime.Token);
                 if (firstRead == 0)
                 {
+                    if (operationMetadataAwaitingLegacyBytes)
+                    {
+                        throw new SecureTransportException(
+                            "The secure channel closed with unassociated operation metadata.");
+                    }
                     _ingress.Complete();
                     return;
                 }
@@ -69,6 +75,11 @@ internal sealed partial class TlsMuxLegacyTransport
 
                     if (header.Type == SecureFrameType.Close)
                     {
+                        if (operationMetadataAwaitingLegacyBytes)
+                        {
+                            throw new SecureTransportException(
+                                "A close frame cannot abandon pending operation metadata.");
+                        }
                         RecordValidReceivedFrame();
                         SecureNetworkMetrics.FrameCompleted(
                             _endpointRole,
@@ -114,6 +125,31 @@ internal sealed partial class TlsMuxLegacyTransport
                             SecureFrameOutcome.Accepted);
                         continue;
                     }
+                    if (header.Type ==
+                        SecureFrameType.LegacyCommandOperation)
+                    {
+                        if (operationMetadataAwaitingLegacyBytes ||
+                            !SecureLegacyCommandOperationCodec.TryDecode(
+                                payload.AsSpan(0, payloadLength),
+                                out var operation))
+                        {
+                            SecureNetworkMetrics.FrameCompleted(
+                                _endpointRole,
+                                SecureFrameOutcome.Malformed);
+                            throw new SecureTransportException(
+                                "Secure legacy operation metadata was malformed or duplicated.");
+                        }
+
+                        await EnqueueIngressAsync(
+                            new SecureLegacyChunk(operation),
+                            payloadLength);
+                        operationMetadataAwaitingLegacyBytes = true;
+                        RecordValidReceivedFrame();
+                        SecureNetworkMetrics.FrameCompleted(
+                            _endpointRole,
+                            SecureFrameOutcome.Accepted);
+                        continue;
+                    }
                     if (header.Type != SecureFrameType.LegacyBytes)
                     {
                         SecureNetworkMetrics.FrameCompleted(
@@ -126,34 +162,10 @@ internal sealed partial class TlsMuxLegacyTransport
                     var chunk = new SecureLegacyChunk(
                         payload,
                         payloadLength);
-                    using var deadline = new CancellationTokenSource(
-                        _options.QueueAdmissionTimeout,
-                        _timeProvider);
-                    using var admission =
-                        CancellationTokenSource.CreateLinkedTokenSource(
-                            _lifetime.Token,
-                            deadline.Token);
-                    try
-                    {
-                        await _ingress.EnqueueAsync(
-                            chunk,
-                            payloadLength,
-                            admission.Token);
-                    }
-                    catch (OperationCanceledException)
-                        when (deadline.IsCancellationRequested &&
-                            !_lifetime.IsCancellationRequested)
-                    {
-                        SecureNetworkMetrics.FrameCompleted(
-                            _endpointRole,
-                            SecureFrameOutcome.QueueOverflow);
-                        throw new SecureIngressQueueOverflowException();
-                    }
-
                     payloadOwned = false;
-                    SecureNetworkMetrics.IngressEnqueued(
-                        _endpointRole,
-                        payloadLength);
+                    await EnqueueIngressAsync(chunk, payloadLength);
+
+                    operationMetadataAwaitingLegacyBytes = false;
                     RecordValidReceivedFrame();
                     SecureNetworkMetrics.FrameCompleted(
                         _endpointRole,
@@ -195,6 +207,45 @@ internal sealed partial class TlsMuxLegacyTransport
             System.Security.Cryptography.CryptographicOperations.ZeroMemory(
                 headerBytes);
         }
+    }
+
+    private async Task EnqueueIngressAsync(
+        SecureLegacyChunk item,
+        int byteCount)
+    {
+        using var deadline = new CancellationTokenSource(
+            _options.QueueAdmissionTimeout,
+            _timeProvider);
+        using var admission =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                _lifetime.Token,
+                deadline.Token);
+        try
+        {
+            await _ingress.EnqueueAsync(
+                item,
+                byteCount,
+                admission.Token);
+        }
+        catch (OperationCanceledException)
+            when (deadline.IsCancellationRequested &&
+                !_lifetime.IsCancellationRequested)
+        {
+            item.Return();
+            SecureNetworkMetrics.FrameCompleted(
+                _endpointRole,
+                SecureFrameOutcome.QueueOverflow);
+            throw new SecureIngressQueueOverflowException();
+        }
+        catch
+        {
+            item.Return();
+            throw;
+        }
+
+        SecureNetworkMetrics.IngressEnqueued(
+            _endpointRole,
+            byteCount);
     }
 
     private async Task EnqueueControlAsync(

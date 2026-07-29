@@ -4,7 +4,7 @@ using Godswar.Server.Application.Commands;
 namespace Godswar.Server.Application.Inventory;
 
 /// <summary>
-/// One allowlisted developer material grant. The authenticated subject and
+/// One allowlisted developer item grant. The authenticated subject and
 /// allowlist decision remain outside this transport-neutral value.
 /// </summary>
 internal readonly record struct DeveloperItemGrantCommand(

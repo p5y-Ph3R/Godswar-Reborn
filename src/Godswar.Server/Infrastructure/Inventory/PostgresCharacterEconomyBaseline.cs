@@ -1,46 +1,48 @@
-using Godswar.Server.Application.Commands;
-using Godswar.Server.Application.Inventory;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Inventory;
 
-internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
+internal static class PostgresCharacterEconomyBaseline
 {
-    private async Task<bool> EnsureCharacterEconomyBaselineAsync(
+    public static async Task<bool> EnsureAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        CommandEnvelope<DeveloperItemGrantCommand> envelope,
+        int accountId,
+        int characterId,
+        int commandTimeoutSeconds,
         CancellationToken cancellationToken)
     {
-        if (await CharacterEconomyBaselineExistsAsync(
+        if (await ExistsAsync(
                 connection,
                 transaction,
-                envelope,
+                accountId,
+                characterId,
+                commandTimeoutSeconds,
                 cancellationToken))
         {
             return true;
         }
 
-        // This path runs only once for a character created after migration
-        // 027 by an older process. Those writers do not share the new
-        // aggregate revision yet, so a row lock cannot prevent every item
-        // insert/delete race. Briefly fence item DML while the opening
-        // snapshot and first durable mutation commit together.
+        // Older binaries can create characters without an opening baseline.
+        // Briefly fence legacy item DML while capturing that initial state.
         await using (var lockItems = CreateCommand(
             """
             LOCK TABLE public.character_items
             IN SHARE MODE;
             """,
             connection,
-            transaction))
+            transaction,
+            commandTimeoutSeconds))
         {
             await lockItems.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        if (await CharacterEconomyBaselineExistsAsync(
+        if (await ExistsAsync(
                 connection,
                 transaction,
-                envelope,
+                accountId,
+                characterId,
+                commandTimeoutSeconds,
                 cancellationToken))
         {
             return true;
@@ -106,28 +108,29 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
             ORDER BY item_row.id;
             """,
             connection,
-            transaction))
+            transaction,
+            commandTimeoutSeconds))
         {
-            command.Parameters.AddWithValue(
-                "characterId",
-                envelope.Subject.CharacterId);
-            command.Parameters.AddWithValue(
-                "accountId",
-                envelope.Subject.AccountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("accountId", accountId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return await CharacterEconomyBaselineExistsAsync(
+        return await ExistsAsync(
             connection,
             transaction,
-            envelope,
+            accountId,
+            characterId,
+            commandTimeoutSeconds,
             cancellationToken);
     }
 
-    private async Task<bool> CharacterEconomyBaselineExistsAsync(
+    private static async Task<bool> ExistsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        CommandEnvelope<DeveloperItemGrantCommand> envelope,
+        int accountId,
+        int characterId,
+        int commandTimeoutSeconds,
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand(
@@ -142,14 +145,21 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
             );
             """,
             connection,
-            transaction);
-        command.Parameters.AddWithValue(
-            "characterId",
-            envelope.Subject.CharacterId);
-        command.Parameters.AddWithValue(
-            "accountId",
-            envelope.Subject.AccountId);
+            transaction,
+            commandTimeoutSeconds);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("accountId", accountId);
         return await command.ExecuteScalarAsync(cancellationToken)
             is true;
     }
+
+    private static NpgsqlCommand CreateCommand(
+        string sql,
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int commandTimeoutSeconds) =>
+        new(sql, connection, transaction)
+        {
+            CommandTimeout = commandTimeoutSeconds
+        };
 }

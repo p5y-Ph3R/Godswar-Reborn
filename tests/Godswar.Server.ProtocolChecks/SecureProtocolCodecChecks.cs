@@ -28,6 +28,7 @@ internal static partial class SecureProtocolCodecChecks
         CheckIncrementalReads();
         CheckFrameGoldenVector();
         CheckFrameBoundariesAndContext();
+        CheckLegacyCommandOperationCodec();
         CheckSequencePolicy();
         CheckFrameDecodeAllocationBound();
         CheckGameControlGoldenVectors();

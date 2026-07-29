@@ -8,7 +8,8 @@ internal static class LegacyCommandIdentityPolicy
         {
             CommandFamily.TalentUpgrade =>
                 CommandIdentityStrength.LegacyAggregateVersion,
-            CommandFamily.DeveloperItemGrant =>
+            CommandFamily.DeveloperItemGrant or
+            CommandFamily.DeveloperBagClear =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade or
             CommandFamily.EquipmentForge =>

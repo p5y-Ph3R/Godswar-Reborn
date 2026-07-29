@@ -259,18 +259,43 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
         }
     }
 
-    private static DeveloperItemGrantExecutionReceipt
-        ValidateStoredResult(StoredInbox stored)
+    private static DeveloperItemGrantExecutionReceipt?
+        ValidateStoredResult(
+            StoredInbox stored,
+            CommandEnvelope<DeveloperItemGrantCommand> envelope)
     {
         if (stored.ResultContractVersion !=
-                DeveloperItemGrantPersistenceCodec.ContractVersion ||
-            !string.Equals(
+            DeveloperItemGrantPersistenceCodec.ContractVersion)
+        {
+            throw new InvalidDataException(
+                "The stored inventory grant result contract is " +
+                "unsupported.");
+        }
+
+        if (string.Equals(
+                stored.ResultCode,
+                DeveloperItemGrantPersistenceCodec
+                    .PreconditionFailedResultCode,
+                StringComparison.Ordinal))
+        {
+            DeveloperItemGrantPersistenceCodec
+                .ValidateInsufficientCapacity(
+                    stored.ResultPayload,
+                    stored.ResultHash,
+                    envelope.Subject.CharacterId,
+                    envelope.Command.ItemId,
+                    envelope.Command.Quantity,
+                    stored.AuditId);
+            return null;
+        }
+
+        if (!string.Equals(
                 stored.ResultCode,
                 DeveloperItemGrantPersistenceCodec.ResultCode,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
-                "The stored inventory grant result contract is " +
+                "The stored inventory grant result code is " +
                 "unsupported.");
         }
 

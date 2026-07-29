@@ -12,6 +12,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
     public static void Run()
     {
         CheckOptionalOperationToken();
+        CheckClearBagOperationToken();
         CheckStrictOperationTokenRejection();
         CheckCommandBounds();
         CheckCanonicalIdentity();
@@ -71,6 +72,45 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "split material aliases retain final operation-token parsing");
     }
 
+    private static void CheckClearBagOperationToken()
+    {
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                "/item clearbag confirm",
+                out var legacy,
+                out _) &&
+            legacy is
+            {
+                Operation: DeveloperItemOperation.ClearBag,
+                ClientOperationId: null
+            },
+            "legacy clear-bag remains compatible without an operation ID");
+
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item clearbag confirm op={OperationId:D}",
+                out var identified,
+                out _) &&
+            identified is
+            {
+                Operation: DeveloperItemOperation.ClearBag,
+                Material: null,
+                Quantity: 0,
+                ClientOperationId: not null
+            } &&
+            identified.ClientOperationId == OperationId,
+            "clear-bag accepts a final D-format operation ID");
+
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                "/item clearbag",
+                out var incomplete,
+                out var usageError) &&
+            incomplete is null &&
+            usageError.Contains("[op=<UUID>]", StringComparison.Ordinal),
+            "clear-bag usage advertises the optional operation token");
+    }
+
     private static void CheckStrictOperationTokenRejection()
     {
         CheckRejected(
@@ -88,21 +128,26 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
         CheckRejected(
             $"/item add crystal1 2 op={OperationId:D} trailing",
             "arguments after operation token");
-
+        CheckRejected(
+            "/item clearbag confirm op=",
+            "empty clear-bag operation ID");
         Check.True(
             DeveloperItemCommand.TryParse(
-                $"/item clearbag confirm op={OperationId:D}",
-                out var clearBag,
-                out _) &&
-            clearBag is null,
-            "operation token does not broaden clear-bag syntax");
-        Check.True(
-            DeveloperItemCommand.TryParse(
-                $"/item mount add 14224 op={OperationId:D}",
-                out var mount,
-                out _) &&
-            mount is null,
-            "operation token does not broaden mount syntax");
+                "/item clearbag confirm op=",
+                out var emptyClearBagOperation,
+                out var emptyClearBagOperationError) &&
+            emptyClearBagOperation is null &&
+            emptyClearBagOperationError.Contains("D-format UUID", StringComparison.Ordinal),
+            "clear-bag reports bounded operation-ID guidance");
+        CheckRejected(
+            "/item clearbag confirm op=00000000-0000-0000-0000-000000000000",
+            "empty clear-bag UUID value");
+        CheckRejected(
+            $"/item clearbag confirm op={{{OperationId:D}}}",
+            "non-canonical clear-bag UUID form");
+        CheckRejected(
+            $"/item clearbag confirm op={OperationId:D} trailing",
+            "arguments after clear-bag operation token");
     }
 
     private static void CheckCommandBounds()
@@ -314,6 +359,6 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
                 out var error) &&
             request is null &&
             !string.IsNullOrWhiteSpace(error),
-            $"developer grant rejects {description}");
+            $"developer item command rejects {description}");
     }
 }

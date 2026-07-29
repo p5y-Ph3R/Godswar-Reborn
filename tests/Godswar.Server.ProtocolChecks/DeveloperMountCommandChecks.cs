@@ -9,6 +9,9 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static class DeveloperMountCommandChecks
 {
+    private static readonly Guid OperationId =
+        Guid.Parse("d2d76c5a-61e3-4fbe-b642-f33fc013a305");
+
     public static async Task RunAsync()
     {
         Check.Equal(350, DeveloperMountCatalog.All.Count, "all client mount templates are catalogued");
@@ -94,13 +97,47 @@ internal static class DeveloperMountCommandChecks
             {
                 Operation: DeveloperItemOperation.MountAdd,
                 Mount.ItemId: 14224,
-                Quantity: 1
+                Quantity: 1,
+                ClientOperationId: null
             },
             "numeric mount add resolves only an allowlisted client mount");
         Check.True(
             DeveloperItemCommand.TryParse("/item mount add greeksteed 80", out var familyAdd, out _) &&
-            familyAdd is { Operation: DeveloperItemOperation.MountAdd, Mount.ItemId: 14224 },
+            familyAdd is
+            {
+                Operation: DeveloperItemOperation.MountAdd,
+                Mount.ItemId: 14224,
+                ClientOperationId: null
+            },
             "family mount add resolves its level tier");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item mount add 14224 op={OperationId:D}",
+                out var identifiedNumericAdd,
+                out _) &&
+            identifiedNumericAdd is
+            {
+                Operation: DeveloperItemOperation.MountAdd,
+                Mount.ItemId: 14224,
+                Quantity: 1,
+                ClientOperationId: not null
+            } &&
+            identifiedNumericAdd.ClientOperationId == OperationId,
+            "numeric mount add accepts a final D-format operation ID");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item mount add greeksteed 80 op={OperationId:D}",
+                out var identifiedFamilyAdd,
+                out _) &&
+            identifiedFamilyAdd is
+            {
+                Operation: DeveloperItemOperation.MountAdd,
+                Mount.ItemId: 14224,
+                Quantity: 1,
+                ClientOperationId: not null
+            } &&
+            identifiedFamilyAdd.ClientOperationId == OperationId,
+            "family-tier mount add accepts a final D-format operation ID");
         Check.True(
             DeveloperItemCommand.TryParse("/item mount add greeksteed max", out var maxAdd, out _) &&
             maxAdd is { Mount.ItemId: 14228 },
@@ -109,6 +146,18 @@ internal static class DeveloperMountCommandChecks
             DeveloperItemCommand.TryParse("/item mount add greeksteed special", out var specialAdd, out _) &&
             specialAdd is { Mount.ItemId: 14229 },
             "family special command resolves the distinct speed variant");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item mount add greeksteed special OP={OperationId:D}",
+                out var identifiedSpecialAdd,
+                out _) &&
+            identifiedSpecialAdd is
+            {
+                Mount.ItemId: 14229,
+                ClientOperationId: not null
+            } &&
+            identifiedSpecialAdd.ClientOperationId == OperationId,
+            "symbolic mount tier accepts the case-insensitive operation token");
         Check.True(
             DeveloperItemCommand.TryParse("/item mount add erebuslion 80", out var erebusAdd, out _) &&
             erebusAdd is { Mount.ItemId: 16204 },
@@ -125,6 +174,46 @@ internal static class DeveloperMountCommandChecks
             DeveloperItemCommand.TryParse("/item mount add greeksteed 999", out var badTier, out _) &&
             badTier is null,
             "unknown family tiers are rejected");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                "/item mount add 14224 op=",
+                out var emptyOperationAdd,
+                out var emptyOperationError) &&
+            emptyOperationAdd is null &&
+            emptyOperationError.Contains("D-format UUID", StringComparison.Ordinal),
+            "mount add rejects an empty operation ID with bounded guidance");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                "/item mount add greeksteed 80 " +
+                "op=00000000-0000-0000-0000-000000000000",
+                out var emptyUuidAdd,
+                out var emptyUuidError) &&
+            emptyUuidAdd is null &&
+            emptyUuidError.Contains("non-empty", StringComparison.Ordinal),
+            "mount add rejects the empty UUID value");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item mount add 14224 op={{{OperationId:D}}}",
+                out var nonCanonicalAdd,
+                out _) &&
+            nonCanonicalAdd is null,
+            "mount add rejects non-D UUID forms");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                $"/item mount add 14224 op={OperationId:D} trailing",
+                out var trailingAdd,
+                out var trailingError) &&
+            trailingAdd is null &&
+            trailingError.Contains("[op=<UUID>]", StringComparison.Ordinal),
+            "mount add rejects arguments after the final operation token");
+        Check.True(
+            DeveloperItemCommand.TryParse(
+                "/item mount add",
+                out var incompleteAdd,
+                out var incompleteAddError) &&
+            incompleteAdd is null &&
+            incompleteAddError.Contains("[op=<UUID>]", StringComparison.Ordinal),
+            "mount-add usage advertises the optional operation token");
         Check.True(
             DeveloperItemCommand.TryParse("/item add crystal1 2", out var materialRequest, out _) &&
             materialRequest is

@@ -223,6 +223,33 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
             "full-kitbag fixture inserts every authoritative slot");
     }
 
+    private static async Task DeleteOneFixtureBagItemAsync(
+        string connectionString,
+        int characterId)
+    {
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            DELETE FROM public.character_items
+            WHERE id = (
+                SELECT id
+                FROM public.character_items
+                WHERE user_id = @characterId
+                  AND item_location = 1
+                ORDER BY slot_index DESC
+                LIMIT 1
+            );
+            """,
+            connection);
+        command.Parameters.AddWithValue("characterId", characterId);
+        Check.Equal(
+            1,
+            await command.ExecuteNonQueryAsync(),
+            "capacity replay fixture opens one bag slot");
+    }
+
     private static async Task InsertEconomyBaselineAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,

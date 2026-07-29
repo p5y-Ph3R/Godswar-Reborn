@@ -55,6 +55,9 @@ player-ownership fence remains required before safe multi-process ownership.
 records the immutable opening economy baselines, wallet/inventory revisions,
 currency and item ledgers, report-only reconciliation, and the first
 commit-before-response item grant using an explicit client operation UUID.
+The second increment adds exact creation-time baselines, replay-safe
+tokenized mount grants and bag clearing, and the bounded secure
+command-operation marker prerequisite.
 Tokenless legacy inventory, forge, mentor, reward, and currency mutations
 remain compatibility paths; B09 is not complete until those operations gain
 truthful retry identity and move behind the durable transaction boundary.

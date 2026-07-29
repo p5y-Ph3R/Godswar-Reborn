@@ -176,10 +176,15 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
             connectionString,
             "full",
             fillKitBag: true);
+        var operationId = Guid.NewGuid();
+        var envelope = CreateEnvelope(
+            fixture,
+            operationId,
+            quantity: 1);
         await using var source =
             NpgsqlDataSource.Create(connectionString);
         var result = await CreateExecutor(source).ExecuteAsync(
-            CreateEnvelope(fixture, Guid.NewGuid(), quantity: 1));
+            envelope);
 
         Check.True(
             result.Disposition ==
@@ -193,14 +198,47 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
             state.GrantedQuantity == 0 &&
             state.GrantedItemCount == 0 &&
             state.TotalItemCount == 96 &&
-            state.AuditCount == 0 &&
-            state.InboxCount == 0 &&
+            state.AuditCount == 1 &&
+            state.InboxCount == 1 &&
             state.LedgerCount == 0 &&
             state.OutboxCount == 0 &&
             state.DuplicateCount == 0 &&
             state.RequestConflictCount == 0 &&
             state.IsReconciled,
-            "capacity rejection reserves no inbox and changes no state");
+            "capacity rejection persists terminal identity without " +
+            "changing inventory");
+
+        await DeleteOneFixtureBagItemAsync(
+            connectionString,
+            fixture.CharacterId);
+        await using var retrySource =
+            NpgsqlDataSource.Create(connectionString);
+        var retry = await CreateExecutor(retrySource).ExecuteAsync(
+            CreateEnvelope(
+                fixture,
+                operationId,
+                quantity: 1,
+                connectionId: Guid.NewGuid()));
+        Check.True(
+            retry.Disposition ==
+                DeveloperItemGrantExecutionDisposition
+                    .PreconditionFailed &&
+            retry.Receipt is null,
+            "same capacity-failure UUID replays after space opens");
+        var replayState =
+            await ReadStateAsync(connectionString, fixture);
+        Check.True(
+            replayState.InventoryRevision == 0 &&
+            replayState.GrantedQuantity == 0 &&
+            replayState.GrantedItemCount == 0 &&
+            replayState.TotalItemCount == 95 &&
+            replayState.AuditCount == 1 &&
+            replayState.InboxCount == 1 &&
+            replayState.LedgerCount == 0 &&
+            replayState.OutboxCount == 0 &&
+            replayState.DuplicateCount == 1 &&
+            replayState.RequestConflictCount == 0,
+            "terminal capacity replay never grants into later space");
     }
 
     private static void AssertCommittedState(

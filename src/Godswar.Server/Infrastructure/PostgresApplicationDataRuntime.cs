@@ -39,11 +39,15 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresDeveloperItemGrantCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        DeveloperBagClearCommands =
+            new PostgresDeveloperBagClearCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
                 new TalentUpgradeOutboxConsumer(),
-                new DeveloperItemGrantOutboxConsumer()
+                new CharacterInventoryOutboxConsumer()
             ],
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
@@ -54,7 +58,12 @@ internal sealed class PostgresApplicationDataRuntime :
     public ITalentUpgradeCommandExecutor TalentUpgradeCommands { get; }
 
     public IDeveloperItemGrantCommandExecutor
-        DeveloperItemGrantCommands { get; }
+        DeveloperItemGrantCommands
+    { get; }
+
+    public IDeveloperBagClearCommandExecutor
+        DeveloperBagClearCommands
+    { get; }
 
     public bool OutboxEnabled { get; }
 

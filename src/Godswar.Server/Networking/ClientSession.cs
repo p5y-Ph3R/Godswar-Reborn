@@ -155,6 +155,43 @@ internal sealed class ClientSession : IAsyncDisposable
         bool isFirstPacket,
         CancellationToken cancellationToken)
     {
+        var operationTransport =
+            _transport as ISecureCommandOperationTransport;
+        operationTransport?.BeginPacketRead();
+        var packetReadCompleted = false;
+        try
+        {
+            var packet = await ReadPacketBytesAsync(
+                isFirstPacket,
+                cancellationToken);
+            if (packet is null)
+            {
+                return null;
+            }
+
+            var clientOperationId =
+                operationTransport?.CompletePacketRead(
+                    packet.Value.Length,
+                    packet.Value.Opcode);
+            packetReadCompleted = true;
+            _hasReceivedPacket = true;
+            return new GamePacket(
+                packet.Value.Buffer,
+                clientOperationId);
+        }
+        finally
+        {
+            if (!packetReadCompleted)
+            {
+                operationTransport?.AbortPacketRead();
+            }
+        }
+    }
+
+    private async Task<DecodedPacket?> ReadPacketBytesAsync(
+        bool isFirstPacket,
+        CancellationToken cancellationToken)
+    {
         var firstByteStage = isFirstPacket
             ? NetworkTimeoutStage.FirstPacket
             : NetworkTimeoutStage.Idle;
@@ -205,8 +242,9 @@ internal sealed class ClientSession : IAsyncDisposable
         var packet = new byte[length];
         header.CopyTo(packet.AsSpan(0, 2));
         rest.CopyTo(packet.AsSpan(2));
-        _hasReceivedPacket = true;
-        return new GamePacket(packet);
+        var opcode = BinaryPrimitives.ReadUInt16LittleEndian(
+            packet.AsSpan(2, 2));
+        return new DecodedPacket(packet, length, opcode);
     }
 
     public async Task SendAsync(
@@ -433,4 +471,9 @@ internal sealed class ClientSession : IAsyncDisposable
             await _transport.DisposeAsync();
         }
     }
+
+    private readonly record struct DecodedPacket(
+        byte[] Buffer,
+        ushort Length,
+        ushort Opcode);
 }

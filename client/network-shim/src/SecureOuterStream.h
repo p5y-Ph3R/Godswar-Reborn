@@ -39,6 +39,7 @@ enum class SecureOuterFailure : std::uint8_t {
     UdpGrantState,
     UdpGrantConnection,
     RealtimeMovementWrite,
+    LegacyCommandOperationWrite,
 };
 
 struct SecureOuterSnapshot final {
@@ -102,6 +103,11 @@ public:
     // enqueues and returns without waiting for TLS I/O.
     bool WriteRealtimeMovementInput(
         const SecureRealtimeMovementInput& movement) noexcept;
+    // Sends only the authenticated operation metadata. The caller must
+    // arrange for the described clear legacy packet to be the next packet
+    // written by the stock client.
+    bool WriteLegacyCommandOperation(
+        const SecureLegacyCommandOperation& operation) noexcept;
 
 private:
     DeadlineStreamResult ReadExact(

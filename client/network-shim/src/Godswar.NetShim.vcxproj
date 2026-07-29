@@ -138,9 +138,11 @@
     <ClCompile Include="SecureClientProtocol.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="SecureRealtimeMovementRouter.cpp" />
     <ClCompile Include="SecureOuterStream.Control.cpp" />
+    <ClCompile Include="SecureOuterStream.CommandOperation.cpp" />
     <ClCompile Include="SecureOuterStream.Binding.cpp" />
     <ClCompile Include="SecureOuterStream.cpp" />
     <ClCompile Include="SecureOuterStream.Movement.cpp" />

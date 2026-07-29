@@ -37,6 +37,7 @@ internal enum SecureFrameType : ushort
     Pong = 0x0002,
     Close = 0x0003,
     LegacyBytes = 0x0100,
+    LegacyCommandOperation = 0x0101,
     GameGrant = 0x0200,
     GameBind = 0x0201,
     BindResult = 0x0202,
@@ -74,7 +75,14 @@ internal static class SecureProtocolConstants
     public const int BindResultBytes = 4;
     public const int UdpBindingGrantBytes = 72;
     public const int RealtimeMovementInputBytes = 52;
+    public const int LegacyCommandOperationBytes = 24;
+    public const byte LegacyCommandOperationVersion = 1;
 }
+
+internal readonly record struct SecureLegacyCommandOperation(
+    Guid OperationId,
+    ushort PacketLength,
+    ushort Opcode);
 
 internal sealed class SecureClientPreface
 {

@@ -9,7 +9,8 @@ namespace Godswar.Server.Networking.Secure;
 
 internal sealed partial class TlsMuxLegacyTransport :
     ILegacyByteTransport,
-    ISecureControlChannel
+    ISecureControlChannel,
+    ISecureCommandOperationTransport
 {
     private readonly Action _abortConnection;
     private readonly IDisposable _connectionOwner;
@@ -32,6 +33,7 @@ internal sealed partial class TlsMuxLegacyTransport :
     private SecureUdpSessionLease? _udpRegistrationLease;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _heartbeatGate = new();
+    private readonly object _packetOperationGate = new();
     private SecureLegacyChunk? _currentChunk;
     private int _currentChunkOffset;
     private int _disconnectStarted;
@@ -45,6 +47,9 @@ internal sealed partial class TlsMuxLegacyTransport :
     private long _lastSendTimestamp;
     private long _pingTimestamp;
     private readonly byte[] _pingNonce = new byte[8];
+    private bool _packetReadActive;
+    private bool _packetReadHasBytes;
+    private SecureLegacyCommandOperation? _packetOperation;
 
     public TlsMuxLegacyTransport(
         IDisposable connectionOwner,
@@ -222,6 +227,12 @@ internal sealed partial class TlsMuxLegacyTransport :
                 _endpointRole,
                 itemCount: 1,
                 result.ByteCount);
+            if (result.Item.IsOperationMetadata)
+            {
+                AcceptOperationMetadata(result.Item.Operation);
+                result.Item.Return();
+                continue;
+            }
             _currentChunk = result.Item;
             _currentChunkOffset = 0;
         }
@@ -232,6 +243,7 @@ internal sealed partial class TlsMuxLegacyTransport :
         _currentChunk.Buffer
             .AsMemory(_currentChunkOffset, count)
             .CopyTo(destination);
+        MarkPacketBytesRead();
         _currentChunkOffset += count;
         if (_currentChunkOffset == _currentChunk.Length)
         {
@@ -379,16 +391,34 @@ internal sealed partial class TlsMuxLegacyTransport :
         Interlocked.Exchange(ref _udpRegistrationLease, null)?.Dispose();
     }
 
-    private sealed class SecureLegacyChunk(
-        byte[] buffer,
-        int length)
+    private sealed class SecureLegacyChunk
     {
-        private byte[]? _buffer = buffer;
+        private byte[]? _buffer;
+        private readonly SecureLegacyCommandOperation? _operation;
+
+        public SecureLegacyChunk(byte[] buffer, int length)
+        {
+            _buffer = buffer;
+            Length = length;
+        }
+
+        public SecureLegacyChunk(
+            SecureLegacyCommandOperation operation)
+        {
+            _operation = operation;
+        }
 
         public byte[] Buffer => _buffer ??
             throw new ObjectDisposedException(nameof(SecureLegacyChunk));
 
-        public int Length { get; } = length;
+        public int Length { get; }
+
+        public bool IsOperationMetadata => _operation.HasValue;
+
+        public SecureLegacyCommandOperation Operation =>
+            _operation ??
+            throw new InvalidOperationException(
+                "This ingress item contains legacy bytes.");
 
         public void Return()
         {

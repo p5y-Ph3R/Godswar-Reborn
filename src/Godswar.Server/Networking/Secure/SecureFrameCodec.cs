@@ -203,6 +203,11 @@ internal static class SecureFrameCodec
             SecureFrameType.LegacyBytes =>
                 payloadLength is >= 1 and <=
                     SecureProtocolConstants.MaximumPayloadBytes,
+            SecureFrameType.LegacyCommandOperation =>
+                endpointRole == SecureEndpointRole.Game &&
+                direction == SecureFrameDirection.ClientToServer &&
+                payloadLength ==
+                    SecureProtocolConstants.LegacyCommandOperationBytes,
             SecureFrameType.GameGrant =>
                 endpointRole == SecureEndpointRole.Login &&
                 direction == SecureFrameDirection.ServerToClient &&

@@ -146,28 +146,35 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
                     .RequestHashConflict();
             }
 
-            var replayReceipt = ValidateStoredResult(existing);
+            var replayReceipt = ValidateStoredResult(
+                existing,
+                envelope);
             await RecordDuplicateAsync(
                 connection,
                 transaction,
                 existing.InboxId,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return DeveloperItemGrantExecutionResult.Duplicate(
-                replayReceipt);
+            return replayReceipt is null
+                ? DeveloperItemGrantExecutionResult
+                    .PreconditionFailed()
+                : DeveloperItemGrantExecutionResult.Duplicate(
+                    replayReceipt);
         }
 
-        if (!DeveloperGrantMaterialCatalog.TryResolve(
+        if (!TryResolveGrantItem(
                 envelope.Command.ItemId,
-                out var material))
+                out var grantItem))
         {
             return DeveloperItemGrantExecutionResult.InvalidIntent();
         }
 
-        if (!await EnsureCharacterEconomyBaselineAsync(
+        if (!await PostgresCharacterEconomyBaseline.EnsureAsync(
                 connection,
                 transaction,
-                envelope,
+                envelope.Subject.AccountId,
+                envelope.Subject.CharacterId,
+                _commandTimeoutSeconds,
                 cancellationToken))
         {
             return DeveloperItemGrantExecutionResult.PreconditionFailed();
@@ -177,10 +184,20 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
             connection,
             transaction,
             envelope.Subject.CharacterId,
-            material,
+            grantItem,
             cancellationToken);
-        if (!HasCapacity(items, material, envelope.Command.Quantity))
+        if (!HasCapacity(items, grantItem, envelope.Command.Quantity))
         {
+            await InsertInsufficientCapacityResultAsync(
+                connection,
+                transaction,
+                envelope,
+                principalKey,
+                aggregateKey,
+                operationId,
+                requestHash,
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return DeveloperItemGrantExecutionResult.PreconditionFailed();
         }
 
@@ -230,7 +247,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
             connection,
             transaction,
             envelope,
-            material,
+            grantItem,
             items,
             inventoryRevision,
             cancellationToken);
@@ -244,6 +261,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
             envelope,
             inventoryRevision,
             mutations,
+            grantItem.LedgerReasonCode,
             cancellationToken);
         await ReachAsync(
             PostgresDeveloperItemGrantCommandStage.LedgerInserted,
@@ -283,14 +301,46 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
 
     private static bool HasCapacity(
         LockedKitBag items,
-        DeveloperGrantMaterialDefinition material,
+        DeveloperGrantItemDefinition grantItem,
         int quantity)
     {
         var stackCapacity = items.FillableStacks.Sum(item =>
-            Math.Max(0, material.StackCap - item.Stack));
+            Math.Max(0, grantItem.StackCap - item.Stack));
         var slotCapacity =
-            (long)items.EmptySlots.Count * material.StackCap;
+            (long)items.EmptySlots.Count * grantItem.StackCap;
         return stackCapacity + slotCapacity >= quantity;
+    }
+
+    private static bool TryResolveGrantItem(
+        uint itemId,
+        out DeveloperGrantItemDefinition grantItem)
+    {
+        if (DeveloperGrantMaterialCatalog.TryResolve(
+                itemId,
+                out var material))
+        {
+            grantItem = new DeveloperGrantItemDefinition(
+                material.ItemId,
+                material.StackCap,
+                material.GrantedBound,
+                "developer_material_grant");
+            return true;
+        }
+
+        if (DeveloperMountCatalog.TryResolveGrantable(
+                itemId,
+                out _))
+        {
+            grantItem = new DeveloperGrantItemDefinition(
+                itemId,
+                StackCap: 1,
+                GrantedBound: 1,
+                LedgerReasonCode: "developer_mount_grant");
+            return true;
+        }
+
+        grantItem = default;
+        return false;
     }
 
     private static byte[] DecodeDigest(string value)
@@ -341,4 +391,10 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
         string MutationKind,
         string? BeforeState,
         string? AfterState);
+
+    private readonly record struct DeveloperGrantItemDefinition(
+        uint ItemId,
+        short StackCap,
+        short GrantedBound,
+        string LedgerReasonCode);
 }

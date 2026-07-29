@@ -32,6 +32,9 @@ internal static class DataArchitectureCheckCatalog
             "Legacy talent command envelope",
             LegacyTalentCommandEnvelopeChecks.RunAsync),
         (
+            "Shared character-inventory outbox compatibility",
+            CharacterInventoryOutboxConsumerChecks.RunAsync),
+        (
             "PostgreSQL talent command precondition",
             PostgresTalentUpgradeIntegrationChecks.RunAsync)
     ];

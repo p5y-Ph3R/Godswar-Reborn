@@ -120,7 +120,7 @@ Provider-neutral command types live under `Application/Inventory`:
 
 `PostgresDeveloperItemGrantCommandExecutor` owns the PostgreSQL transaction.
 Its persistence codec stores and verifies a bounded canonical result. The
-`DeveloperItemGrantOutboxConsumer` validates event identity and ordering but
+`CharacterInventoryOutboxConsumer` validates event identity and ordering but
 does not create a second player-value authority.
 
 The game handler composes the application executor only for PostgreSQL.
@@ -133,7 +133,8 @@ durability claim rather than silently weakening it.
 
 - Invalid envelope or non-allowlisted item: no durable command is consumed.
 - Missing/wrong-owner character: no durable command is consumed.
-- Insufficient bag capacity: no durable command is consumed.
+- Insufficient bag capacity: audit and inbox store a terminal precondition
+  result; the inventory revision and items do not change.
 - Failure at any pre-commit probe: item, revision, audit, inbox, ledger, and
   outbox changes all roll back.
 - Failure immediately after commit: retrying the same UUID returns the
@@ -224,3 +225,149 @@ longer than an acceptable deployment window. A production rollout therefore
 requires measured row counts/lock duration and an approved quiesced window or
 a follow-up split using add-`NOT VALID`, backfill, and `VALIDATE CONSTRAINT`.
 The local verification results are not a production downtime guarantee.
+
+## Second B09 increment: creation and GM inventory safety
+
+The follow-up increment on 2026-07-29 closes three more bounded paths without
+claiming that native slot-only commands are already replay-safe.
+
+### Exact character-creation baseline
+
+`PostgresGameStore.InsertCharacterAsync` now captures the opening economy
+baseline in the same PostgreSQL transaction as the new character and starter
+items. The sequence is:
+
+1. insert the character at wallet/inventory revision zero;
+2. insert the authoritative starter equipment and bag items;
+3. insert `character_economy_baseline` with source
+   `character_creation`;
+4. snapshot every starter row into
+   `character_inventory_baseline_items`;
+5. require the snapshot count to equal the baseline count; and
+6. continue character initialization and commit.
+
+Any mismatch rolls back the whole character creation. The existing
+`runtime_cutover` baseline path remains only for characters produced after
+migration 027 by an older compatible binary.
+
+### Tokenized mount grants
+
+The existing `DeveloperItemGrantCommand` transaction now resolves either an
+allowlisted developer material or an allowlisted client mount. Mounts are
+server-fixed to one bound, stack-one item. They use:
+
+- the same permanent command inbox and canonical stored receipt;
+- one `inventory_revision` increment;
+- inventory-ledger reason `developer_mount_grant`;
+- the shared strict `inventory_projection_v1` event sequence; and
+- the generic new event type `inventory.developer_item_granted`.
+
+The consumer continues to accept the earlier
+`inventory.developer_material_granted` event type so already-committed outbox
+rows remain dispatchable.
+
+Supported explicit forms are:
+
+```text
+/item mount add <item-id> op=<UUID>
+/item mount add <family> <tier|max|special> op=<UUID>
+```
+
+Tokenless mount commands remain local compatibility operations and increment
+the bounded unsupported-retry metric. They are not described as idempotent.
+
+### Tokenized clear bag
+
+`DeveloperBagClearCommand` is a separate application command because clearing
+owned items is not a grant. Its PostgreSQL executor locks the character and
+bag, establishes the opening baseline if an older character lacks one, and
+atomically writes:
+
+- the command audit and inbox row;
+- the bag-only deletions plus the existing per-item compatibility audit;
+- one inventory revision;
+- one immutable delete ledger entry per removed item; and
+- one strict outbox event with the canonical receipt.
+
+The stored receipt contains the bounded, ordered list of removed bag slots.
+An exact retry returns that receipt and current state without running another
+delete. Items acquired after the first commit are therefore not erased by a
+late retry. Equipped items are outside the command scope.
+
+The explicit form is:
+
+```text
+/item clearbag confirm op=<UUID>
+```
+
+An empty bag stores and returns a terminal precondition result without changing
+the inventory revision. Reusing that operation ID after acquiring an item
+replays the same rejection and cannot delete the later item. The tokenless form
+remains a measured local compatibility path.
+
+Both grant and clear events use the same strict consumer key and aggregate
+revision stream. Separate per-command consumer keys would create artificial
+revision gaps and are deliberately not used.
+
+### Secure native-command identity prerequisite
+
+The secure outer protocol now reserves client-to-game-server frame `0x0101`
+for a fixed 24-byte `LegacyCommandOperation` marker. It contains a version,
+the expected clear legacy packet length and opcode, and a nonzero UUID. The
+TLS mux associates it with exactly one complete decrypted `GamePacket`,
+including when encrypted chunks split or coalesce packet boundaries.
+
+Malformed, duplicate-pending, mid-packet, abandoned, and length/opcode
+mismatches fail closed. Raw legacy packets expose no operation ID. The C++
+shim has a Windows-CSPRNG UUIDv4 generator and bound-channel writer primitive.
+The normative layout and failure rules are in
+[`network-infrastructure-phase2-protocol.md`](network-infrastructure-phase2-protocol.md).
+
+This is intentionally not active in `NetClientProxy::SendMsg` yet. Correct
+activation still requires a bounded pending-operation and response-correlation
+registry that retains the same UUID across an uncertain acknowledgement and
+reconnect. A fresh UUID for each packet or retry would falsely treat a retry
+as a new purchase/mutation. Consequently equip, move, delete, forge,
+enhancement, Mentor, and holy-stone paths remain legacy compatibility writers.
+
+### Verification added
+
+Automated coverage now includes:
+
+- exact character-creation wallet/item baseline capture;
+- mount commit, exact replay, same-ID/different-item conflict, binding, stack,
+  revision, ledger, outbox, reconciliation, and stable full-bag rejection;
+- clear-bag ownership scope, equipment preservation, per-item evidence,
+  exact and concurrent replay, terminal empty-bag rejection, and late-item
+  safety;
+- secure marker golden/round-trip/boundary vectors;
+- marker direction/role restrictions;
+- split/coalesced encrypted chunk association;
+- raw-transport absence of identity; and
+- fail-closed duplicate, mid-packet, abandoned, and mismatched metadata.
+
+The verified 2026-07-29 increment passed:
+
+- the Release solution build with zero warnings and zero errors;
+- the data-boundary architecture ratchet with no new direct Npgsql references
+  (`323` baseline, `323` current);
+- 200 protocol checks;
+- the Win32 Release network-shim build and its complete native check suite;
+- three focused PostgreSQL integration checks for durable developer grants,
+  bag clearing, and character-creation baselines; and
+- the mandatory B03 PostgreSQL gate with all 22 checks and all three migration
+  scenarios passing, including successful disposable-database cleanup.
+
+The machine-readable B03 receipt is
+`artifacts/b03/b09-gm-command-identity-result.json`, SHA-256
+`CDFB614B5835A52E7AA4162BB684244E96DB239F54F3E8B450DA3C4704215839`.
+It was produced from this increment's working tree on source base
+`20346b5b979288f90b7b9b44796269067a11c6a6`. The local gate took 269,494 ms;
+that is reproducible development evidence, not a production capacity claim.
+
+B09 remains open. The next safe native cutover is the deterministic Gear
+Mentor **Make Attribute Stone** command, after live shim pending/ACK/reconnect
+correlation is implemented and proven. Transform and Combine follow, then
+Gear Add/Enhance/Delete, Decompose, and finally Forge because Forge combines
+wallet and inventory revisions with a random result that must be stored and
+replayed exactly.

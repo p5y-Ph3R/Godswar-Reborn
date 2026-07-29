@@ -19,6 +19,7 @@ internal static class SecureProtocolValidation
             SecureFrameType.Pong or
             SecureFrameType.Close or
             SecureFrameType.LegacyBytes or
+            SecureFrameType.LegacyCommandOperation or
             SecureFrameType.GameGrant or
             SecureFrameType.GameBind or
             SecureFrameType.BindResult or

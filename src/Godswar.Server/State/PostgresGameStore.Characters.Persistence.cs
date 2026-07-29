@@ -121,6 +121,13 @@ internal sealed partial class PostgresGameStore
             GameDefaults.StarterKitBag,
             cancellationToken);
 
+        await SeedCharacterCreationEconomyBaselineAsync(
+            connection,
+            transaction,
+            characterId,
+            character.AccountId,
+            cancellationToken);
+
         await using (var command = new NpgsqlCommand("""
             INSERT INTO character_skills (user_id, skill_id, skill_level, source)
             SELECT

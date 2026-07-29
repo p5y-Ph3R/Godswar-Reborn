@@ -97,6 +97,11 @@ bool IsPayloadValid(
         case SecureFrameType::LegacyBytes:
             return payloadBytes >= 1 &&
                 payloadBytes <= SecureMaximumPayloadBytes;
+        case SecureFrameType::LegacyCommandOperation:
+            return role == SecureEndpointRole::Game &&
+                direction == SecureFrameDirection::ClientToServer &&
+                payloadBytes ==
+                    SecureLegacyCommandOperationPayloadBytes;
         case SecureFrameType::GameGrant:
             return role == SecureEndpointRole::Login &&
                 direction == SecureFrameDirection::ServerToClient &&
@@ -278,6 +283,69 @@ bool TryGetNextSecureSequence(
     }
 
     *next = current + 1;
+    return true;
+}
+
+bool TryEncodeSecureLegacyCommandOperation(
+    const SecureLegacyCommandOperation& operation,
+    void* destination,
+    std::size_t destinationBytes) noexcept {
+    if (destination == nullptr ||
+        destinationBytes <
+            SecureLegacyCommandOperationPayloadBytes ||
+        operation.packetBytes < 4 ||
+        operation.packetBytes > SecureLegacyMaximumPacketBytes ||
+        IsAllZero(
+            operation.operationId,
+            sizeof(operation.operationId))) {
+        return false;
+    }
+
+    auto* output = static_cast<std::uint8_t*>(destination);
+    std::memset(
+        output,
+        0,
+        SecureLegacyCommandOperationPayloadBytes);
+    output[0] = SecureLegacyCommandOperationVersion;
+    WriteUInt16(output + 2, operation.packetBytes);
+    WriteUInt16(output + 4, operation.opcode);
+    std::memcpy(
+        output + 8,
+        operation.operationId,
+        sizeof(operation.operationId));
+    return true;
+}
+
+bool TryDecodeSecureLegacyCommandOperation(
+    const void* source,
+    std::size_t sourceBytes,
+    SecureLegacyCommandOperation* operation) noexcept {
+    if (source == nullptr ||
+        sourceBytes !=
+            SecureLegacyCommandOperationPayloadBytes ||
+        operation == nullptr) {
+        return false;
+    }
+
+    const auto* input =
+        static_cast<const std::uint8_t*>(source);
+    SecureLegacyCommandOperation decoded{};
+    decoded.packetBytes = ReadUInt16(input + 2);
+    decoded.opcode = ReadUInt16(input + 4);
+    if (input[0] != SecureLegacyCommandOperationVersion ||
+        input[1] != 0 ||
+        ReadUInt16(input + 6) != 0 ||
+        decoded.packetBytes < 4 ||
+        decoded.packetBytes > SecureLegacyMaximumPacketBytes ||
+        IsAllZero(input + 8, sizeof(decoded.operationId))) {
+        return false;
+    }
+
+    std::memcpy(
+        decoded.operationId,
+        input + 8,
+        sizeof(decoded.operationId));
+    *operation = decoded;
     return true;
 }
 

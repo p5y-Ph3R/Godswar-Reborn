@@ -19,6 +19,11 @@ Application/
     TalentUpgradeCommandEnvelope.cs
     ITalentUpgradeCommandExecutor.cs
     TalentUpgradeExecutionResult.cs
+  Inventory/
+    DeveloperItemGrantCommandEnvelope.cs
+    DeveloperBagClearCommandEnvelope.cs
+    IDeveloperItemGrantCommandExecutor.cs
+    IDeveloperBagClearCommandExecutor.cs
 ```
 
 Contracts must describe intent and transaction semantics. Do not add a
@@ -56,3 +61,11 @@ while
 gap events without owning a database checkpoint. Concrete transaction,
 polling, retry, and checkpoint implementations belong under `Infrastructure`;
 consumers must tolerate at-least-once delivery.
+
+B09 applies the same boundary to explicit developer inventory operations.
+Tokenized grants and bag clearing have separate intent/result contracts,
+canonical receipts, permanent terminal-precondition results, and PostgreSQL
+executors. The original tokenless paths remain compatibility-only; native
+inventory and crafting commands do not gain a durable retry guarantee until
+the secure shim preserves one operation ID through acknowledgement uncertainty
+and reconnect.

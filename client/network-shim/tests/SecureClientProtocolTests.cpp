@@ -13,6 +13,7 @@ using godswar::network::SecureEndpointRole;
 using godswar::network::SecureFrameDirection;
 using godswar::network::SecureFrameHeader;
 using godswar::network::SecureFrameType;
+using godswar::network::SecureLegacyCommandOperation;
 using godswar::network::SecureServerPrefaceStatus;
 using godswar::network::SecureServerPrefaceView;
 using godswar::network::TryDecodeSecureFrameHeader;
@@ -20,6 +21,9 @@ using godswar::network::TryDecodeSecureServerPreface;
 using godswar::network::TryEncodeSecureClientPreface;
 using godswar::network::TryEncodeSecureFrameHeader;
 using godswar::network::TryGetNextSecureSequence;
+using godswar::network::TryDecodeSecureLegacyCommandOperation;
+using godswar::network::TryCreateSecureLegacyCommandOperation;
+using godswar::network::TryEncodeSecureLegacyCommandOperation;
 
 int Failures = 0;
 
@@ -264,6 +268,116 @@ void CheckSequences() {
         "maximum secure sequence wrapped");
 }
 
+void CheckLegacyCommandOperation() {
+    SecureLegacyCommandOperation operation{};
+    operation.packetBytes = 32;
+    operation.opcode = 0x1234;
+    const std::uint8_t operationId[] = {
+        0x00, 0x11, 0x22, 0x33,
+        0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xAA, 0xBB,
+        0xCC, 0xDD, 0xEE, 0xFF,
+    };
+    std::memcpy(
+        operation.operationId,
+        operationId,
+        sizeof(operationId));
+
+    std::uint8_t encoded[
+        godswar::network::
+            SecureLegacyCommandOperationPayloadBytes]{};
+    Check(
+        TryEncodeSecureLegacyCommandOperation(
+            operation,
+            encoded,
+            sizeof(encoded)),
+        "legacy command operation encoding failed");
+    const std::uint8_t expected[] = {
+        0x01, 0x00, 0x00, 0x20,
+        0x12, 0x34, 0x00, 0x00,
+        0x00, 0x11, 0x22, 0x33,
+        0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xAA, 0xBB,
+        0xCC, 0xDD, 0xEE, 0xFF,
+    };
+    Check(
+        std::memcmp(encoded, expected, sizeof(expected)) == 0,
+        "legacy command operation golden bytes changed");
+
+    SecureLegacyCommandOperation decoded{};
+    Check(
+        TryDecodeSecureLegacyCommandOperation(
+            encoded,
+            sizeof(encoded),
+            &decoded) &&
+            decoded.packetBytes == operation.packetBytes &&
+            decoded.opcode == operation.opcode &&
+            std::memcmp(
+                decoded.operationId,
+                operationId,
+                sizeof(operationId)) == 0,
+        "legacy command operation round trip failed");
+
+    std::uint8_t header[16]{};
+    Check(
+        TryEncodeSecureFrameHeader(
+            SecureFrameHeader{
+                sizeof(encoded),
+                SecureFrameType::LegacyCommandOperation,
+                1},
+            SecureEndpointRole::Game,
+            SecureFrameDirection::ClientToServer,
+            header,
+            sizeof(header)),
+        "game command-operation frame was rejected");
+    Check(
+        !TryEncodeSecureFrameHeader(
+            SecureFrameHeader{
+                sizeof(encoded),
+                SecureFrameType::LegacyCommandOperation,
+                1},
+            SecureEndpointRole::Login,
+            SecureFrameDirection::ClientToServer,
+            header,
+            sizeof(header)),
+        "login command-operation frame was accepted");
+
+    encoded[1] = 1;
+    Check(
+        !TryDecodeSecureLegacyCommandOperation(
+            encoded,
+            sizeof(encoded),
+            &decoded),
+        "command-operation flags were accepted");
+    encoded[1] = 0;
+    std::memset(encoded + 8, 0, 16);
+    Check(
+        !TryDecodeSecureLegacyCommandOperation(
+            encoded,
+            sizeof(encoded),
+            &decoded),
+        "zero command-operation UUID was accepted");
+
+    SecureLegacyCommandOperation generatedOne{};
+    SecureLegacyCommandOperation generatedTwo{};
+    Check(
+        TryCreateSecureLegacyCommandOperation(
+            8,
+            0x2711,
+            &generatedOne) &&
+            TryCreateSecureLegacyCommandOperation(
+                8,
+                0x2711,
+                &generatedTwo) &&
+            (generatedOne.operationId[6] & 0xF0U) == 0x40U &&
+            (generatedOne.operationId[8] & 0xC0U) == 0x80U &&
+            std::memcmp(
+                generatedOne.operationId,
+                generatedTwo.operationId,
+                sizeof(generatedOne.operationId)) != 0,
+        "shim CSPRNG did not create distinct canonical UUIDs");
+}
+
 } // namespace
 
 int RunSecureClientProtocolTests() {
@@ -271,5 +385,6 @@ int RunSecureClientProtocolTests() {
     CheckPrefaces();
     CheckFrames();
     CheckSequences();
+    CheckLegacyCommandOperation();
     return Failures;
 }

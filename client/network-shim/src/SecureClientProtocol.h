@@ -32,6 +32,7 @@ enum class SecureFrameType : std::uint16_t {
     Pong = 0x0002,
     Close = 0x0003,
     LegacyBytes = 0x0100,
+    LegacyCommandOperation = 0x0101,
     GameGrant = 0x0200,
     GameBind = 0x0201,
     BindResult = 0x0202,
@@ -52,6 +53,12 @@ struct SecureFrameHeader final {
     std::uint64_t sequence = 0;
 };
 
+struct SecureLegacyCommandOperation final {
+    std::uint8_t operationId[16]{};
+    std::uint16_t packetBytes = 0;
+    std::uint16_t opcode = 0;
+};
+
 inline constexpr std::size_t SecureClientPrefaceBytes = 72;
 inline constexpr std::size_t SecureServerPrefaceBytes = 40;
 inline constexpr std::size_t SecureFrameHeaderBytes = 16;
@@ -67,6 +74,9 @@ inline constexpr std::size_t SecureUdpBindingGrantPayloadBytes =
     SecureUdpBindingGrantBytes;
 inline constexpr std::size_t SecureRealtimeMovementInputPayloadBytes =
     SecureRealtimeMovementInputBytes;
+inline constexpr std::size_t SecureLegacyCommandOperationPayloadBytes = 24;
+inline constexpr std::uint8_t SecureLegacyCommandOperationVersion = 1;
+inline constexpr std::uint16_t SecureLegacyMaximumPacketBytes = 8'196;
 inline constexpr std::uint16_t SecureProtocolMajor = 1;
 inline constexpr std::uint16_t SecureProtocolMinor = 0;
 
@@ -103,5 +113,20 @@ bool TryDecodeSecureFrameHeader(
 bool TryGetNextSecureSequence(
     std::uint64_t current,
     std::uint64_t* next) noexcept;
+
+bool TryEncodeSecureLegacyCommandOperation(
+    const SecureLegacyCommandOperation& operation,
+    void* destination,
+    std::size_t destinationBytes) noexcept;
+
+bool TryDecodeSecureLegacyCommandOperation(
+    const void* source,
+    std::size_t sourceBytes,
+    SecureLegacyCommandOperation* operation) noexcept;
+
+bool TryCreateSecureLegacyCommandOperation(
+    std::uint16_t packetBytes,
+    std::uint16_t opcode,
+    SecureLegacyCommandOperation* operation) noexcept;
 
 } // namespace godswar::network

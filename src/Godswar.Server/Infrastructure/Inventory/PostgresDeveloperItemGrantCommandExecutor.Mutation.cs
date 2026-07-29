@@ -43,7 +43,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
-        DeveloperGrantMaterialDefinition material,
+        DeveloperGrantItemDefinition grantItem,
         CancellationToken cancellationToken)
     {
         var occupied = new bool[KitBagItemGrantPlanner.SlotCount];
@@ -77,9 +77,9 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
             var slot = reader.GetInt16(1);
             occupied[slot] = true;
             if (reader.GetInt32(2) ==
-                    checked((int)material.ItemId) &&
-                reader.GetInt16(3) == material.GrantedBound &&
-                reader.GetInt16(4) < material.StackCap)
+                    checked((int)grantItem.ItemId) &&
+                reader.GetInt16(3) == grantItem.GrantedBound &&
+                reader.GetInt16(4) < grantItem.StackCap)
             {
                 fillable.Add(
                     new LockedKitBagItem(
@@ -102,7 +102,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             CommandEnvelope<DeveloperItemGrantCommand> envelope,
-            DeveloperGrantMaterialDefinition material,
+            DeveloperGrantItemDefinition grantItem,
             LockedKitBag items,
             long inventoryRevision,
             CancellationToken cancellationToken)
@@ -118,7 +118,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
 
             var added = Math.Min(
                 remaining,
-                material.StackCap - existing.Stack);
+                grantItem.StackCap - existing.Stack);
             var updatedStack = checked((short)(existing.Stack + added));
             await using var command = CreateCommand(
                 """
@@ -162,7 +162,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
                 break;
             }
 
-            var stack = Math.Min(remaining, material.StackCap);
+            var stack = Math.Min(remaining, grantItem.StackCap);
             await using var command = CreateCommand(
                 """
                 INSERT INTO public.character_items (
@@ -204,7 +204,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
                 checked((int)envelope.Command.ItemId));
             command.Parameters.AddWithValue(
                 "bound",
-                material.GrantedBound);
+                grantItem.GrantedBound);
             command.Parameters.AddWithValue(
                 "stack",
                 checked((short)stack));
@@ -271,6 +271,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
         CommandEnvelope<DeveloperItemGrantCommand> envelope,
         long inventoryRevision,
         IReadOnlyList<InventoryMutation> mutations,
+        string reasonCode,
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand(
@@ -337,7 +338,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor
                 mutation.AfterState);
             command.Parameters.AddWithValue(
                 "reasonCode",
-                "developer_material_grant");
+                reasonCode);
             if (await command.ExecuteNonQueryAsync(
                     cancellationToken) != 1)
             {

@@ -12,11 +12,18 @@ arbitrary item ID.
 /item mount list 2
 /item mount list greeksteed
 /item mount add 14224
+/item mount add 14224 op=00000000-0000-0000-0000-000000000001
 /item mount add greeksteed 80
+/item mount add greeksteed 80 op=00000000-0000-0000-0000-000000000001
 /item mount add greeksteed max
 /item mount add greeksteed special
 /item mount add erebuslion 80
 ```
+
+The optional final `op=<UUID>` form uses the PostgreSQL durable inventory
+command, permanently replaying the same committed or terminal-precondition
+result for an exact retry. Tokenless mount grants remain local
+legacy-compatibility operations without a cross-reconnect retry guarantee.
 
 `list` defaults to page 1. Pages contain four families. A family-specific list
 shows its tier tokens and exact item IDs.

@@ -250,6 +250,8 @@ try {
         'PostgreSQL talent command precondition',
         'PostgreSQL talent inbox/outbox transaction',
         'PostgreSQL developer-item grant transaction',
+        'PostgreSQL durable developer bag-clear transaction',
+        'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

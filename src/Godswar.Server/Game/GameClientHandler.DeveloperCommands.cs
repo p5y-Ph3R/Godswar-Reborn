@@ -54,6 +54,21 @@ internal sealed partial class GameClientHandler
         if (request.Operation == DeveloperItemOperation.MountAdd && request.Mount is not null)
         {
             var mount = request.Mount;
+            if (request.ClientOperationId.HasValue)
+            {
+                await HandleDurableDeveloperItemGrantAsync(
+                    packet,
+                    mount.ItemId,
+                    mount.DisplayName,
+                    quantity: 1,
+                    clientOperationId:
+                        request.ClientOperationId.Value,
+                    cancellationToken: cancellationToken);
+                return true;
+            }
+
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.DeveloperItemGrant);
             var mountResult = await _store.AddDeveloperMountAsync(
                 _account.Id,
                 _character.Id,
@@ -61,6 +76,10 @@ internal sealed partial class GameClientHandler
                 cancellationToken);
             if (!mountResult.Added || mountResult.Character is null)
             {
+                CommandMetrics.Record(
+                    CommandFamily.DeveloperItemGrant,
+                    CommandIdentityStrength.UnsupportedLegacyRetry,
+                    CommandOutcome.PreconditionFailed);
                 var reason = mountResult.Status == KitBagItemGrantStatus.InsufficientCapacity
                     ? "Your kit bag has no empty slot."
                     : "The character is no longer available.";
@@ -73,6 +92,10 @@ internal sealed partial class GameClientHandler
                 return true;
             }
 
+            CommandMetrics.Record(
+                CommandFamily.DeveloperItemGrant,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.Accepted);
             _character = mountResult.Character;
             _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
             await SendKitBagRefreshAsync(cancellationToken);
@@ -87,6 +110,17 @@ internal sealed partial class GameClientHandler
 
         if (request.Operation == DeveloperItemOperation.ClearBag)
         {
+            if (request.ClientOperationId.HasValue)
+            {
+                await HandleDurableDeveloperBagClearAsync(
+                    packet,
+                    request.ClientOperationId.Value,
+                    cancellationToken);
+                return true;
+            }
+
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.DeveloperBagClear);
             // Opcode 10033 detail pages and opcode 10056 slot-index packets do
             // not evict an icon already instantiated by this client. Capture
             // the occupied slots so the successful clear can use the native
@@ -100,11 +134,19 @@ internal sealed partial class GameClientHandler
                 cancellationToken);
             if (cleared is null)
             {
+                CommandMetrics.Record(
+                    CommandFamily.DeveloperBagClear,
+                    CommandIdentityStrength.UnsupportedLegacyRetry,
+                    CommandOutcome.PreconditionFailed);
                 Console.WriteLine(
                     $"[developer-item] clear bag failed account={_account.Id} character={_character.Name}");
                 return true;
             }
 
+            CommandMetrics.Record(
+                CommandFamily.DeveloperBagClear,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.Accepted);
             _character = cleared;
             _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
             _pendingUnequipFollowup = null;
@@ -136,7 +178,8 @@ internal sealed partial class GameClientHandler
         {
             await HandleDurableDeveloperItemGrantAsync(
                 packet,
-                material,
+                material.ItemId,
+                material.DisplayName,
                 request.Quantity,
                 request.ClientOperationId.Value,
                 cancellationToken);
@@ -176,7 +219,8 @@ internal sealed partial class GameClientHandler
 
     private async Task HandleDurableDeveloperItemGrantAsync(
         GamePacket packet,
-        DeveloperGrantMaterialDefinition material,
+        uint itemId,
+        string displayName,
         int quantity,
         Guid clientOperationId,
         CancellationToken cancellationToken)
@@ -201,7 +245,7 @@ internal sealed partial class GameClientHandler
         }
 
         if (!DeveloperItemGrantCommandEnvelope.TryCreateCommand(
-                material.ItemId,
+                itemId,
                 quantity,
                 clientOperationId,
                 out var command))
@@ -273,7 +317,7 @@ internal sealed partial class GameClientHandler
                     "[item] That operation ID was already used for a " +
                     "different request.",
                 DeveloperItemGrantExecutionDisposition.InvalidIntent =>
-                    "[item] The requested material is not allowlisted.",
+                    "[item] The requested item is not allowlisted.",
                 _ =>
                     "[item] Not added: the character or kit-bag " +
                     "precondition failed."
@@ -285,7 +329,7 @@ internal sealed partial class GameClientHandler
             Console.WriteLine(
                 "[developer-item] durable grant rejected " +
                 $"account={_account.Id} character={_character.Name} " +
-                $"item={material.ItemId} quantity={quantity} " +
+                $"item={itemId} quantity={quantity} " +
                 $"outcome={outcome}");
             return;
         }
@@ -325,12 +369,12 @@ internal sealed partial class GameClientHandler
             packet,
             duplicate
                 ? $"[item] Operation already completed; bag refreshed."
-                : $"[item] Added {quantity} {material.DisplayName}.",
+                : $"[item] Added {quantity} {displayName}.",
             cancellationToken);
         Console.WriteLine(
             "[developer-item] durable grant completed " +
             $"account={_account.Id} character={_character.Name} " +
-            $"item={material.ItemId} quantity={quantity} " +
+            $"item={itemId} quantity={quantity} " +
             $"outcome={(duplicate ? "duplicate" : "committed")}");
     }
 

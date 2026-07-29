@@ -65,17 +65,31 @@ internal static class DeveloperItemCommand
 
         if (tokens[1].Equals("clearbag", StringComparison.OrdinalIgnoreCase))
         {
-            if (tokens.Length != 3 ||
+            if (tokens.Length is < 3 or > 4 ||
                 !tokens[2].Equals("confirm", StringComparison.OrdinalIgnoreCase))
             {
-                error = "Bag clearing is destructive. Use exactly: /item clearbag confirm";
+                error = ClearBagUsage;
+                return true;
+            }
+
+            Guid? clearBagOperationId = null;
+            if (tokens.Length == 4 &&
+                !TryParseOperationId(
+                    tokens[3],
+                    out clearBagOperationId,
+                    out var clearBagOperationTokenRecognized))
+            {
+                error = clearBagOperationTokenRecognized
+                    ? OperationIdError
+                    : ClearBagUsage;
                 return true;
             }
 
             request = new DeveloperItemRequest(
                 DeveloperItemOperation.ClearBag,
                 Material: null,
-                Quantity: 0);
+                Quantity: 0,
+                ClientOperationId: clearBagOperationId);
             return true;
         }
 
@@ -128,7 +142,7 @@ internal static class DeveloperItemCommand
         {
             if (operationTokenRecognized)
             {
-                error = "Operation ID must use op=<UUID> with a non-empty D-format UUID.";
+                error = OperationIdError;
                 return true;
             }
         }
@@ -160,7 +174,24 @@ internal static class DeveloperItemCommand
     private const string Usage =
         "Usage: /item add <item-id|material-alias> [quantity] [op=<UUID>], " +
         "/item mount list [page|family], " +
-        "/item mount add <item-id|family tier|max|special>, or /item clearbag confirm.";
+        "/item mount add <item-id> [op=<UUID>], " +
+        "/item mount add <family> <tier|max|special> [op=<UUID>], " +
+        "or /item clearbag confirm [op=<UUID>].";
+
+    private const string ClearBagUsage =
+        "Bag clearing is destructive. Use: /item clearbag confirm [op=<UUID>].";
+
+    private const string MountUsage =
+        "Usage: /item mount list [page|family], " +
+        "/item mount add <item-id> [op=<UUID>], or " +
+        "/item mount add <family> <tier|max|special> [op=<UUID>].";
+
+    private const string MountAddUsage =
+        "Usage: /item mount add <item-id> [op=<UUID>] or " +
+        "/item mount add <family> <tier|max|special> [op=<UUID>].";
+
+    private const string OperationIdError =
+        "Operation ID must use op=<UUID> with a non-empty D-format UUID.";
 
     private static bool TryParseMount(
         string[] tokens,
@@ -171,7 +202,7 @@ internal static class DeveloperItemCommand
         error = string.Empty;
         if (tokens.Length < 3)
         {
-            error = "Usage: /item mount list [page|family] or /item mount add <item-id|family tier>.";
+            error = MountUsage;
             return true;
         }
 
@@ -225,11 +256,28 @@ internal static class DeveloperItemCommand
 
         if (!tokens[2].Equals("add", StringComparison.OrdinalIgnoreCase))
         {
-            error = "Usage: /item mount list [page|family] or /item mount add <item-id|family tier>.";
+            error = MountUsage;
             return true;
         }
 
-        if (tokens.Length == 4 && uint.TryParse(tokens[3], out var itemId))
+        var commandTokenCount = tokens.Length;
+        Guid? clientOperationId = null;
+        if (!TryParseOperationId(
+                tokens[^1],
+                out clientOperationId,
+                out var operationTokenRecognized) &&
+            operationTokenRecognized)
+        {
+            error = OperationIdError;
+            return true;
+        }
+
+        if (clientOperationId.HasValue)
+        {
+            commandTokenCount--;
+        }
+
+        if (commandTokenCount == 4 && uint.TryParse(tokens[3], out var itemId))
         {
             if (!DeveloperMountCatalog.TryResolveGrantable(itemId, out var numericMount))
             {
@@ -243,13 +291,14 @@ internal static class DeveloperItemCommand
                 DeveloperItemOperation.MountAdd,
                 Material: null,
                 Quantity: 1,
-                Mount: numericMount);
+                Mount: numericMount,
+                ClientOperationId: clientOperationId);
             return true;
         }
 
-        if (tokens.Length != 5)
+        if (commandTokenCount != 5)
         {
-            error = "Usage: /item mount add <item-id> or /item mount add <family> <tier|max|special>.";
+            error = MountAddUsage;
             return true;
         }
 
@@ -269,7 +318,8 @@ internal static class DeveloperItemCommand
             DeveloperItemOperation.MountAdd,
             Material: null,
             Quantity: 1,
-            Mount: aliasedMount);
+            Mount: aliasedMount,
+            ClientOperationId: clientOperationId);
         return true;
     }
 

@@ -59,9 +59,15 @@ explicit form:
 
 ```text
 /item clearbag confirm
+/item clearbag confirm op=00000000-0000-0000-0000-000000000001
 ```
 
-The final `confirm` token is mandatory and no extra arguments are accepted.
+The final `confirm` token is mandatory. An optional nonzero D-format UUID can
+be supplied as the final `op=` token. With PostgreSQL, that form stores one
+permanent command result: an exact retry returns the original outcome and
+cannot clear items acquired after the first evaluation. The tokenless form is
+retained only as a local legacy-compatibility command and has no cross-reconnect
+retry guarantee.
 This operation clears only the 96 kit-bag slots. It does not change equipped
 gear, warehouse/storage items, silver, gold, stats, skills, map state, or any
 other character data. The PostgreSQL store records one recoverable

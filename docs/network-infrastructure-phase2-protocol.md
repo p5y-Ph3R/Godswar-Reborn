@@ -2,8 +2,8 @@
 
 ## Status and ownership
 
-- Document revision: `1.6` (wire protocol remains `1.0`)
-- Last updated: `2026-07-25`
+- Document revision: `1.7` (wire protocol remains `1.0`)
+- Last updated: `2026-07-29`
 - Runtime status: Slice 8 secure exported routing/session lifecycle and guarded
   activation are implemented and offline-tested; listeners remain disabled,
   the client remains uninstalled, and UDP is absent
@@ -174,6 +174,7 @@ machine and implementation errors. Close before incrementing
 | `0x0002` | Client to server | exactly `8` | Pong nonce |
 | `0x0003` | Both | exactly `4` | Numeric close reason |
 | `0x0100` | Both | `1..16384` | Opaque legacy XOR byte-stream chunk |
+| `0x0101` | Client to game server | exactly `24` | Legacy command-operation metadata |
 | `0x0200` | Login server to client | `71..408` | Game grant |
 | `0x0201` | Client to game server | exactly `52` | Game-ticket bind |
 | `0x0202` | Game server to client | exactly `4` | Bind result |
@@ -185,6 +186,39 @@ remains `4..8196`.
 
 The minimum grant is 71 bytes: the 68-byte fixed portion plus one byte for each
 of the three required strings.
+
+## Legacy command-operation metadata
+
+Type `0x0101` is an optional authenticated marker for a valuable legacy
+command. It is accepted only client-to-server on a bound game connection:
+
+| Offset | Size | Field | Rule |
+| ---: | ---: | --- | --- |
+| `0` | `1` | Format version | exactly `1` |
+| `1` | `1` | Flags | exactly `0` |
+| `2` | `2` | Clear packet length | big-endian `4..8196` |
+| `4` | `2` | Clear packet opcode | big-endian |
+| `6` | `2` | Reserved | exactly `0` |
+| `8` | `16` | Client operation ID | nonzero canonical UUID bytes |
+
+The marker describes exactly the next complete decrypted legacy packet, not a
+TLS frame or an arbitrary encrypted-stream chunk. The server validates both
+the resulting clear packet length and opcode before exposing the UUID as
+command metadata. Frame splitting and coalescing do not change the
+association.
+
+Malformed, duplicate-pending, mid-packet, abandoned, or mismatched metadata
+fails the secure connection closed. Raw legacy traffic has no operation ID.
+Reusing the same UUID on a later complete packet is permitted so a durable
+command inbox can recognize a genuine retry.
+
+This revision provides only the codec, bounded transport association, CSPRNG
+UUID generator, and writer primitive. The shim does not yet emit this marker
+from `NetClientProxy::SendMsg`. Native valuable commands remain ineligible for
+durable retry claims until a bounded pending-operation registry preserves the
+same UUID across uncertain acknowledgement and reconnect, correlates the
+server response, and distinguishes a legitimate repeated command. Generating
+a fresh UUID for every retry would not satisfy that requirement.
 
 ## Game grant
 

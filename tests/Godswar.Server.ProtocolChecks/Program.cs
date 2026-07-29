@@ -43,37 +43,8 @@ internal static partial class Program
             ("Live reversible player-movement ECS adapter", PlayerMovementEcsLiveAdapterChecks.RunAsync),
             ("Monster-to-player damage ECS parity", MonsterPlayerDamageEcsParityChecks.RunAsync),
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
-            .. DataArchitectureCheckCatalog.All,
-            (
-                "PostgreSQL talent inbox/outbox transaction",
-                PostgresTalentInboxOutboxIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL developer-item grant transaction",
-                PostgresDeveloperItemGrantIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL outbox dispatcher recovery and ordering",
-                PostgresOutboxDispatcherIntegrationChecks.RunAsync),
-            ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
-            (
-                PostgresEconomyLedgerMigrationIntegrationChecks.CheckName,
-                PostgresEconomyLedgerMigrationIntegrationChecks.RunAsync),
-            ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
-            ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),
+            .. DataArchitectureIntegrationChecks(),
             .. PetProtocolCheckCatalog.All,
-            ("PostgreSQL forward-only database cleanup", PostgresDatabaseCleanupIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL official NPC content publication",
-                PostgresNpcContentPublicationIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL official NPC dialogue publication",
-                PostgresNpcDialoguePublicationIntegrationChecks.RunAsync),
-            ("PostgreSQL captured-monster ECS parity", PostgresMonsterEcsParityIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL pinned world-content baseline",
-                PostgresWorldContentReaderIntegrationChecks.RunAsync),
-            (
-                "PostgreSQL consistent character snapshot reader",
-                PostgresCharacterSnapshotReaderIntegrationChecks.RunAsync),
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
