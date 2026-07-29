@@ -67,8 +67,13 @@ recipes, family-separated reconnect identity, pre-route durable replay,
 immutable ledger evidence, and strict projection events.
 The [secure native Decompose increment](../data-architecture-b09-native-decompose-20260729.md)
 adds ordered one-to-three selection identity and persists each exact random
-Dust outcome so reconnect replay never rerolls. Tokenless legacy inventory,
-forge, remaining mentor, reward, and currency mutations remain
+Dust outcome so reconnect replay never rerolls.
+The [secure native Gear Enhancement increment](../data-architecture-b09-native-gear-enhancement-20260730.md)
+places Gear Mentor and Origin Enhancer attribute Enhance/Add/Delete behind
+three family-isolated UUIDs and one authoritative transaction that commits the
+gear update, both material consumptions, revision, ledger, audit, inbox, and
+strict outbox evidence before acknowledgement. Tokenless legacy inventory,
+forge, remaining reward, and currency mutations remain
 compatibility paths; B09 is not complete until those operations gain truthful
 retry identity and move behind the durable transaction boundary.
 

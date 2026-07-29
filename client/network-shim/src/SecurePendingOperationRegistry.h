@@ -97,6 +97,7 @@ private:
             -1,
             -1,
             -1};
+        bool capturesSelectionState = false;
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
         std::uint64_t expiresAt = 0;

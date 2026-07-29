@@ -42,9 +42,24 @@ bool TryResolveCommandFamily(
             *family =
                 SecureLegacyCommandFamily::DecomposeGear;
             return true;
+        case LegacyGearMentorAction::EnhanceAttribute:
+            *family =
+                SecureLegacyCommandFamily::
+                    GearMentorEnhanceAttribute;
+            return true;
+        case LegacyGearMentorAction::AddAttribute:
+            *family =
+                SecureLegacyCommandFamily::
+                    GearMentorAddAttribute;
+            return true;
         case LegacyGearMentorAction::MakeAttributeStone:
             *family =
                 SecureLegacyCommandFamily::MakeAttributeStone;
+            return true;
+        case LegacyGearMentorAction::DeleteAttribute:
+            *family =
+                SecureLegacyCommandFamily::
+                    GearMentorDeleteAttribute;
             return true;
         case LegacyGearMentorAction::TransformCrystal:
             *family =
@@ -54,6 +69,29 @@ bool TryResolveCommandFamily(
             *family =
                 SecureLegacyCommandFamily::CombineGemPieces;
             return true;
+        default:
+            return false;
+    }
+}
+
+bool HasValidSelectionCount(
+    SecureLegacyCommandFamily family,
+    std::size_t selectionCount) noexcept {
+    switch (family) {
+        case SecureLegacyCommandFamily::DecomposeGear:
+            return selectionCount >= 1 &&
+                selectionCount <= SecureGearSelectionCapacity;
+        case SecureLegacyCommandFamily::
+                GearMentorEnhanceAttribute:
+        case SecureLegacyCommandFamily::
+                GearMentorAddAttribute:
+        case SecureLegacyCommandFamily::
+                GearMentorDeleteAttribute:
+            return selectionCount == SecureGearSelectionCapacity;
+        case SecureLegacyCommandFamily::MakeAttributeStone:
+        case SecureLegacyCommandFamily::TransformCrystal:
+        case SecureLegacyCommandFamily::CombineGemPieces:
+            return selectionCount == 1;
         default:
             return false;
     }
@@ -121,6 +159,16 @@ SecurePendingOperationRegistry::DescribePacket(
     std::uint32_t npcId = 0;
     LegacyGearMentorAction gearMentorAction =
         LegacyGearMentorAction::InitialMenu;
+    LegacyGearMentorAction originEnhancerAction =
+        LegacyGearMentorAction::InitialMenu;
+    LegacyGearMentorAction originEnhancerNavigation =
+        LegacyGearMentorAction::InitialMenu;
+    std::uint32_t originEnhancerNpcId = 0;
+    std::uint32_t originEnhancerNavigationNpcId = 0;
+    int originEnhancerBagSlots[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
     const bool isLogin = TryHashLegacyLoginPrincipal(
         packet,
         packetBytes,
@@ -137,6 +185,21 @@ SecurePendingOperationRegistry::DescribePacket(
             packetBytes,
             &gearMentorAction,
             &npcId);
+    const bool isOriginEnhancerCommit =
+        TryReadLegacyOriginEnhancerCommit(
+            packet,
+            packetBytes,
+            &originEnhancerAction,
+            &originEnhancerNpcId,
+            &originEnhancerBagSlots[0],
+            &originEnhancerBagSlots[1],
+            &originEnhancerBagSlots[2]);
+    const bool isOriginEnhancerNavigation =
+        TryReadLegacyOriginEnhancerNavigation(
+            packet,
+            packetBytes,
+            &originEnhancerNavigation,
+            &originEnhancerNavigationNpcId);
 
     AcquireSRWLockExclusive(&lock_);
     Prune(now);
@@ -163,12 +226,22 @@ SecurePendingOperationRegistry::DescribePacket(
         }
     }
 
-    if (!isGearMentorAction) {
+    if (isOriginEnhancerNavigation) {
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+        ResetSelectionState();
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
 
-    if (gearMentorAction ==
+    if (!isGearMentorAction &&
+        !isOriginEnhancerCommit) {
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::Success;
+    }
+
+    if (isGearMentorAction &&
+        gearMentorAction ==
         LegacyGearMentorAction::InitialMenu) {
         combinePageArmed_ = false;
         combineNpcId_ = 0;
@@ -177,7 +250,8 @@ SecurePendingOperationRegistry::DescribePacket(
         return SecureOperationRegistryResult::Success;
     }
 
-    if (gearMentorAction ==
+    if (isGearMentorAction &&
+        gearMentorAction ==
             LegacyGearMentorAction::CombineGemPieces &&
         (!combinePageArmed_ || combineNpcId_ != npcId)) {
         // Wire action 9 first asks the server to open action page 201. The
@@ -202,7 +276,9 @@ SecurePendingOperationRegistry::DescribePacket(
     SecureLegacyCommandFamily family =
         SecureLegacyCommandFamily::MakeAttributeStone;
     if (!TryResolveCommandFamily(
-            gearMentorAction,
+            isOriginEnhancerCommit
+                ? originEnhancerAction
+                : gearMentorAction,
             &family)) {
         // A different stock Gear Mentor operation leaves page 201 and consumes
         // its own client-side controls. It is not assigned a secure identity
@@ -214,10 +290,17 @@ SecurePendingOperationRegistry::DescribePacket(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
-    if (family !=
+    if (isGearMentorAction &&
+        family !=
         SecureLegacyCommandFamily::CombineGemPieces) {
         combinePageArmed_ = false;
         combineNpcId_ = 0;
+    }
+    if (isOriginEnhancerCommit) {
+        npcId = originEnhancerNpcId;
+        combinePageArmed_ = false;
+        combineNpcId_ = 0;
+        ResetSelectionState();
     }
 
     if (!hasPrincipal_) {
@@ -233,11 +316,33 @@ SecurePendingOperationRegistry::DescribePacket(
         -1,
         -1};
     std::size_t identitySelectionCount = 0;
-    if (!TryGetIdentitySelection(
+    if (isOriginEnhancerCommit) {
+        std::memcpy(
             identityBagSlots,
-            &identitySelectionCount) ||
-        (family != SecureLegacyCommandFamily::DecomposeGear &&
-            identitySelectionCount != 1)) {
+            originEnhancerBagSlots,
+            sizeof(identityBagSlots));
+        identitySelectionCount = SecureGearSelectionCapacity;
+    } else if (!TryGetIdentitySelection(
+                   identityBagSlots,
+                   &identitySelectionCount)) {
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::NoSelection;
+    }
+    if (!HasValidSelectionCount(
+            family,
+            identitySelectionCount)) {
+        if (isGearMentorAction &&
+            (family ==
+                    SecureLegacyCommandFamily::
+                        GearMentorEnhanceAttribute ||
+                family ==
+                    SecureLegacyCommandFamily::
+                        GearMentorAddAttribute ||
+                family ==
+                    SecureLegacyCommandFamily::
+                        GearMentorDeleteAttribute)) {
+            ResetSelectionState();
+        }
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::NoSelection;
     }
@@ -275,6 +380,8 @@ SecurePendingOperationRegistry::DescribePacket(
             entry->bagSlots,
             identityBagSlots,
             sizeof(entry->bagSlots));
+        entry->capturesSelectionState =
+            !isOriginEnhancerCommit;
         entry->selectionGeneration = selectionGeneration_;
         entry->combinePageGeneration =
             family ==
@@ -344,7 +451,8 @@ SecurePendingOperationRegistry::Resolve(
         -1,
         -1};
     std::size_t identitySelectionCount = 0;
-    if (hasPrincipal_ &&
+    if (entry->capturesSelectionState &&
+        hasPrincipal_ &&
         hasCharacter_ &&
         characterId_ == entry->characterId &&
         selectionGeneration_ ==

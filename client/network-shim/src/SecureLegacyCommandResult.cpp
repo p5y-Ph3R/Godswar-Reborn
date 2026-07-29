@@ -30,7 +30,16 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::CombineGemPieces ||
         family ==
-            SecureLegacyCommandFamily::DecomposeGear;
+            SecureLegacyCommandFamily::DecomposeGear ||
+        family ==
+            SecureLegacyCommandFamily::
+                GearMentorEnhanceAttribute ||
+        family ==
+            SecureLegacyCommandFamily::
+                GearMentorAddAttribute ||
+        family ==
+            SecureLegacyCommandFamily::
+                GearMentorDeleteAttribute;
 }
 
 bool HasValidRevision(

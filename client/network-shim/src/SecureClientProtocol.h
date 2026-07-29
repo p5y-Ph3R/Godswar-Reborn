@@ -72,6 +72,9 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     TransformCrystal = 7,
     CombineGemPieces = 8,
     DecomposeGear = 9,
+    GearMentorEnhanceAttribute = 10,
+    GearMentorAddAttribute = 11,
+    GearMentorDeleteAttribute = 12,
 };
 
 struct SecureLegacyCommandResult final {

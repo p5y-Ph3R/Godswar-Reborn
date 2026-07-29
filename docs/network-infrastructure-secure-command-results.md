@@ -85,6 +85,9 @@ The wired families and stable stock-client result codes are:
 | `7` | Gear Mentor Transform Crystal | `1823` | `1822`, `1020` |
 | `8` | Gear Mentor Combine Gem Pieces | `304` | `301`, `302`, `303` |
 | `9` | Gear Mentor Decompose Gear | `1005` | `1024`, `1015`, `1003`, `1014`, `1004`, `1032`, `1020`, `1002`, `1019` |
+| `10` | Gear Mentor / Origin Enhancer: Enhance Attribute | `1010` | `1002`, `1006`, `1007`, `1008`, `1009`, `1018`, `1019`, `1023`, `1026`, `1031` |
+| `11` | Gear Mentor / Origin Enhancer: Add Attribute | `1013` | `1002`, `1006`, `1007`, `1011`, `1012`, `1018`, `1019`, `1021`, `1027` |
+| `12` | Gear Mentor / Origin Enhancer: Delete Attribute | `1030` | `1002`, `1006`, `1007`, `1018`, `1019`, `1028`, `1029` |
 
 Every additional family must define stable finite result codes, keep retry
 identity isolated from other families, and demonstrate durable inbox replay

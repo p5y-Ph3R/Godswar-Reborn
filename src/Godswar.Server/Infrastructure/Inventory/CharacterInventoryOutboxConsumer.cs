@@ -87,6 +87,15 @@ internal sealed class CharacterInventoryOutboxConsumer :
             return ValueTask.CompletedTask;
         }
 
+        if (GearEnhancementPersistenceCodec.IsEventType(
+                message.EventType) &&
+            message.SchemaVersion ==
+                GearEnhancementPersistenceCodec.ContractVersion)
+        {
+            ValidateGearEnhancement(message);
+            return ValueTask.CompletedTask;
+        }
+
         throw new InvalidDataException(
             "The inventory outbox event contract is unsupported.");
     }
@@ -211,6 +220,30 @@ internal sealed class CharacterInventoryOutboxConsumer :
         {
             throw new InvalidDataException(
                 "The Decompose outbox identity is inconsistent.");
+        }
+    }
+
+    private static void ValidateGearEnhancement(
+        OutboxEventMessage message)
+    {
+        var receipt = GearEnhancementPersistenceCodec.Decode(
+            message.Payload.Span);
+        if (receipt.Status !=
+                GearEnhancementCommandResultStatus.Succeeded ||
+            !string.Equals(
+                GearEnhancementPersistenceCodec.EventType(receipt.Family),
+                message.EventType,
+                StringComparison.Ordinal) ||
+            receipt.OutboxEventId != message.EventId ||
+            receipt.InventoryRevision != message.AggregateRevision ||
+            !string.Equals(
+                GearEnhancementPersistenceCodec.AggregateKey(
+                    receipt.CharacterId),
+                message.AggregateKey,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The Gear Enhancement outbox identity is inconsistent.");
         }
     }
 }

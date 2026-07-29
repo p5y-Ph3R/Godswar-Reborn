@@ -239,13 +239,15 @@ one-item confirmation.
 
 When Start is clicked, the stock control sends `10193` removal events in role
 order before its final `10069`. Those removals clear the client controls; they
-are not a cancellation. The server preserves a one-shot snapshot only for the
-complete operation-specific clear burst: three items for Add/Enhance/Delete,
-one to three for Decompose, and one for Make Stones, Transform, or Combine. A
-normal partial removal still removes that selection and cannot revive an older
-request. Clear-burst snapshots expire after one second; this narrowly
-correlates the stock client's immediately following confirmation without
-turning an ordinary later deselection into a pending operation.
+are not a cancellation. A complete staged selection remains usable if no clear
+has begun. Once a clear begins, the server preserves a one-shot snapshot only
+for the complete operation-specific clear burst: three items for
+Add/Enhance/Delete, one to three for Decompose, and one for Make Stones,
+Transform, or Combine. A normal partial removal still removes that selection
+and cannot revive an older request. Clear-burst snapshots expire after one
+second; this narrowly correlates the stock client's immediately following
+confirmation without turning an ordinary later deselection into a pending
+operation.
 
 The context expires after two minutes and is consumed by the first confirm, so
 it cannot cross characters or be replayed. The final stock opcode `10069` may
@@ -299,37 +301,13 @@ attribute-level pairs without separating them.
 If any consumed material is bound, the resulting gear is bound. A failed
 operation consumes nothing and does not change the gear.
 
-Decompose, Make Attribute Stones, Transform Crystals, and Combine Pieces use
-the same authoritative persistence boundary. The first three use client-local
-operation pages; Combine requires the server-established page `201`. Their
-exact recipes, eligibility rules, Level-5 piece IDs/icons, and the explicit
-non-retail decomposition yield rule are recorded in
-`docs/gear-mentor-material-workflows.md`.
+The other Mentor material operations and their exact recipes are documented
+in [Gear Mentor material workflows](gear-mentor-material-workflows.md).
 
 ## Authoritative server transaction
 
-The client only selects three bag references and displays a result. It never
-decides eligibility, cost, success, or the resulting item data.
-
-For every Gear Mentor or Origin Enhancer confirmation, the server transaction
-must:
-
-1. Revalidate the resolved, currently visible physical NPC/dialog pair
-   (`*_070`/`4` or `*_143`/`118`) plus the requested operation. There is no
-   virtual-NPC enhancer exception.
-2. Lock and reload the character and all selected bag slots from persistence.
-3. Require three distinct, owned, unchanged bag selections.
-4. Revalidate that the first item is eligible equipment.
-5. Revalidate the exact Attribute Stone, catalyst kind, stack quantity, allowed
-   attribute family, duplicate/presence rule, and Quartz level.
-6. Build the new equipment state and material decrements in memory.
-7. Persist all three slot mutations atomically, or persist none of them.
-8. Refresh the authoritative character/bag state returned to the client.
-
-The staged slot snapshot also prevents a stale or replayed confirmation from
-consuming a different item that later occupied the same bag slot. Concurrent
-or repeated confirmations are serialized by the persistence transaction and
-must not consume materials twice.
+The server-owned durability and replay rules are in
+[Gear Enhancement authoritative transaction](gear-enhancement-authoritative-transaction.md).
 
 ## Native result sub-IDs
 

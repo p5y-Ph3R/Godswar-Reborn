@@ -254,6 +254,7 @@ try {
         'PostgreSQL durable Make Attribute Stone transaction',
         'PostgreSQL durable Gear Mentor material conversions',
         'PostgreSQL durable Gear Mentor Decompose transaction',
+        'PostgreSQL durable Gear Enhancement transactions',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

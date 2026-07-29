@@ -118,7 +118,9 @@ internal static partial class Program
             ("Gear Mentor material, planner, and protocol", GearMentorStateChecks.RunAsync),
             ("PostgreSQL Gear Mentor race and preservation", PostgresGearMentorIntegrationChecks.RunAsync),
             ("Atomic gear-enhancement persistence", GearEnhancementTransactionChecks.RunAsync),
-            ("PostgreSQL gear-enhancement race and preservation", PostgresGearEnhancementIntegrationChecks.RunAsync),
+            (
+                PostgresGearEnhancementIntegrationChecks.CheckName,
+                PostgresGearEnhancementIntegrationChecks.RunAsync),
             ("Gear-enhancer initial NPC protocol", CheckGearEnhancerInitialProtocolAsync),
             ("Holy-suit design original NPC protocol", CheckHolySuitDesignProtocolAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),

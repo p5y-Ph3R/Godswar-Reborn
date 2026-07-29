@@ -55,6 +55,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresGearMentorDecomposeCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        GearEnhancementCommands =
+            new PostgresGearEnhancementCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -87,6 +91,9 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public IGearMentorDecomposeGearCommandExecutor
         DecomposeGearCommands
+    { get; }
+
+    public IGearEnhancementCommandExecutor GearEnhancementCommands
     { get; }
 
     public bool OutboxEnabled { get; }

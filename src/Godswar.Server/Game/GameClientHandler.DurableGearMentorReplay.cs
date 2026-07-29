@@ -43,6 +43,41 @@ internal sealed partial class GameClientHandler
         {
             switch (family.Value)
             {
+                case CommandFamily.GearMentorEnhanceAttribute:
+                case CommandFamily.GearMentorAddAttribute:
+                case CommandFamily.GearMentorDeleteAttribute:
+                    if (_gearEnhancementCommands is null)
+                    {
+                        RecordUnresolvedReplayProvider(family.Value);
+                        return true;
+                    }
+
+                    var enhancement =
+                        await _gearEnhancementCommands.TryReplayAsync(
+                            subject,
+                            GearEnhancementOperationFromFamily(
+                                family.Value),
+                            packet.ClientOperationId.Value,
+                            cancellationToken);
+                    if (enhancement.Disposition ==
+                        GearEnhancementExecutionDisposition.ReplayNotFound)
+                    {
+                        return false;
+                    }
+                    if (!enhancement.IsDurable)
+                    {
+                        RecordUnresolvedReplayOutcome(
+                            family.Value,
+                            enhancement.Disposition.ToString());
+                        return true;
+                    }
+
+                    await CompleteUnroutedGearEnhancementReplayAsync(
+                        packet.ClientOperationId.Value,
+                        enhancement.Receipt!,
+                        cancellationToken);
+                    return true;
+
                 case CommandFamily.GearMentorDecomposeGear:
                     if (_gearMentorDecomposeGearCommands is null)
                     {
@@ -179,6 +214,40 @@ internal sealed partial class GameClientHandler
                 $"family={family.Value}: {ex.Message}");
             return true;
         }
+    }
+
+    private async Task CompleteUnroutedGearEnhancementReplayAsync(
+        Guid clientOperationId,
+        GearEnhancementExecutionReceipt receipt,
+        CancellationToken cancellationToken)
+    {
+        if (receipt.CharacterId != _character!.Id ||
+            receipt.Family !=
+                GearEnhancementCommandEnvelope.Family(
+                    receipt.Operation))
+        {
+            throw new InvalidDataException(
+                "The Gear Enhancement replay receipt identity is " +
+                "inconsistent.");
+        }
+
+        CommandMetrics.Record(
+            receipt.Family,
+            CommandIdentityStrength.ClientOperationId,
+            CommandOutcome.Duplicate);
+        var kitBagBeforeReplay = _character.KitBag;
+        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await SendDurableGearEnhancementReceiptAsync(
+            clientOperationId,
+            receipt,
+            GearEnhancementExecutionDisposition.Duplicate,
+            kitBagBeforeReplay,
+            cancellationToken);
+        Console.WriteLine(
+            "[gear-enhancement] replayed durable outcome before route " +
+            $"rejection account={_account!.Id} " +
+            $"character={_character.Name} family={receipt.Family} " +
+            $"revision={receipt.InventoryRevision}");
     }
 
     private async Task CompleteUnroutedMakeStoneReplayAsync(
@@ -335,4 +404,17 @@ internal sealed partial class GameClientHandler
             "[gear-mentor] pre-route durable replay remains pending " +
             $"family={family} outcome={outcome}");
     }
+
+    private static GearEnhancementCommandOperation
+        GearEnhancementOperationFromFamily(CommandFamily family) =>
+        family switch
+        {
+            CommandFamily.GearMentorEnhanceAttribute =>
+                GearEnhancementCommandOperation.Enhance,
+            CommandFamily.GearMentorAddAttribute =>
+                GearEnhancementCommandOperation.Add,
+            CommandFamily.GearMentorDeleteAttribute =>
+                GearEnhancementCommandOperation.Delete,
+            _ => throw new ArgumentOutOfRangeException(nameof(family))
+        };
 }

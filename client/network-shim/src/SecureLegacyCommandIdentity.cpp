@@ -217,6 +217,168 @@ bool TryReadLegacyGearMentorAction(
     return true;
 }
 
+namespace {
+
+enum class OriginEnhancerPacketKind : std::uint8_t {
+    Invalid = 0,
+    Navigation = 1,
+    Commit = 2,
+};
+
+struct OriginEnhancerPacket final {
+    OriginEnhancerPacketKind kind =
+        OriginEnhancerPacketKind::Invalid;
+    LegacyGearMentorAction action =
+        LegacyGearMentorAction::InitialMenu;
+    std::uint32_t npcId = 0;
+    int bagSlots[3]{-1, -1, -1};
+};
+
+OriginEnhancerPacket ReadOriginEnhancerPacket(
+    const void* packet,
+    std::size_t packetBytes) noexcept {
+    OriginEnhancerPacket result{};
+    std::uint16_t opcode = 0;
+    if (packetBytes != LegacyGearMentorActionPacketBytes ||
+        !TryReadLegacyPacketHeader(
+            packet,
+            packetBytes,
+            &opcode) ||
+        opcode != LegacyNpcFunctionActionOpcode) {
+        return result;
+    }
+
+    const auto* bytes =
+        static_cast<const std::uint8_t*>(packet);
+    const std::uint32_t npc = ReadUInt32Little(bytes + 4);
+    const auto dialog = static_cast<std::int32_t>(
+        ReadUInt32Little(bytes + 8));
+    const auto subId = static_cast<std::int32_t>(
+        ReadUInt32Little(bytes + 16));
+    const bool isOperation =
+        subId == static_cast<std::int32_t>(
+            LegacyGearMentorAction::EnhanceAttribute) ||
+        subId == static_cast<std::int32_t>(
+            LegacyGearMentorAction::AddAttribute) ||
+        subId == static_cast<std::int32_t>(
+            LegacyGearMentorAction::DeleteAttribute);
+    if ((npc != LegacySpartaOriginEnhancerNpc &&
+            npc != LegacyAthensOriginEnhancerNpc) ||
+        dialog != LegacyOriginEnhancerDialog ||
+        (!isOperation &&
+            subId != static_cast<std::int32_t>(
+                LegacyGearMentorAction::InitialMenu))) {
+        return result;
+    }
+
+    std::int32_t arguments[LegacyNpcFunctionArgumentCount]{};
+    bool allUnset = true;
+    for (std::size_t index = 0;
+         index < LegacyNpcFunctionArgumentCount;
+         ++index) {
+        arguments[index] = static_cast<std::int32_t>(
+            ReadUInt32Little(bytes + 20 + index * 4));
+        if (arguments[index] != -1) {
+            allUnset = false;
+        }
+        const bool isIdentityArgument =
+            index == LegacyOriginGearArgumentIndex ||
+            index == LegacyOriginCatalystArgumentIndex ||
+            index == LegacyOriginStoneArgumentIndex;
+        if (!isIdentityArgument && arguments[index] != -1) {
+            return result;
+        }
+    }
+    if (allUnset) {
+        result.kind = OriginEnhancerPacketKind::Navigation;
+        result.action =
+            static_cast<LegacyGearMentorAction>(subId);
+        result.npcId = npc;
+        return result;
+    }
+    if (!isOperation) {
+        return result;
+    }
+
+    const std::int32_t gearReference =
+        arguments[LegacyOriginGearArgumentIndex];
+    const std::int32_t catalystReference =
+        arguments[LegacyOriginCatalystArgumentIndex];
+    const std::int32_t stoneReference =
+        arguments[LegacyOriginStoneArgumentIndex];
+    if (gearReference < LegacyKitBagReferenceMinimum ||
+        gearReference > LegacyKitBagReferenceMaximum ||
+        catalystReference < LegacyKitBagReferenceMinimum ||
+        catalystReference > LegacyKitBagReferenceMaximum ||
+        stoneReference < LegacyKitBagReferenceMinimum ||
+        stoneReference > LegacyKitBagReferenceMaximum) {
+        return result;
+    }
+
+    result.kind = OriginEnhancerPacketKind::Commit;
+    result.action = static_cast<LegacyGearMentorAction>(subId);
+    result.npcId = npc;
+    result.bagSlots[0] = static_cast<int>(
+        gearReference - LegacyKitBagReferenceMinimum);
+    result.bagSlots[1] = static_cast<int>(
+        catalystReference - LegacyKitBagReferenceMinimum);
+    result.bagSlots[2] = static_cast<int>(
+        stoneReference - LegacyKitBagReferenceMinimum);
+    return result;
+}
+
+} // namespace
+
+bool TryReadLegacyOriginEnhancerCommit(
+    const void* packet,
+    std::size_t packetBytes,
+    LegacyGearMentorAction* action,
+    std::uint32_t* npcId,
+    int* gearBagSlot,
+    int* catalystBagSlot,
+    int* stoneBagSlot) noexcept {
+    if (action == nullptr ||
+        npcId == nullptr ||
+        gearBagSlot == nullptr ||
+        catalystBagSlot == nullptr ||
+        stoneBagSlot == nullptr) {
+        return false;
+    }
+
+    const OriginEnhancerPacket parsed =
+        ReadOriginEnhancerPacket(packet, packetBytes);
+    if (parsed.kind != OriginEnhancerPacketKind::Commit) {
+        return false;
+    }
+
+    *action = parsed.action;
+    *npcId = parsed.npcId;
+    *gearBagSlot = parsed.bagSlots[0];
+    *catalystBagSlot = parsed.bagSlots[1];
+    *stoneBagSlot = parsed.bagSlots[2];
+    return true;
+}
+
+bool TryReadLegacyOriginEnhancerNavigation(
+    const void* packet,
+    std::size_t packetBytes,
+    LegacyGearMentorAction* action,
+    std::uint32_t* npcId) noexcept {
+    if (action == nullptr || npcId == nullptr) {
+        return false;
+    }
+
+    const OriginEnhancerPacket parsed =
+        ReadOriginEnhancerPacket(packet, packetBytes);
+    if (parsed.kind != OriginEnhancerPacketKind::Navigation) {
+        return false;
+    }
+
+    *action = parsed.action;
+    *npcId = parsed.npcId;
+    return true;
+}
+
 bool TryReadLegacyEnterMainCharacterId(
     const void* message,
     int* characterId) noexcept {

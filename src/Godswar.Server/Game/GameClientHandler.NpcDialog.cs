@@ -108,7 +108,8 @@ internal sealed partial class GameClientHandler
                 npcId,
                 "npc_not_authoritative_for_map",
                 cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId));
+                ResolveSecureGearMentorCommandFamily(subId),
+                responseDialogIndex: dialogIndex);
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
         }
@@ -132,7 +133,8 @@ internal sealed partial class GameClientHandler
                 npcId,
                 "dialogue_route_mismatch",
                 cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId));
+                ResolveSecureGearMentorCommandFamily(subId),
+                responseDialogIndex: dialogIndex);
             Console.WriteLine(
                 $"[npc] function action rejected npc={npcId} " +
                 $"dialog={dialogIndex} subId={subId}");
@@ -157,6 +159,7 @@ internal sealed partial class GameClientHandler
                     dialogIndex,
                     subId,
                     args,
+                    packet.ClientOperationId,
                     cancellationToken);
                 return;
             }
@@ -225,6 +228,21 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (route.Behavior == NpcDialogueBehavior.OriginEnhancer)
+        {
+            if (GearEnhancerProtocol.IsOperationSubId(subId))
+            {
+                await HandleGearEnhancerOperationAsync(
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    args,
+                    packet.ClientOperationId,
+                    cancellationToken);
+            }
+            return;
+        }
+
         if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                 packet,
                 npcId,
@@ -239,22 +257,9 @@ internal sealed partial class GameClientHandler
                 npcId,
                 "valuable_command_wrong_npc_behavior",
                 cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId)))
+                ResolveSecureGearMentorCommandFamily(subId),
+                responseDialogIndex: dialogIndex))
         {
-            return;
-        }
-
-        if (route.Behavior == NpcDialogueBehavior.OriginEnhancer)
-        {
-            if (GearEnhancerProtocol.IsOperationSubId(subId))
-            {
-                await HandleGearEnhancerOperationAsync(
-                    npcId,
-                    dialogIndex,
-                    subId,
-                    args,
-                    cancellationToken);
-            }
             return;
         }
 
@@ -395,8 +400,14 @@ internal sealed partial class GameClientHandler
         {
             GearEnhancerProtocol.DecomposeGearSubId =>
                 CommandFamily.GearMentorDecomposeGear,
+            GearEnhancerProtocol.EnhanceAttributeSubId =>
+                CommandFamily.GearMentorEnhanceAttribute,
+            GearEnhancerProtocol.AddAttributeSubId =>
+                CommandFamily.GearMentorAddAttribute,
             GearEnhancerProtocol.MakeAttributeStoneSubId =>
                 CommandFamily.GearMentorMakeAttributeStone,
+            GearEnhancerProtocol.DeleteAttributesSubId =>
+                CommandFamily.GearMentorDeleteAttribute,
             GearEnhancerProtocol.TransformCrystalSubId =>
                 CommandFamily.GearMentorTransformCrystal,
             GearEnhancerProtocol.CombineGemPiecesMenuSubId =>

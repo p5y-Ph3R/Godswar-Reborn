@@ -2,6 +2,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Messaging;
 using Godswar.Server.Infrastructure.Inventory;
+using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -29,6 +30,10 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 GearMentorDecomposePersistenceCodec.ConsumerKey,
             "Decompose shares the inventory checkpoint");
         Check.True(
+            consumer.ConsumerKey ==
+                GearEnhancementPersistenceCodec.ConsumerKey,
+            "Gear Enhancement shares the inventory checkpoint");
+        Check.True(
             consumer.OrderingPolicy ==
                 OutboxOrderingPolicy.StrictSequence,
             "character-inventory projection uses strict ordering");
@@ -52,6 +57,10 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 GearMentorDecomposePersistenceCodec.AggregateKey(
                     CharacterId),
             "Decompose shares the inventory aggregate stream");
+        Check.True(
+            DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
+                GearEnhancementPersistenceCodec.AggregateKey(CharacterId),
+            "Gear Enhancement shares the inventory aggregate stream");
 
         var messages = CreateCompatibleSequence();
         var currentRevision = 0L;
@@ -98,6 +107,12 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckDecomposeContractRejectionAsync(
             consumer,
             messages[6]);
+        await CheckGearEnhancementIdentityRejectionAsync(
+            consumer,
+            messages[7]);
+        await CheckGearEnhancementFamilyRejectionAsync(
+            consumer,
+            messages[7]);
         await CheckContractRejectionAsync(consumer, messages[0]);
     }
 
@@ -117,7 +132,8 @@ internal static class CharacterInventoryOutboxConsumerChecks
         CreateMaterialConversionMessage(
             revision: 6,
             CommandFamily.GearMentorCombineGemPieces),
-        CreateDecomposeMessage(revision: 7)
+        CreateDecomposeMessage(revision: 7),
+        CreateGearEnhancementMessage(revision: 8)
     ];
 
     private static OutboxEventMessage CreateGrantMessage(
@@ -230,6 +246,58 @@ internal static class CharacterInventoryOutboxConsumerChecks
             GearMentorDecomposePersistenceCodec.EventType,
             GearMentorDecomposePersistenceCodec.ContractVersion,
             GearMentorDecomposePersistenceCodec.Encode(receipt));
+    }
+
+    private static OutboxEventMessage CreateGearEnhancementMessage(
+        long revision)
+    {
+        var eventId = Guid.NewGuid();
+        var gear = CompactItemEntry.Parse(
+            "[1000,,,,,,1,1,0,1,0,0,,,,,,0,,,,,,,,,,,,]");
+        var catalyst = CompactItemEntry.Parse(
+            "[9990,,,,,,1,1,0,1,0,0,,,,,,0,,,,,,,,,,,,]");
+        var stone = CompactItemEntry.Parse(
+            "[9930,,,,,,1,1,0,1,0,0,,,,,,0,,,,,,,,,,,,]");
+        var receipt = new GearEnhancementExecutionReceipt(
+            CharacterId,
+            GearEnhancementCommandOperation.Add,
+            GearEnhancementCommandEnvelope.SpartaOriginEnhancerNpcId,
+            GearEnhancementCommandEnvelope.OriginEnhancerDialogIndex,
+            GearEnhancementCommandResultStatus.Succeeded,
+            GearEnhancementNativeResults.AddSucceededSubId,
+            [
+                new GearEnhancementReceiptMutation(
+                    GearEnhancementCommandItemRole.Gear,
+                    10,
+                    gear.Id,
+                    gear.ToCompactString(),
+                    (gear with
+                    {
+                        Attribute1 = 0,
+                        AttributeLevel1 = 1
+                    }).ToCompactString()),
+                new GearEnhancementReceiptMutation(
+                    GearEnhancementCommandItemRole.Catalyst,
+                    11,
+                    catalyst.Id,
+                    catalyst.ToCompactString(),
+                    CompactItemEntry.Empty.ToCompactString()),
+                new GearEnhancementReceiptMutation(
+                    GearEnhancementCommandItemRole.AttributeStone,
+                    12,
+                    stone.Id,
+                    stone.ToCompactString(),
+                    CompactItemEntry.Empty.ToCompactString())
+            ],
+            revision,
+            $"inventory-check-{revision}",
+            eventId);
+        return CreateMessage(
+            eventId,
+            revision,
+            GearEnhancementPersistenceCodec.EventType(receipt.Family),
+            GearEnhancementPersistenceCodec.ContractVersion,
+            GearEnhancementPersistenceCodec.Encode(receipt));
     }
 
     private static OutboxEventMessage CreateMessage(
@@ -373,6 +441,38 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(unsupported).AsTask(),
             "unsupported Decompose schema is rejected");
+    }
+
+    private static async Task
+        CheckGearEnhancementIdentityRejectionAsync(
+            CharacterInventoryOutboxConsumer consumer,
+            OutboxEventMessage enhancement)
+    {
+        var inconsistent = CreateMessage(
+            Guid.NewGuid(),
+            enhancement.AggregateRevision,
+            enhancement.EventType,
+            enhancement.SchemaVersion,
+            enhancement.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "Gear Enhancement event identity mismatch is rejected");
+    }
+
+    private static async Task CheckGearEnhancementFamilyRejectionAsync(
+        CharacterInventoryOutboxConsumer consumer,
+        OutboxEventMessage enhancement)
+    {
+        var inconsistent = CreateMessage(
+            enhancement.EventId,
+            enhancement.AggregateRevision,
+            GearEnhancementPersistenceCodec.EventType(
+                CommandFamily.GearMentorDeleteAttribute),
+            enhancement.SchemaVersion,
+            enhancement.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "Gear Enhancement event/family mismatch is rejected");
     }
 
     private static async Task CheckThrowsAsync<TException>(

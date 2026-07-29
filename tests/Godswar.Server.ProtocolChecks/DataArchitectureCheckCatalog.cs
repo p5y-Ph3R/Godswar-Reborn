@@ -41,6 +41,9 @@ internal static class DataArchitectureCheckCatalog
             "Durable Gear Mentor Decompose command contract",
             GearMentorDecomposeGearCommandContractChecks.RunAsync),
         (
+            "Durable Gear Enhancement command contract",
+            GearEnhancementCommandContractChecks.RunAsync),
+        (
             "Durable Gear Mentor pre-route replay handler",
             GearMentorDurableReplayHandlerChecks.RunAsync),
         (

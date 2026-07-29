@@ -14,7 +14,10 @@ internal enum CommandFamily : ushort
     GearMentorMakeAttributeStone = 6,
     GearMentorTransformCrystal = 7,
     GearMentorCombineGemPieces = 8,
-    GearMentorDecomposeGear = 9
+    GearMentorDecomposeGear = 9,
+    GearMentorEnhanceAttribute = 10,
+    GearMentorAddAttribute = 11,
+    GearMentorDeleteAttribute = 12
 }
 
 internal enum CommandIdentityStrength : byte

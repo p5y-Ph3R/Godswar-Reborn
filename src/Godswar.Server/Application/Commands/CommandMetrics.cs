@@ -76,6 +76,12 @@ internal static class CommandMetrics
                 "gear_mentor_combine_gem_pieces",
             CommandFamily.GearMentorDecomposeGear =>
                 "gear_mentor_decompose_gear",
+            CommandFamily.GearMentorEnhanceAttribute =>
+                "gear_mentor_enhance_attribute",
+            CommandFamily.GearMentorAddAttribute =>
+                "gear_mentor_add_attribute",
+            CommandFamily.GearMentorDeleteAttribute =>
+                "gear_mentor_delete_attribute",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

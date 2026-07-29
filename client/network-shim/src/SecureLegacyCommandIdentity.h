@@ -16,6 +16,15 @@ inline constexpr std::uint16_t LegacyGearMentorActionPacketBytes = 92;
 inline constexpr std::uint32_t LegacySpartaGearMentorNpc = 5067;
 inline constexpr std::uint32_t LegacyAthensGearMentorNpc = 5209;
 inline constexpr std::int32_t LegacyGearMentorDialog = 4;
+inline constexpr std::uint32_t LegacySpartaOriginEnhancerNpc = 5140;
+inline constexpr std::uint32_t LegacyAthensOriginEnhancerNpc = 5282;
+inline constexpr std::int32_t LegacyOriginEnhancerDialog = 118;
+inline constexpr std::size_t LegacyNpcFunctionArgumentCount = 18;
+inline constexpr std::size_t LegacyOriginGearArgumentIndex = 6;
+inline constexpr std::size_t LegacyOriginCatalystArgumentIndex = 7;
+inline constexpr std::size_t LegacyOriginStoneArgumentIndex = 8;
+inline constexpr std::int32_t LegacyKitBagReferenceMinimum = 100;
+inline constexpr std::int32_t LegacyKitBagReferenceMaximum = 195;
 inline constexpr std::int32_t LegacyMakeAttributeStoneSubId = 4;
 inline constexpr std::int32_t LegacyTransformCrystalSubId = 8;
 inline constexpr std::int32_t LegacyCombineGemPiecesSubId = 9;
@@ -59,6 +68,21 @@ bool TryReadLegacyGearSelection(
     bool* selected) noexcept;
 
 bool TryReadLegacyGearMentorAction(
+    const void* packet,
+    std::size_t packetBytes,
+    LegacyGearMentorAction* action,
+    std::uint32_t* npcId) noexcept;
+
+bool TryReadLegacyOriginEnhancerCommit(
+    const void* packet,
+    std::size_t packetBytes,
+    LegacyGearMentorAction* action,
+    std::uint32_t* npcId,
+    int* gearBagSlot,
+    int* catalystBagSlot,
+    int* stoneBagSlot) noexcept;
+
+bool TryReadLegacyOriginEnhancerNavigation(
     const void* packet,
     std::size_t packetBytes,
     LegacyGearMentorAction* action,

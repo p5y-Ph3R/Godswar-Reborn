@@ -15,7 +15,8 @@ internal sealed partial class GameClientHandler
         uint? npcId,
         string reason,
         CancellationToken cancellationToken,
-        CommandFamily? commandFamily = null)
+        CommandFamily? commandFamily = null,
+        int? responseDialogIndex = null)
     {
         if (!packet.ClientOperationId.HasValue ||
             !_session.IsSecure)
@@ -47,6 +48,10 @@ internal sealed partial class GameClientHandler
             CommandFamily.GearMentorDecomposeGear =>
                 GearMentorDecomposeGearNativeResults
                     .SelectionMissingSubId,
+            CommandFamily.GearMentorEnhanceAttribute or
+                CommandFamily.GearMentorAddAttribute or
+                CommandFamily.GearMentorDeleteAttribute =>
+                GearEnhancerProtocol.InvalidSelectionResultSubId,
             CommandFamily.GearMentorTransformCrystal or
                 CommandFamily.GearMentorCombineGemPieces =>
                 MaterialConversionInvalidResultSubId(
@@ -59,7 +64,8 @@ internal sealed partial class GameClientHandler
             await _session.SendAsync(
                 PacketBuilder.NpcFunctionActionResponse(
                     npcId.Value,
-                    GearEnhancerProtocol.DialogIndex,
+                    responseDialogIndex ??
+                        GearEnhancerProtocol.DialogIndex,
                     nativeResultSubId),
                 cancellationToken,
                 "NpcFunctionActionResponse");

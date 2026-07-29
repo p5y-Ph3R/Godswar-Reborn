@@ -48,6 +48,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _gearMentorMaterialConversionCommands;
     private readonly IGearMentorDecomposeGearCommandExecutor?
         _gearMentorDecomposeGearCommands;
+    private readonly IGearEnhancementCommandExecutor?
+        _gearEnhancementCommands;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
@@ -105,7 +107,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IGearMentorMaterialConversionCommandExecutor?
             gearMentorMaterialConversionCommands = null,
         IGearMentorDecomposeGearCommandExecutor?
-            gearMentorDecomposeGearCommands = null)
+            gearMentorDecomposeGearCommands = null,
+        IGearEnhancementCommandExecutor?
+            gearEnhancementCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -130,6 +134,7 @@ internal sealed partial class GameClientHandler : IClientHandler
             gearMentorMaterialConversionCommands;
         _gearMentorDecomposeGearCommands =
             gearMentorDecomposeGearCommands;
+        _gearEnhancementCommands = gearEnhancementCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

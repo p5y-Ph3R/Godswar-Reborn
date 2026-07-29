@@ -44,6 +44,7 @@ internal sealed partial class GameClientHandler
         int dialogIndex,
         int subId,
         IReadOnlyList<int> args,
+        Guid? clientOperationId,
         CancellationToken cancellationToken)
     {
         if (_account is null || _character is null)
@@ -69,8 +70,22 @@ internal sealed partial class GameClientHandler
             out var gearKitBagSlot,
             out var catalystKitBagSlot,
             out var attributeStoneKitBagSlot);
-        if (selectionShape is GearEnhancerSelectionShape.MenuSelection or
-            GearEnhancerSelectionShape.MalformedCommit)
+        if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+            selectionShape == GearEnhancerSelectionShape.Commit)
+        {
+            // Physical NpcFunBreak sends authoritative choices only through
+            // opcode 10193. Its scratch tail can accidentally resemble the
+            // Origin Enhancer's inline triplet and must never override the
+            // staged role order that the secure UUID actually identifies.
+            gearKitBagSlot = -1;
+            catalystKitBagSlot = -1;
+            attributeStoneKitBagSlot = -1;
+            selectionShape = GearEnhancerSelectionShape.MalformedCommit;
+        }
+
+        if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
+            selectionShape is GearEnhancerSelectionShape.MenuSelection or
+                GearEnhancerSelectionShape.MalformedCommit)
         {
             if (contextIsActive &&
                 stagedContext!.TryResolveNativeCommit(
@@ -118,6 +133,40 @@ internal sealed partial class GameClientHandler
             $"gear={DescribeGearEnhancerSelection(_character.KitBag, gearKitBagSlot)} " +
             $"catalyst={DescribeGearEnhancerSelection(_character.KitBag, catalystKitBagSlot)} " +
             $"stone={DescribeGearEnhancerSelection(_character.KitBag, attributeStoneKitBagSlot)}";
+
+        if (clientOperationId.HasValue)
+        {
+            GearEnhancerSelectionTriplet? durableSelections = null;
+            if (selectionShape == GearEnhancerSelectionShape.Commit &&
+                contextIsActive &&
+                gearKitBagSlot >= 0 &&
+                catalystKitBagSlot >= 0 &&
+                attributeStoneKitBagSlot >= 0)
+            {
+                durableSelections =
+                    nativeSelections ?? new GearEnhancerSelectionTriplet(
+                        CaptureGearEnhancerSelection(
+                            _character.KitBag,
+                            gearKitBagSlot),
+                        CaptureGearEnhancerSelection(
+                            _character.KitBag,
+                            catalystKitBagSlot),
+                        CaptureGearEnhancerSelection(
+                            _character.KitBag,
+                            attributeStoneKitBagSlot));
+            }
+
+            await HandleDurableGearEnhancementAsync(
+                npcId,
+                dialogIndex,
+                operation,
+                clientOperationId.Value,
+                durableSelections,
+                _character.KitBag,
+                selectionSummary,
+                cancellationToken);
+            return;
+        }
 
         if (selectionShape == GearEnhancerSelectionShape.Commit && contextIsActive)
         {

@@ -433,11 +433,11 @@ void CheckCombineNavigationAndConfirmation() {
             enhance,
             sizeof(enhance),
             &untracked) ==
-                SecureOperationRegistryResult::Success &&
+                SecureOperationRegistryResult::NoSelection &&
             !untracked.hasOperation &&
             !registry.Snapshot().combinePageArmed &&
             !registry.Snapshot().hasSelection,
-        "another Gear Mentor action inherited abandoned Combine state");
+        "partial Enhance action did not fail closed and clear stale state");
 
     Check(
         Describe(&registry, combine, sizeof(combine)) ==

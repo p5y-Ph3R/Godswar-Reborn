@@ -24,6 +24,12 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         await CheckUnavailableMakeStoneExecutorLeavesOperationPendingAsync();
         await CheckUnavailableDecomposeExecutorLeavesOperationPendingAsync();
         await CheckDecomposeReplayWinsBeforeRouteRejectionAsync();
+        await CheckUnavailableGearEnhancementLeavesOperationPendingAsync();
+        await CheckGearEnhancementReplayMissLeavesOperationPendingAsync();
+        await CheckOriginGearEnhancementCommitOrderingAsync();
+        await CheckOriginReconnectReplayPrecedesCurrentSnapshotsAsync();
+        await CheckPhysicalGearMentorIgnoresInlineScratchTripletAsync();
+        await CheckGearEnhancementReplayUsesStoredEndpointAsync();
     }
 
     private static async Task
@@ -143,7 +149,8 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         byte[] packet,
         uint expectedNpcId,
         int expectedResultSubId,
-        string description)
+        string description,
+        int expectedDialogIndex = GearEnhancerProtocol.DialogIndex)
     {
         Check.Equal(16, packet.Length, $"{description} length");
         Check.Equal(
@@ -156,7 +163,7 @@ internal static partial class GearMentorDurableReplayHandlerChecks
                 packet.AsSpan(4, 4)),
             $"{description} NPC");
         Check.Equal(
-            GearEnhancerProtocol.DialogIndex,
+            expectedDialogIndex,
             BinaryPrimitives.ReadInt32LittleEndian(
                 packet.AsSpan(8, 4)),
             $"{description} dialog");

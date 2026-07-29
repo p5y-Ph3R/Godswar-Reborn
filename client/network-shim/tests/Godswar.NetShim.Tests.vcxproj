@@ -88,8 +88,13 @@
     <ClCompile Include="SecurePendingOperationRegistryTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureGearEnhancerIdentityTests.cpp" />
+    <ClCompile Include="SecureGearEnhancerResultIdentityTests.cpp" />
+    <ClCompile Include="SecureGearMentorAttributeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorDecomposeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorCommandIdentityTests.cpp" />
+    <ClCompile Include="SecureOriginEnhancerIdentityTests.cpp" />
+    <ClCompile Include="SecureOriginEnhancerPacketTests.cpp" />
     <ClCompile Include="SecureLegacyCommandResultStreamTests.cpp" />
     <ClCompile Include="SecureManifestProbe.cpp" />
     <ClCompile Include="SecureRealtimeMovementTests.cpp" />
@@ -184,8 +189,13 @@
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureGearEnhancerIdentityTests.h" />
+    <ClInclude Include="SecureGearEnhancerResultIdentityTests.h" />
+    <ClInclude Include="SecureGearMentorAttributeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorDecomposeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorCommandIdentityTests.h" />
+    <ClInclude Include="SecureOriginEnhancerIdentityTests.h" />
+    <ClInclude Include="SecureOriginEnhancerPacketTests.h" />
     <ClInclude Include="SecureLegacyCommandResultStreamTests.h" />
     <ClInclude Include="SecureManifestProbe.h" />
     <ClInclude Include="SecureRealtimeMovementTests.h" />
