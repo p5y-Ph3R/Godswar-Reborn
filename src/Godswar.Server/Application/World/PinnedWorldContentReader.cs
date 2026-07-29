@@ -3,18 +3,22 @@ using Godswar.Server.Domain.World.Content;
 
 namespace Godswar.Server.Application.World;
 
-internal sealed class PinnedWorldContentReader : IWorldContentReader
+internal sealed partial class PinnedWorldContentReader : IWorldContentReader
 {
     private readonly IReadOnlyDictionary<short, StoredMapContent> _maps;
+    private readonly IReadOnlyDictionary<string, StoredNpcDialogue>
+        _npcDialogues;
     private readonly byte[][] _enterBootstrapPackets;
 
     private PinnedWorldContentReader(
         WorldContentManifest manifest,
         IReadOnlyDictionary<short, StoredMapContent> maps,
+        IReadOnlyDictionary<string, StoredNpcDialogue> npcDialogues,
         byte[][] enterBootstrapPackets)
     {
         Manifest = manifest;
         _maps = maps;
+        _npcDialogues = npcDialogues;
         _enterBootstrapPackets = enterBootstrapPackets;
     }
 
@@ -26,7 +30,9 @@ internal sealed class PinnedWorldContentReader : IWorldContentReader
         IEnumerable<NpcSpawnDefinition> npcDefinitions,
         IEnumerable<CapturedMonsterSpawn> monsterDefinitions,
         IEnumerable<byte[]> enterBootstrapPackets,
-        DateTimeOffset? loadedAtUtc = null)
+        DateTimeOffset? loadedAtUtc = null,
+        IEnumerable<NpcTextDefinition>? npcTexts = null,
+        IEnumerable<NpcDialogueRouteDefinition>? npcDialogueRoutes = null)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -74,11 +80,19 @@ internal sealed class PinnedWorldContentReader : IWorldContentReader
             monsters.Select(static definition => definition.MapId),
             knownMaps);
 
+        var dialogues = PinNpcDialogues(
+            npcs,
+            npcTexts ?? [],
+            npcDialogueRoutes ?? []);
         var bootstrap = enterBootstrapPackets
             .Select(CloneAndValidateBootstrapPacket)
             .ToArray();
         var mapRevision = WorldContentRevisionHasher.HashMaps(mapIds);
         var npcRevision = WorldContentRevisionHasher.HashNpcs(npcs);
+        var npcDialogueRevision =
+            WorldContentRevisionHasher.HashNpcDialogues(
+                dialogues.Texts,
+                dialogues.Routes);
         var monsterRevision =
             WorldContentRevisionHasher.HashMonsters(monsters);
         var enterRevision =
@@ -88,11 +102,13 @@ internal sealed class PinnedWorldContentReader : IWorldContentReader
             WorldContentRevisionHasher.HashManifest(
                 mapRevision,
                 npcRevision,
+                npcDialogueRevision,
                 monsterRevision,
                 enterRevision),
             loadedAtUtc ?? DateTimeOffset.UtcNow,
             mapRevision,
             npcRevision,
+            npcDialogueRevision,
             monsterRevision,
             enterRevision);
 
@@ -103,7 +119,11 @@ internal sealed class PinnedWorldContentReader : IWorldContentReader
                 monsters
                     .Where(definition => definition.MapId == mapId)
                     .ToArray()));
-        return new PinnedWorldContentReader(manifest, maps, bootstrap);
+        return new PinnedWorldContentReader(
+            manifest,
+            maps,
+            dialogues.ByNpcKey,
+            bootstrap);
     }
 
     public ValueTask<WorldMapContent> ReadMapAsync(

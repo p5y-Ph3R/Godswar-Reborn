@@ -20,6 +20,20 @@ internal static class PostgresWorldContentBootstrapper
                 : "[npc-content] using official database publication " +
                   $"revision={publication.Revision} " +
                   $"entries={publication.EntryCount}");
+        var dialoguePublication =
+            await PostgresNpcDialogueBaselinePublisher.EnsurePublishedAsync(
+                connectionString,
+                cancellationToken);
+        Console.WriteLine(
+            dialoguePublication.Created
+                ? "[npc-dialogue] published reviewed database baseline " +
+                  $"revision={dialoguePublication.Revision} " +
+                  $"texts={dialoguePublication.TextCount} " +
+                  $"routes={dialoguePublication.RouteCount}"
+                : "[npc-dialogue] using official database publication " +
+                  $"revision={dialoguePublication.Revision} " +
+                  $"texts={dialoguePublication.TextCount} " +
+                  $"routes={dialoguePublication.RouteCount}");
         return await PostgresWorldContentReaderLoader.LoadAsync(
             connectionString,
             cancellationToken);

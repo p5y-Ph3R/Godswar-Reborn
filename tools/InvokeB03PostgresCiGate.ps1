@@ -61,8 +61,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 24
-    expectedMigrationHead = '20260729_023_npc_content_release'
+    expectedMigrationCount = 25
+    expectedMigrationHead = '20260729_024_npc_dialogue_content_release'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -227,7 +227,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 24 `
+        -InitialMigrationCount 25 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -236,6 +236,7 @@ try {
     foreach ($checkName in @(
         'PostgreSQL forward-only database cleanup',
         'PostgreSQL official NPC content publication',
+        'PostgreSQL official NPC dialogue publication',
         'PostgreSQL pinned world-content baseline',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

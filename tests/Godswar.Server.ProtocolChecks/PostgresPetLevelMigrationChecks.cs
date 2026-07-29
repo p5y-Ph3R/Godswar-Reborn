@@ -26,7 +26,7 @@ internal static class PostgresPetLevelMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 2,
+            catalog.Count - 3,
             index,
             "pet level progression remains immediately before NPC content");
         Check.Equal(

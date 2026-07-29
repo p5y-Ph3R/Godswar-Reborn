@@ -5,6 +5,7 @@ using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
+using Godswar.Server.Domain.World.Content;
 
 namespace Godswar.Server.Game;
 
@@ -27,57 +28,25 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (GearEnhancerProtocol.IsEnhancerNpcKey(npc.NpcKey))
+        var route = await ResolveNpcDialogueRouteAsync(
+            npc,
+            cancellationToken);
+        if (route is null)
         {
-            await _session.SendAsync(
-                PacketBuilder.NpcDialogOpenAck(
-                    npc.InteractionId,
-                    GearEnhancerProtocol.DialogIndex,
-                    npc.NpcKey),
-                cancellationToken,
-                "NpcDialogOpenAck");
-            Console.WriteLine($"[gear-enhancer] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
-            return;
-        }
-
-        if (GearEnhancerProtocol.IsOriginEnhancerNpcKey(npc.NpcKey))
-        {
-            await _session.SendAsync(
-                PacketBuilder.NpcDialogOpenAck(
-                    npc.InteractionId,
-                    GearEnhancerProtocol.OriginDialogIndex,
-                    npc.NpcKey),
-                cancellationToken,
-                "NpcDialogOpenAck");
-            Console.WriteLine($"[origin-enhancer] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
-            return;
-        }
-
-        if (HolySuitDesignProtocol.IsNpcKey(npc.NpcKey))
-        {
-            await _session.SendAsync(
-                PacketBuilder.NpcDialogOpenAck(
-                    npc.InteractionId,
-                    HolySuitDesignProtocol.DialogIndex,
-                    npc.NpcKey),
-                cancellationToken,
-                "NpcDialogOpenAck");
-            Console.WriteLine(
-                $"[holy-suit-design] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
-            return;
-        }
-
-        if (!IsHolyStoneArtisan(npc))
-        {
-            Console.WriteLine($"[npc] dialog open has no implemented script npc={npcId} key={npc.NpcKey}");
             return;
         }
 
         await _session.SendAsync(
-            PacketBuilder.NpcDialogOpenAck(npc.InteractionId, HolyStoneDialogIndex, npc.NpcKey),
+            PacketBuilder.NpcDialogOpenAck(
+                npc.InteractionId,
+                route.DialogIndex,
+                route.ClientScriptKey),
             cancellationToken,
             "NpcDialogOpenAck");
-        Console.WriteLine($"[holy-stone] dialog open npc={npc.InteractionId} script={npc.NpcKey}");
+        Console.WriteLine(
+            $"[npc] dialog open npc={npc.InteractionId} " +
+            $"script={route.ClientScriptKey} " +
+            $"behavior={route.Behavior} dialog={route.DialogIndex}");
     }
 
     private async Task HandleNpcDialogPageRequestAsync(
@@ -118,37 +87,29 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (GearEnhancerProtocol.IsEnhancerNpcKey(npc.NpcKey))
+        var route = await ResolveNpcDialogueRouteAsync(
+            npc,
+            cancellationToken);
+        if (route is null || dialogIndex != route.DialogIndex)
         {
-            if (GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                    npc.NpcKey,
-                    npcId,
-                    dialogIndex,
-                    subId,
-                    out var gearMentorResponse))
-            {
-                ClearGearEnhancerSelection();
-                // Stock NpcFunBreak changes from its menu to Enhance/Add/Delete
-                // entirely client-side. Start an operation-unbound staging
-                // context here so the following native 10193 selections are
-                // retained until final 10069 identifies operation 2/3/6.
-                _gearEnhancerSelectionContext = new GearEnhancerSelectionContext(
-                    _account.Id,
-                    _character.Id,
-                    npcId,
-                    dialogIndex,
-                    operation: null,
-                    expiresAt: DateTimeOffset.UtcNow + GearEnhancerProtocol.SelectionContextLifetime);
-                await _session.SendAsync(
-                    gearMentorResponse,
-                    cancellationToken,
-                    "NpcFunctionActionResponse");
-                Console.WriteLine($"[gear-mentor] original initial menu npc={npcId} items=1,2,3,4,5,6,7,8,9");
-                return;
-            }
+            Console.WriteLine(
+                $"[npc] function action rejected npc={npcId} " +
+                $"dialog={dialogIndex} subId={subId}");
+            return;
+        }
 
-            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
-                GearEnhancerProtocol.IsOperationSubId(subId))
+        if (subId == -1)
+        {
+            await SendNpcInitialMenuAsync(
+                npc,
+                route,
+                cancellationToken);
+            return;
+        }
+
+        if (route.Behavior == NpcDialogueBehavior.GearMentor)
+        {
+            if (GearEnhancerProtocol.IsOperationSubId(subId))
             {
                 await HandleGearEnhancerOperationAsync(
                     npcId,
@@ -159,8 +120,7 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
-            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
-                subId == GearEnhancerProtocol.CombineGemPiecesMenuSubId)
+            if (subId == GearEnhancerProtocol.CombineGemPiecesMenuSubId)
             {
                 // The stock client re-sends menu action 9 when the
                 // server-backed combination page is confirmed. Normalize that
@@ -195,8 +155,7 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
-            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
-                GearEnhancerProtocol.IsGearMentorTransactionSubId(subId))
+            if (GearEnhancerProtocol.IsGearMentorTransactionSubId(subId))
             {
                 await HandleGearMentorTransactionAsync(
                     npcId,
@@ -206,8 +165,7 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
-            if (dialogIndex == GearEnhancerProtocol.DialogIndex &&
-                GearEnhancerProtocol.IsUnavailableGearMentorMenuSubId(subId))
+            if (GearEnhancerProtocol.IsUnavailableGearMentorMenuSubId(subId))
             {
                 ClearGearEnhancerSelection();
                 await _session.SendAsync(
@@ -223,26 +181,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (GearEnhancerProtocol.IsOriginEnhancerNpcKey(npc.NpcKey))
+        if (route.Behavior == NpcDialogueBehavior.OriginEnhancer)
         {
-            if (GearEnhancerProtocol.TryBuildOriginInitialMenuResponse(
-                    npc.NpcKey,
-                    npcId,
-                    dialogIndex,
-                    subId,
-                    out var originResponse))
-            {
-                ClearGearEnhancerSelection();
-                await _session.SendAsync(
-                    originResponse,
-                    cancellationToken,
-                    "NpcFunctionActionResponse");
-                Console.WriteLine($"[origin-enhancer] initial menu npc={npcId} items=2,3,6");
-                return;
-            }
-
-            if (dialogIndex == GearEnhancerProtocol.OriginDialogIndex &&
-                GearEnhancerProtocol.IsOperationSubId(subId))
+            if (GearEnhancerProtocol.IsOperationSubId(subId))
             {
                 await HandleGearEnhancerOperationAsync(
                     npcId,
@@ -254,26 +195,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (HolySuitDesignProtocol.IsNpcKey(npc.NpcKey))
+        if (route.Behavior == NpcDialogueBehavior.HolySuitDesign)
         {
-            if (HolySuitDesignProtocol.TryBuildInitialMenuResponse(
-                    npc.NpcKey,
-                    npcId,
-                    dialogIndex,
-                    subId,
-                    out var holySuitResponse))
-            {
-                await _session.SendAsync(
-                    holySuitResponse,
-                    cancellationToken,
-                    "NpcFunctionActionResponse");
-                Console.WriteLine(
-                    $"[holy-suit-design] original initial menu npc={npcId} items=101,201,301,401");
-                return;
-            }
-
-            if (dialogIndex == HolySuitDesignProtocol.DialogIndex &&
-                HolySuitDesignProtocol.IsMenuSubId(subId))
+            if (HolySuitDesignProtocol.IsMenuSubId(subId))
             {
                 await _session.SendAsync(
                     PacketBuilder.NpcFunctionActionResponse(
@@ -288,7 +212,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (!IsHolyStoneArtisan(npc))
+        if (route.Behavior != NpcDialogueBehavior.HolyStone)
         {
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
@@ -299,17 +223,19 @@ internal sealed partial class GameClientHandler
 
         if (subId == -1)
         {
-            await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, 101, 201, 301, 401, 501, 601, 701),
-                cancellationToken,
-                "NpcFunctionActionResponse");
             return;
         }
 
         if (subId == HolyStoneMenuMount && !HasClientKitBagSlot(args))
         {
             await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, 106, 206, 306, 406),
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    route.DialogIndex,
+                    106,
+                    206,
+                    306,
+                    406),
                 cancellationToken,
                 "NpcFunctionActionResponse");
             return;
@@ -326,7 +252,10 @@ internal sealed partial class GameClientHandler
         if (operation is null)
         {
             await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, HolyStoneInsufficientFunds),
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    route.DialogIndex,
+                    HolyStoneInsufficientFunds),
                 cancellationToken,
                 "NpcFunctionActionResponse");
             return;
@@ -357,7 +286,10 @@ internal sealed partial class GameClientHandler
             };
 
         await _session.SendAsync(
-            PacketBuilder.NpcFunctionActionResponse(npcId, HolyStoneDialogIndex, responseSubId),
+            PacketBuilder.NpcFunctionActionResponse(
+                npcId,
+                route.DialogIndex,
+                responseSubId),
             cancellationToken,
             "NpcFunctionActionResponse");
 

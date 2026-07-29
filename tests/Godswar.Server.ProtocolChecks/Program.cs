@@ -54,6 +54,9 @@ internal static partial class Program
             (
                 "PostgreSQL official NPC content publication",
                 PostgresNpcContentPublicationIntegrationChecks.RunAsync),
+            (
+                "PostgreSQL official NPC dialogue publication",
+                PostgresNpcDialoguePublicationIntegrationChecks.RunAsync),
             ("PostgreSQL captured-monster ECS parity", PostgresMonsterEcsParityIntegrationChecks.RunAsync),
             (
                 "PostgreSQL pinned world-content baseline",

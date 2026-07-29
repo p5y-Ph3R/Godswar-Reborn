@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Infrastructure.WorldContent;
@@ -33,12 +34,26 @@ internal static class GeneratedWorldContentReaderLoader
                         references);
                 })
                 .ToArray();
+            var actualNpcKeys = definitions
+                .Select(static definition => definition.NpcKey)
+                .ToHashSet(StringComparer.Ordinal);
+            var npcTexts = NpcTemplateSeeds.Texts
+                .Where(seed => actualNpcKeys.Contains(seed.NpcKey))
+                .Select(static seed => new NpcTextDefinition(
+                    seed.NpcKey,
+                    seed.SceneKey,
+                    seed.DisplayName,
+                    seed.Description))
+                .ToArray();
             IWorldContentReader reader = PinnedWorldContentReader.Create(
                 JsonWorldContentSource,
                 mapIds,
                 definitions,
                 [],
-                []);
+                [],
+                npcTexts: npcTexts,
+                npcDialogueRoutes:
+                    NpcDialogueBaselineV1.CreateRoutes());
             stopwatch.Stop();
             WorldContentMetrics.RecordLoad(
                 JsonWorldContentSource,

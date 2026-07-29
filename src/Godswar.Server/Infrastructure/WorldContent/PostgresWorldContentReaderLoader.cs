@@ -43,6 +43,12 @@ internal static partial class PostgresWorldContentReaderLoader
                 transaction,
                 mapIds.ToHashSet(),
                 cancellationToken);
+            var npcDialogues =
+                await LoadPublishedNpcDialogueDefinitionsAsync(
+                    connection,
+                    transaction,
+                    npcDefinitions,
+                    cancellationToken);
             var monsters = await LoadCapturedMonsterSpawnsAsync(
                 connection,
                 transaction,
@@ -59,7 +65,9 @@ internal static partial class PostgresWorldContentReaderLoader
                 mapIds,
                 npcDefinitions,
                 monsters,
-                enterBootstrap);
+                enterBootstrap,
+                npcTexts: npcDialogues.Texts,
+                npcDialogueRoutes: npcDialogues.Routes);
             stopwatch.Stop();
             WorldContentMetrics.RecordLoad(
                 PostgresWorldContentSource,

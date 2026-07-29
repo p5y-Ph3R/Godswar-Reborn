@@ -367,9 +367,4 @@ internal sealed partial class GameClientHandler
         }
     }
 
-    private static bool IsHolyStoneArtisan(NpcSpawnDefinition npc)
-    {
-        return npc.NpcKey is "Sparta_086" or "Athens_086";
-    }
-
 }

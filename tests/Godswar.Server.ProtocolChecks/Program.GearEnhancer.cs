@@ -4,7 +4,9 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -95,14 +97,22 @@ internal static partial class Program
         Check.Equal(GearEnhancerProtocol.DialogIndex, ReadInt32(dialogOpen, 12), "Sparta enhancer dialog-open index");
         Check.Equal(spartaEndpoint.NpcKey, ReadFixedAscii(dialogOpen, 16, 32), "Sparta enhancer dialog-open script key");
 
+        var dialogueRoutes = NpcDialogueBaselineV1.CreateRoutes();
+        var spartaRoute = dialogueRoutes.Single(
+            route => route.NpcKey == spartaEndpoint.NpcKey);
         Check.True(
-            GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                spartaEndpoint.NpcKey,
-                spartaEndpoint.NpcId,
-                GearEnhancerProtocol.DialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var spartaMenu),
-            "physical Sparta Gear Mentor initial-menu request is accepted");
+            NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaDefinition,
+                spartaRoute),
+            "database baseline binds the physical Sparta Gear Mentor");
+        Check.Equal(
+            GearEnhancerProtocol.DialogIndex,
+            spartaRoute.DialogIndex,
+            "database baseline keeps Gear Mentor dialog 4");
+        var spartaMenu = PacketBuilder.NpcFunctionActionResponse(
+            spartaEndpoint.NpcId,
+            spartaRoute.DialogIndex,
+            spartaRoute.InitialMenuSubIds.ToArray());
         Check.Equal((ushort)48, ReadUInt16(spartaMenu, 0), "Sparta original Gear Mentor menu packet length");
         Check.Equal(spartaEndpoint.NpcId, ReadUInt32(spartaMenu, 4), "Sparta enhancer menu NPC id");
         for (var menuId = GearEnhancerProtocol.FirstGearMentorMenuSubId;
@@ -116,14 +126,17 @@ internal static partial class Program
         }
 
         var athensEnhancerId = athensEndpoint.NpcId;
+        var athensRoute = dialogueRoutes.Single(
+            route => route.NpcKey == athensEndpoint.NpcKey);
         Check.True(
-            GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                athensEndpoint.NpcKey,
-                athensEnhancerId,
-                GearEnhancerProtocol.DialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var athensMenu),
-            "Athens uses the same capture-backed enhancer menu");
+            NpcDialogueBehaviorRegistry.IsAllowed(
+                athensDefinition,
+                athensRoute),
+            "database baseline binds the physical Athens Gear Mentor");
+        var athensMenu = PacketBuilder.NpcFunctionActionResponse(
+            athensEnhancerId,
+            athensRoute.DialogIndex,
+            athensRoute.InitialMenuSubIds.ToArray());
         Check.Equal((ushort)48, ReadUInt16(athensMenu, 0), "Athens original Gear Mentor menu packet length");
         Check.Equal((ushort)Opcodes.NpcFunctionActionResponse, ReadUInt16(athensMenu, 2), "Athens enhancer menu opcode");
         Check.Equal(athensEnhancerId, ReadUInt32(athensMenu, 4), "Athens enhancer NPC id");
@@ -156,14 +169,23 @@ internal static partial class Program
         Check.Equal(capturedOriginEnhancerId, ReadUInt32(originDialogOpen, 4), "physical Origin Enhancer dialog-open NPC id");
         Check.Equal(GearEnhancerProtocol.OriginDialogIndex, ReadInt32(originDialogOpen, 12), "physical Origin Enhancer opens dialog 118");
         Check.Equal("Sparta_143", ReadFixedAscii(originDialogOpen, 16, 32), "physical Origin Enhancer keeps its own script key");
+        var originDefinition = NpcSpawnDefinitionFactory.Create(
+                0,
+                [],
+                [],
+                [])
+            .Single(definition => definition.NpcKey == "Sparta_143");
+        var originRoute = dialogueRoutes.Single(
+            route => route.NpcKey == "Sparta_143");
         Check.True(
-            GearEnhancerProtocol.TryBuildOriginInitialMenuResponse(
-                "Sparta_143",
-                capturedOriginEnhancerId,
-                GearEnhancerProtocol.OriginDialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var originMenu),
-            "physical Origin Enhancer accepts its captured dialog-118 initial request");
+            NpcDialogueBehaviorRegistry.IsAllowed(
+                originDefinition,
+                originRoute),
+            "database baseline binds the physical Origin Enhancer");
+        var originMenu = PacketBuilder.NpcFunctionActionResponse(
+            capturedOriginEnhancerId,
+            originRoute.DialogIndex,
+            originRoute.InitialMenuSubIds.ToArray());
         Check.Equal(capturedOriginEnhancerId, ReadUInt32(originMenu, 4), "physical Origin menu keeps object 5140");
         Check.Equal(GearEnhancerProtocol.OriginDialogIndex, ReadInt32(originMenu, 8), "physical Origin menu keeps dialog 118");
         Check.Equal(GearEnhancerProtocol.EnhanceAttributeSubId, ReadInt32(originMenu, 12), "physical Origin captured first menu id");
@@ -252,60 +274,37 @@ internal static partial class Program
             "Delete success maps to the native result page");
 
         Check.True(
-            !GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                spartaEndpoint.NpcKey,
-                spartaEndpoint.NpcId,
-                GearEnhancerProtocol.DialogIndex + 1,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var wrongDialogResponse) &&
-            wrongDialogResponse.Length == 0,
-            "wrong enhancer dialog is rejected without a response");
+            !NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaDefinition,
+                spartaRoute with
+                {
+                    DialogIndex = GearEnhancerProtocol.DialogIndex + 1
+                }),
+            "a valid Gear Mentor cannot use a mismatched database dialog");
         Check.True(
-            !GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                spartaEndpoint.NpcKey,
-                spartaEndpoint.NpcId,
-                GearEnhancerProtocol.DialogIndex,
-                GearEnhancerProtocol.EnhanceAttributeSubId,
-                out var unsupportedOperationResponse) &&
-            unsupportedOperationResponse.Length == 0,
-            "the initial-menu helper does not mistake an operation action for a new menu request");
-
+            !NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaDefinition,
+                spartaRoute with
+                {
+                    InitialMenuSubIds = [1, 2, 3, 4, 5, 6, 7, 8]
+                }),
+            "a valid Gear Mentor cannot use a mismatched database menu");
         Check.True(
-            !GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                "Sparta_143",
-                capturedOriginEnhancerId,
-                originEnhancerDialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var originEnhancerResponse) &&
-            originEnhancerResponse.Length == 0,
-            "captured Origin Enhancer 5140/dialog 118 cannot enter the Gear Mentor dialog-4 protocol");
+            !NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaDefinition,
+                spartaRoute with
+                {
+                    Behavior = NpcDialogueBehavior.OriginEnhancer,
+                    DialogIndex =
+                        GearEnhancerProtocol.OriginDialogIndex,
+                    InitialMenuSubIds = [2, 3, 6]
+                }),
+            "a valid Gear Mentor cannot be rebound to another behavior");
         Check.True(
-            !GearEnhancerProtocol.TryBuildInitialMenuResponse(
-                spartaEndpoint.NpcKey,
-                spartaEndpoint.NpcId,
-                originEnhancerDialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var gearMentorAsOriginResponse) &&
-            gearMentorAsOriginResponse.Length == 0,
-            "Gear Mentor 070 cannot enter the Origin Enhancer dialog-118 path");
-        Check.True(
-            !GearEnhancerProtocol.TryBuildOriginInitialMenuResponse(
-                spartaEndpoint.NpcKey,
-                spartaEndpoint.NpcId,
-                GearEnhancerProtocol.OriginDialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var originHelperGearMentorResponse) &&
-            originHelperGearMentorResponse.Length == 0,
-            "Origin initial-menu helper rejects Gear Mentor 070 even on dialog 118");
-        Check.True(
-            !GearEnhancerProtocol.TryBuildOriginInitialMenuResponse(
-                "Sparta_143",
-                0,
-                GearEnhancerProtocol.OriginDialogIndex,
-                GearEnhancerProtocol.InitialMenuRequestSubId,
-                out var virtualOriginResponse) &&
-            virtualOriginResponse.Length == 0,
-            "Origin initial-menu helper rejects removed virtual NPC zero");
+            !NpcDialogueBehaviorRegistry.IsAllowed(
+                originDefinition with { InteractionId = 0 },
+                originRoute),
+            "removed virtual NPC zero cannot use the Origin Enhancer route");
 
         return Task.CompletedTask;
     }

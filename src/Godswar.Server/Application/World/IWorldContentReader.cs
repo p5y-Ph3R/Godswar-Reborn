@@ -16,6 +16,10 @@ internal interface IWorldContentReader
 
     ValueTask<EnterWorldBootstrapContent> ReadEnterBootstrapAsync(
         CancellationToken cancellationToken = default);
+
+    ValueTask<NpcDialogueContent> ReadNpcDialogueAsync(
+        string npcKey,
+        CancellationToken cancellationToken = default);
 }
 
 internal sealed record WorldContentFamilyRevision(
@@ -29,6 +33,7 @@ internal sealed record WorldContentManifest(
     DateTimeOffset LoadedAtUtc,
     WorldContentFamilyRevision Maps,
     WorldContentFamilyRevision Npcs,
+    WorldContentFamilyRevision NpcDialogues,
     WorldContentFamilyRevision Monsters,
     WorldContentFamilyRevision EnterBootstrap);
 
@@ -43,6 +48,11 @@ internal sealed record WorldMapContent(
 internal sealed record EnterWorldBootstrapContent(
     WorldContentFamilyRevision Revision,
     IReadOnlyList<byte[]> Packets);
+
+internal sealed record NpcDialogueContent(
+    WorldContentFamilyRevision Revision,
+    NpcTextDefinition Text,
+    NpcDialogueRouteDefinition? Route);
 
 internal enum WorldContentFailureReason
 {

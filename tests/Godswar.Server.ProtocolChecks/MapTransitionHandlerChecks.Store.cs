@@ -181,5 +181,10 @@ internal static partial class MapTransitionHandlerChecks
             EnterSyncRequests++;
             return _inner.ReadEnterBootstrapAsync(cancellationToken);
         }
+
+        public ValueTask<NpcDialogueContent> ReadNpcDialogueAsync(
+            string npcKey,
+            CancellationToken cancellationToken = default) =>
+            _inner.ReadNpcDialogueAsync(npcKey, cancellationToken);
     }
 }

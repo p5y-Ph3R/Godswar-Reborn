@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -108,14 +109,17 @@ internal static partial class Program
         Check.Equal(HolySuitDesignProtocol.DialogIndex, ReadInt32(dialogOpen, 12), "Holy Suit open keeps dialog 29");
         Check.Equal("Sparta_085", ReadFixedAscii(dialogOpen, 16, 32), "Holy Suit open keeps NPC085 key");
 
+        var holySuitRoute = NpcDialogueBaselineV1.CreateRoutes()
+            .Single(route => route.NpcKey == "Sparta_085");
         Check.True(
-            HolySuitDesignProtocol.TryBuildInitialMenuResponse(
-                "Sparta_085",
-                HolySuitDesignProtocol.SpartaNpcId,
-                HolySuitDesignProtocol.DialogIndex,
-                HolySuitDesignProtocol.InitialMenuRequestSubId,
-                out var menu),
-            "captured Master Vestment Forger initial request is accepted");
+            NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaForger,
+                holySuitRoute),
+            "database baseline binds the physical Master Vestment Forger");
+        var menu = PacketBuilder.NpcFunctionActionResponse(
+            HolySuitDesignProtocol.SpartaNpcId,
+            holySuitRoute.DialogIndex,
+            holySuitRoute.InitialMenuSubIds.ToArray());
         Check.Equal((ushort)28, ReadUInt16(menu, 0), "Holy Suit original menu packet length");
         Check.Equal(HolySuitDesignProtocol.SpartaNpcId, ReadUInt32(menu, 4), "Holy Suit menu NPC id");
         Check.Equal(HolySuitDesignProtocol.DialogIndex, ReadInt32(menu, 8), "Holy Suit menu dialog index");
@@ -124,14 +128,10 @@ internal static partial class Program
         Check.Equal(HolySuitDesignProtocol.ConsumeEquipmentSubId, ReadInt32(menu, 20), "Holy Suit third captured menu id");
         Check.Equal(HolySuitDesignProtocol.TransformExperienceSubId, ReadInt32(menu, 24), "Holy Suit fourth captured menu id");
         Check.True(
-            !HolySuitDesignProtocol.TryBuildInitialMenuResponse(
-                "Sparta_085",
-                HolySuitDesignProtocol.SpartaNpcId,
-                37,
-                HolySuitDesignProtocol.InitialMenuRequestSubId,
-                out var classSuitResponse) &&
-            classSuitResponse.Length == 0,
-            "dialog 37 Class Suit cannot replace captured dialog 29 Holy Suit Design");
+            !NpcDialogueBehaviorRegistry.IsAllowed(
+                spartaForger,
+                holySuitRoute with { DialogIndex = 37 }),
+            "dialog 37 Class Suit cannot replace database-backed dialog 29");
 
         return Task.CompletedTask;
     }

@@ -1,5 +1,3 @@
-using Godswar.Server.Packets;
-
 namespace Godswar.Server.Game;
 
 /// <summary>
@@ -31,35 +29,4 @@ internal static class HolySuitDesignProtocol
             ConsumeEquipmentSubId or TransformExperienceSubId;
     }
 
-    public static byte[] BuildInitialMenuResponse(uint npcId)
-    {
-        // capture-proxy-20260514-173331.log records this exact order after
-        // object 5082 receives the dialog-29 initial request.
-        return PacketBuilder.NpcFunctionActionResponse(
-            npcId,
-            DialogIndex,
-            StoreExperienceSubId,
-            TransferExperienceSubId,
-            ConsumeEquipmentSubId,
-            TransformExperienceSubId);
-    }
-
-    public static bool TryBuildInitialMenuResponse(
-        string npcKey,
-        uint npcId,
-        int dialogIndex,
-        int subId,
-        out byte[] response)
-    {
-        response = [];
-        if (!IsNpcKey(npcKey) ||
-            dialogIndex != DialogIndex ||
-            subId != InitialMenuRequestSubId)
-        {
-            return false;
-        }
-
-        response = BuildInitialMenuResponse(npcId);
-        return true;
-    }
 }

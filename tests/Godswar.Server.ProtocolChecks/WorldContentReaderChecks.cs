@@ -18,6 +18,7 @@ internal static class WorldContentReaderChecks
         CheckExpectedRevisionGuard();
         await CheckSafeBootstrapParityAsync();
         await CheckMetricsAsync();
+        await WorldContentReaderDialogueChecks.RunAsync();
     }
 
     private static async Task CheckDeterministicRevisionAndOrderingAsync()
@@ -90,11 +91,15 @@ internal static class WorldContentReaderChecks
             first.Manifest.EnterBootstrap.Sha256,
             "bootstrap-family canonical revision golden vector");
         Check.Equal(
-            "4A8B93B3B0462C6BF6E8B510DBD6EB280A1C635CC4D07555B1EB899D04478E38",
+            "975FA14BCC4AC2989656FC357A62E398FC5002E000950BE2CDC5E9F938847E3F",
             first.Manifest.Revision,
             "combined content-manifest canonical revision golden vector");
         Check.Equal(2, first.Manifest.Maps.EntryCount, "duplicate map IDs are canonicalized");
         Check.Equal(2, first.Manifest.Npcs.EntryCount, "NPC manifest entry count");
+        Check.Equal(
+            0,
+            first.Manifest.NpcDialogues.EntryCount,
+            "optional NPC dialogue manifest is empty");
         Check.Equal(2, first.Manifest.Monsters.EntryCount, "monster manifest entry count");
         Check.Equal(1, first.Manifest.EnterBootstrap.EntryCount, "bootstrap manifest entry count");
 

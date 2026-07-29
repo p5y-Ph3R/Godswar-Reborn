@@ -50,6 +50,40 @@ internal static class WorldContentRevisionHasher
             definitions.Count);
     }
 
+    public static WorldContentFamilyRevision HashNpcDialogues(
+        IReadOnlyList<NpcTextDefinition> texts,
+        IReadOnlyList<NpcDialogueRouteDefinition> routes)
+    {
+        using var hash = new CanonicalHashBuilder("npc-dialogues");
+        hash.AppendInt32(texts.Count);
+        foreach (var text in texts)
+        {
+            hash.AppendString(text.NpcKey);
+            hash.AppendString(text.SceneKey);
+            hash.AppendString(text.DisplayName);
+            hash.AppendString(text.Description);
+        }
+
+        hash.AppendInt32(routes.Count);
+        foreach (var route in routes)
+        {
+            hash.AppendString(route.NpcKey);
+            hash.AppendString(route.ClientScriptKey);
+            hash.AppendInt32(route.DialogIndex);
+            hash.AppendInt32((int)route.Behavior);
+            hash.AppendInt32(route.InitialMenuSubIds.Length);
+            foreach (var subId in route.InitialMenuSubIds)
+            {
+                hash.AppendInt32(subId);
+            }
+        }
+
+        return new WorldContentFamilyRevision(
+            "npc-dialogues",
+            hash.Finish(),
+            checked(texts.Count + routes.Count));
+    }
+
     public static WorldContentFamilyRevision HashMonsters(
         IReadOnlyList<CapturedMonsterSpawn> definitions)
     {

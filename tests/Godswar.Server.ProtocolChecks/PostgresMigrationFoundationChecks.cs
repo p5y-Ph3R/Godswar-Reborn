@@ -8,6 +8,7 @@ internal static partial class PostgresMigrationFoundationChecks
     {
         CheckForwardOnlyCatalog();
         await PostgresNpcContentMigrationChecks.RunAsync();
+        await PostgresNpcDialogueMigrationChecks.RunAsync();
         CheckDatabaseCleanupMigrations();
         CheckStableChecksums();
         CheckImmutableHistory();
@@ -17,7 +18,7 @@ internal static partial class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(24, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(25, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -62,7 +63,8 @@ internal static partial class PostgresMigrationFoundationChecks
                     "20260729_020_pet_savvy_semantics",
                     "20260729_021_pet_savvy_semantics_hardening",
                     "20260729_022_pet_level_progression",
-                    "20260729_023_npc_content_release"
+                    "20260729_023_npc_content_release",
+                    "20260729_024_npc_dialogue_content_release"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

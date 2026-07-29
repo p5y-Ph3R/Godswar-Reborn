@@ -12,6 +12,8 @@ internal static class PostgresNpcContentMigrationChecks
         "20260729_023_npc_content_release";
     private const string MigrationChecksum =
         "C8575C6257B67B372EA66B0354344FAD228C8582014C96533DF9415FCCCB32D5";
+    private const string NextMigrationId =
+        "20260729_024_npc_dialogue_content_release";
 
     public static Task RunAsync()
     {
@@ -24,9 +26,9 @@ internal static class PostgresNpcContentMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 1,
+            catalog.Count - 2,
             index,
-            "NPC content release is the migration head");
+            "NPC content release immediately precedes NPC dialogue content");
         Check.Equal(
             MigrationChecksum,
             migration.Checksum,
@@ -39,6 +41,10 @@ internal static class PostgresNpcContentMigrationChecks
             PreviousMigrationChecksum,
             catalog[index - 1].Checksum,
             "NPC content migration preserves its applied predecessor");
+        Check.Equal(
+            NextMigrationId,
+            catalog[index + 1].Id,
+            "NPC content migration has the expected forward-only successor");
 
         CheckRevisionCatalog(migration.Sql);
         CheckSpawnCatalog(migration.Sql);

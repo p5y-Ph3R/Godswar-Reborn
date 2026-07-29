@@ -14,7 +14,6 @@ namespace Godswar.Server.Game;
 internal sealed partial class GameClientHandler : IClientHandler
 {
     private const uint LocalPlayerObjectId = 0x00001448;
-    private const int HolyStoneDialogIndex = 30;
     private const int HolyStoneMenuMount = 101;
     private const int HolyStoneMenuRemove = 201;
     private const int HolyStoneMenuDrill = 301;
