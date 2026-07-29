@@ -1,6 +1,8 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Talents;
 using Npgsql;
@@ -33,9 +35,16 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresTalentUpgradeCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        DeveloperItemGrantCommands =
+            new PostgresDeveloperItemGrantCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
-            [new TalentUpgradeOutboxConsumer()],
+            [
+                new TalentUpgradeOutboxConsumer(),
+                new DeveloperItemGrantOutboxConsumer()
+            ],
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
     }
@@ -43,6 +52,9 @@ internal sealed class PostgresApplicationDataRuntime :
     public ICharacterSnapshotReader CharacterSnapshots { get; }
 
     public ITalentUpgradeCommandExecutor TalentUpgradeCommands { get; }
+
+    public IDeveloperItemGrantCommandExecutor
+        DeveloperItemGrantCommands { get; }
 
     public bool OutboxEnabled { get; }
 

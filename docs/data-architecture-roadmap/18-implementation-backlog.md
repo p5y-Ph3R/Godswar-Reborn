@@ -51,6 +51,14 @@ composition, and low-cardinality telemetry. The JSON provider remains a local
 compatibility path without durable inbox/outbox semantics, and B15's
 player-ownership fence remains required before safe multi-process ownership.
 
+**B09 started 2026-07-29:** [increment evidence](../data-architecture-b09-economy-ledger-increment-20260729.md)
+records the immutable opening economy baselines, wallet/inventory revisions,
+currency and item ledgers, report-only reconciliation, and the first
+commit-before-response item grant using an explicit client operation UUID.
+Tokenless legacy inventory, forge, mentor, reward, and currency mutations
+remain compatibility paths; B09 is not complete until those operations gain
+truthful retry identity and move behind the durable transaction boundary.
+
 ## 18.2 First three low-risk implementation tasks
 
 1. **B01A:** inventory the applied migration/build/backup state read-only and publish the exact mismatch manifest.

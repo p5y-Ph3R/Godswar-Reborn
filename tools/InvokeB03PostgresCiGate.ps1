@@ -61,8 +61,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 27
-    expectedMigrationHead = '20260729_026_command_inbox_outbox_hardening'
+    expectedMigrationCount = 29
+    expectedMigrationHead = '20260729_028_economy_ledger_hardening'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -127,6 +127,10 @@ try {
     Invoke-RequiredProtocolCheck `
         -Phase 'empty-bootstrap' `
         -Name 'PostgreSQL schema release migration paths' `
+        -SchemaReleaseConnectionString $emptyConnection
+    Invoke-RequiredProtocolCheck `
+        -Phase 'empty-bootstrap-economy-evidence' `
+        -Name 'PostgreSQL economy ledger migration foundation' `
         -SchemaReleaseConnectionString $emptyConnection
     $emptyState = Get-MigrationState $databaseNames.Empty
     $emptyWatch.Stop()
@@ -208,6 +212,10 @@ try {
         -Phase 'historical-upgrade' `
         -Name 'PostgreSQL schema release migration paths' `
         -SchemaReleaseConnectionString $restoredConnection
+    Invoke-RequiredProtocolCheck `
+        -Phase 'historical-upgrade-economy-evidence' `
+        -Name 'PostgreSQL economy ledger migration foundation' `
+        -SchemaReleaseConnectionString $restoredConnection
     $historicalState = Get-MigrationState $databaseNames.Restored
     $historicalWatch.Stop()
     Add-ScenarioResult `
@@ -227,7 +235,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 27 `
+        -InitialMigrationCount 29 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -241,6 +249,7 @@ try {
         'PostgreSQL consistent character snapshot reader',
         'PostgreSQL talent command precondition',
         'PostgreSQL talent inbox/outbox transaction',
+        'PostgreSQL developer-item grant transaction',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

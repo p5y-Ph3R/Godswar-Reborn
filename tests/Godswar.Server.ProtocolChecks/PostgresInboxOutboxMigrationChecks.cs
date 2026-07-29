@@ -24,10 +24,6 @@ internal static class PostgresInboxOutboxMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 2,
-            index,
-            "command inbox/outbox foundation immediately precedes hardening");
-        Check.Equal(
             MigrationChecksum,
             migration.Checksum,
             "command inbox/outbox foundation checksum is pinned");

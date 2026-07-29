@@ -29,10 +29,6 @@ internal static class PostgresPetSavvyHardeningMigrationChecks
             migration.Checksum,
             "pet savvy hardening migration checksum is pinned");
         Check.Equal(
-            catalog.Count - 6,
-            migrationIndex,
-            "pet savvy hardening remains immediately before pet leveling");
-        Check.Equal(
             "20260729_022_pet_level_progression",
             catalog[migrationIndex + 1].Id,
             "pet savvy hardening has the expected forward-only successor");

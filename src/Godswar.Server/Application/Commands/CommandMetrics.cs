@@ -66,6 +66,7 @@ internal static class CommandMetrics
             CommandFamily.TalentUpgrade => "talent_upgrade",
             CommandFamily.PetLevelUpgrade => "pet_level_upgrade",
             CommandFamily.EquipmentForge => "equipment_forge",
+            CommandFamily.DeveloperItemGrant => "developer_item_grant",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

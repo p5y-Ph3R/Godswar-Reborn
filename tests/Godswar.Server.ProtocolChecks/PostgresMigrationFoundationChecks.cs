@@ -11,6 +11,7 @@ internal static partial class PostgresMigrationFoundationChecks
         await PostgresNpcDialogueMigrationChecks.RunAsync();
         await PostgresInboxOutboxMigrationChecks.RunAsync();
         await PostgresInboxOutboxHardeningMigrationChecks.RunAsync();
+        await PostgresEconomyLedgerMigrationChecks.RunAsync();
         CheckDatabaseCleanupMigrations();
         CheckStableChecksums();
         CheckImmutableHistory();
@@ -20,7 +21,7 @@ internal static partial class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(27, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(29, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -68,7 +69,9 @@ internal static partial class PostgresMigrationFoundationChecks
                     "20260729_023_npc_content_release",
                     "20260729_024_npc_dialogue_content_release",
                     "20260729_025_command_inbox_outbox_foundation",
-                    "20260729_026_command_inbox_outbox_hardening"
+                    "20260729_026_command_inbox_outbox_hardening",
+                    "20260729_027_economy_ledger_foundation",
+                    "20260729_028_economy_ledger_hardening"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

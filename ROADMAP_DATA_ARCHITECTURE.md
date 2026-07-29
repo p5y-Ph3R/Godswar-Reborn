@@ -22,6 +22,7 @@ document organization; the assessment and recommendations remain intact.
 - [B06 consistent character snapshot reader](docs/data-architecture-b06-character-snapshot-reader-20260729.md)
 - [B07 legacy operation identity and command envelope](docs/data-architecture-b07-command-envelope-20260729.md)
 - [B08 PostgreSQL command inbox/outbox foundation](docs/data-architecture-b08-command-inbox-outbox-20260729.md)
+- [B09 economy ledger foundation and first durable inventory command](docs/data-architecture-b09-economy-ledger-increment-20260729.md)
 
 ## Roadmap sections
 

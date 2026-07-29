@@ -8,6 +8,8 @@ internal static class LegacyCommandIdentityPolicy
         {
             CommandFamily.TalentUpgrade =>
                 CommandIdentityStrength.LegacyAggregateVersion,
+            CommandFamily.DeveloperItemGrant =>
+                CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade or
             CommandFamily.EquipmentForge =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,

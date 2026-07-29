@@ -173,7 +173,10 @@ var gameServer = rawCompatibilityEnabled
                 legacyAuthenticationAccess,
             talentUpgradeCommands:
                 postgresApplicationDataRuntime?
-                    .TalentUpgradeCommands))
+                    .TalentUpgradeCommands,
+            developerItemGrantCommands:
+                postgresApplicationDataRuntime?
+                    .DeveloperItemGrantCommands))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -257,7 +260,10 @@ var secureGameServer = secureTransportFactory is null
             phase4AcceptanceFaults,
             talentUpgradeCommands:
                 postgresApplicationDataRuntime?
-                    .TalentUpgradeCommands),
+                    .TalentUpgradeCommands,
+            developerItemGrantCommands:
+                postgresApplicationDataRuntime?
+                    .DeveloperItemGrantCommands),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");

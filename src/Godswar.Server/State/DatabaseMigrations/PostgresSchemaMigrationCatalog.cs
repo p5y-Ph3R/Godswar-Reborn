@@ -209,6 +209,8 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateNpcContentRelease(),
         CreateNpcDialogueContentRelease(),
         CreateCommandInboxOutboxFoundation(),
-        CreateCommandInboxOutboxHardening()
+        CreateCommandInboxOutboxHardening(),
+        CreateEconomyLedgerFoundation(),
+        CreateEconomyLedgerHardening()
     ];
 }

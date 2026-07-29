@@ -137,6 +137,18 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                     "Authoritative pet state disappeared during startup."),
                 "current release startup preserves authoritative pet rows");
         }
+
+        if (before.AppliedMigrations.Count ==
+                PostgresSchemaMigrationCatalog.All.Count &&
+            before.EconomyFingerprint is not null)
+        {
+            Check.Equal(
+                before.EconomyFingerprint,
+                after.EconomyFingerprint
+                ?? throw new InvalidOperationException(
+                    "Economy baseline or ledger evidence disappeared during startup."),
+                "current release startup preserves economy evidence rows");
+        }
     }
 
     private static async Task<SchemaReleaseSnapshot> ReadSnapshotAsync(
@@ -200,7 +212,13 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                         (SELECT count(*)::text || ':' ||
                             md5(COALESCE(
                                 string_agg(
-                                    to_jsonb(character_row)::text,
+                                    (
+                                        to_jsonb(character_row) -
+                                        ARRAY[
+                                            'wallet_revision',
+                                            'inventory_revision'
+                                        ]::text[]
+                                    )::text,
                                     '|' ORDER BY character_row.id),
                                 ''))
                          FROM public.character_base character_row);
@@ -244,6 +262,61 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                                         stat_row.stat_code),
                                 ''))
                          FROM public.character_pet_stat_values stat_row);
+                    """)
+                : null;
+        var economyFingerprint =
+            await RelationExistsAsync(
+                connection,
+                "public.character_economy_baseline") &&
+            await RelationExistsAsync(
+                connection,
+                "public.character_inventory_baseline_items") &&
+            await RelationExistsAsync(
+                connection,
+                "public.character_currency_ledger") &&
+            await RelationExistsAsync(
+                connection,
+                "public.character_inventory_ledger")
+                ? await ReadTextAsync(connection, """
+                    SELECT
+                        (SELECT count(*)::text || ':' ||
+                            md5(COALESCE(
+                                string_agg(
+                                    to_jsonb(baseline_row)::text,
+                                    '|' ORDER BY
+                                        baseline_row.character_id),
+                                ''))
+                         FROM public.character_economy_baseline
+                             baseline_row) ||
+                        '|' ||
+                        (SELECT count(*)::text || ':' ||
+                            md5(COALESCE(
+                                string_agg(
+                                    to_jsonb(item_row)::text,
+                                    '|' ORDER BY
+                                        item_row.character_id,
+                                        item_row.item_instance_id),
+                                ''))
+                         FROM public.character_inventory_baseline_items
+                             item_row) ||
+                        '|' ||
+                        (SELECT count(*)::text || ':' ||
+                            md5(COALESCE(
+                                string_agg(
+                                    to_jsonb(currency_row)::text,
+                                    '|' ORDER BY currency_row.id),
+                                ''))
+                         FROM public.character_currency_ledger
+                             currency_row) ||
+                        '|' ||
+                        (SELECT count(*)::text || ':' ||
+                            md5(COALESCE(
+                                string_agg(
+                                    to_jsonb(inventory_row)::text,
+                                    '|' ORDER BY inventory_row.id),
+                                ''))
+                         FROM public.character_inventory_ledger
+                             inventory_row);
                     """)
                 : null;
 
@@ -302,6 +375,7 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                 $"{migration.Id}:{migration.Checksum}")) +
             $"|{inventoryFingerprint}|{accountCharacterFingerprint}|" +
             $"{packetPayloadFingerprint}|{petFingerprint}|" +
+            $"{economyFingerprint}|" +
             $"{packetRelationCount}:{hasFunction}:{triggerCount}:" +
             $"{captureForeignKeyCount}:{unvalidatedConstraints}:{invalidIndexes}";
 
@@ -312,6 +386,7 @@ internal static class PostgresSchemaReleaseIntegrationChecks
             accountCharacterFingerprint,
             packetPayloadFingerprint,
             petFingerprint,
+            economyFingerprint,
             packetRelationCount,
             hasFunction,
             triggerCount,
@@ -366,6 +441,7 @@ internal static class PostgresSchemaReleaseIntegrationChecks
         string? AccountCharacterFingerprint,
         string? PacketPayloadFingerprint,
         string? PetFingerprint,
+        string? EconomyFingerprint,
         int PacketRelationCount,
         bool HasOpcodeNameFunction,
         int OpcodeNameTriggerCount,

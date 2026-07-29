@@ -12,6 +12,8 @@ internal static class PostgresInboxOutboxHardeningMigrationChecks
         "20260729_026_command_inbox_outbox_hardening";
     private const string MigrationChecksum =
         "8BA9B0B0136429140610FEC13BC58F8DD45CD1C6306317FB849271163EB59709";
+    private const string NextMigrationId =
+        "20260729_027_economy_ledger_foundation";
 
     public static Task RunAsync()
     {
@@ -24,10 +26,6 @@ internal static class PostgresInboxOutboxHardeningMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 1,
-            index,
-            "command inbox/outbox hardening is the migration head");
-        Check.Equal(
             MigrationChecksum,
             migration.Checksum,
             "command inbox/outbox hardening checksum is pinned");
@@ -39,6 +37,10 @@ internal static class PostgresInboxOutboxHardeningMigrationChecks
             PreviousMigrationChecksum,
             catalog[index - 1].Checksum,
             "command inbox/outbox hardening preserves its applied predecessor");
+        Check.Equal(
+            NextMigrationId,
+            catalog[index + 1].Id,
+            "command inbox/outbox hardening has the expected economy successor");
 
         CheckEventIdentity(migration.Sql);
         CheckAggregateKeys(migration.Sql);

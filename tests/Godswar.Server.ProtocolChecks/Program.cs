@@ -48,9 +48,15 @@ internal static partial class Program
                 "PostgreSQL talent inbox/outbox transaction",
                 PostgresTalentInboxOutboxIntegrationChecks.RunAsync),
             (
+                "PostgreSQL developer-item grant transaction",
+                PostgresDeveloperItemGrantIntegrationChecks.RunAsync),
+            (
                 "PostgreSQL outbox dispatcher recovery and ordering",
                 PostgresOutboxDispatcherIntegrationChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
+            (
+                PostgresEconomyLedgerMigrationIntegrationChecks.CheckName,
+                PostgresEconomyLedgerMigrationIntegrationChecks.RunAsync),
             ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
             ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),
             .. PetProtocolCheckCatalog.All,

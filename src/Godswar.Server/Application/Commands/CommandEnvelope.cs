@@ -8,7 +8,8 @@ internal enum CommandFamily : ushort
 {
     TalentUpgrade = 1,
     PetLevelUpgrade = 2,
-    EquipmentForge = 3
+    EquipmentForge = 3,
+    DeveloperItemGrant = 4
 }
 
 internal enum CommandIdentityStrength : byte

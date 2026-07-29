@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -15,7 +16,8 @@ internal sealed record DeveloperItemRequest(
     DeveloperGrantMaterialDefinition? Material,
     int Quantity,
     DeveloperMountDefinition? Mount = null,
-    DeveloperMountListRequest? MountList = null);
+    DeveloperMountListRequest? MountList = null,
+    Guid? ClientOperationId = null);
 
 internal sealed record DeveloperMountListRequest(
     int? Page,
@@ -29,7 +31,8 @@ internal static class DeveloperItemCommand
     public const string Prefix = "/item";
     public const string LegacyPrefix = "/gmitem";
     public const string MaskedLegacyPrefix = "/******";
-    public const int MaximumQuantity = KitBagItemGrantPlanner.MaximumQuantity;
+    public const int MaximumQuantity =
+        DeveloperItemGrantCommandEnvelope.MaximumQuantity;
 
     private static readonly string[] Prefixes = [Prefix, LegacyPrefix, MaskedLegacyPrefix];
 
@@ -108,14 +111,37 @@ internal static class DeveloperItemCommand
             return true;
         }
 
-        if (tokens.Length > quantityOffset + 1)
+        if (tokens.Length > quantityOffset + 2)
         {
             error = "Too many command arguments.";
             return true;
         }
 
         var quantity = 1;
-        if (tokens.Length == quantityOffset + 1 &&
+        Guid? clientOperationId = null;
+        var remainingTokens = tokens.Length - quantityOffset;
+        if (remainingTokens > 0 &&
+            !TryParseOperationId(
+                tokens[^1],
+                out clientOperationId,
+                out var operationTokenRecognized))
+        {
+            if (operationTokenRecognized)
+            {
+                error = "Operation ID must use op=<UUID> with a non-empty D-format UUID.";
+                return true;
+            }
+        }
+
+        var hasOperationId = clientOperationId.HasValue;
+        var quantityTokenCount = remainingTokens - (hasOperationId ? 1 : 0);
+        if (quantityTokenCount > 1)
+        {
+            error = "Too many command arguments.";
+            return true;
+        }
+
+        if (quantityTokenCount == 1 &&
             (!int.TryParse(tokens[quantityOffset], out quantity) ||
              quantity is < 1 or > MaximumQuantity))
         {
@@ -126,12 +152,14 @@ internal static class DeveloperItemCommand
         request = new DeveloperItemRequest(
             DeveloperItemOperation.Add,
             material,
-            quantity);
+            quantity,
+            ClientOperationId: clientOperationId);
         return true;
     }
 
     private const string Usage =
-        "Usage: /item add <item-id|material-alias> [quantity], /item mount list [page|family], " +
+        "Usage: /item add <item-id|material-alias> [quantity] [op=<UUID>], " +
+        "/item mount list [page|family], " +
         "/item mount add <item-id|family tier|max|special>, or /item clearbag confirm.";
 
     private static bool TryParseMount(
@@ -267,5 +295,31 @@ internal static class DeveloperItemCommand
         }
 
         return bestOffset;
+    }
+
+    private static bool TryParseOperationId(
+        string token,
+        out Guid? operationId,
+        out bool recognized)
+    {
+        const string prefix = "op=";
+        operationId = null;
+        recognized = token.StartsWith(
+            prefix,
+            StringComparison.OrdinalIgnoreCase);
+        if (!recognized)
+        {
+            return false;
+        }
+
+        var value = token[prefix.Length..];
+        if (!Guid.TryParseExact(value, "D", out var parsed) ||
+            parsed == Guid.Empty)
+        {
+            return false;
+        }
+
+        operationId = parsed;
+        return true;
     }
 }

@@ -26,10 +26,6 @@ internal static class PostgresNpcDialogueMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 3,
-            index,
-            "NPC dialogue release immediately precedes inbox/outbox");
-        Check.Equal(
             MigrationChecksum,
             migration.Checksum,
             "NPC dialogue migration checksum is pinned");

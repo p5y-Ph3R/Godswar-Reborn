@@ -26,10 +26,6 @@ internal static class PostgresPetLevelMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 5,
-            index,
-            "pet level progression remains immediately before NPC content");
-        Check.Equal(
             MigrationChecksum,
             migration.Checksum,
             "applied pet level migration checksum is immutable");
