@@ -43,6 +43,7 @@ internal static partial class Program
             ("Live reversible player-movement ECS adapter", PlayerMovementEcsLiveAdapterChecks.RunAsync),
             ("Monster-to-player damage ECS parity", MonsterPlayerDamageEcsParityChecks.RunAsync),
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
+            ("Data-boundary architecture ratchet", DataBoundaryArchitectureChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
             ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
             ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),

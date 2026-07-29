@@ -30,6 +30,12 @@ jobs:
         shell: pwsh
         run: dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
 
+      - name: Data-boundary architecture ratchet
+        shell: pwsh
+        run: |
+          dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.ProtocolChecks.dll `
+            "Data-boundary architecture ratchet"
+
       - name: Replay, fuzz, metrics, overload, and admission checks
         shell: pwsh
         run: |
