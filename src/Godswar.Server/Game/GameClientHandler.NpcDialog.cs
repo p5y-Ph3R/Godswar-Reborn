@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -92,8 +93,109 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        HolyStoneWireIntent? secureHolyStoneIntent = null;
+        HolyStoneWireIntent? rawHolyStoneIntent = null;
+        if (packet.ClientOperationId.HasValue &&
+            _session.IsSecure &&
+            HolyStoneProtocol.IsEndpoint(npcId, dialogIndex) &&
+            HolyStoneProtocol.TryResolveBoundaryOperation(
+                subId,
+                out var secureHolyStoneOperation))
+        {
+            if (!HolyStoneProtocol.TryReadMutation(
+                    packet,
+                    out var exactNpcId,
+                    out var exactDialogIndex,
+                    out var exactIntent) ||
+                exactNpcId != npcId ||
+                exactDialogIndex != dialogIndex ||
+                exactIntent.Operation != secureHolyStoneOperation)
+            {
+                await RejectMalformedSecureHolyStoneAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    secureHolyStoneOperation,
+                    "packet_shape_mismatch",
+                    cancellationToken);
+                return;
+            }
+
+            secureHolyStoneIntent = exactIntent;
+        }
+        else if (!packet.ClientOperationId.HasValue &&
+                 _session.IsSecure &&
+                 HolyStoneProtocol.IsEndpoint(npcId, dialogIndex) &&
+                 HolyStoneProtocol.IsMutationSubId(subId) &&
+                 !HolyStoneProtocol.IsExactMountNavigation(packet))
+        {
+            await RejectUnidentifiedSecureHolyStoneAsync(
+                npcId,
+                dialogIndex,
+                subId,
+                cancellationToken);
+            return;
+        }
+        else if (!_session.IsSecure &&
+                 HolyStoneProtocol.IsEndpoint(npcId, dialogIndex))
+        {
+            var exactNavigation =
+                !packet.ClientOperationId.HasValue &&
+                HolyStoneProtocol.IsExactMountNavigation(packet);
+            var exactNpcId = 0u;
+            var exactDialogIndex = 0;
+            var exactIntent = default(HolyStoneWireIntent);
+            var exactMutation =
+                !packet.ClientOperationId.HasValue &&
+                HolyStoneProtocol.TryReadMutation(
+                    packet,
+                    out exactNpcId,
+                    out exactDialogIndex,
+                    out exactIntent) &&
+                exactNpcId == npcId &&
+                exactDialogIndex == dialogIndex;
+            if (!exactNavigation && !exactMutation)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.NpcFunctionActionResponse(
+                        npcId,
+                        dialogIndex,
+                        HolyStoneNativeResults.WrongSelectionSubId),
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                return;
+            }
+
+            if (exactMutation)
+            {
+                rawHolyStoneIntent = exactIntent;
+            }
+        }
+
         if (!TryResolveMapNpc(npcId, out var npc))
         {
+            if (secureHolyStoneIntent is { } holyStoneIntent)
+            {
+                if (await TryReplayDurableHolyStoneBeforeRouteRejectionAsync(
+                        packet,
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent,
+                        cancellationToken))
+                {
+                    return;
+                }
+
+                await RejectUnroutedSecureHolyStoneAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    holyStoneIntent,
+                    "npc_not_authoritative_for_map",
+                    cancellationToken);
+                return;
+            }
+
             if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                     packet,
                     npcId,
@@ -119,6 +221,28 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         if (route is null || dialogIndex != route.DialogIndex)
         {
+            if (secureHolyStoneIntent is { } holyStoneIntent)
+            {
+                if (await TryReplayDurableHolyStoneBeforeRouteRejectionAsync(
+                        packet,
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent,
+                        cancellationToken))
+                {
+                    return;
+                }
+
+                await RejectUnroutedSecureHolyStoneAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    holyStoneIntent,
+                    "dialogue_route_mismatch",
+                    cancellationToken);
+                return;
+            }
+
             if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                     packet,
                     npcId,
@@ -243,6 +367,33 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (route.Behavior == NpcDialogueBehavior.HolyStone)
+        {
+            if (secureHolyStoneIntent is { } holyStoneIntent)
+            {
+                await HandleDurableHolyStoneAsync(
+                    npcId,
+                    dialogIndex,
+                    holyStoneIntent,
+                    packet.ClientOperationId!.Value,
+                    cancellationToken);
+                return;
+            }
+
+            // A UUID-bearing command is an authenticated secure command
+            // boundary. If its body did not pass the exact Holy Stone shape
+            // above, it must never fall through to the non-idempotent legacy
+            // store path.
+            if (packet.ClientOperationId.HasValue &&
+                _session.IsSecure)
+            {
+                Console.WriteLine(
+                    "[holy-stone] preserved unsupported secure packet " +
+                    $"npc={npcId} dialog={dialogIndex} subId={subId}");
+                return;
+            }
+        }
+
         if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                 packet,
                 npcId,
@@ -286,112 +437,13 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        Console.WriteLine(
-            $"[holy-stone] action npc={npcId} dialog={dialogIndex} subId={subId} args={string.Join(',', args)}");
-
-        if (subId == -1)
-        {
-            return;
-        }
-
-        if (subId == HolyStoneMenuMount && !HasClientKitBagSlot(args))
-        {
-            await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(
-                    npcId,
-                    route.DialogIndex,
-                    106,
-                    206,
-                    306,
-                    406),
-                cancellationToken,
-                "NpcFunctionActionResponse");
-            return;
-        }
-
-        var operation = subId switch
-        {
-            HolyStoneMenuMount or 106 or 206 or 306 or 406 => HolyStoneOperation.MountStone,
-            HolyStoneMenuRemove => HolyStoneOperation.RemoveStone,
-            HolyStoneMenuDrill => HolyStoneOperation.DrillSocket,
-            _ => (HolyStoneOperation?)null
-        };
-
-        if (operation is null)
-        {
-            await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(
-                    npcId,
-                    route.DialogIndex,
-                    HolyStoneInsufficientFunds),
-                cancellationToken,
-                "NpcFunctionActionResponse");
-            return;
-        }
-
-        var targetSlot = FirstClientKitBagSlot(args);
-        var stoneSlot = NextClientKitBagSlot(args, targetSlot);
-        var destinationSlot = stoneSlot >= 0 ? stoneSlot : -1;
-        var socketIndex = SocketIndexFromSubId(subId);
-        var updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
-            _account.Id,
-            _character.Id,
-            operation.Value,
-            targetSlot,
-            socketIndex,
-            stoneSlot,
-            destinationSlot,
+        await HandleLegacyHolyStoneAsync(
+            npcId,
+            route.DialogIndex,
+            subId,
+            args,
+            rawHolyStoneIntent,
             cancellationToken);
-
-        var responseSubId = updatedCharacter is null
-            ? HolyStoneInsufficientFunds
-            : operation.Value switch
-            {
-                HolyStoneOperation.MountStone => HolyStoneMountSuccess,
-                HolyStoneOperation.RemoveStone => HolyStoneRemoveSuccess,
-                HolyStoneOperation.DrillSocket => HolyStoneDrillSuccess,
-                _ => HolyStoneInsufficientFunds
-            };
-
-        await _session.SendAsync(
-            PacketBuilder.NpcFunctionActionResponse(
-                npcId,
-                route.DialogIndex,
-                responseSubId),
-            cancellationToken,
-            "NpcFunctionActionResponse");
-
-        if (updatedCharacter is null)
-        {
-            return;
-        }
-
-        _character = updatedCharacter;
-        await RefreshActiveCharacterStatsAsync($"holy-stone-{operation.Value}", cancellationToken);
-        _registry.UpdateCharacter(_session, _character);
-
-        await _session.SendAsync(
-            BuildLocalPlayerStatusUpdate(),
-            cancellationToken,
-            "PlayerStatusUpdate");
-        await _session.SendAsync(
-            PacketBuilder.EquipmentItemSnapshot(_character, EquipmentSlots.Weapon),
-            cancellationToken,
-            "EquipmentItemSnapshot");
-        foreach (var detailPage in PacketBuilder.KitBagDetailPages(_character))
-        {
-            await _session.SendAsync(detailPage, cancellationToken, "KitBagDetail");
-        }
-
-        await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character),
-            cancellationToken,
-            "EquipmentVisualRefresh");
-        await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
-            cancellationToken,
-            "PlayerDetailRefreshAck");
-        await BroadcastEquipmentRefreshAsync($"holy-stone-{operation.Value}", cancellationToken);
     }
 
     private static CommandFamily?

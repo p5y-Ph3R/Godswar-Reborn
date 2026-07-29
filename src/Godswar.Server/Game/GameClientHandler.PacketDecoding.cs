@@ -42,66 +42,6 @@ internal sealed partial class GameClientHandler
         return true;
     }
 
-    private static bool HasClientKitBagSlot(IReadOnlyList<int> args)
-    {
-        return args.Any(arg => DecodeClientKitBagSlot(arg) >= 0);
-    }
-
-    private static int FirstClientKitBagSlot(IReadOnlyList<int> args)
-    {
-        foreach (var arg in args)
-        {
-            var slot = DecodeClientKitBagSlot(arg);
-            if (slot >= 0)
-            {
-                return slot;
-            }
-        }
-
-        return -1;
-    }
-
-    private static int NextClientKitBagSlot(IReadOnlyList<int> args, int firstSlot)
-    {
-        foreach (var arg in args)
-        {
-            var slot = DecodeClientKitBagSlot(arg);
-            if (slot >= 0 && slot != firstSlot)
-            {
-                return slot;
-            }
-        }
-
-        return -1;
-    }
-
-    private static int DecodeClientKitBagSlot(int value)
-    {
-        if (value is >= 100 and < 196)
-        {
-            return value - 100;
-        }
-
-        if (value is >= 0 and < 96)
-        {
-            return value;
-        }
-
-        return -1;
-    }
-
-    private static int SocketIndexFromSubId(int subId)
-    {
-        return subId switch
-        {
-            106 => 0,
-            206 => 1,
-            306 => 2,
-            406 => 3,
-            _ => -1
-        };
-    }
-
     private static void LogReceived(GamePacket packet)
     {
         Console.WriteLine(

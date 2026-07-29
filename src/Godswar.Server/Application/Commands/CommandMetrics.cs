@@ -88,6 +88,12 @@ internal static class CommandMetrics
                 "kit_bag_item_move",
             CommandFamily.EquipmentBagTransfer =>
                 "equipment_bag_transfer",
+            CommandFamily.HolyStoneMount =>
+                "holy_stone_mount",
+            CommandFamily.HolyStoneRemove =>
+                "holy_stone_remove",
+            CommandFamily.HolyStoneDrill =>
+                "holy_stone_drill",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

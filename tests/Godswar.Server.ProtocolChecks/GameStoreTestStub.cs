@@ -305,6 +305,7 @@ internal abstract class GameStoreTestStub : IGameStore
         int accountId,
         int characterId,
         HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
         int socketIndex,
         int stoneKitBagSlot,

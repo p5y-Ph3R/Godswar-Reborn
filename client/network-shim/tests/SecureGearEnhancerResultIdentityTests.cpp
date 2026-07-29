@@ -312,7 +312,7 @@ void CheckNewFamilyResultCodec() {
     unknown.disposition =
         SecureLegacyCommandDisposition::Rejected;
     unknown.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(16);
+        static_cast<SecureLegacyCommandFamily>(19);
     unknown.operationId[0] = 1;
     std::uint8_t encoded[32]{};
     Check(
@@ -332,7 +332,7 @@ void CheckNewFamilyResultCodec() {
             sizeof(encoded)),
         "valid family setup did not encode");
     encoded[2] = 0;
-    encoded[3] = 16;
+    encoded[3] = 19;
     SecureLegacyCommandResult decoded{};
     Check(
         !TryDecodeSecureLegacyCommandResult(

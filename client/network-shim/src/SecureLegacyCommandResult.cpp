@@ -47,7 +47,13 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::KitBagItemMove ||
         family ==
-            SecureLegacyCommandFamily::EquipmentBagTransfer;
+            SecureLegacyCommandFamily::EquipmentBagTransfer ||
+        family ==
+            SecureLegacyCommandFamily::HolyStoneMount ||
+        family ==
+            SecureLegacyCommandFamily::HolyStoneRemove ||
+        family ==
+            SecureLegacyCommandFamily::HolyStoneDrill;
 }
 
 bool HasValidRevision(

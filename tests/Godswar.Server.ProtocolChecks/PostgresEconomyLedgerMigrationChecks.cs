@@ -42,9 +42,9 @@ internal static class PostgresEconomyLedgerMigrationChecks
             hardeningIndex,
             "economy foundation and hardening remain adjacent");
         Check.Equal(
-            catalog.Count - 1,
-            hardeningIndex,
-            "economy hardening is the migration head");
+            "20260730_029_holy_stone_material_templates",
+            catalog[hardeningIndex + 1].Id,
+            "Holy Stone material content follows economy hardening");
         Check.Equal(
             FoundationMigrationChecksum,
             foundation.Checksum,

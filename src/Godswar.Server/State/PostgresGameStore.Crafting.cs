@@ -259,6 +259,7 @@ internal sealed partial class PostgresGameStore
         int accountId,
         int characterId,
         HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
         int socketIndex,
         int stoneKitBagSlot,
@@ -269,8 +270,9 @@ internal sealed partial class PostgresGameStore
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         byte profession;
+        int gold;
         await using (var command = new NpgsqlCommand("""
-            SELECT cb.profession
+            SELECT cb.profession, cb."Stone"
             FROM character_base cb
             WHERE cb.account_id = @accountId AND cb.id = @characterId
             FOR UPDATE;
@@ -286,6 +288,7 @@ internal sealed partial class PostgresGameStore
             }
 
             profession = (byte)reader.GetInt16(0);
+            gold = reader.GetInt32(1);
         }
 
         var (equipment, kitBag) = await LoadAuthoritativeItemProjectionsForUpdateAsync(
@@ -294,11 +297,27 @@ internal sealed partial class PostgresGameStore
             characterId,
             cancellationToken);
 
+        var goldCost = 0;
+        if (operation == HolyStoneOperation.DrillSocket &&
+            (!HolyStoneItemMutator.TryGetDrillGoldCost(
+                equipment,
+                kitBag,
+                profession,
+                targetMode,
+                targetKitBagSlot,
+                out goldCost) ||
+             gold < goldCost))
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
         if (!HolyStonePersistencePlanner.TryCreate(
                 equipment,
                 kitBag,
                 profession,
                 operation,
+                targetMode,
                 targetKitBagSlot,
                 socketIndex,
                 stoneKitBagSlot,
@@ -320,6 +339,32 @@ internal sealed partial class PostgresGameStore
                 characterId,
                 mutation,
                 cancellationToken);
+        }
+
+        if (goldCost > 0)
+        {
+            await using var goldCommand = connection.CreateCommand();
+            goldCommand.Transaction = transaction;
+            goldCommand.CommandText = """
+                UPDATE character_base
+                SET "Stone" = "Stone" - @goldCost
+                WHERE account_id = @accountId
+                  AND id = @characterId
+                  AND "Stone" = @goldBefore
+                  AND "Stone" >= @goldCost;
+                """;
+            goldCommand.Parameters.AddWithValue("goldCost", goldCost);
+            goldCommand.Parameters.AddWithValue("accountId", accountId);
+            goldCommand.Parameters.AddWithValue(
+                "characterId",
+                characterId);
+            goldCommand.Parameters.AddWithValue("goldBefore", gold);
+            if (await goldCommand.ExecuteNonQueryAsync(
+                    cancellationToken) != 1)
+            {
+                throw new InvalidDataException(
+                    "Holy Stone Drill Gold debit was not exact.");
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);

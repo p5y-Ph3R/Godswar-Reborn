@@ -170,6 +170,23 @@ SecurePendingOperationRegistry::DescribePacket(
         return inventoryResult;
     }
 
+    LegacyHolyStoneCommand holyStoneCommand{};
+    switch (ClassifyLegacyHolyStonePacket(
+                packet,
+                packetBytes,
+                &holyStoneCommand)) {
+        case LegacyHolyStonePacketKind::Commit:
+            return DescribeHolyStoneCommand(
+                holyStoneCommand,
+                now,
+                descriptor);
+        case LegacyHolyStonePacketKind::InvalidMutation:
+            return SecureOperationRegistryResult::InvalidPacket;
+        case LegacyHolyStonePacketKind::UnrelatedOrNavigation:
+        default:
+            break;
+    }
+
     std::uint8_t
         loginPrincipal[SecurePrincipalFingerprintBytes]{};
     int selectionSlot = -1;

@@ -47,7 +47,10 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.MapTransitions.cs", "SaveCharacterPositionAsync", 2),
         new("Game/GameClientHandler.MovementCombat.cs", "SaveCharacterPositionAsync", 1),
         new("Game/GameClientHandler.MovementCombat.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameClientHandler.NpcDialog.cs", "ApplyWeaponHolyStoneAsync", 1),
+        new(
+            "Game/GameClientHandler.LegacyHolyStone.cs",
+            "ApplyWeaponHolyStoneAsync",
+            1),
         new("Game/GameClientHandler.PetEggs.cs", "GetOwnedPetsAsync", 1),
         new("Game/GameClientHandler.PetEggs.cs", "HatchPetEggAsync", 1),
         new("Game/GameClientHandler.PetLevel.cs", "UpgradePetLevelAsync", 1),
@@ -130,7 +133,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.LoginWorldEntry.cs", 5),
         new("Game/GameClientHandler.MapTransitions.cs", 2),
         new("Game/GameClientHandler.MovementCombat.cs", 2),
-        new("Game/GameClientHandler.NpcDialog.cs", 1),
+        new("Game/GameClientHandler.LegacyHolyStone.cs", 1),
         new("Game/GameClientHandler.PetEggs.cs", 2),
         new("Game/GameClientHandler.PetLevel.cs", 1),
         new("Game/GameClientHandler.Pets.cs", 2),
@@ -262,7 +265,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "FB8A884E16A099BC274C953070E2E5370DFF04D6F897270D1D387CF9DEE03A27";
+        "03C18232F6C601EC1BB1B59F03154301F10192DC7B5574EEA5D39066EF20ECE0";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

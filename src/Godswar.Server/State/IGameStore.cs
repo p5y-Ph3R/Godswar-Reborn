@@ -241,6 +241,7 @@ internal interface IGameStore : IAsyncDisposable
         int accountId,
         int characterId,
         HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
         int socketIndex,
         int stoneKitBagSlot,

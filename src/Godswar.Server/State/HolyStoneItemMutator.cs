@@ -1,11 +1,33 @@
+using Godswar.Server.Domain.Inventory;
+
 namespace Godswar.Server.State;
 
 internal static class HolyStoneItemMutator
 {
     public const int MaxSockets = 4;
     public const int HeatedHolyStoneItemId = 9030;
-    private const short DefaultHeatedEffectId = 1;
-    private const short DefaultStoneLevel = 1;
+    private const int BasicMaximumSockets = 2;
+
+    public static bool TryGetDrillGoldCost(
+        string equipment,
+        string kitBag,
+        byte profession,
+        HolyStoneTargetMode targetMode,
+        int targetKitBagSlot,
+        out int goldCost)
+    {
+        goldCost = 0;
+        return TryGetTargetWeapon(
+                equipment,
+                kitBag,
+                profession,
+                targetMode,
+                targetKitBagSlot,
+                out var target) &&
+            HolyStoneDrillCostPolicy.TryGetGoldCost(
+                target.Item.SocketCount,
+                out goldCost);
+    }
 
     public static bool TryApply(
         string equipment,
@@ -20,13 +42,55 @@ internal static class HolyStoneItemMutator
         out string updatedKitBag,
         out string summary)
     {
+        return TryApply(
+            equipment,
+            kitBag,
+            profession,
+            operation,
+            HolyStoneTargetMode.LegacyFallback,
+            targetKitBagSlot,
+            socketIndex,
+            stoneKitBagSlot,
+            destinationKitBagSlot,
+            out updatedEquipment,
+            out updatedKitBag,
+            out summary);
+    }
+
+    public static bool TryApply(
+        string equipment,
+        string kitBag,
+        byte profession,
+        HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
+        int targetKitBagSlot,
+        int socketIndex,
+        int stoneKitBagSlot,
+        int destinationKitBagSlot,
+        out string updatedEquipment,
+        out string updatedKitBag,
+        out string summary)
+    {
         updatedEquipment = equipment;
         updatedKitBag = kitBag;
         summary = string.Empty;
 
-        if (!TryGetTargetWeapon(equipment, kitBag, profession, targetKitBagSlot, out var target))
+        if (!TryGetTargetWeapon(
+                equipment,
+                kitBag,
+                profession,
+                targetMode,
+                targetKitBagSlot,
+                out var target))
         {
             summary = "no weapon target found";
+            return false;
+        }
+        if (operation == HolyStoneOperation.MountStone &&
+            target.IsKitBag &&
+            target.Slot == stoneKitBagSlot)
+        {
+            summary = "target and material slots must differ";
             return false;
         }
 
@@ -60,9 +124,29 @@ internal static class HolyStoneItemMutator
         string equipment,
         string kitBag,
         byte profession,
+        HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
         out HolyStoneTarget target)
     {
+        if (targetMode == HolyStoneTargetMode.EquippedWeapon)
+        {
+            var equipped = EquipmentSlots.GetItem(
+                equipment,
+                profession,
+                EquipmentSlots.Weapon);
+            if (IsWeapon(equipped.Id))
+            {
+                target = new HolyStoneTarget(
+                    false,
+                    EquipmentSlots.Weapon,
+                    equipped);
+                return true;
+            }
+
+            target = default;
+            return false;
+        }
+
         if (IsKitBagSlot(targetKitBagSlot))
         {
             var requestedItem = KitBagSlots.GetItem(kitBag, targetKitBagSlot);
@@ -71,6 +155,12 @@ internal static class HolyStoneItemMutator
                 target = new HolyStoneTarget(true, targetKitBagSlot, requestedItem);
                 return true;
             }
+        }
+
+        if (targetMode == HolyStoneTargetMode.KitBag)
+        {
+            target = default;
+            return false;
         }
 
         for (var slot = 0; slot < 96; slot++)
@@ -97,9 +187,9 @@ internal static class HolyStoneItemMutator
     private static bool TryDrill(ref CompactItemEntry item, out string summary)
     {
         var current = Math.Clamp(item.SocketCount, (short)0, (short)MaxSockets);
-        if (current >= MaxSockets)
+        if (current >= BasicMaximumSockets)
         {
-            summary = $"socket_count already {MaxSockets}";
+            summary = $"socket_count already {BasicMaximumSockets}";
             return false;
         }
 
@@ -120,8 +210,8 @@ internal static class HolyStoneItemMutator
         var socketCount = Math.Clamp(item.SocketCount, (short)0, (short)MaxSockets);
         if (socketCount <= 0)
         {
-            socketCount = 1;
-            item = item with { SocketCount = socketCount };
+            summary = "target has no drilled socket";
+            return false;
         }
 
         var socket = ResolveMountSocket(item, socketIndex, socketCount);
@@ -134,7 +224,15 @@ internal static class HolyStoneItemMutator
         var stoneItem = IsKitBagSlot(stoneKitBagSlot)
             ? KitBagSlots.GetItem(kitBag, stoneKitBagSlot)
             : CompactItemEntry.Empty;
-        var effectId = ResolveHeatedEffectId(stoneItem.Id);
+        if (stoneItem.IsEmpty ||
+            stoneItem.Stack <= 0 ||
+            !TryResolveHeatedEffectId(
+                stoneItem.Id,
+                out var effectId))
+        {
+            summary = "selected material is not a Fire Spirit";
+            return false;
+        }
         var stoneLevel = ResolveStoneLevel(stoneItem);
         if (HasSocketEffect(item, effectId))
         {
@@ -143,7 +241,17 @@ internal static class HolyStoneItemMutator
         }
 
         item = SetSocket(item, socket, effectId, stoneLevel);
-        if (!stoneItem.IsEmpty)
+        if (stoneItem.Stack > 1)
+        {
+            updatedKitBag = KitBagSlots.SetSlot(
+                updatedKitBag,
+                stoneKitBagSlot,
+                (stoneItem with
+                {
+                    Stack = checked((short)(stoneItem.Stack - 1))
+                }).ToCompactString());
+        }
+        else
         {
             updatedKitBag = KitBagSlots.ClearSlot(updatedKitBag, stoneKitBagSlot);
         }
@@ -168,17 +276,25 @@ internal static class HolyStoneItemMutator
             return false;
         }
 
-        item = SetSocket(item, socket, null, null);
+        var removedLevel = GetSocketLevel(item, socket);
         var destinationSlot = IsKitBagSlot(destinationKitBagSlot) &&
                               KitBagSlots.GetItem(updatedKitBag, destinationKitBagSlot).IsEmpty
             ? destinationKitBagSlot
             : FindFirstEmptyKitBagSlot(updatedKitBag);
 
-        if (destinationSlot >= 0)
+        if (destinationSlot < 0)
         {
-            updatedKitBag = KitBagSlots.SetSlot(updatedKitBag, destinationSlot, CreateSimpleItem(HeatedHolyStoneItemId).ToCompactString());
+            summary = "kit bag is full";
+            return false;
         }
 
+        item = SetSocket(item, socket, null, null);
+        updatedKitBag = KitBagSlots.SetSlot(
+            updatedKitBag,
+            destinationSlot,
+            CreateSimpleItem(
+                HeatedHolyStoneItemId,
+                removedLevel ?? 1).ToCompactString());
         summary = $"removed socket={socket + 1} destinationSlot={destinationSlot}";
         return true;
     }
@@ -208,14 +324,6 @@ internal static class HolyStoneItemMutator
             return requestedSocket;
         }
 
-        for (var socket = 0; socket < MaxSockets; socket++)
-        {
-            if (GetSocketEffect(item, socket).HasValue)
-            {
-                return socket;
-            }
-        }
-
         return -1;
     }
 
@@ -233,6 +341,18 @@ internal static class HolyStoneItemMutator
         };
     }
 
+    private static short? GetSocketLevel(
+        CompactItemEntry item,
+        int socket) =>
+        socket switch
+        {
+            0 => item.Socket1Level,
+            1 => item.Socket2Level,
+            2 => item.Socket3Level,
+            3 => item.Socket4Level,
+            _ => null
+        };
+
     private static CompactItemEntry SetSocket(CompactItemEntry item, int socket, short? effectId, short? level)
     {
         return socket switch
@@ -247,9 +367,11 @@ internal static class HolyStoneItemMutator
         };
     }
 
-    private static short ResolveHeatedEffectId(uint itemId)
+    private static bool TryResolveHeatedEffectId(
+        uint itemId,
+        out short effectId)
     {
-        return itemId switch
+        effectId = itemId switch
         {
             9060 => 1,
             9061 => 2,
@@ -261,8 +383,9 @@ internal static class HolyStoneItemMutator
             9067 => 4,
             9088 => 17,
             9089 => 18,
-            _ => DefaultHeatedEffectId
+            _ => 0
         };
+        return effectId > 0;
     }
 
     private static bool HasSocketEffect(CompactItemEntry item, short effectId)
@@ -290,7 +413,7 @@ internal static class HolyStoneItemMutator
             return (short)Math.Clamp((int)stoneItem.Quality, 1, 10);
         }
 
-        return DefaultStoneLevel;
+        return 1;
     }
 
     private static int FindFirstEmptyKitBagSlot(string kitBag)
@@ -306,13 +429,15 @@ internal static class HolyStoneItemMutator
         return -1;
     }
 
-    private static CompactItemEntry CreateSimpleItem(int itemId)
+    private static CompactItemEntry CreateSimpleItem(
+        int itemId,
+        short grade)
     {
         return CompactItemEntry.Empty with
         {
             Id = (uint)itemId,
             Quality = 1,
-            Grade = 1,
+            Grade = (short)Math.Clamp(grade, (short)1, (short)10),
             Bound = 1,
             Stack = 1
         };

@@ -463,6 +463,7 @@ internal sealed partial class JsonGameStore
         int accountId,
         int characterId,
         HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
         int socketIndex,
         int stoneKitBagSlot,
@@ -479,11 +480,26 @@ internal sealed partial class JsonGameStore
                 return null;
             }
 
+            var goldCost = 0;
+            if (operation == HolyStoneOperation.DrillSocket &&
+                (!HolyStoneItemMutator.TryGetDrillGoldCost(
+                    character.Equipment,
+                    character.KitBag,
+                    character.Profession,
+                    targetMode,
+                    targetKitBagSlot,
+                    out goldCost) ||
+                 character.Gold < goldCost))
+            {
+                return null;
+            }
+
             if (!HolyStoneItemMutator.TryApply(
                     character.Equipment,
                     character.KitBag,
                     character.Profession,
                     operation,
+                    targetMode,
                     targetKitBagSlot,
                     socketIndex,
                     stoneKitBagSlot,
@@ -497,6 +513,7 @@ internal sealed partial class JsonGameStore
 
             character.Equipment = equipment;
             character.KitBag = kitBag;
+            character.Gold = checked(character.Gold - goldCost);
             await SaveUnsafeAsync(db, cancellationToken);
             return Clone(character);
         }

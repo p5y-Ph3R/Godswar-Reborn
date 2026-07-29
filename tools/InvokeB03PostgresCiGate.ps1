@@ -61,8 +61,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 29
-    expectedMigrationHead = '20260729_028_economy_ledger_hardening'
+    expectedMigrationCount = 30
+    expectedMigrationHead = '20260730_029_holy_stone_material_templates'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -235,7 +235,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 29 `
+        -InitialMigrationCount 30 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -259,6 +259,7 @@ try {
         'PostgreSQL durable kit-bag item-delete transactions',
         'PostgreSQL durable kit-bag item-move transactions',
         'PostgreSQL durable equipment/bag transfer transactions',
+        'PostgreSQL durable Holy Stone transactions',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

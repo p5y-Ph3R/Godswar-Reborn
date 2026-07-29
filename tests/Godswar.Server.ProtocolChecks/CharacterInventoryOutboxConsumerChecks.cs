@@ -119,6 +119,7 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
         await CheckKitBagItemDeleteAsync(consumer);
         await CheckKitBagItemMoveAsync(consumer);
         await CheckEquipmentBagTransferAsync(consumer);
+        await CheckHolyStoneAsync(consumer);
     }
 
     private static OutboxEventMessage[] CreateCompatibleSequence() =>

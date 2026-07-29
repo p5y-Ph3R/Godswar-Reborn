@@ -17,9 +17,6 @@ namespace Godswar.Server.Game;
 internal sealed partial class GameClientHandler : IClientHandler
 {
     private const uint LocalPlayerObjectId = 0x00001448;
-    private const int HolyStoneMenuMount = 101;
-    private const int HolyStoneMenuRemove = 201;
-    private const int HolyStoneMenuDrill = 301;
     private const int HolyStoneMountSuccess = 800;
     private const int HolyStoneRemoveSuccess = 1200;
     private const int HolyStoneInsufficientFunds = 1400;
@@ -119,7 +116,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IKitBagItemMoveCommandExecutor?
             kitBagItemMoveCommands = null,
         IEquipmentBagTransferCommandExecutor?
-            equipmentBagTransferCommands = null)
+            equipmentBagTransferCommands = null,
+        IHolyStoneCommandExecutor?
+            holyStoneCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -149,6 +148,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         _kitBagItemDeleteCommands = kitBagItemDeleteCommands;
         _kitBagItemMoveCommands = kitBagItemMoveCommands;
         _equipmentBagTransferCommands = equipmentBagTransferCommands;
+        _holyStoneCommands = holyStoneCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

@@ -211,6 +211,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateCommandInboxOutboxFoundation(),
         CreateCommandInboxOutboxHardening(),
         CreateEconomyLedgerFoundation(),
-        CreateEconomyLedgerHardening()
+        CreateEconomyLedgerHardening(),
+        CreateHolyStoneMaterialTemplates()
     ];
 }

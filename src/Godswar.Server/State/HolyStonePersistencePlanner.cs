@@ -29,12 +29,40 @@ internal static class HolyStonePersistencePlanner
         out HolyStonePersistencePlan? plan,
         out string summary)
     {
+        return TryCreate(
+            equipment,
+            kitBag,
+            profession,
+            operation,
+            HolyStoneTargetMode.LegacyFallback,
+            targetKitBagSlot,
+            socketIndex,
+            stoneKitBagSlot,
+            destinationKitBagSlot,
+            out plan,
+            out summary);
+    }
+
+    public static bool TryCreate(
+        string equipment,
+        string kitBag,
+        byte profession,
+        HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
+        int targetKitBagSlot,
+        int socketIndex,
+        int stoneKitBagSlot,
+        int destinationKitBagSlot,
+        out HolyStonePersistencePlan? plan,
+        out string summary)
+    {
         plan = null;
         if (!HolyStoneItemMutator.TryApply(
                 equipment,
                 kitBag,
                 profession,
                 operation,
+                targetMode,
                 targetKitBagSlot,
                 socketIndex,
                 stoneKitBagSlot,

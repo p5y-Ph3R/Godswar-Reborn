@@ -67,9 +67,9 @@ now pass locally; production activation remains open. Records:
 - Static NPC spawn packets are built from server-owned definitions rather than replaying a raw city stream. Validated captures are preferred, normalized appearance/position references fill missing definitions, and same-number capital NPCs provide a fallback where one city lacks a position.
 - NPC visibility is streamed per client using the working server's `32x32` sector grid. Bootstrap sends only the current `3x3` sector neighborhood; movement across a sector edge removes the old row or column before spawning the newly visible one.
 - Map-specific object and interaction IDs are assigned deterministically. The Holy Stone Artisan resolves to the correct identity and script in both Sparta and Athens.
-- Holy Stone Artisan dialog/action handling covers opcodes `10067`, `10068`, `10069`, and `10070`, including drilling, mounting, removing, validation, item mutation, and post-action item/visual/stat refreshes.
-- PostgreSQL Holy Stone operations must use authoritative `character_items` rows and update only affected slots/socket columns; never round-trip the client-capped loadout view, because doing so can permanently lower unrelated extended quality/grade data.
-- Before treating Holy Stone gameplay as complete, validate native behavior for stacked-stone consumption, invalid stone IDs, occupied sockets, full-bag removal, equipped-weapon argument ordering, and whether mounting may open the first socket without drilling.
+- Holy Stone dialog still covers opcodes `10067`-`10070`; exact captured `10069` Mount, Remove, and basic Drill now verify stacked-material consumption, invalid/occupied sockets, full-bag removal, equipped-weapon ordering, and item/stat/visual refreshes.
+- Secure Holy Stone mutations lock authoritative PostgreSQL `character_items`; basic Drill charges 230 then 2,300 Gold. Only affected rows, revisions, ledgers, and receipts are written, never the client-capped loadout view.
+- Still open: capture the advanced third/fourth-socket drill materials and costs plus any non-Fire Holy Stone families. Mount requires an already drilled socket.
 - The current actor-table baseline resolves 108 Sparta and 111 Athens NPC identities. Sparta is imported from the exact recovered original-server `NPC.INI`; most NPC dialog scripts and all quest flows still need implementation.
 - Add full NPC behavior/AI only after the static spawn and interaction baseline is stable.
 

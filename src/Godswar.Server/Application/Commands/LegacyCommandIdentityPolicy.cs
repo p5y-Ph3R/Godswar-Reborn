@@ -20,7 +20,10 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.GearMentorDeleteAttribute or
             CommandFamily.KitBagItemDelete or
             CommandFamily.KitBagItemMove or
-            CommandFamily.EquipmentBagTransfer =>
+            CommandFamily.EquipmentBagTransfer or
+            CommandFamily.HolyStoneMount or
+            CommandFamily.HolyStoneRemove or
+            CommandFamily.HolyStoneDrill =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,

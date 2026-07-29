@@ -6,3 +6,10 @@ internal enum HolyStoneOperation
     MountStone,
     RemoveStone
 }
+
+internal enum HolyStoneTargetMode
+{
+    LegacyFallback,
+    EquippedWeapon,
+    KitBag
+}

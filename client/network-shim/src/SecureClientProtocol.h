@@ -79,6 +79,9 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     KitBagItemDelete = 13,
     KitBagItemMove = 14,
     EquipmentBagTransfer = 15,
+    HolyStoneMount = 16,
+    HolyStoneRemove = 17,
+    HolyStoneDrill = 18,
 };
 
 struct SecureLegacyCommandResult final {

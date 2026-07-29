@@ -75,6 +75,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresEquipmentBagTransferCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        HolyStoneCommands =
+            new PostgresHolyStoneCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -124,6 +128,8 @@ internal sealed class PostgresApplicationDataRuntime :
     public IEquipmentBagTransferCommandExecutor
         EquipmentBagTransferCommands
     { get; }
+
+    public IHolyStoneCommandExecutor HolyStoneCommands { get; }
 
     public bool OutboxEnabled { get; }
 

@@ -71,6 +71,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable equipment/bag transfer handler and replay",
             EquipmentBagTransferDurableHandlerChecks.RunAsync),
         (
+            "Durable Holy Stone command and exact wire contracts",
+            HolyStoneCommandContractChecks.RunAsync),
+        (
+            "Durable Holy Stone handler and replay",
+            HolyStoneDurableHandlerChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

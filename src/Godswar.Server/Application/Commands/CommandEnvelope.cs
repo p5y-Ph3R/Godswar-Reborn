@@ -20,7 +20,10 @@ internal enum CommandFamily : ushort
     GearMentorDeleteAttribute = 12,
     KitBagItemDelete = 13,
     KitBagItemMove = 14,
-    EquipmentBagTransfer = 15
+    EquipmentBagTransfer = 15,
+    HolyStoneMount = 16,
+    HolyStoneRemove = 17,
+    HolyStoneDrill = 18
 }
 
 internal enum CommandIdentityStrength : byte

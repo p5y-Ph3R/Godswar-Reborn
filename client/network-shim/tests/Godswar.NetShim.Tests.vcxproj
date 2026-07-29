@@ -99,6 +99,9 @@
     <ClCompile Include="SecureGearMentorAttributeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorDecomposeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorCommandIdentityTests.cpp" />
+    <ClCompile Include="SecureHolyStoneIdentityTests.cpp" />
+    <ClCompile Include="SecureHolyStoneParserTests.cpp" />
+    <ClCompile Include="SecureHolyStoneRegistryTests.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentityTests.cpp" />
     <ClCompile Include="SecureKitBagItemMoveIdentityTests.cpp" />
     <ClCompile Include="SecureKitBagItemMoveParserTests.cpp" />
@@ -147,6 +150,7 @@
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureEquipmentBagTransferIdentity.cpp" />
     <ClCompile Include="..\src\SecureForgeCommandIdentity.cpp" />
+    <ClCompile Include="..\src\SecureHolyStoneCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemDeleteIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemMoveIdentity.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandOperation.cpp" />
@@ -155,6 +159,7 @@
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStone.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagDelete.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagItemMove.cpp" />
@@ -220,6 +225,8 @@
     <ClInclude Include="SecureGearMentorAttributeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorDecomposeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorCommandIdentityTests.h" />
+    <ClInclude Include="SecureHolyStoneIdentityTests.h" />
+    <ClInclude Include="SecureHolyStoneTestSupport.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentityTests.h" />
     <ClInclude Include="SecureKitBagItemMoveIdentityTests.h" />
     <ClInclude Include="SecureKitBagItemMoveTestSupport.h" />
@@ -268,6 +275,7 @@
     <ClInclude Include="..\src\SecureClientProtocol.h" />
     <ClInclude Include="..\src\SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="..\src\SecureForgeCommandIdentity.h" />
+    <ClInclude Include="..\src\SecureHolyStoneCommandIdentity.h" />
     <ClInclude Include="..\src\SecureKitBagItemDeleteIdentity.h" />
     <ClInclude Include="..\src\SecureKitBagItemMoveIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyCommandIdentity.h" />

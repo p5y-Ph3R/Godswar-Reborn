@@ -395,7 +395,7 @@ void CheckResultCodec(Checks* checks) {
     invalid.disposition =
         SecureLegacyCommandDisposition::Rejected;
     invalid.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(16);
+        static_cast<SecureLegacyCommandFamily>(19);
     checks->Require(
         !TryEncodeSecureLegacyCommandResult(
             invalid,

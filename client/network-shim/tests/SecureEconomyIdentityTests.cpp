@@ -6,6 +6,7 @@
 #include "SecureGearEnhancerIdentityTests.h"
 #include "SecureGearMentorCommandIdentityTests.h"
 #include "SecureGearMentorDecomposeIdentityTests.h"
+#include "SecureHolyStoneIdentityTests.h"
 #include "SecureKitBagItemDeleteIdentityTests.h"
 #include "SecureKitBagItemMoveIdentityTests.h"
 
@@ -16,6 +17,7 @@ int RunSecureEconomyIdentityTests() {
         RunSecureGearEnhancerIdentityTests() +
         RunSecureGearMentorCommandIdentityTests() +
         RunSecureGearMentorDecomposeIdentityTests() +
+        RunSecureHolyStoneIdentityTests() +
         RunSecureKitBagItemDeleteIdentityTests() +
         RunSecureKitBagItemMoveIdentityTests();
 }

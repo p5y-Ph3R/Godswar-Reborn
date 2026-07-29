@@ -2,6 +2,7 @@
 
 #include "SecureEquipmentBagTransferIdentity.h"
 #include "SecureForgeCommandIdentity.h"
+#include "SecureHolyStoneCommandIdentity.h"
 #include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
@@ -163,6 +164,10 @@ private:
     SecureOperationRegistryResult DescribeEquipmentBagTransfer(
         int equipmentSlot,
         int bagSlot,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneCommand(
+        const LegacyHolyStoneCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;
