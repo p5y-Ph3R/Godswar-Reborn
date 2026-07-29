@@ -44,9 +44,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByIdAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByUsernameAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetActiveWorldBossRespawnAsync", 1),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", "GetCapturedMonsterSpawnsAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetFirstCharacterAsync", 2),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", "GetNpcSpawnDefinitionsAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetOwnedPetsAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetSkillStatesAsync", 2),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetTalentStatesAsync", 2),
@@ -60,7 +58,6 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.Pets.cs", "GetOwnedPetsAsync", 1),
         new("Game/GameClientHandler.Pets.cs", "TransitionPetPresenceAsync", 1),
         new("Game/GameClientHandler.PlayerVisibility.cs", "GetCharacterStatsAsync", 1),
-        new("Game/GameClientHandler.PlayerVisibility.cs", "GetEnterSyncPacketsAsync", 1),
         new("Game/GameClientHandler.PlayerVisibility.cs", "GetSkillStatesAsync", 1),
         new("Game/GameClientHandler.PlayerVisibility.cs", "GetTalentStatesAsync", 1),
         new("Game/GameClientHandler.PlayerVisibility.cs", "SaveCharacterPositionAsync", 1),
@@ -136,14 +133,14 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.GearEnhancer.cs", 1),
         new("Game/GameClientHandler.GearMentor.cs", 1),
         new("Game/GameClientHandler.InventoryActions.cs", 2),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", 14),
+        new("Game/GameClientHandler.LoginWorldEntry.cs", 12),
         new("Game/GameClientHandler.MapTransitions.cs", 2),
         new("Game/GameClientHandler.MovementCombat.cs", 2),
         new("Game/GameClientHandler.NpcDialog.cs", 1),
         new("Game/GameClientHandler.PetEggs.cs", 2),
         new("Game/GameClientHandler.PetLevel.cs", 1),
         new("Game/GameClientHandler.Pets.cs", 2),
-        new("Game/GameClientHandler.PlayerVisibility.cs", 5),
+        new("Game/GameClientHandler.PlayerVisibility.cs", 4),
         new("Game/GameClientHandler.Progression.cs", 4),
         new("Game/GameClientHandler.RealtimeMovement.Persistence.cs", 1),
         new("Game/GameClientHandler.Ride.cs", 1),
@@ -197,7 +194,6 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 30),
         new("State/PostgresGameStore.Seeding.World.cs", 18),
         new("State/PostgresGameStore.SkillsAndTalents.cs", 7),
-        new("State/PostgresGameStore.WorldSync.cs", 8),
         new("State/PostgresGameStore.ZodiacSkillGrids.cs", 12)
     ];
 
@@ -221,7 +217,6 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 1),
         new("State/PostgresGameStore.Seeding.World.cs", 1),
         new("State/PostgresGameStore.SkillsAndTalents.cs", 1),
-        new("State/PostgresGameStore.WorldSync.cs", 1)
     ];
 
     public static readonly string[] GameStoreMethods =
@@ -246,14 +241,10 @@ internal static class DataBoundaryArchitectureBaseline
         "FindAccountCredentialAsync",
         "ForgeEquipmentAsync",
         "GetActiveWorldBossRespawnAsync",
-        "GetCapturedMonsterSpawnsAsync",
-        "GetCapturedNpcSpawnsAsync",
         "GetCharactersAsync",
         "GetCharacterStatsAsync",
-        "GetEnterSyncPacketsAsync",
         "GetExperienceBoostStateAsync",
         "GetFirstCharacterAsync",
-        "GetNpcSpawnDefinitionsAsync",
         "GetOwnedPetsAsync",
         "GetSkillStatesAsync",
         "GetTalentStatesAsync",
@@ -277,7 +268,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "6D096406E4B6D8845AD0B9815ECDF6D7ABB3B9523A326B671CB76F9A8E518CF8";
+        "FB8A884E16A099BC274C953070E2E5370DFF04D6F897270D1D387CF9DEE03A27";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

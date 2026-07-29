@@ -7,7 +7,8 @@
 
 ## Context
 
-The server is one .NET 10 process and one project. `Program.cs` manually
+At B02 acceptance, the server was one .NET 10 process and one project.
+`Program.cs` manually
 constructs either `PostgresGameStore` or `JsonGameStore`, then passes the broad
 `IGameStore` into login, game, authentication, and session-registry code.
 `IGameStore` currently exposes 48 unrelated operations. Thirty-two production
@@ -52,10 +53,11 @@ New feature boundaries use intent-specific contracts such as
 consistency and transaction outcomes. They do not expose Npgsql types, packet
 DTOs, sockets, or a generic CRUD repository.
 
-The `Application`, `Domain`, and `Infrastructure` directories are established
-as a source layout now. The first real runtime extraction remains B05
-(`IWorldContentReader`). B02 adds no empty marker, service bag, universal
-repository, runtime adapter, or behavior change.
+The `Application`, `Domain`, and `Infrastructure` directories were established
+as a source layout by B02. At that point, B05 (`IWorldContentReader`) was the
+first planned runtime extraction; the B05 amendment below records its later
+implementation. B02 added no empty marker, service bag, universal repository,
+runtime adapter, or behavior change.
 
 ## Authoritative ownership
 
@@ -76,19 +78,19 @@ cache/document store must not be independently dual-written.
 `DataBoundaryArchitectureChecks` is a source-level ratchet suitable for the
 current single-project layout:
 
-1. The exact 81 legacy `_store` calls are recorded by path, member, and count.
-2. All 106 `_store` identifier occurrences are recorded, so aliasing or
+1. The reviewed legacy `_store` calls are recorded by path, member, and count.
+2. All reviewed `_store` identifier occurrences are recorded, so aliasing or
    null-conditional syntax cannot silently bypass the call baseline.
 3. The 19 bare `store` parameter/composition-root occurrences are recorded,
    so constructor-parameter calls cannot bypass the field baseline.
 4. The six production files that mention `IGameStore` outside `State` are
    recorded with exact counts.
-5. The 48 existing `IGameStore` methods and their canonical signature
+5. The existing `IGameStore` methods and their canonical signature
    fingerprint are frozen.
-6. All 331 current syntactic Npgsql references across 26 legacy files are
+6. All current syntactic Npgsql references across legacy files are
    frozen. Comments mentioning Npgsql do not count. New provider code belongs
    under `Infrastructure`.
-7. The 19 existing `State -> Game` using directives are frozen.
+7. Existing `State -> Game` using directives are frozen.
 8. Redis and MongoDB drivers are permitted only in future `Infrastructure`.
 9. Concrete legacy stores are confined to `State` and the `Program.cs`
    composition root.
@@ -131,6 +133,19 @@ pull-request workflow.
 - Existing World-to-State model dependencies are not classified as direct
   database coupling. They will be resolved with focused domain extraction,
   not a misleading blanket rename.
+
+## B05 ratchet amendment
+
+B05 performed the first deliberate shrink. World content now crosses
+`IWorldContentReader`; `GameClientHandler` no longer loads NPCs, monsters, or
+enter-bootstrap templates through `IGameStore`. Pure NPC and monster spawn
+models moved to `Domain/World/Content`, and Application-to-State references
+are now forbidden.
+
+The reviewed baseline after B05 is 78 broad-store calls, 103 `_store`
+occurrences, 44 `IGameStore` methods, 323 legacy Npgsql references, and 18
+`State -> Game` imports. New PostgreSQL content-loading code is owned by
+`Infrastructure/WorldContent`, so the legacy provider baseline did not grow.
 
 ## Consequences
 

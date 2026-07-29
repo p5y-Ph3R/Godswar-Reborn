@@ -390,6 +390,19 @@ internal static class DataBoundaryArchitectureChecks
                     StringComparison.Ordinal)),
             "architecture analyzer rejects Application-to-Infrastructure coupling");
 
+        var applicationStateLeak = Copy(clean);
+        applicationStateLeak["Application/BadState.cs"] =
+            "using Godswar.Server.State; " +
+            "namespace Godswar.Server.Application.BadState;";
+        Check.True(
+            DataBoundaryArchitectureAnalyzer
+                .Analyze(applicationStateLeak, baseline)
+                .RuleViolations
+                .Any(static value => value.Contains(
+                    "Application cannot reference Godswar.Server.State",
+                    StringComparison.Ordinal)),
+            "architecture analyzer rejects Application-to-State coupling");
+
         var gameplayInfrastructure = Copy(clean);
         gameplayInfrastructure["Game/InfrastructureLeak.cs"] =
             "using Godswar.Server.Infrastructure; " +

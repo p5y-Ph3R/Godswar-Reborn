@@ -265,17 +265,4 @@ internal interface IGameStore : IAsyncDisposable
         int clientTalentPoints,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<CapturedNpcSpawn>> GetCapturedNpcSpawnsAsync(
-        short mapId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<NpcSpawnDefinition>> GetNpcSpawnDefinitionsAsync(
-        short mapId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<CapturedMonsterSpawn>> GetCapturedMonsterSpawnsAsync(
-        short mapId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<byte[]>> GetEnterSyncPacketsAsync(CancellationToken cancellationToken = default);
 }

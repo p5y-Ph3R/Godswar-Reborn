@@ -435,7 +435,8 @@ internal static class PetLevelUpgradeProtocolChecks
                 store: null,
                 zodiacEnergyOptions: null,
                 monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-                playerRuntimeMode: PlayerRuntimeMode.Ecs));
+                playerRuntimeMode: PlayerRuntimeMode.Ecs),
+            WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,
             "_account",

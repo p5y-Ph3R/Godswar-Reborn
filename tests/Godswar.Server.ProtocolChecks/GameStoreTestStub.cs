@@ -335,29 +335,6 @@ internal abstract class GameStoreTestStub : IGameStore
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
-    public virtual Task<IReadOnlyList<CapturedNpcSpawn>>
-        GetCapturedNpcSpawnsAsync(
-            short mapId,
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
-    public virtual Task<IReadOnlyList<NpcSpawnDefinition>>
-        GetNpcSpawnDefinitionsAsync(
-            short mapId,
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
-    public virtual Task<IReadOnlyList<CapturedMonsterSpawn>>
-        GetCapturedMonsterSpawnsAsync(
-            short mapId,
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
-    public virtual Task<IReadOnlyList<byte[]>>
-        GetEnterSyncPacketsAsync(
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
     public virtual ValueTask DisposeAsync() =>
         ValueTask.CompletedTask;
 

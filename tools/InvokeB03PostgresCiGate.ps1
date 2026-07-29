@@ -235,6 +235,7 @@ try {
     $failureCategory = 'repository-smoke'
     foreach ($checkName in @(
         'PostgreSQL forward-only database cleanup',
+        'PostgreSQL pinned world-content baseline',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',
         'PostgreSQL authoritative pet level-up',

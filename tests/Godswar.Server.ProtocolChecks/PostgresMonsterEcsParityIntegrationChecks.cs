@@ -1,4 +1,5 @@
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Godswar.Server.World.Systems.Monsters;
 
@@ -32,7 +33,10 @@ internal static class PostgresMonsterEcsParityIntegrationChecks
 
         await using var store = new PostgresGameStore(connectionString);
         await store.EnsureSeedDataAsync();
-        var definitions = await store.GetCapturedMonsterSpawnsAsync(mapId: 0);
+        var worldContent =
+            await PostgresWorldContentReaderLoader.LoadAsync(connectionString);
+        var definitions = (await worldContent.ReadMapAsync(mapId: 0))
+            .Monsters;
         Check.True(
             definitions.Count > 0,
             "captured production monster corpus is available");

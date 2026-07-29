@@ -276,7 +276,8 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         var handler = new GameClientHandler(
             session,
             store,
-            registry);
+            registry,
+            WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,
             "_account",
@@ -409,25 +410,6 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
                     : null);
         }
 
-        public override Task<IReadOnlyList<NpcSpawnDefinition>>
-            GetNpcSpawnDefinitionsAsync(
-                short mapId,
-                CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult<
-                IReadOnlyList<NpcSpawnDefinition>>([]);
-        }
-
-        public override Task<IReadOnlyList<CapturedMonsterSpawn>>
-            GetCapturedMonsterSpawnsAsync(
-                short mapId,
-                CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult<
-                IReadOnlyList<CapturedMonsterSpawn>>([]);
-        }
     }
 
     private sealed record MapPositionWrite(

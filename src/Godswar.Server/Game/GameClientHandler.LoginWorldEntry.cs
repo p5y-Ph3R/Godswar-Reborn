@@ -375,7 +375,10 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var loadedNpcDefinitions = await _store.GetNpcSpawnDefinitionsAsync(_character.CurrentMap, cancellationToken);
+        var mapContent = await _worldContent.ReadMapAsync(
+            _character.CurrentMap,
+            cancellationToken);
+        var loadedNpcDefinitions = mapContent.Npcs;
         var npcDefinitions = new List<NpcSpawnDefinition>(loadedNpcDefinitions.Count);
         foreach (var npc in loadedNpcDefinitions)
         {
@@ -402,9 +405,7 @@ internal sealed partial class GameClientHandler
             .Select(npc => npc.ObjectId)
             .ToHashSet();
 
-        var loadedMonsterDefinitions = await _store.GetCapturedMonsterSpawnsAsync(
-            _character.CurrentMap,
-            cancellationToken);
+        var loadedMonsterDefinitions = mapContent.Monsters;
         var monsterDefinitions = new List<CapturedMonsterSpawn>(loadedMonsterDefinitions.Count);
         foreach (var monster in loadedMonsterDefinitions)
         {

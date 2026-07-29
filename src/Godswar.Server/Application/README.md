@@ -25,5 +25,8 @@ Networking/Game -> Application -> Domain/ECS
 Infrastructure ---------------> Application + Domain
 ```
 
-The first real contract will be added with B05. B02 deliberately establishes
-the boundary and its automated gate without changing runtime behavior.
+B05 added the first real contract: `IWorldContentReader`. The composition root
+loads one revision-pinned world catalog before opening listeners; gameplay
+reads that application contract instead of the broad store. PostgreSQL loading
+lives under `Infrastructure/WorldContent`, while pure spawn definitions live
+under `Domain/World/Content`.

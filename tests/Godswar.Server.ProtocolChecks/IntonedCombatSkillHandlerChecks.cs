@@ -374,7 +374,8 @@ internal static partial class IntonedCombatSkillHandlerChecks
             var handler = new GameClientHandler(
                 socket.Session,
                 store,
-                registry);
+                registry,
+                WorldContentReaderTestFixtures.Empty);
             SetField(
                 handler,
                 "_account",

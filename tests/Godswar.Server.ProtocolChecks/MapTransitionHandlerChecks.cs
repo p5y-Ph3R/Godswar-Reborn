@@ -296,7 +296,7 @@ internal static partial class MapTransitionHandlerChecks
 
     private static GameClientHandler CreateEnteredHandler(
         ClientSession session,
-        IGameStore store,
+        MapTransitionStore store,
         GameSessionRegistry registry,
         GameCharacter character,
         TimeSpan? mapTransitionReadyTimeout = null)
@@ -305,6 +305,7 @@ internal static partial class MapTransitionHandlerChecks
             session,
             store,
             registry,
+            store.WorldContent,
             mapTransitionReadyTimeout:
                 mapTransitionReadyTimeout);
         SetField(

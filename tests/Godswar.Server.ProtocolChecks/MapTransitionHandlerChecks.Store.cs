@@ -1,3 +1,4 @@
+using Godswar.Server.Application.World;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -15,6 +16,8 @@ internal static partial class MapTransitionHandlerChecks
     {
         private readonly GameCharacter _character;
         private readonly IReadOnlyList<PetBootstrapSnapshot> _pets;
+        private readonly MapTransitionWorldContentReader _worldContent =
+            new();
 
         public MapTransitionStore(
             GameCharacter character,
@@ -30,7 +33,8 @@ internal static partial class MapTransitionHandlerChecks
 
         public int? FailPositionWriteAttempt { get; set; }
 
-        public int EnterSyncRequests { get; private set; }
+        public int EnterSyncRequests =>
+            _worldContent.EnterSyncRequests;
 
         public int SkillStateRequests { get; private set; }
 
@@ -38,29 +42,18 @@ internal static partial class MapTransitionHandlerChecks
 
         public int PetPresenceReads { get; private set; }
 
-        private TaskCompletionSource<bool>? _npcSpawnReadStarted;
+        public IWorldContentReader WorldContent =>
+            _worldContent;
 
-        private TaskCompletionSource<bool>? _npcSpawnReadRelease;
+        public void BlockNpcSpawnReads() =>
+            _worldContent.BlockMapReads();
 
-        public void BlockNpcSpawnReads()
-        {
-            _npcSpawnReadStarted = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _npcSpawnReadRelease = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-
-        public async Task WaitForNpcSpawnReadAsync(
-            CancellationToken cancellationToken)
-        {
-            var started = _npcSpawnReadStarted ??
-                throw new InvalidOperationException(
-                    "NPC spawn reads are not blocked.");
-            await started.Task.WaitAsync(cancellationToken);
-        }
+        public Task WaitForNpcSpawnReadAsync(
+            CancellationToken cancellationToken) =>
+            _worldContent.WaitForMapReadAsync(cancellationToken);
 
         public void ReleaseNpcSpawnReads() =>
-            _npcSpawnReadRelease?.TrySetResult(true);
+            _worldContent.ReleaseMapReads();
 
         public override Task SaveCharacterPositionAsync(
             int accountId,
@@ -93,42 +86,12 @@ internal static partial class MapTransitionHandlerChecks
             Task.FromResult<CharacterStats?>(
                 CharacterStats.FromCharacter(_character));
 
-        public override async Task<IReadOnlyList<NpcSpawnDefinition>>
-            GetNpcSpawnDefinitionsAsync(
-                short mapId,
-                CancellationToken cancellationToken = default)
-        {
-            var started = _npcSpawnReadStarted;
-            var release = _npcSpawnReadRelease;
-            if (started is not null && release is not null)
-            {
-                started.TrySetResult(true);
-                await release.Task.WaitAsync(cancellationToken);
-            }
-
-            return [];
-        }
-
-        public override Task<IReadOnlyList<CapturedMonsterSpawn>>
-            GetCapturedMonsterSpawnsAsync(
-                short mapId,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<CapturedMonsterSpawn>>([]);
-
         public override Task<WorldBossRespawnState?>
             GetActiveWorldBossRespawnAsync(
                 short mapId,
                 DateTimeOffset now,
                 CancellationToken cancellationToken = default) =>
             Task.FromResult<WorldBossRespawnState?>(null);
-
-        public override Task<IReadOnlyList<byte[]>>
-            GetEnterSyncPacketsAsync(
-                CancellationToken cancellationToken = default)
-        {
-            EnterSyncRequests++;
-            return Task.FromResult<IReadOnlyList<byte[]>>([]);
-        }
 
         public override Task<IReadOnlyList<SkillState>>
             GetSkillStatesAsync(
@@ -158,6 +121,65 @@ internal static partial class MapTransitionHandlerChecks
         {
             PetPresenceReads++;
             return Task.FromResult(_pets);
+        }
+    }
+
+    private sealed class MapTransitionWorldContentReader :
+        IWorldContentReader
+    {
+        private readonly IWorldContentReader _inner =
+            WorldContentReaderTestFixtures.Empty;
+        private TaskCompletionSource<bool>? _mapReadStarted;
+        private TaskCompletionSource<bool>? _mapReadRelease;
+
+        public WorldContentManifest Manifest =>
+            _inner.Manifest;
+
+        public int EnterSyncRequests { get; private set; }
+
+        public void BlockMapReads()
+        {
+            _mapReadStarted = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _mapReadRelease = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        public async Task WaitForMapReadAsync(
+            CancellationToken cancellationToken)
+        {
+            var started = _mapReadStarted ??
+                throw new InvalidOperationException(
+                    "Map-content reads are not blocked.");
+            await started.Task.WaitAsync(cancellationToken);
+        }
+
+        public void ReleaseMapReads() =>
+            _mapReadRelease?.TrySetResult(true);
+
+        public async ValueTask<WorldMapContent> ReadMapAsync(
+            short mapId,
+            CancellationToken cancellationToken = default)
+        {
+            var started = _mapReadStarted;
+            var release = _mapReadRelease;
+            if (started is not null && release is not null)
+            {
+                started.TrySetResult(true);
+                await release.Task.WaitAsync(cancellationToken);
+            }
+
+            return await _inner.ReadMapAsync(
+                mapId,
+                cancellationToken);
+        }
+
+        public ValueTask<EnterWorldBootstrapContent>
+            ReadEnterBootstrapAsync(
+                CancellationToken cancellationToken = default)
+        {
+            EnterSyncRequests++;
+            return _inner.ReadEnterBootstrapAsync(cancellationToken);
         }
     }
 }

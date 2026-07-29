@@ -98,6 +98,7 @@ internal static class LegacyAuthenticationProfileChecks
                 session,
                 allowedStore,
                 registry,
+                WorldContentReaderTestFixtures.Empty,
                 legacyAuthenticationAccess:
                     LocalAccess(options));
             await InvokeAsync(
@@ -121,7 +122,8 @@ internal static class LegacyAuthenticationProfileChecks
             var handler = new GameClientHandler(
                 session,
                 blockedStore,
-                new GameSessionRegistry(blockedStore));
+                new GameSessionRegistry(blockedStore),
+                WorldContentReaderTestFixtures.Empty);
             await InvokeAsync(
                 handler,
                 "HandleGameLoginAsync",
@@ -167,6 +169,7 @@ internal static class LegacyAuthenticationProfileChecks
                 session,
                 store,
                 new GameSessionRegistry(store),
+                WorldContentReaderTestFixtures.Empty,
                 legacyAuthenticationAccess:
                     LocalAccess(options));
             await InvokeAsync(

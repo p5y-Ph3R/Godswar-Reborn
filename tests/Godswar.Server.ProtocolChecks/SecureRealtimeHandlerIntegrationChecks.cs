@@ -278,6 +278,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             session,
             new NoopMovementStore(),
             registry,
+            WorldContentReaderTestFixtures.Empty,
             phase4AcceptanceFaults:
                 phase4AcceptanceFaults);
         SetField(

@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace Godswar.Server.State;
+namespace Godswar.Server.Domain.World.Content;
 
 internal sealed record CapturedMonsterSpawn(
     short MapId,
@@ -17,11 +17,14 @@ internal sealed record CapturedMonsterSpawn(
     private const int MinimumPacketLength = 108;
     private const float CoordinateMetadataTolerance = 0.0001f;
 
-    public float AppearanceX => BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(28, 4));
+    public float AppearanceX =>
+        BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(28, 4));
 
-    public float AppearanceZ => BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(36, 4));
+    public float AppearanceZ =>
+        BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(36, 4));
 
-    public uint Tier => BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(12, 4));
+    public uint Tier =>
+        BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(12, 4));
 
     public void Validate(short expectedMapId)
     {
@@ -39,7 +42,8 @@ internal sealed record CapturedMonsterSpawn(
 
         if (ObjectId == 0)
         {
-            throw new InvalidDataException("Captured monster object ID cannot be zero.");
+            throw new InvalidDataException(
+                "Captured monster object ID cannot be zero.");
         }
 
         if (string.IsNullOrWhiteSpace(TemplateKey))
@@ -60,24 +64,37 @@ internal sealed record CapturedMonsterSpawn(
                 $"Captured monster {ObjectId} packet is only {Packet.Length} bytes.");
         }
 
-        var declaredLength = BinaryPrimitives.ReadUInt16LittleEndian(Packet.AsSpan(0, 2));
+        var declaredLength =
+            BinaryPrimitives.ReadUInt16LittleEndian(Packet.AsSpan(0, 2));
         if (declaredLength != Packet.Length)
         {
             throw new InvalidDataException(
                 $"Captured monster {ObjectId} packet declares {declaredLength} bytes but contains {Packet.Length}.");
         }
 
-        var opcode = BinaryPrimitives.ReadUInt16LittleEndian(Packet.AsSpan(2, 2));
-        var objectType = BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(4, 4));
-        var embeddedObjectId = BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(8, 4));
-        var tier = BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(12, 4));
-        var currentHealth = BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(20, 4));
-        var maximumHealth = BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(24, 4));
+        var opcode =
+            BinaryPrimitives.ReadUInt16LittleEndian(Packet.AsSpan(2, 2));
+        var objectType =
+            BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(4, 4));
+        var embeddedObjectId =
+            BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(8, 4));
+        var tier =
+            BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(12, 4));
+        var currentHealth =
+            BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(20, 4));
+        var maximumHealth =
+            BinaryPrimitives.ReadUInt32LittleEndian(Packet.AsSpan(24, 4));
         var embeddedX = AppearanceX;
-        var embeddedY = BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(32, 4));
+        var embeddedY =
+            BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(32, 4));
         var embeddedZ = AppearanceZ;
-        var embeddedFacing = BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(40, 4));
-        var nameEnd = Array.IndexOf(Packet, (byte)0, 44, declaredLength - 44);
+        var embeddedFacing =
+            BinaryPrimitives.ReadSingleLittleEndian(Packet.AsSpan(40, 4));
+        var nameEnd = Array.IndexOf(
+            Packet,
+            (byte)0,
+            44,
+            declaredLength - 44);
         var embeddedTemplateKey = Encoding.ASCII.GetString(
             Packet,
             44,
@@ -94,7 +111,10 @@ internal sealed record CapturedMonsterSpawn(
             !CoordinateMetadataMatches(Z, embeddedZ) ||
             !float.IsFinite(embeddedFacing) ||
             string.IsNullOrWhiteSpace(embeddedTemplateKey) ||
-            !string.Equals(embeddedTemplateKey, TemplateKey, StringComparison.Ordinal))
+            !string.Equals(
+                embeddedTemplateKey,
+                TemplateKey,
+                StringComparison.Ordinal))
         {
             throw new InvalidDataException(
                 $"Captured monster {ObjectId} metadata does not match its opcode-10020 packet.");
@@ -108,12 +128,15 @@ internal sealed record CapturedMonsterSpawn(
         return (objectType & 0xFFu) == 0x12u;
     }
 
-    private static bool CoordinateMetadataMatches(float metadataValue, float appearanceValue)
+    private static bool CoordinateMetadataMatches(
+        float metadataValue,
+        float appearanceValue)
     {
-        // The manual importer serializes float coordinates through decimal text,
-        // so its PostgreSQL columns can differ from the raw packet by a few ULPs.
+        // The manual importer serializes float coordinates through decimal
+        // text, so PostgreSQL columns can differ from raw bytes by a few ULPs.
         return float.IsFinite(appearanceValue) &&
-               Math.Abs((double)metadataValue - appearanceValue) <= CoordinateMetadataTolerance;
+               Math.Abs((double)metadataValue - appearanceValue) <=
+               CoordinateMetadataTolerance;
     }
 }
 

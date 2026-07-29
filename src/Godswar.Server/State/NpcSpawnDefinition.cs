@@ -2,20 +2,6 @@ using System.Buffers.Binary;
 
 namespace Godswar.Server.State;
 
-internal sealed record NpcSpawnDefinition(
-    short MapId,
-    string SceneKey,
-    string NpcKey,
-    string TemplateKey,
-    uint ObjectId,
-    float X,
-    float Z,
-    uint InteractionId,
-    uint AppearanceType,
-    float Facing,
-    byte[] Detail10077,
-    byte[] Detail10080);
-
 internal readonly record struct NpcSpawnReferenceDefinition(
     short MapId,
     string SceneKey,

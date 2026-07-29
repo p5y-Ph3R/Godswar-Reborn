@@ -72,7 +72,8 @@ internal static class NpcCatalogRevisionChecks
         var handler = new GameClientHandler(
             socket.Session,
             new NoopStore(),
-            registry);
+            registry,
+            WorldContentReaderTestFixtures.Empty);
         CharacterField.SetValue(handler, character);
         InstallCatalogMethod.Invoke(handler, [initial]);
         var visibility =

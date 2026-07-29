@@ -61,7 +61,8 @@ internal static partial class PlayerMovementEcsLiveAdapterChecks
         var handler = new GameClientHandler(
             session,
             store,
-            registry);
+            registry,
+            WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,
             "_account",

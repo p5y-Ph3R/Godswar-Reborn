@@ -279,7 +279,8 @@ internal static class SecureLoginTicketFlowChecks
         var handler = new GameClientHandler(
             session,
             accountStore,
-            new GameSessionRegistry(accountStore));
+            new GameSessionRegistry(accountStore),
+            WorldContentReaderTestFixtures.Empty);
 
         await handler.RunAsync(CancellationToken.None);
 

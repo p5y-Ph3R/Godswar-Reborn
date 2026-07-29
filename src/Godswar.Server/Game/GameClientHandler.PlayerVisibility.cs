@@ -114,9 +114,10 @@ internal sealed partial class GameClientHandler
 
         _postEnterBootstrapSent = true;
 
-        var enterSyncPackets = await _store.GetEnterSyncPacketsAsync(cancellationToken);
+        var enterBootstrap =
+            await _worldContent.ReadEnterBootstrapAsync(cancellationToken);
         var suppressedEnterSyncPackets = 0;
-        foreach (var packet in enterSyncPackets)
+        foreach (var packet in enterBootstrap.Packets)
         {
             if (!CanReplayCapturedPostEnterPacket(packet))
             {

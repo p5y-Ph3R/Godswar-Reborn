@@ -1,5 +1,7 @@
 using Godswar.Server;
+using Godswar.Server.Application.World;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
@@ -59,6 +61,28 @@ await using IGameStore store = runtimeProfile.StorageProvider switch
         "Validated storage provider is not exhaustive.")
 };
 await store.EnsureSeedDataAsync();
+IWorldContentReader worldContent;
+try
+{
+    worldContent = runtimeProfile.StorageProvider switch
+    {
+        GameStorageProviderKind.Postgres =>
+            await PostgresWorldContentReaderLoader.LoadAsync(
+                options.Storage.PostgresConnectionString),
+        GameStorageProviderKind.Json =>
+            await GeneratedWorldContentReaderLoader.LoadAsync(),
+        _ => throw new InvalidOperationException(
+            "Validated storage provider has no world-content reader.")
+    };
+}
+catch (WorldContentUnavailableException ex)
+{
+    Console.Error.WriteLine(
+        "[world-content] startup rejected " +
+        $"family={ex.Family} reason={ex.Reason}");
+    Environment.ExitCode = 3;
+    return;
+}
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>
@@ -111,6 +135,7 @@ var gameServer = rawCompatibilityEnabled
             session,
             store,
             registry,
+            worldContent,
             options.Game.DeveloperCommands,
             legacyAuthenticationAccess:
                 legacyAuthenticationAccess))
@@ -191,6 +216,7 @@ var secureGameServer = secureTransportFactory is null
             session,
             store,
             registry,
+            worldContent,
             options.Game.DeveloperCommands,
             phase4AcceptanceFaults),
         transportFactory: secureTransportFactory);
@@ -203,6 +229,14 @@ Console.WriteLine(
     $"transport={runtimeProfile.Transport}");
 Console.WriteLine($"Runtime:      {runtimeProfile.RuntimeProfile}");
 Console.WriteLine($"Storage:      {runtimeProfile.StorageProvider}");
+Console.WriteLine(
+    "[world-content] pinned " +
+    $"source={worldContent.Manifest.Source} " +
+    $"revision={worldContent.Manifest.Revision} " +
+    $"maps={worldContent.Manifest.Maps.EntryCount} " +
+    $"npcs={worldContent.Manifest.Npcs.EntryCount} " +
+    $"monsters={worldContent.Manifest.Monsters.EntryCount} " +
+    $"bootstrap={worldContent.Manifest.EnterBootstrap.EntryCount}");
 if (legacyAuthenticationAccess is not null)
 {
     Console.WriteLine(

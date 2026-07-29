@@ -363,6 +363,7 @@ internal static class DataBoundaryArchitectureAnalyzer
                 "Godswar.Server.Networking",
                 "Godswar.Server.Packets",
                 "Godswar.Server.Protocol",
+                "Godswar.Server.State",
                 "System.Net.Sockets");
         }
 
