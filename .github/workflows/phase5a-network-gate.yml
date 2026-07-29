@@ -58,3 +58,103 @@ jobs:
             --bots 16 `
             --duration-seconds 2 `
             --seed 20260728
+
+  postgresql-17-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17.9-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: reborn_ci
+          POSTGRES_PASSWORD: reborn_b03_ci_only
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U reborn_ci -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore GodswarServer.sln
+
+      - name: Release build
+        shell: pwsh
+        run: dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
+
+      - name: Mandatory PostgreSQL 17 migration and integration gate
+        shell: pwsh
+        env:
+          GODSWAR_B03_POSTGRES_PASSWORD: reborn_b03_ci_only
+        run: |
+          ./tools/InvokeB03PostgresCiGate.ps1 `
+            -ContainerId '${{ job.services.postgres.id }}' `
+            -PostgresHost '127.0.0.1' `
+            -PostgresPort ${{ job.services.postgres.ports['5432'] }} `
+            -PostgresUser 'reborn_ci' `
+            -ReportPath 'artifacts/b03/postgres-ci-result.json'
+
+      - name: PostgreSQL gate summary
+        if: always()
+        shell: pwsh
+        run: |
+          $report = 'artifacts/b03/postgres-ci-result.json'
+          if (-not (Test-Path -LiteralPath $report -PathType Leaf)) {
+            New-Item `
+              -ItemType Directory `
+              -Path (Split-Path -Parent $report) `
+              -Force | Out-Null
+            [ordered]@{
+              schemaVersion = 1
+              gate = 'B03 mandatory disposable PostgreSQL'
+              status = 'failed'
+              startedAtUtc = $null
+              finishedAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
+              durationMs = 0
+              sourceCommit = $env:GITHUB_SHA
+              checks = @()
+              scenarios = @()
+              cleanup = @{
+                status = 'not-started'
+                errors = @()
+              }
+              failureCategory = 'workflow-before-gate'
+              failureMessage = 'The workflow failed before the B03 runner produced a result.'
+            } | ConvertTo-Json -Depth 6 |
+              Set-Content -LiteralPath $report -Encoding utf8
+          }
+          $result = Get-Content -LiteralPath $report -Raw |
+            ConvertFrom-Json
+          @(
+            '## PostgreSQL 17 gate'
+            ''
+            "- Status: ``$($result.status)``"
+            "- Duration: ``$($result.durationMs) ms``"
+            if ($result.failureCategory) {
+              "- Failure category: ``$($result.failureCategory)``"
+            }
+            "- Machine result: ``$report``"
+          ) | Out-File `
+            -FilePath $env:GITHUB_STEP_SUMMARY `
+            -Encoding utf8 `
+            -Append
+
+      - name: Upload PostgreSQL gate result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b03-postgres-ci-result
+          path: artifacts/b03/postgres-ci-result.json
+          if-no-files-found: error
+          retention-days: 14
