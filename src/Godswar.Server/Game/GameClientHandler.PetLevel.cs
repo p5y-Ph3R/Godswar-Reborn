@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -24,6 +25,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        CommandMetrics.RecordUnsupportedLegacyIdentity(
+            CommandFamily.PetLevelUpgrade);
         PetLevelUpgradeResult result;
         try
         {

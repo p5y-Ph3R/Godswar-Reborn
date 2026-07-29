@@ -239,6 +239,7 @@ try {
         'PostgreSQL official NPC dialogue publication',
         'PostgreSQL pinned world-content baseline',
         'PostgreSQL consistent character snapshot reader',
+        'PostgreSQL talent command precondition',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',
         'PostgreSQL authoritative pet level-up',

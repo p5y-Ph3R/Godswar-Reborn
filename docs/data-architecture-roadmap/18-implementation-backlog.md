@@ -35,6 +35,13 @@ guard, contract/concurrency coverage, and architecture-ratchet reduction. The
 slot guard has no schema-level uniqueness constraint; that durable lifecycle
 decision remains B11 work.
 
+**B07 completed 2026-07-29:** [implementation evidence](../data-architecture-b07-command-envelope-20260729.md)
+records the talent-upgrade command selection, stable expected-rank transition
+identity, canonical request hash, server-derived principal boundary, raw
+legacy compatibility, rejected pet/forge candidates, and the exact B08
+PostgreSQL inbox/outbox handoff. B07 does not claim durable cross-process
+deduplication; that remains B08 work.
+
 ## 18.2 First three low-risk implementation tasks
 
 1. **B01A:** inventory the applied migration/build/backup state read-only and publish the exact mismatch manifest.

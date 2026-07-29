@@ -14,6 +14,12 @@ internal sealed partial class PostgresGameStore
         int clientTalentPoints,
         CancellationToken cancellationToken = default)
     {
+        if (clientRank is < 0 or >= TalentProgression.RankCap ||
+            clientTalentPoints < 0)
+        {
+            return null;
+        }
+
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -60,10 +66,12 @@ internal sealed partial class PostgresGameStore
             }
         }
 
-        // Rank and cost are server-owned. The client rank is only an echo of
-        // its UI state and must never be allowed to skip persisted ranks.
+        // The client rank is an untrusted optimistic precondition. It names
+        // one N -> N+1 transition, while rank, cost, and points remain
+        // server-owned under the character-row lock.
         var currentRank = baseRank;
-        if (currentRank >= TalentProgression.RankCap)
+        if (currentRank >= TalentProgression.RankCap ||
+            currentRank != clientRank)
         {
             return null;
         }

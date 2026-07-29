@@ -35,6 +35,7 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly ICharacterSnapshotReader _characterSnapshots;
     private readonly IWorldContentReader _worldContent;
     private readonly DeveloperCommandOptions _developerCommands;
+    private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
     private GameAccount? _account;

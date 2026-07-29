@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -161,6 +162,8 @@ internal sealed partial class GameClientHandler
             oddsMaterials.FirstOrDefault(),
             oddsMaterials.Skip(1).ToArray());
 
+        CommandMetrics.RecordUnsupportedLegacyIdentity(
+            CommandFamily.EquipmentForge);
         // Clear before awaiting persistence so a duplicated Start packet can
         // never consume the same reservation twice.
         ClearForgeSelection();

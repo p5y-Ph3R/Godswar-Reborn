@@ -10,6 +10,12 @@ internal sealed partial class JsonGameStore
         int clientTalentPoints,
         CancellationToken cancellationToken = default)
     {
+        if (clientRank is < 0 or >= TalentProgression.RankCap ||
+            clientTalentPoints < 0)
+        {
+            return null;
+        }
+
         await _lock.WaitAsync(cancellationToken);
         try
         {
@@ -31,10 +37,12 @@ internal sealed partial class JsonGameStore
                 talent.CharacterId == character.Id &&
                 talent.TalentId == talentId);
 
-            // The client values are UI echoes. Rank, cost, and spendable points
-            // are all derived from the state held under this store's lock.
+            // The expected rank names one N -> N+1 transition. Cost and
+            // spendable points are still derived from state under this lock;
+            // the point value supplied by the client is only a request echo.
             var currentRank = Math.Clamp(savedTalent?.Rank ?? 0, 0, TalentProgression.RankCap);
-            if (currentRank >= TalentProgression.RankCap)
+            if (currentRank >= TalentProgression.RankCap ||
+                currentRank != clientRank)
             {
                 return null;
             }

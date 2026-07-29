@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Talents;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -338,7 +339,8 @@ internal sealed partial class GameClientHandler
         clientRank = 0;
         clientTalentPoints = 0;
 
-        if (payload.Length != 24)
+        if (payload.Length !=
+            LegacyTalentUpgradeCommandAdapter.PayloadLength)
         {
             return false;
         }
@@ -346,7 +348,11 @@ internal sealed partial class GameClientHandler
         talentId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(4, 4));
         clientRank = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(8, 4));
         clientTalentPoints = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(16, 4));
-        return talentId >= 0 && clientRank >= 0 && clientTalentPoints >= 0;
+        return talentId is >= TalentUpgradeCommandEnvelope.MinimumTalentId
+                and <= TalentUpgradeCommandEnvelope.MaximumTalentId &&
+            clientRank is >= TalentUpgradeCommandEnvelope.MinimumExpectedRank
+                and <= TalentUpgradeCommandEnvelope.MaximumExpectedRank &&
+            clientTalentPoints >= 0;
     }
 
     private static bool TryReadItemInfoRequest(

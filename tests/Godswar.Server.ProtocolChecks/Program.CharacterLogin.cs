@@ -250,6 +250,7 @@ internal static partial class Program
                     {
                         Name = "JsonTalentWarrior",
                         Profession = 0,
+                        Level = 80,
                         TalentPoints = 10
                     });
                 accountId = account.Id;
@@ -278,29 +279,66 @@ internal static partial class Program
                     clientTalentPoints: 10);
                 Check.True(wrongClass is null, "warrior cannot upgrade a Champion talent");
 
-                var upgraded = await store.UpgradeTalentAsync(
+                var stale = await store.UpgradeTalentAsync(
                     accountId,
                     characterId,
                     talentId: 0,
                     clientRank: 99,
+                    clientTalentPoints: int.MaxValue);
+                Check.True(
+                    stale is null,
+                    "JSON rejects a future expected talent rank");
+
+                var upgraded = await store.UpgradeTalentAsync(
+                    accountId,
+                    characterId,
+                    talentId: 0,
+                    clientRank: 0,
                     clientTalentPoints: int.MaxValue)
                     ?? throw new InvalidOperationException("JSON warrior talent ID zero was not upgraded");
                 Check.Equal(1, upgraded.NewRank, "JSON upgrade derives rank from saved state");
                 Check.Equal(1, upgraded.Cost, "JSON rank-one upgrade uses server-owned cost");
                 Check.Equal(9, upgraded.RemainingTalentPoints, "JSON upgrade spends server-owned points");
+
+                var replay = await store.UpgradeTalentAsync(
+                    accountId,
+                    characterId,
+                    talentId: 0,
+                    clientRank: 0,
+                    clientTalentPoints: int.MaxValue);
+                Check.True(
+                    replay is null,
+                    "JSON replay cannot buy the next talent rank");
+
+                var nextRank = await store.UpgradeTalentAsync(
+                    accountId,
+                    characterId,
+                    talentId: 0,
+                    clientRank: 1,
+                    clientTalentPoints: int.MaxValue)
+                    ?? throw new InvalidOperationException(
+                        "JSON legitimate next talent rank was rejected");
+                Check.Equal(
+                    2,
+                    nextRank.NewRank,
+                    "JSON next expected rank is a new operation");
+                Check.Equal(
+                    7,
+                    nextRank.RemainingTalentPoints,
+                    "JSON two transitions spend one plus two points");
             }
 
             await using (var reloadedStore = new JsonGameStore(dataPath))
             {
                 var reloadedCharacter = await reloadedStore.GetFirstCharacterAsync(accountId)
                     ?? throw new InvalidOperationException("JSON talent character did not reload");
-                Check.Equal(9, reloadedCharacter.TalentPoints, "talent points survive JSON store reload");
+                Check.Equal(7, reloadedCharacter.TalentPoints, "talent points survive JSON store reload");
 
                 var reloadedTalents = await reloadedStore.GetTalentStatesAsync(accountId, characterId);
                 var healthy = reloadedTalents.Single(talent => talent.TalentId == 0);
-                Check.Equal(1, healthy.Rank, "warrior talent ID zero rank survives JSON store reload");
-                Check.Equal(4, healthy.DisplayValue, "reloaded warrior talent has its rank-one display value");
-                Check.Equal(2, healthy.NextCost, "reloaded warrior talent has its server-owned next cost");
+                Check.Equal(2, healthy.Rank, "warrior talent ID zero rank survives JSON store reload");
+                Check.Equal(7, healthy.DisplayValue, "reloaded warrior talent has its rank-two display value");
+                Check.Equal(3, healthy.NextCost, "reloaded warrior talent has its server-owned next cost");
             }
         }
         finally
