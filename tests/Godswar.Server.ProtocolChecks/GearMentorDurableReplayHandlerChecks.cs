@@ -22,6 +22,8 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         await CheckReplayMissContinuesRouteRejectionAsync();
         await CheckUnavailableExecutorLeavesOperationPendingAsync();
         await CheckUnavailableMakeStoneExecutorLeavesOperationPendingAsync();
+        await CheckUnavailableDecomposeExecutorLeavesOperationPendingAsync();
+        await CheckDecomposeReplayWinsBeforeRouteRejectionAsync();
     }
 
     private static async Task

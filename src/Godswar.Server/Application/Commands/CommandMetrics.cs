@@ -74,6 +74,8 @@ internal static class CommandMetrics
                 "gear_mentor_transform_crystal",
             CommandFamily.GearMentorCombineGemPieces =>
                 "gear_mentor_combine_gem_pieces",
+            CommandFamily.GearMentorDecomposeGear =>
+                "gear_mentor_decompose_gear",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

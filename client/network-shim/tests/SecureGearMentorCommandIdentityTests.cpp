@@ -424,14 +424,14 @@ void CheckCombineNavigationAndConfirmation() {
         Describe(&registry, selection, sizeof(selection)) ==
             SecureOperationRegistryResult::Success,
         "abandoned Combine selection setup failed");
-    std::uint8_t decompose[92]{};
-    ActionPacket(5067, 1, decompose);
+    std::uint8_t enhance[92]{};
+    ActionPacket(5067, 2, enhance);
     LegacyPacketDescriptor untracked{};
     Check(
         Describe(
             &registry,
-            decompose,
-            sizeof(decompose),
+            enhance,
+            sizeof(enhance),
             &untracked) ==
                 SecureOperationRegistryResult::Success &&
             !untracked.hasOperation &&

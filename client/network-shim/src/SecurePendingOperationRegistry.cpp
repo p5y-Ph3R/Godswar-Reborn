@@ -38,6 +38,10 @@ bool TryResolveCommandFamily(
     }
 
     switch (action) {
+        case LegacyGearMentorAction::DecomposeGear:
+            *family =
+                SecureLegacyCommandFamily::DecomposeGear;
+            return true;
         case LegacyGearMentorAction::MakeAttributeStone:
             *family =
                 SecureLegacyCommandFamily::MakeAttributeStone;
@@ -147,18 +151,15 @@ SecurePendingOperationRegistry::DescribePacket(
         if (selected) {
             if (selectionGeneration_ ==
                 (std::numeric_limits<std::uint64_t>::max)()) {
-                hasSelection_ = false;
-                selectedBagSlot_ = -1;
+                ResetSelectionState();
                 ReleaseSRWLockExclusive(&lock_);
                 return SecureOperationRegistryResult::Capacity;
             }
-            ++selectionGeneration_;
-            hasSelection_ = true;
-            selectedBagSlot_ = selectionSlot;
-        } else if (hasSelection_ &&
-                   selectedBagSlot_ == selectionSlot) {
-            // The stock client clears the selected control immediately
-            // before its final action. Preserve the semantic selection.
+            if (AddSelection(selectionSlot)) {
+                ++selectionGeneration_;
+            }
+        } else {
+            RemoveSelection(selectionSlot, now);
         }
     }
 
@@ -171,8 +172,7 @@ SecurePendingOperationRegistry::DescribePacket(
         LegacyGearMentorAction::InitialMenu) {
         combinePageArmed_ = false;
         combineNpcId_ = 0;
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
+        ResetSelectionState();
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
@@ -187,16 +187,14 @@ SecurePendingOperationRegistry::DescribePacket(
             (std::numeric_limits<std::uint64_t>::max)()) {
             combinePageArmed_ = false;
             combineNpcId_ = 0;
-            hasSelection_ = false;
-            selectedBagSlot_ = -1;
+            ResetSelectionState();
             ReleaseSRWLockExclusive(&lock_);
             return SecureOperationRegistryResult::Capacity;
         }
         ++combinePageGeneration_;
         combinePageArmed_ = true;
         combineNpcId_ = npcId;
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
+        ResetSelectionState();
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
@@ -212,8 +210,7 @@ SecurePendingOperationRegistry::DescribePacket(
         // action.
         combinePageArmed_ = false;
         combineNpcId_ = 0;
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
+        ResetSelectionState();
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::Success;
     }
@@ -231,7 +228,16 @@ SecurePendingOperationRegistry::DescribePacket(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::NoCharacter;
     }
-    if (!hasSelection_) {
+    int identityBagSlots[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t identitySelectionCount = 0;
+    if (!TryGetIdentitySelection(
+            identityBagSlots,
+            &identitySelectionCount) ||
+        (family != SecureLegacyCommandFamily::DecomposeGear &&
+            identitySelectionCount != 1)) {
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::NoSelection;
     }
@@ -243,7 +249,8 @@ SecurePendingOperationRegistry::DescribePacket(
     Entry* entry = Find(
         family,
         npcId,
-        selectedBagSlot_);
+        identityBagSlots,
+        identitySelectionCount);
     if (entry == nullptr) {
         entry = FindAvailable();
         if (entry == nullptr) {
@@ -263,7 +270,11 @@ SecurePendingOperationRegistry::DescribePacket(
         entry->family = family;
         entry->characterId = characterId_;
         entry->npcId = npcId;
-        entry->bagSlot = selectedBagSlot_;
+        entry->selectionCount = identitySelectionCount;
+        std::memcpy(
+            entry->bagSlots,
+            identityBagSlots,
+            sizeof(entry->bagSlots));
         entry->selectionGeneration = selectionGeneration_;
         entry->combinePageGeneration =
             family ==
@@ -328,18 +339,29 @@ SecurePendingOperationRegistry::Resolve(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::ClockFailure;
     }
+    int identityBagSlots[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t identitySelectionCount = 0;
     if (hasPrincipal_ &&
         hasCharacter_ &&
         characterId_ == entry->characterId &&
-        selectedBagSlot_ == entry->bagSlot &&
         selectionGeneration_ ==
             entry->selectionGeneration &&
+        TryGetIdentitySelection(
+            identityBagSlots,
+            &identitySelectionCount) &&
+        EqualSelection(
+            identityBagSlots,
+            identitySelectionCount,
+            entry->bagSlots,
+            entry->selectionCount) &&
         EqualBytes(
             principal_,
             entry->principal,
             sizeof(principal_))) {
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
+        ResetSelectionState();
     }
     if (entry->family ==
             SecureLegacyCommandFamily::CombineGemPieces &&
@@ -368,8 +390,7 @@ SecurePendingOperationRegistry::SetCharacter(
     hasCharacter_ = true;
     characterId_ = characterId;
     if (changed) {
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
+        ResetSelectionState();
         combinePageArmed_ = false;
         combineNpcId_ = 0;
     }
@@ -400,8 +421,13 @@ SecurePendingOperationRegistry::Snapshot() noexcept {
     snapshot.hasPrincipal = hasPrincipal_;
     snapshot.hasCharacter = hasCharacter_;
     snapshot.characterId = characterId_;
-    snapshot.hasSelection = hasSelection_;
-    snapshot.selectedBagSlot = selectedBagSlot_;
+    snapshot.hasSelection =
+        TryGetIdentitySelection(
+            snapshot.selectedBagSlots,
+            &snapshot.selectionCount);
+    snapshot.selectedBagSlot = snapshot.hasSelection
+        ? snapshot.selectedBagSlots[0]
+        : -1;
     snapshot.combinePageArmed = combinePageArmed_;
     snapshot.combineNpcId = combineNpcId_;
     ReleaseSRWLockExclusive(&lock_);
@@ -420,201 +446,12 @@ void SecurePendingOperationRegistry::Clear() noexcept {
     hasPrincipal_ = false;
     hasCharacter_ = false;
     characterId_ = -1;
-    hasSelection_ = false;
-    selectedBagSlot_ = -1;
+    ResetSelectionState();
     selectionGeneration_ = 0;
     combinePageArmed_ = false;
     combineNpcId_ = 0;
     combinePageGeneration_ = 0;
     ReleaseSRWLockExclusive(&lock_);
-}
-
-bool SecurePendingOperationRegistry::ReadNow(
-    std::uint64_t* now) noexcept {
-    return now != nullptr &&
-        clock_ != nullptr &&
-        clock_(clockContext_, now);
-}
-
-void SecurePendingOperationRegistry::Prune(
-    std::uint64_t now) noexcept {
-    for (auto& entry : entries_) {
-        if (entry.occupied && now >= entry.expiresAt) {
-            ClearEntry(&entry);
-        }
-    }
-    for (auto& tombstone : tombstones_) {
-        if (tombstone.occupied &&
-            now >= tombstone.expiresAt) {
-            ClearTombstone(&tombstone);
-        }
-    }
-}
-
-SecurePendingOperationRegistry::Entry*
-SecurePendingOperationRegistry::Find(
-    SecureLegacyCommandFamily family,
-    std::uint32_t npcId,
-    int bagSlot) noexcept {
-    for (auto& entry : entries_) {
-        if (entry.occupied &&
-            entry.characterId == characterId_ &&
-            entry.npcId == npcId &&
-            entry.bagSlot == bagSlot &&
-            entry.family == family &&
-            EqualBytes(
-                entry.principal,
-                principal_,
-                sizeof(principal_))) {
-            return &entry;
-        }
-    }
-    return nullptr;
-}
-
-SecurePendingOperationRegistry::Entry*
-SecurePendingOperationRegistry::FindByOperationId(
-    const std::uint8_t* operationId) noexcept {
-    for (auto& entry : entries_) {
-        if (entry.occupied &&
-            EqualBytes(
-                entry.operationId,
-                operationId,
-                sizeof(entry.operationId))) {
-            return &entry;
-        }
-    }
-    return nullptr;
-}
-
-SecurePendingOperationRegistry::Tombstone*
-SecurePendingOperationRegistry::FindTombstone(
-    const std::uint8_t* operationId) noexcept {
-    for (auto& tombstone : tombstones_) {
-        if (tombstone.occupied &&
-            EqualBytes(
-                tombstone.operationId,
-                operationId,
-                sizeof(tombstone.operationId))) {
-            return &tombstone;
-        }
-    }
-    return nullptr;
-}
-
-SecurePendingOperationRegistry::Entry*
-SecurePendingOperationRegistry::FindAvailable() noexcept {
-    for (auto& entry : entries_) {
-        if (!entry.occupied) {
-            return &entry;
-        }
-    }
-    return nullptr;
-}
-
-SecurePendingOperationRegistry::Tombstone*
-SecurePendingOperationRegistry::FindTombstoneSlot() noexcept {
-    Tombstone* oldest = nullptr;
-    for (auto& tombstone : tombstones_) {
-        if (!tombstone.occupied) {
-            return &tombstone;
-        }
-        if (oldest == nullptr ||
-            tombstone.expiresAt < oldest->expiresAt) {
-            oldest = &tombstone;
-        }
-    }
-    return oldest;
-}
-
-bool SecurePendingOperationRegistry::RememberResolved(
-    const Entry& entry,
-    std::uint64_t now) noexcept {
-    if (now >
-        (std::numeric_limits<std::uint64_t>::max)() -
-            SecurePendingOperationLifetimeMilliseconds) {
-        return false;
-    }
-    Tombstone* tombstone = FindTombstoneSlot();
-    if (tombstone == nullptr) {
-        return false;
-    }
-
-    ClearTombstone(tombstone);
-    tombstone->occupied = true;
-    tombstone->family = entry.family;
-    tombstone->expiresAt =
-        now + SecurePendingOperationLifetimeMilliseconds;
-    std::memcpy(
-        tombstone->operationId,
-        entry.operationId,
-        sizeof(tombstone->operationId));
-    return true;
-}
-
-bool SecurePendingOperationRegistry::CreateOperationId(
-    std::uint8_t* operationId) noexcept {
-    if (operationId == nullptr ||
-        randomGenerator_ == nullptr) {
-        return false;
-    }
-
-    for (unsigned attempt = 0; attempt < 4; ++attempt) {
-        if (!randomGenerator_(
-                randomContext_,
-                operationId,
-                16)) {
-            return false;
-        }
-        operationId[6] = static_cast<std::uint8_t>(
-            (operationId[6] & 0x0FU) | 0x40U);
-        operationId[8] = static_cast<std::uint8_t>(
-            (operationId[8] & 0x3FU) | 0x80U);
-        if (FindByOperationId(operationId) == nullptr &&
-            FindTombstone(operationId) == nullptr) {
-            return true;
-        }
-    }
-    SecureZeroMemory(operationId, 16);
-    return false;
-}
-
-void SecurePendingOperationRegistry::SetPrincipal(
-    const std::uint8_t* principal) noexcept {
-    const bool changed =
-        !hasPrincipal_ ||
-        !EqualBytes(
-            principal_,
-            principal,
-            sizeof(principal_));
-    std::memcpy(
-        principal_,
-        principal,
-        sizeof(principal_));
-    hasPrincipal_ = true;
-    if (changed) {
-        hasCharacter_ = false;
-        characterId_ = -1;
-        hasSelection_ = false;
-        selectedBagSlot_ = -1;
-        combinePageArmed_ = false;
-        combineNpcId_ = 0;
-    }
-}
-
-void SecurePendingOperationRegistry::ClearEntry(
-    Entry* entry) noexcept {
-    if (entry != nullptr) {
-        SecureZeroMemory(entry, sizeof(*entry));
-        entry->bagSlot = -1;
-    }
-}
-
-void SecurePendingOperationRegistry::ClearTombstone(
-    Tombstone* tombstone) noexcept {
-    if (tombstone != nullptr) {
-        SecureZeroMemory(tombstone, sizeof(*tombstone));
-    }
 }
 
 } // namespace godswar::network

@@ -217,10 +217,12 @@ The matching terminal server outcome is specified in
 [secure legacy command results](network-infrastructure-secure-command-results.md).
 
 The Gear Mentor retry key includes family, login fingerprint, authenticated
-`EnterMain` character ID, NPC, and slot. Its 16-entry registry retains IDs for
-ten minutes and isolates character swaps. Families `6..8` cover Make Stone,
-Transform, and Combine; see the [first increment](data-architecture-b09-native-make-attribute-stone-20260729.md)
-and [material conversions](data-architecture-b09-native-material-conversions-20260729.md).
+`EnterMain` character ID, NPC, and an exact ordered slot list. Its 16-entry
+registry retains IDs for ten minutes and isolates character swaps. Families
+`6..9` cover Make Stone, Transform, Combine, and Decompose; see the
+[first increment](data-architecture-b09-native-make-attribute-stone-20260729.md),
+[material conversions](data-architecture-b09-native-material-conversions-20260729.md),
+and [Decompose](data-architecture-b09-native-decompose-20260729.md).
 Other commands require explicit correlation.
 
 ## Game grant

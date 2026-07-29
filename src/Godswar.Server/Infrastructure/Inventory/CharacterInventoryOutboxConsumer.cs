@@ -76,6 +76,17 @@ internal sealed class CharacterInventoryOutboxConsumer :
             return ValueTask.CompletedTask;
         }
 
+        if (string.Equals(
+                message.EventType,
+                GearMentorDecomposePersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                GearMentorDecomposePersistenceCodec.ContractVersion)
+        {
+            ValidateDecompose(message);
+            return ValueTask.CompletedTask;
+        }
+
         throw new InvalidDataException(
             "The inventory outbox event contract is unsupported.");
     }
@@ -181,6 +192,25 @@ internal sealed class CharacterInventoryOutboxConsumer :
             throw new InvalidDataException(
                 "The material-conversion outbox identity is " +
                 "inconsistent.");
+        }
+    }
+
+    private static void ValidateDecompose(OutboxEventMessage message)
+    {
+        var receipt = GearMentorDecomposePersistenceCodec.Decode(
+            message.Payload.Span);
+        if (receipt.Status !=
+                GearMentorDecomposeGearResultStatus.Succeeded ||
+            receipt.OutboxEventId != message.EventId ||
+            receipt.InventoryRevision != message.AggregateRevision ||
+            !string.Equals(
+                GearMentorDecomposePersistenceCodec.AggregateKey(
+                    receipt.CharacterId),
+                message.AggregateKey,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The Decompose outbox identity is inconsistent.");
         }
     }
 }

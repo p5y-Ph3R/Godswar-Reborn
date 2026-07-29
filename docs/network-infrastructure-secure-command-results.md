@@ -84,6 +84,7 @@ The wired families and stable stock-client result codes are:
 | `6` | Gear Mentor Make Attribute Stone | `1017` | `1016`, `1022`, `1020`, `1002` |
 | `7` | Gear Mentor Transform Crystal | `1823` | `1822`, `1020` |
 | `8` | Gear Mentor Combine Gem Pieces | `304` | `301`, `302`, `303` |
+| `9` | Gear Mentor Decompose Gear | `1005` | `1024`, `1015`, `1003`, `1014`, `1004`, `1032`, `1020`, `1002`, `1019` |
 
 Every additional family must define stable finite result codes, keep retry
 identity isolated from other families, and demonstrate durable inbox replay

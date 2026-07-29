@@ -470,6 +470,17 @@ void CheckCapacityAndFailures() {
     for (std::size_t index = 0;
          index < SecurePendingOperationCapacity;
          ++index) {
+        if (index > 0) {
+            SelectionPacket(
+                static_cast<int>(index - 1),
+                false,
+                0,
+                selection);
+            Check(
+                Describe(&registry, selection, sizeof(selection)) ==
+                    SecureOperationRegistryResult::Success,
+                "capacity fixture could not clear prior selection");
+        }
         SelectionPacket(
             static_cast<int>(index),
             true,
@@ -485,6 +496,11 @@ void CheckCapacityAndFailures() {
                     SecureOperationRegistryResult::Success,
             "registry rejected an in-capacity operation");
     }
+    SelectionPacket(15, false, 0, selection);
+    Check(
+        Describe(&registry, selection, sizeof(selection)) ==
+            SecureOperationRegistryResult::Success,
+        "capacity fixture could not clear final selection");
     SelectionPacket(47, true, 0, selection);
     FinalPacket(5067, final);
     Check(

@@ -43,6 +43,40 @@ internal sealed partial class GameClientHandler
         {
             switch (family.Value)
             {
+                case CommandFamily.GearMentorDecomposeGear:
+                    if (_gearMentorDecomposeGearCommands is null)
+                    {
+                        RecordUnresolvedReplayProvider(family.Value);
+                        return true;
+                    }
+
+                    var decompose =
+                        await _gearMentorDecomposeGearCommands
+                            .TryReplayAsync(
+                                subject,
+                                packet.ClientOperationId.Value,
+                                cancellationToken);
+                    if (decompose.Disposition ==
+                        GearMentorDecomposeGearExecutionDisposition
+                            .ReplayNotFound)
+                    {
+                        return false;
+                    }
+                    if (!decompose.IsDurable)
+                    {
+                        RecordUnresolvedReplayOutcome(
+                            family.Value,
+                            decompose.Disposition.ToString());
+                        return true;
+                    }
+
+                    await CompleteUnroutedDecomposeReplayAsync(
+                        npcId,
+                        packet.ClientOperationId.Value,
+                        decompose.Receipt!,
+                        cancellationToken);
+                    return true;
+
                 case CommandFamily.GearMentorMakeAttributeStone:
                     if (_makeAttributeStoneCommands is null)
                     {
@@ -169,6 +203,33 @@ internal sealed partial class GameClientHandler
             receipt.NativeResultSubId,
             receipt.InventoryRevision,
             receipt.Status == MakeAttributeStoneResultStatus.Succeeded,
+            kitBagBeforeReplay,
+            cancellationToken);
+    }
+
+    private async Task CompleteUnroutedDecomposeReplayAsync(
+        uint npcId,
+        Guid clientOperationId,
+        GearMentorDecomposeGearExecutionReceipt receipt,
+        CancellationToken cancellationToken)
+    {
+        if (receipt.Family != CommandFamily.GearMentorDecomposeGear ||
+            receipt.CharacterId != _character!.Id)
+        {
+            throw new InvalidDataException(
+                "The Decompose replay receipt identity is inconsistent.");
+        }
+
+        var kitBagBeforeReplay = _character.KitBag;
+        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await SendUnroutedReplayResponseAsync(
+            npcId,
+            clientOperationId,
+            CommandFamily.GearMentorDecomposeGear,
+            receipt.NativeResultSubId,
+            receipt.InventoryRevision,
+            receipt.Status ==
+                GearMentorDecomposeGearResultStatus.Succeeded,
             kitBagBeforeReplay,
             cancellationToken);
     }

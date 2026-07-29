@@ -25,6 +25,10 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 GearMentorMaterialConversionPersistenceCodec.ConsumerKey,
             "material conversions share the inventory checkpoint");
         Check.True(
+            consumer.ConsumerKey ==
+                GearMentorDecomposePersistenceCodec.ConsumerKey,
+            "Decompose shares the inventory checkpoint");
+        Check.True(
             consumer.OrderingPolicy ==
                 OutboxOrderingPolicy.StrictSequence,
             "character-inventory projection uses strict ordering");
@@ -43,6 +47,11 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 GearMentorMaterialConversionPersistenceCodec.AggregateKey(
                     CharacterId),
             "material conversions share the inventory aggregate stream");
+        Check.True(
+            DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
+                GearMentorDecomposePersistenceCodec.AggregateKey(
+                    CharacterId),
+            "Decompose shares the inventory aggregate stream");
 
         var messages = CreateCompatibleSequence();
         var currentRevision = 0L;
@@ -83,6 +92,12 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckMaterialConversionFamilyRejectionAsync(
             consumer,
             messages[5]);
+        await CheckDecomposeIdentityRejectionAsync(
+            consumer,
+            messages[6]);
+        await CheckDecomposeContractRejectionAsync(
+            consumer,
+            messages[6]);
         await CheckContractRejectionAsync(consumer, messages[0]);
     }
 
@@ -101,7 +116,8 @@ internal static class CharacterInventoryOutboxConsumerChecks
             CommandFamily.GearMentorTransformCrystal),
         CreateMaterialConversionMessage(
             revision: 6,
-            CommandFamily.GearMentorCombineGemPieces)
+            CommandFamily.GearMentorCombineGemPieces),
+        CreateDecomposeMessage(revision: 7)
     ];
 
     private static OutboxEventMessage CreateGrantMessage(
@@ -194,6 +210,26 @@ internal static class CharacterInventoryOutboxConsumerChecks
                 family),
             GearMentorMaterialConversionPersistenceCodec.ContractVersion,
             GearMentorMaterialConversionPersistenceCodec.Encode(receipt));
+    }
+
+    private static OutboxEventMessage CreateDecomposeMessage(long revision)
+    {
+        var eventId = Guid.NewGuid();
+        var receipt = new GearMentorDecomposeGearExecutionReceipt(
+            CharacterId,
+            GearMentorDecomposeGearResultStatus.Succeeded,
+            GearMentorDecomposeGearNativeResults.SucceededSubId,
+            [new GearMentorDecomposeReceiptSelection(9, 1004)],
+            [new GearMentorDecomposeDustOutcome(9, 9900, 2, 1)],
+            revision,
+            $"inventory-check-{revision}",
+            eventId);
+        return CreateMessage(
+            eventId,
+            revision,
+            GearMentorDecomposePersistenceCodec.EventType,
+            GearMentorDecomposePersistenceCodec.ContractVersion,
+            GearMentorDecomposePersistenceCodec.Encode(receipt));
     }
 
     private static OutboxEventMessage CreateMessage(
@@ -307,6 +343,36 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(inconsistent).AsTask(),
             "material-conversion event/family mismatch is rejected");
+    }
+
+    private static async Task CheckDecomposeIdentityRejectionAsync(
+        CharacterInventoryOutboxConsumer consumer,
+        OutboxEventMessage decompose)
+    {
+        var inconsistent = CreateMessage(
+            Guid.NewGuid(),
+            decompose.AggregateRevision,
+            decompose.EventType,
+            decompose.SchemaVersion,
+            decompose.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "Decompose event identity mismatch is rejected");
+    }
+
+    private static async Task CheckDecomposeContractRejectionAsync(
+        CharacterInventoryOutboxConsumer consumer,
+        OutboxEventMessage decompose)
+    {
+        var unsupported = CreateMessage(
+            decompose.EventId,
+            decompose.AggregateRevision,
+            decompose.EventType,
+            GearMentorDecomposePersistenceCodec.ContractVersion + 1,
+            decompose.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(unsupported).AsTask(),
+            "unsupported Decompose schema is rejected");
     }
 
     private static async Task CheckThrowsAsync<TException>(

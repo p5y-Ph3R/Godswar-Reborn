@@ -393,6 +393,8 @@ internal sealed partial class GameClientHandler
         ResolveSecureGearMentorCommandFamily(int wireSubId) =>
         wireSubId switch
         {
+            GearEnhancerProtocol.DecomposeGearSubId =>
+                CommandFamily.GearMentorDecomposeGear,
             GearEnhancerProtocol.MakeAttributeStoneSubId =>
                 CommandFamily.GearMentorMakeAttributeStone,
             GearEnhancerProtocol.TransformCrystalSubId =>

@@ -11,8 +11,11 @@ namespace godswar::network {
 
 inline constexpr std::size_t SecurePendingOperationCapacity = 16;
 inline constexpr std::size_t SecureResolvedOperationCapacity = 16;
+inline constexpr std::size_t SecureGearSelectionCapacity = 3;
 inline constexpr std::uint64_t
     SecurePendingOperationLifetimeMilliseconds = 10 * 60 * 1000;
+inline constexpr std::uint64_t
+    SecureSelectionClearCorrelationLifetimeMilliseconds = 1000;
 
 using SecureOperationRandomGenerator =
     bool (*)(
@@ -45,6 +48,11 @@ struct SecurePendingOperationSnapshot final {
     int characterId = -1;
     bool hasSelection = false;
     int selectedBagSlot = -1;
+    std::size_t selectionCount = 0;
+    int selectedBagSlots[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
     bool combinePageArmed = false;
     std::uint32_t combineNpcId = 0;
 };
@@ -84,7 +92,11 @@ private:
             SecureLegacyCommandFamily::MakeAttributeStone;
         int characterId = -1;
         std::uint32_t npcId = 0;
-        int bagSlot = -1;
+        std::size_t selectionCount = 0;
+        int bagSlots[SecureGearSelectionCapacity]{
+            -1,
+            -1,
+            -1};
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
         std::uint64_t expiresAt = 0;
@@ -104,7 +116,8 @@ private:
     Entry* Find(
         SecureLegacyCommandFamily family,
         std::uint32_t npcId,
-        int bagSlot) noexcept;
+        const int* bagSlots,
+        std::size_t selectionCount) noexcept;
     Entry* FindByOperationId(
         const std::uint8_t* operationId) noexcept;
     Tombstone* FindTombstone(
@@ -117,6 +130,25 @@ private:
     bool CreateOperationId(std::uint8_t* operationId) noexcept;
     void SetPrincipal(
         const std::uint8_t* principal) noexcept;
+    bool AddSelection(int bagSlot) noexcept;
+    void RemoveSelection(
+        int bagSlot,
+        std::uint64_t now) noexcept;
+    void BeginSelectionEdit() noexcept;
+    void TrackSelectionClear(
+        int bagSlot,
+        std::uint64_t now) noexcept;
+    void ResetSelectionClearCandidate() noexcept;
+    void InvalidateSelectionClear() noexcept;
+    void ResetSelectionState() noexcept;
+    bool TryGetIdentitySelection(
+        int* bagSlots,
+        std::size_t* selectionCount) const noexcept;
+    static bool EqualSelection(
+        const int* first,
+        std::size_t firstCount,
+        const int* second,
+        std::size_t secondCount) noexcept;
     void ClearEntry(Entry* entry) noexcept;
     void ClearTombstone(Tombstone* tombstone) noexcept;
 
@@ -128,9 +160,28 @@ private:
     bool hasPrincipal_ = false;
     bool hasCharacter_ = false;
     int characterId_ = -1;
-    bool hasSelection_ = false;
-    int selectedBagSlot_ = -1;
+    int selectedBagSlots_[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t selectionCount_ = 0;
     std::uint64_t selectionGeneration_ = 0;
+    bool selectionClearCandidateActive_ = false;
+    int selectionClearCandidate_[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t selectionClearCandidateCount_ = 0;
+    std::size_t selectionClearStep_ = 0;
+    std::uint64_t selectionClearCandidateExpiresAt_ = 0;
+    bool hasPendingClearedSelection_ = false;
+    int pendingClearedSelection_[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t pendingClearedSelectionCount_ = 0;
+    std::uint64_t pendingClearedSelectionExpiresAt_ = 0;
+    bool selectionClearInvalidated_ = false;
     bool combinePageArmed_ = false;
     std::uint32_t combineNpcId_ = 0;
     std::uint64_t combinePageGeneration_ = 0;

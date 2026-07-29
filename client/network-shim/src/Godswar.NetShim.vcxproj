@@ -147,6 +147,7 @@
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Storage.cpp" />
     <ClCompile Include="SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="SecureRealtimeMovementRouter.cpp" />
     <ClCompile Include="SecureOuterStream.Control.cpp" />

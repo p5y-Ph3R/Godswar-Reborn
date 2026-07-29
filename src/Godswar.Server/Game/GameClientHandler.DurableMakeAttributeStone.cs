@@ -44,6 +44,9 @@ internal sealed partial class GameClientHandler
         {
             CommandFamily.GearMentorMakeAttributeStone =>
                 GearEnhancerProtocol.SelectedItemMissingResultSubId,
+            CommandFamily.GearMentorDecomposeGear =>
+                GearMentorDecomposeGearNativeResults
+                    .SelectionMissingSubId,
             CommandFamily.GearMentorTransformCrystal or
                 CommandFamily.GearMentorCombineGemPieces =>
                 MaterialConversionInvalidResultSubId(

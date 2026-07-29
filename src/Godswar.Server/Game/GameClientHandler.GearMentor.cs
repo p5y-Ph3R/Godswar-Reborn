@@ -99,6 +99,22 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (operation == GearMentorOperation.Decompose &&
+            clientOperationId.HasValue)
+        {
+            await HandleDurableGearMentorDecomposeAsync(
+                npcId,
+                clientOperationId.Value,
+                canCommit &&
+                    selectedSelections.Count is >= 1 and <= 3
+                    ? selectedSelections.ToArray()
+                    : null,
+                kitBagBeforeTransaction,
+                selectionSummary,
+                cancellationToken);
+            return;
+        }
+
         if ((operation is GearMentorOperation.TransformCrystal or
                 GearMentorOperation.CombineGemPieces) &&
             clientOperationId.HasValue)
@@ -120,6 +136,11 @@ internal sealed partial class GameClientHandler
         {
             CommandMetrics.RecordUnsupportedLegacyIdentity(
                 CommandFamily.GearMentorMakeAttributeStone);
+        }
+        else if (operation == GearMentorOperation.Decompose)
+        {
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.GearMentorDecomposeGear);
         }
         else if (operation == GearMentorOperation.TransformCrystal)
         {

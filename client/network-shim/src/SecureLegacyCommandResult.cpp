@@ -28,7 +28,9 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::TransformCrystal ||
         family ==
-            SecureLegacyCommandFamily::CombineGemPieces;
+            SecureLegacyCommandFamily::CombineGemPieces ||
+        family ==
+            SecureLegacyCommandFamily::DecomposeGear;
 }
 
 bool HasValidRevision(

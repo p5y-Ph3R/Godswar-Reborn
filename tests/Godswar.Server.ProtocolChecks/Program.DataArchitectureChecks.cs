@@ -28,6 +28,9 @@ internal static partial class Program
                 PostgresGearMentorMaterialConversionIntegrationChecks
                     .RunAsync),
             (
+                PostgresGearMentorDecomposeIntegrationChecks.CheckName,
+                PostgresGearMentorDecomposeIntegrationChecks.RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

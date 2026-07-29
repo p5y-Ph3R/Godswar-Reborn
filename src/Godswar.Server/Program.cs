@@ -185,7 +185,10 @@ var gameServer = rawCompatibilityEnabled
                     .MakeAttributeStoneCommands,
             gearMentorMaterialConversionCommands:
                 postgresApplicationDataRuntime?
-                    .MaterialConversionCommands))
+                    .MaterialConversionCommands,
+            gearMentorDecomposeGearCommands:
+                postgresApplicationDataRuntime?
+                    .DecomposeGearCommands))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -281,7 +284,10 @@ var secureGameServer = secureTransportFactory is null
                     .MakeAttributeStoneCommands,
             gearMentorMaterialConversionCommands:
                 postgresApplicationDataRuntime?
-                    .MaterialConversionCommands),
+                    .MaterialConversionCommands,
+            gearMentorDecomposeGearCommands:
+                postgresApplicationDataRuntime?
+                    .DecomposeGearCommands),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
