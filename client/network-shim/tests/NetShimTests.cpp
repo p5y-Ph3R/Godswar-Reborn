@@ -6,6 +6,7 @@
 #include "EndpointManifestTests.h"
 #include "ExternalTcpConnectorTests.h"
 #include "LoopbackAcceptorTests.h"
+#include "LegacyCommandDescriptorStreamTests.h"
 #include "LoopbackPeerOwnerTests.h"
 #include "NativeClientBridgeTests.h"
 #include "NativeClientCoordinatorTests.h"
@@ -14,8 +15,10 @@
 #include "SecureClientRuntimeTests.h"
 #include "SecureClientSessionTests.h"
 #include "SecureClientProtocolTests.h"
+#include "SecurePendingOperationRegistryTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
+#include "SecureLegacyCommandResultStreamTests.h"
 #include "SecureRealtimeMovementTests.h"
 #include "SecureRealtimeMovementChannelTests.h"
 #include "SecureManifestProbe.h"
@@ -540,13 +543,16 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunBoundedChunkQueueTests();
     Failures += RunEndpointManifestTests();
     Failures += RunLoopbackPeerOwnerTests();
+    Failures += RunLegacyCommandDescriptorStreamTests();
     Failures += RunOpaqueDuplexPumpTests();
     Failures += RunSchannelClientStreamTests(!offline);
     Failures += RunSecureClientRuntimeTests();
     Failures += RunSecureClientSessionTests();
     Failures += RunSecureClientProtocolTests();
+    Failures += RunSecurePendingOperationRegistryTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();
+    Failures += RunSecureLegacyCommandResultStreamTests();
     Failures += RunSecureRealtimeMovementTests();
     Failures += RunSecureRealtimeMovementChannelTests();
     Failures += RunSecureOuterControlTests();

@@ -32,6 +32,9 @@ internal static class DataArchitectureCheckCatalog
             "Legacy talent command envelope",
             LegacyTalentCommandEnvelopeChecks.RunAsync),
         (
+            "Durable Gear Mentor Make Attribute Stone command contract",
+            MakeAttributeStoneCommandContractChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

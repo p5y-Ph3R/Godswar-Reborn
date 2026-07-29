@@ -14,6 +14,9 @@ using godswar::network::SecureFrameDirection;
 using godswar::network::SecureFrameHeader;
 using godswar::network::SecureFrameType;
 using godswar::network::SecureLegacyCommandOperation;
+using godswar::network::SecureLegacyCommandResult;
+using godswar::network::SecureLegacyCommandDisposition;
+using godswar::network::SecureLegacyCommandFamily;
 using godswar::network::SecureServerPrefaceStatus;
 using godswar::network::SecureServerPrefaceView;
 using godswar::network::TryDecodeSecureFrameHeader;
@@ -24,6 +27,8 @@ using godswar::network::TryGetNextSecureSequence;
 using godswar::network::TryDecodeSecureLegacyCommandOperation;
 using godswar::network::TryCreateSecureLegacyCommandOperation;
 using godswar::network::TryEncodeSecureLegacyCommandOperation;
+using godswar::network::TryDecodeSecureLegacyCommandResult;
+using godswar::network::TryEncodeSecureLegacyCommandResult;
 
 int Failures = 0;
 
@@ -378,6 +383,120 @@ void CheckLegacyCommandOperation() {
         "shim CSPRNG did not create distinct canonical UUIDs");
 }
 
+void CheckLegacyCommandResult() {
+    SecureLegacyCommandResult result{};
+    result.disposition =
+        SecureLegacyCommandDisposition::Replayed;
+    result.commandFamily =
+        SecureLegacyCommandFamily::MakeAttributeStone;
+    result.resultCode = 0x10203040U;
+    result.inventoryRevision =
+        0x0102030405060708ULL;
+    for (std::size_t index = 0; index < 16; ++index) {
+        result.operationId[index] =
+            static_cast<std::uint8_t>(0xA0U + index);
+    }
+
+    std::uint8_t encoded[32]{};
+    const std::uint8_t golden[32] = {
+        0x01, 0x02, 0x00, 0x06,
+        0x10, 0x20, 0x30, 0x40,
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0xA0, 0xA1, 0xA2, 0xA3,
+        0xA4, 0xA5, 0xA6, 0xA7,
+        0xA8, 0xA9, 0xAA, 0xAB,
+        0xAC, 0xAD, 0xAE, 0xAF,
+    };
+    SecureLegacyCommandResult decoded{};
+    Check(
+        TryEncodeSecureLegacyCommandResult(
+            result,
+            encoded,
+            sizeof(encoded)) &&
+            std::memcmp(
+                encoded,
+                golden,
+                sizeof(golden)) == 0 &&
+            TryDecodeSecureLegacyCommandResult(
+                encoded,
+                sizeof(encoded),
+                &decoded) &&
+            decoded.disposition == result.disposition &&
+            decoded.commandFamily == result.commandFamily &&
+            decoded.resultCode == result.resultCode &&
+            decoded.inventoryRevision ==
+                result.inventoryRevision &&
+            std::memcmp(
+                decoded.operationId,
+                result.operationId,
+                sizeof(result.operationId)) == 0,
+        "legacy command result golden vector changed");
+
+    SecureFrameHeader header{
+        32,
+        SecureFrameType::LegacyCommandResult,
+        1};
+    std::uint8_t frameHeader[16]{};
+    Check(
+        TryEncodeSecureFrameHeader(
+            header,
+            SecureEndpointRole::Game,
+            SecureFrameDirection::ServerToClient,
+            frameHeader,
+            sizeof(frameHeader)) &&
+            !TryEncodeSecureFrameHeader(
+                header,
+                SecureEndpointRole::Game,
+                SecureFrameDirection::ClientToServer,
+                frameHeader,
+                sizeof(frameHeader)) &&
+            !TryEncodeSecureFrameHeader(
+                header,
+                SecureEndpointRole::Login,
+                SecureFrameDirection::ServerToClient,
+                frameHeader,
+                sizeof(frameHeader)),
+        "legacy command result direction or role changed");
+
+    encoded[0] = 2;
+    Check(
+        !TryDecodeSecureLegacyCommandResult(
+            encoded,
+            sizeof(encoded),
+            &decoded),
+        "legacy command result accepted a future version");
+    encoded[0] = 1;
+    encoded[1] = 0;
+    Check(
+        !TryDecodeSecureLegacyCommandResult(
+            encoded,
+            sizeof(encoded),
+            &decoded),
+        "legacy command result accepted an invalid disposition");
+    encoded[1] = 1;
+    encoded[2] = 0;
+    encoded[3] = 7;
+    Check(
+        !TryDecodeSecureLegacyCommandResult(
+            encoded,
+            sizeof(encoded),
+            &decoded),
+        "legacy command result accepted an unknown family");
+    encoded[3] = 6;
+    std::memset(encoded + 16, 0, 16);
+    Check(
+        !TryDecodeSecureLegacyCommandResult(
+            encoded,
+            sizeof(encoded),
+            &decoded) &&
+            !TryDecodeSecureLegacyCommandResult(
+                golden,
+                sizeof(golden) - 1,
+                &decoded),
+        "legacy command result accepted zero UUID or wrong length");
+}
+
 } // namespace
 
 int RunSecureClientProtocolTests() {
@@ -386,5 +505,6 @@ int RunSecureClientProtocolTests() {
     CheckFrames();
     CheckSequences();
     CheckLegacyCommandOperation();
+    CheckLegacyCommandResult();
     return Failures;
 }

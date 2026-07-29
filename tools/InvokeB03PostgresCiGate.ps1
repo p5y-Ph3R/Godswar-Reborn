@@ -251,6 +251,7 @@ try {
         'PostgreSQL talent inbox/outbox transaction',
         'PostgreSQL developer-item grant transaction',
         'PostgreSQL durable developer bag-clear transaction',
+        'PostgreSQL durable Make Attribute Stone transaction',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

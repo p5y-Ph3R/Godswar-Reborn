@@ -10,7 +10,8 @@ internal enum CommandFamily : ushort
     PetLevelUpgrade = 2,
     EquipmentForge = 3,
     DeveloperItemGrant = 4,
-    DeveloperBagClear = 5
+    DeveloperBagClear = 5,
+    GearMentorMakeAttributeStone = 6
 }
 
 internal enum CommandIdentityStrength : byte
@@ -114,6 +115,30 @@ internal static class CommandEnvelopeContract
             operationId,
             requestHash,
             command);
+    }
+
+    internal static string DeriveOperationId(
+        CommandFamily family,
+        CommandSubject subject,
+        ReadOnlySpan<byte> operationScope)
+    {
+        if (!Enum.IsDefined(family))
+        {
+            throw new ArgumentOutOfRangeException(nameof(family));
+        }
+
+        if (subject.AccountId <= 0 || subject.CharacterId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(subject));
+        }
+
+        if (operationScope.Length > MaximumOperationScopeBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(operationScope));
+        }
+
+        return ComputeOperationId(family, subject, operationScope);
     }
 
     public static CommandEnvelopeValidation Validate<TCommand>(

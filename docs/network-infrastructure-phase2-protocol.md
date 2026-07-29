@@ -2,7 +2,7 @@
 
 ## Status and ownership
 
-- Document revision: `1.7` (wire protocol remains `1.0`)
+- Document revision: `1.8` (wire protocol remains `1.0`)
 - Last updated: `2026-07-29`
 - Runtime status: Slice 8 secure exported routing/session lifecycle and guarded
   activation are implemented and offline-tested; listeners remain disabled,
@@ -175,6 +175,7 @@ machine and implementation errors. Close before incrementing
 | `0x0003` | Both | exactly `4` | Numeric close reason |
 | `0x0100` | Both | `1..16384` | Opaque legacy XOR byte-stream chunk |
 | `0x0101` | Client to game server | exactly `24` | Legacy command-operation metadata |
+| `0x0102` | Game server to client | exactly `32` | Terminal legacy command result |
 | `0x0200` | Login server to client | `71..408` | Game grant |
 | `0x0201` | Client to game server | exactly `52` | Game-ticket bind |
 | `0x0202` | Game server to client | exactly `4` | Bind result |
@@ -212,13 +213,16 @@ fails the secure connection closed. Raw legacy traffic has no operation ID.
 Reusing the same UUID on a later complete packet is permitted so a durable
 command inbox can recognize a genuine retry.
 
-This revision provides only the codec, bounded transport association, CSPRNG
-UUID generator, and writer primitive. The shim does not yet emit this marker
-from `NetClientProxy::SendMsg`. Native valuable commands remain ineligible for
-durable retry claims until a bounded pending-operation registry preserves the
-same UUID across uncertain acknowledgement and reconnect, correlates the
-server response, and distinguishes a legitimate repeated command. Generating
-a fresh UUID for every retry would not satisfy that requirement.
+The matching terminal server outcome is specified in
+[secure legacy command results](network-infrastructure-secure-command-results.md).
+
+The audited stone key is login fingerprint, character ID from an exact
+authenticated `EnterMain` (`0x2723`/`0x0658`), and NPC/slot. The process
+registry keeps 16 IDs for ten minutes; character swaps retain pending A/B/A
+identities. Failed `SendMsg` cancels an unstarted descriptor; a partial one
+forces secure teardown/reset while retaining its UUID. See the
+[B09 native increment](data-architecture-b09-native-make-attribute-stone-20260729.md).
+Other native commands require explicit correlation.
 
 ## Game grant
 

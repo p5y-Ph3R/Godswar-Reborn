@@ -4,6 +4,7 @@
 #include "EndpointManifest.h"
 #include "ExternalTcpConnector.h"
 #include "LegacyClientApi.h"
+#include "LegacyCommandDescriptorStream.h"
 #include "NativeClientBridge.h"
 #include "SchannelClientStream.h"
 #include "SecureGameGrantRegistry.h"
@@ -30,6 +31,7 @@ using SecureClientSessionSnapshotRecorder =
 struct SecureClientSessionConfiguration final {
     EndpointManifest manifest{};
     SecureGameGrantRegistry* grantRegistry = nullptr;
+    SecurePendingOperationRegistry* operationRegistry = nullptr;
     void* snapshotContext = nullptr;
     SecureClientSessionSnapshotRecorder snapshotRecorder = nullptr;
     std::uint8_t
@@ -64,6 +66,13 @@ enum class SecureClientSessionFailure : std::uint8_t {
     BridgeTerminated,
     BridgeJoin,
     UdpJoin,
+    DescriptorAllocation,
+};
+
+enum class SecureLegacySendPreparationResult : std::uint8_t {
+    NotRequired = 0,
+    Prepared,
+    Rejected,
 };
 
 struct SecureClientSessionSnapshot final {
@@ -102,6 +111,14 @@ public:
     SecureRealtimeMovementRouteResult RouteLegacyMovement(
         const void* packet,
         int packetBytes) noexcept;
+    SecureLegacySendPreparationResult PrepareLegacySend(
+        const void* packet,
+        int packetBytes,
+        std::uint64_t* descriptorToken) noexcept;
+    bool CancelPreparedLegacySend(
+        std::uint64_t descriptorToken) noexcept;
+    void ObserveLegacyServerMessage(
+        const void* message) noexcept;
 
     SecureClientSessionSnapshot Snapshot() const noexcept;
     // UDP status never decides whether the reliable TLS bridge survives.
@@ -138,6 +155,7 @@ private:
     ExternalTcpConnectSnapshot tcpSnapshot_{};
     SchannelClientStream* tls_ = nullptr;
     SecureOuterStream* outer_ = nullptr;
+    LegacyCommandDescriptorStream* descriptorStream_ = nullptr;
     NativeClientBridge* bridge_ = nullptr;
     SecureUdpClientWorker* udpWorker_ = nullptr;
     mutable SRWLOCK udpWorkerLock_{};

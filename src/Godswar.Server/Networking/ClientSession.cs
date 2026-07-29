@@ -98,6 +98,22 @@ internal sealed class ClientSession : IAsyncDisposable
             cancellationToken);
     }
 
+    internal ValueTask SendLegacyCommandResultAsync(
+        SecureLegacyCommandResult result,
+        CancellationToken cancellationToken)
+    {
+        if (_transport is not ISecureControlChannel ||
+            _transport is not ISecureCommandResultTransport resultTransport)
+        {
+            throw new InvalidOperationException(
+                "The raw legacy transport cannot send secure command results.");
+        }
+
+        return resultTransport.SendLegacyCommandResultAsync(
+            result,
+            cancellationToken);
+    }
+
     public void MarkAuthenticated()
     {
         _markAuthenticated?.Invoke();

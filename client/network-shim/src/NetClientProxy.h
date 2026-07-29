@@ -6,6 +6,8 @@
 #include "SecureClientRuntime.h"
 #include "SecureClientSession.h"
 
+#include <Windows.h>
+
 namespace godswar::network {
 
 // Mirrors the stock ABI's single-owner lifecycle. Release is the exclusive
@@ -60,6 +62,7 @@ private:
     SecureClientSession* secureSession_ = nullptr;
     NativeProxyId proxyId_;
     AvatarPreviewGate avatarPreviewGate_;
+    SRWLOCK secureSendLock_{};
 };
 
 } // namespace godswar::network

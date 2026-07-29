@@ -131,7 +131,8 @@ bool SecureClientSession::Connect(
 
     outer_ = new (std::nothrow) SecureOuterStream(
         tls_,
-        configuration_.grantRegistry);
+        configuration_.grantRegistry,
+        configuration_.operationRegistry);
     if (outer_ == nullptr) {
         Fail(SecureClientSessionFailure::OuterAllocation);
         return false;
@@ -155,12 +156,27 @@ bool SecureClientSession::Connect(
         return false;
     }
 
+    IByteStream* bridgeOuter = outer_;
+    if (role_ == ClientEndpointRole::Game &&
+        configuration_.operationRegistry != nullptr) {
+        descriptorStream_ =
+            new (std::nothrow)
+                LegacyCommandDescriptorStream(outer_);
+        if (descriptorStream_ == nullptr) {
+            Fail(
+                SecureClientSessionFailure::
+                    DescriptorAllocation);
+            return false;
+        }
+        bridgeOuter = descriptorStream_;
+    }
+
     bridge_ = new (std::nothrow) NativeClientBridge();
     if (bridge_ == nullptr) {
         Fail(SecureClientSessionFailure::BridgeAllocation);
         return false;
     }
-    if (!bridge_->Start(legacyClient, outer_)) {
+    if (!bridge_->Start(legacyClient, bridgeOuter)) {
         Fail(SecureClientSessionFailure::BridgeStart);
         return false;
     }
@@ -247,6 +263,64 @@ SecureClientSession::RouteLegacyMovement(
     }
     ReleaseSRWLockShared(&udpWorkerLock_);
     return result;
+}
+
+SecureLegacySendPreparationResult
+SecureClientSession::PrepareLegacySend(
+    const void* packet,
+    int packetBytes,
+    std::uint64_t* descriptorToken) noexcept {
+    if (role_ != ClientEndpointRole::Game) {
+        return SecureLegacySendPreparationResult::NotRequired;
+    }
+    if (packet == nullptr ||
+        packetBytes <= 0 ||
+        descriptorToken == nullptr ||
+        descriptorStream_ == nullptr ||
+        configuration_.operationRegistry == nullptr) {
+        if (descriptorStream_ != nullptr) {
+            descriptorStream_->Stop();
+        }
+        return SecureLegacySendPreparationResult::Rejected;
+    }
+
+    LegacyPacketDescriptor descriptor{};
+    if (configuration_.operationRegistry->DescribePacket(
+            packet,
+            static_cast<std::size_t>(packetBytes),
+            &descriptor) !=
+            SecureOperationRegistryResult::Success ||
+        !descriptorStream_->Enqueue(
+            descriptor,
+            descriptorToken)) {
+        descriptorStream_->Stop();
+        return SecureLegacySendPreparationResult::Rejected;
+    }
+    return SecureLegacySendPreparationResult::Prepared;
+}
+
+bool SecureClientSession::CancelPreparedLegacySend(
+    std::uint64_t descriptorToken) noexcept {
+    return descriptorStream_ != nullptr &&
+        descriptorStream_->CancelUnstartedOrStop(
+            descriptorToken);
+}
+
+void SecureClientSession::ObserveLegacyServerMessage(
+    const void* message) noexcept {
+    if (role_ != ClientEndpointRole::Game ||
+        configuration_.operationRegistry == nullptr) {
+        return;
+    }
+
+    int characterId = 0;
+    if (TryReadLegacyEnterMainCharacterId(
+            message,
+            &characterId)) {
+        static_cast<void>(
+            configuration_.operationRegistry->SetCharacter(
+                characterId));
+    }
 }
 
 SecureClientSessionSnapshot SecureClientSession::Snapshot() const noexcept {
@@ -436,6 +510,8 @@ void SecureClientSession::DestroyTransport(
     delete udpWorker;
     delete bridge_;
     bridge_ = nullptr;
+    delete descriptorStream_;
+    descriptorStream_ = nullptr;
     delete outer_;
     outer_ = nullptr;
     delete tls_;

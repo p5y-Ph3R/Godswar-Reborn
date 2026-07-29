@@ -29,6 +29,7 @@ internal static partial class SecureTlsTransportChecks
         await CheckGameTicketBindRoundTripAsync();
         await CheckCommandOperationAssociationAsync();
         await CheckCommandOperationFailuresAsync();
+        await CheckLegacyCommandResultEgressAsync();
         await CheckUdpBindingGrantAssociationAsync();
         await CheckRealtimeTlsFallbackRoutingAsync();
         await CheckUdpCapacityFallsBackToTlsAsync();

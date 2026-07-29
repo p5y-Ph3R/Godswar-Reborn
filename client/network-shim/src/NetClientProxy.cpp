@@ -22,6 +22,7 @@ NetClientProxy::NetClientProxy(
           readinessProbe,
           messageDisposer,
           preloadRequester) {
+    InitializeSRWLock(&secureSendLock_);
 }
 
 ILegacyNetClient* NetClientProxy::Create(
@@ -223,23 +224,62 @@ void* NetClientProxy::PickMsg() {
         return avatarPreviewGate_.TryRelease();
     }
 
-    return avatarPreviewGate_.Filter(legacyClient_->PickMsg());
+    void* message = legacyClient_->PickMsg();
+    if (secureSession_ != nullptr) {
+        secureSession_->ObserveLegacyServerMessage(message);
+    }
+    return avatarPreviewGate_.Filter(message);
 }
 
 bool NetClientProxy::SendMsg(const void* data, int size) {
+    AcquireSRWLockExclusive(&secureSendLock_);
     if (secureSession_ != nullptr) {
         const auto routed =
             secureSession_->RouteLegacyMovement(data, size);
         if (routed ==
             SecureRealtimeMovementRouteResult::Accepted) {
+            ReleaseSRWLockExclusive(&secureSendLock_);
             return true;
         }
         if (routed ==
             SecureRealtimeMovementRouteResult::Rejected) {
+            ReleaseSRWLockExclusive(&secureSendLock_);
             return false;
         }
     }
-    return legacyClient_->SendMsg(data, size);
+
+    std::uint64_t descriptorToken = 0;
+    const auto preparation =
+        secureSession_ == nullptr
+            ? SecureLegacySendPreparationResult::NotRequired
+            : secureSession_->PrepareLegacySend(
+                data,
+                size,
+                &descriptorToken);
+    if (preparation ==
+        SecureLegacySendPreparationResult::Rejected) {
+        ReleaseSRWLockExclusive(&secureSendLock_);
+        return false;
+    }
+
+    const bool sent = legacyClient_->SendMsg(data, size);
+    if (!sent &&
+        preparation ==
+            SecureLegacySendPreparationResult::Prepared) {
+        // If ciphertext already started, later bytes cannot safely inherit
+        // the remaining descriptor. Close instead; the process registry keeps
+        // the UUID so a reconnect can replay the unknown outcome.
+        if (!secureSession_->CancelPreparedLegacySend(
+                descriptorToken)) {
+            StopSecureSession();
+            if (coordinator_ != nullptr) {
+                static_cast<void>(
+                    coordinator_->Reset(proxyId_));
+            }
+        }
+    }
+    ReleaseSRWLockExclusive(&secureSendLock_);
+    return sent;
 }
 
 long NetClientProxy::GetMsgNum() {
@@ -309,6 +349,8 @@ bool NetClientProxy::TryBuildSecureConfiguration(
 
     configuration->grantRegistry =
         secureRuntime_->GrantRegistry();
+    configuration->operationRegistry =
+        secureRuntime_->OperationRegistry();
     configuration->snapshotContext = secureRuntime_;
     configuration->snapshotRecorder =
         [](void* context,
@@ -319,7 +361,8 @@ bool NetClientProxy::TryBuildSecureConfiguration(
                 runtime->RetainSessionSnapshot(snapshot);
             }
         };
-    return configuration->grantRegistry != nullptr;
+    return configuration->grantRegistry != nullptr &&
+        configuration->operationRegistry != nullptr;
 }
 
 void NetClientProxy::StopSecureSession() noexcept {

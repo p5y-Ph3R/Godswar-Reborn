@@ -163,6 +163,14 @@ SecureClientRuntime::GrantRegistry() noexcept {
         : nullptr;
 }
 
+SecurePendingOperationRegistry*
+SecureClientRuntime::OperationRegistry() noexcept {
+    return ReadState() ==
+            SecureClientRuntimeState::SecureRequiredReady
+        ? &operationRegistry_
+        : nullptr;
+}
+
 SecureClientRuntimeSnapshot
 SecureClientRuntime::Snapshot() const noexcept {
     SecureClientRuntimeSnapshot snapshot{};

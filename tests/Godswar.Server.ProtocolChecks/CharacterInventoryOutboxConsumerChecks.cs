@@ -15,7 +15,9 @@ internal static class CharacterInventoryOutboxConsumerChecks
             consumer.ConsumerKey ==
                 DeveloperItemGrantPersistenceCodec.ConsumerKey &&
             consumer.ConsumerKey ==
-                DeveloperBagClearPersistenceCodec.ConsumerKey,
+                DeveloperBagClearPersistenceCodec.ConsumerKey &&
+            consumer.ConsumerKey ==
+                MakeAttributeStonePersistenceCodec.ConsumerKey,
             "all character-inventory event types share one checkpoint");
         Check.True(
             consumer.OrderingPolicy ==
@@ -24,8 +26,12 @@ internal static class CharacterInventoryOutboxConsumerChecks
         Check.True(
             DeveloperItemGrantPersistenceCodec.AggregateType ==
                 DeveloperBagClearPersistenceCodec.AggregateType &&
+            DeveloperItemGrantPersistenceCodec.AggregateType ==
+                MakeAttributeStonePersistenceCodec.AggregateType &&
             DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
-                DeveloperBagClearPersistenceCodec.AggregateKey(CharacterId),
+                DeveloperBagClearPersistenceCodec.AggregateKey(CharacterId) &&
+            DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
+                MakeAttributeStonePersistenceCodec.AggregateKey(CharacterId),
             "all character-inventory event types share one aggregate stream");
 
         var messages = CreateCompatibleSequence();
@@ -59,6 +65,8 @@ internal static class CharacterInventoryOutboxConsumerChecks
             "a missing mixed inventory revision remains a strict gap");
 
         await CheckIdentityRejectionAsync(consumer, messages[2]);
+        await CheckStoneIdentityRejectionAsync(consumer, messages[3]);
+        await CheckStoneContractRejectionAsync(consumer, messages[3]);
         await CheckContractRejectionAsync(consumer, messages[0]);
     }
 
@@ -70,7 +78,8 @@ internal static class CharacterInventoryOutboxConsumerChecks
         CreateGrantMessage(
             revision: 2,
             DeveloperItemGrantPersistenceCodec.EventType),
-        CreateBagClearMessage(revision: 3)
+        CreateBagClearMessage(revision: 3),
+        CreateMakeAttributeStoneMessage(revision: 4)
     ];
 
     private static OutboxEventMessage CreateGrantMessage(
@@ -108,6 +117,29 @@ internal static class CharacterInventoryOutboxConsumerChecks
             DeveloperBagClearPersistenceCodec.EventType,
             DeveloperBagClearPersistenceCodec.ContractVersion,
             DeveloperBagClearPersistenceCodec.Encode(receipt));
+    }
+
+    private static OutboxEventMessage CreateMakeAttributeStoneMessage(
+        long revision)
+    {
+        var eventId = Guid.NewGuid();
+        var receipt = new MakeAttributeStoneExecutionReceipt(
+            CharacterId,
+            MakeAttributeStoneResultStatus.Succeeded,
+            MakeAttributeStoneNativeResults.SucceededSubId,
+            selectedKitBagSlot: 7,
+            sourceDustItemId: 9900,
+            outputStoneItemId: 9930,
+            isBound: true,
+            inventoryRevision: revision,
+            auditReference: $"inventory-check-{revision}",
+            outboxEventId: eventId);
+        return CreateMessage(
+            eventId,
+            revision,
+            MakeAttributeStonePersistenceCodec.EventType,
+            MakeAttributeStonePersistenceCodec.ContractVersion,
+            MakeAttributeStonePersistenceCodec.Encode(receipt));
     }
 
     private static OutboxEventMessage CreateMessage(
@@ -158,6 +190,36 @@ internal static class CharacterInventoryOutboxConsumerChecks
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(unsupported).AsTask(),
             "unknown inventory event type is rejected");
+    }
+
+    private static async Task CheckStoneIdentityRejectionAsync(
+        CharacterInventoryOutboxConsumer consumer,
+        OutboxEventMessage makeAttributeStone)
+    {
+        var inconsistent = CreateMessage(
+            Guid.NewGuid(),
+            makeAttributeStone.AggregateRevision,
+            makeAttributeStone.EventType,
+            makeAttributeStone.SchemaVersion,
+            makeAttributeStone.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(inconsistent).AsTask(),
+            "Make Attribute Stone event identity mismatch is rejected");
+    }
+
+    private static async Task CheckStoneContractRejectionAsync(
+        CharacterInventoryOutboxConsumer consumer,
+        OutboxEventMessage makeAttributeStone)
+    {
+        var unsupported = CreateMessage(
+            makeAttributeStone.EventId,
+            makeAttributeStone.AggregateRevision,
+            makeAttributeStone.EventType,
+            MakeAttributeStonePersistenceCodec.ContractVersion + 1,
+            makeAttributeStone.Payload);
+        await CheckThrowsAsync<InvalidDataException>(
+            () => consumer.ConsumeAsync(unsupported).AsTask(),
+            "unsupported Make Attribute Stone schema is rejected");
     }
 
     private static async Task CheckThrowsAsync<TException>(

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -14,6 +15,7 @@ internal sealed partial class GameClientHandler
         uint npcId,
         int subId,
         IReadOnlyList<int> args,
+        Guid? clientOperationId,
         CancellationToken cancellationToken)
     {
         if (_account is null || _character is null)
@@ -81,6 +83,27 @@ internal sealed partial class GameClientHandler
                 ',',
                 selectedSelections.Select(selection =>
                     DescribeGearEnhancerSelection(_character.KitBag, selection.KitBagSlot)));
+
+        if (operation == GearMentorOperation.MakeAttributeStone &&
+            clientOperationId.HasValue)
+        {
+            await HandleDurableMakeAttributeStoneAsync(
+                npcId,
+                clientOperationId.Value,
+                canCommit && selectedSelections.Count == 1
+                    ? selectedSelections[0]
+                    : null,
+                kitBagBeforeTransaction,
+                selectionSummary,
+                cancellationToken);
+            return;
+        }
+
+        if (operation == GearMentorOperation.MakeAttributeStone)
+        {
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.GearMentorMakeAttributeStone);
+        }
 
         // A final action consumes the session-scoped selection before any
         // persistence await so it cannot be replayed.

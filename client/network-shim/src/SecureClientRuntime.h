@@ -3,6 +3,7 @@
 #include "ClientRoute.h"
 #include "EndpointManifestLoader.h"
 #include "SecureGameGrantRegistry.h"
+#include "SecurePendingOperationRegistry.h"
 #include "SecureClientSession.h"
 
 #include <Windows.h>
@@ -156,6 +157,7 @@ public:
         void* destination,
         std::size_t destinationBytes) const noexcept;
     SecureGameGrantRegistry* GrantRegistry() noexcept;
+    SecurePendingOperationRegistry* OperationRegistry() noexcept;
 
     SecureClientRuntimeSnapshot Snapshot() const noexcept;
     void RetainSessionSnapshot(
@@ -207,6 +209,7 @@ private:
     EndpointManifest manifest_{};
     EndpointManifestLoadResult manifestLoad_{};
     SecureGameGrantRegistry* grantRegistry_ = nullptr;
+    SecurePendingOperationRegistry operationRegistry_{};
     volatile LONG state_ =
         static_cast<LONG>(SecureClientRuntimeState::Uninitialized);
     SecureClientRuntimeFailure failure_ =

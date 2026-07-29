@@ -208,6 +208,11 @@ internal static class SecureFrameCodec
                 direction == SecureFrameDirection.ClientToServer &&
                 payloadLength ==
                     SecureProtocolConstants.LegacyCommandOperationBytes,
+            SecureFrameType.LegacyCommandResult =>
+                endpointRole == SecureEndpointRole.Game &&
+                direction == SecureFrameDirection.ServerToClient &&
+                payloadLength ==
+                    SecureProtocolConstants.LegacyCommandResultBytes,
             SecureFrameType.GameGrant =>
                 endpointRole == SecureEndpointRole.Login &&
                 direction == SecureFrameDirection.ServerToClient &&

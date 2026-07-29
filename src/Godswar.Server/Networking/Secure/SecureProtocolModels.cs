@@ -38,6 +38,7 @@ internal enum SecureFrameType : ushort
     Close = 0x0003,
     LegacyBytes = 0x0100,
     LegacyCommandOperation = 0x0101,
+    LegacyCommandResult = 0x0102,
     GameGrant = 0x0200,
     GameBind = 0x0201,
     BindResult = 0x0202,
@@ -77,6 +78,8 @@ internal static class SecureProtocolConstants
     public const int RealtimeMovementInputBytes = 52;
     public const int LegacyCommandOperationBytes = 24;
     public const byte LegacyCommandOperationVersion = 1;
+    public const int LegacyCommandResultBytes = 32;
+    public const byte LegacyCommandResultVersion = 1;
 }
 
 internal readonly record struct SecureLegacyCommandOperation(

@@ -73,6 +73,7 @@
     <ClCompile Include="EndpointManifestTestSupport.cpp" />
     <ClCompile Include="ExternalTcpConnectorTests.cpp" />
     <ClCompile Include="LoopbackAcceptorTests.cpp" />
+    <ClCompile Include="LegacyCommandDescriptorStreamTests.cpp" />
     <ClCompile Include="LoopbackPeerOwnerTests.cpp" />
     <ClCompile Include="NativeClientBridgeTests.cpp" />
     <ClCompile Include="NativeClientBridgeLifecycleTests.cpp" />
@@ -84,8 +85,10 @@
     <ClCompile Include="SecureClientRuntimeTests.cpp" />
     <ClCompile Include="SecureClientSessionTests.cpp" />
     <ClCompile Include="SecureClientProtocolTests.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistryTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureLegacyCommandResultStreamTests.cpp" />
     <ClCompile Include="SecureManifestProbe.cpp" />
     <ClCompile Include="SecureRealtimeMovementTests.cpp" />
     <ClCompile Include="SecureRealtimeMovementChannelTests.cpp" />
@@ -109,6 +112,7 @@
     <ClCompile Include="..\src\FileSha256.cpp" />
     <ClCompile Include="..\src\LoopbackAcceptor.cpp" />
     <ClCompile Include="..\src\LoopbackPeerOwner.cpp" />
+    <ClCompile Include="..\src\LegacyCommandDescriptorStream.cpp" />
     <ClCompile Include="..\src\NativeClientBridge.cpp" />
     <ClCompile Include="..\src\NativeClientCoordinator.cpp" />
     <ClCompile Include="..\src\NetClientProxy.cpp" />
@@ -125,10 +129,14 @@
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandOperation.cpp" />
+    <ClCompile Include="..\src\SecureLegacyCommandResult.cpp" />
+    <ClCompile Include="..\src\SecureLegacyCommandIdentity.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="..\src\SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="..\src\SecureRealtimeMovementRouter.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Control.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.CommandOperation.cpp" />
+    <ClCompile Include="..\src\SecureOuterStream.LegacyWrite.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Binding.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.cpp" />
     <ClCompile Include="..\src\SecureOuterStream.Movement.cpp" />
@@ -158,6 +166,7 @@
     <ClInclude Include="EndpointManifestTestSupport.h" />
     <ClInclude Include="ExternalTcpConnectorTests.h" />
     <ClInclude Include="LoopbackAcceptorTests.h" />
+    <ClInclude Include="LegacyCommandDescriptorStreamTests.h" />
     <ClInclude Include="LoopbackPeerOwnerTests.h" />
     <ClInclude Include="NativeClientBridgeTests.h" />
     <ClInclude Include="NativeClientBridgeLifecycleTests.h" />
@@ -168,9 +177,11 @@
     <ClInclude Include="SecureClientRuntimeTests.h" />
     <ClInclude Include="SecureClientSessionTests.h" />
     <ClInclude Include="SecureClientProtocolTests.h" />
+    <ClInclude Include="SecurePendingOperationRegistryTests.h" />
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureLegacyCommandResultStreamTests.h" />
     <ClInclude Include="SecureManifestProbe.h" />
     <ClInclude Include="SecureRealtimeMovementTests.h" />
     <ClInclude Include="SecureRealtimeMovementChannelTests.h" />
@@ -193,6 +204,7 @@
     <ClInclude Include="..\src\ExternalTcpConnector.h" />
     <ClInclude Include="..\src\FileSha256.h" />
     <ClInclude Include="..\src\LegacyClientApi.h" />
+    <ClInclude Include="..\src\LegacyCommandDescriptorStream.h" />
     <ClInclude Include="..\src\LoopbackAcceptor.h" />
     <ClInclude Include="..\src\LoopbackPeerOwner.h" />
     <ClInclude Include="..\src\NativeClientBridge.h" />
@@ -210,6 +222,9 @@
     <ClInclude Include="..\src\SecureClientRuntimeInternal.h" />
     <ClInclude Include="..\src\SecureClientSession.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
+    <ClInclude Include="..\src\SecureLegacyCommandIdentity.h" />
+    <ClInclude Include="..\src\SecureLegacyFrameStream.h" />
+    <ClInclude Include="..\src\SecurePendingOperationRegistry.h" />
     <ClInclude Include="..\src\SecureGameControl.h" />
     <ClInclude Include="..\src\SecureGameGrantRegistry.h" />
     <ClInclude Include="..\src\SecureRealtimeMovementProtocol.h" />

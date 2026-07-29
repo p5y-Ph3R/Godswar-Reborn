@@ -33,6 +33,7 @@ enum class SecureFrameType : std::uint16_t {
     Close = 0x0003,
     LegacyBytes = 0x0100,
     LegacyCommandOperation = 0x0101,
+    LegacyCommandResult = 0x0102,
     GameGrant = 0x0200,
     GameBind = 0x0201,
     BindResult = 0x0202,
@@ -59,6 +60,27 @@ struct SecureLegacyCommandOperation final {
     std::uint16_t opcode = 0;
 };
 
+enum class SecureLegacyCommandDisposition : std::uint8_t {
+    Applied = 1,
+    Replayed = 2,
+    Rejected = 3,
+    Conflict = 4,
+};
+
+enum class SecureLegacyCommandFamily : std::uint16_t {
+    MakeAttributeStone = 6,
+};
+
+struct SecureLegacyCommandResult final {
+    SecureLegacyCommandDisposition disposition =
+        SecureLegacyCommandDisposition::Rejected;
+    SecureLegacyCommandFamily commandFamily =
+        SecureLegacyCommandFamily::MakeAttributeStone;
+    std::uint32_t resultCode = 0;
+    std::uint64_t inventoryRevision = 0;
+    std::uint8_t operationId[16]{};
+};
+
 inline constexpr std::size_t SecureClientPrefaceBytes = 72;
 inline constexpr std::size_t SecureServerPrefaceBytes = 40;
 inline constexpr std::size_t SecureFrameHeaderBytes = 16;
@@ -76,6 +98,8 @@ inline constexpr std::size_t SecureRealtimeMovementInputPayloadBytes =
     SecureRealtimeMovementInputBytes;
 inline constexpr std::size_t SecureLegacyCommandOperationPayloadBytes = 24;
 inline constexpr std::uint8_t SecureLegacyCommandOperationVersion = 1;
+inline constexpr std::size_t SecureLegacyCommandResultPayloadBytes = 32;
+inline constexpr std::uint8_t SecureLegacyCommandResultVersion = 1;
 inline constexpr std::uint16_t SecureLegacyMaximumPacketBytes = 8'196;
 inline constexpr std::uint16_t SecureProtocolMajor = 1;
 inline constexpr std::uint16_t SecureProtocolMinor = 0;
@@ -123,6 +147,16 @@ bool TryDecodeSecureLegacyCommandOperation(
     const void* source,
     std::size_t sourceBytes,
     SecureLegacyCommandOperation* operation) noexcept;
+
+bool TryEncodeSecureLegacyCommandResult(
+    const SecureLegacyCommandResult& result,
+    void* destination,
+    std::size_t destinationBytes) noexcept;
+
+bool TryDecodeSecureLegacyCommandResult(
+    const void* source,
+    std::size_t sourceBytes,
+    SecureLegacyCommandResult* result) noexcept;
 
 bool TryCreateSecureLegacyCommandOperation(
     std::uint16_t packetBytes,

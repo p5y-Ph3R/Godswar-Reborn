@@ -10,7 +10,8 @@ namespace Godswar.Server.Networking.Secure;
 internal sealed partial class TlsMuxLegacyTransport :
     ILegacyByteTransport,
     ISecureControlChannel,
-    ISecureCommandOperationTransport
+    ISecureCommandOperationTransport,
+    ISecureCommandResultTransport
 {
     private readonly Action _abortConnection;
     private readonly IDisposable _connectionOwner;

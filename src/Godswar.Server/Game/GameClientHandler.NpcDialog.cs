@@ -71,18 +71,33 @@ internal sealed partial class GameClientHandler
     {
         if (_account is null || _character is null)
         {
+            await TryRejectUnroutedSecureCommandAsync(
+                packet,
+                npcId: null,
+                "no_active_character",
+                cancellationToken);
             Console.WriteLine("[npc] function action ignored: no active character");
             return;
         }
 
         if (!TryReadNpcFunctionAction(packet.Payload, out var npcId, out var dialogIndex, out var subId, out var args))
         {
+            await TryRejectUnroutedSecureCommandAsync(
+                packet,
+                npcId: null,
+                "malformed_function_action",
+                cancellationToken);
             Console.WriteLine("[npc] function action ignored: payload does not match captured NPC function shape");
             return;
         }
 
         if (!TryResolveMapNpc(npcId, out var npc))
         {
+            await TryRejectUnroutedSecureCommandAsync(
+                packet,
+                npcId,
+                "npc_not_authoritative_for_map",
+                cancellationToken);
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
         }
@@ -92,6 +107,11 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         if (route is null || dialogIndex != route.DialogIndex)
         {
+            await TryRejectUnroutedSecureCommandAsync(
+                packet,
+                npcId,
+                "dialogue_route_mismatch",
+                cancellationToken);
             Console.WriteLine(
                 $"[npc] function action rejected npc={npcId} " +
                 $"dialog={dialogIndex} subId={subId}");
@@ -133,6 +153,7 @@ internal sealed partial class GameClientHandler
                         npcId,
                         GearEnhancerProtocol.CombineGemPiecesActionSubId,
                         args,
+                        packet.ClientOperationId,
                         cancellationToken);
                     return;
                 }
@@ -161,6 +182,7 @@ internal sealed partial class GameClientHandler
                     npcId,
                     subId,
                     args,
+                    packet.ClientOperationId,
                     cancellationToken);
                 return;
             }
@@ -178,6 +200,15 @@ internal sealed partial class GameClientHandler
                 Console.WriteLine(
                     $"[gear-mentor] unsupported original operation npc={npcId} subId={subId} response={GearEnhancerProtocol.TemporarilyDisabledResultSubId}");
             }
+            return;
+        }
+
+        if (await TryRejectUnroutedSecureCommandAsync(
+                packet,
+                npcId,
+                "valuable_command_wrong_npc_behavior",
+                cancellationToken))
+        {
             return;
         }
 

@@ -58,6 +58,9 @@ commit-before-response item grant using an explicit client operation UUID.
 The second increment adds exact creation-time baselines, replay-safe
 tokenized mount grants and bag clearing, and the bounded secure
 command-operation marker prerequisite.
+The [secure native Make Attribute Stone increment](../data-architecture-b09-native-make-attribute-stone-20260729.md)
+activates that marker with a bounded reconnect registry, authenticated terminal
+result, durable Mentor transaction, authoritative refresh, and exact replay.
 Tokenless legacy inventory, forge, mentor, reward, and currency mutations
 remain compatibility paths; B09 is not complete until those operations gain
 truthful retry identity and move behind the durable transaction boundary.

@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Messaging;
 
 namespace Godswar.Server.Infrastructure.Inventory;
@@ -55,6 +56,17 @@ internal sealed class CharacterInventoryOutboxConsumer :
             return ValueTask.CompletedTask;
         }
 
+        if (string.Equals(
+                message.EventType,
+                MakeAttributeStonePersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                MakeAttributeStonePersistenceCodec.ContractVersion)
+        {
+            ValidateMakeAttributeStone(message);
+            return ValueTask.CompletedTask;
+        }
+
         throw new InvalidDataException(
             "The inventory outbox event contract is unsupported.");
     }
@@ -100,6 +112,27 @@ internal sealed class CharacterInventoryOutboxConsumer :
         {
             throw new InvalidDataException(
                 "The bag-clear outbox identity is inconsistent.");
+        }
+    }
+
+    private static void ValidateMakeAttributeStone(
+        OutboxEventMessage message)
+    {
+        var receipt = MakeAttributeStonePersistenceCodec.Decode(
+            message.Payload.Span);
+        if (receipt.Status !=
+                MakeAttributeStoneResultStatus.Succeeded ||
+            receipt.OutboxEventId != message.EventId ||
+            receipt.InventoryRevision != message.AggregateRevision ||
+            !string.Equals(
+                MakeAttributeStonePersistenceCodec.AggregateKey(
+                    receipt.CharacterId),
+                message.AggregateKey,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The Make Attribute Stone outbox identity is " +
+                "inconsistent.");
         }
     }
 }

@@ -21,9 +21,11 @@ ULONGLONG DeadlineAfter(DWORD milliseconds) noexcept {
 
 SecureOuterStream::SecureOuterStream(
     IDeadlinePlaintextStream* plaintextStream,
-    SecureGameGrantRegistry* grantRegistry) noexcept
+    SecureGameGrantRegistry* grantRegistry,
+    SecurePendingOperationRegistry* operationRegistry) noexcept
     : plaintextStream_(plaintextStream),
-      grantRegistry_(grantRegistry) {
+      grantRegistry_(grantRegistry),
+      operationRegistry_(operationRegistry) {
     InitializeSRWLock(&writeLock_);
     InitializeSRWLock(&snapshotLock_);
 }
@@ -320,6 +322,32 @@ ByteStreamIoResult SecureOuterStream::Read(
             continue;
         }
 
+        if (header.type ==
+            SecureFrameType::LegacyCommandResult) {
+            SecureLegacyCommandResult result{};
+            const bool decoded =
+                TryDecodeSecureLegacyCommandResult(
+                    inboundPayload_,
+                    header.payloadBytes,
+                    &result);
+            SecureZeroMemory(
+                inboundPayload_,
+                header.payloadBytes);
+            const bool resolved =
+                decoded &&
+                operationRegistry_ != nullptr &&
+                operationRegistry_->Resolve(result) ==
+                    SecureOperationRegistryResult::Success;
+            SecureZeroMemory(&result, sizeof(result));
+            if (!resolved) {
+                Fail(
+                    SecureOuterFailure::
+                        LegacyCommandResult);
+                return {ByteStreamIoStatus::Failed, 0};
+            }
+            continue;
+        }
+
         SecureZeroMemory(
             inboundPayload_,
             header.payloadBytes);
@@ -335,39 +363,6 @@ ByteStreamIoResult SecureOuterStream::Read(
 
     Fail(SecureOuterFailure::UnsupportedControl);
     return {ByteStreamIoStatus::Failed, 0};
-}
-
-ByteStreamIoResult SecureOuterStream::Write(
-    const void* source,
-    std::size_t sourceBytes) noexcept {
-    SecureEndpointRole currentRole = SecureEndpointRole::Login;
-    bool currentBound = false;
-    AcquireSRWLockShared(&snapshotLock_);
-    currentRole = role_;
-    currentBound = gameBound_;
-    ReleaseSRWLockShared(&snapshotLock_);
-    if (source == nullptr ||
-        sourceBytes == 0 ||
-        sourceBytes > SecureMaximumPayloadBytes ||
-        !established_ ||
-        (currentRole == SecureEndpointRole::Game && !currentBound) ||
-        IsStopped()) {
-        return {ByteStreamIoStatus::Failed, 0};
-    }
-
-    AcquireSRWLockExclusive(&writeLock_);
-    const bool written = WriteFrame(
-        SecureFrameType::LegacyBytes,
-        source,
-        sourceBytes,
-        DeadlineAfter(WriteDeadlineMilliseconds));
-    ReleaseSRWLockExclusive(&writeLock_);
-    if (!written) {
-        Fail(SecureOuterFailure::LegacyWrite);
-        return {ByteStreamIoStatus::Failed, 0};
-    }
-
-    return {ByteStreamIoStatus::Success, sourceBytes};
 }
 
 void SecureOuterStream::Stop() noexcept {

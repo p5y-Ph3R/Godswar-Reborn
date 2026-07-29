@@ -5,6 +5,8 @@
 #include "SecureClientProtocol.h"
 #include "SecureGameControl.h"
 #include "SecureGameGrantRegistry.h"
+#include "SecureLegacyFrameStream.h"
+#include "SecurePendingOperationRegistry.h"
 #include "SecureRealtimeMovementProtocol.h"
 #include "SecureUdpBindingGrant.h"
 
@@ -40,6 +42,7 @@ enum class SecureOuterFailure : std::uint8_t {
     UdpGrantConnection,
     RealtimeMovementWrite,
     LegacyCommandOperationWrite,
+    LegacyCommandResult,
 };
 
 struct SecureOuterSnapshot final {
@@ -57,7 +60,7 @@ struct SecureOuterSnapshot final {
 // legacy byte stream consumed by NativeClientBridge. The caller owns the
 // plaintext TLS stream and optional grant registry, and keeps both alive
 // through this object's destruction.
-class SecureOuterStream final : public IByteStream {
+class SecureOuterStream final : public ISecureLegacyFrameStream {
 public:
     static constexpr DWORD PrefaceDeadlineMilliseconds = 2'000;
     static constexpr DWORD FrameHeaderDeadlineMilliseconds = 5'000;
@@ -68,7 +71,9 @@ public:
 
     explicit SecureOuterStream(
         IDeadlinePlaintextStream* plaintextStream,
-        SecureGameGrantRegistry* grantRegistry = nullptr) noexcept;
+        SecureGameGrantRegistry* grantRegistry = nullptr,
+        SecurePendingOperationRegistry* operationRegistry =
+            nullptr) noexcept;
     ~SecureOuterStream() noexcept;
 
     SecureOuterStream(const SecureOuterStream&) = delete;
@@ -86,6 +91,12 @@ public:
         void* destination,
         std::size_t destinationCapacity) noexcept override;
     ByteStreamIoResult Write(
+        const void* source,
+        std::size_t sourceBytes) noexcept override;
+    // Emits the optional command marker and the first ciphertext bytes under
+    // one outer-stream write lock. This is the only live command-tagging path.
+    ByteStreamIoResult WriteDescribedLegacyBytes(
+        const SecureLegacyCommandOperation* operation,
         const void* source,
         std::size_t sourceBytes) noexcept override;
     void Stop() noexcept override;
@@ -131,6 +142,7 @@ private:
 
     IDeadlinePlaintextStream* plaintextStream_ = nullptr;
     SecureGameGrantRegistry* grantRegistry_ = nullptr;
+    SecurePendingOperationRegistry* operationRegistry_ = nullptr;
     SRWLOCK writeLock_{};
     mutable SRWLOCK snapshotLock_{};
     volatile LONG stopped_ = 0;

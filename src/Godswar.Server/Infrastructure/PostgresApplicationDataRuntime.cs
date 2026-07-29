@@ -43,6 +43,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresDeveloperBagClearCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        MakeAttributeStoneCommands =
+            new PostgresMakeAttributeStoneCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -63,6 +67,10 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public IDeveloperBagClearCommandExecutor
         DeveloperBagClearCommands
+    { get; }
+
+    public IMakeAttributeStoneCommandExecutor
+        MakeAttributeStoneCommands
     { get; }
 
     public bool OutboxEnabled { get; }

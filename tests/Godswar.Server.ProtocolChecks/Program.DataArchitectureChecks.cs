@@ -18,6 +18,11 @@ internal static partial class Program
                 PostgresDeveloperBagClearCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresMakeAttributeStoneCommandIntegrationChecks
+                    .CheckName,
+                PostgresMakeAttributeStoneCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

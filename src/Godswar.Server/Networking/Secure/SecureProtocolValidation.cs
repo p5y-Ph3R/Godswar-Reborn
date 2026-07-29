@@ -20,6 +20,7 @@ internal static class SecureProtocolValidation
             SecureFrameType.Close or
             SecureFrameType.LegacyBytes or
             SecureFrameType.LegacyCommandOperation or
+            SecureFrameType.LegacyCommandResult or
             SecureFrameType.GameGrant or
             SecureFrameType.GameBind or
             SecureFrameType.BindResult or
@@ -31,6 +32,13 @@ internal static class SecureProtocolValidation
     {
         return direction is SecureFrameDirection.ClientToServer or
             SecureFrameDirection.ServerToClient;
+    }
+
+    public static bool IsLegacyCommandDisposition(
+        SecureLegacyCommandDisposition disposition)
+    {
+        return disposition is >= SecureLegacyCommandDisposition.Applied and
+            <= SecureLegacyCommandDisposition.Conflict;
     }
 
     public static bool IsBindStatus(SecureBindStatus status)

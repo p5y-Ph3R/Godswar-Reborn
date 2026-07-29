@@ -371,3 +371,6 @@ correlation is implemented and proven. Transform and Combine follow, then
 Gear Add/Enhance/Delete, Decompose, and finally Forge because Forge combines
 wallet and inventory revisions with a random result that must be stored and
 replayed exactly.
+
+That next increment is now recorded in
+[`data-architecture-b09-native-make-attribute-stone-20260729.md`](data-architecture-b09-native-make-attribute-stone-20260729.md).
