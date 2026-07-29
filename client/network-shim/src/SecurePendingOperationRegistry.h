@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SecureEquipmentBagTransferIdentity.h"
 #include "SecureForgeCommandIdentity.h"
 #include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureKitBagItemMoveIdentity.h"
@@ -144,6 +145,12 @@ private:
         std::uint16_t opcode,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeInventoryPacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor,
+        bool* recognized) noexcept;
     SecureOperationRegistryResult DescribeKitBagItemDelete(
         int bagSlot,
         std::uint64_t now,
@@ -151,6 +158,11 @@ private:
     SecureOperationRegistryResult DescribeKitBagItemMove(
         int sourceBagSlot,
         int destinationBagSlot,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeEquipmentBagTransfer(
+        int equipmentSlot,
+        int bagSlot,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;

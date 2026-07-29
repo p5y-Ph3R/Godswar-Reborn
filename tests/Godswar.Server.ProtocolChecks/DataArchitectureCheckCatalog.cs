@@ -65,6 +65,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable kit-bag item move handler and replay",
             KitBagItemMoveDurableHandlerChecks.RunAsync),
         (
+            "Durable equipment/bag transfer command contract",
+            EquipmentBagTransferCommandContractChecks.RunAsync),
+        (
+            "Durable equipment/bag transfer handler and replay",
+            EquipmentBagTransferDurableHandlerChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

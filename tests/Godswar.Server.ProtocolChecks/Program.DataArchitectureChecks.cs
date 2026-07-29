@@ -41,6 +41,11 @@ internal static partial class Program
                 PostgresKitBagItemMoveCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresEquipmentBagTransferCommandIntegrationChecks
+                    .CheckName,
+                PostgresEquipmentBagTransferCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

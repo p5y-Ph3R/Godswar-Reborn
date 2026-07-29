@@ -129,6 +129,17 @@ internal sealed partial class CharacterInventoryOutboxConsumer :
             return ValueTask.CompletedTask;
         }
 
+        if (string.Equals(
+                message.EventType,
+                EquipmentBagTransferPersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                EquipmentBagTransferPersistenceCodec.ContractVersion)
+        {
+            ValidateEquipmentBagTransfer(message);
+            return ValueTask.CompletedTask;
+        }
+
         throw new InvalidDataException(
             "The inventory outbox event contract is unsupported.");
     }

@@ -30,6 +30,7 @@ document organization; the assessment and recommendations remain intact.
 - [B09 secure native Equipment Forge increment](docs/data-architecture-b09-native-equipment-forge-20260730.md)
 - [B09 secure native kit-bag item-delete increment](docs/data-architecture-b09-native-kit-bag-delete-20260730.md)
 - [B09 secure native kit-bag move/swap increment](docs/data-architecture-b09-native-kit-bag-move-20260730.md)
+- [B09 secure native equipment/bag transfer increment](docs/data-architecture-b09-native-equipment-bag-transfer-20260730.md)
 
 ## Roadmap sections
 

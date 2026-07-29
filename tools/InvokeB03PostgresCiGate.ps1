@@ -258,6 +258,7 @@ try {
         'PostgreSQL durable equipment-forge transactions',
         'PostgreSQL durable kit-bag item-delete transactions',
         'PostgreSQL durable kit-bag item-move transactions',
+        'PostgreSQL durable equipment/bag transfer transactions',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

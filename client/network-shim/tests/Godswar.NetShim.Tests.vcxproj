@@ -87,6 +87,9 @@
     <ClCompile Include="SecureClientProtocolTests.cpp" />
     <ClCompile Include="SecurePendingOperationRegistryTests.cpp" />
     <ClCompile Include="SecureEconomyIdentityTests.cpp" />
+    <ClCompile Include="SecureEquipmentBagTransferIdentityTests.cpp" />
+    <ClCompile Include="SecureEquipmentBagTransferParserTests.cpp" />
+    <ClCompile Include="SecureEquipmentBagTransferRegistryTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
     <ClCompile Include="SecureForgeCommandIdentityTests.cpp" />
@@ -142,6 +145,7 @@
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="..\src\SecureEquipmentBagTransferIdentity.cpp" />
     <ClCompile Include="..\src\SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemDeleteIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemMoveIdentity.cpp" />
@@ -149,7 +153,9 @@
     <ClCompile Include="..\src\SecureLegacyCommandResult.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagDelete.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagItemMove.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Snapshot.cpp" />
@@ -201,6 +207,8 @@
     <ClInclude Include="SecureClientProtocolTests.h" />
     <ClInclude Include="SecurePendingOperationRegistryTests.h" />
     <ClInclude Include="SecureEconomyIdentityTests.h" />
+    <ClInclude Include="SecureEquipmentBagTransferIdentityTests.h" />
+    <ClInclude Include="SecureEquipmentBagTransferTestSupport.h" />
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
@@ -258,6 +266,7 @@
     <ClInclude Include="..\src\SecureClientRuntimeInternal.h" />
     <ClInclude Include="..\src\SecureClientSession.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
+    <ClInclude Include="..\src\SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="..\src\SecureForgeCommandIdentity.h" />
     <ClInclude Include="..\src\SecureKitBagItemDeleteIdentity.h" />
     <ClInclude Include="..\src\SecureKitBagItemMoveIdentity.h" />

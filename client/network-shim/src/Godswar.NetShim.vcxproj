@@ -94,6 +94,7 @@
     <ClInclude Include="SecureClientRuntimeInternal.h" />
     <ClInclude Include="SecureClientSession.h" />
     <ClInclude Include="SecureClientProtocol.h" />
+    <ClInclude Include="SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentity.h" />
     <ClInclude Include="SecureKitBagItemMoveIdentity.h" />
@@ -146,6 +147,7 @@
     <ClCompile Include="SecureClientProtocol.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="SecureEquipmentBagTransferIdentity.cpp" />
     <ClCompile Include="SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentity.cpp" />
     <ClCompile Include="SecureKitBagItemMoveIdentity.cpp" />
@@ -153,7 +155,9 @@
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagDelete.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagItemMove.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Snapshot.cpp" />

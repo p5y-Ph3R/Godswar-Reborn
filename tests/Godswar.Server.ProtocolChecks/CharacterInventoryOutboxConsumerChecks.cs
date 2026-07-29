@@ -61,6 +61,7 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
             DeveloperItemGrantPersistenceCodec.AggregateKey(CharacterId) ==
                 GearEnhancementPersistenceCodec.AggregateKey(CharacterId),
             "Gear Enhancement shares the inventory aggregate stream");
+        CheckEquipmentBagTransferStreamIdentity(consumer);
 
         var messages = CreateCompatibleSequence();
         var currentRevision = 0L;
@@ -117,6 +118,7 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
         await CheckEquipmentForgeAsync(consumer);
         await CheckKitBagItemDeleteAsync(consumer);
         await CheckKitBagItemMoveAsync(consumer);
+        await CheckEquipmentBagTransferAsync(consumer);
     }
 
     private static OutboxEventMessage[] CreateCompatibleSequence() =>

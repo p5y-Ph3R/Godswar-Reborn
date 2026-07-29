@@ -86,6 +86,8 @@ internal static class CommandMetrics
                 "kit_bag_item_delete",
             CommandFamily.KitBagItemMove =>
                 "kit_bag_item_move",
+            CommandFamily.EquipmentBagTransfer =>
+                "equipment_bag_transfer",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

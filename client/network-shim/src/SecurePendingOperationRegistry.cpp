@@ -159,28 +159,15 @@ SecurePendingOperationRegistry::DescribePacket(
             now,
             descriptor);
     }
-    int kitBagDeleteSlot = -1;
-    if (TryReadLegacyKitBagItemDelete(
-            packet,
-            packetBytes,
-            &kitBagDeleteSlot)) {
-        return DescribeKitBagItemDelete(
-            kitBagDeleteSlot,
-            now,
-            descriptor);
-    }
-    int kitBagMoveSourceSlot = -1;
-    int kitBagMoveDestinationSlot = -1;
-    if (TryReadLegacyKitBagItemMove(
-            packet,
-            packetBytes,
-            &kitBagMoveSourceSlot,
-            &kitBagMoveDestinationSlot)) {
-        return DescribeKitBagItemMove(
-            kitBagMoveSourceSlot,
-            kitBagMoveDestinationSlot,
-            now,
-            descriptor);
+    bool inventoryPacket = false;
+    const auto inventoryResult = DescribeInventoryPacket(
+        packet,
+        packetBytes,
+        now,
+        descriptor,
+        &inventoryPacket);
+    if (inventoryPacket) {
+        return inventoryResult;
     }
 
     std::uint8_t

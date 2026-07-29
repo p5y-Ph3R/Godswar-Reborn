@@ -24,6 +24,30 @@ internal sealed partial class GameClientHandler
 
         if (TryReadStorageItemEquipmentBagTransfer(packet.Payload, out var equipmentSlot, out var bagSlot))
         {
+            if (packet.ClientOperationId is { } transferOperationId)
+            {
+                if (_session.IsSecure &&
+                    packet.Length ==
+                        DurableEquipmentBagTransferRequestBytes)
+                {
+                    await HandleDurableEquipmentBagTransferAsync(
+                        equipmentSlot,
+                        bagSlot,
+                        transferOperationId,
+                        cancellationToken);
+                    return;
+                }
+
+                await RejectUnsupportedDurableEquipmentBagTransferAsync(
+                    equipmentSlot,
+                    bagSlot,
+                    transferOperationId,
+                    cancellationToken);
+                return;
+            }
+
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.EquipmentBagTransfer);
             await HandleEquipmentBagTransferAsync(equipmentSlot, bagSlot, cancellationToken);
             return;
         }

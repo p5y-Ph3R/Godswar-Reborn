@@ -1,10 +1,51 @@
-#include "SecureKitBagItemMoveTestSupport.h"
+#include "SecureEquipmentBagTransferTestSupport.h"
 
 namespace {
 
-using namespace kit_bag_move_test;
+using namespace equipment_bag_transfer_test;
 
-void CheckPrincipalAndIdentity(Checks* checks) {
+void CheckSharedOpcode10051StaysUnmarked(Checks* checks) {
+    Hooks hooks{};
+    SecurePendingOperationRegistry registry(
+        &hooks,
+        Random,
+        &hooks,
+        Clock);
+    checks->Require(
+        Establish(&registry),
+        "Opcode 10051 regression setup failed");
+
+    // captures/working-multiplayer-20260514-193356.log:5856.
+    // Pet hatching shares this exact opcode/shape, so it cannot be assigned
+    // the equipment-transfer family without changing legacy behavior.
+    const std::uint8_t packet[92]{
+        0x5C, 0x00, 0x43, 0x27, 0xDB, 0x05, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x17, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x2A, 0x07, 0x00, 0x00,
+        0x18, 0x00, 0x00, 0x00, 0x5A, 0x00, 0x00, 0x00,
+        0xFA, 0x00, 0x00, 0x00, 0x3C, 0x00, 0x00, 0x00,
+        0xE6, 0x00, 0x00, 0x00, 0x0C, 0x0A, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00};
+    LegacyPacketDescriptor descriptor{};
+    checks->Require(
+        registry.DescribePacket(
+            packet,
+            sizeof(packet),
+            &descriptor) ==
+                SecureOperationRegistryResult::Success &&
+            descriptor.packetBytes == sizeof(packet) &&
+            descriptor.opcode == 10051 &&
+            !descriptor.hasOperation &&
+            registry.Snapshot().pending == 0,
+        "Shared opcode 10051 received an operation marker");
+}
+
+void CheckPrincipalCharacterAndIdentity(Checks* checks) {
     Hooks hooks{};
     SecurePendingOperationRegistry registry(
         &hooks,
@@ -12,19 +53,19 @@ void CheckPrincipalAndIdentity(Checks* checks) {
         &hooks,
         Clock);
     LegacyPacketDescriptor descriptor{};
-    std::uint8_t compact[
-        LegacyKitBagItemMoveCompactPacketBytes]{};
-    BuildMovePacket(compact, sizeof(compact), 25, 70, 0);
+    std::uint8_t
+        packet[LegacyEquipmentBagTransferPacketBytes]{};
+    BuildTransferPacket(packet, sizeof(packet), 10, 55, 0x11);
     checks->Require(
         registry.DescribePacket(
-            compact,
-            sizeof(compact),
+            packet,
+            sizeof(packet),
             &descriptor) ==
             SecureOperationRegistryResult::NoPrincipal,
-        "Kit-bag move received identity without a principal");
+        "Equipment transfer received identity without principal");
 
     std::uint8_t login[LoginPacketBytes]{};
-    BuildLoginPacket(40, login);
+    BuildLoginPacket(50, login);
     checks->Require(
         registry.DescribePacket(
             login,
@@ -32,55 +73,40 @@ void CheckPrincipalAndIdentity(Checks* checks) {
             &descriptor) ==
                 SecureOperationRegistryResult::Success &&
             registry.DescribePacket(
-                compact,
-                sizeof(compact),
+                packet,
+                sizeof(packet),
                 &descriptor) ==
                 SecureOperationRegistryResult::NoCharacter &&
-            registry.SetCharacter(900) ==
+            registry.SetCharacter(910) ==
                 SecureOperationRegistryResult::Success,
-        "Kit-bag move did not enforce persistent character identity");
+        "Equipment transfer did not require character identity");
 
     LegacyPacketDescriptor first{};
-    LegacyPacketDescriptor detailed{};
-    LegacyPacketDescriptor changedTail{};
+    LegacyPacketDescriptor changedOpaque{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
-            25,
-            70,
-            0,
+            10,
+            55,
+            0x11,
             &first) &&
             first.hasOperation &&
             first.operation.packetBytes ==
-                LegacyKitBagItemMoveCompactPacketBytes &&
+                LegacyEquipmentBagTransferPacketBytes &&
             first.operation.opcode ==
                 LegacyStorageItemOpcode &&
             (first.operation.operationId[6] & 0xF0U) ==
                 0x40U &&
             (first.operation.operationId[8] & 0xC0U) ==
-                0x80U,
-        "Kit-bag move did not receive a UUID operation marker");
-    checks->Require(
-        DescribeMove(
-            &registry,
-            LegacyKitBagItemMoveDetailedPacketBytes,
-            25,
-            70,
-            0x44,
-            &detailed) &&
-            SameOperation(first, detailed) &&
-            detailed.operation.packetBytes ==
-                LegacyKitBagItemMoveDetailedPacketBytes &&
-            DescribeMove(
+                0x80U &&
+            DescribeTransfer(
                 &registry,
-                LegacyKitBagItemMoveDetailedPacketBytes,
-                25,
-                70,
-                0x99,
-                &changedTail) &&
-            SameOperation(first, changedTail),
-        "Equivalent move variants did not share their UUID");
+                10,
+                55,
+                0xA5,
+                &changedOpaque) &&
+            SameOperation(first, changedOpaque),
+        "Equivalent equipment transfers did not share UUID");
 
     checks->Require(
         registry.DescribePacket(
@@ -88,41 +114,38 @@ void CheckPrincipalAndIdentity(Checks* checks) {
             sizeof(login),
             &descriptor) ==
                 SecureOperationRegistryResult::Success &&
-            registry.SetCharacter(900) ==
+            registry.SetCharacter(910) ==
                 SecureOperationRegistryResult::Success,
-        "Kit-bag move reconnect setup failed");
+        "Equipment transfer reconnect setup failed");
     LegacyPacketDescriptor reconnected{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
-            25,
-            70,
-            0,
+            10,
+            55,
+            0x44,
             &reconnected) &&
             SameOperation(first, reconnected),
-        "Kit-bag move did not reuse its UUID after reconnect");
+        "Equipment transfer did not reuse UUID after reconnect");
 
-    LegacyPacketDescriptor reverse{};
-    LegacyPacketDescriptor differentDestination{};
+    LegacyPacketDescriptor anotherEquipment{};
+    LegacyPacketDescriptor anotherBag{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
-            70,
-            25,
+            11,
+            55,
             0,
-            &reverse) &&
-            !SameOperation(first, reverse) &&
-            DescribeMove(
+            &anotherEquipment) &&
+            !SameOperation(first, anotherEquipment) &&
+            DescribeTransfer(
                 &registry,
-                LegacyKitBagItemMoveCompactPacketBytes,
-                25,
-                71,
+                10,
+                56,
                 0,
-                &differentDestination) &&
-            !SameOperation(first, differentDestination),
-        "Ordered kit-bag move coordinates aliased another operation");
+                &anotherBag) &&
+            !SameOperation(first, anotherBag),
+        "Equipment and bag roles aliased another transfer");
 }
 
 void CheckPrincipalAndCharacterIsolation(Checks* checks) {
@@ -133,37 +156,35 @@ void CheckPrincipalAndCharacterIsolation(Checks* checks) {
         &hooks,
         Clock);
     checks->Require(
-        Establish(&registry, 40, 900),
-        "Kit-bag move identity-isolation setup failed");
+        Establish(&registry),
+        "Equipment transfer isolation setup failed");
     LegacyPacketDescriptor original{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
             3,
-            4,
+            47,
             0,
             &original),
-        "Kit-bag move original identity setup failed");
+        "Equipment transfer original identity failed");
 
     checks->Require(
-        registry.SetCharacter(901) ==
+        registry.SetCharacter(911) ==
             SecureOperationRegistryResult::Success,
-        "Kit-bag move character switch failed");
+        "Equipment transfer character switch failed");
     LegacyPacketDescriptor anotherCharacter{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
             3,
-            4,
+            47,
             0,
             &anotherCharacter) &&
             !SameOperation(original, anotherCharacter),
-        "Two characters shared a kit-bag move UUID");
+        "Two characters shared equipment-transfer UUID");
 
     std::uint8_t login[LoginPacketBytes]{};
-    BuildLoginPacket(41, login);
+    BuildLoginPacket(51, login);
     LegacyPacketDescriptor ignored{};
     checks->Require(
         registry.DescribePacket(
@@ -171,20 +192,19 @@ void CheckPrincipalAndCharacterIsolation(Checks* checks) {
             sizeof(login),
             &ignored) ==
                 SecureOperationRegistryResult::Success &&
-            registry.SetCharacter(900) ==
+            registry.SetCharacter(910) ==
                 SecureOperationRegistryResult::Success,
-        "Kit-bag move principal switch failed");
+        "Equipment transfer principal switch failed");
     LegacyPacketDescriptor anotherPrincipal{};
     checks->Require(
-        DescribeMove(
+        DescribeTransfer(
             &registry,
-            LegacyKitBagItemMoveCompactPacketBytes,
             3,
-            4,
+            47,
             0,
             &anotherPrincipal) &&
             !SameOperation(original, anotherPrincipal),
-        "Two principals shared a kit-bag move UUID");
+        "Two principals shared equipment-transfer UUID");
 }
 
 void CheckTerminalSettlement(Checks* checks) {
@@ -208,29 +228,13 @@ void CheckTerminalSettlement(Checks* checks) {
         LegacyPacketDescriptor pending{};
         checks->Require(
             Establish(&registry) &&
-                DescribeMove(
+                DescribeTransfer(
                     &registry,
-                    LegacyKitBagItemMoveCompactPacketBytes,
-                    7,
-                    8,
+                    10,
+                    55,
                     0,
                     &pending),
-            "Kit-bag move terminal setup failed");
-
-        std::uint8_t selection[16]{};
-        Write16(selection, sizeof(selection));
-        Write16(selection + 2, LegacyGearSelectionOpcode);
-        Write32(selection + 4, 0);
-        Write32(selection + 8, 5);
-        selection[12] = 1;
-        LegacyPacketDescriptor ignored{};
-        checks->Require(
-            registry.DescribePacket(
-                selection,
-                sizeof(selection),
-                &ignored) ==
-                SecureOperationRegistryResult::Success,
-            "Kit-bag move selection-isolation setup failed");
+            "Equipment transfer terminal setup failed");
 
         const auto result = ResultFor(
             pending,
@@ -238,37 +242,35 @@ void CheckTerminalSettlement(Checks* checks) {
             1,
             dispositions[index] ==
                     SecureLegacyCommandDisposition::Applied
-                ? 81U
+                ? 91U
                 : 0U);
         checks->Require(
             registry.Resolve(result) ==
                     SecureOperationRegistryResult::Success &&
                 registry.Snapshot().pending == 0 &&
                 registry.Snapshot().resolved == 1 &&
-                registry.Snapshot().selectionCount == 1 &&
                 registry.Resolve(result) ==
                     SecureOperationRegistryResult::Success,
-            "Kit-bag move terminal result did not settle generically");
+            "Equipment transfer result did not settle");
 
         auto wrongFamily = result;
         wrongFamily.commandFamily =
-            SecureLegacyCommandFamily::KitBagItemDelete;
+            SecureLegacyCommandFamily::KitBagItemMove;
         checks->Require(
             registry.Resolve(wrongFamily) ==
                 SecureOperationRegistryResult::FamilyConflict,
-            "Kit-bag move tombstone accepted another family");
+            "Equipment transfer tombstone accepted wrong family");
 
         LegacyPacketDescriptor fresh{};
         checks->Require(
-            DescribeMove(
+            DescribeTransfer(
                 &registry,
-                LegacyKitBagItemMoveCompactPacketBytes,
-                7,
-                8,
+                10,
+                55,
                 0,
                 &fresh) &&
                 !SameOperation(pending, fresh),
-            "Settled kit-bag move reused its old UUID");
+            "Settled equipment transfer reused old UUID");
     }
 }
 
@@ -281,18 +283,17 @@ void CheckCapacityAndExpiry(Checks* checks) {
         Clock);
     checks->Require(
         Establish(&registry),
-        "Kit-bag move capacity setup failed");
+        "Equipment transfer capacity setup failed");
     LegacyPacketDescriptor descriptor{};
     bool filled = true;
     for (std::size_t index = 0;
          index < SecurePendingOperationCapacity;
          ++index) {
         filled =
-            DescribeMove(
+            DescribeTransfer(
                 &registry,
-                LegacyKitBagItemMoveCompactPacketBytes,
-                0,
-                static_cast<int>(index + 1),
+                10,
+                static_cast<int>(index),
                 0,
                 &descriptor) &&
             filled;
@@ -301,18 +302,18 @@ void CheckCapacityAndExpiry(Checks* checks) {
         filled &&
             registry.Snapshot().pending ==
                 SecurePendingOperationCapacity,
-        "Kit-bag move did not fill the bounded registry");
+        "Equipment transfers did not fill bounded registry");
 
-    std::uint8_t packet[
-        LegacyKitBagItemMoveCompactPacketBytes]{};
-    BuildMovePacket(packet, sizeof(packet), 0, 17, 0);
+    std::uint8_t
+        packet[LegacyEquipmentBagTransferPacketBytes]{};
+    BuildTransferPacket(packet, sizeof(packet), 10, 16, 0);
     checks->Require(
         registry.DescribePacket(
             packet,
             sizeof(packet),
             &descriptor) ==
             SecureOperationRegistryResult::Capacity,
-        "Kit-bag move exceeded the bounded registry");
+        "Equipment transfers exceeded bounded capacity");
 
     hooks.now +=
         SecurePendingOperationLifetimeMilliseconds;
@@ -324,7 +325,7 @@ void CheckCapacityAndExpiry(Checks* checks) {
                 SecureOperationRegistryResult::Success &&
             descriptor.hasOperation &&
             registry.Snapshot().pending == 1,
-        "Expired kit-bag moves did not release bounded capacity");
+        "Expired equipment transfers retained capacity");
 }
 
 void CheckResultCodec(Checks* checks) {
@@ -338,13 +339,13 @@ void CheckResultCodec(Checks* checks) {
         SecureLegacyCommandResult input{};
         input.disposition = disposition;
         input.commandFamily =
-            SecureLegacyCommandFamily::KitBagItemMove;
-        input.resultCode = 9;
+            SecureLegacyCommandFamily::EquipmentBagTransfer;
+        input.resultCode = 12;
         input.inventoryRevision =
             disposition ==
-                SecureLegacyCommandDisposition::Applied
-            ? 27U
-            : 0U;
+                    SecureLegacyCommandDisposition::Applied
+                ? 31U
+                : 0U;
         for (std::size_t index = 0;
              index < sizeof(input.operationId);
              ++index) {
@@ -366,7 +367,8 @@ void CheckResultCodec(Checks* checks) {
                     &decoded) &&
                 decoded.disposition == disposition &&
                 decoded.commandFamily ==
-                    SecureLegacyCommandFamily::KitBagItemMove &&
+                    SecureLegacyCommandFamily::
+                        EquipmentBagTransfer &&
                 decoded.resultCode == input.resultCode &&
                 decoded.inventoryRevision ==
                     input.inventoryRevision &&
@@ -374,14 +376,14 @@ void CheckResultCodec(Checks* checks) {
                     decoded.operationId,
                     input.operationId,
                     sizeof(input.operationId)) == 0,
-            "Kit-bag move family result did not round-trip");
+            "Equipment transfer family did not round-trip");
     }
 
     SecureLegacyCommandResult invalid{};
     invalid.disposition =
         SecureLegacyCommandDisposition::Applied;
     invalid.commandFamily =
-        SecureLegacyCommandFamily::KitBagItemMove;
+        SecureLegacyCommandFamily::EquipmentBagTransfer;
     invalid.operationId[0] = 1;
     std::uint8_t encoded[
         SecureLegacyCommandResultPayloadBytes]{};
@@ -390,7 +392,7 @@ void CheckResultCodec(Checks* checks) {
             invalid,
             encoded,
             sizeof(encoded)),
-        "Applied kit-bag move encoded without a revision");
+        "Applied equipment transfer encoded without revision");
 
     invalid.disposition =
         SecureLegacyCommandDisposition::Rejected;
@@ -401,14 +403,15 @@ void CheckResultCodec(Checks* checks) {
             invalid,
             encoded,
             sizeof(encoded)),
-        "Unknown family encoded as a kit-bag move result");
+        "Unknown family encoded as equipment transfer");
 }
 
 } // namespace
 
-int RunSecureKitBagItemMoveRegistryTests() {
+int RunSecureEquipmentBagTransferRegistryTests() {
     Checks checks{};
-    CheckPrincipalAndIdentity(&checks);
+    CheckSharedOpcode10051StaysUnmarked(&checks);
+    CheckPrincipalCharacterAndIdentity(&checks);
     CheckPrincipalAndCharacterIsolation(&checks);
     CheckTerminalSettlement(&checks);
     CheckCapacityAndExpiry(&checks);

@@ -1,5 +1,6 @@
 #include "SecureEconomyIdentityTests.h"
 
+#include "SecureEquipmentBagTransferIdentityTests.h"
 #include "SecureForgeCommandIdentityTests.h"
 #include "SecureForgeResultIdentityTests.h"
 #include "SecureGearEnhancerIdentityTests.h"
@@ -9,7 +10,8 @@
 #include "SecureKitBagItemMoveIdentityTests.h"
 
 int RunSecureEconomyIdentityTests() {
-    return RunSecureForgeCommandIdentityTests() +
+    return RunSecureEquipmentBagTransferIdentityTests() +
+        RunSecureForgeCommandIdentityTests() +
         RunSecureForgeResultIdentityTests() +
         RunSecureGearEnhancerIdentityTests() +
         RunSecureGearMentorCommandIdentityTests() +
