@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SecureForgeCommandIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
 
 #include <Windows.h>
@@ -12,6 +13,7 @@ namespace godswar::network {
 inline constexpr std::size_t SecurePendingOperationCapacity = 16;
 inline constexpr std::size_t SecureResolvedOperationCapacity = 16;
 inline constexpr std::size_t SecureGearSelectionCapacity = 3;
+inline constexpr std::size_t SecureForgeOddsCapacity = 25;
 inline constexpr std::uint64_t
     SecurePendingOperationLifetimeMilliseconds = 10 * 60 * 1000;
 inline constexpr std::uint64_t
@@ -40,6 +42,12 @@ enum class SecureOperationRegistryResult : std::uint8_t {
     NoCharacter,
 };
 
+struct SecureForgeOddsSelection final {
+    int bagSlot = -1;
+    std::uint8_t quantity = 0;
+    bool descriptorLinked = false;
+};
+
 struct SecurePendingOperationSnapshot final {
     std::size_t pending = 0;
     std::size_t resolved = 0;
@@ -55,6 +63,15 @@ struct SecurePendingOperationSnapshot final {
         -1};
     bool combinePageArmed = false;
     std::uint32_t combineNpcId = 0;
+    bool hasForgeEquipment = false;
+    int forgeEquipmentBagSlot = -1;
+    bool hasForgePrimaryMaterial = false;
+    int forgePrimaryMaterialBagSlot = -1;
+    std::size_t forgeOddsCount = 0;
+    std::uint32_t forgeOddsTotal = 0;
+    bool forgeOddsFullyLinked = true;
+    SecureForgeOddsSelection
+        forgeOdds[SecureForgeOddsCapacity]{};
 };
 
 class SecurePendingOperationRegistry final {
@@ -100,6 +117,12 @@ private:
         bool capturesSelectionState = false;
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
+        bool capturesForgeState = false;
+        int forgeEquipmentBagSlot = -1;
+        int forgePrimaryMaterialBagSlot = -1;
+        std::size_t forgeOddsCount = 0;
+        SecureForgeOddsSelection
+            forgeOdds[SecureForgeOddsCapacity]{};
         std::uint64_t expiresAt = 0;
         std::uint8_t operationId[16]{};
     };
@@ -113,6 +136,12 @@ private:
     };
 
     bool ReadNow(std::uint64_t* now) noexcept;
+    SecureOperationRegistryResult DescribeForgePacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint16_t opcode,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;
     Entry* Find(
         SecureLegacyCommandFamily family,
@@ -124,11 +153,19 @@ private:
     Tombstone* FindTombstone(
         const std::uint8_t* operationId) noexcept;
     Entry* FindAvailable() noexcept;
+    Entry* FindForge() noexcept;
     Tombstone* FindTombstoneSlot() noexcept;
     bool RememberResolved(
         const Entry& entry,
         std::uint64_t now) noexcept;
     bool CreateOperationId(std::uint8_t* operationId) noexcept;
+    bool StageForgeSelection(
+        const LegacyForgeSelection& selection) noexcept;
+    bool TryCaptureForgeIdentity(
+        SecureForgeOddsSelection* odds,
+        std::size_t* oddsCount) const noexcept;
+    bool ForgeStateMatches(const Entry& entry) const noexcept;
+    void ResetForgeState() noexcept;
     void SetPrincipal(
         const std::uint8_t* principal) noexcept;
     bool AddSelection(int bagSlot) noexcept;
@@ -186,6 +223,11 @@ private:
     bool combinePageArmed_ = false;
     std::uint32_t combineNpcId_ = 0;
     std::uint64_t combinePageGeneration_ = 0;
+    int forgeEquipmentBagSlot_ = -1;
+    int forgePrimaryMaterialBagSlot_ = -1;
+    std::size_t forgeOddsCount_ = 0;
+    SecureForgeOddsSelection
+        forgeOdds_[SecureForgeOddsCapacity]{};
     std::uint8_t
         principal_[SecurePrincipalFingerprintBytes]{};
     Entry entries_[SecurePendingOperationCapacity]{};

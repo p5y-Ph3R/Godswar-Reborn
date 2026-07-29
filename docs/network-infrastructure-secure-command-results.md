@@ -77,10 +77,11 @@ transports explicitly. The TLS mux accepts it only after bound game
 authentication and serializes it with legacy and secure control writes using
 the existing single outbound write gate.
 
-The wired families and stable stock-client result codes are:
+The wired families and stable terminal result codes are:
 
 | Family | Command | Success | Rejections |
 | ---: | --- | ---: | --- |
+| `3` | Equipment Forge | `1` (successful roll), `2` (committed failed roll) | `0` envelope/identity rejection or conflict; `3` invalid selection, `4` stale selection, `5` invalid Forge, `6` insufficient materials, `7` insufficient Silver |
 | `6` | Gear Mentor Make Attribute Stone | `1017` | `1016`, `1022`, `1020`, `1002` |
 | `7` | Gear Mentor Transform Crystal | `1823` | `1822`, `1020` |
 | `8` | Gear Mentor Combine Gem Pieces | `304` | `301`, `302`, `303` |
@@ -92,3 +93,7 @@ The wired families and stable stock-client result codes are:
 Every additional family must define stable finite result codes, keep retry
 identity isolated from other families, and demonstrate durable inbox replay
 semantics before wiring a terminal result.
+
+Family `3` result codes are the durable Forge status enum, not the stock
+packet's `resultKind`. A failed roll uses disposition `Applied`, code `2`, and
+a nonzero inventory revision because the attempt consumed value and committed.

@@ -47,6 +47,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable Gear Mentor pre-route replay handler",
             GearMentorDurableReplayHandlerChecks.RunAsync),
         (
+            "Durable equipment-forge handler and replay",
+            EquipmentForgeDurableHandlerChecks.RunAsync),
+        (
+            "Durable equipment-forge command contract",
+            EquipmentForgeCommandContractChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

@@ -94,6 +94,7 @@
     <ClInclude Include="SecureClientRuntimeInternal.h" />
     <ClInclude Include="SecureClientSession.h" />
     <ClInclude Include="SecureClientProtocol.h" />
+    <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureLegacyCommandIdentity.h" />
     <ClInclude Include="SecureLegacyFrameStream.h" />
     <ClInclude Include="SecurePendingOperationRegistry.h" />
@@ -143,10 +144,13 @@
     <ClCompile Include="SecureClientProtocol.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Snapshot.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Storage.cpp" />
     <ClCompile Include="SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="SecureRealtimeMovementRouter.cpp" />

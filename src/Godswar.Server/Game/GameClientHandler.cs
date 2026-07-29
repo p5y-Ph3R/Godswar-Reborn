@@ -50,6 +50,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _gearMentorDecomposeGearCommands;
     private readonly IGearEnhancementCommandExecutor?
         _gearEnhancementCommands;
+    private readonly IEquipmentForgeCommandExecutor?
+        _equipmentForgeCommands;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
@@ -109,7 +111,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IGearMentorDecomposeGearCommandExecutor?
             gearMentorDecomposeGearCommands = null,
         IGearEnhancementCommandExecutor?
-            gearEnhancementCommands = null)
+            gearEnhancementCommands = null,
+        IEquipmentForgeCommandExecutor?
+            equipmentForgeCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -135,6 +139,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         _gearMentorDecomposeGearCommands =
             gearMentorDecomposeGearCommands;
         _gearEnhancementCommands = gearEnhancementCommands;
+        _equipmentForgeCommands = equipmentForgeCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;
@@ -142,26 +147,6 @@ internal sealed partial class GameClientHandler : IClientHandler
         _mapTransitionReadyTimeout =
             mapTransitionReadyTimeout ?? DefaultMapTransitionReadyTimeout;
         _backhaulSkillCastTime = backhaulSkillCastTime;
-    }
-
-    private byte[] BuildLocalPlayerStatusUpdate()
-    {
-        if (_character is null)
-        {
-            throw new InvalidOperationException(
-                "A local player status update requires an active character.");
-        }
-
-        // A mounted player must keep the same locomotion multiplier on every
-        // later 10166 refresh. Sending the packet builder's walking default
-        // after forging, progression, equipment, or inspection silently
-        // cancels the client's mount-speed change.
-        var status = _registry.GetRuntimeStatusAggregate(
-            _session,
-            DateTimeOffset.UtcNow);
-        return PacketBuilder.PlayerStatusUpdate(
-            _character,
-            status.MovementSpeedMultiplier);
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)

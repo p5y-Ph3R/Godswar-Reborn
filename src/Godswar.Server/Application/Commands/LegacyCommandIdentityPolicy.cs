@@ -10,6 +10,7 @@ internal static class LegacyCommandIdentityPolicy
                 CommandIdentityStrength.LegacyAggregateVersion,
             CommandFamily.DeveloperItemGrant or
             CommandFamily.DeveloperBagClear or
+            CommandFamily.EquipmentForge or
             CommandFamily.GearMentorMakeAttributeStone or
             CommandFamily.GearMentorTransformCrystal or
             CommandFamily.GearMentorCombineGemPieces or
@@ -18,8 +19,7 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.GearMentorAddAttribute or
             CommandFamily.GearMentorDeleteAttribute =>
                 CommandIdentityStrength.ClientOperationId,
-            CommandFamily.PetLevelUpgrade or
-            CommandFamily.EquipmentForge =>
+            CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };

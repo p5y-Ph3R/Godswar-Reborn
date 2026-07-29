@@ -121,6 +121,9 @@ internal static partial class Program
             (
                 PostgresGearEnhancementIntegrationChecks.CheckName,
                 PostgresGearEnhancementIntegrationChecks.RunAsync),
+            (
+                PostgresEquipmentForgeCommandIntegrationChecks.CheckName,
+                PostgresEquipmentForgeCommandIntegrationChecks.RunAsync),
             ("Gear-enhancer initial NPC protocol", CheckGearEnhancerInitialProtocolAsync),
             ("Holy-suit design original NPC protocol", CheckHolySuitDesignProtocolAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),

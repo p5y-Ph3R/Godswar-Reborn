@@ -8,7 +8,7 @@ namespace Godswar.Server.Infrastructure.Inventory;
 /// authoritative; this consumer deliberately creates no second player-value
 /// owner.
 /// </summary>
-internal sealed class CharacterInventoryOutboxConsumer :
+internal sealed partial class CharacterInventoryOutboxConsumer :
     IOutboxEventConsumer
 {
     public string ConsumerKey =>
@@ -93,6 +93,17 @@ internal sealed class CharacterInventoryOutboxConsumer :
                 GearEnhancementPersistenceCodec.ContractVersion)
         {
             ValidateGearEnhancement(message);
+            return ValueTask.CompletedTask;
+        }
+
+        if (string.Equals(
+                message.EventType,
+                EquipmentForgePersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                EquipmentForgePersistenceCodec.ContractVersion)
+        {
+            ValidateEquipmentForge(message);
             return ValueTask.CompletedTask;
         }
 

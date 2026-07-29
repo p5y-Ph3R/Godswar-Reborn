@@ -132,18 +132,9 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         CancellationToken cancellationToken)
     {
-        const int expectedPayloadLength = 36;
-        const int modeOffset = 4;
         if (_account is null ||
             _character is null ||
-            packet.Payload.Length != expectedPayloadLength ||
-            BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload.Slice(modeOffset, 4)) !=
-                ForgeItemSelectionPacket.OrdinaryForgeMode ||
-            !HasCurrentForgeIdentity() ||
-            _forgeEquipment is null ||
-            _forgePrimaryMaterial is null ||
-            (_forgeOddsMaterials.TotalQuantity > 0 && !_forgeOddsMaterials.IsFullyLinked) ||
-            IsForgeSelectionExpired())
+            !IsOrdinaryForgeStart(packet))
         {
             ClearForgeSelection();
             await _session.SendAsync(
@@ -155,12 +146,25 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var oddsMaterials = _forgeOddsMaterials.CaptureSelections();
-        var request = new ForgeTransactionRequest(
-            _forgeEquipment,
-            _forgePrimaryMaterial,
-            oddsMaterials.FirstOrDefault(),
-            oddsMaterials.Skip(1).ToArray());
+        if (_session.IsSecure && packet.ClientOperationId.HasValue)
+        {
+            await HandleDurableForgeStartAsync(
+                packet.ClientOperationId.Value,
+                cancellationToken);
+            return;
+        }
+
+        if (!TryCaptureForgeRequest(out var request))
+        {
+            ClearForgeSelection();
+            await _session.SendAsync(
+                PacketBuilder.ForgeResult(success: false, resultKind: 0),
+                cancellationToken,
+                "ForgeRejected");
+            Console.WriteLine(
+                $"[forge] rejected incomplete/expired start character={_character.Name} len={packet.Length}");
+            return;
+        }
 
         CommandMetrics.RecordUnsupportedLegacyIdentity(
             CommandFamily.EquipmentForge);
@@ -174,7 +178,7 @@ internal sealed partial class GameClientHandler
             result = await _store.ForgeEquipmentAsync(
                 _account.Id,
                 _character.Id,
-                request,
+                request!,
                 cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -221,6 +225,39 @@ internal sealed partial class GameClientHandler
 
         Console.WriteLine(
             $"[forge] committed account={_account.Id} character={_character.Name} status={result.Status} operation={result.MaterialType} chance={result.Probability} silver={result.SilverSpent} equipment={result.EquipmentBefore.Id}->{result.EquipmentAfter.Id} quality={result.EquipmentBefore.Quality}->{result.EquipmentAfter.Quality} grade={result.EquipmentBefore.Grade}->{result.EquipmentAfter.Grade}");
+    }
+
+    private static bool IsOrdinaryForgeStart(GamePacket packet)
+    {
+        const int expectedPayloadLength = 36;
+        const int modeOffset = 4;
+        return packet.Payload.Length == expectedPayloadLength &&
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                packet.Payload.Slice(modeOffset, sizeof(uint))) ==
+            ForgeItemSelectionPacket.OrdinaryForgeMode;
+    }
+
+    private bool TryCaptureForgeRequest(
+        out ForgeTransactionRequest? request)
+    {
+        request = null;
+        if (!HasCurrentForgeIdentity() ||
+            _forgeEquipment is null ||
+            _forgePrimaryMaterial is null ||
+            (_forgeOddsMaterials.TotalQuantity > 0 &&
+                !_forgeOddsMaterials.IsFullyLinked) ||
+            IsForgeSelectionExpired())
+        {
+            return false;
+        }
+
+        var oddsMaterials = _forgeOddsMaterials.CaptureSelections();
+        request = new ForgeTransactionRequest(
+            _forgeEquipment,
+            _forgePrimaryMaterial,
+            oddsMaterials.FirstOrDefault(),
+            oddsMaterials.Skip(1).ToArray());
+        return true;
     }
 
     private void ClearForgeSelection()

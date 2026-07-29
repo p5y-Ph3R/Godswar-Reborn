@@ -88,6 +88,8 @@
     <ClCompile Include="SecurePendingOperationRegistryTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
+    <ClCompile Include="SecureForgeCommandIdentityTests.cpp" />
+    <ClCompile Include="SecureForgeResultIdentityTests.cpp" />
     <ClCompile Include="SecureGearEnhancerIdentityTests.cpp" />
     <ClCompile Include="SecureGearEnhancerResultIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorAttributeIdentityTests.cpp" />
@@ -135,10 +137,13 @@
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
+    <ClCompile Include="..\src\SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandResult.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.Snapshot.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Storage.cpp" />
     <ClCompile Include="..\src\SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="..\src\SecureRealtimeMovementRouter.cpp" />
@@ -189,6 +194,9 @@
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
+    <ClInclude Include="SecureForgeCommandIdentityTests.h" />
+    <ClInclude Include="SecureForgeResultIdentityTests.h" />
+    <ClInclude Include="SecureForgeTestSupport.h" />
     <ClInclude Include="SecureGearEnhancerIdentityTests.h" />
     <ClInclude Include="SecureGearEnhancerResultIdentityTests.h" />
     <ClInclude Include="SecureGearMentorAttributeIdentityTests.h" />
@@ -237,6 +245,7 @@
     <ClInclude Include="..\src\SecureClientRuntimeInternal.h" />
     <ClInclude Include="..\src\SecureClientSession.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
+    <ClInclude Include="..\src\SecureForgeCommandIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyCommandIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyFrameStream.h" />
     <ClInclude Include="..\src\SecurePendingOperationRegistry.h" />

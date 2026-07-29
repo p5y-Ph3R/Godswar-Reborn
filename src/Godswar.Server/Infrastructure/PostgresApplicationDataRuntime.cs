@@ -59,6 +59,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresGearEnhancementCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        EquipmentForgeCommands =
+            new PostgresEquipmentForgeCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -94,6 +98,9 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IGearEnhancementCommandExecutor GearEnhancementCommands
+    { get; }
+
+    public IEquipmentForgeCommandExecutor EquipmentForgeCommands
     { get; }
 
     public bool OutboxEnabled { get; }

@@ -100,6 +100,28 @@ internal static class ForgeProtocolChecks
         Check.True(!reservations.IsFullyLinked, "an action arriving first waits for its canonical descriptor");
         reservations.ValidateDescriptor(19, differentCrystals);
         Check.True(reservations.IsFullyLinked, "later canonical descriptor links an action-first reservation");
+
+        var switched = new ForgeOddsReservationSet();
+        switched.ValidateDescriptor(18, crystals);
+        Check.True(
+            switched.TryIncrement(18, crystals) &&
+            switched.IsFullyLinked,
+            "initial crystal descriptor links its reservation");
+        switched.ValidateDescriptor(19, differentCrystals);
+        Check.True(
+            switched.TryIncrement(19, differentCrystals) &&
+            switched.IsFullyLinked,
+            "different crystal descriptor starts a fresh linked batch");
+        Check.True(
+            switched.TryIncrement(18, crystals),
+            "switching back can reserve the earlier crystal item");
+        Check.True(
+            !switched.IsFullyLinked,
+            "A-to-B-to-A switch cannot resurrect A's old descriptor");
+        switched.ValidateDescriptor(18, crystals);
+        Check.True(
+            switched.IsFullyLinked,
+            "switching back requires a fresh canonical A descriptor");
     }
 
     private static void CheckSelectionIdentityBinding()

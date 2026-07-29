@@ -25,6 +25,7 @@ internal sealed class ForgeOddsReservationSet
 
     public void ValidateDescriptor(int kitBagSlot, CompactItemEntry item)
     {
+        StartFreshItemBatch(item.Id);
         _validatedDescriptors[kitBagSlot] = item.Id;
     }
 
@@ -35,11 +36,7 @@ internal sealed class ForgeOddsReservationSet
             return false;
         }
 
-        if (_itemId != item.Id)
-        {
-            _reservations.Clear();
-            _itemId = item.Id;
-        }
+        StartFreshItemBatch(item.Id);
 
         if (TotalQuantity >= EquipmentForgeCalculator.MaximumOddsQuantity)
         {
@@ -71,5 +68,20 @@ internal sealed class ForgeOddsReservationSet
         _reservations.Clear();
         _validatedDescriptors.Clear();
         _itemId = null;
+    }
+
+    private void StartFreshItemBatch(uint itemId)
+    {
+        if (_itemId == itemId)
+        {
+            return;
+        }
+
+        // Descriptors authorize only the active material batch. Keeping an
+        // earlier item ID here would let an A -> B -> A switch resurrect A's
+        // old descriptor without a fresh canonical selection packet.
+        _reservations.Clear();
+        _validatedDescriptors.Clear();
+        _itemId = itemId;
     }
 }

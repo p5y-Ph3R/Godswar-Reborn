@@ -72,10 +72,15 @@ The [secure native Gear Enhancement increment](../data-architecture-b09-native-g
 places Gear Mentor and Origin Enhancer attribute Enhance/Add/Delete behind
 three family-isolated UUIDs and one authoritative transaction that commits the
 gear update, both material consumptions, revision, ledger, audit, inbox, and
-strict outbox evidence before acknowledgement. Tokenless legacy inventory,
-forge, remaining reward, and currency mutations remain
-compatibility paths; B09 is not complete until those operations gain truthful
-retry identity and move behind the durable transaction boundary.
+strict outbox evidence before acknowledgement.
+The [secure native Equipment Forge increment](../data-architecture-b09-native-equipment-forge-20260730.md)
+adds family-isolated identity for ordinary Forge and stores its one
+server-generated random roll. Successful and failed rolls consume their exact
+materials and Silver once, while exact retry replays the permanent outcome
+without rerolling. Tokenless legacy inventory, remaining reward, and currency
+mutations remain compatibility paths; B09 is not complete until those
+operations gain truthful retry identity and move behind the durable
+transaction boundary.
 
 ## 18.2 First three low-risk implementation tasks
 

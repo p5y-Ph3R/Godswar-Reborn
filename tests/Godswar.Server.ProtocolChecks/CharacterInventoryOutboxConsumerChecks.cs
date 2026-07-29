@@ -6,7 +6,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class CharacterInventoryOutboxConsumerChecks
+internal static partial class CharacterInventoryOutboxConsumerChecks
 {
     private const int CharacterId = 73;
 
@@ -114,6 +114,7 @@ internal static class CharacterInventoryOutboxConsumerChecks
             consumer,
             messages[7]);
         await CheckContractRejectionAsync(consumer, messages[0]);
+        await CheckEquipmentForgeAsync(consumer);
     }
 
     private static OutboxEventMessage[] CreateCompatibleSequence() =>

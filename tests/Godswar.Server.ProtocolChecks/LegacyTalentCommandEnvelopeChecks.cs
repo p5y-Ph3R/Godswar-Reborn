@@ -378,10 +378,10 @@ internal static class LegacyTalentCommandEnvelopeChecks
                 CommandFamily.PetLevelUpgrade),
             "pet level cannot fabricate a retry identity");
         Check.Equal(
-            (int)CommandIdentityStrength.UnsupportedLegacyRetry,
+            (int)CommandIdentityStrength.ClientOperationId,
             (int)LegacyCommandIdentityPolicy.GetIdentityStrength(
                 CommandFamily.EquipmentForge),
-            "forge cannot fabricate a retry identity");
+            "secure forge carries a client operation identity");
     }
 
     private static void CheckLowCardinalityMetrics()

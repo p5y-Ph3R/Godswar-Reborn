@@ -151,6 +151,14 @@ SecurePendingOperationRegistry::DescribePacket(
     if (!ReadNow(&now)) {
         return SecureOperationRegistryResult::ClockFailure;
     }
+    if (IsLegacyForgeOpcode(opcode)) {
+        return DescribeForgePacket(
+            packet,
+            packetBytes,
+            opcode,
+            now,
+            descriptor);
+    }
 
     std::uint8_t
         loginPrincipal[SecurePrincipalFingerprintBytes]{};
@@ -446,6 +454,22 @@ SecurePendingOperationRegistry::Resolve(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::ClockFailure;
     }
+    if (entry->family ==
+        SecureLegacyCommandFamily::EquipmentForge) {
+        if (hasPrincipal_ &&
+            hasCharacter_ &&
+            characterId_ == entry->characterId &&
+            EqualBytes(
+                principal_,
+                entry->principal,
+                sizeof(principal_)) &&
+            ForgeStateMatches(*entry)) {
+            ResetForgeState();
+        }
+        ClearEntry(entry);
+        ReleaseSRWLockExclusive(&lock_);
+        return SecureOperationRegistryResult::Success;
+    }
     int identityBagSlots[SecureGearSelectionCapacity]{
         -1,
         -1,
@@ -499,47 +523,12 @@ SecurePendingOperationRegistry::SetCharacter(
     characterId_ = characterId;
     if (changed) {
         ResetSelectionState();
+        ResetForgeState();
         combinePageArmed_ = false;
         combineNpcId_ = 0;
     }
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
-}
-
-SecurePendingOperationSnapshot
-SecurePendingOperationRegistry::Snapshot() noexcept {
-    SecurePendingOperationSnapshot snapshot{};
-    std::uint64_t now = 0;
-    if (!ReadNow(&now)) {
-        return snapshot;
-    }
-
-    AcquireSRWLockExclusive(&lock_);
-    Prune(now);
-    for (const auto& entry : entries_) {
-        if (entry.occupied) {
-            ++snapshot.pending;
-        }
-    }
-    for (const auto& tombstone : tombstones_) {
-        if (tombstone.occupied) {
-            ++snapshot.resolved;
-        }
-    }
-    snapshot.hasPrincipal = hasPrincipal_;
-    snapshot.hasCharacter = hasCharacter_;
-    snapshot.characterId = characterId_;
-    snapshot.hasSelection =
-        TryGetIdentitySelection(
-            snapshot.selectedBagSlots,
-            &snapshot.selectionCount);
-    snapshot.selectedBagSlot = snapshot.hasSelection
-        ? snapshot.selectedBagSlots[0]
-        : -1;
-    snapshot.combinePageArmed = combinePageArmed_;
-    snapshot.combineNpcId = combineNpcId_;
-    ReleaseSRWLockExclusive(&lock_);
-    return snapshot;
 }
 
 void SecurePendingOperationRegistry::Clear() noexcept {
@@ -555,6 +544,7 @@ void SecurePendingOperationRegistry::Clear() noexcept {
     hasCharacter_ = false;
     characterId_ = -1;
     ResetSelectionState();
+    ResetForgeState();
     selectionGeneration_ = 0;
     combinePageArmed_ = false;
     combineNpcId_ = 0;

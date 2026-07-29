@@ -24,6 +24,8 @@ bool IsDisposition(
 bool IsCommandFamily(
     SecureLegacyCommandFamily family) noexcept {
     return family ==
+            SecureLegacyCommandFamily::EquipmentForge ||
+        family ==
             SecureLegacyCommandFamily::MakeAttributeStone ||
         family ==
             SecureLegacyCommandFamily::TransformCrystal ||

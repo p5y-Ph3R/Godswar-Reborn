@@ -204,6 +204,7 @@ void SecurePendingOperationRegistry::SetPrincipal(
         hasCharacter_ = false;
         characterId_ = -1;
         ResetSelectionState();
+        ResetForgeState();
         combinePageArmed_ = false;
         combineNpcId_ = 0;
     }
@@ -434,6 +435,12 @@ void SecurePendingOperationRegistry::ClearEntry(
             entry->bagSlots,
             SecureGearSelectionCapacity,
             -1);
+        entry->forgeEquipmentBagSlot = -1;
+        entry->forgePrimaryMaterialBagSlot = -1;
+        std::fill_n(
+            entry->forgeOdds,
+            SecureForgeOddsCapacity,
+            SecureForgeOddsSelection{});
     }
 }
 

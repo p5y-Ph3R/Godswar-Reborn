@@ -18,6 +18,8 @@
 #include "SecurePendingOperationRegistryTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
+#include "SecureForgeCommandIdentityTests.h"
+#include "SecureForgeResultIdentityTests.h"
 #include "SecureGearEnhancerIdentityTests.h"
 #include "SecureGearMentorDecomposeIdentityTests.h"
 #include "SecureGearMentorCommandIdentityTests.h"
@@ -39,7 +41,6 @@
 #include "../src/NetClientProxy.h"
 
 #include <Windows.h>
-
 #include <cstdint>
 #include <cwchar>
 #include <cstdio>
@@ -58,7 +59,6 @@ using godswar::network::NativeProxyId;
 using godswar::network::NetClientProxy;
 using godswar::network::TryCopyClientRoute;
 using Factory = void*(__cdecl*)();
-
 int Failures = 0;
 
 void Check(bool condition, const char* message) {
@@ -555,6 +555,8 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecurePendingOperationRegistryTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();
+    Failures += RunSecureForgeCommandIdentityTests();
+    Failures += RunSecureForgeResultIdentityTests();
     Failures += RunSecureGearEnhancerIdentityTests();
     Failures += RunSecureGearMentorDecomposeIdentityTests();
     Failures += RunSecureGearMentorCommandIdentityTests();
