@@ -12,6 +12,8 @@ internal static class PostgresPetLevelMigrationChecks
         "20260729_022_pet_level_progression";
     private const string MigrationChecksum =
         "86C581294D06B00E64AA8C7F84C79019521BCA2E3B860B09FBA77942E5BD288D";
+    private const string NextMigrationId =
+        "20260729_023_npc_content_release";
 
     public static Task RunAsync()
     {
@@ -24,9 +26,9 @@ internal static class PostgresPetLevelMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 1,
+            catalog.Count - 2,
             index,
-            "pet level progression is the latest migration");
+            "pet level progression remains immediately before NPC content");
         Check.Equal(
             MigrationChecksum,
             migration.Checksum,
@@ -39,6 +41,10 @@ internal static class PostgresPetLevelMigrationChecks
             PreviousMigrationChecksum,
             catalog[index - 1].Checksum,
             "pet level migration preserves its applied predecessor");
+        Check.Equal(
+            NextMigrationId,
+            catalog[index + 1].Id,
+            "pet level migration has the expected forward-only successor");
 
         var sql = migration.Sql;
         Check.True(

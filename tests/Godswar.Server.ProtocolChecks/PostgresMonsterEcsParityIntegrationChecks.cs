@@ -34,7 +34,8 @@ internal static class PostgresMonsterEcsParityIntegrationChecks
         await using var store = new PostgresGameStore(connectionString);
         await store.EnsureSeedDataAsync();
         var worldContent =
-            await PostgresWorldContentReaderLoader.LoadAsync(connectionString);
+            await PostgresWorldContentBootstrapper.LoadAsync(
+                connectionString);
         var definitions = (await worldContent.ReadMapAsync(mapId: 0))
             .Monsters;
         Check.True(

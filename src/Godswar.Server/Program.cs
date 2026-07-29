@@ -67,7 +67,7 @@ try
     worldContent = runtimeProfile.StorageProvider switch
     {
         GameStorageProviderKind.Postgres =>
-            await PostgresWorldContentReaderLoader.LoadAsync(
+            await PostgresWorldContentBootstrapper.LoadAsync(
                 options.Storage.PostgresConnectionString),
         GameStorageProviderKind.Json =>
             await GeneratedWorldContentReaderLoader.LoadAsync(),

@@ -30,6 +30,9 @@
     <EmbeddedResource
       Include="State/DatabaseMigrations/LegacySchemaBootstrap.006.sql"
       LogicalName="Godswar.Server.State.DatabaseMigrations.LegacySchemaBootstrap.006.sql" />
+    <EmbeddedResource
+      Include="Infrastructure/WorldContent/Baselines/NpcContentBaseline.v1.br"
+      LogicalName="Godswar.Server.Infrastructure.WorldContent.Baselines.NpcContentBaseline.v1.br" />
   </ItemGroup>
 
 </Project>

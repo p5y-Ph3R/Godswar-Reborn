@@ -45,11 +45,15 @@ internal static partial class Program
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
             ("Data-boundary architecture ratchet", DataBoundaryArchitectureChecks.RunAsync),
             ("Pinned immutable world-content reader", WorldContentReaderChecks.RunAsync),
+            ("Frozen database-authoritative NPC content", NpcContentAuthorityChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
             ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
             ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),
             .. PetProtocolCheckCatalog.All,
             ("PostgreSQL forward-only database cleanup", PostgresDatabaseCleanupIntegrationChecks.RunAsync),
+            (
+                "PostgreSQL official NPC content publication",
+                PostgresNpcContentPublicationIntegrationChecks.RunAsync),
             ("PostgreSQL captured-monster ECS parity", PostgresMonsterEcsParityIntegrationChecks.RunAsync),
             (
                 "PostgreSQL pinned world-content baseline",

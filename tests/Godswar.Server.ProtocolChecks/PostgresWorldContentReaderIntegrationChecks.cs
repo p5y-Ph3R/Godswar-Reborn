@@ -7,9 +7,8 @@ using Npgsql;
 namespace Godswar.Server.ProtocolChecks;
 
 /// <summary>
-/// Verifies the source-backed world-content projection on the disposable B03
-/// empty database. This deliberately does not claim parity with an untracked
-/// production capture corpus.
+/// Verifies the pinned world-content projection and official NPC release on
+/// the disposable B03 empty database.
 /// </summary>
 internal static partial class PostgresWorldContentReaderIntegrationChecks
 {
@@ -38,6 +37,8 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
         {
             await store.EnsureSeedDataAsync();
         }
+        _ = await PostgresNpcContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
 
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
@@ -57,7 +58,7 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
                 connectionId);
             fixturesInserted = true;
 
-            var generated =
+            var generatedMaps =
                 await GeneratedWorldContentReaderLoader.LoadAsync();
             var first =
                 await PostgresWorldContentReaderLoader.LoadAsync(
@@ -67,10 +68,12 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
                     connectionString);
 
             AssertStableManifest(first.Manifest, second.Manifest);
-            AssertSourceBackedFamilies(generated.Manifest, first.Manifest);
+            AssertGeneratedMapFamily(
+                generatedMaps.Manifest,
+                first.Manifest);
+            await AssertOfficialNpcReleaseAsync(dataSource, first);
             await AssertPublishedCatalogShapeAsync(dataSource, first);
             await AssertMapAndNpcProjectionAsync(
-                generated,
                 first,
                 second);
             await AssertPublishedBootstrapOnlyAsync(
@@ -154,7 +157,7 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             "enter-bootstrap");
     }
 
-    private static void AssertSourceBackedFamilies(
+    private static void AssertGeneratedMapFamily(
         WorldContentManifest generated,
         WorldContentManifest postgres)
     {
@@ -162,10 +165,6 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             generated.Maps,
             postgres.Maps,
             "generated/PostgreSQL map");
-        AssertSameFamily(
-            generated.Npcs,
-            postgres.Npcs,
-            "generated/PostgreSQL final NPC projection");
     }
 
     private static void AssertSameFamily(
@@ -218,8 +217,61 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             "disposable baseline has only the tracked monster fixture");
     }
 
+    private static async Task AssertOfficialNpcReleaseAsync(
+        NpgsqlDataSource dataSource,
+        IWorldContentReader postgres)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT publication.revision,
+                   release.entry_count,
+                   release.source,
+                   (
+                       SELECT COUNT(*)::integer
+                       FROM npc_spawn_definitions definitions
+                       WHERE definitions.revision = publication.revision
+                   )
+            FROM npc_content_publication publication
+            JOIN npc_content_revisions release
+              ON release.revision = publication.revision
+            WHERE publication.family = 'npcs';
+            """,
+            connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        Check.True(
+            await reader.ReadAsync(),
+            "official NPC release metadata exists");
+        Check.Equal(
+            NpcContentBaselineV1.ExpectedRevision,
+            reader.GetString(0),
+            "official NPC publication revision");
+        Check.Equal(
+            NpcContentBaselineV1.ExpectedEntryCount,
+            reader.GetInt32(1),
+            "official NPC release entry count");
+        Check.Equal(
+            NpcContentBaselineV1.Source,
+            reader.GetString(2),
+            "official NPC release source");
+        Check.Equal(
+            NpcContentBaselineV1.ExpectedEntryCount,
+            reader.GetInt32(3),
+            "official NPC release stored definition count");
+        Check.True(
+            !await reader.ReadAsync(),
+            "official NPC publication metadata is singular");
+        Check.Equal(
+            NpcContentBaselineV1.ExpectedRevision,
+            postgres.Manifest.Npcs.Sha256,
+            "pinned reader uses the official NPC release revision");
+        Check.Equal(
+            NpcContentBaselineV1.ExpectedEntryCount,
+            postgres.Manifest.Npcs.EntryCount,
+            "pinned reader uses every official NPC definition");
+    }
+
     private static async Task AssertMapAndNpcProjectionAsync(
-        IWorldContentReader generated,
         IWorldContentReader first,
         IWorldContentReader second)
     {
@@ -235,13 +287,8 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
 
         foreach (var mapId in mapIds)
         {
-            var sourceMap = await generated.ReadMapAsync(mapId);
             var firstMap = await first.ReadMapAsync(mapId);
             var secondMap = await second.ReadMapAsync(mapId);
-            AssertNpcSequence(
-                sourceMap.Npcs,
-                firstMap.Npcs,
-                $"map {mapId} source/PostgreSQL NPC");
             AssertNpcSequence(
                 firstMap.Npcs,
                 secondMap.Npcs,
