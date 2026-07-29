@@ -83,10 +83,17 @@ adds family-13 identity and replay-before-reread handling for confirmed
 ground deletion. It deletes only the exact server-captured item instance,
 persists empty and stale selections as permanent non-mutating outcomes, and
 commits its revision, ledger, audit, inbox, and strict outbox evidence before
-acknowledgement. Tokenless kit-bag move/swap, equip/unequip, Holy Stone,
-remaining inventory, reward, and currency mutations remain compatibility
-paths; B09 is not complete until those operations gain truthful retry
-identity and move behind the durable transaction boundary.
+acknowledgement.
+The [secure native kit-bag move/swap increment](../data-architecture-b09-native-kit-bag-move-20260730.md)
+adds ordered family-14 identity and replay-before-reread handling for both
+empty-destination movement and occupied-destination swaps. It preserves the
+exact database item IDs, advances one revision, writes one or two ordered
+full-state ledgers, commits one strict outbox event, and suppresses the
+non-idempotent stock move acknowledgement on replay.
+Tokenless movement, equip/unequip, Holy Stone, remaining inventory, reward,
+and currency mutations remain compatibility paths; B09 is not complete until
+those operations gain truthful retry identity and move behind the durable
+transaction boundary.
 
 ## 18.2 First three low-risk implementation tasks
 

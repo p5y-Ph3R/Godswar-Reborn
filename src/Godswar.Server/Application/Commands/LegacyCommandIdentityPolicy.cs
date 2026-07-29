@@ -18,7 +18,8 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.GearMentorEnhanceAttribute or
             CommandFamily.GearMentorAddAttribute or
             CommandFamily.GearMentorDeleteAttribute or
-            CommandFamily.KitBagItemDelete =>
+            CommandFamily.KitBagItemDelete or
+            CommandFamily.KitBagItemMove =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,

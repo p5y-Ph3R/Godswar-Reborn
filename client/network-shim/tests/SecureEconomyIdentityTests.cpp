@@ -6,6 +6,7 @@
 #include "SecureGearMentorCommandIdentityTests.h"
 #include "SecureGearMentorDecomposeIdentityTests.h"
 #include "SecureKitBagItemDeleteIdentityTests.h"
+#include "SecureKitBagItemMoveIdentityTests.h"
 
 int RunSecureEconomyIdentityTests() {
     return RunSecureForgeCommandIdentityTests() +
@@ -13,5 +14,6 @@ int RunSecureEconomyIdentityTests() {
         RunSecureGearEnhancerIdentityTests() +
         RunSecureGearMentorCommandIdentityTests() +
         RunSecureGearMentorDecomposeIdentityTests() +
-        RunSecureKitBagItemDeleteIdentityTests();
+        RunSecureKitBagItemDeleteIdentityTests() +
+        RunSecureKitBagItemMoveIdentityTests();
 }

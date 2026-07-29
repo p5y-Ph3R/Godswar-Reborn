@@ -67,6 +67,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresKitBagItemDeleteCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        KitBagItemMoveCommands =
+            new PostgresKitBagItemMoveCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -108,6 +112,9 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IKitBagItemDeleteCommandExecutor KitBagItemDeleteCommands
+    { get; }
+
+    public IKitBagItemMoveCommandExecutor KitBagItemMoveCommands
     { get; }
 
     public bool OutboxEnabled { get; }

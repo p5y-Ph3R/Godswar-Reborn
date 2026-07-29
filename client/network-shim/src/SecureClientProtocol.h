@@ -77,6 +77,7 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     GearMentorAddAttribute = 11,
     GearMentorDeleteAttribute = 12,
     KitBagItemDelete = 13,
+    KitBagItemMove = 14,
 };
 
 struct SecureLegacyCommandResult final {

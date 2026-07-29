@@ -49,6 +49,30 @@ internal sealed partial class GameClientHandler
 
         if (TryReadStorageItemKitBagMove(packet.Payload, out var moveSourceSlot, out var moveDestinationSlot))
         {
+            if (packet.ClientOperationId is { } moveOperationId)
+            {
+                if (_session.IsSecure &&
+                    packet.Length is
+                        DurableKitBagMoveCompactRequestBytes or
+                        DurableKitBagMoveDetailedRequestBytes &&
+                    moveSourceSlot != moveDestinationSlot)
+                {
+                    await HandleDurableKitBagItemMoveAsync(
+                        moveSourceSlot,
+                        moveDestinationSlot,
+                        moveOperationId,
+                        cancellationToken);
+                    return;
+                }
+
+                await RejectUnsupportedDurableKitBagItemMoveAsync(
+                    moveOperationId,
+                    cancellationToken);
+                return;
+            }
+
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.KitBagItemMove);
             await HandleMoveKitBagItemAsync(moveSourceSlot, moveDestinationSlot, cancellationToken);
             return;
         }

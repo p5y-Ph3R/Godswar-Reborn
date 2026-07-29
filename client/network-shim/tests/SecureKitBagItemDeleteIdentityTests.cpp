@@ -380,8 +380,18 @@ void CheckPrincipalAndReconnectIdentity() {
             sizeof(bagMove),
             &moveDescriptor) ==
                 SecureOperationRegistryResult::Success &&
-            !moveDescriptor.hasOperation,
-        "A non-delete StorageItem packet received delete identity");
+            moveDescriptor.hasOperation &&
+            !SameOperation(first, moveDescriptor),
+        "A kit-bag move shared delete identity");
+    auto wrongMoveFamily = ResultFor(
+        moveDescriptor,
+        SecureLegacyCommandDisposition::Rejected,
+        1,
+        0);
+    Check(
+        registry.Resolve(wrongMoveFamily) ==
+            SecureOperationRegistryResult::FamilyConflict,
+        "A kit-bag move accepted delete settlement");
 }
 
 void CheckTerminalSettlement() {
@@ -522,7 +532,7 @@ void CheckFamilyThirteenResultCodec() {
     invalid.disposition =
         SecureLegacyCommandDisposition::Rejected;
     invalid.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(14);
+        static_cast<SecureLegacyCommandFamily>(15);
     Check(
         !TryEncodeSecureLegacyCommandResult(
             invalid,

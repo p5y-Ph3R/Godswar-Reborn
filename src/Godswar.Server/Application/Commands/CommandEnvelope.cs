@@ -18,7 +18,8 @@ internal enum CommandFamily : ushort
     GearMentorEnhanceAttribute = 10,
     GearMentorAddAttribute = 11,
     GearMentorDeleteAttribute = 12,
-    KitBagItemDelete = 13
+    KitBagItemDelete = 13,
+    KitBagItemMove = 14
 }
 
 internal enum CommandIdentityStrength : byte

@@ -169,6 +169,19 @@ SecurePendingOperationRegistry::DescribePacket(
             now,
             descriptor);
     }
+    int kitBagMoveSourceSlot = -1;
+    int kitBagMoveDestinationSlot = -1;
+    if (TryReadLegacyKitBagItemMove(
+            packet,
+            packetBytes,
+            &kitBagMoveSourceSlot,
+            &kitBagMoveDestinationSlot)) {
+        return DescribeKitBagItemMove(
+            kitBagMoveSourceSlot,
+            kitBagMoveDestinationSlot,
+            now,
+            descriptor);
+    }
 
     std::uint8_t
         loginPrincipal[SecurePrincipalFingerprintBytes]{};

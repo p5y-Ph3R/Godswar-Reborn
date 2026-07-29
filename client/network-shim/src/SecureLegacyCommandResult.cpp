@@ -43,7 +43,9 @@ bool IsCommandFamily(
             SecureLegacyCommandFamily::
                 GearMentorDeleteAttribute ||
         family ==
-            SecureLegacyCommandFamily::KitBagItemDelete;
+            SecureLegacyCommandFamily::KitBagItemDelete ||
+        family ==
+            SecureLegacyCommandFamily::KitBagItemMove;
 }
 
 bool HasValidRevision(

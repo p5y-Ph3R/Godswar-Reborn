@@ -97,6 +97,9 @@
     <ClCompile Include="SecureGearMentorDecomposeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorCommandIdentityTests.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentityTests.cpp" />
+    <ClCompile Include="SecureKitBagItemMoveIdentityTests.cpp" />
+    <ClCompile Include="SecureKitBagItemMoveParserTests.cpp" />
+    <ClCompile Include="SecureKitBagItemMoveRegistryTests.cpp" />
     <ClCompile Include="SecureOriginEnhancerIdentityTests.cpp" />
     <ClCompile Include="SecureOriginEnhancerPacketTests.cpp" />
     <ClCompile Include="SecureLegacyCommandResultStreamTests.cpp" />
@@ -141,12 +144,14 @@
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemDeleteIdentity.cpp" />
+    <ClCompile Include="..\src\SecureKitBagItemMoveIdentity.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandResult.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagDelete.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagItemMove.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Snapshot.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Storage.cpp" />
     <ClCompile Include="..\src\SecureRealtimeMovementProtocol.cpp" />
@@ -208,6 +213,8 @@
     <ClInclude Include="SecureGearMentorDecomposeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorCommandIdentityTests.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentityTests.h" />
+    <ClInclude Include="SecureKitBagItemMoveIdentityTests.h" />
+    <ClInclude Include="SecureKitBagItemMoveTestSupport.h" />
     <ClInclude Include="SecureOriginEnhancerIdentityTests.h" />
     <ClInclude Include="SecureOriginEnhancerPacketTests.h" />
     <ClInclude Include="SecureLegacyCommandResultStreamTests.h" />
@@ -253,6 +260,7 @@
     <ClInclude Include="..\src\SecureClientProtocol.h" />
     <ClInclude Include="..\src\SecureForgeCommandIdentity.h" />
     <ClInclude Include="..\src\SecureKitBagItemDeleteIdentity.h" />
+    <ClInclude Include="..\src\SecureKitBagItemMoveIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyCommandIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyFrameStream.h" />
     <ClInclude Include="..\src\SecurePendingOperationRegistry.h" />

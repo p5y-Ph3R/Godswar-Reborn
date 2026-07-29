@@ -2,6 +2,7 @@
 
 #include "SecureForgeCommandIdentity.h"
 #include "SecureKitBagItemDeleteIdentity.h"
+#include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
 
 #include <Windows.h>
@@ -145,6 +146,11 @@ private:
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeKitBagItemDelete(
         int bagSlot,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeKitBagItemMove(
+        int sourceBagSlot,
+        int destinationBagSlot,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;

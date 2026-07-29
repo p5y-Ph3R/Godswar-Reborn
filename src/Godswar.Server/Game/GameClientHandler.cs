@@ -115,7 +115,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IEquipmentForgeCommandExecutor?
             equipmentForgeCommands = null,
         IKitBagItemDeleteCommandExecutor?
-            kitBagItemDeleteCommands = null)
+            kitBagItemDeleteCommands = null,
+        IKitBagItemMoveCommandExecutor?
+            kitBagItemMoveCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -143,6 +145,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         _gearEnhancementCommands = gearEnhancementCommands;
         _equipmentForgeCommands = equipmentForgeCommands;
         _kitBagItemDeleteCommands = kitBagItemDeleteCommands;
+        _kitBagItemMoveCommands = kitBagItemMoveCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

@@ -59,6 +59,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable kit-bag item delete handler and replay",
             KitBagItemDeleteDurableHandlerChecks.RunAsync),
         (
+            "Durable kit-bag item-move command contract",
+            KitBagItemMoveCommandContractChecks.RunAsync),
+        (
+            "Durable kit-bag item move handler and replay",
+            KitBagItemMoveDurableHandlerChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

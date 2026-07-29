@@ -116,6 +116,7 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
         await CheckContractRejectionAsync(consumer, messages[0]);
         await CheckEquipmentForgeAsync(consumer);
         await CheckKitBagItemDeleteAsync(consumer);
+        await CheckKitBagItemMoveAsync(consumer);
     }
 
     private static OutboxEventMessage[] CreateCompatibleSequence() =>

@@ -96,6 +96,7 @@
     <ClInclude Include="SecureClientProtocol.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentity.h" />
+    <ClInclude Include="SecureKitBagItemMoveIdentity.h" />
     <ClInclude Include="SecureLegacyCommandIdentity.h" />
     <ClInclude Include="SecureLegacyFrameStream.h" />
     <ClInclude Include="SecurePendingOperationRegistry.h" />
@@ -147,12 +148,14 @@
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
     <ClCompile Include="SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentity.cpp" />
+    <ClCompile Include="SecureKitBagItemMoveIdentity.cpp" />
     <ClCompile Include="SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagDelete.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.KitBagItemMove.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Snapshot.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Storage.cpp" />
     <ClCompile Include="SecureRealtimeMovementProtocol.cpp" />
