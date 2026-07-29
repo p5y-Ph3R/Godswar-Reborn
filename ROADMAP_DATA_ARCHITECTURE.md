@@ -15,6 +15,7 @@ document organization; the assessment and recommendations remain intact.
 - [B01B coherent schema release](docs/data-architecture-b01b-schema-release-20260729.md)
 - [B02 data-boundary architecture ratchet](docs/data-architecture-b02-boundary-ratchet-20260729.md)
 - [B03 mandatory disposable PostgreSQL CI](docs/data-architecture-b03-postgres-ci-20260729.md)
+- [B04 fail-closed storage and security profiles](docs/data-architecture-b04-fail-closed-profiles-20260729.md)
 
 ## Roadmap sections
 
