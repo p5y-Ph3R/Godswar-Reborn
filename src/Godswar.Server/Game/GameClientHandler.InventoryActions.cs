@@ -122,37 +122,12 @@ internal sealed partial class GameClientHandler
         await HandleEquipItemAsync(sourceSlot, requestedEquipmentSlot: -1, itemIdHint: 0, cancellationToken);
     }
 
-    private async Task HandleUseOrEquipAsync(GamePacket packet, CancellationToken cancellationToken)
+    private async Task HandleCompatibilityTalentUpgradeAsync(
+        LegacyTalentUpgradeCommandAdapter.AdaptedCommand adapted,
+        DateTimeOffset receivedAt,
+        CancellationToken cancellationToken)
     {
-        LogInventoryPacket(packet);
-
-        if (_account is null || _character is null)
-        {
-            Console.WriteLine("[talent] upgrade ignored: no active character");
-            return;
-        }
-
-        var receivedAt = DateTimeOffset.UtcNow;
-        if (!LegacyTalentUpgradeCommandAdapter.TryAdapt(
-                packet.Payload,
-                new CommandSubject(_account.Id, _character.Id),
-                _commandConnectionId,
-                _session.IsSecure
-                    ? CommandTransportKind.SecureTlsLegacy
-                    : CommandTransportKind.LegacyTcp,
-                receivedAt,
-                out var adapted))
-        {
-            CommandMetrics.Record(
-                CommandFamily.TalentUpgrade,
-                CommandIdentityStrength.LegacyAggregateVersion,
-                CommandOutcome.Malformed);
-            Console.WriteLine(
-                "[talent] UseOrEquip ignored: malformed talent-upgrade command");
-            return;
-        }
-
-        var envelope = adapted!.Envelope;
+        var envelope = adapted.Envelope;
         var attempt = _registry.CommandAttempts.TryBegin(
             envelope.OperationId,
             envelope.RequestHash,
@@ -167,28 +142,23 @@ internal sealed partial class GameClientHandler
                 envelope.Family,
                 envelope.IdentityStrength,
                 outcome);
-            Console.WriteLine(
-                $"[talent] command rejected outcome={outcome}");
             return;
         }
 
-        var command = envelope.Command;
         TalentUpgradeResult? result;
         try
         {
             result = await _store.UpgradeTalentAsync(
                 envelope.Subject.AccountId,
                 envelope.Subject.CharacterId,
-                command.TalentId,
-                command.ExpectedRank,
+                envelope.Command.TalentId,
+                envelope.Command.ExpectedRank,
                 adapted.ClientTalentPoints,
                 cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            _registry.CommandAttempts.Release(
-                envelope.OperationId,
-                envelope.RequestHash);
+            ReleaseCompatibilityAttempt(envelope);
             CommandMetrics.Record(
                 envelope.Family,
                 envelope.IdentityStrength,
@@ -197,9 +167,7 @@ internal sealed partial class GameClientHandler
         }
         catch
         {
-            _registry.CommandAttempts.Release(
-                envelope.OperationId,
-                envelope.RequestHash);
+            ReleaseCompatibilityAttempt(envelope);
             CommandMetrics.Record(
                 envelope.Family,
                 envelope.IdentityStrength,
@@ -209,15 +177,11 @@ internal sealed partial class GameClientHandler
 
         if (result is null)
         {
-            _registry.CommandAttempts.Release(
-                envelope.OperationId,
-                envelope.RequestHash);
+            ReleaseCompatibilityAttempt(envelope);
             CommandMetrics.Record(
                 envelope.Family,
                 envelope.IdentityStrength,
                 CommandOutcome.PreconditionFailed);
-            Console.WriteLine(
-                $"[talent] upgrade rejected character={_character.Name} talent={command.TalentId} expectedRank={command.ExpectedRank}");
             return;
         }
 
@@ -230,11 +194,10 @@ internal sealed partial class GameClientHandler
             envelope.IdentityStrength,
             CommandOutcome.Accepted);
         _character = result.Character;
-        await RefreshActiveCharacterStatsAsync("talent-upgrade", cancellationToken);
+        await RefreshActiveCharacterStatsAsync(
+            "talent-upgrade",
+            cancellationToken);
         _registry.UpdateCharacter(_session, _character);
-        Console.WriteLine(
-            $"[talent] upgraded character={_character.Name} talent={result.TalentId} rank={result.NewRank} cost={result.Cost} remaining={result.RemainingTalentPoints} value={result.DisplayValue}");
-
         await _session.SendAsync(
             BuildLocalPlayerStatusUpdate(),
             cancellationToken,
@@ -243,6 +206,14 @@ internal sealed partial class GameClientHandler
             PacketBuilder.TalentUpgradeAck(result),
             cancellationToken,
             "TalentUpgradeAck");
+    }
+
+    private void ReleaseCompatibilityAttempt(
+        CommandEnvelope<TalentUpgradeCommand> envelope)
+    {
+        _registry.CommandAttempts.Release(
+            envelope.OperationId,
+            envelope.RequestHash);
     }
 
     private async Task HandleBagItemActionAsync(GamePacket packet, CancellationToken cancellationToken)

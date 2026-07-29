@@ -1,4 +1,4 @@
-namespace Godswar.Server.State;
+namespace Godswar.Server.Application.Talents;
 
 internal static class TalentProgression
 {

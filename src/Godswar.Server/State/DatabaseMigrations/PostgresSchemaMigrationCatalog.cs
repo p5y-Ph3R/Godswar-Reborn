@@ -207,6 +207,8 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreatePetSavvySemanticsHardening(),
         CreatePetLevelProgression(),
         CreateNpcContentRelease(),
-        CreateNpcDialogueContentRelease()
+        CreateNpcDialogueContentRelease(),
+        CreateCommandInboxOutboxFoundation(),
+        CreateCommandInboxOutboxHardening()
     ];
 }

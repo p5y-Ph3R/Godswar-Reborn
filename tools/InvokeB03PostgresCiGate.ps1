@@ -61,8 +61,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 25
-    expectedMigrationHead = '20260729_024_npc_dialogue_content_release'
+    expectedMigrationCount = 27
+    expectedMigrationHead = '20260729_026_command_inbox_outbox_hardening'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -227,7 +227,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 25 `
+        -InitialMigrationCount 27 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -240,6 +240,8 @@ try {
         'PostgreSQL pinned world-content baseline',
         'PostgreSQL consistent character snapshot reader',
         'PostgreSQL talent command precondition',
+        'PostgreSQL talent inbox/outbox transaction',
+        'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',
         'PostgreSQL authoritative pet level-up',

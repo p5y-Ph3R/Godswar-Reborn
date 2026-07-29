@@ -22,19 +22,42 @@ internal sealed partial class PostgresCharacterSnapshotReader :
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly IPostgresCharacterSnapshotReadProbe? _probe;
+    private readonly bool _ownsDataSource;
 
     public PostgresCharacterSnapshotReader(string connectionString)
-        : this(connectionString, probe: null)
+        : this(
+            CreateDataSource(connectionString),
+            probe: null,
+            ownsDataSource: true)
     {
     }
 
     internal PostgresCharacterSnapshotReader(
         string connectionString,
         IPostgresCharacterSnapshotReadProbe? probe)
+        : this(
+            CreateDataSource(connectionString),
+            probe,
+            ownsDataSource: true)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
-        _dataSource = NpgsqlDataSource.Create(connectionString);
+    }
+
+    internal PostgresCharacterSnapshotReader(
+        NpgsqlDataSource dataSource,
+        IPostgresCharacterSnapshotReadProbe? probe = null)
+        : this(dataSource, probe, ownsDataSource: false)
+    {
+    }
+
+    private PostgresCharacterSnapshotReader(
+        NpgsqlDataSource dataSource,
+        IPostgresCharacterSnapshotReadProbe? probe,
+        bool ownsDataSource)
+    {
+        _dataSource = dataSource ??
+            throw new ArgumentNullException(nameof(dataSource));
         _probe = probe;
+        _ownsDataSource = ownsDataSource;
     }
 
     public async Task<CharacterAccountSnapshot> ReadAsync(
@@ -92,7 +115,17 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         }
     }
 
-    public ValueTask DisposeAsync() => _dataSource.DisposeAsync();
+    public ValueTask DisposeAsync() =>
+        _ownsDataSource
+            ? _dataSource.DisposeAsync()
+            : ValueTask.CompletedTask;
+
+    private static NpgsqlDataSource CreateDataSource(
+        string connectionString)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        return NpgsqlDataSource.Create(connectionString);
+    }
 
     private async Task<TransactionReadResult> ReadTransactionAsync(
         int accountId,

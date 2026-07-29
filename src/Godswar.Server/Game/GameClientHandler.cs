@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
@@ -34,6 +35,8 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly GameSessionRegistry _registry;
     private readonly ICharacterSnapshotReader _characterSnapshots;
     private readonly IWorldContentReader _worldContent;
+    private readonly ITalentUpgradeCommandExecutor?
+        _talentUpgradeCommands;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
@@ -79,7 +82,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         TimeSpan? mapTransitionReadyTimeout = null,
         TimeSpan? backhaulSkillCastTime = null,
         LegacyAuthenticationAccess?
-            legacyAuthenticationAccess = null)
+            legacyAuthenticationAccess = null,
+        ITalentUpgradeCommandExecutor?
+            talentUpgradeCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -96,6 +101,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         _worldContent =
             worldContent ?? throw new ArgumentNullException(
                 nameof(worldContent));
+        _talentUpgradeCommands = talentUpgradeCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

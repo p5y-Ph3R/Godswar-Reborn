@@ -21,6 +21,7 @@ document organization; the assessment and recommendations remain intact.
 - [B05C database-authoritative NPC dialogue](docs/data-architecture-b05c-database-npc-dialogue-authority-20260729.md)
 - [B06 consistent character snapshot reader](docs/data-architecture-b06-character-snapshot-reader-20260729.md)
 - [B07 legacy operation identity and command envelope](docs/data-architecture-b07-command-envelope-20260729.md)
+- [B08 PostgreSQL command inbox/outbox foundation](docs/data-architecture-b08-command-inbox-outbox-20260729.md)
 
 ## Roadmap sections
 

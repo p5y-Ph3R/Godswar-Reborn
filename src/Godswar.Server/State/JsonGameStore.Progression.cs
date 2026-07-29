@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Talents;
+
 namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore

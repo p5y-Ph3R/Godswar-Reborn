@@ -2,6 +2,7 @@ using Godswar.Server;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
@@ -64,17 +65,18 @@ await using IGameStore store = runtimeProfile.StorageProvider switch
         "Validated storage provider is not exhaustive.")
 };
 await store.EnsureSeedDataAsync();
-await using PostgresCharacterSnapshotReader?
-    postgresCharacterSnapshotReader =
+await using PostgresApplicationDataRuntime?
+    postgresApplicationDataRuntime =
         runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
-            ? new PostgresCharacterSnapshotReader(
-                options.Storage.PostgresConnectionString)
+            ? new PostgresApplicationDataRuntime(
+                options.Storage.PostgresConnectionString,
+                options.Storage.Outbox)
             : null;
 ICharacterSnapshotReader characterSnapshotReader =
     runtimeProfile.StorageProvider switch
     {
         GameStorageProviderKind.Postgres =>
-            postgresCharacterSnapshotReader ??
+            postgresApplicationDataRuntime?.CharacterSnapshots ??
             throw new InvalidOperationException(
                 "PostgreSQL character snapshot reader was not composed."),
         GameStorageProviderKind.Json =>
@@ -168,7 +170,10 @@ var gameServer = rawCompatibilityEnabled
             worldContent,
             options.Game.DeveloperCommands,
             legacyAuthenticationAccess:
-                legacyAuthenticationAccess))
+                legacyAuthenticationAccess,
+            talentUpgradeCommands:
+                postgresApplicationDataRuntime?
+                    .TalentUpgradeCommands))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -249,7 +254,10 @@ var secureGameServer = secureTransportFactory is null
             measuredCharacterSnapshots,
             worldContent,
             options.Game.DeveloperCommands,
-            phase4AcceptanceFaults),
+            phase4AcceptanceFaults,
+            talentUpgradeCommands:
+                postgresApplicationDataRuntime?
+                    .TalentUpgradeCommands),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
@@ -298,6 +306,12 @@ Console.WriteLine(
     secureUdpRuntime is not null
         ? $"Secure UDP:   starting {options.Secure.Udp.BindHost}:{options.Secure.Udp.Port}"
         : "Secure UDP:   disabled; gameplay remains on TLS");
+Console.WriteLine(
+    postgresApplicationDataRuntime is null
+        ? "PG outbox:    unavailable for JSON compatibility storage"
+        : postgresApplicationDataRuntime.OutboxEnabled
+            ? "PG outbox:    enabled"
+            : "PG outbox:    dispatcher disabled; durable events retained");
 
 var runtimeTasks = new List<Task>
 {
@@ -307,15 +321,24 @@ var runtimeTasks = new List<Task>
     registry.RunZodiacEnergyAccrualAsync(shutdown.Token)
 };
 var endpointServers = new List<TcpEndpointServer>(2);
-var endpointTasks = new List<Task>(3);
+var supervisedTasks = new List<Task>(4);
 
 try
 {
+    if (postgresApplicationDataRuntime?.OutboxEnabled == true)
+    {
+        var outboxTask =
+            postgresApplicationDataRuntime.RunOutboxAsync(
+                shutdown.Token);
+        runtimeTasks.Add(outboxTask);
+        supervisedTasks.Add(outboxTask);
+    }
+
     if (secureUdpRuntime is not null)
     {
         var udpTask = secureUdpRuntime.RunAsync(shutdown.Token);
         runtimeTasks.Add(udpTask);
-        endpointTasks.Add(udpTask);
+        supervisedTasks.Add(udpTask);
         var udpEndpoint = await secureUdpRuntime.WaitUntilReadyAsync(
             shutdown.Token).WaitAsync(
                 TimeSpan.FromSeconds(10),
@@ -331,8 +354,8 @@ try
         var gameTask = gameServer.RunAsync(shutdown.Token);
         runtimeTasks.Add(loginTask);
         runtimeTasks.Add(gameTask);
-        endpointTasks.Add(loginTask);
-        endpointTasks.Add(gameTask);
+        supervisedTasks.Add(loginTask);
+        supervisedTasks.Add(gameTask);
     }
     if (secureLoginServer is not null && secureGameServer is not null)
     {
@@ -342,8 +365,8 @@ try
         var gameTask = secureGameServer.RunAsync(shutdown.Token);
         runtimeTasks.Add(loginTask);
         runtimeTasks.Add(gameTask);
-        endpointTasks.Add(loginTask);
-        endpointTasks.Add(gameTask);
+        supervisedTasks.Add(loginTask);
+        supervisedTasks.Add(gameTask);
     }
 
     if (endpointServers.Count != 2)
@@ -352,9 +375,9 @@ try
             "Exactly one coherent login/game listener pair is required.");
     }
 
-    foreach (var endpointTask in endpointTasks)
+    foreach (var supervisedTask in supervisedTasks)
     {
-        _ = endpointTask.ContinueWith(
+        _ = supervisedTask.ContinueWith(
             static (_, state) =>
                 ((CancellationTokenSource)state!).Cancel(),
             shutdown,

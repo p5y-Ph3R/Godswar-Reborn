@@ -7,12 +7,18 @@ contracts. New features should be grouped by capability:
 Application/
   Commands/
     CommandEnvelope.cs
+  Messaging/
+    OutboxEventMessage.cs
+    IOutboxEventConsumer.cs
+    OutboxOrdering.cs
   World/
     IWorldContentReader.cs
   Characters/
     ICharacterSnapshotReader.cs
   Talents/
     TalentUpgradeCommandEnvelope.cs
+    ITalentUpgradeCommandExecutor.cs
+    TalentUpgradeExecutionResult.cs
 ```
 
 Contracts must describe intent and transaction semantics. Do not add a
@@ -40,3 +46,13 @@ decoding remains in `Game`, authenticated account and character IDs are
 supplied by the server session, and persistence remains behind the existing
 compatibility store until B08 introduces the PostgreSQL inbox/outbox
 transaction.
+
+B08 application contracts keep that transaction provider-neutral.
+`ITalentUpgradeCommandExecutor` returns a bounded disposition and the same
+canonical durable receipt for a new commit or an exact duplicate.
+`OutboxEventMessage` is a bounded, consumer-targeted immutable event envelope,
+while
+`OutboxOrderingRules` distinguishes stale, deliverable, and strict-sequence
+gap events without owning a database checkpoint. Concrete transaction,
+polling, retry, and checkpoint implementations belong under `Infrastructure`;
+consumers must tolerate at-least-once delivery.

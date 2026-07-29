@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Talents;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;

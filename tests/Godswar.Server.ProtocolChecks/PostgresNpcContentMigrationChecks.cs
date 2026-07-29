@@ -26,7 +26,7 @@ internal static class PostgresNpcContentMigrationChecks
         var migration = catalog[index];
 
         Check.Equal(
-            catalog.Count - 2,
+            catalog.Count - 4,
             index,
             "NPC content release immediately precedes NPC dialogue content");
         Check.Equal(

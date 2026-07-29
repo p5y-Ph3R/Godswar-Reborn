@@ -44,6 +44,12 @@ internal static partial class Program
             ("Monster-to-player damage ECS parity", MonsterPlayerDamageEcsParityChecks.RunAsync),
             ("Live reversible monster-to-player damage ECS adapter", MonsterPlayerDamageEcsLiveAdapterChecks.RunAsync),
             .. DataArchitectureCheckCatalog.All,
+            (
+                "PostgreSQL talent inbox/outbox transaction",
+                PostgresTalentInboxOutboxIntegrationChecks.RunAsync),
+            (
+                "PostgreSQL outbox dispatcher recovery and ordering",
+                PostgresOutboxDispatcherIntegrationChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
             ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
             ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),

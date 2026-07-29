@@ -299,7 +299,7 @@ metrics.
 | Authenticated handler inputs | `src/Godswar.Server/Game/GameClientHandler.InventoryActions.cs::HandleUseOrEquipAsync` |
 | Current PostgreSQL mutation | `src/Godswar.Server/State/PostgresGameStore.SkillsAndTalents.cs::UpgradeTalentAsync` |
 | Current JSON compatibility mutation | `src/Godswar.Server/State/JsonGameStore.Progression.cs::UpgradeTalentAsync` |
-| Rank/cost/level rules | `src/Godswar.Server/State/TalentProgression.cs` |
+| Rank/cost/level rules | `src/Godswar.Server/Application/Talents/TalentProgression.cs` |
 | Current broad-store contract | `src/Godswar.Server/State/IGameStore.cs::UpgradeTalentAsync` |
 | Architecture ratchet allowance | `tests/Godswar.Server.ProtocolChecks/DataBoundaryArchitectureBaseline.cs` |
 | Envelope/metrics/compatibility proofs | `tests/Godswar.Server.ProtocolChecks/LegacyTalentCommandEnvelopeChecks.cs` |

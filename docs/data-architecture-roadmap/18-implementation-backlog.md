@@ -39,8 +39,17 @@ decision remains B11 work.
 records the talent-upgrade command selection, stable expected-rank transition
 identity, canonical request hash, server-derived principal boundary, raw
 legacy compatibility, rejected pet/forge candidates, and the exact B08
-PostgreSQL inbox/outbox handoff. B07 does not claim durable cross-process
-deduplication; that remains B08 work.
+PostgreSQL inbox/outbox handoff. B07 itself does not claim durable
+cross-process deduplication; that work was explicitly deferred to B08.
+
+**B08 completed 2026-07-29:** [implementation evidence](../data-architecture-b08-command-inbox-outbox-20260729.md)
+records the atomic PostgreSQL talent mutation, permanent audit/inbox result,
+exact duplicate replay, versioned outbox, strict/latest-wins dispatcher,
+bounded one-at-a-time leasing, retry/poison/gap/stale/lease recovery,
+database-enforced event/checkpoint state transitions, supervised runtime
+composition, and low-cardinality telemetry. The JSON provider remains a local
+compatibility path without durable inbox/outbox semantics, and B15's
+player-ownership fence remains required before safe multi-process ownership.
 
 ## 18.2 First three low-risk implementation tasks
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Security.Authentication;
@@ -55,6 +56,7 @@ internal sealed class ServerOptions
         Login ??= new EndpointOptions();
         Game ??= new GameEndpointOptions();
         Storage ??= new StorageOptions();
+        Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
@@ -153,6 +155,33 @@ internal sealed class ServerOptions
         Storage.Provider = Environment.GetEnvironmentVariable("GODSWAR_STORAGE_PROVIDER") ?? Storage.Provider;
         Storage.PostgresConnectionString = Environment.GetEnvironmentVariable("GODSWAR_POSTGRES_CONNECTION_STRING")
             ?? Storage.PostgresConnectionString;
+        Storage.Outbox.Enabled = ReadBool(
+            "GODSWAR_OUTBOX_ENABLED",
+            Storage.Outbox.Enabled);
+        Storage.Outbox.BatchSize = ReadInt(
+            "GODSWAR_OUTBOX_BATCH_SIZE",
+            Storage.Outbox.BatchSize);
+        Storage.Outbox.PollIntervalMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_POLL_INTERVAL_MILLISECONDS",
+            Storage.Outbox.PollIntervalMilliseconds);
+        Storage.Outbox.LeaseMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_LEASE_MILLISECONDS",
+            Storage.Outbox.LeaseMilliseconds);
+        Storage.Outbox.MaximumDeliveryAttempts = ReadInt(
+            "GODSWAR_OUTBOX_MAXIMUM_DELIVERY_ATTEMPTS",
+            Storage.Outbox.MaximumDeliveryAttempts);
+        Storage.Outbox.BaseRetryDelayMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_BASE_RETRY_DELAY_MILLISECONDS",
+            Storage.Outbox.BaseRetryDelayMilliseconds);
+        Storage.Outbox.MaximumRetryDelayMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_MAXIMUM_RETRY_DELAY_MILLISECONDS",
+            Storage.Outbox.MaximumRetryDelayMilliseconds);
+        Storage.Outbox.GapRetryDelayMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_GAP_RETRY_DELAY_MILLISECONDS",
+            Storage.Outbox.GapRetryDelayMilliseconds);
+        Storage.Outbox.CommandTimeoutMilliseconds = ReadInt(
+            "GODSWAR_OUTBOX_COMMAND_TIMEOUT_MILLISECONDS",
+            Storage.Outbox.CommandTimeoutMilliseconds);
 
         return this;
     }
@@ -177,6 +206,8 @@ internal sealed class ServerOptions
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
+        Storage ??= new StorageOptions();
+        Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -186,6 +217,7 @@ internal sealed class ServerOptions
         Game.Players.Validate();
         Network.Validate();
         Authentication.Validate();
+        Storage.Outbox.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
         if (Secure.Enabled)
         {
@@ -362,6 +394,8 @@ internal sealed class StorageOptions
     public string Provider { get; set; } = string.Empty;
 
     public string PostgresConnectionString { get; set; } = string.Empty;
+
+    public PostgresOutboxDispatcherOptions Outbox { get; set; } = new();
 }
 
 internal static class JsonDefaults
