@@ -183,6 +183,7 @@ internal static class PetPresenceProtocolChecks
                 zodiacEnergyOptions: null,
                 monsterRuntimeMode: MonsterRuntimeMode.Ecs,
                 playerRuntimeMode: PlayerRuntimeMode.Ecs),
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,

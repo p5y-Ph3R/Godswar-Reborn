@@ -126,6 +126,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             session,
             store,
             registry,
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty,
             backhaulSkillCastTime: TimeSpan.FromSeconds(30));
         SetField(

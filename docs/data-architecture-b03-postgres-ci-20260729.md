@@ -16,8 +16,9 @@ Status: complete locally; awaiting the first GitHub-hosted workflow run
 
 B03 adds a mandatory PostgreSQL 17 migration and repository gate to the
 existing GitHub Actions workflow. The gate exercises three disposable schema
-states, refuses skipped checks, produces a machine-readable result, and
-removes every database and temporary fixture artifact it creates.
+states, runs every mutable repository smoke check in an isolated clone of the
+fully migrated baseline, refuses skipped checks, produces a machine-readable
+result, and removes every database and temporary fixture artifact it creates.
 
 The implementation does not use the live game database or any captured
 player backup. Its historical upgrade input is a small, deterministic,
@@ -51,7 +52,7 @@ reports for port `5432/tcp` on the exact service container. The job:
 1. restores and builds the complete solution in Release mode;
 2. supplies the PostgreSQL service container ID and mapped port to the gate;
 3. requires PostgreSQL major version 17;
-4. runs the ten required checks and three migration scenarios;
+4. runs the fourteen required checks and three migration scenarios;
 5. writes `artifacts/b03/postgres-ci-result.json`;
 6. creates a sanitized fallback failure result if restore, build, or another
    earlier workflow step fails before the gate can write its own report;
@@ -87,9 +88,9 @@ temporary test environment variables after each invocation.
 
 | Scenario | Initial history | Required result | Evidence |
 |---|---:|---:|---|
-| Empty bootstrap | 0 migrations | 23 migrations through `20260729_022_pet_level_progression` | Runs the actual embedded bootstrap and `PostgresGameStore.EnsureSeedDataAsync`; the existing check also verifies a second initialization is a no-op |
-| Restored prefix-008 upgrade | 9 migrations through `20260723_008_zodiac_skill_grid_state` | 23 migrations through `022` | Builds the exact prefix, loads synthetic durable sentinels, creates and restores a PostgreSQL 17 custom dump, then runs the production migration path |
-| Current-schema idempotence | 23 migrations through `022` | unchanged at 23 through `022` | Reopens the upgraded restored fixture in a separate check invocation and proves another startup is a durable-state no-op |
+| Empty bootstrap | 0 migrations | 25 migrations through `20260729_024_npc_dialogue_content_release` | Runs the actual embedded bootstrap and `PostgresGameStore.EnsureSeedDataAsync`; the existing check also verifies a second initialization is a no-op |
+| Restored prefix-008 upgrade | 9 migrations through `20260723_008_zodiac_skill_grid_state` | 25 migrations through `024` | Builds the exact prefix, loads synthetic durable sentinels, creates and restores a PostgreSQL 17 custom dump, then runs the production migration path |
+| Current-schema idempotence | 25 migrations through `024` | unchanged at 25 through `024` | Reopens the upgraded restored fixture in a separate check invocation and proves another startup is a durable-state no-op |
 
 The shared release-path check verifies the exact registered migration order
 and checksums, packet metadata relations, trigger/function, cascade foreign
@@ -127,7 +128,7 @@ which contain real player and packet-capture data and remain Git-ignored.
 
 ## Required check set
 
-The local run required and passed these ten checks:
+The current gate requires these fourteen checks:
 
 1. `PostgreSQL migration safety foundation`
 2. `PostgreSQL schema release migration paths` from an empty database
@@ -135,19 +136,26 @@ The local run required and passed these ten checks:
 4. `PostgreSQL schema release migration paths` from the restored prefix
 5. `PostgreSQL schema release migration paths` against the current schema
 6. `PostgreSQL forward-only database cleanup`
-7. `PostgreSQL equipment-forge race and preservation`
-8. `PostgreSQL Zodiac level-up race`
-9. `PostgreSQL authoritative pet level-up`
-10. `PostgreSQL pet-egg hatch transaction`
+7. `PostgreSQL official NPC content publication`
+8. `PostgreSQL official NPC dialogue publication`
+9. `PostgreSQL pinned world-content baseline`
+10. `PostgreSQL consistent character snapshot reader`
+11. `PostgreSQL equipment-forge race and preservation`
+12. `PostgreSQL Zodiac level-up race`
+13. `PostgreSQL authoritative pet level-up`
+14. `PostgreSQL pet-egg hatch transaction`
 
-The final five provide current-schema repository, ownership, transaction,
-audit, persistence-reload, and concurrency smoke coverage in addition to the
-migration checks.
+The final nine provide current-schema content publication, consistent-read,
+repository, ownership, transaction, audit, persistence-reload, and
+concurrency smoke coverage in addition to the migration checks. Each receives
+its own clone of the migrated empty baseline, so no check depends on mutations
+left by a prior check. The character snapshot check also covers the
+PostgreSQL concurrent single-slot create guard.
 
-## Local validation
+## Original B03 local validation
 
-The gate was run locally against an isolated PostgreSQL 17 container with no
-production database connection.
+The initial ten-check B03 gate was run locally against an isolated PostgreSQL
+17 container with no production database connection.
 
 | Measurement | Result |
 |---|---|
@@ -174,14 +182,39 @@ The receipt identifies source commit
 while the B03 working-tree implementation was under validation. The receipt
 is verification output, not a tracked release input.
 
+## Current B06 extension validation
+
+The fourteen-check gate was rerun after adding database-authoritative NPC
+dialogue, the consistent character snapshot reader, and per-check database
+isolation:
+
+| Measurement | Result |
+|---|---|
+| PostgreSQL version | 17.9 |
+| `server_version_num` | `170009` |
+| Required checks | 14 passed, 0 failed, 0 skipped |
+| Migration scenarios | `0 -> 25`, `9 -> 25`, `25 -> 25` |
+| Expected/final head | `20260729_024_npc_dialogue_content_release` |
+| Total gate duration | 158,431 ms |
+| Cleanup | passed, zero errors and zero residual `godswar_b03_%` databases |
+| Release build | 0 warnings, 0 errors |
+| Full protocol suite | 191 passed, 0 failed |
+
+The ignored local receipt is
+`artifacts/b03/postgres-ci-result-b06-final.json`; its SHA-256 is
+`FA604B2D997F4D027BBCEF0A7266DED62B96DC1A50E8E79A9BC6C2BC46F51E88`.
+It identifies source commit `c10cd6e`, the committed B05C base used while the
+B06 working tree was under validation.
+
 ## Safety and cleanup
 
 - Database names include a random token and must match the exact
-  `godswar_b03_<token>_(empty|prefix|restored)` pattern before creation or
-  deletion.
-- The script can create only those three names. Cleanup attempts all three in
-  reverse order even if a database-create response was lost before local
-  bookkeeping could record success, and uses `DROP DATABASE IF EXISTS` with
+  `godswar_b03_<token>_(empty|prefix|restored|smoke_<two digits>)` pattern
+  before creation or deletion.
+- The script can create only the three scenario databases and bounded
+  per-check smoke clones bearing that run token. Cleanup records each name
+  before creation, attempts all names in reverse order even if a
+  database-create response was lost, and uses `DROP DATABASE IF EXISTS` with
   forced connection cleanup.
 - The database host must be loopback, and the runner verifies the supplied
   port against the exact PostgreSQL service container's published mapping.

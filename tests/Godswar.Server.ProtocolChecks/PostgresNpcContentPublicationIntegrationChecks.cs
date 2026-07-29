@@ -65,6 +65,11 @@ internal static partial class
                 created: result.Created);
         }
 
+        // The production reader is intentionally all-or-nothing across its
+        // published content families. Supply the independently tested
+        // dialogue family before using that reader to verify NPC isolation.
+        _ = await PostgresNpcDialogueBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
         var pinned =
             await PostgresWorldContentReaderLoader.LoadAsync(
                 connectionString);

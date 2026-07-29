@@ -305,6 +305,7 @@ internal static partial class MapTransitionHandlerChecks
             session,
             store,
             registry,
+            CharacterSnapshotReaderTestFixtures.Unused,
             store.WorldContent,
             mapTransitionReadyTimeout:
                 mapTransitionReadyTimeout);

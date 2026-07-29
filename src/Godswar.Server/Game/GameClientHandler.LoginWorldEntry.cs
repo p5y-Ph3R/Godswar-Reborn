@@ -78,9 +78,8 @@ internal sealed partial class GameClientHandler
 
             _session.MarkAuthenticated();
         }
-        _accountSessionRegistered = true;
-
         var replacedSession = _registry.ReplaceAccountSession(_account.Id, _session);
+        _accountSessionRegistered = true;
         if (replacedSession is not null)
         {
             if (_session.AllowsPayloadDiagnostics)
@@ -110,6 +109,13 @@ internal sealed partial class GameClientHandler
             replacedSession.Disconnect();
         }
 
+        if (!await RefreshCharacterSnapshotAsync(
+                "login",
+                cancellationToken))
+        {
+            return;
+        }
+
         if (_session.AllowsPayloadDiagnostics)
         {
             Console.WriteLine($"[game] accepted {_account.Username}");
@@ -129,8 +135,14 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = await _store.GetFirstCharacterAsync(_account.Id, cancellationToken);
-        ResetPlayerMovementEcs();
+        if (!_characterSnapshotLoaded)
+        {
+            RejectCharacterSnapshot(
+                "preview",
+                "snapshot_not_loaded");
+            return;
+        }
+
         await _session.SendAsync(
             _character is null ? PacketBuilder.BlankUser() : PacketBuilder.CharacterPreview(_character),
             cancellationToken,
@@ -144,6 +156,18 @@ internal sealed partial class GameClientHandler
         if (_account is null)
         {
             _session.Disconnect();
+            return;
+        }
+        if (!_characterSnapshotLoaded ||
+            _character is not null ||
+            _characterLoadSnapshot is not null ||
+            _characterSnapshotBootstrapPending)
+        {
+            RejectCharacterSnapshot(
+                "create",
+                _characterSnapshotLoaded
+                    ? "slot_not_empty"
+                    : "snapshot_not_loaded");
             return;
         }
 
@@ -165,9 +189,30 @@ internal sealed partial class GameClientHandler
             MaxMp = 177
         };
 
-        _character = await _store.CreateCharacterAsync(_account.Id, character, cancellationToken);
-        ResetPlayerMovementEcs();
-        Console.WriteLine($"[game] created character {_character.Name}");
+        var created = await _store.CreateCharacterAsync(
+            _account.Id,
+            character,
+            cancellationToken);
+        if (!await RefreshCharacterSnapshotAsync(
+                "create",
+                cancellationToken))
+        {
+            return;
+        }
+        if (_character is null ||
+            _character.Id != created.Id ||
+            !string.Equals(
+                _character.Name,
+                created.Name,
+                StringComparison.Ordinal))
+        {
+            RejectCharacterSnapshot(
+                "create",
+                "mutation_snapshot_mismatch");
+            return;
+        }
+
+        Console.WriteLine($"[game] created character {created.Name}");
         await _session.SendAsync(PacketBuilder.CreateRoleSuccess(), cancellationToken, "CreateRoleSuccess");
     }
 
@@ -183,8 +228,19 @@ internal sealed partial class GameClientHandler
 
         var characterName = PacketText.ReadFixedAscii(packet.Payload, 32, 32);
         await _store.DeleteCharacterAsync(_account.Id, characterName, cancellationToken);
-        _character = null;
-        ResetPlayerMovementEcs();
+        if (!await RefreshCharacterSnapshotAsync(
+                "delete",
+                cancellationToken))
+        {
+            return;
+        }
+        if (_character is not null)
+        {
+            RejectCharacterSnapshot(
+                "delete",
+                "mutation_snapshot_mismatch");
+            return;
+        }
 
         Console.WriteLine($"[game] deleted character {characterName}");
         await _session.SendAsync(PacketBuilder.DeleteRoleSuccess(), cancellationToken, "DeleteRoleSuccess");
@@ -194,9 +250,17 @@ internal sealed partial class GameClientHandler
     {
         ClearForgeSelection();
         ClearGearEnhancerSelection();
-        if (_account is not null && _character is null)
+        if (_account is not null &&
+            (!_characterSnapshotLoaded ||
+             (_character is not null &&
+              !_characterSnapshotBootstrapPending)))
         {
-            _character = await _store.GetFirstCharacterAsync(_account.Id, cancellationToken);
+            if (!await RefreshCharacterSnapshotAsync(
+                    "enter",
+                    cancellationToken))
+            {
+                return;
+            }
         }
 
         if (_character is null)
@@ -213,23 +277,15 @@ internal sealed partial class GameClientHandler
                 $"[revive] restored dead character during enter character={_character.Name} map={_character.CurrentMap} hp={_character.CurrentHp}/{_character.MaxHp}");
         }
 
-        await RefreshActiveCharacterStatsAsync("enter", cancellationToken);
-
         var enterMain = PacketBuilder.EnterMain(_character);
         var kitBagDetailPages = PacketBuilder.KitBagDetailPages(_character);
         var kitBagSlotIndexes = PacketBuilder.KitBagSlotIndexes(_character);
-        var skillStates = _account is null
-            ? []
-            : await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
-        var talentStates = _account is null
-            ? []
-            : await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
-        var ownedPets = _account is null
-            ? []
-            : await _store.GetOwnedPetsAsync(
-                _account.Id,
-                _character.Id,
-                cancellationToken);
+        IReadOnlyList<SkillState> skillStates =
+            _characterLoadSnapshot?.Skills ?? [];
+        IReadOnlyList<TalentState> talentStates =
+            _characterLoadSnapshot?.Talents ?? [];
+        IReadOnlyList<PetBootstrapSnapshot> ownedPets =
+            _characterLoadSnapshot?.Pets ?? [];
         var ownedPetList = PacketBuilder.OwnedPetList(ownedPets);
         Console.WriteLine(
             $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
@@ -256,115 +312,6 @@ internal sealed partial class GameClientHandler
             "OwnedPetList");
         await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
-    }
-
-    private async Task SendExperienceBoostStatusAsync(
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        if (_account is null || _character is null)
-        {
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        ExperienceBoostState boosts;
-        try
-        {
-            boosts = await _registry.GetExperienceBoostStateAsync(
-                _session,
-                _account.Id,
-                _character.Id,
-                _character.Camp,
-                _character.CurrentMap,
-                now,
-                cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            boosts = ExperienceBoostState.Empty;
-            Console.WriteLine(
-                $"[status] EXP boost sync failed character={_character.Name} reason={reason}: {ex.Message}");
-        }
-
-        await _registry.RefreshExperienceStatusesAndPublishAsync(
-            _session,
-            boosts,
-            reason,
-            cancellationToken);
-        Console.WriteLine(
-            $"[status] EXP boost sync character={_character.Name} reason={reason} count={boosts.ActiveBoosts.Count} bonus-bps={boosts.TotalBonusBasisPoints}");
-    }
-
-    private async Task SendCurrentTalentBootstrapAsync(string reason, CancellationToken cancellationToken)
-    {
-        if (_account is null || _character is null)
-        {
-            return;
-        }
-
-        var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
-        var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
-        await SendTalentBootstrapAsync(skillStates, talentStates, reason, cancellationToken);
-    }
-
-    private async Task SendTalentBootstrapAsync(
-        IReadOnlyList<SkillState> skillStates,
-        IReadOnlyList<TalentState> talentStates,
-        string reason,
-        CancellationToken cancellationToken,
-        bool includeTalentRankList = true,
-        bool useCapturedSkillList = false)
-    {
-        Console.WriteLine(
-            $"[talent] bootstrap reason={reason} character={_character?.Name ?? "<none>"} skills={skillStates.Count} talents={talentStates.Count} points={_character?.TalentPoints ?? 0} includeRanks={includeTalentRankList} capturedSkillList={useCapturedSkillList}");
-
-        var skillList = useCapturedSkillList
-            ? PacketBuilder.SkillListBootstrap()
-            : PacketBuilder.SkillList(skillStates);
-        if (skillList.Length > 0)
-        {
-            await _session.SendAsync(skillList, cancellationToken, "SkillList");
-        }
-
-        if (!includeTalentRankList)
-        {
-            return;
-        }
-
-        var talentRankList = PacketBuilder.TalentRankList(talentStates);
-        if (talentRankList.Length > 0)
-        {
-            await _session.SendAsync(talentRankList, cancellationToken, "TalentRankList");
-        }
-
-        var talentSkillUnlockList = PacketBuilder.TalentSkillUnlockList(skillStates);
-        if (talentSkillUnlockList.Length > 0)
-        {
-            await _session.SendAsync(talentSkillUnlockList, cancellationToken, "TalentSkillUnlockList");
-        }
-    }
-
-    private async Task SendTalentRankPacketsAsync(
-        IReadOnlyList<SkillState> skillStates,
-        IReadOnlyList<TalentState> talentStates,
-        string reason,
-        CancellationToken cancellationToken)
-    {
-        Console.WriteLine(
-            $"[talent] rank-list reason={reason} character={_character?.Name ?? "<none>"} talents={talentStates.Count} points={_character?.TalentPoints ?? 0}");
-
-        var talentRankList = PacketBuilder.TalentRankList(talentStates);
-        if (talentRankList.Length > 0)
-        {
-            await _session.SendAsync(talentRankList, cancellationToken, "TalentRankList");
-        }
-
-        var talentSkillUnlockList = PacketBuilder.TalentSkillUnlockList(skillStates);
-        if (talentSkillUnlockList.Length > 0)
-        {
-            await _session.SendAsync(talentSkillUnlockList, cancellationToken, "TalentSkillUnlockList");
-        }
     }
 
     private async Task SendMapWorldObjectsAsync(CancellationToken cancellationToken)

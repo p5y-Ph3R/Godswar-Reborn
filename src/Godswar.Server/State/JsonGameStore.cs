@@ -1,10 +1,13 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 
 namespace Godswar.Server.State;
 
-internal sealed partial class JsonGameStore : IGameStore
+internal sealed partial class JsonGameStore :
+    IGameStore,
+    ICharacterSnapshotReader
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> PathLocks =
         new(StringComparer.OrdinalIgnoreCase);
@@ -473,6 +476,12 @@ internal sealed partial class JsonGameStore : IGameStore
         try
         {
             var db = await LoadUnsafeAsync(cancellationToken);
+            if (db.Characters.Any(
+                    existing => existing.AccountId == accountId))
+            {
+                throw new CharacterSlotOccupiedException();
+            }
+
             character.Name = EnsureUniqueCharacterName(db, CleanCharacterName(character.Name));
             character.Id = db.NextCharacterId++;
             character.AccountId = accountId;

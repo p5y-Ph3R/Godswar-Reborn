@@ -73,6 +73,18 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        await RestorePetPresenceAsync(pets, cancellationToken);
+    }
+
+    private async Task RestorePetPresenceAsync(
+        IReadOnlyList<PetBootstrapSnapshot> pets,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
         var carried = pets.SingleOrDefault(static pet => pet.IsCarried);
         if (carried is null)
         {

@@ -22,10 +22,12 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 account.Id,
                 NewCharacter($"PetLevel{token}"));
             ownerCharacterId = owner.Id;
-            var other = await store.CreateCharacterAsync(
+            // Production creation is single-slot. This legacy-corruption row
+            // exists only to keep the pet ownership rejection independent.
+            otherCharacterId = await InsertLegacyAdditionalCharacterAsync(
+                connectionString,
                 account.Id,
-                NewCharacter($"PetOther{token}"));
-            otherCharacterId = other.Id;
+                $"PetOther{token}");
 
             await using var connection =
                 new NpgsqlConnection(connectionString);
@@ -93,7 +95,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             var foreignPetId = await InsertPetAsync(
                 connection,
                 transaction,
-                other.Id,
+                otherCharacterId.Value,
                 $"Foreign{token}",
                 level: 1,
                 experience: 1_500,
@@ -104,7 +106,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             return new PetLevelFixture(
                 account.Id,
                 owner.Id,
-                other.Id,
+                otherCharacterId.Value,
                 successPetId,
                 insufficientPetId,
                 maximumPetId,
@@ -132,6 +134,28 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         Profession = 0,
         Level = 80
     };
+
+    private static async Task<int> InsertLegacyAdditionalCharacterAsync(
+        string connectionString,
+        int accountId,
+        string name)
+    {
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO character_base (account_id, name)
+            VALUES (@accountId, @name)
+            RETURNING id;
+            """,
+            connection);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("name", name);
+        return (int)(await command.ExecuteScalarAsync()
+                     ?? throw new InvalidOperationException(
+                         "Legacy pet-owner fixture returned no character ID."));
+    }
 
     private static async Task<long> InsertPetAsync(
         NpgsqlConnection connection,

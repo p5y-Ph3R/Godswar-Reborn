@@ -27,6 +27,14 @@
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
 | B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
 
+**B06 completed 2026-07-29:** [implementation evidence](../data-architecture-b06-character-snapshot-reader-20260729.md)
+records the consistent PostgreSQL/JSON character snapshot readers, login
+hydration boundary, bounded PostgreSQL snapshot fingerprint, account-session
+replacement and cancellation cleanup, application-level single-slot mutation
+guard, contract/concurrency coverage, and architecture-ratchet reduction. The
+slot guard has no schema-level uniqueness constraint; that durable lifecycle
+decision remains B11 work.
+
 ## 18.2 First three low-risk implementation tasks
 
 1. **B01A:** inventory the applied migration/build/backup state read-only and publish the exact mismatch manifest.

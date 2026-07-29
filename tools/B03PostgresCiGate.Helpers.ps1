@@ -61,7 +61,9 @@ function Invoke-Psql {
 function Assert-DisposableDatabaseName {
     param([Parameter(Mandatory)][string] $Database)
 
-    if ($Database -notmatch '^godswar_b03_[a-f0-9]{10}_(empty|prefix|restored)$') {
+    if ($Database -notmatch (
+        '^godswar_b03_[a-f0-9]{10}_' +
+        '(empty|prefix|restored|smoke_[0-9]{2})$')) {
         throw "Refusing non-B03 database name '$Database'."
     }
 }
@@ -72,6 +74,22 @@ function New-DisposableDatabase {
     Assert-DisposableDatabaseName $Database
     Invoke-Psql -Database 'postgres' -Sql (
         'CREATE DATABASE "' + $Database + '";') | Out-Null
+}
+
+function New-DisposableDatabaseFromTemplate {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Database,
+
+        [Parameter(Mandatory)]
+        [string] $Template
+    )
+
+    Assert-DisposableDatabaseName $Database
+    Assert-DisposableDatabaseName $Template
+    Invoke-Psql -Database 'postgres' -Sql (
+        'CREATE DATABASE "' + $Database +
+        '" TEMPLATE "' + $Template + '";') | Out-Null
 }
 
 function Remove-DisposableDatabase {

@@ -1,6 +1,7 @@
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
+using System.Data.Common;
 
 namespace Godswar.Server.State;
 
@@ -11,6 +12,11 @@ internal sealed partial class PostgresGameStore
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        await RequireAvailableCharacterSlotAsync(
+            connection,
+            transaction,
+            character.AccountId,
+            cancellationToken);
         var characterId = 0;
         await using (var command = new NpgsqlCommand("""
             INSERT INTO character_base (
@@ -155,6 +161,54 @@ internal sealed partial class PostgresGameStore
 
         return await GetCharacterByIdAsync(characterId, cancellationToken)
             ?? throw new InvalidOperationException("Inserted character could not be reloaded.");
+    }
+
+    private static async Task RequireAvailableCharacterSlotAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        int accountId,
+        CancellationToken cancellationToken)
+    {
+        await using (var lockAccount = connection.CreateCommand())
+        {
+            lockAccount.Transaction = transaction;
+            lockAccount.CommandText = """
+                SELECT id
+                FROM accounts
+                WHERE id = @accountId
+                FOR UPDATE;
+                """;
+            var accountIdParameter = lockAccount.CreateParameter();
+            accountIdParameter.ParameterName = "accountId";
+            accountIdParameter.Value = accountId;
+            lockAccount.Parameters.Add(accountIdParameter);
+            if (await lockAccount.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                throw new InvalidOperationException(
+                    "Character creation requires an existing account.");
+            }
+        }
+
+        // This is deliberately a second READ COMMITTED statement. A creator
+        // that waited on the account-row lock must observe the prior creator's
+        // committed character before deciding whether the slot is empty.
+        await using var checkSlot = connection.CreateCommand();
+        checkSlot.Transaction = transaction;
+        checkSlot.CommandText = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM character_base
+                WHERE account_id = @accountId
+            );
+            """;
+        var checkAccountIdParameter = checkSlot.CreateParameter();
+        checkAccountIdParameter.ParameterName = "accountId";
+        checkAccountIdParameter.Value = accountId;
+        checkSlot.Parameters.Add(checkAccountIdParameter);
+        if (await checkSlot.ExecuteScalarAsync(cancellationToken) is true)
+        {
+            throw new CharacterSlotOccupiedException();
+        }
     }
 
     private async Task<GameCharacter?> GetCharacterByIdAsync(int id, CancellationToken cancellationToken)

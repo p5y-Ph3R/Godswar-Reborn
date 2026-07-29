@@ -375,6 +375,7 @@ internal static partial class IntonedCombatSkillHandlerChecks
                 socket.Session,
                 store,
                 registry,
+                CharacterSnapshotReaderTestFixtures.Unused,
                 WorldContentReaderTestFixtures.Empty);
             SetField(
                 handler,

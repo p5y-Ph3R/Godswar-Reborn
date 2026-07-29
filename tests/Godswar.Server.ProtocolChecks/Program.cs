@@ -46,6 +46,11 @@ internal static partial class Program
             ("Data-boundary architecture ratchet", DataBoundaryArchitectureChecks.RunAsync),
             ("Pinned immutable world-content reader", WorldContentReaderChecks.RunAsync),
             ("Frozen database-authoritative NPC content", NpcContentAuthorityChecks.RunAsync),
+            ("Versioned character snapshot contract", CharacterSnapshotContractChecks.RunAsync),
+            ("JSON consistent character snapshot reader", JsonCharacterSnapshotReaderChecks.RunAsync),
+            ("Single-character slot mutation guard", CharacterSlotMutationChecks.RunAsync),
+            ("Character snapshot query metrics", CharacterSnapshotMetricsChecks.RunAsync),
+            ("Snapshot-backed character client bootstrap", CharacterSnapshotHandlerChecks.RunAsync),
             ("PostgreSQL migration safety foundation", PostgresMigrationFoundationChecks.RunAsync),
             ("PostgreSQL schema release migration paths", PostgresSchemaReleaseIntegrationChecks.RunAsync),
             ("PostgreSQL migration-prefix fixture", PostgresMigrationPrefixFixtureChecks.RunAsync),
@@ -61,6 +66,9 @@ internal static partial class Program
             (
                 "PostgreSQL pinned world-content baseline",
                 PostgresWorldContentReaderIntegrationChecks.RunAsync),
+            (
+                "PostgreSQL consistent character snapshot reader",
+                PostgresCharacterSnapshotReaderIntegrationChecks.RunAsync),
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),

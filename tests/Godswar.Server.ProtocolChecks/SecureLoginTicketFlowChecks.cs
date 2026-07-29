@@ -280,6 +280,7 @@ internal static class SecureLoginTicketFlowChecks
             session,
             accountStore,
             new GameSessionRegistry(accountStore),
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty);
 
         await handler.RunAsync(CancellationToken.None);

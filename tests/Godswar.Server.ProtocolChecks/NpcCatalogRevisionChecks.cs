@@ -73,6 +73,7 @@ internal static class NpcCatalogRevisionChecks
             socket.Session,
             new NoopStore(),
             registry,
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty);
         CharacterField.SetValue(handler, character);
         InstallCatalogMethod.Invoke(handler, [initial]);

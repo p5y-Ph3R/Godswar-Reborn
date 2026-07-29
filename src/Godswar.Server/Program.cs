@@ -1,6 +1,8 @@
 using Godswar.Server;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
@@ -50,17 +52,44 @@ var legacyAuthenticationAccess =
 var phase4AcceptanceFaults =
     SecurePhase4AcceptanceFaults.Create(
         options.Secure.Phase4AcceptanceFaults);
+JsonGameStore? jsonGameStore = null;
 await using IGameStore store = runtimeProfile.StorageProvider switch
 {
     GameStorageProviderKind.Postgres =>
         new PostgresGameStore(
             options.Storage.PostgresConnectionString),
     GameStorageProviderKind.Json =>
-        new JsonGameStore(options.DataPath),
+        jsonGameStore = new JsonGameStore(options.DataPath),
     _ => throw new InvalidOperationException(
         "Validated storage provider is not exhaustive.")
 };
 await store.EnsureSeedDataAsync();
+await using PostgresCharacterSnapshotReader?
+    postgresCharacterSnapshotReader =
+        runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
+            ? new PostgresCharacterSnapshotReader(
+                options.Storage.PostgresConnectionString)
+            : null;
+ICharacterSnapshotReader characterSnapshotReader =
+    runtimeProfile.StorageProvider switch
+    {
+        GameStorageProviderKind.Postgres =>
+            postgresCharacterSnapshotReader ??
+            throw new InvalidOperationException(
+                "PostgreSQL character snapshot reader was not composed."),
+        GameStorageProviderKind.Json =>
+            jsonGameStore ??
+            throw new InvalidOperationException(
+                "JSON character snapshot reader was not composed."),
+        _ => throw new InvalidOperationException(
+            "Validated storage provider has no character snapshot reader.")
+    };
+var measuredCharacterSnapshots =
+    new MeasuredCharacterSnapshotReader(
+        characterSnapshotReader,
+        runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
+            ? CharacterSnapshotProvider.PostgreSql
+            : CharacterSnapshotProvider.Json);
 IWorldContentReader worldContent;
 try
 {
@@ -135,6 +164,7 @@ var gameServer = rawCompatibilityEnabled
             session,
             store,
             registry,
+            measuredCharacterSnapshots,
             worldContent,
             options.Game.DeveloperCommands,
             legacyAuthenticationAccess:
@@ -216,6 +246,7 @@ var secureGameServer = secureTransportFactory is null
             session,
             store,
             registry,
+            measuredCharacterSnapshots,
             worldContent,
             options.Game.DeveloperCommands,
             phase4AcceptanceFaults),

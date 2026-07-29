@@ -39,6 +39,8 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
         }
         _ = await PostgresNpcContentBaselinePublisher
             .EnsurePublishedAsync(connectionString);
+        _ = await PostgresNpcDialogueBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
 
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);

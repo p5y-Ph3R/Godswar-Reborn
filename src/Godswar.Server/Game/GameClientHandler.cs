@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.World;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
@@ -31,12 +32,16 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly ClientSession _session;
     private readonly IGameStore _store;
     private readonly GameSessionRegistry _registry;
+    private readonly ICharacterSnapshotReader _characterSnapshots;
     private readonly IWorldContentReader _worldContent;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
     private GameAccount? _account;
     private GameCharacter? _character;
+    private HydratedCharacterLoadSnapshot? _characterLoadSnapshot;
+    private bool _characterSnapshotLoaded;
+    private bool _characterSnapshotBootstrapPending;
     private PendingUnequipFollowup? _pendingUnequipFollowup;
     private GearEnhancerSelectionContext? _gearEnhancerSelectionContext;
     private int? _gearMentorOperationPageSubId;
@@ -65,6 +70,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         ClientSession session,
         IGameStore store,
         GameSessionRegistry registry,
+        ICharacterSnapshotReader characterSnapshots,
         IWorldContentReader worldContent,
         DeveloperCommandOptions? developerCommands = null,
         SecurePhase4AcceptanceFaults?
@@ -83,6 +89,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         _session = session;
         _store = store;
         _registry = registry;
+        _characterSnapshots =
+            characterSnapshots ?? throw new ArgumentNullException(
+                nameof(characterSnapshots));
         _worldContent =
             worldContent ?? throw new ArgumentNullException(
                 nameof(worldContent));

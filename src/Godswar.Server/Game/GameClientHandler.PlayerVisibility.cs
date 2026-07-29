@@ -74,7 +74,12 @@ internal sealed partial class GameClientHandler
         var requestedB = request.Payload.Length >= 8
             ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload.Slice(4, 4))
             : 0;
-        await RefreshActiveCharacterStatsAsync("player-detail", cancellationToken);
+        if (!_characterSnapshotBootstrapPending)
+        {
+            await RefreshActiveCharacterStatsAsync(
+                "player-detail",
+                cancellationToken);
+        }
         var packet = PacketBuilder.PlayerDetail(_character);
         if (packet.Length == 0)
         {
@@ -112,7 +117,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!_characterSnapshotBootstrapPending ||
+            _characterLoadSnapshot is null)
+        {
+            RejectCharacterSnapshot(
+                "post_enter",
+                "bootstrap_not_loaded");
+            return;
+        }
+
         _postEnterBootstrapSent = true;
+        var bootstrap = _characterLoadSnapshot;
 
         var enterBootstrap =
             await _worldContent.ReadEnterBootstrapAsync(cancellationToken);
@@ -136,10 +151,12 @@ internal sealed partial class GameClientHandler
         }
 
         await SendMapWorldObjectsAsync(cancellationToken);
-        await RestorePersistedPetPresenceAsync(cancellationToken);
+        await RestorePetPresenceAsync(
+            bootstrap.Pets,
+            cancellationToken);
 
-        var skillStates = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
-        var talentStates = await _store.GetTalentStatesAsync(_account.Id, _character.Id, cancellationToken);
+        var skillStates = bootstrap.Skills;
+        var talentStates = bootstrap.Talents;
         await _session.SendAsync(
             BuildLocalPlayerStatusUpdate(),
             cancellationToken,
@@ -156,6 +173,7 @@ internal sealed partial class GameClientHandler
         // Opcode 10357 is the final enter/UI-ready boundary. Publish exactly one
         // complete 10167 snapshot here, after both the local object and UI exist.
         await SendExperienceBoostStatusAsync("post-enter", cancellationToken);
+        _characterSnapshotBootstrapPending = false;
     }
 
     internal static bool CanSendPostEnterBootstrap(

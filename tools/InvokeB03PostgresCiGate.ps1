@@ -233,20 +233,34 @@ try {
         -FixtureKind 'restored-prefix-008-upgrade'
 
     $failureCategory = 'repository-smoke'
-    foreach ($checkName in @(
+    $smokeCheckNames = @(
         'PostgreSQL forward-only database cleanup',
         'PostgreSQL official NPC content publication',
         'PostgreSQL official NPC dialogue publication',
         'PostgreSQL pinned world-content baseline',
+        'PostgreSQL consistent character snapshot reader',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',
         'PostgreSQL authoritative pet level-up',
         'PostgreSQL pet-egg hatch transaction'
-    )) {
+    )
+    for ($smokeIndex = 0;
+         $smokeIndex -lt $smokeCheckNames.Count;
+         $smokeIndex++) {
+        $checkName = $smokeCheckNames[$smokeIndex]
+        $smokeDatabase = (
+            "godswar_b03_${runToken}_smoke_" +
+            $smokeIndex.ToString('00'))
+        $databaseNames["Smoke$($smokeIndex.ToString('00'))"] =
+            $smokeDatabase
+        New-DisposableDatabaseFromTemplate `
+            -Database $smokeDatabase `
+            -Template $databaseNames.Empty
         Invoke-RequiredProtocolCheck `
             -Phase 'repository-and-concurrency-smoke' `
             -Name $checkName `
-            -GeneralConnectionString $emptyConnection
+            -GeneralConnectionString (
+                New-TestConnectionString $smokeDatabase)
     }
 
     $report.status = 'passed'

@@ -98,6 +98,7 @@ internal static class LegacyAuthenticationProfileChecks
                 session,
                 allowedStore,
                 registry,
+                CharacterSnapshotReaderTestFixtures.Empty,
                 WorldContentReaderTestFixtures.Empty,
                 legacyAuthenticationAccess:
                     LocalAccess(options));
@@ -123,6 +124,7 @@ internal static class LegacyAuthenticationProfileChecks
                 session,
                 blockedStore,
                 new GameSessionRegistry(blockedStore),
+                CharacterSnapshotReaderTestFixtures.Unused,
                 WorldContentReaderTestFixtures.Empty);
             await InvokeAsync(
                 handler,
@@ -169,6 +171,7 @@ internal static class LegacyAuthenticationProfileChecks
                 session,
                 store,
                 new GameSessionRegistry(store),
+                CharacterSnapshotReaderTestFixtures.Unused,
                 WorldContentReaderTestFixtures.Empty,
                 legacyAuthenticationAccess:
                     LocalAccess(options));

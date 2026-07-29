@@ -62,6 +62,7 @@ internal static partial class PlayerMovementEcsLiveAdapterChecks
             session,
             store,
             registry,
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,

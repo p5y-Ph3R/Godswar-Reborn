@@ -272,6 +272,7 @@ internal static partial class OwnedPetListProtocolChecks
                 zodiacEnergyOptions: null,
                 monsterRuntimeMode: MonsterRuntimeMode.Ecs,
                 playerRuntimeMode: PlayerRuntimeMode.Ecs),
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty);
         SetField(
             handler,
@@ -282,6 +283,20 @@ internal static partial class OwnedPetListProtocolChecks
                 Username = "test2"
             });
         SetField(handler, "_character", character);
+        SetField(
+            handler,
+            "_characterLoadSnapshot",
+            new HydratedCharacterLoadSnapshot(
+                character,
+                [],
+                [],
+                [pet],
+                []));
+        SetField(handler, "_characterSnapshotLoaded", true);
+        SetField(
+            handler,
+            "_characterSnapshotBootstrapPending",
+            true);
 
         await InvokePacketAsync(handler, CreateOpcodePacket(Opcodes.EnterGame));
 
@@ -337,15 +352,10 @@ internal static partial class OwnedPetListProtocolChecks
             packets.Count - 3,
             petPacketIndex,
             "no packet is inserted after the terminal enter sequence");
-        Check.Equal(1, store.OwnedPetReadCount, "owned pets load once");
         Check.Equal(
-            AccountId,
-            store.LastPetAccountId,
-            "owned-pet query uses authenticated account");
-        Check.Equal(
-            CharacterId,
-            store.LastPetCharacterId,
-            "owned-pet query uses active character");
+            0,
+            store.OwnedPetReadCount,
+            "initial enter consumes pets from the single character snapshot");
     }
 
     private static void CheckCapacity(int count, byte expectedCapacity)

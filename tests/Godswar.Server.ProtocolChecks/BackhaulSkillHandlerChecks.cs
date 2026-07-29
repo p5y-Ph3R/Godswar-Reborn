@@ -240,6 +240,7 @@ internal static partial class BackhaulSkillHandlerChecks
             session,
             store,
             registry,
+            CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty,
             mapTransitionReadyTimeout: TimeSpan.FromSeconds(5),
             backhaulSkillCastTime:
