@@ -17,6 +17,7 @@ document organization; the assessment and recommendations remain intact.
 - [B03 mandatory disposable PostgreSQL CI](docs/data-architecture-b03-postgres-ci-20260729.md)
 - [B04 fail-closed storage and security profiles](docs/data-architecture-b04-fail-closed-profiles-20260729.md)
 - [B05 pinned world-content reader](docs/data-architecture-b05-world-content-reader-20260729.md)
+- [B05B database-authoritative NPC content](docs/data-architecture-b05b-database-npc-authority-20260729.md)
 
 ## Roadmap sections
 
