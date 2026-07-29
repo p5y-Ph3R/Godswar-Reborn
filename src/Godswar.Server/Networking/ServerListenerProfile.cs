@@ -46,10 +46,13 @@ internal sealed class ServerListenerProfile
     public static ServerListenerProfile Build(ServerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var runtimeProfile =
+            ServerRuntimeProfilePolicy.Validate(options);
         var secure = options.Secure
             ?? throw new InvalidDataException(
                 "Secure network options are required.");
-        if (secure.Enabled)
+        if (runtimeProfile.Transport ==
+            ServerListenerTransport.SecureTls)
         {
             return new ServerListenerProfile(
                 Binding(

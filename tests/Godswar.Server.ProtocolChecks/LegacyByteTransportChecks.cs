@@ -141,13 +141,20 @@ internal static class LegacyByteTransportChecks
             Encrypt(input),
             [1, int.MaxValue, 2]);
         var options = new ServerOptions();
+        options.RuntimeProfile = "LocalDevelopment";
+        options.Storage.Provider = "Json";
+        var legacyAuthenticationAccess =
+            LegacyAuthenticationAccess.Create(
+                ServerRuntimeProfilePolicy.Validate(options));
 
         await using (var session = new ClientSession(transport))
         {
             var handler = new LoginClientHandler(
                 session,
                 new LoginGameStore(),
-                options);
+                options,
+                legacyAuthenticationAccess:
+                    legacyAuthenticationAccess);
             await handler.RunAsync(CancellationToken.None);
         }
 

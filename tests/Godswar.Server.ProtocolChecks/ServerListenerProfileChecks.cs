@@ -7,6 +7,8 @@ internal static class ServerListenerProfileChecks
     public static Task RunAsync()
     {
         var rawOptions = new ServerOptions();
+        rawOptions.RuntimeProfile = "LocalDevelopment";
+        rawOptions.Storage.Provider = "Json";
         rawOptions.Login.Port = 5999;
         rawOptions.Game.Port = 7000;
         rawOptions.Secure.Enabled = false;
@@ -18,6 +20,10 @@ internal static class ServerListenerProfileChecks
         Check.Equal(7000, raw.Game.Port, "raw game port");
 
         var secureOptions = new ServerOptions();
+        secureOptions.RuntimeProfile = "Production";
+        secureOptions.Storage.Provider = "Postgres";
+        secureOptions.Storage.PostgresConnectionString =
+            "Host=127.0.0.1;Database=listener-check";
         secureOptions.Secure.Enabled = true;
         secureOptions.Secure.Login.Port = 6599;
         secureOptions.Secure.Game.Port = 7443;
@@ -32,6 +38,17 @@ internal static class ServerListenerProfileChecks
         Check.Throws<InvalidDataException>(
             () => ServerListenerProfile.Build(secureOptions),
             "mixed/colliding secure profile");
+
+        var productionRawOptions = new ServerOptions
+        {
+            RuntimeProfile = "Production"
+        };
+        productionRawOptions.Storage.Provider = "Postgres";
+        productionRawOptions.Storage.PostgresConnectionString =
+            "Host=127.0.0.1;Database=listener-check";
+        Check.Throws<ServerStartupConfigurationException>(
+            () => ServerListenerProfile.Build(productionRawOptions),
+            "production raw listener fails closed");
         return Task.CompletedTask;
     }
 }

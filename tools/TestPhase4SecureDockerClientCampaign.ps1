@@ -387,6 +387,7 @@ try {
     "Config": {
       "Labels": { "com.reborn.network.profile": "secure-hybrid" },
       "Env": [
+        "GODSWAR_RUNTIME_PROFILE=LocalDevelopment",
         "GODSWAR_SECURE_ENABLED=true",
         "GODSWAR_SECURE_UDP_ENABLED=true",
         "GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED=true",

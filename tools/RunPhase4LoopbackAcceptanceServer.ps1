@@ -277,6 +277,7 @@ $evidencePath = New-RebornControlledHostEvidencePath $evidenceDirectory
 $faultsEnabled = $profilePolicy.FaultsEnabled
 
 $environment = [ordered]@{
+    GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
     GODSWAR_STORAGE_PROVIDER = 'postgres'
     GODSWAR_POSTGRES_CONNECTION_STRING = $postgresConnection
     GODSWAR_SECURE_ENABLED = 'true'

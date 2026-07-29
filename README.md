@@ -87,7 +87,17 @@ PORT=5999
 IP=127.1.1.110
 ```
 
-Login is intentionally permissive while protocol coverage is being mapped. Local non-Docker runs default to `data\state.json`; Docker runs use PostgreSQL.
+The checked-in profiles explicitly use `LocalDevelopment`. In that profile,
+non-Docker runs use `data\state.json`, Docker uses PostgreSQL, and the original
+client's raw authentication remains available with a startup warning. It is
+not a production security boundary: keep raw ports on a controlled host.
+
+`Production` is fail-closed: it requires PostgreSQL, a nonempty connection
+string, and secure TLS listeners. Missing or unknown runtime/storage values,
+JSON in `Production`, raw TCP in `Production`, and malformed security
+environment values stop startup before storage initialization. Select the
+profile with `runtimeProfile` or `GODSWAR_RUNTIME_PROFILE`; never use
+`LocalDevelopment` as a production fallback.
 
 The ECS gameplay architecture, completed cutovers, parity gates, and
 reversible monster/player runtime selectors (both default to `Ecs`) are

@@ -319,6 +319,7 @@ try {
         throw 'Controlled-host secrets cannot be empty.'
     }
     $environment = [ordered]@{
+        GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
         GODSWAR_STORAGE_PROVIDER = 'postgres'
         GODSWAR_POSTGRES_CONNECTION_STRING = $postgresConnection
         GODSWAR_SECURE_ENABLED = 'true'

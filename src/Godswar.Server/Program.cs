@@ -16,13 +16,48 @@ if (await ControlledHostValidationCommand.TryRunAsync(args))
 }
 
 var optionsPath = args.Length > 0 ? args[0] : "appsettings.json";
-var options = ServerOptions.Load(optionsPath);
+ServerOptions options;
+ValidatedServerRuntimeProfile runtimeProfile;
+try
+{
+    options = ServerOptions.Load(optionsPath);
+    runtimeProfile = ServerRuntimeProfilePolicy.Validate(options);
+}
+catch (ServerStartupConfigurationException ex)
+{
+    var reason =
+        ServerRuntimeProfilePolicy.RejectionCode(ex.Reason);
+    ServerProfileMetrics.RecordStartupRejection(reason);
+    Console.Error.WriteLine(
+        $"[startup] rejected reason={reason}");
+    Environment.ExitCode = 2;
+    return;
+}
+catch (Exception)
+{
+    const string reason = "invalid_configuration";
+    ServerProfileMetrics.RecordStartupRejection(reason);
+    Console.Error.WriteLine(
+        $"[startup] rejected reason={reason}");
+    Environment.ExitCode = 2;
+    return;
+}
+
+var legacyAuthenticationAccess =
+    LegacyAuthenticationAccess.Create(runtimeProfile);
 var phase4AcceptanceFaults =
     SecurePhase4AcceptanceFaults.Create(
         options.Secure.Phase4AcceptanceFaults);
-await using IGameStore store = options.Storage.Provider.Equals("postgres", StringComparison.OrdinalIgnoreCase)
-    ? new PostgresGameStore(options.Storage.PostgresConnectionString)
-    : new JsonGameStore(options.DataPath);
+await using IGameStore store = runtimeProfile.StorageProvider switch
+{
+    GameStorageProviderKind.Postgres =>
+        new PostgresGameStore(
+            options.Storage.PostgresConnectionString),
+    GameStorageProviderKind.Json =>
+        new JsonGameStore(options.DataPath),
+    _ => throw new InvalidOperationException(
+        "Validated storage provider is not exhaustive.")
+};
 await store.EnsureSeedDataAsync();
 
 using var shutdown = new CancellationTokenSource();
@@ -57,7 +92,12 @@ var loginServer = rawCompatibilityEnabled
         listenerProfile.Login.Port,
         options.Network,
         admission,
-        session => new LoginClientHandler(session, store, options))
+        session => new LoginClientHandler(
+            session,
+            store,
+            options,
+            legacyAuthenticationAccess:
+                legacyAuthenticationAccess))
     : null;
 
 var gameServer = rawCompatibilityEnabled
@@ -71,7 +111,9 @@ var gameServer = rawCompatibilityEnabled
             session,
             store,
             registry,
-            options.Game.DeveloperCommands))
+            options.Game.DeveloperCommands,
+            legacyAuthenticationAccess:
+                legacyAuthenticationAccess))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -154,7 +196,19 @@ var secureGameServer = secureTransportFactory is null
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
-Console.WriteLine($"Storage:      {options.Storage.Provider}");
+Console.WriteLine(
+    "[startup] selected " +
+    $"runtime={runtimeProfile.RuntimeProfile} " +
+    $"storage={runtimeProfile.StorageProvider} " +
+    $"transport={runtimeProfile.Transport}");
+Console.WriteLine($"Runtime:      {runtimeProfile.RuntimeProfile}");
+Console.WriteLine($"Storage:      {runtimeProfile.StorageProvider}");
+if (legacyAuthenticationAccess is not null)
+{
+    Console.WriteLine(
+        "[security] WARNING legacy authentication enabled " +
+        "by explicit LocalDevelopment profile");
+}
 Console.WriteLine(
     rawCompatibilityEnabled
         ? $"Login server: {options.Login.BindHost}:{options.Login.Port}"

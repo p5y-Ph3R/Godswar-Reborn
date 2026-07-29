@@ -158,6 +158,7 @@ try {
             [EnvironmentVariableTarget]::Process)
     }
     $issuedEnvironment = [ordered]@{
+        GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
         GODSWAR_SECURE_ENABLED = 'true'
         GODSWAR_SECURE_LOGIN_BIND_HOST = '127.0.0.1'
         GODSWAR_SECURE_LOGIN_PORT = '6599'

@@ -101,6 +101,10 @@ internal static class MonsterRuntimeCutoverChecks
             path,
             $$"""
             {
+              "runtimeProfile": "LocalDevelopment",
+              "storage": {
+                "provider": "Json"
+              },
               "game": {
                 "monsters": {
                   "runtime": "{{runtime}}"

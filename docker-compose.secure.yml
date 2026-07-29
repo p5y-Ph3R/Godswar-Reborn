@@ -17,6 +17,7 @@ services:
     profiles: ["secure"]
     container_name: godswar-server
     environment:
+      GODSWAR_RUNTIME_PROFILE: LocalDevelopment
       GODSWAR_STORAGE_PROVIDER: postgres
       GODSWAR_POSTGRES_CONNECTION_STRING: "Host=postgres;Port=5432;Database=${GODSWAR_SECURE_POSTGRES_DB:-godswar};Username=${POSTGRES_USER:-godswar};Password=${POSTGRES_PASSWORD:-godswar_dev_password};Pooling=true"
       GODSWAR_SECURE_ENABLED: "true"

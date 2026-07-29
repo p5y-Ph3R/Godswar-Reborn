@@ -32,6 +32,9 @@ internal static class ControlledHostAcceptancePolicyChecks
 
         Reject(options => options.Secure.Enabled = false, "raw listener");
         Reject(
+            options => options.RuntimeProfile = "Production",
+            "non-local controlled-host runtime profile");
+        Reject(
             options => options.Secure.Login.BindHost = "127.0.0.2",
             "login bind");
         Reject(
@@ -211,11 +214,12 @@ internal static class ControlledHostAcceptancePolicyChecks
         bool acceptanceFaults = false)
     {
         var options = new ServerOptions();
+        options.RuntimeProfile = "LocalDevelopment";
         options.Secure.Enabled = true;
         options.Secure.Udp.Enabled = true;
         options.Secure.Udp.GameplayMovementEnabled = true;
         options.Secure.CertificatePath = CertificatePath;
-        options.Storage.Provider = "postgres";
+        options.Storage.Provider = "Postgres";
         options.Storage.PostgresConnectionString =
             "Host=127.0.0.1;Database=acceptance";
         options.Authentication.MaximumConcurrentKdfs = 4;

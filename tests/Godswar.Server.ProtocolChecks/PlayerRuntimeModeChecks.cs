@@ -83,6 +83,10 @@ internal static class PlayerRuntimeModeChecks
             path,
             $$"""
             {
+              "runtimeProfile": "LocalDevelopment",
+              "storage": {
+                "provider": "Json"
+              },
               "game": {
                 "players": {
                   "runtime": "{{runtime}}"

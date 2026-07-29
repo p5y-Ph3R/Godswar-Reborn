@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Networking;
+using Godswar.Server.Operations;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -48,6 +49,24 @@ internal sealed partial class GameClientHandler
         }
         else
         {
+            if (_session.IsSecure ||
+                _legacyAuthenticationAccess is null)
+            {
+                ServerProfileMetrics
+                    .RecordLegacyAuthenticationAttempt(
+                        "game",
+                        "blocked");
+                Console.Error.WriteLine(
+                    "[security] rejected legacy authentication " +
+                    "endpoint=game reason=profile");
+                _session.Disconnect();
+                return;
+            }
+
+            ServerProfileMetrics
+                .RecordLegacyAuthenticationAttempt(
+                    "game",
+                    "allowed");
             _account = await _store.FindAccountByUsernameAsync(
                 username,
                 cancellationToken);

@@ -145,6 +145,7 @@ function Assert-RebornPhase4DockerInspection {
 
     $environment = Get-RebornPhase4EnvironmentMap $server.Config.Env
     foreach ($required in @{
+        GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
         GODSWAR_SECURE_ENABLED = 'true'
         GODSWAR_SECURE_UDP_ENABLED = 'true'
         GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED = 'true'

@@ -260,29 +260,47 @@ internal sealed partial class SecureNetworkOptions
 
     private static int ReadInt(string name, int fallback)
     {
-        return int.TryParse(
-            Environment.GetEnvironmentVariable(name),
-            out var value)
-            ? value
-            : fallback;
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (int.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be a valid integer.");
     }
 
     private static uint ReadUInt(string name, uint fallback)
     {
-        return uint.TryParse(
-            Environment.GetEnvironmentVariable(name),
-            out var value)
-            ? value
-            : fallback;
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (uint.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be a valid unsigned integer.");
     }
 
     private static bool ReadBool(string name, bool fallback)
     {
-        return bool.TryParse(
-            Environment.GetEnvironmentVariable(name),
-            out var value)
-            ? value
-            : fallback;
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (bool.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be 'true' or 'false'.");
     }
 }
 

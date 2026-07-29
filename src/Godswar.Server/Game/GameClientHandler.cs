@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
+using Godswar.Server.Operations;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -31,6 +32,8 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly IGameStore _store;
     private readonly GameSessionRegistry _registry;
     private readonly DeveloperCommandOptions _developerCommands;
+    private readonly LegacyAuthenticationAccess?
+        _legacyAuthenticationAccess;
     private GameAccount? _account;
     private GameCharacter? _character;
     private PendingUnequipFollowup? _pendingUnequipFollowup;
@@ -65,7 +68,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         SecurePhase4AcceptanceFaults?
             phase4AcceptanceFaults = null,
         TimeSpan? mapTransitionReadyTimeout = null,
-        TimeSpan? backhaulSkillCastTime = null)
+        TimeSpan? backhaulSkillCastTime = null,
+        LegacyAuthenticationAccess?
+            legacyAuthenticationAccess = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -77,6 +82,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _store = store;
         _registry = registry;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
+        _legacyAuthenticationAccess =
+            legacyAuthenticationAccess;
         _phase4AcceptanceFaults = phase4AcceptanceFaults;
         _mapTransitionReadyTimeout =
             mapTransitionReadyTimeout ?? DefaultMapTransitionReadyTimeout;

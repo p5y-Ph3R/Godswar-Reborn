@@ -77,10 +77,12 @@ try {
         'The override must replace the existing server container.'
     Assert-Condition `
         ($server.environment.GODSWAR_SECURE_ENABLED -ceq 'true' -and
+            $server.environment.GODSWAR_RUNTIME_PROFILE -ceq
+                'LocalDevelopment' -and
             $server.environment.GODSWAR_SECURE_UDP_ENABLED -ceq 'true' -and
             $server.environment.
                 GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED -ceq 'true') `
-        'TLS, protected UDP, and authoritative movement must be enabled.'
+        'The local secure profile, TLS, protected UDP, and authoritative movement must be exact.'
 
     $containerAddress =
         [string]$server.networks.'secure-runtime'.ipv4_address

@@ -8,6 +8,8 @@ namespace Godswar.Server;
 
 internal sealed class ServerOptions
 {
+    public string RuntimeProfile { get; set; } = string.Empty;
+
     public EndpointOptions Login { get; set; } = new()
     {
         BindHost = "0.0.0.0",
@@ -35,20 +37,24 @@ internal sealed class ServerOptions
     {
         if (!File.Exists(path))
         {
-            var defaults = new ServerOptions();
-            var json = JsonSerializer.Serialize(defaults, JsonDefaults.Indented);
-            File.WriteAllText(path, json);
-            return defaults.ApplyEnvironment().Normalize(path);
+            throw new ServerStartupConfigurationException(
+                ServerStartupRejectionReason.OptionsFileMissing,
+                "The server options file does not exist.");
         }
 
         var options = JsonSerializer.Deserialize<ServerOptions>(File.ReadAllText(path), JsonDefaults.Indented)
             ?? new ServerOptions();
 
-        return options.ApplyEnvironment().Normalize(path);
+        options.ApplyEnvironment().Normalize(path);
+        ServerRuntimeProfilePolicy.Validate(options);
+        return options;
     }
 
     private ServerOptions ApplyEnvironment()
     {
+        Login ??= new EndpointOptions();
+        Game ??= new GameEndpointOptions();
+        Storage ??= new StorageOptions();
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
@@ -140,6 +146,10 @@ internal sealed class ServerOptions
         }
 
         DataPath = Environment.GetEnvironmentVariable("GODSWAR_DATA_PATH") ?? DataPath;
+        RuntimeProfile =
+            Environment.GetEnvironmentVariable(
+                "GODSWAR_RUNTIME_PROFILE") ??
+            RuntimeProfile;
         Storage.Provider = Environment.GetEnvironmentVariable("GODSWAR_STORAGE_PROVIDER") ?? Storage.Provider;
         Storage.PostgresConnectionString = Environment.GetEnvironmentVariable("GODSWAR_POSTGRES_CONNECTION_STRING")
             ?? Storage.PostgresConnectionString;
@@ -158,11 +168,6 @@ internal sealed class ServerOptions
         {
             var root = Path.GetDirectoryName(Path.GetFullPath(optionsPath)) ?? Environment.CurrentDirectory;
             DataPath = Path.GetFullPath(Path.Combine(root, DataPath));
-        }
-
-        if (string.IsNullOrWhiteSpace(Storage.Provider))
-        {
-            Storage.Provider = "json";
         }
 
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
@@ -192,12 +197,32 @@ internal sealed class ServerOptions
 
     private static int ReadInt(string name, int fallback)
     {
-        return int.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (int.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be a valid integer.");
     }
 
     private static bool ReadBool(string name, bool fallback)
     {
-        return bool.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (bool.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be 'true' or 'false'.");
     }
 
     private static MonsterRuntimeMode ReadMonsterRuntime(
@@ -334,7 +359,7 @@ internal sealed class DeveloperCommandOptions
 
 internal sealed class StorageOptions
 {
-    public string Provider { get; set; } = "json";
+    public string Provider { get; set; } = string.Empty;
 
     public string PostgresConnectionString { get; set; } = string.Empty;
 }

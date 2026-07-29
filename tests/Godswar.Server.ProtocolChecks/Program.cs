@@ -179,6 +179,12 @@ internal static partial class Program
                 "Mutually exclusive raw or secure listener profile",
                 ServerListenerProfileChecks.RunAsync),
             (
+                "Fail-closed server runtime and storage profiles",
+                ServerRuntimeProfileChecks.RunAsync),
+            (
+                "Local-development-only legacy authentication",
+                LegacyAuthenticationProfileChecks.RunAsync),
+            (
                 "Controlled-host exact Npgsql validation",
                 ControlledHostValidationCommandChecks.RunAsync),
             (

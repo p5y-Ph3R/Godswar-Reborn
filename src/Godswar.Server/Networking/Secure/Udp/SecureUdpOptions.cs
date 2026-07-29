@@ -343,19 +343,35 @@ internal sealed class SecureUdpOptions
     private static string ReadString(string name, string fallback) =>
         Environment.GetEnvironmentVariable(name) ?? fallback;
 
-    private static int ReadInt(string name, int fallback) =>
-        int.TryParse(
-            Environment.GetEnvironmentVariable(name),
-            out var value)
-            ? value
-            : fallback;
+    private static int ReadInt(string name, int fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (int.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be a valid integer.");
+    }
 
-    private static bool ReadBool(string name, bool fallback) =>
-        bool.TryParse(
-            Environment.GetEnvironmentVariable(name),
-            out var value)
-            ? value
-            : fallback;
+    private static bool ReadBool(string name, bool fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (raw is null)
+        {
+            return fallback;
+        }
+        if (bool.TryParse(raw, out var value))
+        {
+            return value;
+        }
+        throw new InvalidDataException(
+            $"{name} must be 'true' or 'false'.");
+    }
 }
 
 internal readonly record struct SecureUdpCookiePolicy(

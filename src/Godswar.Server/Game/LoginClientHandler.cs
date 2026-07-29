@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Operations;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.Security.Authentication;
@@ -16,6 +17,8 @@ internal sealed class LoginClientHandler : IClientHandler
     private readonly AccountAuthenticationService? _authentication;
     private readonly SecureGameTarget? _gameTarget;
     private readonly IGameTicketStore? _ticketStore;
+    private readonly LegacyAuthenticationAccess?
+        _legacyAuthenticationAccess;
     private GameAccount? _authenticatedAccount;
     private SecureLoginGeneration? _loginGeneration;
     private bool _grantCommitted;
@@ -27,7 +30,9 @@ internal sealed class LoginClientHandler : IClientHandler
         ServerOptions options,
         AccountAuthenticationService? authentication = null,
         IGameTicketStore? ticketStore = null,
-        SecureGameTarget? gameTarget = null)
+        SecureGameTarget? gameTarget = null,
+        LegacyAuthenticationAccess?
+            legacyAuthenticationAccess = null)
     {
         _session = session;
         _store = store;
@@ -41,6 +46,8 @@ internal sealed class LoginClientHandler : IClientHandler
         _authentication = authentication;
         _ticketStore = ticketStore;
         _gameTarget = gameTarget;
+        _legacyAuthenticationAccess =
+            legacyAuthenticationAccess;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -131,6 +138,23 @@ internal sealed class LoginClientHandler : IClientHandler
             var username = PacketText.DecodeLoginName(rawUsername);
             if (!_session.IsSecure)
             {
+                if (_legacyAuthenticationAccess is null)
+                {
+                    ServerProfileMetrics
+                        .RecordLegacyAuthenticationAttempt(
+                            "login",
+                            "blocked");
+                    Console.Error.WriteLine(
+                        "[security] rejected legacy authentication " +
+                        "endpoint=login reason=profile");
+                    _session.Disconnect();
+                    return;
+                }
+
+                ServerProfileMetrics
+                    .RecordLegacyAuthenticationAttempt(
+                        "login",
+                        "allowed");
                 var password = PacketText.ReadFixedAscii(payload, 32, 32);
                 _authenticatedAccount =
                     await _store.LoginOrCreateAccountAsync(

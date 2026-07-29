@@ -101,7 +101,12 @@ internal static partial class ControlledHostValidationCommand
         var network = options.Network;
         var tickets = options.Secure.Tickets;
         var udp = options.Secure.Udp;
-        if (options.Storage.Provider != "postgres" ||
+        if (!options.RuntimeProfile.Equals(
+                nameof(ServerRuntimeProfileKind.LocalDevelopment),
+                StringComparison.OrdinalIgnoreCase) ||
+            !options.Storage.Provider.Equals(
+                nameof(GameStorageProviderKind.Postgres),
+                StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(
                 options.Storage.PostgresConnectionString) ||
             options.Game.DeveloperCommands.Enabled ||
