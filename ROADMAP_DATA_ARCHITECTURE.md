@@ -14,6 +14,7 @@ document organization; the assessment and recommendations remain intact.
 - [B01A schema/build/backup inventory](docs/data-architecture-b01a-schema-build-backup-inventory-20260729.md)
 - [B01B coherent schema release](docs/data-architecture-b01b-schema-release-20260729.md)
 - [B02 data-boundary architecture ratchet](docs/data-architecture-b02-boundary-ratchet-20260729.md)
+- [B03 mandatory disposable PostgreSQL CI](docs/data-architecture-b03-postgres-ci-20260729.md)
 
 ## Roadmap sections
 
