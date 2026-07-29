@@ -63,6 +63,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresEquipmentForgeCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        KitBagItemDeleteCommands =
+            new PostgresKitBagItemDeleteCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -101,6 +105,9 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IEquipmentForgeCommandExecutor EquipmentForgeCommands
+    { get; }
+
+    public IKitBagItemDeleteCommandExecutor KitBagItemDeleteCommands
     { get; }
 
     public bool OutboxEnabled { get; }

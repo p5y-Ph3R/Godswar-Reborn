@@ -53,6 +53,12 @@ internal static class DataArchitectureCheckCatalog
             "Durable equipment-forge command contract",
             EquipmentForgeCommandContractChecks.RunAsync),
         (
+            "Durable kit-bag item-delete command contract",
+            KitBagItemDeleteCommandContractChecks.RunAsync),
+        (
+            "Durable kit-bag item delete handler and replay",
+            KitBagItemDeleteDurableHandlerChecks.RunAsync),
+        (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (

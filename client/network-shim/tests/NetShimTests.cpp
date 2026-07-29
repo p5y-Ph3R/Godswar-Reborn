@@ -18,11 +18,7 @@
 #include "SecurePendingOperationRegistryTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
-#include "SecureForgeCommandIdentityTests.h"
-#include "SecureForgeResultIdentityTests.h"
-#include "SecureGearEnhancerIdentityTests.h"
-#include "SecureGearMentorDecomposeIdentityTests.h"
-#include "SecureGearMentorCommandIdentityTests.h"
+#include "SecureEconomyIdentityTests.h"
 #include "SecureLegacyCommandResultStreamTests.h"
 #include "SecureRealtimeMovementTests.h"
 #include "SecureRealtimeMovementChannelTests.h"
@@ -555,11 +551,7 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecurePendingOperationRegistryTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();
-    Failures += RunSecureForgeCommandIdentityTests();
-    Failures += RunSecureForgeResultIdentityTests();
-    Failures += RunSecureGearEnhancerIdentityTests();
-    Failures += RunSecureGearMentorDecomposeIdentityTests();
-    Failures += RunSecureGearMentorCommandIdentityTests();
+    Failures += RunSecureEconomyIdentityTests();
     Failures += RunSecureLegacyCommandResultStreamTests();
     Failures += RunSecureRealtimeMovementTests();
     Failures += RunSecureRealtimeMovementChannelTests();

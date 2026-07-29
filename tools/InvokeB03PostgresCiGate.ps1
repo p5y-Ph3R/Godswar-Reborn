@@ -256,6 +256,7 @@ try {
         'PostgreSQL durable Gear Mentor Decompose transaction',
         'PostgreSQL durable Gear Enhancement transactions',
         'PostgreSQL durable equipment-forge transactions',
+        'PostgreSQL durable kit-bag item-delete transactions',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

@@ -194,7 +194,10 @@ var gameServer = rawCompatibilityEnabled
                     .GearEnhancementCommands,
             equipmentForgeCommands:
                 postgresApplicationDataRuntime?
-                    .EquipmentForgeCommands))
+                    .EquipmentForgeCommands,
+            kitBagItemDeleteCommands:
+                postgresApplicationDataRuntime?
+                    .KitBagItemDeleteCommands))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -299,7 +302,10 @@ var secureGameServer = secureTransportFactory is null
                     .GearEnhancementCommands,
             equipmentForgeCommands:
                 postgresApplicationDataRuntime?
-                    .EquipmentForgeCommands),
+                    .EquipmentForgeCommands,
+            kitBagItemDeleteCommands:
+                postgresApplicationDataRuntime?
+                    .KitBagItemDeleteCommands),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");

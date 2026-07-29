@@ -31,6 +31,11 @@ internal static partial class Program
                 PostgresGearMentorDecomposeIntegrationChecks.CheckName,
                 PostgresGearMentorDecomposeIntegrationChecks.RunAsync),
             (
+                PostgresKitBagItemDeleteCommandIntegrationChecks
+                    .CheckName,
+                PostgresKitBagItemDeleteCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

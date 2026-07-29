@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SecureForgeCommandIdentity.h"
+#include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
 
 #include <Windows.h>
@@ -140,6 +141,10 @@ private:
         const void* packet,
         std::size_t packetBytes,
         std::uint16_t opcode,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeKitBagItemDelete(
+        int bagSlot,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;

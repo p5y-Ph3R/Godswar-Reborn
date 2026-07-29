@@ -77,10 +77,16 @@ The [secure native Equipment Forge increment](../data-architecture-b09-native-eq
 adds family-isolated identity for ordinary Forge and stores its one
 server-generated random roll. Successful and failed rolls consume their exact
 materials and Silver once, while exact retry replays the permanent outcome
-without rerolling. Tokenless legacy inventory, remaining reward, and currency
-mutations remain compatibility paths; B09 is not complete until those
-operations gain truthful retry identity and move behind the durable
-transaction boundary.
+without rerolling.
+The [secure native kit-bag item-delete increment](../data-architecture-b09-native-kit-bag-delete-20260730.md)
+adds family-13 identity and replay-before-reread handling for confirmed
+ground deletion. It deletes only the exact server-captured item instance,
+persists empty and stale selections as permanent non-mutating outcomes, and
+commits its revision, ledger, audit, inbox, and strict outbox evidence before
+acknowledgement. Tokenless kit-bag move/swap, equip/unequip, Holy Stone,
+remaining inventory, reward, and currency mutations remain compatibility
+paths; B09 is not complete until those operations gain truthful retry
+identity and move behind the durable transaction boundary.
 
 ## 18.2 First three low-risk implementation tasks
 

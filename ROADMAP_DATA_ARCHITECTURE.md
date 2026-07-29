@@ -28,6 +28,7 @@ document organization; the assessment and recommendations remain intact.
 - [B09 secure native Gear Mentor Decompose increment](docs/data-architecture-b09-native-decompose-20260729.md)
 - [B09 secure native Gear Enhancement increment](docs/data-architecture-b09-native-gear-enhancement-20260730.md)
 - [B09 secure native Equipment Forge increment](docs/data-architecture-b09-native-equipment-forge-20260730.md)
+- [B09 secure native kit-bag item-delete increment](docs/data-architecture-b09-native-kit-bag-delete-20260730.md)
 
 ## Roadmap sections
 

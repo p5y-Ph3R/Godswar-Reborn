@@ -82,6 +82,8 @@ internal static class CommandMetrics
                 "gear_mentor_add_attribute",
             CommandFamily.GearMentorDeleteAttribute =>
                 "gear_mentor_delete_attribute",
+            CommandFamily.KitBagItemDelete =>
+                "kit_bag_item_delete",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

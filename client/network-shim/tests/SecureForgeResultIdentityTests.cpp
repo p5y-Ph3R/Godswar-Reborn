@@ -111,7 +111,7 @@ void CheckFamilyThreeResultCodec() {
     invalid.disposition =
         SecureLegacyCommandDisposition::Rejected;
     invalid.commandFamily =
-        static_cast<SecureLegacyCommandFamily>(13);
+        static_cast<SecureLegacyCommandFamily>(14);
     Check(
         !TryEncodeSecureLegacyCommandResult(
             invalid,

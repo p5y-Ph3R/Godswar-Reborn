@@ -30,6 +30,19 @@ internal sealed partial class GameClientHandler
 
         if (TryReadStorageItemDelete(packet.Payload, out var deletedSlot))
         {
+            if (_session.IsSecure &&
+                packet.ClientOperationId is { } clientOperationId &&
+                packet.Length == DurableKitBagDeleteRequestBytes)
+            {
+                await HandleDurableKitBagItemDeleteAsync(
+                    deletedSlot,
+                    clientOperationId,
+                    cancellationToken);
+                return;
+            }
+
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.KitBagItemDelete);
             await HandleDeleteKitBagItemAsync(deletedSlot, cancellationToken);
             return;
         }
