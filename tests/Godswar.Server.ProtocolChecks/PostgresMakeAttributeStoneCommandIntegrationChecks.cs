@@ -105,7 +105,8 @@ internal static partial class
                 "Make Attribute Stone command.");
         }
 
-        return GearMentorMakeAttributeStoneCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            GearMentorMakeAttributeStoneCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -113,7 +114,7 @@ internal static partial class
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static MakeAttributeStoneExecutionReceipt RequireReceipt(

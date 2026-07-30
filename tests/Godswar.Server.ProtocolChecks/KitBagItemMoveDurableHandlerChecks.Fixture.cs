@@ -96,10 +96,14 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
             WithBag(snapshot, persistedBag),
             projectionFails);
         store ??= new MoveStore();
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            snapshot.AccountId,
+            character);
         var handler = new GameClientHandler(
             session,
             store,
-            new GameSessionRegistry(),
+            registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             kitBagItemMoveCommands: executor);
@@ -310,6 +314,7 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
 
         public Task<KitBagItemMoveExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             Guid clientOperationId,
             int sourceKitBagSlot,
             int destinationKitBagSlot,

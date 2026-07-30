@@ -209,6 +209,11 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         var registry = new GameSessionRegistry();
         var transport = new ReplayCaptureTransport();
         var session = new ClientSession(transport);
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            session,
+            snapshot.AccountId,
+            character);
         var executor = new ReplayExecutor(
             snapshot.AccountId,
             character.Id,

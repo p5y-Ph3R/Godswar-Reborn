@@ -80,7 +80,8 @@ internal static partial class
                 "The bag-clear fixture requested an invalid command.");
         }
 
-        return DeveloperBagClearCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            DeveloperBagClearCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -88,7 +89,7 @@ internal static partial class
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static DeveloperBagClearExecutionReceipt RequireReceipt(

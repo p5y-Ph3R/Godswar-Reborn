@@ -138,6 +138,11 @@ internal static partial class
                 commandTimeoutSeconds: 30,
                 CancellationToken.None),
             "equipment transfer fixture captures economy baseline");
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new TransferFixture(
             username,

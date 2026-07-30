@@ -72,6 +72,11 @@ internal static partial class BackhaulSkillHandlerChecks
                 Level = 1
             }]);
         var registry = CreateRegistry();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            socket.Session,
+            AccountId,
+            character);
         registry.JoinMap(
             socket.Session,
             AccountId,
@@ -176,6 +181,11 @@ internal static partial class BackhaulSkillHandlerChecks
         var character = CreateCharacter("UnlearnedBackhaul");
         var store = new BackhaulStore(character, []);
         var registry = CreateRegistry();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            socket.Session,
+            AccountId,
+            character);
         registry.JoinMap(
             socket.Session,
             AccountId,

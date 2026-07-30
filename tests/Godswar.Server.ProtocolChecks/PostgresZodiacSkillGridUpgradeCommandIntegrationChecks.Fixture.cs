@@ -117,6 +117,11 @@ internal static partial class
                 gridLevel);
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new ZodiacUpgradeFixture(
             accountId,

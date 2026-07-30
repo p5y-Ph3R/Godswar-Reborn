@@ -103,6 +103,11 @@ internal static partial class
                 commandTimeoutSeconds: 30,
                 CancellationToken.None),
             "item-delete fixture captures an economy baseline");
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new DeleteFixture(
             username,

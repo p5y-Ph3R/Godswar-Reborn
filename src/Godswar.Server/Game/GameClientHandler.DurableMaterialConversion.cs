@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -23,6 +24,11 @@ internal sealed partial class GameClientHandler
     {
         if (_account is null || _character is null)
         {
+            return;
+        }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
             return;
         }
 
@@ -64,6 +70,7 @@ internal sealed partial class GameClientHandler
                 npcId,
                 clientOperationId,
                 selection,
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -73,6 +80,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
         }
         catch (Exception ex)
         {
@@ -87,6 +99,11 @@ internal sealed partial class GameClientHandler
                 $"failure account={_account.Id} " +
                 $"character={_character.Name} operation={operation}: " +
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -130,7 +147,14 @@ internal sealed partial class GameClientHandler
                 "not match the active command.");
         }
 
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await _session.SendAsync(
             PacketBuilder.NpcFunctionActionResponse(
                 npcId,
@@ -191,6 +215,7 @@ internal sealed partial class GameClientHandler
             uint npcId,
             Guid clientOperationId,
             GearEnhancerSelectionSnapshot? selection,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         if (!selection.HasValue)
@@ -201,12 +226,14 @@ internal sealed partial class GameClientHandler
                     await _gearMentorMaterialConversionCommands!
                         .TryReplayTransformAsync(
                             subject,
+                            ownership,
                             clientOperationId,
                             cancellationToken),
                 GearMentorOperation.CombineGemPieces =>
                     await _gearMentorMaterialConversionCommands!
                         .TryReplayCombineAsync(
                             subject,
+                            ownership,
                             clientOperationId,
                             cancellationToken),
                 _ => GearMentorMaterialConversionExecutionResult
@@ -241,7 +268,10 @@ internal sealed partial class GameClientHandler
                             subject,
                             correlation,
                             receivedAt,
-                            transform),
+                            transform) with
+                        {
+                            Ownership = ownership
+                        },
                         cancellationToken);
 
             case GearMentorOperation.CombineGemPieces:
@@ -263,7 +293,10 @@ internal sealed partial class GameClientHandler
                             subject,
                             correlation,
                             receivedAt,
-                            combine),
+                            combine) with
+                        {
+                            Ownership = ownership
+                        },
                         cancellationToken);
 
             default:

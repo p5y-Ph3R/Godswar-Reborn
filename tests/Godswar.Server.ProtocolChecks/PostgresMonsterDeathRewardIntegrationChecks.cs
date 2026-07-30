@@ -241,7 +241,8 @@ internal static class PostgresMonsterDeathRewardIntegrationChecks
         CreateEnvelope(
             RewardFixture fixture,
             MonsterDeathRewardCommand command) =>
-        MonsterDeathRewardCommandEnvelope.Create(
+        PlayerOwnershipTestFences.Bind(
+            MonsterDeathRewardCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -249,7 +250,7 @@ internal static class PostgresMonsterDeathRewardIntegrationChecks
                 Guid.NewGuid(),
                 CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
-            command);
+            command));
 
     private static async Task<RewardFixture> CreateFixtureAsync(
         string connectionString,
@@ -313,6 +314,11 @@ internal static class PostgresMonsterDeathRewardIntegrationChecks
             characterId = Convert.ToInt32(
                 await character.ExecuteScalarAsync());
         }
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new RewardFixture(accountId, characterId);
     }

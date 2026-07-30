@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Networking.Secure;
@@ -25,7 +26,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var envelope = BagItemActivationCommandEnvelope.Create(
+        var unownedEnvelope = BagItemActivationCommandEnvelope.Create(
             subject,
             SecurePetCorrelation(),
             DateTimeOffset.UtcNow,
@@ -40,9 +41,18 @@ internal sealed partial class GameClientHandler
                     ? BagItemActivationExecutionConstraint
                         .RideRuntimeBlocked
                     : BagItemActivationExecutionConstraint.None));
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return;
+        }
+
         await ExecuteAndCompletePetCommandAsync(
             operationId,
             CommandFamily.BagItemActivation,
+            ownership,
             () => _petDurableCommands.ExecuteAsync(
                 envelope,
                 cancellationToken),
@@ -64,14 +74,23 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var envelope = PetLevelUpgradeCommandEnvelope.Create(
+        var unownedEnvelope = PetLevelUpgradeCommandEnvelope.Create(
             subject,
             SecurePetCorrelation(),
             DateTimeOffset.UtcNow,
             new PetLevelUpgradeCommand(operationId, petId));
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return;
+        }
+
         await ExecuteAndCompletePetCommandAsync(
             operationId,
             CommandFamily.PetLevelUpgrade,
+            ownership,
             () => _petDurableCommands.ExecuteAsync(
                 envelope,
                 cancellationToken),
@@ -94,7 +113,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var envelope = PetPresenceTransitionCommandEnvelope.Create(
+        var unownedEnvelope =
+            PetPresenceTransitionCommandEnvelope.Create(
             subject,
             SecurePetCorrelation(),
             DateTimeOffset.UtcNow,
@@ -102,9 +122,18 @@ internal sealed partial class GameClientHandler
                 operationId,
                 petId,
                 ToPetPresenceCommandOperation(operation)));
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return;
+        }
+
         await ExecuteAndCompletePetCommandAsync(
             operationId,
             CommandFamily.PetPresenceTransition,
+            ownership,
             () => _petDurableCommands.ExecuteAsync(
                 envelope,
                 cancellationToken),
@@ -127,6 +156,8 @@ internal sealed partial class GameClientHandler
     private async Task ExecuteAndCompletePetCommandAsync(
         Guid operationId,
         CommandFamily family,
+        Godswar.Server.Application.Characters.PlayerOwnershipFence
+            ownership,
         Func<Task<PetDurableExecutionResult>> execute,
         CancellationToken cancellationToken)
     {
@@ -144,12 +175,22 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception exception)
         {
             RecordPetProviderUnavailable(
                 family,
                 operationId,
                 exception.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 

@@ -70,17 +70,31 @@ internal sealed partial class GameClientHandler
             var transport = _session.IsSecure
                 ? CommandTransportKind.SecureTlsLegacy
                 : CommandTransportKind.LegacyTcp;
-            var envelope = MonsterDeathRewardCommandEnvelope.Create(
+            var unownedEnvelope =
+                MonsterDeathRewardCommandEnvelope.Create(
                 new CommandSubject(_account.Id, _character.Id),
                 new CommandConnectionCorrelation(
                     _commandConnectionId,
                     transport),
                 receivedAt,
                 command);
+            if (!TryBindCurrentPlayerOwnership(
+                    unownedEnvelope,
+                    out var envelope,
+                    out var ownership))
+            {
+                return null;
+            }
+
             var execution =
                 await _monsterDeathRewardCommands.ExecuteAsync(
                     envelope,
                     cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return null;
+            }
+
             if (execution.Receipt is null ||
                 execution.Projection is null)
             {

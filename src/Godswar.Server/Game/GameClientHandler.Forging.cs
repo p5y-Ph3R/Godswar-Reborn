@@ -189,6 +189,13 @@ internal sealed partial class GameClientHandler
 
         CommandMetrics.RecordUnsupportedLegacyIdentity(
             CommandFamily.EquipmentForge);
+        if (!AllowLegacyPlayerMutationFallback(
+                "equipment_forge"))
+        {
+            ClearForgeSelection();
+            return;
+        }
+
         // Clear before awaiting persistence so a duplicated Start packet can
         // never consume the same reservation twice.
         ClearForgeSelection();

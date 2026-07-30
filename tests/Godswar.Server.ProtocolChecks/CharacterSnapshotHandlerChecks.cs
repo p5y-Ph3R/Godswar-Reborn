@@ -62,7 +62,11 @@ internal static partial class CharacterSnapshotHandlerChecks
             registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
-            legacyAuthenticationAccess: legacyAccess);
+            legacyAuthenticationAccess: legacyAccess,
+            characterCheckpoints:
+                new GameHandlerCheckpointCoordinatorStub(
+                    source.Character!.Location.PositionRevision,
+                    source.Character.Vitals.Revision));
 
         await InvokePacketAsync(
             handler,
@@ -77,9 +81,9 @@ internal static partial class CharacterSnapshotHandlerChecks
         await InvokePacketAsync(handler, CreatePacket(Opcodes.EnterUiReady));
 
         Check.Equal(
-            1,
+            2,
             snapshotReader.ReadCount,
-            "login, repeated preview, enter, and ready use one snapshot query");
+            "login and post-fence refresh use two consistent snapshots");
         Check.Equal(
             0,
             store.LegacyCharacterReadCount,

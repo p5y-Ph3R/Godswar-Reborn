@@ -155,7 +155,18 @@ internal sealed partial class GameClientHandler : IClientHandler
                     Console.WriteLine($"[world] failed broadcasting leave: {ex.Message}");
                 }
 
-                _registry.Remove(_session);
+                if (_character is { } character &&
+                    TryGetCharacterOwnership(
+                        character,
+                        out var ownership))
+                {
+                    _registry.Remove(_session, ownership);
+                }
+                else
+                {
+                    _registry.Remove(_session);
+                }
+
                 _registered = false;
             }
 
@@ -194,6 +205,11 @@ internal sealed partial class GameClientHandler : IClientHandler
                 Opcodes.UiHeartbeat))
         {
             _session.Disconnect();
+            return;
+        }
+
+        if (!AuthorizeAuthenticatedPacket())
+        {
             return;
         }
 

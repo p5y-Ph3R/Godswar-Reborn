@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Characters;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -45,17 +47,34 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
                     ZodiacLevel = 1,
                     ZodiacEnergy = 1_000
                 });
+            await using var checkpoints =
+                new PostgresCharacterCheckpointStore(
+                    connectionString);
+            var acquired = await checkpoints.AcquireAsync(
+                account.Id,
+                character.Id,
+                Guid.NewGuid()) ??
+                throw new InvalidOperationException(
+                    "PostgreSQL Zodiac fixture could not acquire ownership.");
+            var ownership = acquired.Owner;
 
             var wrongOwner = await storeA.UpgradeZodiacLevelAsync(
                 account.Id + 1,
-                character.Id);
+                character.Id,
+                ownership);
             Check.True(
                 wrongOwner is null,
                 "PostgreSQL Zodiac upgrade binds character ownership");
 
             var raced = await Task.WhenAll(
-                storeA.UpgradeZodiacLevelAsync(account.Id, character.Id),
-                storeB.UpgradeZodiacLevelAsync(account.Id, character.Id));
+                storeA.UpgradeZodiacLevelAsync(
+                    account.Id,
+                    character.Id,
+                    ownership),
+                storeB.UpgradeZodiacLevelAsync(
+                    account.Id,
+                    character.Id,
+                    ownership));
             Check.Equal(
                 1,
                 raced.Count(result => result is { Committed: true }),
@@ -72,6 +91,33 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
                 (int)ZodiacLevelUpgradeStatus.InsufficientEnergy,
                 (int)rejected.Status,
                 "concurrent PostgreSQL duplicate sees committed energy");
+
+            var replacement = await checkpoints.AcquireAsync(
+                account.Id,
+                character.Id,
+                Guid.NewGuid()) ??
+                throw new InvalidOperationException(
+                    "PostgreSQL Zodiac fixture could not replace ownership.");
+            var staleRejected = false;
+            try
+            {
+                await storeA.UpgradeZodiacLevelAsync(
+                    account.Id,
+                    character.Id,
+                    ownership);
+            }
+            catch (PlayerOwnershipValidationException error)
+            {
+                staleRejected =
+                    error.Status ==
+                    PlayerOwnershipValidationStatus.OwnershipLost;
+            }
+            Check.True(
+                staleRejected,
+                "replaced PostgreSQL Zodiac owner fails closed");
+            Check.True(
+                replacement.Owner.Generation > ownership.Generation,
+                "Zodiac ownership replacement advances generation");
 
             await using var reopenedStore = new PostgresGameStore(
                 connectionString);

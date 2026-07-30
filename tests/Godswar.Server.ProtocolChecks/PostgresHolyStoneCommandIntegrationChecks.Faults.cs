@@ -224,6 +224,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         RequireReceipt(
             await CreateExecutor(dataSource).TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 HolyStoneCommandOperation.Mount,
                 operationId),
             HolyStoneExecutionDisposition.Duplicate,

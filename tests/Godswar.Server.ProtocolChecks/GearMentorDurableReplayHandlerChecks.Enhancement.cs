@@ -362,10 +362,14 @@ internal static partial class GearMentorDurableReplayHandlerChecks
 
         var transport = new ReplayCaptureTransport();
         var session = new ClientSession(transport);
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            persisted.AccountId,
+            hydrated.Character);
         var handler = new GameClientHandler(
             session,
             new ReplayGameStore(),
-            new GameSessionRegistry(),
+            registry,
             new ReplaySnapshotReader(persisted),
             WorldContentReaderTestFixtures.Empty,
             gearEnhancementCommands: executor);
@@ -519,6 +523,7 @@ internal static partial class GearMentorDurableReplayHandlerChecks
 
         public Task<GearEnhancementExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             GearEnhancementCommandOperation operation,
             Guid clientOperationId,
             CancellationToken cancellationToken = default)

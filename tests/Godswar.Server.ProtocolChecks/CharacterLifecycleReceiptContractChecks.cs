@@ -89,6 +89,9 @@ internal static partial class CharacterLifecycleCommandContractChecks
             CommandFamily.CharacterDelete,
             CharacterLifecycleReceiptStatus.StaleLifecycleVersion);
         _ = Receipt(
+            CommandFamily.CharacterDelete,
+            CharacterLifecycleReceiptStatus.CharacterInUse);
+        _ = Receipt(
             CommandFamily.CharacterRestore,
             CharacterLifecycleReceiptStatus.StaleLifecycleVersion,
             restoreUntil,

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Realtime;
@@ -57,6 +58,14 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             MapTransitionTargetMapId,
             [],
             TestTime);
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            actorSession,
+            actor.AccountId,
+            actor,
+            new PlayerOwnershipFence(
+                CheckpointOwnerId,
+                Generation: 1));
         registry.JoinMap(
             actorSession,
             actor.AccountId,

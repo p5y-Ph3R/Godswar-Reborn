@@ -86,13 +86,14 @@ internal static partial class
                 "The fixture requested an invalid Zodiac activation.");
         }
 
-        return ZodiacSkillGridActivationCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            ZodiacSkillGridActivationCommandEnvelope.Create(
             subject ?? fixture.Subject,
             new CommandConnectionCorrelation(
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static ZodiacSkillGridActivationExecutionReceipt

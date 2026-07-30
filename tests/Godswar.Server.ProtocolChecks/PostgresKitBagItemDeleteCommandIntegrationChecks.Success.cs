@@ -19,6 +19,8 @@ internal static partial class
 
         var missing = await executor.TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId);
         Check.Equal(
             (int)KitBagItemDeleteExecutionDisposition.ReplayNotFound,
@@ -61,6 +63,8 @@ internal static partial class
 
         var replay = await executor.TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId);
         var replayReceipt = RequireReceipt(
             replay,

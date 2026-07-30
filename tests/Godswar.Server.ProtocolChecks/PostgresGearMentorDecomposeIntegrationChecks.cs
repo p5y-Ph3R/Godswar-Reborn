@@ -93,13 +93,14 @@ internal static partial class PostgresGearMentorDecomposeIntegrationChecks
         }
 
         var envelope =
-            GearMentorDecomposeGearCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                GearMentorDecomposeGearCommandEnvelope.Create(
                 fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command);
+                command));
         return await executor.ExecuteAsync(envelope);
     }
 

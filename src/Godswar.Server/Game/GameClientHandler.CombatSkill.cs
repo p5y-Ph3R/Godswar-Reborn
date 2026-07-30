@@ -200,6 +200,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "single_skill_damage"))
+        {
+            return;
+        }
+
         var manaCost = Math.Max(0, combat.Mp);
         int currentMana;
         var manaReserved = false;
@@ -231,6 +237,8 @@ internal sealed partial class GameClientHandler
 
         var requestedDamage = SkillCombatResolver.CalculateDamage(_character, combat);
         if (requestedDamage == 0 ||
+            !RevalidateCurrentWorldEffectOwnership(
+                "single_skill_damage") ||
             !_registry.TryApplyMonsterDamage(
                 _character.CurrentMap,
                 cast.TargetObjectId,

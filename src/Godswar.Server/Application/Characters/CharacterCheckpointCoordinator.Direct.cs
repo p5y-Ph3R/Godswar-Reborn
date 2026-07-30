@@ -67,7 +67,7 @@ internal sealed partial class CharacterCheckpointCoordinator
     public async Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default)
     {
         CharacterCheckpointValidation.ValidateIdentity(

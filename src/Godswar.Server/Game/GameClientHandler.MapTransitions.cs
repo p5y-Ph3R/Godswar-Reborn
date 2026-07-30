@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 
@@ -76,10 +77,19 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return false;
+        }
 
         await InterruptPendingSkillCastAsync(
             SkillCastInterruptionReason.MapTransition,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return false;
+        }
 
         var sourceMapId = _character.CurrentMap;
         var sourceX = _character.PositionX;
@@ -98,6 +108,11 @@ internal sealed partial class GameClientHandler
                 return false;
             }
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return false;
+        }
         catch (Exception error)
             when (error is not OperationCanceledException ||
                   !cancellationToken.IsCancellationRequested)
@@ -106,6 +121,10 @@ internal sealed partial class GameClientHandler
                 $"[map] transition persistence rejected " +
                 $"character={_character.Name} " +
                 $"map={sourceMapId}->{targetMapId}: {error.Message}");
+            return false;
+        }
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return false;
         }
 
@@ -130,6 +149,7 @@ internal sealed partial class GameClientHandler
                 sourceX,
                 sourceZ,
                 $"registry transfer failed: {error.Message}",
+                ownership,
                 CancellationToken.None);
             return false;
         }
@@ -143,6 +163,7 @@ internal sealed partial class GameClientHandler
                 sourceX,
                 sourceZ,
                 "registry rejected the authoritative source state",
+                ownership,
                 CancellationToken.None);
             return false;
         }
@@ -177,6 +198,11 @@ internal sealed partial class GameClientHandler
                 cancellationToken,
                 _session,
                 "MapTransitionSourceRemove");
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return false;
+            }
+
             await _session.SendAsync(
                 PacketBuilder.SceneChange(
                     LocalPlayerObjectId,
@@ -211,8 +237,14 @@ internal sealed partial class GameClientHandler
         float sourceX,
         float sourceZ,
         string reason,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         try
         {
             if (!await PersistRelocationCheckpointAsync(

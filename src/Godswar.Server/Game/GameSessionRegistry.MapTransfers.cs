@@ -34,7 +34,12 @@ internal sealed partial class GameSessionRegistry
             if (!_sessions.TryGetValue(session, out var existing) ||
                 existing.MapId != expectedSourceMapId ||
                 existing.Character.CurrentMap != expectedSourceMapId ||
-                !existing.WorldReady)
+                !existing.WorldReady ||
+                existing.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    existing.AccountId,
+                    session,
+                    existing.Ownership))
             {
                 return false;
             }

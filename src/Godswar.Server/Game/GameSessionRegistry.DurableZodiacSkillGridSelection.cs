@@ -21,7 +21,12 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(executor);
         ArgumentNullException.ThrowIfNull(envelope);
         if (envelope.Subject.AccountId != accountId ||
-            envelope.Subject.CharacterId != character.Id)
+            envelope.Subject.CharacterId != character.Id ||
+            envelope.Ownership.IsValid &&
+            !IsCurrentAccountSession(
+                accountId,
+                session,
+                envelope.Ownership))
         {
             return ZodiacSkillGridSelectionExecutionResult
                 .PreconditionFailed();
@@ -32,6 +37,16 @@ internal sealed partial class GameSessionRegistry
             var result = await executor.ExecuteAsync(
                 envelope,
                 cancellationToken);
+            if (envelope.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    accountId,
+                    session,
+                    envelope.Ownership))
+            {
+                return ZodiacSkillGridSelectionExecutionResult
+                    .PreconditionFailed();
+            }
+
             ValidateSelectionProjection(
                 character.Id,
                 envelope.Command.GridIndex,
@@ -58,6 +73,16 @@ internal sealed partial class GameSessionRegistry
             var result = await executor.ExecuteAsync(
                 envelope,
                 cancellationToken);
+            if (envelope.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    accountId,
+                    session,
+                    envelope.Ownership))
+            {
+                return ZodiacSkillGridSelectionExecutionResult
+                    .PreconditionFailed();
+            }
+
             ValidateSelectionProjection(
                 character.Id,
                 envelope.Command.GridIndex,

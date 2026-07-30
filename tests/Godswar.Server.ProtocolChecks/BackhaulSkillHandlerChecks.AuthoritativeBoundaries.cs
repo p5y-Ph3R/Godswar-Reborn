@@ -483,6 +483,11 @@ internal static partial class BackhaulSkillHandlerChecks
                 PeloponneseMapId,
                 [CreateLethalAttackMonster()],
                 TestTime);
+            GameHandlerOwnershipTestFences.Bind(
+                registry,
+                socket.Session,
+                AccountId,
+                character);
             registry.JoinMap(
                 socket.Session,
                 AccountId,

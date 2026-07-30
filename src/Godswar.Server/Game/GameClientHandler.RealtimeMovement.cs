@@ -127,6 +127,12 @@ internal sealed partial class GameClientHandler
             return default;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_movement_tick"))
+        {
+            return default;
+        }
+
         EnsureRealtimeWorld();
         AuthoritativePlayerMovementDecision? decision = null;
         byte[]? viewerMovement = null;
@@ -453,6 +459,11 @@ internal sealed partial class GameClientHandler
             movement?.AuthoritativeAuxiliary ?? 1f,
             _character.CurrentMap,
             rejection);
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_snapshot_publish"))
+        {
+            return;
+        }
         if (_session.TryPublishRealtimeSnapshot(snapshot))
         {
             if (_phase4UdpEvidencePending &&
@@ -475,47 +486,6 @@ internal sealed partial class GameClientHandler
             if (!correction)
             {
                 _realtimeSnapshotDirty = false;
-            }
-        }
-    }
-
-    private async Task PublishRealtimeMovementEffectsAsync(
-        RealtimeMovementEffects effects,
-        CancellationToken cancellationToken)
-    {
-        if (effects.ReliableCorrection is not null)
-        {
-            await _session.SendAsync(
-                effects.ReliableCorrection,
-                cancellationToken,
-                "RealtimeMovementCorrection");
-            if (effects.AcceptanceCorrectionInputId is { } inputId)
-            {
-                ConfirmPhase4AcceptanceCorrectionWrite(inputId);
-            }
-        }
-        if (effects.ViewerMovement is not null)
-        {
-            await _registry.BroadcastToMapAsync(
-                effects.MapId,
-                effects.ViewerMovement,
-                cancellationToken,
-                _session,
-                "RealtimeMovementWorld");
-        }
-        if (effects.PositionSave is { } save)
-        {
-            if (_character is not null &&
-                _character.Id == save.CharacterId)
-            {
-                await PersistPositionCheckpointAsync(
-                    _character,
-                    save.MapId,
-                    save.X,
-                    save.Z,
-                    save.Revision,
-                    force: false,
-                    cancellationToken);
             }
         }
     }

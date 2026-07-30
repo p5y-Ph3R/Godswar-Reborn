@@ -29,8 +29,23 @@ internal static class DataArchitectureCheckCatalog
             "Bounded character checkpoint coordinator",
             CharacterCheckpointCoordinatorChecks.RunAsync),
         (
+            "Player ownership command-envelope contract",
+            PlayerOwnershipContractChecks.RunAsync),
+        (
+            "Durable player ownership architecture ratchet",
+            PlayerOwnershipArchitectureChecks.RunAsync),
+        (
+            "Fail-closed durable registry composition",
+            DurableRegistryCompositionChecks.RunAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
+        (
+            "Replacement-session leave ownership",
+            PlayerOwnershipSessionRaceChecks.RunAsync),
+        (
+            "Replacement-session gameplay effect ownership",
+            PlayerOwnershipGameplayRaceChecks.RunAsync),
         (
             "PostgreSQL character checkpoint migration contract",
             PostgresCharacterCheckpointMigrationChecks.RunAsync),

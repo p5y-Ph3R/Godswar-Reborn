@@ -116,6 +116,13 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!_registry.IsCurrentAccountSession(
+                _account.Id,
+                _session))
+        {
+            _session.Disconnect();
+            return;
+        }
 
         if (_session.AllowsPayloadDiagnostics)
         {
@@ -298,10 +305,20 @@ internal sealed partial class GameClientHandler
             Console.WriteLine("[world] ignored ClientReady: no active character");
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
 
         var mapContent = await _worldContent.ReadMapAsync(
             _character.CurrentMap,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         var loadedNpcDefinitions = mapContent.Npcs;
         var npcDefinitions = new List<NpcSpawnDefinition>(loadedNpcDefinitions.Count);
         foreach (var npc in loadedNpcDefinitions)
@@ -322,6 +339,11 @@ internal sealed partial class GameClientHandler
             npcDefinitions,
             _session,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         npcDefinitions = npcCatalog.Definitions.ToList();
         InstallNpcCatalog(npcCatalog);
 
@@ -379,6 +401,10 @@ internal sealed partial class GameClientHandler
                 _character.CurrentMap,
                 monsterRuntimeInitializedAt,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -393,6 +419,10 @@ internal sealed partial class GameClientHandler
                     worldBoss.TemplateKey,
                     DateTimeOffset.MaxValue);
             }
+        }
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
         }
 
         var runtimeMonsterCount = _registry.InitializeMapMonsters(
@@ -423,6 +453,10 @@ internal sealed partial class GameClientHandler
         }
 
         await RefreshNearbyWorldObjectsAsync("initial", cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
 
         await SendMapPlayersAsync(cancellationToken);
     }

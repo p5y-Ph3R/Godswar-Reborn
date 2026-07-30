@@ -370,6 +370,11 @@ internal static partial class BackhaulSkillHandlerChecks
                     Level = 1
                 }]);
             var registry = CreateRegistry();
+            GameHandlerOwnershipTestFences.Bind(
+                registry,
+                socket.Session,
+                AccountId,
+                character);
             registry.JoinMap(
                 socket.Session,
                 AccountId,

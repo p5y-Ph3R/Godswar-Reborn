@@ -99,13 +99,14 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 "The fixture requested an invalid Holy Stone command.");
         }
         return await executor.ExecuteAsync(
-            HolyStoneCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                HolyStoneCommandEnvelope.Create(
                 fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command));
+                command)));
     }
 
     private static HolyStoneExecutionReceipt RequireReceipt(

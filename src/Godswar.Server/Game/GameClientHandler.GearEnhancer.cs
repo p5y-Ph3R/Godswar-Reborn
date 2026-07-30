@@ -211,6 +211,12 @@ internal sealed partial class GameClientHandler
             }
             else
             {
+                if (!AllowLegacyPlayerMutationFallback(
+                        "gear_enhancement"))
+                {
+                    return;
+                }
+
                 var selections = nativeSelections ?? new GearEnhancerSelectionTriplet(
                     CaptureGearEnhancerSelection(_character.KitBag, gearKitBagSlot),
                     CaptureGearEnhancerSelection(_character.KitBag, catalystKitBagSlot),

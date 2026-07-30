@@ -65,7 +65,8 @@ internal sealed partial class GameClientHandler
             monsterDeathRewardCommands = null,
         IPetDurableCommandExecutor?
             petDurableCommands = null,
-        bool requiresDurableMonsterRewardCommands = false)
+        bool requiresDurableMonsterRewardCommands = false,
+        bool requiresDurablePlayerCommands = false)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -109,7 +110,38 @@ internal sealed partial class GameClientHandler
             monsterDeathRewardCommands;
         _requiresDurableMonsterRewardCommands =
             requiresDurableMonsterRewardCommands;
+        _requiresDurablePlayerCommands =
+            requiresDurablePlayerCommands;
         _petDurableCommands = petDurableCommands;
+        if (_requiresDurablePlayerCommands &&
+            new object?[]
+            {
+                _talentUpgradeCommands,
+                _developerItemGrantCommands,
+                _developerBagClearCommands,
+                _makeAttributeStoneCommands,
+                _gearMentorMaterialConversionCommands,
+                _gearMentorDecomposeGearCommands,
+                _gearEnhancementCommands,
+                _equipmentForgeCommands,
+                _kitBagItemDeleteCommands,
+                _kitBagItemMoveCommands,
+                _equipmentBagTransferCommands,
+                _holyStoneCommands,
+                _zodiacSkillGridActivationCommands,
+                _zodiacSkillGridUpgradeCommands,
+                _zodiacSkillGridSelectionCommands,
+                _characterLifecycleCommands,
+                _petDurableCommands,
+                _characterCheckpoints
+            }.Any(static provider => provider is null))
+        {
+            throw new InvalidOperationException(
+                "Production player mutation composition requires every " +
+                "extracted durable command executor and the character " +
+                "checkpoint coordinator.");
+        }
+
         _developerCommands =
             developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess = legacyAuthenticationAccess;

@@ -109,7 +109,10 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
 
         var transport = new TransferCaptureTransport();
         var session = new ClientSession(transport);
-        var registry = new GameSessionRegistry();
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            baseSnapshot.AccountId,
+            live);
         registry.JoinMap(
             session,
             baseSnapshot.AccountId,
@@ -415,6 +418,7 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         public Task<EquipmentBagTransferExecutionResult>
             TryReplayAsync(
                 CommandSubject subject,
+                PlayerOwnershipFence ownership,
                 Guid clientOperationId,
                 int equipmentSlot,
                 int kitBagSlot,

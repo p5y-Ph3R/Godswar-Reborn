@@ -148,6 +148,11 @@ internal static partial class
                 "Make Attribute Stone fixture captures an economy baseline");
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
 
         return new StoneFixture(

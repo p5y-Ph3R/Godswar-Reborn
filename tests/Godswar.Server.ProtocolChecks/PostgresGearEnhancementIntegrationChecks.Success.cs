@@ -177,6 +177,8 @@ internal static partial class PostgresGearEnhancementIntegrationChecks
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
                 fixture.Operation,
                 operationId),
             GearEnhancementExecutionDisposition.Duplicate,
@@ -187,6 +189,8 @@ internal static partial class PostgresGearEnhancementIntegrationChecks
             "explicit replay returns exact stored receipt");
         var missingOtherFamily = await executor.TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.CharacterId),
             GearEnhancementCommandOperation.Enhance,
             operationId);
         Check.Equal(

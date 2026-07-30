@@ -37,6 +37,11 @@ internal static partial class MapTransitionHandlerChecks
             z: -80f);
         var store = new MapTransitionStore(actor);
         var registry = CreateRegistry();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            actorSocket.Session,
+            actor.AccountId,
+            actor);
         registry.JoinMap(
             actorSocket.Session,
             actor.AccountId,
@@ -140,6 +145,11 @@ internal static partial class MapTransitionHandlerChecks
         var store = new MapTransitionStore(actor);
         store.BlockNpcSpawnReads();
         var registry = CreateRegistry();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            actorSocket.Session,
+            actor.AccountId,
+            actor);
         registry.JoinMap(
             actorSocket.Session,
             actor.AccountId,
@@ -227,6 +237,11 @@ internal static partial class MapTransitionHandlerChecks
             FailPositionWriteAttempt = 2
         };
         var registry = CreateRegistry();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            actorSocket.Session,
+            actor.AccountId,
+            actor);
         var handler = CreateEnteredHandler(
             actorSocket.Session,
             store,

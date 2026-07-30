@@ -257,7 +257,8 @@ internal static partial class
                     fixture.ExpectedSelectedState,
                     out var command);
             var envelope =
-                GearMentorTransformCrystalCommandEnvelope.Create(
+                PlayerOwnershipTestFences.Bind(
+                    GearMentorTransformCrystalCommandEnvelope.Create(
                     subject,
                     correlation,
                     DateTimeOffset.UtcNow,
@@ -265,7 +266,7 @@ internal static partial class
                 {
                     Family =
                         CommandFamily.GearMentorCombineGemPieces
-                };
+                });
             result = await executor.ExecuteAsync(envelope);
         }
         else
@@ -279,7 +280,8 @@ internal static partial class
                     fixture.ExpectedSelectedState,
                     out var command);
             var envelope =
-                GearMentorCombineGemPiecesCommandEnvelope.Create(
+                PlayerOwnershipTestFences.Bind(
+                    GearMentorCombineGemPiecesCommandEnvelope.Create(
                     subject,
                     correlation,
                     DateTimeOffset.UtcNow,
@@ -287,7 +289,7 @@ internal static partial class
                 {
                     Family =
                         CommandFamily.GearMentorTransformCrystal
-                };
+                });
             result = await executor.ExecuteAsync(envelope);
         }
 

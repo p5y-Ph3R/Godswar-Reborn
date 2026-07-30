@@ -112,11 +112,12 @@ internal static partial class
             }
 
             return await executor.ExecuteAsync(
-                GearMentorTransformCrystalCommandEnvelope.Create(
+                PlayerOwnershipTestFences.Bind(
+                    GearMentorTransformCrystalCommandEnvelope.Create(
                     subject,
                     correlation,
                     DateTimeOffset.UtcNow,
-                    command));
+                    command)));
         }
 
         if (!GearMentorCombineGemPiecesCommandEnvelope.TryCreateCommand(
@@ -133,11 +134,12 @@ internal static partial class
         }
 
         return await executor.ExecuteAsync(
-            GearMentorCombineGemPiecesCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                GearMentorCombineGemPiecesCommandEnvelope.Create(
                 subject,
                 correlation,
                 DateTimeOffset.UtcNow,
-                combineCommand));
+                combineCommand)));
     }
 
     private static Task<GearMentorMaterialConversionExecutionResult>
@@ -151,8 +153,16 @@ internal static partial class
             fixture.CharacterId);
         return fixture.Family ==
                CommandFamily.GearMentorTransformCrystal
-            ? executor.TryReplayTransformAsync(subject, operationId)
-            : executor.TryReplayCombineAsync(subject, operationId);
+            ? executor.TryReplayTransformAsync(
+                subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
+                operationId)
+            : executor.TryReplayCombineAsync(
+                subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
+                operationId);
     }
 
     private static GearMentorMaterialConversionExecutionReceipt

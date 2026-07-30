@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.State;
@@ -20,6 +21,12 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
+
         var family = HolyStoneProtocol.Family(intent.Operation);
         if (_holyStoneCommands is null)
         {
@@ -42,9 +49,15 @@ internal sealed partial class GameClientHandler
             // changed both states.
             execution = await _holyStoneCommands.TryReplayAsync(
                 subject,
+                ownership,
                 intent.Operation,
                 clientOperationId,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (execution.Disposition ==
                 HolyStoneExecutionDisposition.ReplayNotFound)
             {
@@ -54,6 +67,7 @@ internal sealed partial class GameClientHandler
                     dialogIndex,
                     intent,
                     clientOperationId,
+                    ownership,
                     cancellationToken);
             }
         }
@@ -66,12 +80,22 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordHolyStoneProviderUnavailable(
                 family,
                 clientOperationId,
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -84,6 +108,7 @@ internal sealed partial class GameClientHandler
                 clientOperationId,
                 execution.Disposition,
                 kitBagBeforeExecution,
+                ownership,
                 cancellationToken);
             return;
         }
@@ -104,6 +129,7 @@ internal sealed partial class GameClientHandler
                     HolyStoneExecutionDisposition.Committed
                     ? receipt
                     : null,
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -121,6 +147,11 @@ internal sealed partial class GameClientHandler
                 family,
                 clientOperationId,
                 $"projection reload failed: {ex.Message}");
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -145,6 +176,7 @@ internal sealed partial class GameClientHandler
             int dialogIndex,
             HolyStoneWireIntent intent,
             Guid clientOperationId,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         var expectedTarget = intent.TargetLocation switch
@@ -188,7 +220,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _holyStoneCommands!.ExecuteAsync(
             envelope,
             cancellationToken);
@@ -201,6 +236,7 @@ internal sealed partial class GameClientHandler
         Guid clientOperationId,
         HolyStoneExecutionDisposition disposition,
         string kitBagBeforeExecution,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var family = HolyStoneProtocol.Family(intent.Operation);
@@ -229,6 +265,7 @@ internal sealed partial class GameClientHandler
         {
             await ReloadDurableHolyStoneProjectionAsync(
                 committedReceipt: null,
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)

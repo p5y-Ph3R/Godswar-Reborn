@@ -90,13 +90,14 @@ internal static partial class
                 "The fixture requested an invalid item-move command.");
         }
         return await executor.ExecuteAsync(
-            KitBagItemMoveCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                KitBagItemMoveCommandEnvelope.Create(
                 subject ?? fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command));
+                command)));
     }
 
     private static KitBagItemMoveExecutionReceipt RequireReceipt(

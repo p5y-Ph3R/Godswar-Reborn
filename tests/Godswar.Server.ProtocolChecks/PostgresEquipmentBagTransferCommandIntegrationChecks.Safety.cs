@@ -317,6 +317,8 @@ internal static partial class
         RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 operationId,
                 fixture.EquipmentSlot,
                 fixture.KitBagSlot),

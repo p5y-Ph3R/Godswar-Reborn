@@ -71,5 +71,7 @@ internal sealed class GameClientHandlerFactory(
             petDurableCommands:
                 postgresRuntime?.PetDurableCommands,
             requiresDurableMonsterRewardCommands:
+                postgresRuntime is not null,
+            requiresDurablePlayerCommands:
                 postgresRuntime is not null);
 }

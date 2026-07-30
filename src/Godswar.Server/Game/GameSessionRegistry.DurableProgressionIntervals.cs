@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
@@ -20,6 +21,16 @@ internal sealed partial class GameSessionRegistry
         var executor = _progressionIntervalSettlementCommands ??
             throw new InvalidOperationException(
                 "Progression interval settlement is not configured.");
+        if (!TryGetCurrentWorldOwnership(
+                session,
+                accountId,
+                characterId,
+                out var ownership))
+        {
+            throw new PlayerOwnershipValidationException(
+                PlayerOwnershipValidationStatus.OwnershipLost);
+        }
+
         onlineFrom =
             ProgressionIntervalSettlementCommandEnvelope.CanonicalizeUtc(
                 onlineFrom.ToUniversalTime());
@@ -27,22 +38,28 @@ internal sealed partial class GameSessionRegistry
             ProgressionIntervalSettlementCommandEnvelope.CanonicalizeUtc(
                 onlineUntil.ToUniversalTime());
         await RetryDurableProgressionForCharacterAsync(
+            session,
+            accountId,
             characterId,
+            ownership,
             cancellationToken);
         var state = _durableProgressionOnlineSessions.AddOrUpdate(
             session,
             _ => new DurableProgressionOnlineSessionState(
                 accountId,
                 characterId,
-                onlineFrom),
+                onlineFrom,
+                ownership),
             (_, existing) =>
                 existing.AccountId == accountId &&
-                existing.CharacterId == characterId
+                existing.CharacterId == characterId &&
+                existing.Ownership == ownership
                     ? existing
                     : new DurableProgressionOnlineSessionState(
                         accountId,
                         characterId,
-                        onlineFrom));
+                        onlineFrom,
+                        ownership));
 
         await state.Gate.WaitAsync(cancellationToken);
         try
@@ -63,11 +80,34 @@ internal sealed partial class GameSessionRegistry
                 onlineUntil);
             if (state.Pending is not null)
             {
-                var result =
-                    await ExecuteDurableProgressionIntervalAsync(
-                        executor,
-                        state.Pending.Envelope,
-                        cancellationToken);
+                ProgressionIntervalSettlementExecutionResult result;
+                try
+                {
+                    result =
+                        await ExecuteDurableProgressionIntervalAsync(
+                            executor,
+                            state.Pending.Envelope,
+                            cancellationToken);
+                }
+                catch (PlayerOwnershipValidationException)
+                {
+                    state.Superseded = true;
+                    session.Disconnect();
+                    throw;
+                }
+
+                if (!IsCurrentWorldOwnership(
+                        session,
+                        accountId,
+                        characterId,
+                        ownership))
+                {
+                    state.Superseded = true;
+                    throw new PlayerOwnershipValidationException(
+                        PlayerOwnershipValidationStatus
+                            .OwnershipLost);
+                }
+
                 if (!result.IsSuccess ||
                     result.Receipt is null ||
                     result.Projection is null)
@@ -137,6 +177,10 @@ internal sealed partial class GameSessionRegistry
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            throw;
+        }
         catch
         {
             CommandMetrics.Record(
@@ -175,7 +219,10 @@ internal sealed partial class GameSessionRegistry
                 boundedUntil,
                 session.IsSecure
                     ? CommandTransportKind.SecureTlsLegacy
-                    : CommandTransportKind.LegacyTcp);
+                    : CommandTransportKind.LegacyTcp) with
+            {
+                Ownership = state.Ownership
+            };
         state.Pending =
             new DurableProgressionPendingInterval(envelope);
     }
@@ -303,11 +350,13 @@ internal sealed partial class GameSessionRegistry
     private sealed class DurableProgressionOnlineSessionState(
         int accountId,
         int characterId,
-        DateTimeOffset onlineStartedAt)
+        DateTimeOffset onlineStartedAt,
+        PlayerOwnershipFence ownership)
     {
         public int AccountId { get; } = accountId;
         public int CharacterId { get; } = characterId;
         public Guid OnlineSessionId { get; } = Guid.NewGuid();
+        public PlayerOwnershipFence Ownership { get; } = ownership;
         public DateTimeOffset LastAccountedAt { get; set; } =
             ProgressionIntervalSettlementCommandEnvelope.CanonicalizeUtc(
                 onlineStartedAt.ToUniversalTime());

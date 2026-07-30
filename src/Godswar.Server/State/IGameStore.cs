@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Characters;
+
 namespace Godswar.Server.State;
 
 internal sealed record GearEnhancementTransactionResult(
@@ -76,13 +78,6 @@ internal interface IGameStore : IAsyncDisposable
         int talentExperience,
         CancellationToken cancellationToken = default);
 
-    Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
-        int accountId,
-        int characterId,
-        int experienceGainX100,
-        int talentExperienceGainX100,
-        CancellationToken cancellationToken = default);
-
     Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
         int accountId,
         int characterId,
@@ -94,6 +89,7 @@ internal interface IGameStore : IAsyncDisposable
     Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
         int accountId,
         int characterId,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken = default);
 
     Task<ZodiacSkillGridActivationResult?> ActivateZodiacSkillGridAsync(

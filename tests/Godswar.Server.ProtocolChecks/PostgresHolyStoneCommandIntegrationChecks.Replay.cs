@@ -40,6 +40,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var replayed = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 HolyStoneCommandOperation.Mount,
                 operationId),
             HolyStoneExecutionDisposition.Duplicate,
@@ -95,6 +97,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 HolyStoneCommandOperation.Mount,
                 operationId),
             HolyStoneExecutionDisposition.Duplicate,
@@ -185,6 +189,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 HolyStoneCommandOperation.Drill,
                 operationId),
             HolyStoneExecutionDisposition.Duplicate,

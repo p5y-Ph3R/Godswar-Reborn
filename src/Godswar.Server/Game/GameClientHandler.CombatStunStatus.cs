@@ -24,6 +24,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "stun_skill_effect"))
+        {
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         if (_nextSkillCastAt.TryGetValue(cast.SkillId, out var nextCastAt) &&
             nextCastAt > now)

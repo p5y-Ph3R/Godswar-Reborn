@@ -127,6 +127,11 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
                 commandTimeoutSeconds: 30,
                 CancellationToken.None),
             "equipment-forge fixture captures an economy baseline");
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new ForgeFixture(
             username,

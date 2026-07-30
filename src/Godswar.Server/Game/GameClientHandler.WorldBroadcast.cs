@@ -73,7 +73,16 @@ internal sealed partial class GameClientHandler
 
     private async Task BroadcastPlayerLeaveAsync(CancellationToken cancellationToken)
     {
-        if (_character is null)
+        if (_character is null ||
+            _account is null ||
+            !TryGetCharacterOwnership(
+                _character,
+                out var ownership) ||
+            !_registry.IsCurrentWorldOwnership(
+                _session,
+                _account.Id,
+                _character.Id,
+                ownership))
         {
             return;
         }

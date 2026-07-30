@@ -36,12 +36,19 @@ internal static partial class
         var session = new ClientSession(transport);
         var registry = new GameSessionRegistry(store);
         var registryMirror = CreateCharacter();
+        var ownership = GameHandlerOwnershipTestFences.Bind(
+            registry,
+            session,
+            AccountId,
+            registryMirror);
         registry.JoinMap(
             session,
             AccountId,
             registryMirror,
             objectId: 0x0000_1448);
         var character = CreateCharacter();
+        character.CheckpointOwnerId = ownership.OwnerId;
+        character.CheckpointOwnerGeneration = ownership.Generation;
         var executor = new CapturingExecutor(
             (_, cancellationToken) =>
             {

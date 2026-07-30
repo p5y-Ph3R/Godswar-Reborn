@@ -28,7 +28,8 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
                 ownerSource,
                 ownerRoll.Next)
             .ExecuteAsync(
-                EquipmentForgeCommandEnvelope.Create(
+                PlayerOwnershipTestFences.Bind(
+                    EquipmentForgeCommandEnvelope.Create(
                     new CommandSubject(
                         ownership.AccountId + 1,
                         ownership.CharacterId),
@@ -36,7 +37,7 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
                         Guid.NewGuid(),
                         CommandTransportKind.SecureTlsLegacy),
                     DateTimeOffset.UtcNow,
-                    ownerCommand));
+                    ownerCommand)));
         Check.Equal(
             (int)EquipmentForgeExecutionDisposition.PreconditionFailed,
             (int)wrongOwnerResult.Disposition,
@@ -72,6 +73,8 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
         var duplicate = RequireReceipt(
             await replayExecutor.TryReplayAsync(
                 replayFixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    replayFixture.Subject.CharacterId),
                 operationId),
             EquipmentForgeExecutionDisposition.Duplicate,
             "exact UUID replay");

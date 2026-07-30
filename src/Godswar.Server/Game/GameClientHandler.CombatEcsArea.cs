@@ -21,6 +21,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "ecs_area_skill_damage"))
+        {
+            return;
+        }
+
         var manaCost = Math.Max(0, combat.Mp);
         var decision = _registry.ResolvePlayerCombatEcs(
             _session,

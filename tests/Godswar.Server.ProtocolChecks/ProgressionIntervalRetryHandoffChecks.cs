@@ -30,6 +30,11 @@ internal static class ProgressionIntervalRetryHandoffChecks
         registry.ConfigureProgressionIntervalSettlement(executor);
         await using var session = new ClientSession(
             new ScriptedLegacyByteTransport());
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            session,
+            character.AccountId,
+            character);
         registry.JoinMap(
             session,
             character.AccountId,

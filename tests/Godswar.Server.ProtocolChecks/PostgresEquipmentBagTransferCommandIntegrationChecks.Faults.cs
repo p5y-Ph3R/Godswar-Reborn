@@ -103,6 +103,8 @@ internal static partial class
         RequireReceipt(
             await CreateExecutor(dataSource).TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 operationId,
                 fixture.EquipmentSlot,
                 fixture.KitBagSlot),

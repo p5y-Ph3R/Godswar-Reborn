@@ -205,46 +205,6 @@ internal sealed partial class JsonGameStore :
         }
     }
 
-    public async Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
-        int accountId,
-        int characterId,
-        int experienceGainX100,
-        int talentExperienceGainX100,
-        CancellationToken cancellationToken = default)
-    {
-        experienceGainX100 = Math.Max(0, experienceGainX100);
-        talentExperienceGainX100 = Math.Max(0, talentExperienceGainX100);
-
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var db = await LoadUnsafeAsync(cancellationToken);
-            var character = db.Characters.FirstOrDefault(candidate =>
-                candidate.AccountId == accountId &&
-                candidate.Id == characterId);
-            if (character is null)
-            {
-                return null;
-            }
-
-            character.ZodiacAccumulatedExperienceX100 = checked(
-                character.ZodiacAccumulatedExperienceX100 + experienceGainX100);
-            character.ZodiacAccumulatedTalentExperienceX100 = checked(
-                character.ZodiacAccumulatedTalentExperienceX100 + talentExperienceGainX100);
-            await SaveUnsafeAsync(db, cancellationToken);
-
-            return new ZodiacAccumulationResult(
-                experienceGainX100,
-                talentExperienceGainX100,
-                character.ZodiacAccumulatedExperienceX100,
-                character.ZodiacAccumulatedTalentExperienceX100);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
     public async Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
         int accountId,
         int characterId,

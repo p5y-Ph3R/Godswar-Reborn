@@ -145,7 +145,7 @@ internal static partial class CharacterSnapshotHandlerChecks
         private readonly TaskCompletionSource _firstAcquireStarted =
             NewSignal();
         private readonly object _sync = new();
-        private CharacterCheckpointOwner? _currentOwner;
+        private PlayerOwnershipFence? _currentOwner;
         private long _generation;
         private int _acquireCalls;
         private int _releaseCalls;
@@ -221,10 +221,10 @@ internal static partial class CharacterSnapshotHandlerChecks
                     "Unexpected checkpoint acquisition attempt.");
             }
 
-            CharacterCheckpointOwner owner;
+            PlayerOwnershipFence owner;
             lock (_sync)
             {
-                owner = new CharacterCheckpointOwner(
+                owner = new PlayerOwnershipFence(
                     ownerId,
                     ++_generation);
                 _currentOwner = owner;
@@ -239,7 +239,7 @@ internal static partial class CharacterSnapshotHandlerChecks
         public Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
             int accountId,
             int characterId,
-            CharacterCheckpointOwner owner,
+            PlayerOwnershipFence owner,
             CancellationToken cancellationToken = default)
         {
             lock (_sync)

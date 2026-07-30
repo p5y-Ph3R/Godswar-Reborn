@@ -89,6 +89,11 @@ internal static partial class
             transaction,
             accountId,
             characterId);
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
 
         return new ClearFixture(

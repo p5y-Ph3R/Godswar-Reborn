@@ -37,6 +37,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         await CheckSecureRealtimeMapTransitionAsync();
         await CheckLegacyMovementRejectedAfterCutoverAsync();
         await CheckAcceptedRealtimeMovementInterruptsCastAsync();
+        await CheckReplacementSessionRealtimeMovementAsync();
     }
 
     private static async Task
@@ -275,7 +276,9 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         GameSessionRegistry registry,
         GameCharacter character,
         SecurePhase4AcceptanceFaults?
-            phase4AcceptanceFaults = null)
+            phase4AcceptanceFaults = null,
+        ICharacterCheckpointCoordinator?
+            characterCheckpoints = null)
     {
         var handler = new GameClientHandler(
             session,
@@ -286,6 +289,7 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             phase4AcceptanceFaults:
                 phase4AcceptanceFaults,
             characterCheckpoints:
+                characterCheckpoints ??
                 new GameHandlerCheckpointCoordinatorStub());
         character.CheckpointOwnerId = CheckpointOwnerId;
         character.CheckpointOwnerGeneration = 1;

@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -30,7 +31,6 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
-
         if (packet.ClientOperationId is { } operationId)
         {
             await HandleDurableZodiacSkillGridSelectionAsync(
@@ -69,6 +69,12 @@ internal sealed partial class GameClientHandler
                 request.Value1,
                 request.Value2,
                 out _))
+        {
+            return;
+        }
+
+        if (!AllowLegacyPlayerMutationFallback(
+                "zodiac_skill_grid_selection"))
         {
             return;
         }
@@ -117,6 +123,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
 
         if (!_session.IsSecure ||
             _zodiacSkillGridSelectionCommands is null)
@@ -160,7 +171,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         ZodiacSkillGridSelectionExecutionResult result;
         try
         {
@@ -182,11 +196,21 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception exception)
         {
             RecordZodiacSelectionUnavailable(
                 operationId,
                 exception.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 

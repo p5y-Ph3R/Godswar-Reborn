@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -34,6 +35,11 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return true;
+        }
 
         ClearGearEnhancerSelection();
         var subject = new CommandSubject(
@@ -55,10 +61,16 @@ internal sealed partial class GameClientHandler
                     var enhancement =
                         await _gearEnhancementCommands.TryReplayAsync(
                             subject,
+                            ownership,
                             GearEnhancementOperationFromFamily(
                                 family.Value),
                             packet.ClientOperationId.Value,
                             cancellationToken);
+                    if (!RevalidateCurrentPlayerOwnership(ownership))
+                    {
+                        return true;
+                    }
+
                     if (enhancement.Disposition ==
                         GearEnhancementExecutionDisposition.ReplayNotFound)
                     {
@@ -75,6 +87,7 @@ internal sealed partial class GameClientHandler
                     await CompleteUnroutedGearEnhancementReplayAsync(
                         packet.ClientOperationId.Value,
                         enhancement.Receipt!,
+                        ownership,
                         cancellationToken);
                     return true;
 
@@ -89,8 +102,14 @@ internal sealed partial class GameClientHandler
                         await _gearMentorDecomposeGearCommands
                             .TryReplayAsync(
                                 subject,
+                                ownership,
                                 packet.ClientOperationId.Value,
                                 cancellationToken);
+                    if (!RevalidateCurrentPlayerOwnership(ownership))
+                    {
+                        return true;
+                    }
+
                     if (decompose.Disposition ==
                         GearMentorDecomposeGearExecutionDisposition
                             .ReplayNotFound)
@@ -109,6 +128,7 @@ internal sealed partial class GameClientHandler
                         npcId,
                         packet.ClientOperationId.Value,
                         decompose.Receipt!,
+                        ownership,
                         cancellationToken);
                     return true;
 
@@ -122,8 +142,14 @@ internal sealed partial class GameClientHandler
                     var stone =
                         await _makeAttributeStoneCommands.TryReplayAsync(
                             subject,
+                            ownership,
                             packet.ClientOperationId.Value,
                             cancellationToken);
+                    if (!RevalidateCurrentPlayerOwnership(ownership))
+                    {
+                        return true;
+                    }
+
                     if (stone.Disposition ==
                         MakeAttributeStoneExecutionDisposition
                             .ReplayNotFound)
@@ -142,6 +168,7 @@ internal sealed partial class GameClientHandler
                         npcId,
                         packet.ClientOperationId.Value,
                         stone.Receipt!,
+                        ownership,
                         cancellationToken);
                     return true;
 
@@ -158,13 +185,20 @@ internal sealed partial class GameClientHandler
                         ? await _gearMentorMaterialConversionCommands
                             .TryReplayTransformAsync(
                                 subject,
+                                ownership,
                                 packet.ClientOperationId.Value,
                                 cancellationToken)
                         : await _gearMentorMaterialConversionCommands
                             .TryReplayCombineAsync(
                                 subject,
+                                ownership,
                                 packet.ClientOperationId.Value,
                                 cancellationToken);
+                    if (!RevalidateCurrentPlayerOwnership(ownership))
+                    {
+                        return true;
+                    }
+
                     if (conversion.Disposition ==
                         GearMentorMaterialConversionExecutionDisposition
                             .ReplayNotFound)
@@ -184,6 +218,7 @@ internal sealed partial class GameClientHandler
                         packet.ClientOperationId.Value,
                         family.Value,
                         conversion.Receipt!,
+                        ownership,
                         cancellationToken);
                     return true;
 
@@ -198,6 +233,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return true;
         }
         catch (Exception ex)
         {
@@ -219,6 +259,7 @@ internal sealed partial class GameClientHandler
     private async Task CompleteUnroutedGearEnhancementReplayAsync(
         Guid clientOperationId,
         GearEnhancementExecutionReceipt receipt,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         if (receipt.CharacterId != _character!.Id ||
@@ -236,7 +277,14 @@ internal sealed partial class GameClientHandler
             CommandIdentityStrength.ClientOperationId,
             CommandOutcome.Duplicate);
         var kitBagBeforeReplay = _character.KitBag;
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await SendDurableGearEnhancementReceiptAsync(
             clientOperationId,
             receipt,
@@ -254,6 +302,7 @@ internal sealed partial class GameClientHandler
         uint npcId,
         Guid clientOperationId,
         MakeAttributeStoneExecutionReceipt receipt,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         if (receipt.CharacterId != _character!.Id)
@@ -264,7 +313,14 @@ internal sealed partial class GameClientHandler
         }
 
         var kitBagBeforeReplay = _character.KitBag;
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await SendUnroutedReplayResponseAsync(
             npcId,
             clientOperationId,
@@ -280,6 +336,7 @@ internal sealed partial class GameClientHandler
         uint npcId,
         Guid clientOperationId,
         GearMentorDecomposeGearExecutionReceipt receipt,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         if (receipt.Family != CommandFamily.GearMentorDecomposeGear ||
@@ -290,7 +347,14 @@ internal sealed partial class GameClientHandler
         }
 
         var kitBagBeforeReplay = _character.KitBag;
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await SendUnroutedReplayResponseAsync(
             npcId,
             clientOperationId,
@@ -309,6 +373,7 @@ internal sealed partial class GameClientHandler
             Guid clientOperationId,
             CommandFamily family,
             GearMentorMaterialConversionExecutionReceipt receipt,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         if (receipt.Family != family ||
@@ -320,7 +385,14 @@ internal sealed partial class GameClientHandler
         }
 
         var kitBagBeforeReplay = _character.KitBag;
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await SendUnroutedReplayResponseAsync(
             npcId,
             clientOperationId,

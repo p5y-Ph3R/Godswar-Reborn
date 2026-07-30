@@ -81,10 +81,14 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
             WithBag(snapshot, persistedBag),
             projectionFails);
         store ??= new DeleteStore();
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            snapshot.AccountId,
+            character);
         var handler = new GameClientHandler(
             session,
             store,
-            new GameSessionRegistry(),
+            registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             kitBagItemDeleteCommands: executor);
@@ -247,6 +251,7 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
 
         public Task<KitBagItemDeleteExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             Guid clientOperationId,
             CancellationToken cancellationToken = default)
         {

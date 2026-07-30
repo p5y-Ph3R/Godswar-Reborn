@@ -156,7 +156,7 @@ internal sealed partial class CharacterCheckpointCoordinator
     private void RemoveOwnerPending(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner)
+        PlayerOwnershipFence owner)
     {
         lock (_sync)
         {
@@ -177,7 +177,7 @@ internal sealed partial class CharacterCheckpointCoordinator
     private void RemoveOtherOwnerPending(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner)
+        PlayerOwnershipFence owner)
     {
         lock (_sync)
         {

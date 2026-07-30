@@ -227,7 +227,8 @@ internal static class
             long sequence,
             DateTimeOffset from,
             DateTimeOffset until) =>
-        ProgressionIntervalSettlementCommandEnvelope.Create(
+        PlayerOwnershipTestFences.Bind(
+            ProgressionIntervalSettlementCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -235,7 +236,7 @@ internal static class
             sequence,
             from,
             until,
-            CommandTransportKind.LegacyTcp);
+            CommandTransportKind.LegacyTcp));
 
     private static async Task<Fixture> CreateFixtureAsync(
         NpgsqlDataSource dataSource)
@@ -326,6 +327,11 @@ internal static class
             await modifier.ExecuteNonQueryAsync();
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new Fixture(accountId, characterId);
     }

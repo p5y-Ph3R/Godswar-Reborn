@@ -60,6 +60,12 @@ internal sealed partial class GameClientHandler
         var stoneSlot = intent.StoneKitBagSlot;
         var destinationSlot = stoneSlot >= 0 ? stoneSlot : -1;
         var socketIndex = intent.SocketIndex;
+        if (!AllowLegacyPlayerMutationFallback(
+                "holy_stone"))
+        {
+            return;
+        }
+
         var kitBagBeforeMutation = _character!.KitBag;
         var updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
             _account!.Id,

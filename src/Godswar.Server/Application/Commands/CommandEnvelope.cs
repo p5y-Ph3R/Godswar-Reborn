@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using Godswar.Server.Application.Characters;
 
 namespace Godswar.Server.Application.Commands;
 
@@ -64,7 +65,8 @@ internal enum CommandEnvelopeValidation : byte
     RequestHashConflict = 8,
     OperationIdentityConflict = 9,
     InvalidCommand = 10,
-    BoundsExceeded = 11
+    BoundsExceeded = 11,
+    InvalidOwnership = 12
 }
 
 internal readonly record struct CommandSubject(
@@ -84,7 +86,15 @@ internal sealed record CommandEnvelope<TCommand>(
     DateTimeOffset ReceivedAt,
     string OperationId,
     string RequestHash,
-    TCommand Command);
+    TCommand Command)
+{
+    /// <summary>
+    /// Session-wide PostgreSQL fencing identity. It is deliberately excluded
+    /// from the command digest because reconnecting owners must be able to
+    /// replay the same durable operation identity.
+    /// </summary>
+    public PlayerOwnershipFence Ownership { get; init; }
+}
 
 internal static class CommandEnvelopeContract
 {
@@ -229,6 +239,32 @@ internal static class CommandEnvelopeContract
         return FixedTimeEquals(envelope.OperationId, expectedOperationId)
             ? CommandEnvelopeValidation.Valid
             : CommandEnvelopeValidation.OperationIdentityConflict;
+    }
+
+    public static CommandEnvelope<TCommand> BindOwnership<TCommand>(
+        CommandEnvelope<TCommand> envelope,
+        PlayerOwnershipFence ownership)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        ownership.Validate();
+        if (envelope.Subject.CharacterId <= 0)
+        {
+            throw new ArgumentException(
+                "Player ownership can be bound only to a character command.",
+                nameof(envelope));
+        }
+
+        return envelope with { Ownership = ownership };
+    }
+
+    public static CommandEnvelopeValidation ValidateOwnership<TCommand>(
+        CommandEnvelope<TCommand> envelope)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        return envelope.Subject.CharacterId > 0 &&
+            envelope.Ownership.IsValid
+                ? CommandEnvelopeValidation.Valid
+                : CommandEnvelopeValidation.InvalidOwnership;
     }
 
     private static string ComputeRequestHash(

@@ -473,6 +473,8 @@ internal sealed partial class GameClientHandler
             IsMapTransitionPending ||
             !_registered ||
             !_worldPresenceAnnounced ||
+            !RevalidateCurrentWorldEffectOwnership(
+                "pending_skill_completion") ||
             _registry.GetPlayerLifeRevision(_session) !=
                 context.LifeRevision ||
             MathF.Abs(character.PositionX - context.StartX) >

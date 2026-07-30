@@ -65,13 +65,14 @@ internal static partial class
             fixture.CharacterId);
 
         var hatchOperation = Guid.NewGuid();
-        var hatchEnvelope = BagItemActivationCommandEnvelope.Create(
-            subject,
-            correlation,
-            DateTimeOffset.UtcNow,
-            new BagItemActivationCommand(
-                hatchOperation,
-                fixture.EggSlot));
+        var hatchEnvelope = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                new BagItemActivationCommand(
+                    hatchOperation,
+                    fixture.EggSlot)));
         var concurrentHatch = await Task.WhenAll(
             executor.ExecuteAsync(hatchEnvelope),
             executor.ExecuteAsync(hatchEnvelope));
@@ -124,13 +125,14 @@ internal static partial class
             "hatch replay preserves its random aptitude/stat outcome");
 
         var conflict = await restarted.ExecuteAsync(
-            BagItemActivationCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                BagItemActivationCommandEnvelope.Create(
                 subject,
                 correlation,
                 DateTimeOffset.UtcNow,
                 new BagItemActivationCommand(
                     hatchOperation,
-                    fixture.EggSlot - 1)));
+                    fixture.EggSlot - 1))));
         Check.True(
             conflict.Disposition ==
                 PetDurableExecutionDisposition.RequestHashConflict,
@@ -139,13 +141,14 @@ internal static partial class
         var equipmentBagSlot = await PrepareEquipmentActivationAsync(
             dataSource,
             fixture);
-        var equipEnvelope = BagItemActivationCommandEnvelope.Create(
-            subject,
-            correlation,
-            DateTimeOffset.UtcNow,
-            new BagItemActivationCommand(
-                Guid.NewGuid(),
-                equipmentBagSlot));
+        var equipEnvelope = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                new BagItemActivationCommand(
+                    Guid.NewGuid(),
+                    equipmentBagSlot)));
         var equipped = await executor.ExecuteAsync(equipEnvelope);
         var replayedEquip = await restarted.ExecuteAsync(equipEnvelope);
         Check.True(
@@ -174,13 +177,14 @@ internal static partial class
             hatchReceipt.PetId,
             3_000);
         var levelOperation = Guid.NewGuid();
-        var levelEnvelope = PetLevelUpgradeCommandEnvelope.Create(
-            subject,
-            correlation,
-            DateTimeOffset.UtcNow,
-            new PetLevelUpgradeCommand(
-                levelOperation,
-                hatchReceipt.PetId));
+        var levelEnvelope = PlayerOwnershipTestFences.Bind(
+            PetLevelUpgradeCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                new PetLevelUpgradeCommand(
+                    levelOperation,
+                    hatchReceipt.PetId)));
         var concurrentLevel = await Task.WhenAll(
             executor.ExecuteAsync(levelEnvelope),
             executor.ExecuteAsync(levelEnvelope));

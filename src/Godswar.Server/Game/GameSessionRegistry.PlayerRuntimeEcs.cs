@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Players;
@@ -20,12 +21,17 @@ internal sealed partial class GameSessionRegistry
         ZodiacEnergyOptions? zodiacEnergyOptions,
         MonsterRuntimeMode monsterRuntimeMode,
         PlayerRuntimeMode playerRuntimeMode,
-        ICharacterCheckpointCoordinator? checkpointCoordinator = null)
+        ICharacterCheckpointCoordinator? checkpointCoordinator = null,
+        IProgressionIntervalSettlementCommandExecutor?
+            progressionIntervalSettlementCommands = null,
+        bool requiresDurablePlayerPersistence = false)
         : this(
             store,
             zodiacEnergyOptions,
             monsterRuntimeMode,
-            checkpointCoordinator)
+            checkpointCoordinator,
+            progressionIntervalSettlementCommands,
+            requiresDurablePlayerPersistence)
     {
         if (!Enum.IsDefined(playerRuntimeMode))
         {

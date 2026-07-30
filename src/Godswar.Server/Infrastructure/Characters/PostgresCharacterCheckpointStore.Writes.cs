@@ -299,7 +299,7 @@ internal sealed partial class PostgresCharacterCheckpointStore
     private static bool Owns(
         Guid? storedOwnerId,
         long storedGeneration,
-        CharacterCheckpointOwner owner) =>
+        PlayerOwnershipFence owner) =>
         storedOwnerId == owner.OwnerId &&
         storedGeneration == owner.Generation;
 

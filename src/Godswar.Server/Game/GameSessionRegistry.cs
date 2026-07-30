@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -31,10 +32,18 @@ internal sealed partial class GameSessionRegistry
         IGameStore? store = null,
         ZodiacEnergyOptions? zodiacEnergyOptions = null,
         MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
-        ICharacterCheckpointCoordinator? checkpointCoordinator = null)
+        ICharacterCheckpointCoordinator? checkpointCoordinator = null,
+        IProgressionIntervalSettlementCommandExecutor?
+            progressionIntervalSettlementCommands = null,
+        bool requiresDurablePlayerPersistence = false)
     {
         _store = store;
         _checkpointCoordinator = checkpointCoordinator;
+        _progressionIntervalSettlementCommands =
+            progressionIntervalSettlementCommands;
+        _requiresDurablePlayerPersistence =
+            requiresDurablePlayerPersistence;
+        ValidateDurablePlayerPersistenceComposition();
         if (!Enum.IsDefined(monsterRuntimeMode))
         {
             throw new ArgumentOutOfRangeException(
@@ -60,6 +69,24 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset? joinedAt = null)
     {
         var onlineStartedAt = joinedAt ?? DateTimeOffset.UtcNow;
+        var ownership = PlayerOwnership(character);
+        if (_requiresDurablePlayerPersistence &&
+            !ownership.IsValid)
+        {
+            throw new InvalidOperationException(
+                "Durable world join requires an acquired player " +
+                "ownership fence.");
+        }
+        if (ownership.IsValid &&
+            !IsCurrentAccountSession(
+                accountId,
+                session,
+                ownership))
+        {
+            throw new InvalidOperationException(
+                "The world join does not own the current player fence.");
+        }
+
         var context = new GameSessionContext(
             session,
             accountId,
@@ -69,7 +96,10 @@ internal sealed partial class GameSessionRegistry
             objectId,
             character,
             worldReady,
-            0);
+            0)
+        {
+            Ownership = ownership
+        };
         GameSessionContext? previous = null;
         lock (_gate)
         {
@@ -173,12 +203,40 @@ internal sealed partial class GameSessionRegistry
 
     public void Remove(ClientSession session, bool preservePlayerStatus = false)
     {
+        RemoveCore(
+            session,
+            expectedOwnership: null,
+            preservePlayerStatus);
+    }
+
+    public bool Remove(
+        ClientSession session,
+        PlayerOwnershipFence expectedOwnership,
+        bool preservePlayerStatus = false) =>
+        RemoveCore(
+            session,
+            expectedOwnership,
+            preservePlayerStatus);
+
+    private bool RemoveCore(
+        ClientSession session,
+        PlayerOwnershipFence? expectedOwnership,
+        bool preservePlayerStatus)
+    {
         GameSessionContext? context;
         lock (_gate)
         {
-            if (!_sessions.TryRemove(session, out context))
+            if (!_sessions.TryGetValue(session, out context) ||
+                expectedOwnership is { } ownership &&
+                context.Ownership != ownership ||
+                !_sessions.TryRemove(
+                    new KeyValuePair<
+                        ClientSession,
+                        GameSessionContext>(
+                        session,
+                        context)))
             {
-                return;
+                return false;
             }
 
             RemoveFromMap(context);
@@ -198,10 +256,11 @@ internal sealed partial class GameSessionRegistry
 
         if (context is null)
         {
-            return;
+            return false;
         }
 
         Console.WriteLine($"[world] left map={context.MapId} character={context.DisplayName} account={context.AccountId} population={GetMapPopulation(context.MapId)}");
+        return true;
     }
 
     public void RemovePlayerStatusState(ClientSession session)
@@ -222,6 +281,17 @@ internal sealed partial class GameSessionRegistry
         lock (_gate)
         {
             if (!_sessions.TryGetValue(session, out var existing))
+            {
+                return;
+            }
+
+            var ownership = PlayerOwnership(character);
+            if (existing.Ownership.IsValid &&
+                (ownership != existing.Ownership ||
+                 !IsCurrentAccountSession(
+                     existing.AccountId,
+                     session,
+                     ownership)))
             {
                 return;
             }
@@ -330,6 +400,14 @@ internal sealed partial class GameSessionRegistry
         {
             unseenPlayers = [];
             if (!_sessions.TryGetValue(session, out var existing))
+            {
+                return false;
+            }
+            if (existing.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    existing.AccountId,
+                    session,
+                    existing.Ownership))
             {
                 return false;
             }

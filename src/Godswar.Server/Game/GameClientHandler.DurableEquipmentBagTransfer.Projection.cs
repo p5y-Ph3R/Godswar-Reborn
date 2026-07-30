@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.State;
 
@@ -7,6 +8,7 @@ internal sealed partial class GameClientHandler
 {
     private async Task
         ReloadDurableEquipmentBagTransferProjectionAsync(
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken,
             EquipmentBagTransferExecutionReceipt?
                 committedReceipt = null)
@@ -14,6 +16,12 @@ internal sealed partial class GameClientHandler
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The equipment owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

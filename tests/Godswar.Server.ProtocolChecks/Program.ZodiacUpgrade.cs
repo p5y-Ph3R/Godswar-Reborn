@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -184,22 +185,27 @@ internal static partial class Program
                     });
                 accountId = account.Id;
                 characterId = character.Id;
+                var ownership =
+                    new PlayerOwnershipFence(Guid.NewGuid(), 1);
 
                 var wrongOwner = await store.UpgradeZodiacLevelAsync(
                     account.Id + 1,
-                    character.Id);
+                    character.Id,
+                    ownership);
                 Check.True(wrongOwner is null, "wrong account cannot upgrade Zodiac");
 
                 var result = await store.UpgradeZodiacLevelAsync(
                     account.Id,
-                    character.Id)
+                    character.Id,
+                    ownership)
                     ?? throw new InvalidOperationException(
                         "JSON Zodiac character was not found");
                 Check.True(result.Committed, "eligible JSON Zodiac upgrade commits");
 
                 var second = await store.UpgradeZodiacLevelAsync(
                     account.Id,
-                    character.Id)
+                    character.Id,
+                    ownership)
                     ?? throw new InvalidOperationException(
                         "JSON Zodiac character disappeared after upgrade");
                 Check.Equal(
@@ -248,6 +254,18 @@ internal static partial class Program
             ZodiacLevel = 1,
             ZodiacEnergy = 1_000
         };
+        var ownership = new PlayerOwnershipFence(Guid.NewGuid(), 1);
+        character.CheckpointOwnerId = ownership.OwnerId;
+        character.CheckpointOwnerGeneration = ownership.Generation;
+        registry.ReplaceAccountSession(
+            character.AccountId,
+            socket.Session);
+        Check.True(
+            registry.TryBindAccountSessionOwnership(
+                character.AccountId,
+                socket.Session,
+                ownership),
+            "serialized Zodiac fixture binds player ownership");
         registry.JoinMap(
             socket.Session,
             character.AccountId,
@@ -265,6 +283,7 @@ internal static partial class Program
             socket.Session,
             character.AccountId,
             character,
+            ownership,
             CancellationToken.None);
         var prematureEntry = await Task.WhenAny(
             store.UpgradeEntered,
@@ -325,6 +344,7 @@ internal static partial class Program
             UpgradeZodiacLevelAsync(
                 int accountId,
                 int characterId,
+                PlayerOwnershipFence ownership,
                 CancellationToken cancellationToken = default)
         {
             _upgradeEntered.TrySetResult(true);

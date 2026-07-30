@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
 using Npgsql;
@@ -12,6 +14,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     IPetDurableCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
 
@@ -21,6 +24,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -93,6 +97,13 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
                 envelope,
                 transition,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    envelope.Subject,
+                    envelope.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = result.Disposition.ToString().ToLowerInvariant();
             return result;
         }
@@ -129,6 +140,21 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            envelope.Subject,
+            envelope.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PetDurableExecutionResult.NonDurable(
+                PetDurableExecutionDisposition.CharacterNotFound);
+        }
+        ownership.RequireCurrent();
+
         var character = await LockCharacterAsync(
             connection,
             transaction,

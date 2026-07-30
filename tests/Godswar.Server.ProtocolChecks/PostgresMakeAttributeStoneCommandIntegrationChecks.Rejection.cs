@@ -56,6 +56,8 @@ internal static partial class
                 new CommandSubject(
                     fixture.AccountId,
                     fixture.CharacterId),
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
                 operationId);
         }
 

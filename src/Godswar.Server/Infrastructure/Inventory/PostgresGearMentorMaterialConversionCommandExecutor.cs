@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -14,6 +16,7 @@ internal sealed partial class
     IGearMentorMaterialConversionCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly
@@ -26,6 +29,7 @@ internal sealed partial class
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -76,30 +80,6 @@ internal sealed partial class
             cancellationToken);
     }
 
-    public Task<GearMentorMaterialConversionExecutionResult>
-        TryReplayTransformAsync(
-            CommandSubject subject,
-            Guid clientOperationId,
-            CancellationToken cancellationToken = default) =>
-        TryReplayAsync(
-            subject,
-            clientOperationId,
-            CommandFamily.GearMentorTransformCrystal,
-            GearMentorTransformCrystalCommandEnvelope.CreateOperationId,
-            cancellationToken);
-
-    public Task<GearMentorMaterialConversionExecutionResult>
-        TryReplayCombineAsync(
-            CommandSubject subject,
-            Guid clientOperationId,
-            CancellationToken cancellationToken = default) =>
-        TryReplayAsync(
-            subject,
-            clientOperationId,
-            CommandFamily.GearMentorCombineGemPieces,
-            GearMentorCombineGemPiecesCommandEnvelope.CreateOperationId,
-            cancellationToken);
-
     private async Task<GearMentorMaterialConversionExecutionResult>
         ExecuteAsync(
             MaterialCommandContext context,
@@ -129,6 +109,13 @@ internal sealed partial class
             var result = await ExecuteTransactionAsync(
                 context,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    context.Subject,
+                    context.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = OutcomeCode(result.Disposition);
             return result;
         }
@@ -142,92 +129,6 @@ internal sealed partial class
             PostgresCommandMetrics.RecordInbox(
                 GearMentorMaterialConversionPersistenceCodec
                     .CommandFamilyCode(context.Family),
-                outcome,
-                Stopwatch.GetElapsedTime(started));
-        }
-    }
-
-    private async Task<GearMentorMaterialConversionExecutionResult>
-        TryReplayAsync(
-            CommandSubject subject,
-            Guid clientOperationId,
-            CommandFamily family,
-            Func<CommandSubject, Guid, string> operationIdFactory,
-            CancellationToken cancellationToken)
-    {
-        var started = Stopwatch.GetTimestamp();
-        var outcome = "provider_unavailable";
-        try
-        {
-            if (subject.AccountId <= 0 ||
-                subject.CharacterId <= 0 ||
-                clientOperationId == Guid.Empty)
-            {
-                outcome = "invalid_intent";
-                return GearMentorMaterialConversionExecutionResult
-                    .InvalidIntent();
-            }
-
-            var operationId = DecodeDigest(
-                operationIdFactory(subject, clientOperationId));
-            var principalKey = subject.AccountId.ToString(
-                CultureInfo.InvariantCulture);
-            var aggregateKey =
-                GearMentorMaterialConversionPersistenceCodec
-                    .AggregateKey(subject.CharacterId);
-
-            await using var connection =
-                await _dataSource.OpenConnectionAsync(cancellationToken);
-            await using var transaction =
-                await connection.BeginTransactionAsync(cancellationToken);
-            if (await LockCharacterAsync(
-                    connection,
-                    transaction,
-                    subject,
-                    cancellationToken) is null)
-            {
-                outcome = "precondition_failed";
-                return GearMentorMaterialConversionExecutionResult
-                    .PreconditionFailed();
-            }
-
-            var stored = await ReadInboxAsync(
-                connection,
-                transaction,
-                family,
-                principalKey,
-                aggregateKey,
-                operationId,
-                cancellationToken);
-            if (stored is null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                outcome = "replay_not_found";
-                return GearMentorMaterialConversionExecutionResult
-                    .ReplayNotFound();
-            }
-
-            var receipt = ValidateStoredResult(stored, family);
-            await RecordDuplicateAsync(
-                connection,
-                transaction,
-                stored.InboxId,
-                cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            outcome = "duplicate";
-            return GearMentorMaterialConversionExecutionResult
-                .Duplicate(receipt);
-        }
-        catch (OperationCanceledException)
-        {
-            outcome = "cancelled";
-            throw;
-        }
-        finally
-        {
-            PostgresCommandMetrics.RecordInbox(
-                GearMentorMaterialConversionPersistenceCodec
-                    .CommandFamilyCode(family),
                 outcome,
                 Stopwatch.GetElapsedTime(started));
         }
@@ -250,6 +151,21 @@ internal sealed partial class
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            context.Subject,
+            context.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return GearMentorMaterialConversionExecutionResult
+                .PreconditionFailed();
+        }
+        ownership.RequireCurrent();
+
         var character = await LockCharacterAsync(
             connection,
             transaction,
@@ -431,6 +347,7 @@ internal sealed partial class
             expectedFamily,
             operation,
             envelope.Subject,
+            envelope.Ownership,
             envelope.OperationId,
             envelope.RequestHash,
             clientOperationId,
@@ -490,6 +407,7 @@ internal sealed partial class
         CommandFamily Family,
         GearMentorOperation Operation,
         CommandSubject Subject,
+        PlayerOwnershipFence Ownership,
         string OperationId,
         string RequestHash,
         Guid ClientOperationId,

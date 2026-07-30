@@ -22,7 +22,7 @@ internal sealed partial class CharacterCheckpointCoordinator
                 ? Position.CharacterId
                 : Vitals.CharacterId;
 
-        public CharacterCheckpointOwner Owner =>
+        public PlayerOwnershipFence Owner =>
             Facet == CharacterCheckpointFacet.Position
                 ? Position.Owner
                 : Vitals.Owner;

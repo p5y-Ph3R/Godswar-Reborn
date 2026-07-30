@@ -56,7 +56,7 @@ internal static class B13PersistenceWorkerChecks
             new CharacterPositionCheckpoint(
                 1,
                 1,
-                new CharacterCheckpointOwner(Guid.NewGuid(), 1),
+                new PlayerOwnershipFence(Guid.NewGuid(), 1),
                 1,
                 1,
                 1,
@@ -255,7 +255,7 @@ internal static class B13PersistenceWorkerChecks
         public Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
             int accountId,
             int characterId,
-            CharacterCheckpointOwner owner,
+            PlayerOwnershipFence owner,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(CharacterCheckpointReleaseStatus.Released);
     }

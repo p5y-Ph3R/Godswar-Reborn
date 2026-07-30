@@ -101,6 +101,11 @@ internal static partial class PostgresGearMentorDecomposeIntegrationChecks
                 commandTimeoutSeconds: 30,
                 CancellationToken.None),
             "Decompose fixture captures an economy baseline");
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
 
         return new DecomposeFixture(

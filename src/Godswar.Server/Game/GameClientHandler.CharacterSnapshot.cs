@@ -17,15 +17,37 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        var hadOwnership =
+            TryCaptureCurrentPlayerOwnership(out var ownership);
         try
         {
             var accountSnapshot = await _characterSnapshots.ReadAsync(
                 _account.Id,
                 cancellationToken);
+            if (hadOwnership &&
+                !RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return false;
+            }
+
             var hydrated =
                 CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
+            if (hydrated is not null)
+            {
+                InstallUpdatedCharacter(hydrated.Character);
+                hydrated = hydrated with
+                {
+                    Character = _character ??
+                        throw new InvalidDataException(
+                            "The hydrated character was not installed.")
+                };
+            }
+            else
+            {
+                _character = null;
+            }
+
             _characterLoadSnapshot = hydrated;
-            _character = hydrated?.Character;
             _characterSnapshotLoaded = true;
             _characterSnapshotBootstrapPending = hydrated is not null;
             ResetPlayerMovementEcs();

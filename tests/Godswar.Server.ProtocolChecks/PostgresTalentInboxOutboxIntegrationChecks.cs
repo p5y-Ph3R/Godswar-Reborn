@@ -60,6 +60,7 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
         await AssertDurableHashConflictAsync(connectionString);
         await AssertPreCommitFaultRollbackAsync(connectionString);
         await AssertAfterCommitRecoveryAsync(connectionString);
+        await AssertOwnershipFencingAsync(connectionString);
     }
 
     private static PostgresTalentUpgradeCommandExecutor CreateExecutor(
@@ -85,7 +86,8 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
                 "The integration fixture requested an invalid talent intent.");
         }
 
-        return TalentUpgradeCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            TalentUpgradeCommandEnvelope.Create(
             new CommandSubject(
                 accountId ?? fixture.AccountId,
                 fixture.CharacterId),
@@ -93,7 +95,7 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static TalentUpgradeExecutionReceipt RequireReceipt(

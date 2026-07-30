@@ -1,3 +1,4 @@
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
@@ -49,6 +50,7 @@ internal sealed partial class PostgresGameStore : IGameStore
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _playerOwnershipGuard;
     private readonly PostgresSchemaMigrationRunner _schemaMigrationRunner;
     public PostgresGameStore(string connectionString)
     {
@@ -58,6 +60,8 @@ internal sealed partial class PostgresGameStore : IGameStore
         }
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
+        _playerOwnershipGuard =
+            new PostgresPlayerOwnershipGuard(_dataSource);
         _schemaMigrationRunner = new PostgresSchemaMigrationRunner(_dataSource);
     }
 

@@ -48,6 +48,14 @@ internal static partial class
             1,
             await command.ExecuteNonQueryAsync(),
             "pet durable fixture inserts one egg");
+        await using var transaction =
+            await connection.BeginTransactionAsync();
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            account.Id,
+            character.Id);
+        await transaction.CommitAsync();
         return new PetFixture(account.Id, character.Id, eggSlot);
     }
 
@@ -118,14 +126,15 @@ internal static partial class
         bool isSummoned)
     {
         var envelope =
-            Application.Pets.PetPresenceTransitionCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                Application.Pets.PetPresenceTransitionCommandEnvelope.Create(
                 subject,
                 correlation,
                 DateTimeOffset.UtcNow,
                 new Application.Pets.PetPresenceTransitionCommand(
                     Guid.NewGuid(),
                     petId,
-                    operation));
+                    operation)));
         var committed = await executor.ExecuteAsync(envelope);
         var replayed = await restarted.ExecuteAsync(envelope);
         Check.True(

@@ -148,13 +148,11 @@ try
         options.Game.ZodiacEnergy,
         options.Game.Monsters.Runtime,
         options.Game.Players.Runtime,
-        characterCheckpoints);
-    if (postgresApplicationDataRuntime is not null)
-    {
-        registry.ConfigureProgressionIntervalSettlement(
-            postgresApplicationDataRuntime
-                .ProgressionIntervalSettlementCommands);
-    }
+        characterCheckpoints,
+        postgresApplicationDataRuntime?
+            .ProgressionIntervalSettlementCommands,
+        requiresDurablePlayerPersistence:
+            postgresApplicationDataRuntime is not null);
     var gameHandlerFactory = new GameClientHandlerFactory(
         store,
         registry,

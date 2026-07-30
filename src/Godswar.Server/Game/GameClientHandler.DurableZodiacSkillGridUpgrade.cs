@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -27,6 +28,11 @@ internal sealed partial class GameClientHandler
     {
         if (_character is null || _account is null)
         {
+            return;
+        }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
             return;
         }
 
@@ -83,7 +89,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
 
         ZodiacSkillGridUpgradeExecutionResult execution;
         try
@@ -107,11 +116,21 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordDurableZodiacSkillGridUpgradeUnavailable(
                 clientOperationId,
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 

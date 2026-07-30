@@ -21,6 +21,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!AllowLegacyPlayerMutationFallback(
+                "equipment_bag_transfer"))
+        {
+            return;
+        }
 
         if (sourceSlot is < 0 or >= 96)
         {
@@ -203,6 +208,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!AllowLegacyPlayerMutationFallback(
+                "kit_bag_item_move"))
+        {
+            return;
+        }
 
         if (sourceSlot is < 0 or >= 96 || destinationSlot is < 0 or >= 96)
         {
@@ -250,6 +260,11 @@ internal sealed partial class GameClientHandler
     private async Task HandleDeleteKitBagItemAsync(int sourceSlot, CancellationToken cancellationToken)
     {
         if (_account is null || _character is null)
+        {
+            return;
+        }
+        if (!AllowLegacyPlayerMutationFallback(
+                "kit_bag_item_delete"))
         {
             return;
         }

@@ -122,11 +122,52 @@ internal static partial class
             (int)createConflict.Disposition,
             "same create UUID cannot authorize a different character");
 
-        await SeedCheckpointLeaseAsync(
+        var activeOwnerId = await SeedCheckpointLeaseAsync(
             dataSource,
             account.Id,
             first.CharacterId,
             9);
+        var blockedDelete = await executor.ExecuteAsync(
+            DeleteEnvelope(
+                account.Id,
+                correlation,
+                new CharacterDeleteCommand(
+                    Guid.NewGuid(),
+                    0,
+                    first.CharacterName,
+                    first.CharacterId,
+                    first.LifecycleVersion)));
+        Check.True(
+            blockedDelete is
+            {
+                Disposition:
+                    CharacterLifecycleExecutionDisposition.TerminalRejected,
+                Receipt.Status:
+                    CharacterLifecycleReceiptStatus.CharacterInUse,
+                Receipt.LifecycleVersion: 1
+            },
+            "an active player ownership fence prevents deletion");
+        var activeFence = await ReadCheckpointFenceAsync(
+            dataSource,
+            account.Id,
+            first.CharacterId);
+        Check.True(
+            activeFence.OwnerId == activeOwnerId &&
+            activeFence.OwnerGeneration == 9,
+            "rejected deletion preserves the active owner generation");
+
+        await using (var checkpointStore =
+                     new PostgresCharacterCheckpointStore(dataSource))
+        {
+            Check.Equal(
+                (int)CharacterCheckpointReleaseStatus.Released,
+                (int)await checkpointStore.ReleaseAsync(
+                    account.Id,
+                    first.CharacterId,
+                    new PlayerOwnershipFence(activeOwnerId, 9)),
+                "the active session explicitly releases ownership");
+        }
+
         var deleteId = Guid.NewGuid();
         var deleteCommand = new CharacterDeleteCommand(
             deleteId,
@@ -156,7 +197,7 @@ internal static partial class
         Check.True(
             checkpointFence.OwnerId is null &&
             checkpointFence.OwnerGeneration == 9,
-            "delete clears ownership while preserving the monotonic checkpoint generation");
+            "delete leaves the released monotonic owner generation intact");
 
         var lostAckReplay = await executor.ExecuteAsync(
             DeleteEnvelope(
@@ -316,7 +357,7 @@ internal static partial class
             state.OutboxEvents,
             "every committed transition emits one strict outbox event");
         Check.Equal(
-            8L,
+            9L,
             state.InboxReceipts,
             "commits and terminal rejections retain durable receipts");
         Check.True(

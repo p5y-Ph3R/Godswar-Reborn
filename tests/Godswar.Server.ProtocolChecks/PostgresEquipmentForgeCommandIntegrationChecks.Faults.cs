@@ -78,7 +78,11 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
                 state.OutboxCount == 1,
                 $"after-commit fault at {stage}/{ordinal} preserves commit");
             var replay = await CreateExecutor(source, () => 99)
-                .TryReplayAsync(fixture.Subject, operationId);
+                .TryReplayAsync(
+                    fixture.Subject,
+                    PlayerOwnershipTestFences.ForCharacter(
+                        fixture.Subject.CharacterId),
+                    operationId);
             Check.Equal(
                 (int)EquipmentForgeExecutionDisposition.Duplicate,
                 (int)replay.Disposition,

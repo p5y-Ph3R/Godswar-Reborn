@@ -22,7 +22,12 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(envelope);
 
         if (envelope.Subject.AccountId != accountId ||
-            envelope.Subject.CharacterId != character.Id)
+            envelope.Subject.CharacterId != character.Id ||
+            envelope.Ownership.IsValid &&
+            !IsCurrentAccountSession(
+                accountId,
+                session,
+                envelope.Ownership))
         {
             return ZodiacSkillGridUpgradeExecutionResult
                 .PreconditionFailed();
@@ -33,6 +38,16 @@ internal sealed partial class GameSessionRegistry
             var untrackedExecution = await executor.ExecuteAsync(
                 envelope,
                 cancellationToken);
+            if (envelope.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    accountId,
+                    session,
+                    envelope.Ownership))
+            {
+                return ZodiacSkillGridUpgradeExecutionResult
+                    .PreconditionFailed();
+            }
+
             ValidateDurableZodiacSkillGridUpgradeProjection(
                 character.Id,
                 envelope.Command.GridIndex,
@@ -60,6 +75,16 @@ internal sealed partial class GameSessionRegistry
             var execution = await executor.ExecuteAsync(
                 envelope,
                 cancellationToken);
+            if (envelope.Ownership.IsValid &&
+                !IsCurrentAccountSession(
+                    accountId,
+                    session,
+                    envelope.Ownership))
+            {
+                return ZodiacSkillGridUpgradeExecutionResult
+                    .PreconditionFailed();
+            }
+
             ValidateDurableZodiacSkillGridUpgradeProjection(
                 character.Id,
                 envelope.Command.GridIndex,

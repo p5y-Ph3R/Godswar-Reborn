@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Packets;
@@ -50,7 +51,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var envelope = DeveloperBagClearCommandEnvelope.Create(
+        var unownedEnvelope = DeveloperBagClearCommandEnvelope.Create(
             new CommandSubject(_account.Id, _character.Id),
             new CommandConnectionCorrelation(
                 _commandConnectionId,
@@ -59,6 +60,13 @@ internal sealed partial class GameClientHandler
                     : CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
             command);
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return;
+        }
 
         DeveloperBagClearExecutionResult execution;
         try
@@ -75,6 +83,11 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch
         {
             CommandMetrics.Record(
@@ -82,6 +95,11 @@ internal sealed partial class GameClientHandler
                 envelope.IdentityStrength,
                 CommandOutcome.ProviderUnavailable);
             throw;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
         }
 
         if (!execution.IsSuccess)
@@ -133,6 +151,11 @@ internal sealed partial class GameClientHandler
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

@@ -32,6 +32,8 @@ internal static partial class
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 operationId,
                 fixture.EquipmentSlot,
                 fixture.KitBagSlot),
@@ -87,13 +89,14 @@ internal static partial class
                 mountRuntimeBlocked: true,
                 out var command),
             "valid mount observation fixture");
-        var envelope = EquipmentBagTransferCommandEnvelope.Create(
-            fixture.Subject,
-            new CommandConnectionCorrelation(
-                Guid.NewGuid(),
-                CommandTransportKind.SecureTlsLegacy),
-            DateTimeOffset.UtcNow,
-            command);
+        var envelope = PlayerOwnershipTestFences.Bind(
+            EquipmentBagTransferCommandEnvelope.Create(
+                fixture.Subject,
+                new CommandConnectionCorrelation(
+                    Guid.NewGuid(),
+                    CommandTransportKind.SecureTlsLegacy),
+                DateTimeOffset.UtcNow,
+                command));
         var invalid = envelope with
         {
             Command = envelope.Command with

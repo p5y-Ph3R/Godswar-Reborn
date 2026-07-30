@@ -156,6 +156,11 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 30,
                 CancellationToken.None),
             "Holy Stone fixture captures an economy baseline");
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new HolyFixture(
             accountId,

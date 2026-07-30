@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
@@ -119,20 +120,42 @@ internal sealed partial class GameSessionRegistry
         var committed = 0;
         foreach (var entry in due)
         {
+            if (!TryBindCurrentProgressionRetry(
+                    entry,
+                    out var session,
+                    out var ownership,
+                    out var envelope))
+            {
+                continue;
+            }
+
             try
             {
                 var result = await ExecuteDurableProgressionIntervalAsync(
                     executor,
-                    entry.Envelope,
+                    envelope,
                     cancellationToken);
                 EnsureRetrySucceeded(entry, result);
                 RemoveDurableProgressionRetry(entry);
+                if (!IsCurrentWorldOwnership(
+                        session,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        ownership))
+                {
+                    session.Disconnect();
+                }
+
                 committed++;
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (PlayerOwnershipValidationException)
+            {
+                session.Disconnect();
             }
             catch (Exception ex)
             {
@@ -147,7 +170,10 @@ internal sealed partial class GameSessionRegistry
     }
 
     private async Task RetryDurableProgressionForCharacterAsync(
+        ClientSession session,
+        int accountId,
         int characterId,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var executor = _progressionIntervalSettlementCommands;
@@ -157,16 +183,87 @@ internal sealed partial class GameSessionRegistry
         }
 
         var pending = SnapshotDurableProgressionRetries(
-            entry => entry.Envelope.Subject.CharacterId == characterId);
+            entry =>
+                entry.Envelope.Subject.AccountId == accountId &&
+                entry.Envelope.Subject.CharacterId == characterId);
         foreach (var entry in pending)
         {
-            var result = await ExecuteDurableProgressionIntervalAsync(
-                executor,
-                entry.Envelope,
-                cancellationToken);
+            if (!IsCurrentWorldOwnership(
+                    session,
+                    accountId,
+                    characterId,
+                    ownership))
+            {
+                throw new PlayerOwnershipValidationException(
+                    PlayerOwnershipValidationStatus.OwnershipLost);
+            }
+
+            var envelope = entry.Envelope with
+            {
+                Ownership = ownership
+            };
+            ProgressionIntervalSettlementExecutionResult result;
+            try
+            {
+                result = await ExecuteDurableProgressionIntervalAsync(
+                    executor,
+                    envelope,
+                    cancellationToken);
+            }
+            catch (PlayerOwnershipValidationException)
+            {
+                session.Disconnect();
+                throw;
+            }
+
             EnsureRetrySucceeded(entry, result);
             RemoveDurableProgressionRetry(entry);
+            if (!IsCurrentWorldOwnership(
+                    session,
+                    accountId,
+                    characterId,
+                    ownership))
+            {
+                session.Disconnect();
+                throw new PlayerOwnershipValidationException(
+                    PlayerOwnershipValidationStatus.OwnershipLost);
+            }
         }
+    }
+
+    private bool TryBindCurrentProgressionRetry(
+        DurableProgressionRetryEntry entry,
+        out ClientSession session,
+        out PlayerOwnershipFence ownership,
+        out CommandEnvelope<ProgressionIntervalSettlementCommand>
+            envelope)
+    {
+        session = null!;
+        ownership = default;
+        envelope = entry.Envelope;
+        var subject = entry.Envelope.Subject;
+        foreach (var context in _sessions.Values)
+        {
+            if (context.AccountId != subject.AccountId ||
+                context.CharacterId != subject.CharacterId ||
+                !TryGetCurrentWorldOwnership(
+                    context.Session,
+                    subject.AccountId,
+                    subject.CharacterId,
+                    out ownership))
+            {
+                continue;
+            }
+
+            session = context.Session;
+            envelope = entry.Envelope with
+            {
+                Ownership = ownership
+            };
+            return true;
+        }
+
+        return false;
     }
 
     private async Task ReleaseDurableProgressionSessionAsync(

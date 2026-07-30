@@ -229,7 +229,6 @@ internal static class DataBoundaryArchitectureBaseline
         "ActivateZodiacSkillGridAsync",
         "AddDeveloperMountAsync",
         "AddForgingMaterialAsync",
-        "AddZodiacAccumulationAsync",
         "ApplyMonsterKillRewardAsync",
         "ApplyWeaponHolyStoneAsync",
         "ApplyZodiacOnlineTimeAsync",
@@ -273,7 +272,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "9368203D1026E96914519DB63712744842103DEC10FAB521FE597A7E5A80C791";
+        "EE8186DC323C9047010CBDD0E548C003200E212938E00047D78E2263883BA7AF";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

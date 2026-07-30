@@ -15,6 +15,11 @@ internal sealed partial class GameClientHandler
         {
             return default;
         }
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_movement_apply"))
+        {
+            return default;
+        }
 
         var previousX = _character.PositionX;
         var previousZ = _character.PositionZ;
@@ -22,6 +27,11 @@ internal sealed partial class GameClientHandler
         await InterruptPendingSkillCastAsync(
             SkillCastInterruptionReason.Movement,
             cancellationToken);
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_movement_apply"))
+        {
+            return default;
+        }
         if ((decision.Source &
                 AuthoritativePlayerMovementSource.Udp) != 0)
         {
@@ -50,6 +60,11 @@ internal sealed partial class GameClientHandler
             new MapTraversalPosition(
                 decision.AuthoritativeX,
                 decision.AuthoritativeZ));
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_map_transition"))
+        {
+            return default;
+        }
         if (await TryBeginMapTransitionAsync(
                 acceptedSegment,
                 cancellationToken))
@@ -60,9 +75,19 @@ internal sealed partial class GameClientHandler
                 null);
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_visibility_refresh"))
+        {
+            return default;
+        }
         await RefreshNearbyWorldObjectsAsync(
             "realtime-walk",
             cancellationToken);
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "realtime_effect_creation"))
+        {
+            return default;
+        }
         var viewerMovement = BuildRealtimeLegacyMovement(
             decision.OpaqueState,
             decision.AuthoritativeX,

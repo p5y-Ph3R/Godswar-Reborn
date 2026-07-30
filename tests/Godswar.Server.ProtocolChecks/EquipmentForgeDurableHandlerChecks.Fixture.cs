@@ -97,10 +97,14 @@ internal static partial class EquipmentForgeDurableHandlerChecks
             persistedSnapshot,
             projectionFails);
         store ??= new ForgeStore();
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            baseSnapshot.AccountId,
+            character);
         var handler = new GameClientHandler(
             session,
             store,
-            new GameSessionRegistry(),
+            registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             equipmentForgeCommands: executor);
@@ -298,6 +302,7 @@ internal static partial class EquipmentForgeDurableHandlerChecks
 
         public Task<EquipmentForgeExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             Guid clientOperationId,
             CancellationToken cancellationToken = default)
         {

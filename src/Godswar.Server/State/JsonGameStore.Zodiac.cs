@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Characters;
+
 namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore
@@ -5,8 +7,10 @@ internal sealed partial class JsonGameStore
     public async Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
         int accountId,
         int characterId,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken = default)
     {
+        ownership.Validate();
         await _lock.WaitAsync(cancellationToken);
         try
         {

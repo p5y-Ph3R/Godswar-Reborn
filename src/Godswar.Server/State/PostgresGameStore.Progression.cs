@@ -1,4 +1,6 @@
 using Godswar.Server.Game;
+using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Commands;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -137,43 +139,6 @@ internal sealed partial class PostgresGameStore
             currentTalentPoints);
     }
 
-    public async Task<ZodiacAccumulationResult?> AddZodiacAccumulationAsync(
-        int accountId,
-        int characterId,
-        int experienceGainX100,
-        int talentExperienceGainX100,
-        CancellationToken cancellationToken = default)
-    {
-        experienceGainX100 = Math.Max(0, experienceGainX100);
-        talentExperienceGainX100 = Math.Max(0, talentExperienceGainX100);
-
-        await using var command = _dataSource.CreateCommand("""
-            UPDATE character_base
-            SET zodiac_accumulated_exp_x100 = zodiac_accumulated_exp_x100 + @experienceGainX100,
-                zodiac_accumulated_talent_exp_x100 =
-                    zodiac_accumulated_talent_exp_x100 + @talentExperienceGainX100
-            WHERE id = @characterId
-              AND account_id = @accountId
-            RETURNING zodiac_accumulated_exp_x100, zodiac_accumulated_talent_exp_x100;
-            """);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("experienceGainX100", experienceGainX100);
-        command.Parameters.AddWithValue("talentExperienceGainX100", talentExperienceGainX100);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
-
-        return new ZodiacAccumulationResult(
-            experienceGainX100,
-            talentExperienceGainX100,
-            reader.GetInt32(0),
-            reader.GetInt32(1));
-    }
-
     public async Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
         int accountId,
         int characterId,
@@ -270,10 +235,28 @@ internal sealed partial class PostgresGameStore
     public async Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
         int accountId,
         int characterId,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken = default)
     {
+        ownership.Validate();
+        var subject = new CommandSubject(accountId, characterId);
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var ownershipResult =
+            await _playerOwnershipGuard.LockCurrentAsync(
+                connection,
+                transaction,
+                subject,
+                ownership,
+                cancellationToken);
+        if (ownershipResult.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+        ownershipResult.RequireCurrent();
 
         GameCharacter? character = null;
         await using (var command = new NpgsqlCommand("""
@@ -310,6 +293,10 @@ internal sealed partial class PostgresGameStore
         if (!result.Committed)
         {
             await transaction.RollbackAsync(cancellationToken);
+            (await _playerOwnershipGuard.ValidateCurrentAsync(
+                subject,
+                ownership,
+                cancellationToken)).RequireCurrent();
             return result;
         }
 
@@ -333,6 +320,10 @@ internal sealed partial class PostgresGameStore
         }
 
         await transaction.CommitAsync(cancellationToken);
+        (await _playerOwnershipGuard.ValidateCurrentAsync(
+            subject,
+            ownership,
+            cancellationToken)).RequireCurrent();
         return result;
     }
 

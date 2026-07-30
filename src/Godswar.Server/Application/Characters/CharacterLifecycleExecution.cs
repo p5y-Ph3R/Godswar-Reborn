@@ -27,7 +27,8 @@ internal enum CharacterLifecycleReceiptStatus : byte
     InvalidLifecycleState = 10,
     RestoreExpired = 11,
     RestoreBlockedByActiveSlot = 12,
-    PurgeNotEligible = 13
+    PurgeNotEligible = 13,
+    CharacterInUse = 14
 }
 
 internal sealed record CharacterLifecycleReceipt
@@ -136,6 +137,7 @@ internal sealed record CharacterLifecycleReceipt
                 status is CharacterLifecycleReceiptStatus.Deleted or
                     CharacterLifecycleReceiptStatus.CharacterNotFound or
                     CharacterLifecycleReceiptStatus.NameMismatch or
+                    CharacterLifecycleReceiptStatus.CharacterInUse or
                     CharacterLifecycleReceiptStatus
                         .StaleLifecycleVersion,
             CommandFamily.CharacterRestore =>

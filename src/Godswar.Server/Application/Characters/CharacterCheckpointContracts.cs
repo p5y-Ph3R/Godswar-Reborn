@@ -1,26 +1,9 @@
 namespace Godswar.Server.Application.Characters;
 
-internal readonly record struct CharacterCheckpointOwner(
-    Guid OwnerId,
-    long Generation)
-{
-    public void Validate()
-    {
-        if (OwnerId == Guid.Empty)
-        {
-            throw new ArgumentException(
-                "Checkpoint owner ID cannot be empty.",
-                nameof(OwnerId));
-        }
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
-            Generation);
-    }
-}
-
 internal readonly record struct CharacterPositionCheckpoint(
     int AccountId,
     int CharacterId,
-    CharacterCheckpointOwner Owner,
+    PlayerOwnershipFence Owner,
     byte CurrentMap,
     float PositionX,
     float PositionZ,
@@ -47,7 +30,7 @@ internal readonly record struct CharacterPositionCheckpoint(
 internal readonly record struct CharacterVitalsCheckpoint(
     int AccountId,
     int CharacterId,
-    CharacterCheckpointOwner Owner,
+    PlayerOwnershipFence Owner,
     int CurrentHp,
     int CurrentMp,
     long Revision)
@@ -92,7 +75,7 @@ internal readonly record struct CharacterCheckpointWriteResult(
 }
 
 internal readonly record struct CharacterCheckpointOwnership(
-    CharacterCheckpointOwner Owner,
+    PlayerOwnershipFence Owner,
     long PositionRevision,
     long VitalsRevision)
 {
@@ -117,7 +100,7 @@ internal static class CharacterCheckpointValidation
     public static void ValidateIdentity(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner)
+        PlayerOwnershipFence owner)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(characterId);

@@ -79,6 +79,13 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 active.Value,
                 account.LifecycleVersion);
         }
+        if (active.Value.HasActiveOwner)
+        {
+            return Rejected(
+                CharacterLifecycleReceiptStatus.CharacterInUse,
+                active.Value,
+                account.LifecycleVersion);
+        }
 
         var nextVersion = checked(account.LifecycleVersion + 1);
         var timestamps = await TombstoneCharacterAsync(
@@ -282,7 +289,8 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         DateTimeOffset? RestoreUntil,
         DateTimeOffset? PurgeAfter,
         bool RestoreEligible,
-        bool PurgeEligible);
+        bool PurgeEligible,
+        bool HasActiveOwner);
 
     private readonly record struct TombstoneTimestamps(
         DateTimeOffset RestoreUntil,

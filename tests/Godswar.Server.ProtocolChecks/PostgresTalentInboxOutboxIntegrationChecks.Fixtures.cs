@@ -111,6 +111,11 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
                 rank.Value);
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new TalentFixture(
             accountId,

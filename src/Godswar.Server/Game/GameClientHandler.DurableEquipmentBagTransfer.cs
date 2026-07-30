@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -23,6 +24,12 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
+
         if (_equipmentBagTransferCommands is null)
         {
             RecordDurableEquipmentBagTransferUnavailable(
@@ -42,10 +49,16 @@ internal sealed partial class GameClientHandler
             execution =
                 await _equipmentBagTransferCommands.TryReplayAsync(
                     subject,
+                    ownership,
                     clientOperationId,
                     equipmentSlot,
                     kitBagSlot,
                     cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (execution.Disposition ==
                 EquipmentBagTransferDisposition.ReplayNotFound)
             {
@@ -55,6 +68,7 @@ internal sealed partial class GameClientHandler
                         equipmentSlot,
                         kitBagSlot,
                         clientOperationId,
+                        ownership,
                         cancellationToken);
             }
         }
@@ -67,11 +81,21 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordDurableEquipmentBagTransferUnavailable(
                 clientOperationId,
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -82,6 +106,7 @@ internal sealed partial class GameClientHandler
                 kitBagSlot,
                 clientOperationId,
                 execution.Disposition,
+                ownership,
                 cancellationToken);
             return;
         }
@@ -96,6 +121,7 @@ internal sealed partial class GameClientHandler
                 kitBagSlot,
                 receipt);
             await ReloadDurableEquipmentBagTransferProjectionAsync(
+                ownership,
                 cancellationToken,
                 execution.Disposition ==
                     EquipmentBagTransferDisposition.Committed
@@ -119,6 +145,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         CommandMetrics.Record(
             CommandFamily.EquipmentBagTransfer,
             CommandIdentityStrength.ClientOperationId,
@@ -137,6 +168,7 @@ internal sealed partial class GameClientHandler
             int equipmentSlot,
             int kitBagSlot,
             Guid clientOperationId,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         var equipmentItem = EquipmentSlots.GetItem(
@@ -171,7 +203,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _equipmentBagTransferCommands!.ExecuteAsync(
             envelope,
             cancellationToken);
@@ -183,6 +218,7 @@ internal sealed partial class GameClientHandler
             int kitBagSlot,
             Guid clientOperationId,
             EquipmentBagTransferDisposition disposition,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         if (disposition ==
@@ -207,6 +243,7 @@ internal sealed partial class GameClientHandler
         try
         {
             await ReloadDurableEquipmentBagTransferProjectionAsync(
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)

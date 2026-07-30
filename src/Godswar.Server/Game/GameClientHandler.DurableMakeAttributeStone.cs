@@ -99,6 +99,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
 
         if (_makeAttributeStoneCommands is null)
         {
@@ -132,6 +137,7 @@ internal sealed partial class GameClientHandler
                 execution =
                     await _makeAttributeStoneCommands.TryReplayAsync(
                         subject,
+                        ownership,
                         clientOperationId,
                         cancellationToken);
             }
@@ -155,7 +161,10 @@ internal sealed partial class GameClientHandler
                             _commandConnectionId,
                             CommandTransportKind.SecureTlsLegacy),
                         DateTimeOffset.UtcNow,
-                        command);
+                        command) with
+                    {
+                        Ownership = ownership
+                    };
                 execution =
                     await _makeAttributeStoneCommands.ExecuteAsync(
                         envelope,
@@ -169,6 +178,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
         }
         catch (Exception ex)
         {
@@ -184,6 +198,11 @@ internal sealed partial class GameClientHandler
                 $"failure account={_account.Id} " +
                 $"character={_character.Name}: {ex.Message}");
             ClearGearEnhancerSelection();
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -222,7 +241,12 @@ internal sealed partial class GameClientHandler
             throw new InvalidDataException(
                 "A durable Make Attribute Stone result has no receipt.");
         await ReloadDurableInventoryProjectionAsync(
+            ownership,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
 
         await _session.SendAsync(
             PacketBuilder.NpcFunctionActionResponse(
@@ -273,11 +297,18 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task ReloadDurableInventoryProjectionAsync(
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The inventory owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

@@ -88,6 +88,8 @@ internal static partial class
 
         var replay = await CreateExecutor(dataSource).TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId);
         var receipt = RequireReceipt(
             replay,

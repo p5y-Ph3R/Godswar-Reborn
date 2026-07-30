@@ -113,12 +113,13 @@ internal static partial class
             reader.GetInt64(13));
     }
 
-    private static async Task SeedCheckpointLeaseAsync(
+    private static async Task<Guid> SeedCheckpointLeaseAsync(
         NpgsqlDataSource dataSource,
         int accountId,
         int characterId,
         long generation)
     {
+        var ownerId = Guid.NewGuid();
         await using var command = dataSource.CreateCommand(
             """
             UPDATE public.character_base
@@ -128,7 +129,7 @@ internal static partial class
               AND id = @characterId
               AND lifecycle_state = 'active';
             """);
-        command.Parameters.AddWithValue("ownerId", Guid.NewGuid());
+        command.Parameters.AddWithValue("ownerId", ownerId);
         command.Parameters.AddWithValue("generation", generation);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
@@ -136,6 +137,7 @@ internal static partial class
             1,
             await command.ExecuteNonQueryAsync(),
             "checkpoint fence fixture updates exactly one character");
+        return ownerId;
     }
 
     private static async Task<CheckpointFence> ReadCheckpointFenceAsync(

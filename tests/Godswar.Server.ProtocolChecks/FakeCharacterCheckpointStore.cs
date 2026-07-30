@@ -32,7 +32,7 @@ internal sealed class FakeCharacterCheckpointStore :
     public Func<
         int,
         int,
-        CharacterCheckpointOwner,
+        PlayerOwnershipFence,
         CancellationToken,
         Task<CharacterCheckpointReleaseStatus>>? Release
     {
@@ -69,7 +69,7 @@ internal sealed class FakeCharacterCheckpointStore :
                 cancellationToken);
         }
 
-        var owner = new CharacterCheckpointOwner(
+        var owner = new PlayerOwnershipFence(
             ownerId,
             Interlocked.Increment(ref _generation));
         return Task.FromResult<CharacterCheckpointOwnership?>(
@@ -103,7 +103,7 @@ internal sealed class FakeCharacterCheckpointStore :
     public Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default) =>
         Release?.Invoke(
             accountId,

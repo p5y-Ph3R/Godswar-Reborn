@@ -159,10 +159,14 @@ internal static partial class GearMentorDurableReplayHandlerChecks
             liveCharacter.Id,
             ReplayOperationId,
             replay);
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            snapshot.AccountId,
+            liveCharacter);
         var handler = new GameClientHandler(
             session,
             new ReplayGameStore(),
-            new GameSessionRegistry(),
+            registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             gearMentorDecomposeGearCommands: executor);
@@ -246,6 +250,7 @@ internal static partial class GearMentorDurableReplayHandlerChecks
 
         public Task<GearMentorDecomposeGearExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             Guid clientOperationId,
             CancellationToken cancellationToken = default)
         {

@@ -277,6 +277,8 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 rejected.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    rejected.Subject.CharacterId),
                 operationId),
             EquipmentForgeExecutionDisposition.Duplicate,
             "terminal forge replay");

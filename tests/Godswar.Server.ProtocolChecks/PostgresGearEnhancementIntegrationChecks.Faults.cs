@@ -134,6 +134,8 @@ internal static partial class PostgresGearEnhancementIntegrationChecks
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
                 fixture.Operation,
                 operationId),
             GearEnhancementExecutionDisposition.Duplicate,

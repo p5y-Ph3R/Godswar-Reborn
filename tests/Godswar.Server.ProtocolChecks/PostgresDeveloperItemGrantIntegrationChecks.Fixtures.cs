@@ -120,6 +120,11 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
                 accountId,
                 characterId);
         }
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
 
         return new GrantFixture(

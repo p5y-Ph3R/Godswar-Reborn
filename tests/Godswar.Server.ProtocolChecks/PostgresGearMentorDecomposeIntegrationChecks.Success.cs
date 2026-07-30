@@ -83,6 +83,8 @@ internal static partial class PostgresGearMentorDecomposeIntegrationChecks
         var replay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.CharacterId),
                 operationId),
             GearMentorDecomposeGearExecutionDisposition.Duplicate,
             "explicit Decompose replay");

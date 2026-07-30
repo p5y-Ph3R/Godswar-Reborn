@@ -324,14 +324,6 @@ internal static partial class Program
                         ZodiacAccumulatedExperienceX100 = 12_345,
                         ZodiacAccumulatedTalentExperienceX100 = 6_789
                     });
-                var accumulation = await store.AddZodiacAccumulationAsync(
-                    account.Id,
-                    created.Id,
-                    experienceGainX100: 800,
-                    talentExperienceGainX100: 200)
-                    ?? throw new InvalidOperationException("Zodiac accumulation was not persisted");
-                Check.Equal(13_145, accumulation.CurrentExperienceX100, "Zodiac EXP mutation result");
-                Check.Equal(6_989, accumulation.CurrentTalentExperienceX100, "Zodiac talent mutation result");
                 var partialOnline = await store.ApplyZodiacOnlineTimeAsync(
                     account.Id,
                     created.Id,
@@ -356,8 +348,8 @@ internal static partial class Program
                 TimeSpan.FromSeconds(299).Ticks,
                 character.ZodiacOnlineDurationTicksToday,
                 "partial online interval persists across disconnect");
-            Check.Equal(13_145, character.ZodiacAccumulatedExperienceX100, "Zodiac combat EXP persists");
-            Check.Equal(6_989, character.ZodiacAccumulatedTalentExperienceX100, "Zodiac talent EXP persists");
+            Check.Equal(12_345, character.ZodiacAccumulatedExperienceX100, "Zodiac combat EXP field persists");
+            Check.Equal(6_789, character.ZodiacAccumulatedTalentExperienceX100, "Zodiac talent EXP field persists");
 
             var resumedTick = await reloadedStore.ApplyZodiacOnlineTimeAsync(
                 accountReloaded.Id,

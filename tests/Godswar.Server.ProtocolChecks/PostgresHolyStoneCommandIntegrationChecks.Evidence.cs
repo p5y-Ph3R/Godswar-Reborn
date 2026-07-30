@@ -208,6 +208,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         {
             await CreateExecutor(dataSource).TryReplayAsync(
                 requested.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    requested.Subject.CharacterId),
                 operation,
                 clientOperationId);
         }
@@ -249,6 +251,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             NpgsqlDataSource.Create(connectionString);
         var result = await CreateExecutor(dataSource).TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             (HolyStoneCommandOperation)byte.MaxValue,
             Guid.NewGuid());
         Check.Equal(

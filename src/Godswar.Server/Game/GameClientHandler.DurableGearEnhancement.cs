@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -23,6 +24,11 @@ internal sealed partial class GameClientHandler
     {
         if (_account is null || _character is null)
         {
+            return;
+        }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
             return;
         }
 
@@ -50,9 +56,15 @@ internal sealed partial class GameClientHandler
         {
             execution = await _gearEnhancementCommands.TryReplayAsync(
                 subject,
+                ownership,
                 commandOperation,
                 clientOperationId,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (selections.HasValue &&
                 execution.Disposition ==
                     GearEnhancementExecutionDisposition.ReplayNotFound)
@@ -68,6 +80,7 @@ internal sealed partial class GameClientHandler
                     commandOperation,
                     clientOperationId,
                     selections.Value,
+                    ownership,
                     cancellationToken);
             }
         }
@@ -78,6 +91,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
         }
         catch (Exception ex)
         {
@@ -92,6 +110,11 @@ internal sealed partial class GameClientHandler
                 "[gear-enhancement] durable provider failure " +
                 $"account={_account.Id} character={_character.Name} " +
                 $"family={family}: {ex.Message}");
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -151,7 +174,14 @@ internal sealed partial class GameClientHandler
                 "the active command.");
         }
 
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await SendDurableGearEnhancementReceiptAsync(
             clientOperationId,
             receipt,
@@ -175,6 +205,7 @@ internal sealed partial class GameClientHandler
             GearEnhancementCommandOperation operation,
             Guid clientOperationId,
             GearEnhancerSelectionTriplet selections,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         if (!GearEnhancementCommandEnvelope.TryCreateCommand(
@@ -202,7 +233,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _gearEnhancementCommands!.ExecuteAsync(
             envelope,
             cancellationToken);

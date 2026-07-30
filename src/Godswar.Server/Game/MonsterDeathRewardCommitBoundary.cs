@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Characters;
+
 namespace Godswar.Server.Game;
 
 internal static class MonsterDeathRewardCommitBoundary
@@ -12,7 +14,10 @@ internal static class MonsterDeathRewardCommitBoundary
         {
             return await commit(CancellationToken.None);
         }
-        catch (Exception firstFailure) when (allowImmediateReplay)
+        catch (Exception firstFailure)
+            when (allowImmediateReplay &&
+                  firstFailure is not
+                      PlayerOwnershipValidationException)
         {
             onImmediateReplay?.Invoke(firstFailure);
             return await commit(CancellationToken.None);

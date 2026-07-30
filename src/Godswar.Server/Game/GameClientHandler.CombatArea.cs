@@ -34,6 +34,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "area_skill_damage"))
+        {
+            return;
+        }
+
         var manaCost = Math.Max(0, combat.Mp);
         int currentMana;
         var manaReserved = false;
@@ -86,6 +92,12 @@ internal sealed partial class GameClientHandler
         {
             foreach (var candidate in candidates)
             {
+                if (!RevalidateCurrentWorldEffectOwnership(
+                        "area_skill_damage"))
+                {
+                    break;
+                }
+
                 if (_registry.TryApplyMonsterDamage(
                         character.CurrentMap,
                         candidate.ObjectId,

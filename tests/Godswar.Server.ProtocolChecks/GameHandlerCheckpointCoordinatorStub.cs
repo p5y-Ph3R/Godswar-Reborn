@@ -2,9 +2,16 @@ using Godswar.Server.Application.Characters;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal sealed class GameHandlerCheckpointCoordinatorStub :
+internal sealed class GameHandlerCheckpointCoordinatorStub(
+    long positionRevision = 0,
+    long vitalsRevision = 0) :
     ICharacterCheckpointCoordinator
 {
+    private int _positionEnqueueCount;
+
+    public int PositionEnqueueCount =>
+        Volatile.Read(ref _positionEnqueueCount);
+
     public Task RunAsync(
         CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
@@ -14,8 +21,13 @@ internal sealed class GameHandlerCheckpointCoordinatorStub :
         Task.CompletedTask;
 
     public CharacterCheckpointEnqueueResult TryEnqueue(
-        CharacterPositionCheckpoint checkpoint) =>
-        new(CharacterCheckpointEnqueueStatus.Accepted, checkpoint.Revision);
+        CharacterPositionCheckpoint checkpoint)
+    {
+        Interlocked.Increment(ref _positionEnqueueCount);
+        return new(
+            CharacterCheckpointEnqueueStatus.Accepted,
+            checkpoint.Revision);
+    }
 
     public CharacterCheckpointEnqueueResult TryEnqueue(
         CharacterVitalsCheckpoint checkpoint) =>
@@ -28,9 +40,9 @@ internal sealed class GameHandlerCheckpointCoordinatorStub :
         CancellationToken cancellationToken = default) =>
         Task.FromResult<CharacterCheckpointOwnership?>(
             new(
-                new CharacterCheckpointOwner(ownerId, 1),
-                PositionRevision: 0,
-                VitalsRevision: 0));
+                new PlayerOwnershipFence(ownerId, 1),
+                PositionRevision: positionRevision,
+                VitalsRevision: vitalsRevision));
 
     public Task<CharacterCheckpointWriteResult> FlushThroughAsync(
         CharacterPositionCheckpoint checkpoint,
@@ -51,7 +63,7 @@ internal sealed class GameHandlerCheckpointCoordinatorStub :
     public Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(CharacterCheckpointReleaseStatus.Released);
 

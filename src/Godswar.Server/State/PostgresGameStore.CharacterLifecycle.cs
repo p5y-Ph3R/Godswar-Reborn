@@ -80,6 +80,7 @@ internal sealed partial class PostgresGameStore
                   AND character.character_slot = @characterSlot
                   AND character.name = @name
                   AND character.lifecycle_state = 'active'
+                  AND character.checkpoint_owner_id IS NULL
                 FOR UPDATE
             ),
             reserved AS (
@@ -97,8 +98,7 @@ internal sealed partial class PostgresGameStore
                         reserved.character_lifecycle_version,
                     deleted_at = @deletedAt,
                     restore_until = @restoreUntil,
-                    purge_after = @purgeAfter,
-                    checkpoint_owner_id = NULL
+                    purge_after = @purgeAfter
                 FROM target, reserved
                 WHERE character.id = target.id
                   AND character.account_id = @accountId

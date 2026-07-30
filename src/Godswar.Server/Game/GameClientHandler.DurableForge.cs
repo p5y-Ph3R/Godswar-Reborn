@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -17,6 +18,11 @@ internal sealed partial class GameClientHandler
     {
         if (_account is null || _character is null)
         {
+            return;
+        }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
             return;
         }
 
@@ -42,8 +48,14 @@ internal sealed partial class GameClientHandler
         {
             execution = await _equipmentForgeCommands.TryReplayAsync(
                 subject,
+                ownership,
                 clientOperationId,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (hasSelections &&
                 execution.Disposition ==
                     EquipmentForgeExecutionDisposition.ReplayNotFound)
@@ -52,6 +64,7 @@ internal sealed partial class GameClientHandler
                     subject,
                     clientOperationId,
                     request!,
+                    ownership,
                     cancellationToken);
             }
         }
@@ -64,11 +77,21 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordDurableForgeUnavailable(
                 clientOperationId,
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -91,7 +114,9 @@ internal sealed partial class GameClientHandler
             // Do not acknowledge a durable outcome until the live session has
             // reloaded both authoritative bag contents and Silver. A read
             // failure leaves the UUID pending so the client can retry it.
-            await ReloadDurableForgeProjectionAsync(cancellationToken);
+            await ReloadDurableForgeProjectionAsync(
+                ownership,
+                cancellationToken);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -107,6 +132,11 @@ internal sealed partial class GameClientHandler
             RecordDurableForgeUnavailable(
                 clientOperationId,
                 $"projection reload failed: {ex.Message}");
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -135,6 +165,7 @@ internal sealed partial class GameClientHandler
             CommandSubject subject,
             Guid clientOperationId,
             ForgeTransactionRequest request,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         var oddsMaterials = request.OddsMaterials
@@ -163,7 +194,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _equipmentForgeCommands!.ExecuteAsync(
             envelope,
             cancellationToken);
@@ -276,11 +310,18 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task ReloadDurableForgeProjectionAsync(
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The Forge owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

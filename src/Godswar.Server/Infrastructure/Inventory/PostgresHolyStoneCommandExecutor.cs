@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -13,6 +15,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
     IHolyStoneCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresHolyStoneCommandProbe? _probe;
@@ -24,6 +27,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -63,12 +67,20 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
 
             var context = new HolyStoneCommandContext(
                 envelope.Subject,
+                envelope.Ownership,
                 envelope.OperationId,
                 envelope.RequestHash,
                 envelope.Command);
             var result = await ExecuteTransactionAsync(
                 context,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    envelope.Subject,
+                    envelope.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = OutcomeCode(result.Disposition);
             return result;
         }
@@ -88,6 +100,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
 
     public async Task<HolyStoneExecutionResult> TryReplayAsync(
         CommandSubject subject,
+        PlayerOwnershipFence ownership,
         HolyStoneCommandOperation operation,
         Guid clientOperationId,
         CancellationToken cancellationToken = default)
@@ -121,6 +134,22 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
                 await _dataSource.OpenConnectionAsync(cancellationToken);
             await using var transaction =
                 await connection.BeginTransactionAsync(cancellationToken);
+            var ownershipResult =
+                await _ownershipGuard.LockCurrentAsync(
+                    connection,
+                    transaction,
+                    subject,
+                    ownership,
+                    cancellationToken);
+            if (ownershipResult.Status ==
+                PlayerOwnershipValidationStatus.CharacterNotFound)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                outcome = "precondition_failed";
+                return HolyStoneExecutionResult.PreconditionFailed();
+            }
+            ownershipResult.RequireCurrent();
+
             if (await LockCharacterAsync(
                     connection,
                     transaction,
@@ -156,6 +185,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
                 stored.InboxId,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            (await _ownershipGuard.ValidateCurrentAsync(
+                subject,
+                ownership,
+                cancellationToken)).RequireCurrent();
             outcome = "duplicate";
             return HolyStoneExecutionResult.Duplicate(receipt);
         }
@@ -188,6 +221,20 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            context.Subject,
+            context.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return HolyStoneExecutionResult.PreconditionFailed();
+        }
+        ownership.RequireCurrent();
+
         var character = await LockCharacterAsync(
             connection,
             transaction,
@@ -384,6 +431,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
 
     private sealed record HolyStoneCommandContext(
         CommandSubject Subject,
+        PlayerOwnershipFence Ownership,
         string OperationId,
         string RequestHash,
         HolyStoneCommand Command);

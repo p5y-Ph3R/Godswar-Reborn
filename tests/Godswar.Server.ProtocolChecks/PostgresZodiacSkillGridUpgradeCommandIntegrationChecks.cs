@@ -85,13 +85,14 @@ internal static partial class
                 "The fixture requested an invalid Zodiac upgrade.");
         }
 
-        return ZodiacSkillGridUpgradeCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            ZodiacSkillGridUpgradeCommandEnvelope.Create(
             subject ?? fixture.Subject,
             new CommandConnectionCorrelation(
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static ZodiacSkillGridUpgradeExecutionReceipt

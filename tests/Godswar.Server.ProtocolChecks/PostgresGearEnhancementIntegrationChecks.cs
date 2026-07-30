@@ -94,13 +94,14 @@ internal static partial class PostgresGearEnhancementIntegrationChecks
                 "command.");
         }
 
-        var envelope = GearEnhancementCommandEnvelope.Create(
-            fixture.Subject,
-            new CommandConnectionCorrelation(
-                Guid.NewGuid(),
-                CommandTransportKind.SecureTlsLegacy),
-            DateTimeOffset.UtcNow,
-            command);
+        var envelope = PlayerOwnershipTestFences.Bind(
+            GearEnhancementCommandEnvelope.Create(
+                fixture.Subject,
+                new CommandConnectionCorrelation(
+                    Guid.NewGuid(),
+                    CommandTransportKind.SecureTlsLegacy),
+                DateTimeOffset.UtcNow,
+                command));
         return await executor.ExecuteAsync(envelope);
     }
 

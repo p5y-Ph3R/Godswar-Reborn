@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -23,6 +24,11 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return true;
+        }
 
         var family = HolyStoneProtocol.Family(intent.Operation);
         if (_holyStoneCommands is null)
@@ -38,9 +44,15 @@ internal sealed partial class GameClientHandler
         {
             var execution = await _holyStoneCommands.TryReplayAsync(
                 new CommandSubject(_account.Id, _character.Id),
+                ownership,
                 intent.Operation,
                 packet.ClientOperationId.Value,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return true;
+            }
+
             if (execution.Disposition ==
                 HolyStoneExecutionDisposition.ReplayNotFound)
             {
@@ -67,7 +79,13 @@ internal sealed partial class GameClientHandler
             var kitBagBeforeReplay = _character.KitBag;
             await ReloadDurableHolyStoneProjectionAsync(
                 committedReceipt: null,
+                ownership,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return true;
+            }
+
             CommandMetrics.Record(
                 family,
                 CommandIdentityStrength.ClientOperationId,
@@ -95,6 +113,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return true;
         }
         catch (Exception ex)
         {

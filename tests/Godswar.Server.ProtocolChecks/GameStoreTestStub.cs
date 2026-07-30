@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -79,15 +80,6 @@ internal abstract class GameStoreTestStub : IGameStore
             CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
-    public virtual Task<ZodiacAccumulationResult?>
-        AddZodiacAccumulationAsync(
-            int accountId,
-            int characterId,
-            int experienceGainX100,
-            int talentExperienceGainX100,
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
     public virtual Task<ZodiacEnergyAccrualResult?>
         ApplyZodiacOnlineTimeAsync(
             int accountId,
@@ -102,6 +94,7 @@ internal abstract class GameStoreTestStub : IGameStore
         UpgradeZodiacLevelAsync(
             int accountId,
             int characterId,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken = default) =>
         throw Unsupported();
 

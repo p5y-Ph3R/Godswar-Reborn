@@ -89,13 +89,14 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
         }
 
         return await executor.ExecuteAsync(
-            EquipmentForgeCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                EquipmentForgeCommandEnvelope.Create(
                 fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command));
+                command)));
     }
 
     private static EquipmentForgeExecutionReceipt RequireReceipt(

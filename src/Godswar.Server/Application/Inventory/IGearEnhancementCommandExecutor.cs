@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 
 namespace Godswar.Server.Application.Inventory;
@@ -10,6 +11,7 @@ internal interface IGearEnhancementCommandExecutor
 
     Task<GearEnhancementExecutionResult> TryReplayAsync(
         CommandSubject subject,
+        PlayerOwnershipFence ownership,
         GearEnhancementCommandOperation operation,
         Guid clientOperationId,
         CancellationToken cancellationToken = default);

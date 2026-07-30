@@ -31,6 +31,11 @@ internal static partial class
         var session = new ClientSession(transport);
         var registry = new GameSessionRegistry(store);
         var character = CreateCharacter();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            session,
+            AccountId,
+            character);
         var handler = new GameClientHandler(
             session,
             store,

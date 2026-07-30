@@ -49,6 +49,8 @@ internal static partial class
         var explicitReplay = RequireReceipt(
             await executor.TryReplayAsync(
                 fixture.Subject,
+                PlayerOwnershipTestFences.ForCharacter(
+                    fixture.Subject.CharacterId),
                 operationId,
                 fixture.SourceSlot,
                 fixture.DestinationSlot),
@@ -61,6 +63,8 @@ internal static partial class
 
         var pairConflict = await executor.TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId,
             fixture.SourceSlot - 1,
             fixture.DestinationSlot);

@@ -186,6 +186,12 @@ internal sealed partial class GameClientHandler
         DateTimeOffset receivedAt,
         CancellationToken cancellationToken)
     {
+        if (!AllowLegacyPlayerMutationFallback(
+                "talent_upgrade"))
+        {
+            return;
+        }
+
         var envelope = adapted.Envelope;
         var attempt = _registry.CommandAttempts.TryBegin(
             envelope.OperationId,
@@ -333,6 +339,11 @@ internal sealed partial class GameClientHandler
         }
 
         if (_account is null || _character is null)
+        {
+            return;
+        }
+        if (!AllowLegacyPlayerMutationFallback(
+                "equipment_bag_transfer"))
         {
             return;
         }

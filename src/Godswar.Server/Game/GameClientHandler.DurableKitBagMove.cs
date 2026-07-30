@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -24,6 +25,12 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
+
         if (_kitBagItemMoveCommands is null)
         {
             RecordDurableKitBagMoveUnavailable(
@@ -42,10 +49,16 @@ internal sealed partial class GameClientHandler
             // the permanent UUID before capturing either current item state.
             execution = await _kitBagItemMoveCommands.TryReplayAsync(
                 subject,
+                ownership,
                 clientOperationId,
                 sourceKitBagSlot,
                 destinationKitBagSlot,
                 cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (execution.Disposition ==
                 KitBagItemMoveExecutionDisposition.ReplayNotFound)
             {
@@ -54,6 +67,7 @@ internal sealed partial class GameClientHandler
                     sourceKitBagSlot,
                     destinationKitBagSlot,
                     clientOperationId,
+                    ownership,
                     cancellationToken);
             }
         }
@@ -66,6 +80,11 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordDurableKitBagMoveUnavailable(
@@ -74,11 +93,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         if (!execution.IsDurable)
         {
             await HandleNonDurableKitBagMoveOutcomeAsync(
                 clientOperationId,
                 execution.Disposition,
+                ownership,
                 cancellationToken);
             return;
         }
@@ -93,6 +118,7 @@ internal sealed partial class GameClientHandler
                 destinationKitBagSlot,
                 receipt);
             await ReloadDurableKitBagMoveProjectionAsync(
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -109,6 +135,11 @@ internal sealed partial class GameClientHandler
             RecordDurableKitBagMoveUnavailable(
                 clientOperationId,
                 $"projection reload failed: {ex.Message}");
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -129,6 +160,7 @@ internal sealed partial class GameClientHandler
             int sourceKitBagSlot,
             int destinationKitBagSlot,
             Guid clientOperationId,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         var sourceItem = KitBagSlots.GetItem(
@@ -154,7 +186,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _kitBagItemMoveCommands!.ExecuteAsync(
             envelope,
             cancellationToken);
@@ -163,6 +198,7 @@ internal sealed partial class GameClientHandler
     private async Task HandleNonDurableKitBagMoveOutcomeAsync(
         Guid clientOperationId,
         KitBagItemMoveExecutionDisposition disposition,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         if (disposition ==
@@ -189,6 +225,7 @@ internal sealed partial class GameClientHandler
         try
         {
             await ReloadDurableKitBagMoveProjectionAsync(
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -310,11 +347,18 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task ReloadDurableKitBagMoveProjectionAsync(
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The kit-bag owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

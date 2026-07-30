@@ -19,6 +19,6 @@ internal interface ICharacterCheckpointStore
     Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default);
 }

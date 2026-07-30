@@ -250,7 +250,9 @@ internal sealed partial class GameClientHandler
         }
 
         var requestedDamage = MonsterCombatResolver.CalculatePlayerBasicAttack(_character);
-        if (!_registry.TryApplyMonsterDamage(
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "basic_attack_damage") ||
+            !_registry.TryApplyMonsterDamage(
                 _character.CurrentMap,
                 attack.TargetObjectId,
                 requestedDamage,

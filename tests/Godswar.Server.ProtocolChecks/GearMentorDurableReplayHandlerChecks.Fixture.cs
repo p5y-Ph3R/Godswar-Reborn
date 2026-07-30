@@ -36,10 +36,14 @@ internal static partial class GearMentorDurableReplayHandlerChecks
             liveCharacter.Id,
             ReplayOperationId,
             replay);
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            snapshot.AccountId,
+            liveCharacter);
         var handler = new GameClientHandler(
             session,
             new ReplayGameStore(),
-            new GameSessionRegistry(),
+            registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             gearMentorMaterialConversionCommands: executor);
@@ -171,6 +175,7 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         public Task<GearMentorMaterialConversionExecutionResult>
             TryReplayTransformAsync(
                 CommandSubject subject,
+                PlayerOwnershipFence ownership,
                 Guid clientOperationId,
                 CancellationToken cancellationToken = default)
         {
@@ -183,6 +188,7 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         public Task<GearMentorMaterialConversionExecutionResult>
             TryReplayCombineAsync(
                 CommandSubject subject,
+                PlayerOwnershipFence ownership,
                 Guid clientOperationId,
                 CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(

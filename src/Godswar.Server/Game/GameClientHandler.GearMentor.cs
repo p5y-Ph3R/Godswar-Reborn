@@ -189,6 +189,12 @@ internal sealed partial class GameClientHandler
         {
             if (canCommit)
             {
+                if (!AllowLegacyPlayerMutationFallback(
+                        $"gear_mentor_{operation}"))
+                {
+                    return;
+                }
+
                 transaction = await _store.ProcessGearMentorAsync(
                     _account.Id,
                     _character.Id,

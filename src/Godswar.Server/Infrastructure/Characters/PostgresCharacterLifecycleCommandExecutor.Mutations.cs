@@ -28,7 +28,8 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 COALESCE(
                     purge_after <= transaction_timestamp(),
                     false
-                )
+                ),
+                checkpoint_owner_id IS NOT NULL
             FROM public.character_base
             WHERE account_id = @accountId
               AND character_slot = 0
@@ -64,7 +65,8 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 COALESCE(
                     purge_after <= transaction_timestamp(),
                     false
-                )
+                ),
+                checkpoint_owner_id IS NOT NULL
             FROM public.character_base
             WHERE account_id = @accountId
               AND character_slot = 0
@@ -110,7 +112,8 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 : new DateTimeOffset(
                     reader.GetDateTime(5).ToUniversalTime()),
             reader.GetBoolean(6),
-            reader.GetBoolean(7));
+            reader.GetBoolean(7),
+            reader.GetBoolean(8));
     }
 
     private async Task<TombstoneTimestamps> TombstoneCharacterAsync(
@@ -133,12 +136,12 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 purge_after =
                     transaction_timestamp() +
                     @restoreWindow +
-                    @purgeDelay,
-                checkpoint_owner_id = NULL
+                    @purgeDelay
             WHERE account_id = @accountId
               AND id = @characterId
               AND character_slot = 0
               AND lifecycle_state = 'active'
+              AND checkpoint_owner_id IS NULL
               AND lifecycle_version = @expectedVersion
             RETURNING restore_until, purge_after;
             """,

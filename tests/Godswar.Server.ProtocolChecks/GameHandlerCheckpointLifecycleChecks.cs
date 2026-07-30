@@ -314,7 +314,7 @@ internal static class GameHandlerCheckpointLifecycleChecks
         long positionRevision,
         long vitalsRevision) : ICharacterCheckpointCoordinator
     {
-        public CharacterCheckpointOwner Owner { get; } =
+        public PlayerOwnershipFence Owner { get; } =
             new(Guid.NewGuid(), 1);
 
         public List<string> Operations { get; } = [];
@@ -332,7 +332,7 @@ internal static class GameHandlerCheckpointLifecycleChecks
             CancellationToken cancellationToken = default) =>
             Task.FromResult<CharacterCheckpointOwnership?>(
                 new(
-                    new CharacterCheckpointOwner(
+                    new PlayerOwnershipFence(
                         ownerId,
                         Owner.Generation),
                     positionRevision,
@@ -363,7 +363,7 @@ internal static class GameHandlerCheckpointLifecycleChecks
         public Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
             int accountId,
             int characterId,
-            CharacterCheckpointOwner owner,
+            PlayerOwnershipFence owner,
             CancellationToken cancellationToken = default)
         {
             Operations.Add("release");
@@ -422,5 +422,5 @@ internal static class GameHandlerCheckpointLifecycleChecks
     private readonly record struct ReleaseCall(
         int AccountId,
         int CharacterId,
-        CharacterCheckpointOwner Owner);
+        PlayerOwnershipFence Owner);
 }

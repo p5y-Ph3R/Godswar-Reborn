@@ -93,9 +93,12 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         var npc = CreateHolyStoneNpc(live, requestNpcId);
         var worldContent = CreateWorldContent(npc);
-        var registry = new GameSessionRegistry();
         var transport = new HolyStoneCaptureTransport();
         var session = new ClientSession(transport);
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            baseSnapshot.AccountId,
+            live);
         var executor = providerUnavailable
             ? null
             : new HolyStoneExecutor(
@@ -381,6 +384,7 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         public Task<HolyStoneExecutionResult> TryReplayAsync(
             CommandSubject subject,
+            PlayerOwnershipFence ownership,
             HolyStoneCommandOperation operation,
             Guid clientOperationId,
             CancellationToken cancellationToken = default)

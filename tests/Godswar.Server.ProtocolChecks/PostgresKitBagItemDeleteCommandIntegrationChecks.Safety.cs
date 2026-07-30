@@ -45,6 +45,8 @@ internal static partial class
 
         var replay = await executor.TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId);
         AssertReceiptsEqual(
             receipt,

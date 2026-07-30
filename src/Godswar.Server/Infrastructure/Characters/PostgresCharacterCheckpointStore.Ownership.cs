@@ -49,7 +49,7 @@ internal sealed partial class PostgresCharacterCheckpointStore
         }
 
         var ownership = new CharacterCheckpointOwnership(
-            new CharacterCheckpointOwner(
+            new PlayerOwnershipFence(
                 ownerId,
                 reader.GetInt64(0)),
             reader.GetInt64(1),
@@ -61,7 +61,7 @@ internal sealed partial class PostgresCharacterCheckpointStore
     public async Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default)
     {
         ValidateIdentity(accountId, characterId);

@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -21,6 +22,11 @@ internal sealed partial class GameClientHandler
     {
         if (_account is null || _character is null)
         {
+            return;
+        }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
             return;
         }
 
@@ -53,6 +59,7 @@ internal sealed partial class GameClientHandler
                 npcId,
                 clientOperationId,
                 selections,
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -62,6 +69,11 @@ internal sealed partial class GameClientHandler
                 CommandIdentityStrength.ClientOperationId,
                 CommandOutcome.Cancelled);
             throw;
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
         }
         catch (Exception ex)
         {
@@ -76,6 +88,11 @@ internal sealed partial class GameClientHandler
                 "[gear-mentor] durable Decompose provider failure " +
                 $"account={_account.Id} character={_character.Name}: " +
                 ex.Message);
+            return;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
             return;
         }
 
@@ -118,7 +135,14 @@ internal sealed partial class GameClientHandler
                 "the active command.");
         }
 
-        await ReloadDurableInventoryProjectionAsync(cancellationToken);
+        await ReloadDurableInventoryProjectionAsync(
+            ownership,
+            cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         await _session.SendAsync(
             PacketBuilder.NpcFunctionActionResponse(
                 npcId,
@@ -184,12 +208,14 @@ internal sealed partial class GameClientHandler
             uint npcId,
             Guid clientOperationId,
             IReadOnlyList<GearEnhancerSelectionSnapshot>? selections,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         if (selections is null)
         {
             return await _gearMentorDecomposeGearCommands!.TryReplayAsync(
                 subject,
+                ownership,
                 clientOperationId,
                 cancellationToken);
         }
@@ -215,7 +241,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _gearMentorDecomposeGearCommands!.ExecuteAsync(
             envelope,
             cancellationToken);

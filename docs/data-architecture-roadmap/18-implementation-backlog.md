@@ -19,7 +19,7 @@
 | B12 - Progression/reward/pet durability **(completed 2026-07-31)** | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
 | B13 - Structured logs, traces, readiness **(completed 2026-07-31)** | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | implemented B13 signals; deferred section 16 gaps stay explicit | Disable exporter/sink, keep audits | Medium | Medium |
 | B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
-| B15 - PostgreSQL player ownership fence | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Single-process PG/local owner implementation | Large | High |
+| B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
 | B16 - Redis decision ADR | Avoid premature infrastructure | measurements, capacity inputs, section 7 ADR | B13-B15 and product scale decision | Explicit defer/approve with SLO/TTL/outage/cost | failure model prototype if approved | candidate load/latency | Defer Redis | Small | Low |
 | B17 - Redis coordination adapter, conditional | Enable measured multi-process session/routing needs | Redis package/config/key library/Lua, tickets/presence/routing and leases carrying PG-issued fences | Approved B16, B15 | Cross-instance ticket/lease/reconnect safe; Redis restart cannot reset fence; PG remains value owner | Redis restart/eviction/slow, fence reinstall, split ownership | latency/errors/lease/presence | Drain to one process/PG-local adapter | Large | High |
 | B18 - Fair map mailboxes and replication | Complete ECS/I/O isolation | `MapInstance`, `GameSessionRegistry`, movement/monster loops, broadcast | B02, B10 | Only owner loop mutates map ECS; DB/socket fanout off tick; bounded fairness | deterministic replay, slow client, overload | tick/queue/fanout | Per-map legacy mode | Large | High |
@@ -48,8 +48,9 @@ exact duplicate replay, versioned outbox, strict/latest-wins dispatcher,
 bounded one-at-a-time leasing, retry/poison/gap/stale/lease recovery,
 database-enforced event/checkpoint state transitions, supervised runtime
 composition, and low-cardinality telemetry. The JSON provider remains a local
-compatibility path without durable inbox/outbox semantics, and B15's
-player-ownership fence remains required before safe multi-process ownership.
+compatibility path without durable inbox/outbox semantics. B15 now supplies
+the PostgreSQL player-ownership fence required before safe multi-process
+ownership.
 
 **B09 completed 2026-07-30:** the
 [closure evidence](../data-architecture-b09-closure-20260730.md) records the
@@ -86,8 +87,8 @@ authority; JSON and unidentified raw TCP remain weaker local compatibility
 paths. Failed disconnect checkpoints have a bounded process-owned retry
 handoff; a full process crash can still lose only its uncommitted interval
 tail. A crash before the lethal runtime event reaches PostgreSQL remains an
-explicit combat-journal gap, and B15's shared player-ownership fence remains
-required for safe multi-process ownership.
+explicit combat-journal gap. B15 now supplies the shared player-ownership
+fence required for safe multi-process ownership.
 
 **B13 completed 2026-07-31:** the
 [implementation evidence](../data-architecture-b13-observability-readiness-20260731.md)
@@ -108,7 +109,20 @@ mutually exclusive secure activation, credential clearing, TLS/ticket checks,
 and sealed PreviewReadyV6 acceptance. The playable
 `7FB43C8D...BA07F9` Origin pairing passed exact offline gates but is not
 installed or live re-accepted; no production deployment or upstream
-protection is claimed. B15 ownership fencing is next.
+protection is claimed.
+
+**B15 completed and verified 2026-07-31:** the
+[implementation evidence](../data-architecture-b15-player-ownership-fence-20260731.md)
+records the PostgreSQL-issued owner UUID and monotonic generation carried by
+durable command envelopes, transaction-wide row locking across all 18
+valuable executor families and the direct Zodiac-level transaction,
+post-commit validation, session/ECS and realtime-effect fencing, token-safe
+projection and retry behavior, fail-closed PostgreSQL composition, and
+bounded ownership metrics. JSON/local storage remains process-local
+compatibility only. The final gate passed **263 managed checks** plus **42
+required PostgreSQL checks across 4 migration scenarios**, with no failures
+and disposable database cleanup verified. **B16, the Redis decision ADR, is
+next.**
 
 ## 18.2 First three low-risk implementation tasks
 
@@ -119,7 +133,7 @@ protection is claimed. B15 ownership fencing is next.
 ## 18.3 Dependency and parallelization notes
 
 - **Blocks most PG/application work:** B01B, B02, B03, B07, and B08.
-- **Blocks scale-out/Redis and multi-owner writes specifically:** B15.
+- **Completed prerequisite for scale-out/Redis and multi-owner writes:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
 - **Requires architectural decision first:** B16 Redis; B17 process placement/routing; B21 MongoDB; character deletion retention; reward failure semantics.

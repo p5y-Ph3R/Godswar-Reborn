@@ -206,13 +206,14 @@ internal static class
                 "The fixture requested invalid selection intent.");
         }
 
-        return ZodiacSkillGridSelectionCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            ZodiacSkillGridSelectionCommandEnvelope.Create(
             subject ?? fixture.Subject,
             new CommandConnectionCorrelation(
                 Guid.NewGuid(),
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static async Task<Fixture> CreateFixtureAsync(
@@ -290,6 +291,11 @@ internal static class
             await command.ExecuteNonQueryAsync();
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new Fixture(
             accountId,

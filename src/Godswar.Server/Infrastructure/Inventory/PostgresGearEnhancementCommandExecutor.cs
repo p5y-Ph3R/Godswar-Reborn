@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -13,6 +15,7 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
     IGearEnhancementCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresGearEnhancementCommandProbe? _probe;
@@ -24,6 +27,7 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -65,106 +69,22 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
                 envelope.Command.Operation);
             var context = new GearEnhancementCommandContext(
                 envelope.Subject,
+                envelope.Ownership,
                 envelope.OperationId,
                 envelope.RequestHash,
                 envelope.Command);
             var result = await ExecuteTransactionAsync(
                 context,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    envelope.Subject,
+                    envelope.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = OutcomeCode(result.Disposition);
             return result;
-        }
-        catch (OperationCanceledException)
-        {
-            outcome = "cancelled";
-            throw;
-        }
-        finally
-        {
-            if (family.HasValue &&
-                IsGearEnhancementFamily(family.Value))
-            {
-                PostgresCommandMetrics.RecordInbox(
-                    GearEnhancementPersistenceCodec.CommandFamilyCode(
-                        family.Value),
-                    outcome,
-                    Stopwatch.GetElapsedTime(started));
-            }
-        }
-    }
-
-    public async Task<GearEnhancementExecutionResult> TryReplayAsync(
-        CommandSubject subject,
-        GearEnhancementCommandOperation operation,
-        Guid clientOperationId,
-        CancellationToken cancellationToken = default)
-    {
-        var started = Stopwatch.GetTimestamp();
-        CommandFamily? family = Enum.IsDefined(operation)
-            ? GearEnhancementCommandEnvelope.Family(operation)
-            : null;
-        var outcome = "provider_unavailable";
-        try
-        {
-            if (subject.AccountId <= 0 ||
-                subject.CharacterId <= 0 ||
-                clientOperationId == Guid.Empty ||
-                !Enum.IsDefined(operation))
-            {
-                outcome = "invalid_intent";
-                return GearEnhancementExecutionResult.InvalidIntent();
-            }
-
-            var operationId = DecodeDigest(
-                GearEnhancementCommandEnvelope.CreateOperationId(
-                    subject,
-                    operation,
-                    clientOperationId));
-            var principalKey = subject.AccountId.ToString(
-                CultureInfo.InvariantCulture);
-            var aggregateKey =
-                GearEnhancementPersistenceCodec.AggregateKey(
-                    subject.CharacterId);
-
-            await using var connection =
-                await _dataSource.OpenConnectionAsync(cancellationToken);
-            await using var transaction =
-                await connection.BeginTransactionAsync(cancellationToken);
-            if (await LockCharacterAsync(
-                    connection,
-                    transaction,
-                    subject,
-                    cancellationToken) is null)
-            {
-                outcome = "precondition_failed";
-                return GearEnhancementExecutionResult
-                    .PreconditionFailed();
-            }
-
-            var stored = await ReadInboxAsync(
-                connection,
-                transaction,
-                family!.Value,
-                principalKey,
-                aggregateKey,
-                operationId,
-                cancellationToken);
-            if (stored is null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                outcome = "replay_not_found";
-                return GearEnhancementExecutionResult.ReplayNotFound();
-            }
-
-            var receipt = ValidateStoredResult(stored, family.Value);
-            await RecordDuplicateAsync(
-                connection,
-                transaction,
-                stored.InboxId,
-                cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            outcome = "duplicate";
-            return GearEnhancementExecutionResult.Duplicate(receipt);
         }
         catch (OperationCanceledException)
         {
@@ -203,6 +123,20 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            context.Subject,
+            context.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return GearEnhancementExecutionResult.PreconditionFailed();
+        }
+        ownership.RequireCurrent();
+
         var character = await LockCharacterAsync(
             connection,
             transaction,
@@ -455,6 +389,7 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
 
     private readonly record struct GearEnhancementCommandContext(
         CommandSubject Subject,
+        PlayerOwnershipFence Ownership,
         string OperationId,
         string RequestHash,
         GearEnhancementCommand Command)

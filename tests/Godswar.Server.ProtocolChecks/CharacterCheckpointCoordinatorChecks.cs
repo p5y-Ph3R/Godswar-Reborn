@@ -43,7 +43,7 @@ internal static class CharacterCheckpointCoordinatorChecks
             new CharacterCheckpointCoordinator(store, TestOptions());
         var run = coordinator.RunAsync();
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
-        var owner = new CharacterCheckpointOwner(OwnerId, 1);
+        var owner = new PlayerOwnershipFence(OwnerId, 1);
 
         Check.Equal(
             (int)CharacterCheckpointEnqueueStatus.Accepted,
@@ -111,7 +111,7 @@ internal static class CharacterCheckpointCoordinatorChecks
                 TestOptions(queueCapacity: 1));
         var run = coordinator.RunAsync();
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
-        var owner = new CharacterCheckpointOwner(OwnerId, 1);
+        var owner = new PlayerOwnershipFence(OwnerId, 1);
 
         Check.True(
             coordinator.TryEnqueue(Position(owner, 1, 1)).Accepted,
@@ -159,7 +159,7 @@ internal static class CharacterCheckpointCoordinatorChecks
                     maximumRetryAgeMilliseconds: 1_000));
         var run = coordinator.RunAsync();
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
-        var owner = new CharacterCheckpointOwner(OwnerId, 1);
+        var owner = new PlayerOwnershipFence(OwnerId, 1);
 
         coordinator.TryEnqueue(
             new CharacterVitalsCheckpoint(
@@ -199,7 +199,7 @@ internal static class CharacterCheckpointCoordinatorChecks
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
         coordinator.TryEnqueue(
             Position(
-                new CharacterCheckpointOwner(OwnerId, 1),
+                new PlayerOwnershipFence(OwnerId, 1),
                 1,
                 1));
 
@@ -242,7 +242,7 @@ internal static class CharacterCheckpointCoordinatorChecks
                     directAdmissionMilliseconds: 15));
         var run = coordinator.RunAsync();
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
-        var owner = new CharacterCheckpointOwner(OwnerId, 1);
+        var owner = new PlayerOwnershipFence(OwnerId, 1);
         var first = coordinator.FlushThroughAsync(
             Position(owner, 1, 1));
         await started.Task.WaitAsync(Timeout);
@@ -294,8 +294,8 @@ internal static class CharacterCheckpointCoordinatorChecks
             new CharacterCheckpointCoordinator(store, TestOptions());
         var run = coordinator.RunAsync();
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
-        var firstOwner = new CharacterCheckpointOwner(OwnerId, 1);
-        var secondOwner = new CharacterCheckpointOwner(
+        var firstOwner = new PlayerOwnershipFence(OwnerId, 1);
+        var secondOwner = new PlayerOwnershipFence(
             Guid.Parse("8476eaf9-8ee2-45b8-bcf3-45f66268299f"),
             1);
 
@@ -353,7 +353,7 @@ internal static class CharacterCheckpointCoordinatorChecks
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
         var flush = coordinator.FlushThroughAsync(
             Position(
-                new CharacterCheckpointOwner(OwnerId, 1),
+                new PlayerOwnershipFence(OwnerId, 1),
                 1,
                 1));
         await started.Task.WaitAsync(Timeout);
@@ -400,7 +400,7 @@ internal static class CharacterCheckpointCoordinatorChecks
         await coordinator.WaitUntilReadyAsync().WaitAsync(Timeout);
         coordinator.TryEnqueue(
             Position(
-                new CharacterCheckpointOwner(OwnerId, 1),
+                new PlayerOwnershipFence(OwnerId, 1),
                 1,
                 1));
         await started.Task.WaitAsync(Timeout);
@@ -430,7 +430,7 @@ internal static class CharacterCheckpointCoordinatorChecks
     }
 
     private static CharacterPositionCheckpoint Position(
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         long revision,
         float x) =>
         new(1, 1, owner, 1, x, x, revision);

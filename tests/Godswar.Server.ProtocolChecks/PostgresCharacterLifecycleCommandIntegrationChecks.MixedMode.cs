@@ -36,6 +36,33 @@ internal static partial class
                 });
         }
 
+        await using (var checkpointStore =
+                     new PostgresCharacterCheckpointStore(dataSource))
+        {
+            var ownership = await checkpointStore.AcquireAsync(
+                migratedAccount.Id,
+                migratedCharacter.Id,
+                Guid.NewGuid()) ??
+                throw new InvalidOperationException(
+                    "Broad lifecycle ownership fixture is missing.");
+            await using (var store =
+                         new PostgresGameStore(connectionString))
+            {
+                Check.True(
+                    !await store.DeleteCharacterAsync(
+                        migratedAccount.Id,
+                        migratedCharacter.Name),
+                    "broad delete cannot evict an actively owned character");
+            }
+            Check.Equal(
+                (int)CharacterCheckpointReleaseStatus.Released,
+                (int)await checkpointStore.ReleaseAsync(
+                    migratedAccount.Id,
+                    migratedCharacter.Id,
+                    ownership.Owner),
+                "broad lifecycle fixture releases its player owner");
+        }
+
         var deletion = await executor.ExecuteAsync(
             DeleteEnvelope(
                 migratedAccount.Id,

@@ -63,23 +63,25 @@ internal static partial class
         var correlation = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
-        var blocked = BagItemActivationCommandEnvelope.Create(
-            subject,
-            correlation,
-            DateTimeOffset.UtcNow,
-            new BagItemActivationCommand(
-                operationId,
-                fixture.BagSlot,
-                BagItemActivationExecutionConstraint
-                    .RideRuntimeBlocked));
-        var clearedRetry = BagItemActivationCommandEnvelope.Create(
-            subject,
-            correlation,
-            DateTimeOffset.UtcNow.AddSeconds(1),
-            new BagItemActivationCommand(
-                operationId,
-                fixture.BagSlot,
-                BagItemActivationExecutionConstraint.None));
+        var blocked = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                new BagItemActivationCommand(
+                    operationId,
+                    fixture.BagSlot,
+                    BagItemActivationExecutionConstraint
+                        .RideRuntimeBlocked)));
+        var clearedRetry = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow.AddSeconds(1),
+                new BagItemActivationCommand(
+                    operationId,
+                    fixture.BagSlot,
+                    BagItemActivationExecutionConstraint.None)));
 
         var rejected = await executor.ExecuteAsync(blocked);
         var replayed = await executor.ExecuteAsync(clearedRetry);
@@ -149,7 +151,8 @@ internal static partial class
             incomingShieldId,
             displacedShieldId,
             EquipmentSlots.Shield);
-        var envelope = BagItemActivationCommandEnvelope.Create(
+        var envelope = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -159,7 +162,7 @@ internal static partial class
             DateTimeOffset.UtcNow,
             new BagItemActivationCommand(
                 Guid.NewGuid(),
-                fixture.BagSlot));
+                fixture.BagSlot)));
         var committed = await executor.ExecuteAsync(envelope);
         var replayed = await executor.ExecuteAsync(envelope);
         Check.True(
@@ -249,7 +252,8 @@ internal static partial class
             bagItemId,
             equippedItemId,
             equippedSlot);
-        var envelope = BagItemActivationCommandEnvelope.Create(
+        var envelope = PlayerOwnershipTestFences.Bind(
+            BagItemActivationCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -259,7 +263,7 @@ internal static partial class
             DateTimeOffset.UtcNow,
             new BagItemActivationCommand(
                 Guid.NewGuid(),
-                fixture.BagSlot));
+                fixture.BagSlot)));
         var result = await executor.ExecuteAsync(envelope);
         Check.True(
             result.Disposition ==
@@ -371,6 +375,11 @@ internal static partial class
                 equippedSlot.Value);
         }
 
+        await PlayerOwnershipTestFences.InstallAsync(
+            connection,
+            transaction,
+            accountId,
+            characterId);
         await transaction.CommitAsync();
         return new EquipmentEligibilityFixture(
             accountId,

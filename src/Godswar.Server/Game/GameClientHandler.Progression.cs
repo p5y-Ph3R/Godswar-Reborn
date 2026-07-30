@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Networking;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -55,6 +56,11 @@ internal sealed partial class GameClientHandler
                 awardedExperience,
                 awardedTalentExperience,
                 rewardTime);
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -428,6 +434,14 @@ internal sealed partial class GameClientHandler
         if (_character is null)
         {
             Console.WriteLine($"[world] ignored {Opcodes.Name(packet.Opcode)} broadcast before character enter");
+            return;
+        }
+
+        if (!RevalidateCurrentWorldEffectOwnership(
+                packet.Opcode == Opcodes.Talk
+                    ? "chat_broadcast"
+                    : "world_broadcast"))
+        {
             return;
         }
 

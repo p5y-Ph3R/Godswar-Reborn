@@ -89,13 +89,14 @@ internal static partial class
         }
 
         return await executor.ExecuteAsync(
-            KitBagItemDeleteCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                KitBagItemDeleteCommandEnvelope.Create(
                 subject ?? fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command));
+                command)));
     }
 
     private static KitBagItemDeleteExecutionReceipt RequireReceipt(

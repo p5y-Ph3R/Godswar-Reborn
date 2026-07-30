@@ -61,6 +61,11 @@ internal static partial class
                 checkpoints,
                 fixture,
                 second);
+            await AssertPlayerOwnershipGuardAsync(
+                checkpoints,
+                dataSource,
+                fixture,
+                second.Owner);
         }
         finally
         {

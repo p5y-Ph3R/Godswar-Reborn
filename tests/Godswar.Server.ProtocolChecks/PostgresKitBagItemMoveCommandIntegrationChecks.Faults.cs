@@ -145,6 +145,8 @@ internal static partial class
             "after-commit uncertainty is surfaced");
         var replay = await CreateExecutor(dataSource).TryReplayAsync(
             fixture.Subject,
+            PlayerOwnershipTestFences.ForCharacter(
+                fixture.Subject.CharacterId),
             operationId,
             fixture.SourceSlot,
             fixture.DestinationSlot);

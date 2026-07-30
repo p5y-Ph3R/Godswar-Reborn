@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -9,11 +10,18 @@ internal sealed partial class GameClientHandler
 {
     private async Task ReloadDurableHolyStoneProjectionAsync(
         HolyStoneExecutionReceipt? committedReceipt,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The Holy Stone owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

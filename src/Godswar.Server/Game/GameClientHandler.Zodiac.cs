@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Packets;
@@ -71,11 +72,31 @@ internal sealed partial class GameClientHandler
 
         // Value1/Value2 are fixed client UI mode values, not authoritative
         // levels, costs, or balances. The store derives every outcome.
-        var result = await _registry.UpgradeZodiacLevelAsync(
-            _session,
-            _account.Id,
-            _character,
-            cancellationToken);
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
+
+        ZodiacLevelUpgradeResult? result;
+        try
+        {
+            result = await _registry.UpgradeZodiacLevelAsync(
+                _session,
+                _account.Id,
+                _character,
+                ownership,
+                cancellationToken);
+        }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
         if (result is null)
         {
             Console.WriteLine(
@@ -226,7 +247,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var envelope = ZodiacSkillGridActivationCommandEnvelope.Create(
+        var unownedEnvelope =
+            ZodiacSkillGridActivationCommandEnvelope.Create(
             new CommandSubject(_account.Id, _character.Id),
             new CommandConnectionCorrelation(
                 _commandConnectionId,
@@ -235,6 +257,13 @@ internal sealed partial class GameClientHandler
                     : CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
             command);
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return;
+        }
 
         ZodiacSkillGridActivationExecutionResult execution;
         try
@@ -252,6 +281,11 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch
         {
             CommandMetrics.Record(
@@ -259,6 +293,11 @@ internal sealed partial class GameClientHandler
                 envelope.IdentityStrength,
                 CommandOutcome.ProviderUnavailable);
             throw;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
         }
 
         var outcome = execution.Disposition switch
@@ -399,6 +438,11 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         if (_character is null || _account is null)
+        {
+            return;
+        }
+        if (!AllowLegacyPlayerMutationFallback(
+                "zodiac_skill_grid_upgrade"))
         {
             return;
         }

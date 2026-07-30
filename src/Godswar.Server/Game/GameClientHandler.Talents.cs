@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Networking;
@@ -63,6 +64,14 @@ internal sealed partial class GameClientHandler
         CommandEnvelope<TalentUpgradeCommand> envelope,
         CancellationToken cancellationToken)
     {
+        if (!TryBindCurrentPlayerOwnership(
+                envelope,
+                out envelope,
+                out var ownership))
+        {
+            return;
+        }
+
         TalentUpgradeExecutionResult execution;
         try
         {
@@ -78,6 +87,11 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch
         {
             CommandMetrics.Record(
@@ -85,6 +99,11 @@ internal sealed partial class GameClientHandler
                 envelope.IdentityStrength,
                 CommandOutcome.ProviderUnavailable);
             throw;
+        }
+
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
         }
 
         if (!execution.IsSuccess)
@@ -136,6 +155,11 @@ internal sealed partial class GameClientHandler
                 ? "talent-upgrade-replay"
                 : "talent-upgrade",
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         _registry.UpdateCharacter(_session, _character);
 
         var wireResult = ToWireResult(receipt);

@@ -74,6 +74,8 @@ internal sealed partial class GameSessionRegistry
         RegistryVitalsSnapshot snapshot,
         CancellationToken cancellationToken)
     {
+        RequireLegacyRegistryMutationAllowed(
+            "save_character_vitals");
         if (_store is null)
         {
             return Task.CompletedTask;
@@ -129,7 +131,7 @@ internal sealed partial class GameSessionRegistry
             return new CharacterVitalsCheckpoint(
                 AccountId,
                 CharacterId,
-                new CharacterCheckpointOwner(
+                new PlayerOwnershipFence(
                     OwnerId,
                     OwnerGeneration),
                 CurrentHp,

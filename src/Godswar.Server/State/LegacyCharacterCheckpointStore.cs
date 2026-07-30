@@ -24,7 +24,7 @@ internal sealed class LegacyCharacterCheckpointStore(
         CharacterCheckpointValidation.ValidateIdentity(
             accountId,
             characterId,
-            new CharacterCheckpointOwner(ownerId, 1));
+            new PlayerOwnershipFence(ownerId, 1));
         var key = new CharacterKey(accountId, characterId);
         var state = _states.GetOrAdd(key, static _ => new LocalState());
         await state.Gate.WaitAsync(cancellationToken);
@@ -51,7 +51,7 @@ internal sealed class LegacyCharacterCheckpointStore(
 
             var generation = checked(state.Generation + 1);
             state.Generation = generation;
-            state.Owner = new CharacterCheckpointOwner(
+            state.Owner = new PlayerOwnershipFence(
                 ownerId,
                 generation);
             state.Position = new PositionState(
@@ -184,7 +184,7 @@ internal sealed class LegacyCharacterCheckpointStore(
     public async Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken = default)
     {
         CharacterCheckpointValidation.ValidateIdentity(
@@ -286,7 +286,7 @@ internal sealed class LegacyCharacterCheckpointStore(
 
         public long Generation { get; set; }
 
-        public CharacterCheckpointOwner? Owner { get; set; }
+        public PlayerOwnershipFence? Owner { get; set; }
 
         public PositionState Position { get; set; }
 

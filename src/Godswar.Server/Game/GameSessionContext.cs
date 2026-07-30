@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 
@@ -14,6 +15,8 @@ internal sealed record GameSessionContext(
     bool WorldReady,
     long WorldRevision)
 {
+    public PlayerOwnershipFence Ownership { get; init; }
+
     public string DisplayName => string.IsNullOrWhiteSpace(CharacterName)
         ? $"character:{CharacterId}"
         : CharacterName;

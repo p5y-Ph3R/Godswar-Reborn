@@ -65,6 +65,11 @@ internal static partial class MapTransitionHandlerChecks
             SpartaMapId,
             x: 185f,
             z: -120f);
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            actorSocket.Session,
+            AccountId,
+            character);
         registry.JoinMap(
             actorSocket.Session,
             AccountId,

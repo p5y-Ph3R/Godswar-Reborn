@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -14,6 +16,7 @@ internal sealed partial class
     IProgressionIntervalSettlementCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
@@ -25,6 +28,7 @@ internal sealed partial class
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         zodiacEnergyPolicy.Validate();
@@ -67,6 +71,13 @@ internal sealed partial class
             var result = await ExecuteTransactionAsync(
                 envelope,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    envelope.Subject,
+                    envelope.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = result.Disposition switch
             {
                 ProgressionIntervalSettlementDisposition.Committed =>
@@ -117,6 +128,21 @@ internal sealed partial class
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            envelope.Subject,
+            envelope.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ProgressionIntervalSettlementExecutionResult
+                .CharacterNotFound();
+        }
+        ownership.RequireCurrent();
 
         var character = await LockCharacterAsync(
             connection,

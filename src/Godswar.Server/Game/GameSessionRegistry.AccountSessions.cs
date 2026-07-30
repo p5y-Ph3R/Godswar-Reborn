@@ -1,11 +1,12 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Networking;
 
 namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
-    private readonly ConcurrentDictionary<int, ClientSession>
+    private readonly ConcurrentDictionary<int, AccountSessionRegistration>
         _accountSessions = [];
     private readonly Dictionary<int, CheckpointOwnershipGate>
         _checkpointOwnershipGates = [];
@@ -20,18 +21,61 @@ internal sealed partial class GameSessionRegistry
         ClientSession? replaced = null;
         _accountSessions.AddOrUpdate(
             accountId,
-            session,
+            _ => new AccountSessionRegistration(session, default),
             (_, existing) =>
             {
-                if (!ReferenceEquals(existing, session))
+                if (!ReferenceEquals(existing.Session, session))
                 {
-                    replaced = existing;
+                    replaced = existing.Session;
+                    return new AccountSessionRegistration(
+                        session,
+                        default);
                 }
 
-                return session;
+                return existing;
             });
 
         return replaced;
+    }
+
+    public bool TryBindAccountSessionOwnership(
+        int accountId,
+        ClientSession session,
+        PlayerOwnershipFence ownership)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        ArgumentNullException.ThrowIfNull(session);
+        ownership.Validate();
+
+        while (_accountSessions.TryGetValue(
+                   accountId,
+                   out var existing))
+        {
+            if (!ReferenceEquals(existing.Session, session))
+            {
+                return false;
+            }
+            if (existing.Ownership == ownership)
+            {
+                return true;
+            }
+            if (existing.Ownership.IsValid &&
+                existing.Ownership.Generation >= ownership.Generation)
+            {
+                return false;
+            }
+
+            var updated = existing with { Ownership = ownership };
+            if (_accountSessions.TryUpdate(
+                    accountId,
+                    updated,
+                    existing))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public bool RemoveAccountSession(
@@ -43,11 +87,11 @@ internal sealed partial class GameSessionRegistry
         return _accountSessions.TryGetValue(
                    accountId,
                    out var existing) &&
-            ReferenceEquals(existing, session) &&
+            ReferenceEquals(existing.Session, session) &&
             _accountSessions.TryRemove(
-                new KeyValuePair<int, ClientSession>(
+                new KeyValuePair<int, AccountSessionRegistration>(
                     accountId,
-                    session));
+                    existing));
     }
 
     public bool IsCurrentAccountSession(
@@ -59,7 +103,45 @@ internal sealed partial class GameSessionRegistry
         return _accountSessions.TryGetValue(
                    accountId,
                    out var existing) &&
-            ReferenceEquals(existing, session);
+            ReferenceEquals(existing.Session, session);
+    }
+
+    public bool IsCurrentAccountSession(
+        int accountId,
+        ClientSession session,
+        PlayerOwnershipFence ownership)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        ArgumentNullException.ThrowIfNull(session);
+        if (!ownership.IsValid)
+        {
+            return false;
+        }
+
+        return _accountSessions.TryGetValue(
+                   accountId,
+                   out var existing) &&
+            ReferenceEquals(existing.Session, session) &&
+            existing.Ownership == ownership;
+    }
+
+    internal bool TryGetAccountSessionOwnership(
+        int accountId,
+        ClientSession session,
+        out PlayerOwnershipFence ownership)
+    {
+        ownership = default;
+        if (!_accountSessions.TryGetValue(
+                accountId,
+                out var existing) ||
+            !ReferenceEquals(existing.Session, session) ||
+            !existing.Ownership.IsValid)
+        {
+            return false;
+        }
+
+        ownership = existing.Ownership;
+        return true;
     }
 
     internal async Task<AccountCheckpointAcquisitionScope?>
@@ -194,4 +276,8 @@ internal sealed partial class GameSessionRegistry
 
         public int References { get; set; }
     }
+
+    private sealed record AccountSessionRegistration(
+        ClientSession Session,
+        PlayerOwnershipFence Ownership);
 }

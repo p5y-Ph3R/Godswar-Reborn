@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -181,6 +182,8 @@ internal sealed partial class GameSessionRegistry
                 return;
             }
 
+            RequireLegacyRegistryMutationAllowed(
+                "consume_character_boost_online_time");
             await _store.ConsumeCharacterBoostOnlineTimeAsync(
                 state.AccountId,
                 state.CharacterId,
@@ -317,21 +320,43 @@ internal sealed partial class GameSessionRegistry
         ClientSession session,
         int accountId,
         GameCharacter character,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(character);
+        ownership.Validate();
         if (_store is null)
         {
             return null;
         }
+        if (!IsCurrentWorldOwnership(
+                session,
+                accountId,
+                character.Id,
+                ownership))
+        {
+            throw new PlayerOwnershipValidationException(
+                PlayerOwnershipValidationStatus.OwnershipLost);
+        }
 
         if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
         {
+            RequireCurrentZodiacLevelOwner(
+                session,
+                accountId,
+                character.Id,
+                ownership);
             var untrackedResult = await _store.UpgradeZodiacLevelAsync(
                 accountId,
                 character.Id,
+                ownership,
                 cancellationToken);
+            RequireCurrentZodiacLevelOwner(
+                session,
+                accountId,
+                character.Id,
+                ownership);
             if (untrackedResult is not null)
             {
                 ApplyZodiacLevelUpgradeResult(character, untrackedResult);
@@ -352,10 +377,21 @@ internal sealed partial class GameSessionRegistry
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            RequireCurrentZodiacLevelOwner(
+                session,
+                accountId,
+                character.Id,
+                ownership);
             var result = await _store.UpgradeZodiacLevelAsync(
                 accountId,
                 character.Id,
+                ownership,
                 cancellationToken);
+            RequireCurrentZodiacLevelOwner(
+                session,
+                accountId,
+                character.Id,
+                ownership);
             if (result is null)
             {
                 return null;
@@ -372,6 +408,23 @@ internal sealed partial class GameSessionRegistry
         finally
         {
             state.Gate.Release();
+        }
+    }
+
+    private void RequireCurrentZodiacLevelOwner(
+        ClientSession session,
+        int accountId,
+        int characterId,
+        PlayerOwnershipFence ownership)
+    {
+        if (!IsCurrentWorldOwnership(
+                session,
+                accountId,
+                characterId,
+                ownership))
+        {
+            throw new PlayerOwnershipValidationException(
+                PlayerOwnershipValidationStatus.OwnershipLost);
         }
     }
 
@@ -428,6 +481,8 @@ internal sealed partial class GameSessionRegistry
                 return true;
             }
 
+            RequireLegacyRegistryMutationAllowed(
+                "apply_zodiac_online_time");
             if (onlineUntil <= state.LastAccountedAt)
             {
                 return false;

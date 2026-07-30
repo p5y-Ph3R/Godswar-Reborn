@@ -93,7 +93,8 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
                 "The integration fixture requested an invalid grant.");
         }
 
-        return DeveloperItemGrantCommandEnvelope.Create(
+        return PlayerOwnershipTestFences.Bind(
+            DeveloperItemGrantCommandEnvelope.Create(
             new CommandSubject(
                 fixture.AccountId,
                 fixture.CharacterId),
@@ -101,7 +102,7 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
                 connectionId ?? Guid.NewGuid(),
                 CommandTransportKind.LegacyTcp),
             DateTimeOffset.UtcNow,
-            command);
+            command));
     }
 
     private static DeveloperItemGrantExecutionReceipt RequireReceipt(

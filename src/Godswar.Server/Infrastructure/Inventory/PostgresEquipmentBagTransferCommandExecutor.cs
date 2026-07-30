@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -14,6 +16,7 @@ internal sealed partial class
     IEquipmentBagTransferCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresEquipmentBagTransferCommandProbe? _probe;
@@ -25,6 +28,7 @@ internal sealed partial class
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -69,118 +73,22 @@ internal sealed partial class
 
             var context = new TransferCommandContext(
                 envelope.Subject,
+                envelope.Ownership,
                 envelope.OperationId,
                 envelope.RequestHash,
                 envelope.Command);
             var result = await ExecuteTransactionAsync(
                 context,
                 cancellationToken);
+            if (result.Receipt is not null)
+            {
+                (await _ownershipGuard.ValidateCurrentAsync(
+                    envelope.Subject,
+                    envelope.Ownership,
+                    cancellationToken)).RequireCurrent();
+            }
             outcome = OutcomeCode(result.Disposition);
             return result;
-        }
-        catch (OperationCanceledException)
-        {
-            outcome = "cancelled";
-            throw;
-        }
-        finally
-        {
-            PostgresCommandMetrics.RecordInbox(
-                EquipmentBagTransferPersistenceCodec
-                    .CommandFamilyCode,
-                outcome,
-                Stopwatch.GetElapsedTime(started));
-        }
-    }
-
-    public async Task<EquipmentBagTransferExecutionResult>
-        TryReplayAsync(
-            CommandSubject subject,
-            Guid clientOperationId,
-            int equipmentSlot,
-            int kitBagSlot,
-            CancellationToken cancellationToken = default)
-    {
-        var started = Stopwatch.GetTimestamp();
-        var outcome = "provider_unavailable";
-        try
-        {
-            if (!IsValidReplayIdentity(
-                    subject,
-                    clientOperationId,
-                    equipmentSlot,
-                    kitBagSlot))
-            {
-                outcome = "invalid_intent";
-                return EquipmentBagTransferExecutionResult
-                    .InvalidIntent();
-            }
-
-            var operationId = DecodeDigest(
-                EquipmentBagTransferCommandEnvelope.CreateOperationId(
-                    subject,
-                    clientOperationId));
-            var principalKey = subject.AccountId.ToString(
-                CultureInfo.InvariantCulture);
-            var aggregateKey =
-                EquipmentBagTransferPersistenceCodec.AggregateKey(
-                    subject.CharacterId);
-            await using var connection =
-                await _dataSource.OpenConnectionAsync(cancellationToken);
-            await using var transaction =
-                await connection.BeginTransactionAsync(cancellationToken);
-            if (await LockCharacterAsync(
-                    connection,
-                    transaction,
-                    subject,
-                    cancellationToken) is null)
-            {
-                outcome = "precondition_failed";
-                return EquipmentBagTransferExecutionResult
-                    .PreconditionFailed();
-            }
-
-            var stored = await ReadInboxAsync(
-                connection,
-                transaction,
-                principalKey,
-                aggregateKey,
-                operationId,
-                cancellationToken);
-            if (stored is null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                outcome = "replay_not_found";
-                return EquipmentBagTransferExecutionResult
-                    .ReplayNotFound();
-            }
-
-            var receipt = ValidateStoredResult(stored, subject);
-            if (!HasRequestedSlots(
-                    receipt,
-                    equipmentSlot,
-                    kitBagSlot))
-            {
-                await RecordRequestConflictAsync(
-                    connection,
-                    transaction,
-                    stored.InboxId,
-                    cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-                outcome = "request_hash_conflict";
-                return EquipmentBagTransferExecutionResult
-                    .RequestHashConflict();
-            }
-
-            await RecordDuplicateAsync(
-                connection,
-                transaction,
-                stored.InboxId,
-                cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            outcome = "duplicate";
-            return EquipmentBagTransferExecutionResult
-                .Duplicate(receipt);
         }
         catch (OperationCanceledException)
         {
@@ -214,6 +122,21 @@ internal sealed partial class
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction =
             await connection.BeginTransactionAsync(cancellationToken);
+        var ownership = await _ownershipGuard.LockCurrentAsync(
+            connection,
+            transaction,
+            context.Subject,
+            context.Ownership,
+            cancellationToken);
+        if (ownership.Status ==
+            PlayerOwnershipValidationStatus.CharacterNotFound)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return EquipmentBagTransferExecutionResult
+                .PreconditionFailed();
+        }
+        ownership.RequireCurrent();
+
         var character = await LockCharacterAsync(
             connection,
             transaction,
@@ -505,6 +428,7 @@ internal sealed partial class
 
     private sealed record TransferCommandContext(
         CommandSubject Subject,
+        PlayerOwnershipFence Ownership,
         string OperationId,
         string RequestHash,
         EquipmentBagTransferCommand Command);

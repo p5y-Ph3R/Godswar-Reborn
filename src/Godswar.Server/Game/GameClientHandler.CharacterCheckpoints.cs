@@ -7,7 +7,6 @@ internal sealed partial class GameClientHandler
 {
     private static readonly TimeSpan CheckpointFinalizationTimeout =
         TimeSpan.FromSeconds(10);
-    private readonly Guid _checkpointOwnerId = Guid.NewGuid();
     private readonly ICharacterCheckpointCoordinator?
         _characterCheckpoints;
     private bool _checkpointOwnershipAcquired;
@@ -21,10 +20,7 @@ internal sealed partial class GameClientHandler
         }
         if (_checkpointOwnershipAcquired)
         {
-            if (_account is not null &&
-                _registry.IsCurrentAccountSession(
-                    _account.Id,
-                    _session))
+            if (TryCaptureCurrentPlayerOwnership(out _))
             {
                 return true;
             }
@@ -53,7 +49,7 @@ internal sealed partial class GameClientHandler
         var ownership = await _characterCheckpoints.AcquireAsync(
             accountId,
             characterId,
-            _checkpointOwnerId,
+            _commandConnectionId,
             cancellationToken);
         if (!acquisitionScope.IsCurrent)
         {
@@ -124,6 +120,23 @@ internal sealed partial class GameClientHandler
                 ownership.Value.Owner.OwnerId;
             _character.CheckpointOwnerGeneration =
                 ownership.Value.Owner.Generation;
+            var playerOwnership = new PlayerOwnershipFence(
+                ownership.Value.Owner.OwnerId,
+                ownership.Value.Owner.Generation);
+            if (!_registry.TryBindAccountSessionOwnership(
+                    accountId,
+                    _session,
+                    playerOwnership))
+            {
+                await ReleaseCheckpointOwnershipAsync(
+                    accountId,
+                    characterId,
+                    ownership.Value.Owner,
+                    CancellationToken.None);
+                RejectLostPlayerOwnership();
+                return false;
+            }
+
             _checkpointOwnershipAcquired = true;
             return true;
         }
@@ -163,6 +176,12 @@ internal sealed partial class GameClientHandler
         var accountId = _account?.Id ?? character.AccountId;
         if (_characterCheckpoints is null)
         {
+            if (!AllowLegacyPlayerMutationFallback(
+                    "save_character_position"))
+            {
+                return false;
+            }
+
             await _store.SaveCharacterPositionAsync(
                 accountId,
                 character.Id,
@@ -216,6 +235,12 @@ internal sealed partial class GameClientHandler
         var accountId = _account?.Id ?? character.AccountId;
         if (_characterCheckpoints is null)
         {
+            if (!AllowLegacyPlayerMutationFallback(
+                    "save_character_vitals"))
+            {
+                return false;
+            }
+
             await _store.SaveCharacterVitalsAsync(
                 accountId,
                 character.Id,
@@ -354,7 +379,7 @@ internal sealed partial class GameClientHandler
     private async Task ReleaseCheckpointOwnershipAsync(
         int accountId,
         int characterId,
-        CharacterCheckpointOwner owner,
+        PlayerOwnershipFence owner,
         CancellationToken cancellationToken)
     {
         if (_characterCheckpoints is null)
@@ -475,7 +500,7 @@ internal sealed partial class GameClientHandler
             $"{result.Status}.");
     }
 
-    private static CharacterCheckpointOwner GetCheckpointOwner(
+    private static PlayerOwnershipFence GetCheckpointOwner(
         GameCharacter character)
     {
         if (!TryGetCheckpointOwner(character, out var owner))
@@ -488,9 +513,9 @@ internal sealed partial class GameClientHandler
 
     private static bool TryGetCheckpointOwner(
         GameCharacter character,
-        out CharacterCheckpointOwner owner)
+        out PlayerOwnershipFence owner)
     {
-        owner = new CharacterCheckpointOwner(
+        owner = new PlayerOwnershipFence(
             character.CheckpointOwnerId,
             character.CheckpointOwnerGeneration);
         return character.CheckpointOwnerId != Guid.Empty &&

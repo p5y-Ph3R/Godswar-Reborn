@@ -31,6 +31,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentWorldEffectOwnership(
+                "ecs_basic_attack_damage"))
+        {
+            return;
+        }
+
         var decision = _registry.ResolvePlayerCombatEcs(
             _session,
             character,

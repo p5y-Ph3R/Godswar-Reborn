@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -22,6 +23,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!TryCaptureCurrentPlayerOwnership(out var ownership))
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
 
         if (_kitBagItemDeleteCommands is null)
         {
@@ -43,8 +49,14 @@ internal sealed partial class GameClientHandler
             execution =
                 await _kitBagItemDeleteCommands.TryReplayAsync(
                     subject,
+                    ownership,
                     clientOperationId,
                     cancellationToken);
+            if (!RevalidateCurrentPlayerOwnership(ownership))
+            {
+                return;
+            }
+
             if (execution.Disposition ==
                 KitBagItemDeleteExecutionDisposition.ReplayNotFound)
             {
@@ -52,6 +64,7 @@ internal sealed partial class GameClientHandler
                     subject,
                     kitBagSlot,
                     clientOperationId,
+                    ownership,
                     cancellationToken);
             }
         }
@@ -64,6 +77,11 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.Cancelled);
             throw;
         }
+        catch (PlayerOwnershipValidationException)
+        {
+            RejectLostPlayerOwnership();
+            return;
+        }
         catch (Exception ex)
         {
             RecordDurableKitBagDeleteUnavailable(
@@ -72,11 +90,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         if (!execution.IsDurable)
         {
             await HandleNonDurableKitBagDeleteOutcomeAsync(
                 clientOperationId,
                 execution.Disposition,
+                ownership,
                 cancellationToken);
             return;
         }
@@ -90,6 +114,7 @@ internal sealed partial class GameClientHandler
                 kitBagSlot,
                 receipt);
             await ReloadDurableKitBagDeleteProjectionAsync(
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -109,6 +134,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            return;
+        }
+
         CommandMetrics.Record(
             CommandFamily.KitBagItemDelete,
             CommandIdentityStrength.ClientOperationId,
@@ -125,6 +155,7 @@ internal sealed partial class GameClientHandler
             CommandSubject subject,
             int kitBagSlot,
             Guid clientOperationId,
+            PlayerOwnershipFence ownership,
             CancellationToken cancellationToken)
     {
         var expectedItem = KitBagSlots.GetItem(
@@ -145,7 +176,10 @@ internal sealed partial class GameClientHandler
                 _commandConnectionId,
                 CommandTransportKind.SecureTlsLegacy),
             DateTimeOffset.UtcNow,
-            command);
+            command) with
+        {
+            Ownership = ownership
+        };
         return await _kitBagItemDeleteCommands!.ExecuteAsync(
             envelope,
             cancellationToken);
@@ -154,6 +188,7 @@ internal sealed partial class GameClientHandler
     private async Task HandleNonDurableKitBagDeleteOutcomeAsync(
         Guid clientOperationId,
         KitBagItemDeleteExecutionDisposition disposition,
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         if (disposition ==
@@ -181,6 +216,7 @@ internal sealed partial class GameClientHandler
         try
         {
             await ReloadDurableKitBagDeleteProjectionAsync(
+                ownership,
                 cancellationToken);
         }
         catch (OperationCanceledException)
@@ -298,11 +334,18 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task ReloadDurableKitBagDeleteProjectionAsync(
+        PlayerOwnershipFence ownership,
         CancellationToken cancellationToken)
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
             cancellationToken);
+        if (!RevalidateCurrentPlayerOwnership(ownership))
+        {
+            throw new InvalidOperationException(
+                "The kit-bag owner changed during projection reload.");
+        }
+
         var hydrated =
             CharacterLoadSnapshotHydrator.Hydrate(accountSnapshot);
         if (hydrated is null ||

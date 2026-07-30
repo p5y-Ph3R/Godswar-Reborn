@@ -94,13 +94,14 @@ internal static partial class
                 "The fixture requested an invalid transfer command.");
         }
         return await executor.ExecuteAsync(
-            EquipmentBagTransferCommandEnvelope.Create(
+            PlayerOwnershipTestFences.Bind(
+                EquipmentBagTransferCommandEnvelope.Create(
                 subject ?? fixture.Subject,
                 new CommandConnectionCorrelation(
                     Guid.NewGuid(),
                     CommandTransportKind.SecureTlsLegacy),
                 DateTimeOffset.UtcNow,
-                command));
+                command)));
     }
 
     private static EquipmentBagTransferExecutionReceipt
