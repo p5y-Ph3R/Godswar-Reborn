@@ -134,7 +134,6 @@ internal sealed class LoginClientHandler : IClientHandler
 
     private async Task HandleLoginAsync(GamePacket packet, CancellationToken cancellationToken)
     {
-        var clearSecureCredential = _session.IsSecure;
         try
         {
             if (_loginAttempted)
@@ -242,10 +241,7 @@ internal sealed class LoginClientHandler : IClientHandler
         }
         finally
         {
-            if (clearSecureCredential)
-            {
-                ClearAvailableCredentialField(packet.Buffer);
-            }
+            ClearAvailableCredentialField(packet.Buffer);
         }
     }
 

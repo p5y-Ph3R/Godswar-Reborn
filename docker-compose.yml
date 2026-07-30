@@ -18,6 +18,7 @@ services:
       retries: 20
 
   server:
+    profiles: ["legacy-raw"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,6 +37,7 @@ services:
       GODSWAR_GAME_PUBLIC_HOST: ${GODSWAR_GAME_PUBLIC_HOST:-127.1.1.110}
       GODSWAR_MONSTER_RUNTIME: ${GODSWAR_MONSTER_RUNTIME:-Ecs}
       GODSWAR_PLAYER_RUNTIME: ${GODSWAR_PLAYER_RUNTIME:-Ecs}
+      GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: "true"
       GODSWAR_DEVELOPER_COMMANDS_ENABLED: ${GODSWAR_DEVELOPER_COMMANDS_ENABLED:-false}
       GODSWAR_DEVELOPER_ACCOUNT_IDS: ${GODSWAR_DEVELOPER_ACCOUNT_IDS:-3,7,13,347}
       GODSWAR_ZODIAC_ENERGY_ENABLED: ${GODSWAR_ZODIAC_ENERGY_ENABLED:-true}
@@ -51,8 +53,8 @@ services:
       GODSWAR_MANAGEMENT_BIND_HOST: "127.0.0.1"
       GODSWAR_MANAGEMENT_PORT: "9090"
     ports:
-      - "${GODSWAR_HOST_BIND_ADDRESS:-127.1.1.110}:${GODSWAR_LOGIN_HOST_PORT:-5999}:5999"
-      - "${GODSWAR_HOST_BIND_ADDRESS:-127.1.1.110}:${GODSWAR_GAME_HOST_PORT:-7000}:7000"
+      - "127.1.1.110:${GODSWAR_LOGIN_HOST_PORT:-5999}:5999"
+      - "127.1.1.110:${GODSWAR_GAME_HOST_PORT:-7000}:7000"
     healthcheck:
       test: ["CMD", "/app/secure-healthcheck.sh"]
       interval: 10s
@@ -65,6 +67,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      com.reborn.network.profile: legacy-raw-local-development
     restart: unless-stopped
 
 volumes:

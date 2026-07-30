@@ -14,7 +14,7 @@ services:
       secure-runtime: {}
 
   server:
-    profiles: ["secure"]
+    profiles: !override ["secure"]
     container_name: godswar-server
     environment:
       GODSWAR_RUNTIME_PROFILE: LocalDevelopment
@@ -42,6 +42,7 @@ services:
       GODSWAR_SECURE_PHASE4_ACCEPTANCE_FAULTS_ENABLED: "false"
       GODSWAR_AUTH_ALLOW_REGISTRATION: "false"
       GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION: "true"
+      GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: "false"
       GODSWAR_MANAGEMENT_ENABLED: "true"
       GODSWAR_MANAGEMENT_BIND_HOST: "127.0.0.1"
       GODSWAR_MANAGEMENT_PORT: "9090"

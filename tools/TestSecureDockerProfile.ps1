@@ -35,13 +35,28 @@ $savedPassword =
     [Environment]::GetEnvironmentVariable(
         'GODSWAR_SECURE_CERTIFICATE_PASSWORD_HOST_PATH',
         'Process')
+$savedLegacyHost =
+    [Environment]::GetEnvironmentVariable(
+        'GODSWAR_HOST_BIND_ADDRESS',
+        'Process')
 
 try {
     $env:GODSWAR_SECURE_CERTIFICATE_HOST_PATH = $certificatePath
     $env:GODSWAR_SECURE_CERTIFICATE_PASSWORD_HOST_PATH = $passwordPath
+    $env:GODSWAR_HOST_BIND_ADDRESS = '0.0.0.0'
+
+    $defaultJson =
+        & docker compose -f $baseCompose config --format json 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Default Compose render failed: $($defaultJson -join [Environment]::NewLine)"
+    }
 
     $baseJson =
-        & docker compose -f $baseCompose config --format json 2>&1
+        & docker compose `
+            -f $baseCompose `
+            --profile legacy-raw `
+            config `
+            --format json 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Base Compose render failed: $($baseJson -join [Environment]::NewLine)"
     }
@@ -57,6 +72,8 @@ try {
         throw "Secure Compose render failed: $($secureJson -join [Environment]::NewLine)"
     }
 
+    $default =
+        ($defaultJson -join [Environment]::NewLine) | ConvertFrom-Json
     $base = ($baseJson -join [Environment]::NewLine) | ConvertFrom-Json
     $secure =
         ($secureJson -join [Environment]::NewLine) | ConvertFrom-Json
@@ -65,9 +82,33 @@ try {
     $server = $secure.services.server
 
     Assert-Condition `
+        (@($default.services.PSObject.Properties.Name) -cnotcontains
+            'server') `
+        'Default Compose must not start the legacy raw server.'
+    Assert-Condition `
         (@($baseServer.environment.PSObject.Properties.Name) -cnotcontains
             'GODSWAR_SECURE_ENABLED') `
         'The base Compose profile unexpectedly enables secure networking.'
+    Assert-Condition `
+        (@($baseServer.profiles).Count -eq 1 -and
+            $baseServer.profiles[0] -ceq 'legacy-raw' -and
+            $baseServer.environment.
+                GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION -ceq
+                'true' -and
+            $baseServer.labels.'com.reborn.network.profile' -ceq
+                'legacy-raw-local-development') `
+        'The raw server must require the explicit labelled legacy-raw profile.'
+    $basePorts = @(
+        $baseServer.ports | ForEach-Object {
+            [string]$_.host_ip
+        }
+    )
+    Assert-Condition `
+        ($basePorts.Count -eq 2 -and
+            @($basePorts | Where-Object {
+                $_ -notmatch '^127\.'
+            }).Count -eq 0) `
+        'The legacy-raw profile may publish only IPv4 loopback host ports.'
     Assert-Condition `
         (@($server.profiles).Count -eq 1 -and
             $server.profiles[0] -ceq 'secure') `
@@ -79,6 +120,9 @@ try {
         ($server.environment.GODSWAR_SECURE_ENABLED -ceq 'true' -and
             $server.environment.GODSWAR_RUNTIME_PROFILE -ceq
                 'LocalDevelopment' -and
+            $server.environment.
+                GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION -ceq
+                'false' -and
             $server.environment.GODSWAR_SECURE_UDP_ENABLED -ceq 'true' -and
             $server.environment.
                 GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED -ceq 'true') `
@@ -170,5 +214,9 @@ finally {
     [Environment]::SetEnvironmentVariable(
         'GODSWAR_SECURE_CERTIFICATE_PASSWORD_HOST_PATH',
         $savedPassword,
+        'Process')
+    [Environment]::SetEnvironmentVariable(
+        'GODSWAR_HOST_BIND_ADDRESS',
+        $savedLegacyHost,
         'Process')
 }

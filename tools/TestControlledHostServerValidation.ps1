@@ -160,6 +160,7 @@ try {
     $issuedEnvironment = [ordered]@{
         GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
         GODSWAR_SECURE_ENABLED = 'true'
+        GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION = 'false'
         GODSWAR_SECURE_LOGIN_BIND_HOST = '127.0.0.1'
         GODSWAR_SECURE_LOGIN_PORT = '6599'
         GODSWAR_SECURE_LOGIN_DNS_HOST = 'login.reborn.test'

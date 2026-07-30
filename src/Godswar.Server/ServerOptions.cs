@@ -102,6 +102,9 @@ internal sealed class ServerOptions
         Authentication.AllowPlaintextMigration = ReadBool(
             "GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION",
             Authentication.AllowPlaintextMigration);
+        Authentication.AllowLegacyRawAuthentication = ReadBool(
+            "GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION",
+            Authentication.AllowLegacyRawAuthentication);
         Login.BindHost = Environment.GetEnvironmentVariable("GODSWAR_LOGIN_BIND_HOST") ?? Login.BindHost;
         Login.Port = ReadInt("GODSWAR_LOGIN_PORT", Login.Port);
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;

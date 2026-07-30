@@ -13,6 +13,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $headerPath = Join-Path $repoRoot (
     'client\network-shim\src\' +
     'SecureClientManifestDevelopmentKeys.generated.h')
+$originHeaderPath = Join-Path $repoRoot (
+    'client\network-shim\src\' +
+    'SecureClientOriginIdentity.generated.h')
 $trustPath = Join-Path $repoRoot (
     'artifacts\secure-network\development-manifest-trust.json')
 $nextTrustPath = Join-Path $repoRoot (
@@ -31,6 +34,9 @@ Import-Module (
 ) -Force
 Import-Module (
     Join-Path $PSScriptRoot 'DevelopmentEndpointManifestKeyReceipt.psm1'
+) -Force
+Import-Module (
+    Join-Path $PSScriptRoot 'SecureClientOriginIdentity.psm1'
 ) -Force
 
 $candidateOrigin = if (
@@ -137,71 +143,93 @@ try {
         throw 'Generated public header is not bound to both pinned trusts.'
     }
 
-    $buildScript = Join-Path $PSScriptRoot 'BuildClientNetworkShim.ps1'
-    $first = Invoke-CleanBuild $buildScript
-    $firstShimSha256 = (
-        Get-FileHash -LiteralPath $first.ShimPath -Algorithm SHA256
-    ).Hash
-    $firstChecksSha256 = (
-        Get-FileHash -LiteralPath $first.TestPath -Algorithm SHA256
-    ).Hash
+    Invoke-WithRebornSecureClientOriginIdentity `
+        -HeaderPath $originHeaderPath `
+        -CandidateOriginPath $candidateOrigin `
+        -Action {
+            param([string]$selectedOriginSha256)
 
-    $second = Invoke-CleanBuild $buildScript
-    $secondShimSha256 = (
-        Get-FileHash -LiteralPath $second.ShimPath -Algorithm SHA256
-    ).Hash
-    $secondChecksSha256 = (
-        Get-FileHash -LiteralPath $second.TestPath -Algorithm SHA256
-    ).Hash
-    if ($firstShimSha256 -cne $secondShimSha256 -or
-        $firstChecksSha256 -cne $secondChecksSha256) {
-        throw 'Two clean public-trust builds were not deterministic.'
-    }
+            $buildScript = Join-Path $PSScriptRoot (
+                'BuildClientNetworkShim.ps1')
+            $first = Invoke-CleanBuild $buildScript
+            $firstShimSha256 = (
+                Get-FileHash `
+                    -LiteralPath $first.ShimPath `
+                    -Algorithm SHA256
+            ).Hash
+            $firstChecksSha256 = (
+                Get-FileHash `
+                    -LiteralPath $first.TestPath `
+                    -Algorithm SHA256
+            ).Hash
 
-    & (Join-Path $PSScriptRoot 'TestClientNetworkShim.ps1') `
-        -Configuration Release `
-        -LegacyDllPath $LegacyDllPath `
-        -CandidateShimPath $second.ShimPath `
-        -EndpointManifestPath $manifestPath `
-        -SkipBuild | Out-Host
+            $second = Invoke-CleanBuild $buildScript
+            $secondShimSha256 = (
+                Get-FileHash `
+                    -LiteralPath $second.ShimPath `
+                    -Algorithm SHA256
+            ).Hash
+            $secondChecksSha256 = (
+                Get-FileHash `
+                    -LiteralPath $second.TestPath `
+                    -Algorithm SHA256
+            ).Hash
+            if ($firstShimSha256 -cne $secondShimSha256 -or
+                $firstChecksSha256 -cne $secondChecksSha256) {
+                throw 'Two clean public-trust builds were not deterministic.'
+            }
 
-    & $second.TestPath --offline
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Public-trust candidate failed its offline native suite.'
-    }
-    & $second.TestPath `
-        --offline-manifest-probe $second.ShimPath $manifestPath
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Public-trust candidate rejected the pinned signed manifest.'
-    }
-    & $second.TestPath --offline-contract-probe $second.ShimPath
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Public-trust candidate failed its embedded contract probe.'
-    }
-    if (-not [string]::IsNullOrWhiteSpace($candidateOrigin)) {
-        & $second.TestPath `
-            --offline-origin-contract-probe `
-            $second.ShimPath `
-            $candidateOrigin
-        if ($LASTEXITCODE -ne 0) {
-            throw (
-                'Public-trust candidate rejected the supplied Origin ' +
-                'build identity.')
+            & (Join-Path $PSScriptRoot 'TestClientNetworkShim.ps1') `
+                -Configuration Release `
+                -LegacyDllPath $LegacyDllPath `
+                -CandidateShimPath $second.ShimPath `
+                -EndpointManifestPath $manifestPath `
+                -SkipBuild | Out-Host
+
+            & $second.TestPath --offline
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Public-trust candidate failed its offline native suite.'
+            }
+            & $second.TestPath `
+                --offline-manifest-probe $second.ShimPath $manifestPath
+            if ($LASTEXITCODE -ne 0) {
+                throw (
+                    'Public-trust candidate rejected the pinned signed ' +
+                    'manifest.')
+            }
+            & $second.TestPath --offline-contract-probe $second.ShimPath
+            if ($LASTEXITCODE -ne 0) {
+                throw (
+                    'Public-trust candidate failed its embedded contract ' +
+                    'probe.')
+            }
+            if (-not [string]::IsNullOrWhiteSpace($candidateOrigin)) {
+                & $second.TestPath `
+                    --offline-origin-contract-probe `
+                    $second.ShimPath `
+                    $candidateOrigin
+                if ($LASTEXITCODE -ne 0) {
+                    throw (
+                        'Public-trust candidate rejected the supplied ' +
+                        'Origin build identity.')
+                }
+            }
+
+            [pscustomobject]@{
+                Result = 'VerifiedPublicTrustBuild'
+                CandidatePath = [IO.Path]::GetFullPath($second.ShimPath)
+                CandidateSha256 = $secondShimSha256
+                NativeChecksPath =
+                    [IO.Path]::GetFullPath($second.TestPath)
+                NativeChecksSha256 = $secondChecksSha256
+                OriginSha256 = $selectedOriginSha256
+                ManifestSha256 = $expectedManifestSha256
+                CurrentTrustSha256 = $expectedTrustSha256
+                NextTrustSha256 = $expectedNextTrustSha256
+                EmbeddedHeaderSha256 = $binding.HeaderSha256
+                PrivateKeyAccess = 'None'
+            }
         }
-    }
-
-    [pscustomobject]@{
-        Result = 'VerifiedPublicTrustBuild'
-        CandidatePath = [IO.Path]::GetFullPath($second.ShimPath)
-        CandidateSha256 = $secondShimSha256
-        NativeChecksPath = [IO.Path]::GetFullPath($second.TestPath)
-        NativeChecksSha256 = $secondChecksSha256
-        ManifestSha256 = $expectedManifestSha256
-        CurrentTrustSha256 = $expectedTrustSha256
-        NextTrustSha256 = $expectedNextTrustSha256
-        EmbeddedHeaderSha256 = $binding.HeaderSha256
-        PrivateKeyAccess = 'None'
-    }
 }
 finally {
     Restore-RebornManifestKeyArtifactSnapshot $snapshot

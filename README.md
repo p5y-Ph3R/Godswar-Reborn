@@ -4,9 +4,10 @@ Minimal .NET 10 server-side emulator for the Godswar Origin client protocol.
 
 ## Run
 
-```powershell
-dotnet run --project src\Godswar.Server
-```
+Checked-in settings fail closed with legacy raw authentication disabled.
+For the unmodified local client, use the explicit loopback Docker rollback
+profile described below. Use the secure profile for TLS plus authenticated
+UDP.
 
 Focused Phase 2 codec check:
 
@@ -59,7 +60,10 @@ rollback; viewer parity was `Unavailable`. See the
 ## Docker
 
 ```powershell
-docker compose up --build
+docker compose `
+  -f docker-compose.yml `
+  --profile legacy-raw `
+  up --build -d server
 ```
 
 The opt-in TLS plus authenticated-UDP Docker profile is documented in
@@ -67,7 +71,7 @@ The opt-in TLS plus authenticated-UDP Docker profile is documented in
 It replaces the raw server container, publishes only loopback secure ports,
 and keeps certificate material in read-only Compose secrets.
 
-This starts:
+This explicit local rollback starts:
 
 - `godswar-postgres`: PostgreSQL with the schema from `database/postgres/001_init.sql`
 - `godswar-server`: .NET 10 server using PostgreSQL storage
@@ -76,7 +80,7 @@ If Windows already has listeners on `5999` or `7000`, free those ports first or 
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up --build
+docker compose --profile legacy-raw up --build -d server
 ```
 
 The default listener matches `C:\Godswar Origin\config.ini`:
@@ -87,17 +91,33 @@ PORT=5999
 IP=127.1.1.110
 ```
 
-The checked-in profiles explicitly use `LocalDevelopment`. In that profile,
-non-Docker runs use `data\state.json`, Docker uses PostgreSQL, and the original
-client's raw authentication remains available with a startup warning. It is
-not a production security boundary: keep raw ports on a controlled host.
+Both checked-in appsettings files set legacy raw authentication to `false`.
+The raw Docker server starts only with `--profile legacy-raw`, explicitly
+enables the rollback capability, and publishes only loopback host ports. It
+preserves the unmodified client's plaintext-compatible login and username-only
+game binding, so it is not a production security boundary.
+
+The mutually exclusive secure command is:
+
+```powershell
+docker compose `
+  --env-file .env.secure.local `
+  -f docker-compose.yml `
+  -f docker-compose.secure.yml `
+  --profile secure `
+  up --build -d server
+```
+
+Certificate/password setup is in the
+[secure Docker runbook](docs/network-infrastructure-secure-docker.md).
 
 `Production` is fail-closed: it requires PostgreSQL, a nonempty connection
-string, and secure TLS listeners. Missing or unknown runtime/storage values,
-JSON in `Production`, raw TCP in `Production`, and malformed security
-environment values stop startup before storage initialization. Select the
-profile with `runtimeProfile` or `GODSWAR_RUNTIME_PROFILE`; never use
-`LocalDevelopment` as a production fallback.
+string, secure TLS listeners, and plaintext credential migration disabled.
+Missing or unknown runtime/storage values, JSON or raw TCP in `Production`,
+plaintext migration in `Production`, and malformed security environment
+values stop startup before storage initialization. Select the profile with
+`runtimeProfile` or `GODSWAR_RUNTIME_PROFILE`; never use `LocalDevelopment` as
+a production fallback.
 
 The ECS gameplay architecture, completed cutovers, parity gates, and
 reversible monster/player runtime selectors (both default to `Ecs`) are
@@ -132,6 +152,7 @@ Implemented:
 - Authoritative Gear Mentor Add/Enhance/Delete, decomposition, 99-dust Attribute Stone creation, Crystal downgrade transformation, and Level-4/5 gem-piece combination workflows
 - Map-specific NPC interaction IDs, including Holy Stone Artisan dialog/action routing in both Sparta and Athens
 - Secure networking: PreviewReadyV6 completed original-client TLS authentication, authenticated encrypted UDP binding, authoritative movement, forced one-way TLS fallback/correction, and a ten-minute Soak. Exact rollback restored stock files and disabled activation; protected receipt `completion-0a73fd79-961b-42c7-82cc-9e4a6f9e3355.json` has SHA-256 `5EB6E369...F4A6F` ([acceptance record](docs/network-infrastructure-controlled-host-acceptance.md)). The secure Docker profile publishes only loopback `6599/TCP`, `7443/TCP`, and `7444/UDP`; viewer parity was `Unavailable`, and production security/capacity gates remain ([Slice 9 overview](docs/network-infrastructure-phase3-slice9c-protected-udp.md), [Phase 4 record](docs/network-infrastructure-phase4-authoritative-movement.md)).
+- Raw-authentication retirement: checked-in defaults reject raw startup; the unsafe original-client path now requires the explicit loopback-only `legacy-raw` Docker profile. The playable `7FB43C8D...BA07F9` Origin plus deterministic secure Net `A26096B0...D50AA4` pair passed exact offline gates, but is not installed or live re-accepted. An Origin hash is compatibility metadata rather than authentication or anti-cheat ([B14 evidence](docs/data-architecture-b14-raw-auth-retirement-20260731.md)).
 
 The multiplayer, NPC, and captured-monster synchronization above is server-side. It does not require game client code changes; a client already configured to connect to this server can use it as-is. The patches below cover separate extended-grade, rank, aura, talent, and native client-stability work.
 

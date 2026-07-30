@@ -44,6 +44,7 @@ internal static partial class ControlledHostValidationCommand
             secure.Udp.Port != 7_444 ||
             options.Authentication.AllowRegistration ||
             !options.Authentication.AllowPlaintextMigration ||
+            options.Authentication.AllowLegacyRawAuthentication ||
             secure.Phase4AcceptanceFaults.Enabled !=
                 expectedAcceptanceFaults ||
             !Path.GetFullPath(secure.CertificatePath).Equals(

@@ -77,9 +77,15 @@ function Get-RebornPhase4EnvironmentMap {
 
 function Assert-RebornPhase4DockerInspection {
     param(
-        [Parameter(Mandatory)][object[]]$Containers,
-        [Parameter(Mandatory)][object[]]$TcpListeners,
-        [Parameter(Mandatory)][object[]]$UdpListeners,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Containers,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$TcpListeners,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$UdpListeners,
         [object]$Pins = (Get-RebornPhase4SecureDockerPins)
     )
 
@@ -147,6 +153,7 @@ function Assert-RebornPhase4DockerInspection {
     foreach ($required in @{
         GODSWAR_RUNTIME_PROFILE = 'LocalDevelopment'
         GODSWAR_SECURE_ENABLED = 'true'
+        GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION = 'false'
         GODSWAR_SECURE_UDP_ENABLED = 'true'
         GODSWAR_SECURE_UDP_GAMEPLAY_MOVEMENT_ENABLED = 'true'
         GODSWAR_SECURE_PHASE4_ACCEPTANCE_FAULTS_ENABLED = 'false'

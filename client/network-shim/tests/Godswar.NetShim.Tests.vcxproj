@@ -289,6 +289,7 @@
     <ClInclude Include="..\src\SchannelClientStreamInternal.h" />
     <ClInclude Include="..\src\SchannelClientStreamPostHandshake.h" />
     <ClInclude Include="..\src\SecureClientManifestDevelopmentKeys.generated.h" />
+    <ClInclude Include="..\src\SecureClientOriginIdentity.generated.h" />
     <ClInclude Include="..\src\SecureClientManifestBuildContract.h" />
     <ClInclude Include="..\src\SecureClientRuntime.h" />
     <ClInclude Include="..\src\SecureClientRuntimeInternal.h" />

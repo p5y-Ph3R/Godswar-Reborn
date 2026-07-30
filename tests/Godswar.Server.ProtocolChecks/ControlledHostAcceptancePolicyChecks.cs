@@ -92,6 +92,11 @@ internal static class ControlledHostAcceptancePolicyChecks
                 options.Authentication.AllowPlaintextMigration = false,
             "plaintext migration");
         Reject(
+            options =>
+                options.Authentication.AllowLegacyRawAuthentication =
+                    true,
+            "legacy raw authentication");
+        Reject(
             options => options.Secure.CertificatePath =
                 @"C:\other.pfx",
             "certificate path");

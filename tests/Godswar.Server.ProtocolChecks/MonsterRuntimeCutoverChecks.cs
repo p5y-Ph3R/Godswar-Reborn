@@ -105,6 +105,9 @@ internal static class MonsterRuntimeCutoverChecks
               "storage": {
                 "provider": "Json"
               },
+              "authentication": {
+                "allowLegacyRawAuthentication": true
+              },
               "game": {
                 "monsters": {
                   "runtime": "{{runtime}}"

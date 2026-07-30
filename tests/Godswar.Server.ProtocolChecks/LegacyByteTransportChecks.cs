@@ -143,6 +143,7 @@ internal static class LegacyByteTransportChecks
         var options = new ServerOptions();
         options.RuntimeProfile = "LocalDevelopment";
         options.Storage.Provider = "Json";
+        options.Authentication.AllowLegacyRawAuthentication = true;
         var legacyAuthenticationAccess =
             LegacyAuthenticationAccess.Create(
                 ServerRuntimeProfilePolicy.Validate(options));

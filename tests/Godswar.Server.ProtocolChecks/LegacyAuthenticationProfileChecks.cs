@@ -5,6 +5,7 @@ using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
+using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -28,6 +29,7 @@ internal static class LegacyAuthenticationProfileChecks
         var allowedStore = new CountingAccountStore();
         var allowedTransport =
             new ScriptedLegacyByteTransport();
+        var allowedPacketBytes = (byte[])packet.Clone();
         await using (var session = new ClientSession(
             allowedTransport,
             endpointRole: NetworkEndpointRole.Login))
@@ -42,17 +44,22 @@ internal static class LegacyAuthenticationProfileChecks
             await InvokeAsync(
                 handler,
                 "HandleLoginAsync",
-                new GamePacket((byte[])packet.Clone()));
+                new GamePacket(allowedPacketBytes));
         }
 
         Check.Equal(
             1,
             allowedStore.LoginOrCreateCalls,
             "explicit local raw login reaches account upsert once");
+        Check.True(
+            allowedPacketBytes.AsSpan(36, 32)
+                .IndexOfAnyExcept((byte)0) < 0,
+            "raw rollback credential packet bytes are cleared");
 
         var blockedStore = new CountingAccountStore();
         var blockedTransport =
             new ScriptedLegacyByteTransport();
+        var blockedPacketBytes = (byte[])packet.Clone();
         await using (var session = new ClientSession(
             blockedTransport,
             endpointRole: NetworkEndpointRole.Login))
@@ -64,7 +71,7 @@ internal static class LegacyAuthenticationProfileChecks
             await InvokeAsync(
                 handler,
                 "HandleLoginAsync",
-                new GamePacket((byte[])packet.Clone()));
+                new GamePacket(blockedPacketBytes));
         }
 
         Check.Equal(
@@ -75,6 +82,10 @@ internal static class LegacyAuthenticationProfileChecks
             1,
             blockedTransport.DisconnectCount,
             "raw login without local capability disconnects");
+        Check.True(
+            blockedPacketBytes.AsSpan(36, 32)
+                .IndexOfAnyExcept((byte)0) < 0,
+            "blocked raw credential packet bytes are cleared");
     }
 
     private static async Task CheckRawGameBindingCapabilityAsync()
@@ -203,6 +214,10 @@ internal static class LegacyAuthenticationProfileChecks
             Storage = new StorageOptions
             {
                 Provider = "Json"
+            },
+            Authentication = new AuthenticationOptions
+            {
+                AllowLegacyRawAuthentication = true
             }
         };
 

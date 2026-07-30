@@ -35,6 +35,8 @@ internal sealed class AuthenticationOptions
 
     public bool AllowPlaintextMigration { get; set; } = true;
 
+    public bool AllowLegacyRawAuthentication { get; set; }
+
     public void Validate()
     {
         if (MinimumStoredIterations is <

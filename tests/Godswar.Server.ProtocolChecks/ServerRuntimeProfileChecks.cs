@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 using System.Text.Json;
 using Godswar.Server.Networking;
 using Godswar.Server.Operations;
+using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -13,6 +14,8 @@ internal static partial class ServerRuntimeProfileChecks
         "GODSWAR_STORAGE_PROVIDER";
     private const string SecureEnvironment =
         "GODSWAR_SECURE_ENABLED";
+    private const string LegacyRawAuthenticationEnvironment =
+        "GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION";
 
     public static Task RunAsync()
     {
@@ -83,6 +86,15 @@ internal static partial class ServerRuntimeProfileChecks
             ServerStartupRejectionReason.RawTransportForbidden,
             "production raw transport");
 
+        var localRawDisabled = LocalJson();
+        localRawDisabled.Authentication.
+            AllowLegacyRawAuthentication = false;
+        ExpectReason(
+            localRawDisabled,
+            ServerStartupRejectionReason.
+                LegacyRawAuthenticationDisabled,
+            "local raw transport without rollback capability");
+
         AssertAccepted(
             LocalJson(),
             ServerRuntimeProfileKind.LocalDevelopment,
@@ -100,13 +112,34 @@ internal static partial class ServerRuntimeProfileChecks
 
         var localSecure = LocalJson();
         localSecure.Secure.Enabled = true;
+        localSecure.Authentication.
+            AllowLegacyRawAuthentication = false;
+        localSecure.Authentication.AllowPlaintextMigration = true;
         AssertAccepted(
             localSecure,
             ServerRuntimeProfileKind.LocalDevelopment,
             GameStorageProviderKind.Json,
             ServerListenerTransport.SecureTls,
             legacyAuthentication: false,
-            "local secure JSON");
+            "local secure JSON with plaintext migration");
+
+        var productionPlaintextMigration = Postgres(
+            "Production",
+            secure: true);
+        productionPlaintextMigration.Authentication.
+            AllowPlaintextMigration = true;
+        ExpectReason(
+            productionPlaintextMigration,
+            ServerStartupRejectionReason.
+                PlaintextMigrationForbidden,
+            "production plaintext migration");
+        Check.Equal(
+            "plaintext_migration_forbidden",
+            ServerRuntimeProfilePolicy.RejectionCode(
+                ServerStartupRejectionReason.
+                    PlaintextMigrationForbidden),
+            "production plaintext migration rejection code");
+
         AssertAccepted(
             Postgres("Production", secure: true),
             ServerRuntimeProfileKind.Production,
@@ -114,6 +147,34 @@ internal static partial class ServerRuntimeProfileChecks
             ServerListenerTransport.SecureTls,
             legacyAuthentication: false,
             "production secure PostgreSQL");
+
+        var localSecureWithRollback = LocalJson();
+        localSecureWithRollback.Secure.Enabled = true;
+        ExpectReason(
+            localSecureWithRollback,
+            ServerStartupRejectionReason.
+                LegacyRawAuthenticationScopeInvalid,
+            "secure local transport with raw rollback capability");
+
+        var productionSecureWithRollback = Postgres(
+            "Production",
+            secure: true);
+        productionSecureWithRollback.Authentication.
+            AllowLegacyRawAuthentication = true;
+        ExpectReason(
+            productionSecureWithRollback,
+            ServerStartupRejectionReason.
+                LegacyRawAuthenticationScopeInvalid,
+            "secure production transport with raw rollback capability");
+
+        Check.True(
+            LegacyAuthenticationAccess.Create(
+                new ValidatedServerRuntimeProfile(
+                    ServerRuntimeProfileKind.Production,
+                    GameStorageProviderKind.Postgres,
+                    ServerListenerTransport.SecureTls,
+                    AllowsLegacyAuthentication: true)) is null,
+            "legacy capability rejects an invalid constructed scope");
     }
 
     private static void CheckMissingFileDoesNotCreateDefaults()
@@ -156,6 +217,9 @@ internal static partial class ServerRuntimeProfileChecks
             Environment.GetEnvironmentVariable(StorageEnvironment);
         var previousSecure =
             Environment.GetEnvironmentVariable(SecureEnvironment);
+        var previousLegacyRaw =
+            Environment.GetEnvironmentVariable(
+                LegacyRawAuthenticationEnvironment);
         try
         {
             Environment.SetEnvironmentVariable(
@@ -186,6 +250,16 @@ internal static partial class ServerRuntimeProfileChecks
             Check.Throws<InvalidDataException>(
                 () => ServerOptions.Load(path),
                 "malformed secure environment override");
+
+            Environment.SetEnvironmentVariable(
+                SecureEnvironment,
+                "false");
+            Environment.SetEnvironmentVariable(
+                LegacyRawAuthenticationEnvironment,
+                "tru");
+            Check.Throws<InvalidDataException>(
+                () => ServerOptions.Load(path),
+                "malformed legacy raw authentication override");
         }
         finally
         {
@@ -198,6 +272,9 @@ internal static partial class ServerRuntimeProfileChecks
             Environment.SetEnvironmentVariable(
                 SecureEnvironment,
                 previousSecure);
+            Environment.SetEnvironmentVariable(
+                LegacyRawAuthenticationEnvironment,
+                previousLegacyRaw);
             Directory.Delete(directory, recursive: true);
         }
     }
@@ -211,8 +288,10 @@ internal static partial class ServerRuntimeProfileChecks
                      "appsettings.docker.json"
                  })
         {
+            var source = File.ReadAllText(
+                Path.Combine(root, name));
             using var document = JsonDocument.Parse(
-                File.ReadAllText(Path.Combine(root, name)));
+                source);
             var configuration = document.RootElement;
             Check.True(
                 configuration.GetProperty("runtimeProfile")
@@ -224,6 +303,22 @@ internal static partial class ServerRuntimeProfileChecks
                         .GetProperty("provider")
                         .GetString()),
                 $"{name} explicitly names a storage provider");
+            Check.True(
+                configuration.GetProperty("authentication")
+                    .GetProperty(
+                        "allowLegacyRawAuthentication")
+                    .ValueKind == JsonValueKind.False,
+                $"{name} disables raw authentication by default");
+            var options = JsonSerializer.Deserialize<ServerOptions>(
+                source,
+                JsonDefaults.Indented) ??
+                throw new InvalidOperationException(
+                    $"{name} did not deserialize.");
+            ExpectReason(
+                options,
+                ServerStartupRejectionReason.
+                    LegacyRawAuthenticationDisabled,
+                $"{name} raw defaults fail closed");
         }
 
         var baseCompose = File.ReadAllText(
@@ -236,10 +331,33 @@ internal static partial class ServerRuntimeProfileChecks
                 StringComparison.Ordinal),
             "base Compose explicitly names LocalDevelopment");
         Check.True(
+            baseCompose.Contains(
+                "GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: \"true\"",
+                StringComparison.Ordinal),
+            "legacy raw Compose profile explicitly enables rollback");
+        Check.True(
+            baseCompose.Contains(
+                "profiles: [\"legacy-raw\"]",
+                StringComparison.Ordinal) &&
+            baseCompose.Contains(
+                "com.reborn.network.profile: legacy-raw-local-development",
+                StringComparison.Ordinal),
+            "raw Docker server requires the labelled legacy-raw profile");
+        Check.True(
             secureCompose.Contains(
                 "GODSWAR_RUNTIME_PROFILE: LocalDevelopment",
                 StringComparison.Ordinal),
             "secure Compose explicitly names LocalDevelopment");
+        Check.True(
+            secureCompose.Contains(
+                "GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: \"false\"",
+                StringComparison.Ordinal),
+            "secure Compose disables raw authentication rollback");
+        Check.True(
+            secureCompose.Contains(
+                "profiles: !override [\"secure\"]",
+                StringComparison.Ordinal),
+            "secure Compose replaces the legacy raw profile");
     }
 
     private static void CheckMetrics()
@@ -303,6 +421,10 @@ internal static partial class ServerRuntimeProfileChecks
             Storage = new StorageOptions
             {
                 Provider = "Json"
+            },
+            Authentication = new AuthenticationOptions
+            {
+                AllowLegacyRawAuthentication = true
             }
         };
 
@@ -321,6 +443,15 @@ internal static partial class ServerRuntimeProfileChecks
             }
         };
         options.Secure.Enabled = secure;
+        options.Authentication.AllowLegacyRawAuthentication =
+            runtimeProfile.Equals(
+                "LocalDevelopment",
+                StringComparison.OrdinalIgnoreCase) &&
+            !secure;
+        options.Authentication.AllowPlaintextMigration =
+            !runtimeProfile.Equals(
+                "Production",
+                StringComparison.OrdinalIgnoreCase);
         return options;
     }
 

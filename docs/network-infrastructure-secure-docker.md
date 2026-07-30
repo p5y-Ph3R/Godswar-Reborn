@@ -134,7 +134,10 @@ To intentionally return to raw development, use the base file alone. Compose
 recreates the same `godswar-server` identity with the legacy configuration:
 
 ```powershell
-docker compose -f docker-compose.yml up --build -d server
+docker compose `
+  -f docker-compose.yml `
+  --profile legacy-raw `
+  up --build -d server
 ```
 
 Never run base and secure server commands concurrently.

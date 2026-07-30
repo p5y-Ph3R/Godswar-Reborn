@@ -9,6 +9,8 @@ internal static class ServerListenerProfileChecks
         var rawOptions = new ServerOptions();
         rawOptions.RuntimeProfile = "LocalDevelopment";
         rawOptions.Storage.Provider = "Json";
+        rawOptions.Authentication.AllowLegacyRawAuthentication =
+            true;
         rawOptions.Login.Port = 5999;
         rawOptions.Game.Port = 7000;
         rawOptions.Secure.Enabled = false;
@@ -24,6 +26,7 @@ internal static class ServerListenerProfileChecks
         secureOptions.Storage.Provider = "Postgres";
         secureOptions.Storage.PostgresConnectionString =
             "Host=127.0.0.1;Database=listener-check";
+        secureOptions.Authentication.AllowPlaintextMigration = false;
         secureOptions.Secure.Enabled = true;
         secureOptions.Secure.Login.Port = 6599;
         secureOptions.Secure.Game.Port = 7443;

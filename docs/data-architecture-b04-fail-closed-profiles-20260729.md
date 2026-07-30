@@ -12,6 +12,12 @@ Status: complete
 - Database/schema change: none
 - Client/wire-protocol change: none
 
+> **B14 supersession (2026-07-31):** This report preserves B04's historical
+> state. Checked-in appsettings now disable legacy raw authentication, and
+> Docker raw startup requires the explicit loopback-only `legacy-raw` profile.
+> See
+> [B14 evidence](data-architecture-b14-raw-auth-retirement-20260731.md).
+
 ## Outcome
 
 B04 removes the server's silent JSON and raw-authentication fallbacks.
@@ -158,16 +164,16 @@ separate local and CI evidence remains in the B03 report.
 
 ## Security limitations
 
-- Raw authentication is still intrinsically unsafe. B04 contains it in an
-  explicit profile; B14 owns retirement.
+- Raw authentication is intrinsically unsafe. B14 later disabled it by
+  default and retained it only as an explicit loopback development rollback.
 - `LocalDevelopment` is an authorization choice, not a host firewall.
   Direct-run raw binds must remain on a controlled machine/network.
 - The `Production` profile enforces storage/listener composition, but it does
   not by itself supply production certificates, upstream L3/L4 DDoS
   protection, secret management, capacity guarantees, or live operational
   approval.
-- Existing raw-path diagnostic logs remain legacy debt for B13/B14. The new
-  profile metrics add no player or network identifiers.
+- B13/B14 subsequently bounded raw-path logs and preserved privacy-safe
+  profile metrics without player or network identifiers.
 
 ## Rollback
 

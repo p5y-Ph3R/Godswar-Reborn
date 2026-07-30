@@ -60,6 +60,9 @@ internal static partial class ServerRuntimeProfileChecks
                     "checkpoints": {
                       "queueCapacity": 0
                     }
+                  },
+                  "authentication": {
+                    "allowLegacyRawAuthentication": true
                   }
                 }
                 """);
@@ -74,6 +77,9 @@ internal static partial class ServerRuntimeProfileChecks
                   "runtimeProfile": "LocalDevelopment",
                   "storage": {
                     "provider": "Json"
+                  },
+                  "authentication": {
+                    "allowLegacyRawAuthentication": true
                   }
                 }
                 """);

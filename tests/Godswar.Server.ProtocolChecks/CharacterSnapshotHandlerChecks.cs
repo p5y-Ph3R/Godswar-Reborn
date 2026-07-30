@@ -51,6 +51,7 @@ internal static partial class CharacterSnapshotHandlerChecks
             RuntimeProfile = "LocalDevelopment",
             Storage = new StorageOptions { Provider = "Json" }
         };
+        options.Authentication.AllowLegacyRawAuthentication = true;
         var legacyAccess = LegacyAuthenticationAccess.Create(
             ServerRuntimeProfilePolicy.Validate(options)) ??
             throw new InvalidOperationException(
@@ -125,6 +126,7 @@ internal static partial class CharacterSnapshotHandlerChecks
             RuntimeProfile = "LocalDevelopment",
             Storage = new StorageOptions { Provider = "Json" }
         };
+        options.Authentication.AllowLegacyRawAuthentication = true;
         var legacyAccess = LegacyAuthenticationAccess.Create(
             ServerRuntimeProfilePolicy.Validate(options)) ??
             throw new InvalidOperationException(

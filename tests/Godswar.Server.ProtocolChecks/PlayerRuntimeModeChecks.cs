@@ -87,6 +87,9 @@ internal static class PlayerRuntimeModeChecks
               "storage": {
                 "provider": "Json"
               },
+              "authentication": {
+                "allowLegacyRawAuthentication": true
+              },
               "game": {
                 "players": {
                   "runtime": "{{runtime}}"

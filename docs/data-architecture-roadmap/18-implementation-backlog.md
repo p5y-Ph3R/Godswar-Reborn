@@ -18,7 +18,7 @@
 | B11 - Character lifecycle/tombstone **(completed 2026-07-30)** | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
 | B12 - Progression/reward/pet durability **(completed 2026-07-31)** | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
 | B13 - Structured logs, traces, readiness **(completed 2026-07-31)** | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | implemented B13 signals; deferred section 16 gaps stay explicit | Disable exporter/sink, keep audits | Medium | Medium |
-| B14 - Raw authentication retirement | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
+| B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Single-process PG/local owner implementation | Large | High |
 | B16 - Redis decision ADR | Avoid premature infrastructure | measurements, capacity inputs, section 7 ADR | B13-B15 and product scale decision | Explicit defer/approve with SLO/TTL/outage/cost | failure model prototype if approved | candidate load/latency | Defer Redis | Small | Low |
 | B17 - Redis coordination adapter, conditional | Enable measured multi-process session/routing needs | Redis package/config/key library/Lua, tickets/presence/routing and leases carrying PG-issued fences | Approved B16, B15 | Cross-instance ticket/lease/reconnect safe; Redis restart cannot reset fence; PG remains value owner | Redis restart/eviction/slow, fence reinstall, split ownership | latency/errors/lease/presence | Drain to one process/PG-local adapter | Large | High |
@@ -99,8 +99,16 @@ and incident runbooks. A real PostgreSQL outage kept liveness true, removed
 readiness, and recovered without restarting the server. The management plane
 is not published by Docker. Upstream collection, alert routing, and public
 L3/L4 DDoS mitigation remain deployment responsibilities, not claims made by
-the application. The next dependency-ordered ticket is B14 raw
-authentication retirement.
+the application.
+
+**B14 completed 2026-07-31:** the
+[implementation evidence](../data-architecture-b14-raw-auth-retirement-20260731.md)
+records fail-closed defaults, explicit loopback-only `legacy-raw` rollback,
+mutually exclusive secure activation, credential clearing, TLS/ticket checks,
+and sealed PreviewReadyV6 acceptance. The playable
+`7FB43C8D...BA07F9` Origin pairing passed exact offline gates but is not
+installed or live re-accepted; no production deployment or upstream
+protection is claimed. B15 ownership fencing is next.
 
 ## 18.2 First three low-risk implementation tasks
 
@@ -114,7 +122,7 @@ authentication retirement.
 - **Blocks scale-out/Redis and multi-owner writes specifically:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
-- **Requires architectural decision first:** B14 raw-auth support policy; B16 Redis; B17 process placement/routing; B21 MongoDB; character deletion retention; reward failure semantics.
+- **Requires architectural decision first:** B16 Redis; B17 process placement/routing; B21 MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 
 ## 18.4 Architectural mistakes to avoid

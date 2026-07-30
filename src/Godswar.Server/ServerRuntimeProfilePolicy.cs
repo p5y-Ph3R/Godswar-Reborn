@@ -23,7 +23,10 @@ internal enum ServerStartupRejectionReason
     StorageProviderUnknown = 5,
     JsonStorageForbidden = 6,
     PostgresConnectionMissing = 7,
-    RawTransportForbidden = 8
+    RawTransportForbidden = 8,
+    LegacyRawAuthenticationDisabled = 9,
+    LegacyRawAuthenticationScopeInvalid = 10,
+    PlaintextMigrationForbidden = 11
 }
 
 internal sealed class ServerStartupConfigurationException :
@@ -43,12 +46,8 @@ internal sealed class ServerStartupConfigurationException :
 internal sealed record ValidatedServerRuntimeProfile(
     ServerRuntimeProfileKind RuntimeProfile,
     GameStorageProviderKind StorageProvider,
-    ServerListenerTransport Transport)
-{
-    public bool AllowsLegacyAuthentication =>
-        RuntimeProfile == ServerRuntimeProfileKind.LocalDevelopment &&
-        Transport == ServerListenerTransport.RawTcp;
-}
+    ServerListenerTransport Transport,
+    bool AllowsLegacyAuthentication);
 
 internal sealed class LegacyAuthenticationAccess
 {
@@ -60,7 +59,10 @@ internal sealed class LegacyAuthenticationAccess
         ValidatedServerRuntimeProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        return profile.AllowsLegacyAuthentication
+        return profile.AllowsLegacyAuthentication &&
+            profile.RuntimeProfile ==
+                ServerRuntimeProfileKind.LocalDevelopment &&
+            profile.Transport == ServerListenerTransport.RawTcp
             ? new LegacyAuthenticationAccess()
             : null;
     }
@@ -107,10 +109,43 @@ internal static class ServerRuntimeProfilePolicy
                 "Raw TCP is restricted to LocalDevelopment.");
         }
 
+        var allowsLegacyAuthentication =
+            options.Authentication?.
+                AllowLegacyRawAuthentication == true;
+        if (transport == ServerListenerTransport.RawTcp &&
+            !allowsLegacyAuthentication)
+        {
+            throw Reject(
+                ServerStartupRejectionReason.
+                    LegacyRawAuthenticationDisabled,
+                "Raw TCP requires the explicit local-development legacy authentication rollback capability.");
+        }
+
+        if (allowsLegacyAuthentication &&
+            (runtimeProfile !=
+                ServerRuntimeProfileKind.LocalDevelopment ||
+             transport != ServerListenerTransport.RawTcp))
+        {
+            throw Reject(
+                ServerStartupRejectionReason.
+                    LegacyRawAuthenticationScopeInvalid,
+                "Legacy raw authentication is valid only for the LocalDevelopment raw TCP rollback profile.");
+        }
+
+        if (runtimeProfile == ServerRuntimeProfileKind.Production &&
+            options.Authentication?.AllowPlaintextMigration == true)
+        {
+            throw Reject(
+                ServerStartupRejectionReason.
+                    PlaintextMigrationForbidden,
+                "Plaintext credential migration is forbidden in Production.");
+        }
+
         return new ValidatedServerRuntimeProfile(
             runtimeProfile,
             storageProvider,
-            transport);
+            transport,
+            allowsLegacyAuthentication);
     }
 
     public static string RejectionCode(
@@ -133,6 +168,15 @@ internal static class ServerRuntimeProfilePolicy
                 "postgres_connection_missing",
             ServerStartupRejectionReason.RawTransportForbidden =>
                 "raw_transport_forbidden",
+            ServerStartupRejectionReason.
+                LegacyRawAuthenticationDisabled =>
+                "legacy_raw_authentication_disabled",
+            ServerStartupRejectionReason.
+                LegacyRawAuthenticationScopeInvalid =>
+                "legacy_raw_authentication_scope_invalid",
+            ServerStartupRejectionReason.
+                PlaintextMigrationForbidden =>
+                "plaintext_migration_forbidden",
             _ => "invalid_configuration"
         };
 
