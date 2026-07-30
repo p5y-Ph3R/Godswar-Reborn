@@ -42,7 +42,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
             reader.GetInt32(0),
             reader.GetInt32(1),
             reader.GetString(2),
-            ToUtcOffset(reader.GetDateTime(17)));
+            ToUtcOffset(reader.GetDateTime(17)),
+            reader.GetInt16(46),
+            reader.GetInt64(47));
         return new CharacterCoreRow(
             identity,
             new CharacterAppearanceSnapshot(
@@ -226,10 +228,13 @@ internal sealed partial class PostgresCharacterSnapshotReader
                  AND grid.grid_index = requested_grid.grid_index
                 ORDER BY requested_grid.grid_index
             ),
-            cb.position_revision
+            cb.position_revision,
+            cb.character_slot,
+            cb.lifecycle_version
         FROM character_base cb
         LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
         WHERE cb.account_id = @accountId
+          AND cb.lifecycle_state = 'active'
         ORDER BY cb.id
         LIMIT 2;
         """;

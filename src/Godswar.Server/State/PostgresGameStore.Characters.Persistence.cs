@@ -1,7 +1,6 @@
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
-using System.Data.Common;
 
 namespace Godswar.Server.State;
 
@@ -12,11 +11,108 @@ internal sealed partial class PostgresGameStore
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        await RequireAvailableCharacterSlotAsync(
-            connection,
-            transaction,
-            character.AccountId,
-            cancellationToken);
+        await using (var lockAccount = connection.CreateCommand())
+        {
+            lockAccount.Transaction = transaction;
+            lockAccount.CommandText =
+                """
+                SELECT character_lifecycle_version
+                FROM accounts
+                WHERE id = @accountId
+                FOR UPDATE;
+                """;
+            lockAccount.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            if (await lockAccount.ExecuteScalarAsync(
+                    cancellationToken) is null)
+            {
+                throw new InvalidOperationException(
+                    "Character creation requires an existing account.");
+            }
+        }
+
+        await using (var guardStream = connection.CreateCommand())
+        {
+            guardStream.Transaction = transaction;
+            guardStream.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM outbox_consumer_positions
+                    WHERE consumer_key = 'character_lifecycle_v1'
+                      AND aggregate_type =
+                          'account_character_slot'
+                      AND aggregate_key =
+                          @accountId::text || ':0'
+                    UNION ALL
+                    SELECT 1
+                    FROM outbox_events
+                    WHERE consumer_key = 'character_lifecycle_v1'
+                      AND aggregate_type =
+                          'account_character_slot'
+                      AND aggregate_key =
+                          @accountId::text || ':0'
+                );
+                """;
+            guardStream.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            if (await guardStream.ExecuteScalarAsync(
+                    cancellationToken) is true)
+            {
+                throw new
+                    CharacterLifecycleDurableStreamActiveException();
+            }
+        }
+
+        await using (var checkSlot = connection.CreateCommand())
+        {
+            checkSlot.Transaction = transaction;
+            checkSlot.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM character_base
+                    WHERE account_id = @accountId
+                      AND character_slot = @characterSlot
+                      AND lifecycle_state = 'active'
+                );
+                """;
+            checkSlot.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            checkSlot.Parameters.AddWithValue(
+                "characterSlot",
+                CharacterLifecyclePolicy.SingleCharacterSlot);
+            if (await checkSlot.ExecuteScalarAsync(
+                    cancellationToken) is true)
+            {
+                throw new CharacterSlotOccupiedException();
+            }
+        }
+
+        long lifecycleVersion;
+        await using (var reserveVersion = connection.CreateCommand())
+        {
+            reserveVersion.Transaction = transaction;
+            reserveVersion.CommandText =
+                """
+                UPDATE accounts
+                SET character_lifecycle_version =
+                        character_lifecycle_version + 1
+                WHERE id = @accountId
+                RETURNING character_lifecycle_version;
+                """;
+            reserveVersion.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            var value = await reserveVersion.ExecuteScalarAsync(
+                cancellationToken);
+            lifecycleVersion = value is long version
+                ? version
+                : Convert.ToInt64(value);
+        }
         var characterId = 0;
         await using (var command = new NpgsqlCommand("""
             INSERT INTO character_base (
@@ -29,7 +125,8 @@ internal sealed partial class PostgresGameStore
                 prestige, earl_rank, consortia, consortia_job, consortia_contribute,
                 store_num, bag_num, hair_style, face_shap, "Map", "Pos_X", "Pos_Z", "Money",
                 "Stone", "SkillPoint", "SkillExp", holy_suit_points, "MaxHP", "MaxMP", "Register_time",
-                "LastLogin_time", mutetime
+                "LastLogin_time", mutetime, character_slot,
+                lifecycle_state, lifecycle_version
             )
             VALUES (
                 @accountId, 1, @name, @gender, 0, @camp, @profession, @level,
@@ -40,7 +137,8 @@ internal sealed partial class PostgresGameStore
                 @zodiacAccumulatedExperienceX100, @zodiacAccumulatedTalentExperienceX100,
                 0, 0, 0, 0, 0,
                 10, 1, @hair, @face, @currentMap, @positionX, @positionZ, @silver,
-                @gold, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0
+                @gold, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0,
+                @characterSlot, 'active', @lifecycleVersion
             )
             RETURNING id;
             """, connection, transaction))
@@ -108,6 +206,12 @@ internal sealed partial class PostgresGameStore
             command.Parameters.AddWithValue("maxHp", character.MaxHp);
             command.Parameters.AddWithValue("maxMp", character.MaxMp);
             command.Parameters.AddWithValue("createdUtc", DateTime.SpecifyKind(character.CreatedUtc, DateTimeKind.Utc));
+            command.Parameters.AddWithValue(
+                "characterSlot",
+                CharacterLifecyclePolicy.SingleCharacterSlot);
+            command.Parameters.AddWithValue(
+                "lifecycleVersion",
+                lifecycleVersion);
 
             var scalar = await command.ExecuteScalarAsync(cancellationToken);
             characterId = scalar is int id ? id : Convert.ToInt32(scalar);
@@ -168,86 +272,6 @@ internal sealed partial class PostgresGameStore
 
         return await GetCharacterByIdAsync(characterId, cancellationToken)
             ?? throw new InvalidOperationException("Inserted character could not be reloaded.");
-    }
-
-    private static async Task RequireAvailableCharacterSlotAsync(
-        DbConnection connection,
-        DbTransaction transaction,
-        int accountId,
-        CancellationToken cancellationToken)
-    {
-        await using (var lockAccount = connection.CreateCommand())
-        {
-            lockAccount.Transaction = transaction;
-            lockAccount.CommandText = """
-                SELECT id
-                FROM accounts
-                WHERE id = @accountId
-                FOR UPDATE;
-                """;
-            var accountIdParameter = lockAccount.CreateParameter();
-            accountIdParameter.ParameterName = "accountId";
-            accountIdParameter.Value = accountId;
-            lockAccount.Parameters.Add(accountIdParameter);
-            if (await lockAccount.ExecuteScalarAsync(cancellationToken) is null)
-            {
-                throw new InvalidOperationException(
-                    "Character creation requires an existing account.");
-            }
-        }
-
-        // This is deliberately a second READ COMMITTED statement. A creator
-        // that waited on the account-row lock must observe the prior creator's
-        // committed character before deciding whether the slot is empty.
-        await using var checkSlot = connection.CreateCommand();
-        checkSlot.Transaction = transaction;
-        checkSlot.CommandText = """
-            SELECT EXISTS (
-                SELECT 1
-                FROM character_base
-                WHERE account_id = @accountId
-            );
-            """;
-        var checkAccountIdParameter = checkSlot.CreateParameter();
-        checkAccountIdParameter.ParameterName = "accountId";
-        checkAccountIdParameter.Value = accountId;
-        checkSlot.Parameters.Add(checkAccountIdParameter);
-        if (await checkSlot.ExecuteScalarAsync(cancellationToken) is true)
-        {
-            throw new CharacterSlotOccupiedException();
-        }
-    }
-
-    private async Task<GameCharacter?> GetCharacterByIdAsync(int id, CancellationToken cancellationToken)
-    {
-        await using var command = _dataSource.CreateCommand($"""
-            SELECT {CharacterColumns}
-            FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
-            WHERE cb.id = @id;
-            """);
-        command.Parameters.AddWithValue("id", id);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadCharacter(reader) : null;
-    }
-
-    private static async Task<GameCharacter?> GetCharacterByIdAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        int id,
-        CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand($"""
-            SELECT {CharacterColumns}
-            FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
-            WHERE cb.id = @id;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("id", id);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadCharacter(reader) : null;
     }
 
     private static GameAccount ReadAccount(NpgsqlDataReader reader)
@@ -326,7 +350,24 @@ internal sealed partial class PostgresGameStore
             ZodiacSkillGridSkillIds =
                 ZodiacSkillGridActivation.NormalizeSkillIds(
                     reader.GetFieldValue<int[]>(44)),
-            PositionRevision = reader.GetInt64(45)
+            PositionRevision = reader.GetInt64(45),
+            CharacterSlot = reader.GetInt16(46),
+            LifecycleState = reader.GetString(47) == "active"
+                ? CharacterLifecycleState.Active
+                : CharacterLifecycleState.Deleted,
+            LifecycleVersion = reader.GetInt64(48),
+            DeletedAt = reader.IsDBNull(49)
+                ? null
+                : new DateTimeOffset(
+                    reader.GetDateTime(49).ToUniversalTime()),
+            RestoreUntil = reader.IsDBNull(50)
+                ? null
+                : new DateTimeOffset(
+                    reader.GetDateTime(50).ToUniversalTime()),
+            PurgeAfter = reader.IsDBNull(51)
+                ? null
+                : new DateTimeOffset(
+                    reader.GetDateTime(51).ToUniversalTime())
         };
     }
 

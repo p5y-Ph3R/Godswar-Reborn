@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Operations;
 using Godswar.Server.Packets;
@@ -158,16 +159,13 @@ internal sealed partial class GameClientHandler
             _session.Disconnect();
             return;
         }
-        if (!_characterSnapshotLoaded ||
-            _character is not null ||
-            _characterLoadSnapshot is not null ||
-            _characterSnapshotBootstrapPending)
+
+        if (!IsCharacterSelectionLifecyclePhase)
         {
-            RejectCharacterSnapshot(
-                "create",
-                _characterSnapshotLoaded
-                    ? "slot_not_empty"
-                    : "snapshot_not_loaded");
+            await RejectOutsideSelectionLifecycleAsync(
+                CommandFamily.CharacterCreate,
+                packet,
+                cancellationToken);
             return;
         }
 
@@ -188,32 +186,10 @@ internal sealed partial class GameClientHandler
             MaxHp = 1500,
             MaxMp = 177
         };
-
-        var created = await _store.CreateCharacterAsync(
-            _account.Id,
+        await HandleCharacterCreateRequestAsync(
+            packet,
             character,
             cancellationToken);
-        if (!await RefreshCharacterSnapshotAsync(
-                "create",
-                cancellationToken))
-        {
-            return;
-        }
-        if (_character is null ||
-            _character.Id != created.Id ||
-            !string.Equals(
-                _character.Name,
-                created.Name,
-                StringComparison.Ordinal))
-        {
-            RejectCharacterSnapshot(
-                "create",
-                "mutation_snapshot_mismatch");
-            return;
-        }
-
-        Console.WriteLine($"[game] created character {created.Name}");
-        await _session.SendAsync(PacketBuilder.CreateRoleSuccess(), cancellationToken, "CreateRoleSuccess");
     }
 
     private async Task HandleDeleteRoleAsync(GamePacket packet, CancellationToken cancellationToken)
@@ -226,24 +202,20 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var characterName = PacketText.ReadFixedAscii(packet.Payload, 32, 32);
-        await _store.DeleteCharacterAsync(_account.Id, characterName, cancellationToken);
-        if (!await RefreshCharacterSnapshotAsync(
-                "delete",
-                cancellationToken))
+        if (!IsCharacterSelectionLifecyclePhase)
         {
-            return;
-        }
-        if (_character is not null)
-        {
-            RejectCharacterSnapshot(
-                "delete",
-                "mutation_snapshot_mismatch");
+            await RejectOutsideSelectionLifecycleAsync(
+                CommandFamily.CharacterDelete,
+                packet,
+                cancellationToken);
             return;
         }
 
-        Console.WriteLine($"[game] deleted character {characterName}");
-        await _session.SendAsync(PacketBuilder.DeleteRoleSuccess(), cancellationToken, "DeleteRoleSuccess");
+        var characterName = PacketText.ReadFixedAscii(packet.Payload, 32, 32);
+        await HandleCharacterDeleteRequestAsync(
+            packet,
+            characterName,
+            cancellationToken);
     }
 
     private async Task HandleEnterGameAsync(CancellationToken cancellationToken)

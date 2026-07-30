@@ -63,7 +63,7 @@ function Assert-DisposableDatabaseName {
 
     if ($Database -notmatch (
         '^godswar_b03_[a-f0-9]{10}_' +
-        '(empty|prefix|restored|smoke_[0-9]{2})$')) {
+        '(empty|lifecycle_preflight|prefix|restored|smoke_[0-9]{2})$')) {
         throw "Refusing non-B03 database name '$Database'."
     }
 }

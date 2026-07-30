@@ -35,6 +35,10 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresCharacterSnapshotReader(_dataSource);
         CharacterCheckpoints =
             new PostgresCharacterCheckpointStore(_dataSource);
+        CharacterLifecycleCommands =
+            new PostgresCharacterLifecycleCommandExecutor(
+                _dataSource,
+                outboxOptions);
         TalentUpgradeCommands =
             new PostgresTalentUpgradeCommandExecutor(
                 _dataSource,
@@ -98,6 +102,7 @@ internal sealed class PostgresApplicationDataRuntime :
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
+                new CharacterLifecycleOutboxConsumer(),
                 new TalentUpgradeOutboxConsumer(),
                 new CharacterInventoryOutboxConsumer(),
                 new ZodiacSkillGridActivationOutboxConsumer(),
@@ -111,6 +116,10 @@ internal sealed class PostgresApplicationDataRuntime :
     public ICharacterSnapshotReader CharacterSnapshots { get; }
 
     public ICharacterCheckpointStore CharacterCheckpoints { get; }
+
+    public ICharacterLifecycleCommandExecutor
+        CharacterLifecycleCommands
+    { get; }
 
     public ITalentUpgradeCommandExecutor TalentUpgradeCommands { get; }
 

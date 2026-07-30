@@ -14,6 +14,20 @@ internal sealed class GameCharacter
 
     public int AccountId { get; set; }
 
+    public short CharacterSlot { get; set; } =
+        CharacterLifecyclePolicy.SingleCharacterSlot;
+
+    public CharacterLifecycleState LifecycleState { get; set; } =
+        CharacterLifecycleState.Active;
+
+    public long LifecycleVersion { get; set; } = 1;
+
+    public DateTimeOffset? DeletedAt { get; set; }
+
+    public DateTimeOffset? RestoreUntil { get; set; }
+
+    public DateTimeOffset? PurgeAfter { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public byte Gender { get; set; }

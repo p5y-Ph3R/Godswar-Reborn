@@ -78,6 +78,16 @@ internal static partial class Program
                 PostgresCharacterCheckpointIntegrationChecks.CheckName,
                 PostgresCharacterCheckpointIntegrationChecks.RunAsync),
             (
+                PostgresCharacterLifecycleMigrationIntegrationChecks
+                    .CheckName,
+                PostgresCharacterLifecycleMigrationIntegrationChecks
+                    .RunAsync),
+            (
+                PostgresCharacterLifecycleCommandIntegrationChecks
+                    .CheckName,
+                PostgresCharacterLifecycleCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresEconomyLedgerMigrationIntegrationChecks.CheckName,
                 PostgresEconomyLedgerMigrationIntegrationChecks.RunAsync),
             (

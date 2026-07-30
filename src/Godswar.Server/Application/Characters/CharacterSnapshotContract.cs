@@ -54,6 +54,14 @@ internal static class CharacterSnapshotContract
             CharacterSnapshotLimits.CharacterNameLength,
             "character name");
         RequireUtc(identity.CreatedAtUtc, "character creation time");
+        if (identity.CharacterSlot != 0 ||
+            identity.LifecycleVersion < 1)
+        {
+            throw Invalid(
+                "Character lifecycle identity is outside the " +
+                "SingleCharacterV1 bounds.");
+        }
+
         if (snapshot.Appearance is null)
         {
             throw Invalid("Character appearance is missing.");

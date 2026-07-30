@@ -54,7 +54,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 dataSource,
                 fixtures,
                 token);
-            await AssertAmbiguousSlotFailsAsync(
+            await AssertActiveSlotConstraintAsync(
                 connectionString,
                 store,
                 dataSource,
@@ -126,7 +126,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             "empty-slot fixture has no hidden character");
     }
 
-    private static async Task AssertAmbiguousSlotFailsAsync(
+    private static async Task AssertActiveSlotConstraintAsync(
         string connectionString,
         PostgresGameStore store,
         NpgsqlDataSource dataSource,
@@ -140,31 +140,26 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             store,
             fixture.AccountId,
             $"SnapMultiA{token}");
-        // The production mutation boundary now prevents this state. Insert a
-        // legacy-corruption fixture directly so the reader's >1 fail-closed
-        // behavior remains covered independently.
-        var secondId = await InsertLegacyAdditionalCharacterAsync(
+        await AssertLegacyAdditionalCharacterRejectedAsync(
             dataSource,
             fixture.AccountId,
             $"SnapMultiB{token}");
         fixture = fixture with
         {
-            CharacterIds = [first.Id, secondId]
+            CharacterIds = [first.Id]
         };
         fixtures.Add(fixture);
 
         Check.Equal(
-            2L,
+            1L,
             await CountCharactersAsync(dataSource, fixture.AccountId),
-            "ambiguous-slot fixture owns exactly two characters");
+            "active-slot constraint preserves exactly one character");
         await using var reader =
             new PostgresCharacterSnapshotReader(connectionString);
-        var exception = await CaptureFailureAsync(
-            () => reader.ReadAsync(fixture.AccountId));
-        Check.Equal(
-            (int)CharacterSnapshotFailureReason.AmbiguousCharacterSlot,
-            (int)exception.Reason,
-            "SingleCharacterV1 fails closed for multiple characters");
+        var snapshot = await reader.ReadAsync(fixture.AccountId);
+        Check.True(
+            snapshot.Character?.Identity.CharacterId == first.Id,
+            "snapshot reader returns the sole authoritative active slot");
     }
 
     private static async Task<CharacterSnapshotUnavailableException>

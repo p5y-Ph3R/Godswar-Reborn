@@ -4,7 +4,8 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
 {
-    private static async Task<int> InsertLegacyAdditionalCharacterAsync(
+    private static async Task
+        AssertLegacyAdditionalCharacterRejectedAsync(
         NpgsqlDataSource dataSource,
         int accountId,
         string name)
@@ -17,8 +18,16 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             """);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("name", name);
-        return (int)(await command.ExecuteScalarAsync()
-                     ?? throw new InvalidOperationException(
-                         "Legacy ambiguous-slot insert returned no ID."));
+        try
+        {
+            _ = await command.ExecuteScalarAsync();
+            throw new InvalidOperationException(
+                "A second active character bypassed slot uniqueness.");
+        }
+        catch (PostgresException exception)
+            when (exception.SqlState ==
+                  PostgresErrorCodes.UniqueViolation)
+        {
+        }
     }
 }

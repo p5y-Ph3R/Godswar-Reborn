@@ -100,6 +100,14 @@ internal static class CommandMetrics
                 "zodiac_skill_grid_upgrade",
             CommandFamily.ZodiacSkillGridSelection =>
                 "zodiac_skill_grid_selection",
+            CommandFamily.CharacterCreate =>
+                "character_create",
+            CommandFamily.CharacterDelete =>
+                "character_delete",
+            CommandFamily.CharacterRestore =>
+                "character_restore",
+            CommandFamily.CharacterPurge =>
+                "character_purge",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

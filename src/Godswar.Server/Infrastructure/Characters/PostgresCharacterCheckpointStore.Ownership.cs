@@ -31,6 +31,7 @@ internal sealed partial class PostgresCharacterCheckpointStore
                 checkpoint_owner_id = @ownerId
             WHERE id = @characterId
               AND account_id = @accountId
+              AND lifecycle_state = 'active'
             RETURNING
                 checkpoint_owner_generation,
                 position_revision,

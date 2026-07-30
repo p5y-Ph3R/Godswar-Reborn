@@ -94,6 +94,7 @@
     <ClInclude Include="SecureClientRuntimeInternal.h" />
     <ClInclude Include="SecureClientSession.h" />
     <ClInclude Include="SecureClientProtocol.h" />
+    <ClInclude Include="SecureCharacterLifecycleIdentity.h" />
     <ClInclude Include="SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureHolyStoneCommandIdentity.h" />
@@ -148,6 +149,7 @@
     <ClCompile Include="SecureClientRuntime.Platform.cpp" />
     <ClCompile Include="SecureClientSession.cpp" />
     <ClCompile Include="SecureClientProtocol.cpp" />
+    <ClCompile Include="SecureCharacterLifecycleIdentity.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
     <ClCompile Include="SecureEquipmentBagTransferIdentity.cpp" />
@@ -161,6 +163,7 @@
     <ClCompile Include="SecureZodiacSkillGridUpgradeIdentity.cpp" />
     <ClCompile Include="SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.CharacterLifecycle.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.HolyStone.cpp" />

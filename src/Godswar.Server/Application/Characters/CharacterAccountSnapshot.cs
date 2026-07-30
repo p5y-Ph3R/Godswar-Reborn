@@ -29,7 +29,9 @@ internal sealed record CharacterIdentitySnapshot(
     int CharacterId,
     int AccountId,
     string Name,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    short CharacterSlot = 0,
+    long LifecycleVersion = 1);
 
 internal sealed record CharacterAppearanceSnapshot(
     byte Gender,

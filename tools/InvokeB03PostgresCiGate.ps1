@@ -37,6 +37,8 @@ $startedAt = [DateTimeOffset]::UtcNow
 $runToken = [Guid]::NewGuid().ToString('N').Substring(0, 10)
 $databaseNames = [ordered]@{
     Empty = "godswar_b03_${runToken}_empty"
+    LifecyclePreflight =
+        "godswar_b03_${runToken}_lifecycle_preflight"
     Prefix = "godswar_b03_${runToken}_prefix"
     Restored = "godswar_b03_${runToken}_restored"
 }
@@ -61,8 +63,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 31
-    expectedMigrationHead = '20260730_030_character_checkpoint_versions'
+    expectedMigrationCount = 32
+    expectedMigrationHead = '20260730_031_character_lifecycle_foundation'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -122,6 +124,9 @@ try {
     Invoke-RequiredProtocolCheck `
         -Phase 'migration-foundation-checkpoints' `
         -Name 'PostgreSQL character checkpoint migration contract'
+    Invoke-RequiredProtocolCheck `
+        -Phase 'migration-foundation-lifecycle' `
+        -Name 'PostgreSQL character lifecycle migration contract'
 
     $failureCategory = 'empty-bootstrap'
     New-DisposableDatabase $databaseNames.Empty
@@ -142,6 +147,26 @@ try {
         -InitialMigrationCount 0 `
         -FinalState $emptyState `
         -DurationMs ([long]$emptyWatch.Elapsed.TotalMilliseconds)
+
+    $failureCategory = 'character-lifecycle-preflight'
+    New-DisposableDatabase $databaseNames.LifecyclePreflight
+    $lifecyclePreflightWatch =
+        [Diagnostics.Stopwatch]::StartNew()
+    Invoke-RequiredProtocolCheck `
+        -Phase 'character-lifecycle-pre-031-preflight' `
+        -Name 'PostgreSQL character lifecycle migration' `
+        -GeneralConnectionString (
+            New-TestConnectionString $databaseNames.LifecyclePreflight)
+    $lifecyclePreflightState =
+        Get-MigrationState $databaseNames.LifecyclePreflight
+    $lifecyclePreflightWatch.Stop()
+    Add-ScenarioResult `
+        -Name 'character-lifecycle-pre-031-preflight' `
+        -InitialMigrationCount 0 `
+        -FinalState $lifecyclePreflightState `
+        -DurationMs (
+            [long]$lifecyclePreflightWatch.Elapsed.TotalMilliseconds) `
+        -FixtureKind 'fresh-database-advanced-to-prefix-030'
 
     $failureCategory = 'historical-fixture'
     New-DisposableDatabase $databaseNames.Prefix
@@ -238,7 +263,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 31 `
+        -InitialMigrationCount 32 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -268,6 +293,7 @@ try {
         'PostgreSQL durable Zodiac skill-grid selection',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL versioned character checkpoints',
+        'PostgreSQL durable character lifecycle commands',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

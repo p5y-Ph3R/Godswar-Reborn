@@ -63,5 +63,7 @@ internal sealed class GameClientHandlerFactory(
             zodiacSkillGridSelectionCommands:
                 postgresRuntime?.ZodiacSkillGridSelectionCommands,
             characterCheckpoints:
-                characterCheckpoints);
+                characterCheckpoints,
+            characterLifecycleCommands:
+                postgresRuntime?.CharacterLifecycleCommands);
 }

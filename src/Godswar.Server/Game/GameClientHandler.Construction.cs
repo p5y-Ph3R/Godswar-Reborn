@@ -56,7 +56,9 @@ internal sealed partial class GameClientHandler
         IZodiacSkillGridSelectionCommandExecutor?
             zodiacSkillGridSelectionCommands = null,
         ICharacterCheckpointCoordinator?
-            characterCheckpoints = null)
+            characterCheckpoints = null,
+        ICharacterLifecycleCommandExecutor?
+            characterLifecycleCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -94,6 +96,8 @@ internal sealed partial class GameClientHandler
         _zodiacSkillGridSelectionCommands =
             zodiacSkillGridSelectionCommands;
         _characterCheckpoints = characterCheckpoints;
+        _characterLifecycleCommands =
+            characterLifecycleCommands;
         _developerCommands =
             developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess = legacyAuthenticationAccess;

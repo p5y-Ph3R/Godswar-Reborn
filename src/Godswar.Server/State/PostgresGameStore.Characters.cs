@@ -1,6 +1,5 @@
 using Godswar.Server.Game;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace Godswar.Server.State;
 
@@ -13,6 +12,7 @@ internal sealed partial class PostgresGameStore
             FROM character_base cb
             LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
             WHERE cb.account_id = @accountId
+              AND cb.lifecycle_state = 'active'
             ORDER BY cb.id;
             """);
         command.Parameters.AddWithValue("accountId", accountId);
@@ -34,6 +34,7 @@ internal sealed partial class PostgresGameStore
             FROM character_base cb
             LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
             WHERE cb.account_id = @accountId
+              AND cb.lifecycle_state = 'active'
             ORDER BY cb.id
             LIMIT 1;
             """);
@@ -87,9 +88,17 @@ internal sealed partial class PostgresGameStore
                 armor_rank,
                 armor_aura_effect,
                 learned_skill_count
-            FROM character_stat_summary
-            WHERE account_id = @accountId
-              AND user_id = @characterId;
+            FROM character_stat_summary summary
+            WHERE summary.account_id = @accountId
+              AND summary.user_id = @characterId
+              AND EXISTS (
+                  SELECT 1
+                  FROM character_base lifecycle
+                  WHERE lifecycle.id = summary.user_id
+                    AND lifecycle.account_id =
+                        summary.account_id
+                    AND lifecycle.lifecycle_state = 'active'
+              );
             """);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
@@ -123,19 +132,6 @@ internal sealed partial class PostgresGameStore
         character.Name = $"{baseName}{Guid.NewGuid():N}"[..32];
         character.Equipment = GameDefaults.DefaultEquipment(character.Profession);
         return await InsertCharacterAsync(character, cancellationToken);
-    }
-
-    public async Task<bool> DeleteCharacterAsync(int accountId, string characterName, CancellationToken cancellationToken = default)
-    {
-        characterName = CleanCharacterName(characterName);
-
-        await using var command = _dataSource.CreateCommand("""
-            DELETE FROM character_base
-            WHERE account_id = @accountId AND name = @name;
-            """);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("name", characterName);
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
 }

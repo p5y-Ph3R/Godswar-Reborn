@@ -59,7 +59,11 @@ bool IsCommandFamily(
                 ZodiacSkillGridUpgrade ||
         family ==
             SecureLegacyCommandFamily::
-                ZodiacSkillGridSelection;
+                ZodiacSkillGridSelection ||
+        family ==
+            SecureLegacyCommandFamily::CharacterCreate ||
+        family ==
+            SecureLegacyCommandFamily::CharacterDelete;
 }
 
 bool HasValidRevision(

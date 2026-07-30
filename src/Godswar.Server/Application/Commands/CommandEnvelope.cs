@@ -26,7 +26,11 @@ internal enum CommandFamily : ushort
     HolyStoneDrill = 18,
     ZodiacSkillGridActivation = 19,
     ZodiacSkillGridUpgrade = 20,
-    ZodiacSkillGridSelection = 21
+    ZodiacSkillGridSelection = 21,
+    CharacterCreate = 22,
+    CharacterDelete = 23,
+    CharacterRestore = 24,
+    CharacterPurge = 25
 }
 
 internal enum CommandIdentityStrength : byte
@@ -142,7 +146,7 @@ internal static class CommandEnvelopeContract
             throw new ArgumentOutOfRangeException(nameof(family));
         }
 
-        if (subject.AccountId <= 0 || subject.CharacterId <= 0)
+        if (!IsValidSubject(family, subject))
         {
             throw new ArgumentOutOfRangeException(nameof(subject));
         }
@@ -183,8 +187,7 @@ internal static class CommandEnvelopeContract
             return CommandEnvelopeValidation.InvalidFamily;
         }
 
-        if (envelope.Subject.AccountId <= 0 ||
-            envelope.Subject.CharacterId <= 0)
+        if (!IsValidSubject(envelope.Family, envelope.Subject))
         {
             return CommandEnvelopeValidation.InvalidSubject;
         }
@@ -277,6 +280,24 @@ internal static class CommandEnvelopeContract
         offset += sizeof(int);
         operationScope.CopyTo(input.AsSpan(offset));
         return Convert.ToHexString(SHA256.HashData(input));
+    }
+
+    private static bool IsValidSubject(
+        CommandFamily family,
+        CommandSubject subject)
+    {
+        if (subject.AccountId <= 0)
+        {
+            return false;
+        }
+
+        return family is
+            CommandFamily.CharacterCreate or
+            CommandFamily.CharacterDelete or
+            CommandFamily.CharacterRestore or
+            CommandFamily.CharacterPurge
+                ? subject.CharacterId == 0
+                : subject.CharacterId > 0;
     }
 
     private static bool IsDigest(string? value)

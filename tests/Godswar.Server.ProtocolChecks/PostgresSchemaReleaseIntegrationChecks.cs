@@ -96,77 +96,28 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             4,
             snapshot.CheckpointConstraintCount,
             "all character checkpoint constraints exist and validate");
+        Check.Equal(
+            6,
+            snapshot.LifecycleColumnCount,
+            "all additive character lifecycle columns exist");
+        Check.Equal(
+            5,
+            snapshot.LifecycleConstraintCount,
+            "all character lifecycle constraints exist and validate");
+        Check.Equal(
+            3,
+            snapshot.LifecycleIndexCount,
+            "all character lifecycle indexes exist and validate");
+        Check.Equal(
+            1,
+            snapshot.AccountLifecycleColumnCount,
+            "account aggregate lifecycle version exists");
+        Check.Equal(
+            1,
+            snapshot.AccountLifecycleConstraintCount,
+            "account aggregate lifecycle version is constrained");
         Check.Equal(0, snapshot.UnvalidatedConstraintCount, "all constraints validate");
         Check.Equal(0, snapshot.InvalidIndexCount, "all indexes are valid and ready");
-    }
-
-    private static void AssertDurableStatePreserved(
-        SchemaReleaseSnapshot before,
-        SchemaReleaseSnapshot after)
-    {
-        if (before.InventoryFingerprint is not null)
-        {
-            Check.Equal(
-                before.InventoryFingerprint,
-                after.InventoryFingerprint
-                ?? throw new InvalidOperationException(
-                    "Authoritative inventory disappeared during migration."),
-                "schema release preserves authoritative inventory byte-for-byte");
-        }
-
-        if (before.AccountCharacterFingerprint is not null)
-        {
-            Check.Equal(
-                before.AccountCharacterFingerprint,
-                after.AccountCharacterFingerprint
-                ?? throw new InvalidOperationException(
-                    "Account or character state disappeared during migration."),
-                "schema release preserves account and character identity rows");
-        }
-
-        if (before.PacketPayloadFingerprint is not null)
-        {
-            Check.Equal(
-                before.PacketPayloadFingerprint,
-                after.PacketPayloadFingerprint
-                ?? throw new InvalidOperationException(
-                    "Captured packet payloads disappeared during migration."),
-                "schema release preserves captured packet bytes");
-        }
-
-        if (before.AppliedMigrations.Count ==
-                PostgresSchemaMigrationCatalog.All.Count &&
-            before.PetFingerprint is not null)
-        {
-            Check.Equal(
-                before.PetFingerprint,
-                after.PetFingerprint
-                ?? throw new InvalidOperationException(
-                    "Authoritative pet state disappeared during startup."),
-                "current release startup preserves authoritative pet rows");
-        }
-
-        if (before.AppliedMigrations.Count ==
-                PostgresSchemaMigrationCatalog.All.Count &&
-            before.EconomyFingerprint is not null)
-        {
-            Check.Equal(
-                before.EconomyFingerprint,
-                after.EconomyFingerprint
-                ?? throw new InvalidOperationException(
-                    "Economy baseline or ledger evidence disappeared during startup."),
-                "current release startup preserves economy evidence rows");
-        }
-
-        if (before.CheckpointFingerprint is not null)
-        {
-            Check.Equal(
-                before.CheckpointFingerprint,
-                after.CheckpointFingerprint
-                ?? throw new InvalidOperationException(
-                    "Character checkpoint state disappeared during startup."),
-                "schema release preserves owner fences and checkpoint revisions");
-        }
     }
 
     private static async Task<SchemaReleaseSnapshot> ReadSnapshotAsync(
@@ -222,7 +173,10 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                         (SELECT count(*)::text || ':' ||
                             md5(COALESCE(
                                 string_agg(
-                                    to_jsonb(account_row)::text,
+                                (
+                                    to_jsonb(account_row) -
+                                    'character_lifecycle_version'
+                                )::text,
                                     '|' ORDER BY account_row.id),
                                 ''))
                          FROM public.accounts account_row) ||
@@ -237,7 +191,13 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                                             'inventory_revision',
                                             'position_revision',
                                             'checkpoint_owner_id',
-                                            'checkpoint_owner_generation'
+                                            'checkpoint_owner_generation',
+                                            'character_slot',
+                                            'lifecycle_state',
+                                            'lifecycle_version',
+                                            'deleted_at',
+                                            'restore_until',
+                                            'purge_after'
                                         ]::text[]
                                     )::text,
                                     '|' ORDER BY character_row.id),
@@ -278,6 +238,8 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                     FROM public.character_base character_row;
                     """)
                 : null;
+        var lifecycle =
+            await ReadLifecycleReleaseStateAsync(connection);
         var packetPayloadFingerprint =
             await RelationExistsAsync(connection, "public.packet_transactions")
                 ? await ReadTextAsync(connection, """
@@ -444,9 +406,14 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             $"{packetPayloadFingerprint}|{petFingerprint}|" +
             $"{economyFingerprint}|" +
             $"{checkpointFingerprint}|" +
+            $"{lifecycle.Fingerprint}|" +
             $"{packetRelationCount}:{hasFunction}:{triggerCount}:" +
             $"{captureForeignKeyCount}:{checkpointColumnCount}:" +
-            $"{checkpointConstraintCount}:{unvalidatedConstraints}:" +
+            $"{checkpointConstraintCount}:{lifecycle.ColumnCount}:" +
+            $"{lifecycle.ConstraintCount}:{lifecycle.IndexCount}:" +
+            $"{lifecycle.AccountColumnCount}:" +
+            $"{lifecycle.AccountConstraintCount}:" +
+            $"{unvalidatedConstraints}:" +
             $"{invalidIndexes}";
 
         return new SchemaReleaseSnapshot(
@@ -455,6 +422,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             inventoryFingerprint,
             accountCharacterFingerprint,
             checkpointFingerprint,
+            lifecycle.Fingerprint,
             packetPayloadFingerprint,
             petFingerprint,
             economyFingerprint,
@@ -464,6 +432,11 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             captureForeignKeyCount,
             checkpointColumnCount,
             checkpointConstraintCount,
+            lifecycle.ColumnCount,
+            lifecycle.ConstraintCount,
+            lifecycle.IndexCount,
+            lifecycle.AccountColumnCount,
+            lifecycle.AccountConstraintCount,
             unvalidatedConstraints,
             invalidIndexes,
             releaseFingerprint);

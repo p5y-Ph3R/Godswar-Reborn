@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SecureCharacterLifecycleIdentity.h"
 #include "SecureEquipmentBagTransferIdentity.h"
 #include "SecureForgeCommandIdentity.h"
 #include "SecureHolyStoneCommandIdentity.h"
@@ -124,6 +125,9 @@ private:
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
         bool capturesForgeState = false;
+        bool capturesLifecycleIntent = false;
+        std::uint8_t lifecycleIntent[
+            SecureCharacterLifecycleIntentBytes]{};
         int forgeEquipmentBagSlot = -1;
         int forgePrimaryMaterialBagSlot = -1;
         std::size_t forgeOddsCount = 0;
@@ -154,6 +158,17 @@ private:
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor,
         bool* recognized) noexcept;
+    SecureOperationRegistryResult
+    DescribeCharacterLifecyclePacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeCharacterLifecycle(
+        const LegacyCharacterLifecycleIntent& intent,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeKitBagItemDelete(
         int bagSlot,
         std::uint64_t now,
@@ -196,6 +211,8 @@ private:
         std::size_t selectionCount) noexcept;
     Entry* FindByOperationId(
         const std::uint8_t* operationId) noexcept;
+    Entry* FindCharacterLifecycle(
+        const LegacyCharacterLifecycleIntent& intent) noexcept;
     Tombstone* FindTombstone(
         const std::uint8_t* operationId) noexcept;
     Entry* FindAvailable() noexcept;

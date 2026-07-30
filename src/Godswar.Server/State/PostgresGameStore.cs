@@ -43,7 +43,9 @@ internal sealed partial class PostgresGameStore : IGameStore
              AND grid.grid_index = requested_grid.grid_index
             ORDER BY requested_grid.grid_index
         ),
-        cb.position_revision
+        cb.position_revision,
+        cb.character_slot, cb.lifecycle_state, cb.lifecycle_version,
+        cb.deleted_at, cb.restore_until, cb.purge_after
         """;
 
     private readonly NpgsqlDataSource _dataSource;

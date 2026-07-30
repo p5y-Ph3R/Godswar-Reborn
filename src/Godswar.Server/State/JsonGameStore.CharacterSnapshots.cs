@@ -30,7 +30,10 @@ internal sealed partial class JsonGameStore
             }
 
             var characters = database.Characters
-                .Where(character => character.AccountId == accountId)
+                .Where(character =>
+                    character.AccountId == accountId &&
+                    character.LifecycleState ==
+                        CharacterLifecycleState.Active)
                 .OrderBy(character => character.Id)
                 .Take(2)
                 .ToArray();
@@ -129,7 +132,9 @@ internal sealed partial class JsonGameStore
                 character.Id,
                 character.AccountId,
                 character.Name,
-                ToUtcOffset(character.CreatedUtc)),
+                ToUtcOffset(character.CreatedUtc),
+                character.CharacterSlot,
+                character.LifecycleVersion),
             new CharacterAppearanceSnapshot(
                 character.Gender,
                 character.Camp,

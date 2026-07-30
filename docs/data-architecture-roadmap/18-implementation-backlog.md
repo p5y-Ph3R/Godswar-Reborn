@@ -15,7 +15,7 @@
 | B08 - PostgreSQL inbox/outbox foundation | Make retries/events safe | new migrations, Npgsql helpers/worker, operation-specific transaction, versioned/ordered consumer policy | B03, B07 | Same transaction as sample mutation; restart resumes outbox; consumers handle stale/gap ordering correctly | crash at all commit/delivery points, concurrent pollers, v2-before-v1 | backlog/age/retry/poison/gaps | Disable dispatcher; authoritative rows/inbox remain | Large | High |
 | B09 - Inventory/currency ledger migration | Protect economy | inventory/crafting/mentor/GM handlers, wallet schema, audits | B08 | Existing valuable commands are idempotent, constrained, audited | races, duplicate, overflow, disconnect-after-commit, reconciliation | economy command/ledger mismatch | Feature-specific compatibility adapter | Large | High |
 | B10 - Checkpoint versions and bounded workers **(completed 2026-07-30)** | Keep I/O off ticks and reject stale saves | position/vitals coordinators, background loops, PG columns, task supervisor | B02-B03 | Bounded queues; position transfer requires exactly one affected row; stale owner/revision cannot overwrite; loop faults stop readiness | zero-row/wrong-owner, delay/reorder/crash/queue/critical fault | dirty age, queue, conflicts, heartbeat | Coordinated prior-binary rollback; additive migration retained | Large | High |
-| B11 - Character lifecycle/tombstone | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
+| B11 - Character lifecycle/tombstone **(completed 2026-07-30)** | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
 | B12 - Progression/reward/pet durability | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
 | B13 - Structured logs, traces, readiness | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | all section 16 signals | Disable exporter/sink, keep audits | Medium | Medium |
 | B14 - Raw authentication retirement | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
@@ -66,7 +66,15 @@ bounded process-wide coalescing worker, finite direct barriers and retries,
 supervised readiness/shutdown, runtime lifecycle integration, configuration,
 metrics, and PostgreSQL/JSON authority distinction. The production guarantee
 is PostgreSQL-backed; JSON ownership remains process-local compatibility.
-The next dependency-ordered ticket is B11 character lifecycle and tombstones.
+**B11 completed 2026-07-30:** the
+[implementation evidence](../data-architecture-b11-character-lifecycle-20260730.md)
+records the database-enforced `SingleCharacterV1` active slot, recoverable
+tombstones, 30-day restore plus 7-day purge grace, account-owned monotonic
+lifecycle revision, secure client operation families 22/23, service-only
+restore/purge families 24/25, and atomic PostgreSQL inbox/audit/outbox
+evidence. The production guarantee is the secure PostgreSQL path. Raw TCP and
+JSON remain explicitly weaker compatibility paths. The next
+dependency-ordered ticket is B12 progression, reward, and pet durability.
 
 ## 18.2 First three low-risk implementation tasks
 

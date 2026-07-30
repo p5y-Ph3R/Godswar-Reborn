@@ -151,6 +151,11 @@ SecurePendingOperationRegistry::DescribePacket(
     if (!ReadNow(&now)) {
         return SecureOperationRegistryResult::ClockFailure;
     }
+    const auto lifecycleResult = DescribeCharacterLifecyclePacket(
+        packet, packetBytes, now, descriptor);
+    if (lifecycleResult != SecureOperationRegistryResult::Success ||
+        descriptor->hasOperation)
+        return lifecycleResult;
     if (IsLegacyForgeOpcode(opcode)) {
         return DescribeForgePacket(
             packet,

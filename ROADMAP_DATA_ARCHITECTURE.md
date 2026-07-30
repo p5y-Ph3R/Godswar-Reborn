@@ -1,7 +1,7 @@
 # Godswar Server Data Architecture Roadmap
 
-Status: implementation roadmap; backlog B01A through B10 completed as of
-2026-07-30, with B11 next.
+Status: implementation roadmap; backlog B01A through B11 completed as of
+2026-07-30, with B12 next.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -40,6 +40,7 @@ document organization; the assessment and recommendations remain intact.
 - [B09 reachable mutation closure audit](docs/data-architecture-b09-mutation-closure-audit-20260730.md)
 - [B09 completed closure evidence](docs/data-architecture-b09-closure-20260730.md)
 - [B10 character checkpoints and bounded persistence workers](docs/data-architecture-b10-character-checkpoints-20260730.md)
+- [B11 retry-safe character lifecycle and tombstones](docs/data-architecture-b11-character-lifecycle-20260730.md)
 
 ## Roadmap sections
 

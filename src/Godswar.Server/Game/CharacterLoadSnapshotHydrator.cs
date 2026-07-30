@@ -34,6 +34,9 @@ internal static partial class CharacterLoadSnapshotHydrator
         {
             Id = snapshot.Identity.CharacterId,
             AccountId = snapshot.Identity.AccountId,
+            CharacterSlot = snapshot.Identity.CharacterSlot,
+            LifecycleState = CharacterLifecycleState.Active,
+            LifecycleVersion = snapshot.Identity.LifecycleVersion,
             Name = snapshot.Identity.Name,
             Gender = snapshot.Appearance.Gender,
             Camp = snapshot.Appearance.Camp,

@@ -15,6 +15,7 @@
 #include "SecureClientRuntimeTests.h"
 #include "SecureClientSessionTests.h"
 #include "SecureClientProtocolTests.h"
+#include "SecureCharacterLifecycleIdentityTests.h"
 #include "SecurePendingOperationRegistryTests.h"
 #include "SecureGameControlTests.h"
 #include "SecureGameGrantRegistryTests.h"
@@ -548,6 +549,7 @@ int wmain(int argumentCount, wchar_t** arguments) {
     Failures += RunSecureClientRuntimeTests();
     Failures += RunSecureClientSessionTests();
     Failures += RunSecureClientProtocolTests();
+    Failures += RunSecureCharacterLifecycleIdentityTests();
     Failures += RunSecurePendingOperationRegistryTests();
     Failures += RunSecureGameControlTests();
     Failures += RunSecureGameGrantRegistryTests();

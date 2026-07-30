@@ -35,6 +35,15 @@ internal static class DataArchitectureCheckCatalog
             "PostgreSQL character checkpoint migration contract",
             PostgresCharacterCheckpointMigrationChecks.RunAsync),
         (
+            "PostgreSQL character lifecycle migration contract",
+            PostgresCharacterLifecycleMigrationChecks.RunAsync),
+        (
+            "Durable character lifecycle command contracts",
+            CharacterLifecycleCommandContractChecks.RunAsync),
+        (
+            CharacterLifecycleDurableHandlerChecks.CheckName,
+            CharacterLifecycleDurableHandlerChecks.RunAsync),
+        (
             "Snapshot-backed character client bootstrap",
             CharacterSnapshotHandlerChecks.RunAsync),
         (

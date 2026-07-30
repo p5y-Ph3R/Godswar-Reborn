@@ -14,20 +14,23 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         var account = await store.LoginOrCreateAccountAsync(
             username,
             string.Empty);
+        var foreignUsername = $"{username}_foreign";
+        GameAccount? foreignAccount = null;
         int? ownerCharacterId = null;
         int? otherCharacterId = null;
         try
         {
+            foreignAccount = await store.LoginOrCreateAccountAsync(
+                foreignUsername,
+                string.Empty);
             var owner = await store.CreateCharacterAsync(
                 account.Id,
                 NewCharacter($"PetLevel{token}"));
             ownerCharacterId = owner.Id;
-            // Production creation is single-slot. This legacy-corruption row
-            // exists only to keep the pet ownership rejection independent.
-            otherCharacterId = await InsertLegacyAdditionalCharacterAsync(
-                connectionString,
-                account.Id,
-                $"PetOther{token}");
+            var other = await store.CreateCharacterAsync(
+                foreignAccount.Id,
+                NewCharacter($"PetOther{token}"));
+            otherCharacterId = other.Id;
 
             await using var connection =
                 new NpgsqlConnection(connectionString);
@@ -105,6 +108,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
 
             return new PetLevelFixture(
                 account.Id,
+                foreignAccount.Id,
                 owner.Id,
                 otherCharacterId.Value,
                 successPetId,
@@ -121,6 +125,8 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 connectionString,
                 account.Id,
                 username,
+                foreignAccount?.Id,
+                foreignUsername,
                 ownerCharacterId,
                 otherCharacterId);
             throw;
@@ -134,28 +140,6 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         Profession = 0,
         Level = 80
     };
-
-    private static async Task<int> InsertLegacyAdditionalCharacterAsync(
-        string connectionString,
-        int accountId,
-        string name)
-    {
-        await using var connection =
-            new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            """
-            INSERT INTO character_base (account_id, name)
-            VALUES (@accountId, @name)
-            RETURNING id;
-            """,
-            connection);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("name", name);
-        return (int)(await command.ExecuteScalarAsync()
-                     ?? throw new InvalidOperationException(
-                         "Legacy pet-owner fixture returned no character ID."));
-    }
 
     private static async Task<long> InsertPetAsync(
         NpgsqlConnection connection,
@@ -298,8 +282,11 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         await using (var deleteAccount = new NpgsqlCommand(
             """
             DELETE FROM public.accounts
-            WHERE id = @accountId
-              AND username = @username;
+            WHERE (id = @accountId AND username = @username)
+               OR (
+                   id = @foreignAccountId
+                   AND username = @foreignUsername
+               );
             """,
             connection,
             transaction))
@@ -310,8 +297,14 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             deleteAccount.Parameters.AddWithValue(
                 "username",
                 username);
+            deleteAccount.Parameters.AddWithValue(
+                "foreignAccountId",
+                fixture.ForeignAccountId);
+            deleteAccount.Parameters.AddWithValue(
+                "foreignUsername",
+                $"{username}_foreign");
             Check.Equal(
-                1,
+                2,
                 await deleteAccount.ExecuteNonQueryAsync(),
                 "pet level fixture account cleanup is exact");
         }
@@ -323,6 +316,8 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         string connectionString,
         int accountId,
         string username,
+        int? foreignAccountId,
+        string foreignUsername,
         int? ownerCharacterId,
         int? otherCharacterId)
     {
@@ -353,6 +348,32 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 "partial pet-level fixture account remains exact");
         }
 
+        if (foreignAccountId.HasValue)
+        {
+            await using var verifyForeign = new NpgsqlCommand(
+                """
+                SELECT id
+                FROM public.accounts
+                WHERE id = @accountId
+                  AND username = @username
+                FOR UPDATE;
+                """,
+                connection,
+                transaction);
+            verifyForeign.Parameters.AddWithValue(
+                "accountId",
+                foreignAccountId.Value);
+            verifyForeign.Parameters.AddWithValue(
+                "username",
+                foreignUsername);
+            Check.Equal(
+                foreignAccountId.Value,
+                (int)(await verifyForeign.ExecuteScalarAsync()
+                      ?? throw new InvalidOperationException(
+                          "Partial foreign fixture account disappeared.")),
+                "partial foreign fixture account remains exact");
+        }
+
         var knownCharacterIds = new[]
             {
                 ownerCharacterId,
@@ -367,8 +388,14 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 """
                 SELECT count(*)
                 FROM public.character_base
-                WHERE account_id = @accountId
-                  AND id = ANY(@characterIds);
+                WHERE (
+                        account_id = @accountId
+                        AND id = @ownerCharacterId
+                      )
+                   OR (
+                        account_id = @foreignAccountId
+                        AND id = @otherCharacterId
+                      );
                 """,
                 connection,
                 transaction);
@@ -376,8 +403,14 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 "accountId",
                 accountId);
             verifyCharacters.Parameters.AddWithValue(
-                "characterIds",
-                knownCharacterIds);
+                "ownerCharacterId",
+                ownerCharacterId ?? -1);
+            verifyCharacters.Parameters.AddWithValue(
+                "foreignAccountId",
+                foreignAccountId ?? -1);
+            verifyCharacters.Parameters.AddWithValue(
+                "otherCharacterId",
+                otherCharacterId ?? -1);
             Check.Equal(
                 (long)knownCharacterIds.Length,
                 (long)(await verifyCharacters.ExecuteScalarAsync()
@@ -389,15 +422,24 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         await using var delete = new NpgsqlCommand(
             """
             DELETE FROM public.accounts
-            WHERE id = @accountId
-              AND username = @username;
+            WHERE (id = @accountId AND username = @username)
+               OR (
+                   id = @foreignAccountId
+                   AND username = @foreignUsername
+               );
             """,
             connection,
             transaction);
         delete.Parameters.AddWithValue("accountId", accountId);
         delete.Parameters.AddWithValue("username", username);
+        delete.Parameters.AddWithValue(
+            "foreignAccountId",
+            foreignAccountId ?? -1);
+        delete.Parameters.AddWithValue(
+            "foreignUsername",
+            foreignUsername);
         Check.Equal(
-            1,
+            foreignAccountId.HasValue ? 2 : 1,
             await delete.ExecuteNonQueryAsync(),
             "partial pet-level fixture cleanup is exact");
         await transaction.CommitAsync();
@@ -415,12 +457,16 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             FROM public.accounts account
             INNER JOIN public.character_base character
                 ON character.account_id = account.id
-            WHERE account.id = @accountId
-              AND account.username = @username
-              AND character.id IN (
-                  @ownerCharacterId,
-                  @otherCharacterId
-              )
+            WHERE (
+                    account.id = @accountId
+                    AND account.username = @username
+                    AND character.id = @ownerCharacterId
+                  )
+               OR (
+                    account.id = @foreignAccountId
+                    AND account.username = @foreignUsername
+                    AND character.id = @otherCharacterId
+                  )
             FOR UPDATE OF account, character;
             """,
             connection,
@@ -429,6 +475,12 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             "accountId",
             fixture.AccountId);
         command.Parameters.AddWithValue("username", username);
+        command.Parameters.AddWithValue(
+            "foreignAccountId",
+            fixture.ForeignAccountId);
+        command.Parameters.AddWithValue(
+            "foreignUsername",
+            $"{username}_foreign");
         command.Parameters.AddWithValue(
             "ownerCharacterId",
             fixture.OwnerCharacterId);
@@ -454,6 +506,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
 
     private sealed record PetLevelFixture(
         int AccountId,
+        int ForeignAccountId,
         int OwnerCharacterId,
         int OtherCharacterId,
         long SuccessPetId,

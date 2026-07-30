@@ -25,7 +25,11 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.HolyStoneMount or
             CommandFamily.HolyStoneRemove or
             CommandFamily.HolyStoneDrill or
-            CommandFamily.ZodiacSkillGridUpgrade =>
+            CommandFamily.ZodiacSkillGridUpgrade or
+            CommandFamily.CharacterCreate or
+            CommandFamily.CharacterDelete or
+            CommandFamily.CharacterRestore or
+            CommandFamily.CharacterPurge =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.ZodiacSkillGridSelection =>
                 CommandIdentityStrength.ClientOperationId,
