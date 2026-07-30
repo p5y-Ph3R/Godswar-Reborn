@@ -2,51 +2,40 @@
 
 ## 7.1 Decision and introduction gate
 
-Redis is **deferred** by
-[ADR 0003](../adr/0003-defer-redis-coordination.md). B16 completed the
-decision gate on 2026-07-31; B17 was evaluated and closed as conditional,
-not activated. No Redis implementation or deployment is claimed.
+[ADR 0003](../adr/0003-defer-redis-coordination.md) deferred Redis based on
+the then-confirmed single-process topology.
+[ADR 0004](../adr/0004-realm-and-world-instance-topology.md) now supersedes
+that target assumption: Tempest is the first realm, future realms and worker
+processes are planned, and Pindus will eventually be cross-realm. Scheduled
+battlefields and on-demand dungeons also require independently routed
+`WorldInstanceId` values.
 
-The evidence is concrete:
+B17 is therefore **reopened and Redis is approved for future cross-process
+coordination**. No Redis implementation or deployment is claimed. The
+current process still composes a bounded `InMemoryGameTicketStore`,
+process-local registry/presence, and all maps in one server; Compose still
+contains only the server and PostgreSQL.
 
-- `Program.cs` composes login, game, `GameSessionRegistry`, the shared
-  `InMemoryGameTicketStore`, and optional UDP runtime in one process;
-- Compose defines one server and PostgreSQL, with no separate login, gateway,
-  zone, placement, or coordinator service;
-- account sessions, ticket state, admission, presence, and routing are
-  process-local and bounded;
-- the current limits are 512 active connections, 1,024 outstanding-ticket
-  capacity, and a 60-second ticket TTL;
-- no measurement shows ticket saturation or unacceptable coordination
-  latency; and
-- B15 made PostgreSQL the monotonic player-fence authority for every valuable
-  transaction.
+B18A first introduces realm, node, map, and world-instance identities plus a
+local placement implementation. Redis activation begins only when a second
+gateway/worker or worker process becomes runnable and exercises a shared
+coordination contract. It must not be added merely to replace local
+dictionaries before that boundary exists.
 
-The repository has no approved second-process date, cross-instance reconnect
-contract, player/login capacity target, Redis SLO, provider, regional
-topology, or cost budget. Adding Redis now would create a network dependency
-without solving a current requirement.
+Before enabling the Redis-backed path, B17 must:
 
-Redis may be reconsidered only after a superseding ADR confirms a real
-cross-process/TTL use case **and measurements or approved SLOs show that
-PostgreSQL plus local memory is inadequate**, for example:
+- replace synchronous `IGameTicketStore` network operations with
+  asynchronous, deadline-bearing application contracts;
+- define placement, sticky routing, transfer, drain, split-brain, reconnect,
+  and rollback behavior;
+- record peak demand, p95/p99 latency, timeout, availability, maximum
+  staleness, recovery, eviction, memory, provider/region, and cost budgets;
+- prove at least two processes against Redis slow/restart/loss cases while
+  PostgreSQL fencing rejects stale owners.
 
-- login and game endpoints run in different processes, share enough ticket traffic to justify a TTL store, and a measured PG ticket path is insufficient;
-- multiple game/zone instances need player-to-server routing or duplicate-login fencing;
-- reconnect can land on a different instance;
-- cross-instance presence, invitations, matchmaking, or coarse abuse limits are required;
-- a measured read projection cannot be served economically from PostgreSQL/in-process memory.
-
-Before that gate, the current `InMemoryGameTicketStore`, registry presence,
-and bounded limiter tables remain simpler and safer. Do not add Redis merely
-to replace ordinary dictionaries in one process.
-
-An approved B17 must first replace synchronous `IGameTicketStore` network
-operations with asynchronous, deadline-bearing application contracts.
-Synchronous Redis I/O in network handlers or ECS loops is forbidden. The
-activation record must also define peak demand, p95/p99 latency, timeout,
-availability, maximum staleness, recovery, eviction, memory, and cost
-budgets.
+Synchronous Redis I/O in network handlers or ECS/map loops is forbidden.
+PostgreSQL remains the only durable player-value and monotonic-fence
+authority.
 
 ## 7.2 Key and value conventions after the gate
 

@@ -39,6 +39,8 @@ $databaseNames = [ordered]@{
     Empty = "godswar_b03_${runToken}_empty"
     LifecyclePreflight =
         "godswar_b03_${runToken}_lifecycle_preflight"
+    RealmAuthority =
+        "godswar_b03_${runToken}_realm_authority"
     Prefix = "godswar_b03_${runToken}_prefix"
     Restored = "godswar_b03_${runToken}_restored"
 }
@@ -63,8 +65,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 35
-    expectedMigrationHead = '20260731_034_pet_durability_foundation'
+    expectedMigrationCount = 36
+    expectedMigrationHead = '20260731_035_tempest_realm_authority'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -168,6 +170,26 @@ try {
             [long]$lifecyclePreflightWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'fresh-database-advanced-to-prefix-030'
 
+    $failureCategory = 'tempest-realm-authority'
+    New-DisposableDatabase $databaseNames.RealmAuthority
+    $realmAuthorityWatch =
+        [Diagnostics.Stopwatch]::StartNew()
+    Invoke-RequiredProtocolCheck `
+        -Phase 'tempest-realm-authority' `
+        -Name 'PostgreSQL Tempest realm authority migration' `
+        -GeneralConnectionString (
+            New-TestConnectionString $databaseNames.RealmAuthority)
+    $realmAuthorityState =
+        Get-MigrationState $databaseNames.RealmAuthority
+    $realmAuthorityWatch.Stop()
+    Add-ScenarioResult `
+        -Name 'tempest-realm-authority' `
+        -InitialMigrationCount 0 `
+        -FinalState $realmAuthorityState `
+        -DurationMs (
+            [long]$realmAuthorityWatch.Elapsed.TotalMilliseconds) `
+        -FixtureKind 'fresh-database-advanced-to-prefix-034'
+
     $failureCategory = 'historical-fixture'
     New-DisposableDatabase $databaseNames.Prefix
     $prefixConnection = New-TestConnectionString $databaseNames.Prefix
@@ -263,7 +285,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 35 `
+        -InitialMigrationCount 36 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'

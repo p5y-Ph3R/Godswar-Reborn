@@ -83,6 +83,9 @@ internal static partial class Program
                 PostgresCharacterLifecycleMigrationIntegrationChecks
                     .RunAsync),
             (
+                PostgresRealmMigrationIntegrationChecks.CheckName,
+                PostgresRealmMigrationIntegrationChecks.RunAsync),
+            (
                 PostgresCharacterLifecycleCommandIntegrationChecks
                     .CheckName,
                 PostgresCharacterLifecycleCommandIntegrationChecks

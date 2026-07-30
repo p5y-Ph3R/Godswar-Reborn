@@ -24,7 +24,7 @@ internal static partial class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(35, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(36, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -80,7 +80,8 @@ internal static partial class PostgresMigrationFoundationChecks
                     "20260730_031_character_lifecycle_foundation",
                     "20260731_032_progression_reward_foundation",
                     "20260731_033_progression_interval_authority",
-                    "20260731_034_pet_durability_foundation"
+                    "20260731_034_pet_durability_foundation",
+                    "20260731_035_tempest_realm_authority"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

@@ -19,11 +19,20 @@ The largest architectural risk is **ambiguous and unenforced authority across mu
 
 ## Database recommendation
 
-**Recommendation: PostgreSQL only for the initial migration.**
+**Recommendation: PostgreSQL plus Redis for the confirmed target topology,
+introduced in phases.** PostgreSQL only remains correct for the current
+one-process runtime and B18A.
 
-PostgreSQL should become the sole authoritative durable store. The existing relational schema, JSONB catalog fields, explicit Npgsql transactions, row locks, and migration checksum policy already cover the repository's demonstrated workload. The initial work should remove JSON-store ambiguity, establish application/persistence boundaries, add idempotency/outbox support, and make one server process safe before adding another operational dependency.
+PostgreSQL should become the sole authoritative durable store. The existing relational schema, JSONB catalog fields, explicit Npgsql transactions, row locks, and migration checksum policy already cover the repository's demonstrated durable workload. The initial work should remove JSON-store ambiguity, establish application/persistence boundaries, add idempotency/outbox support, and make one server process safe before adding another operational dependency.
 
-Redis is **not required for the current single-process topology**. It becomes justified when at least one measured/approved requirement needs cross-process login tickets, player-to-server routing, reconnect state, presence, global rate limiting, or fenced session ownership. Section 7 defines that design so Redis can be introduced without redesigning player storage. Until that gate is reached, the existing bounded in-memory structures should remain disposable runtime state.
+Redis is **approved for the future multi-process topology, but is not yet
+implemented or deployed**. [ADR 0004](../adr/0004-realm-and-world-instance-topology.md)
+confirms Tempest as the first logical realm, future realms, cross-realm
+Pindus, scheduled battlefields, and on-demand dungeon instances. Those
+requirements need cross-process tickets, placement, routing, presence, and
+leases once a second gateway/worker process becomes runnable. Until then, the
+existing bounded in-memory structures remain the correct disposable runtime
+state.
 
 **MongoDB should not be introduced during the initial migration.** No concrete independent document workload was found. Flexible item, NPC, map, monster, skill, and audit payloads already fit PostgreSQL relational tables plus JSONB. Packet-capture research data needs retention and archival policy, not a third operational database. MongoDB should be reconsidered only if a measured content-authoring or player-generated-document workload fails the criteria in section 8.
 
@@ -34,7 +43,8 @@ The migration should be incremental and expand/contract based:
 3. Make PostgreSQL tests mandatory and PostgreSQL the only production authority.
 4. Add aggregate versions, command inboxes, outboxes, audits, and reconciliation for valuable state.
 5. Integrate the TCP/UDP command envelope and ownership fence.
-6. Add Redis only at the scale-out decision gate.
+6. Establish realm/node/world-instance identities locally, then add Redis
+   when the first two-process gateway/worker slice exercises coordination.
 7. Remove the JSON fallback and legacy persistence paths after verified parity and a rollback window.
 
 Benefits are a single owner for every field, commit-before-ack guarantees for player value, safe retries and reconnects, non-blocking ECS ticks, independently testable transport/application/storage layers, reversible migrations, and a clear path to multiple server instances without unsafe dual writes.

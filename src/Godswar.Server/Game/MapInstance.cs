@@ -15,19 +15,6 @@ internal sealed partial class MapInstance
     private readonly PlayerRuntimeMode _playerRuntimeMode;
     private IMonsterMapRuntime? _monsterRuntime;
 
-    public MapInstance(
-        byte mapId,
-        MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
-        PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs)
-    {
-        MapId = mapId;
-        _monsterRuntimeMode = monsterRuntimeMode;
-        _playerRuntimeMode = playerRuntimeMode;
-        _ecsShadow = new MapEcsShadow(mapId);
-    }
-
-    public byte MapId { get; }
-
     public int Population => _playerRuntimeMode == PlayerRuntimeMode.Ecs
         ? _ecsShadow.PlayerCount
         : _sessions.Count;

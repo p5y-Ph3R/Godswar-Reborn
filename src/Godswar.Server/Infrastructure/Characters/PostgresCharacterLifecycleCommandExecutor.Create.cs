@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
 using NpgsqlTypes;
@@ -142,7 +143,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             )
             VALUES (
                 @accountId,
-                1,
+                @realmId,
                 @name,
                 @gender,
                 0,
@@ -189,6 +190,9 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            RealmId.Tempest.Value);
         command.Parameters.AddWithValue("name", intent.Name);
         command.Parameters.AddWithValue(
             "gender",

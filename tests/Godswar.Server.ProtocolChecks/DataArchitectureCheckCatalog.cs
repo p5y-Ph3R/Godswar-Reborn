@@ -41,6 +41,12 @@ internal static class DataArchitectureCheckCatalog
             DeferredRedisArchitectureChecks.CheckName,
             DeferredRedisArchitectureChecks.RunAsync),
         (
+            WorldInstancePlacementChecks.CheckName,
+            WorldInstancePlacementChecks.RunAsync),
+        (
+            WorldInstanceMapIdentityChecks.CheckName,
+            WorldInstanceMapIdentityChecks.RunAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
         (
@@ -55,6 +61,9 @@ internal static class DataArchitectureCheckCatalog
         (
             "PostgreSQL character lifecycle migration contract",
             PostgresCharacterLifecycleMigrationChecks.RunAsync),
+        (
+            PostgresRealmMigrationChecks.CheckName,
+            PostgresRealmMigrationChecks.RunAsync),
         (
             "Durable character lifecycle command contracts",
             CharacterLifecycleCommandContractChecks.RunAsync),

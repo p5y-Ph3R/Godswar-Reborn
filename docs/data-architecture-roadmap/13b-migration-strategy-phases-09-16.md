@@ -3,23 +3,31 @@
 ## Phase 9 - Redis and Mongo decision gates
 
 - **Goal:** approve only demonstrated stores.
-- **Scope/tasks:** measure concurrency/instances/routing/reconnect/cache load; complete a Redis ADR against section 7; complete a Mongo ADR only if section 8 evidence appears.
+- **Scope/tasks:** ADR 0003 recorded the original defer; ADR 0004 later
+  approved Redis's future cross-process use case. Measure
+  concurrency/instances/routing/reconnect load and finish the operational
+  SLO/cost gate before activation. Complete a Mongo ADR only if section 8
+  evidence appears.
 - **Likely files/modules:** architecture/operations docs, load tools, deployment design.
 - **Dependencies:** stable command ownership and production capacity inputs.
 - **Data migrations:** none.
-- **Acceptance criteria:** explicit "defer" or approved use cases with SLO, TTL, capacity, outage, owner, and cost; Mongo remains absent without evidence.
+- **Acceptance criteria:** the Redis use case and activation boundary are
+  explicit; SLO, TTL, capacity, outage, owner, and cost inputs are approved
+  before deployment; Mongo remains absent without evidence.
 - **Tests:** design simulations/failure prototypes only if a store is approved.
 - **Metrics:** measured PG read load, session count, routing operations, cache candidate hit potential.
 - **Rollback:** do not introduce package/infrastructure when decision is defer.
 - **Risks:** adopting infrastructure for hypothetical scale.
 - **Complexity:** Small for decision; Medium for evidence.
 
-## Phase 10 - Redis sessions, presence, and routing, conditional
+## Phase 10 - Redis sessions, presence, and routing, approved but not active
 
 - **Goal:** support multiple processes without moving player value from PG.
 - **Scope/tasks:** typed key library; ticket consume; server registry; player ownership lease/fence; presence/routing/reconnect; local and Redis implementations; circuit breakers; reconciliation.
 - **Likely files/modules:** `Networking/Secure/IGameTicketStore`, session ownership application contracts, `GameSessionRegistry` boundary, new Redis infrastructure/config/tests.
-- **Dependencies:** approved Phase 9 Redis ADR, PG ownership fence, placement/sticky-routing design.
+- **Dependencies:** ADR 0004, PG ownership fence, B18 local placement and
+  sticky-routing design, plus a runnable second process and approved
+  operational budgets.
 - **Data migrations:** PG server/ownership audit metadata if needed; no player value in Redis.
 - **Acceptance criteria:** two instances cannot commit for one character; established sessions behave as documented during Redis loss; cache loss is reconstructable.
 - **Tests:** Testcontainers Redis, expiry/eviction/restart, split ownership, Lua atomicity, shared NAT rate limits, reconnect to another process.

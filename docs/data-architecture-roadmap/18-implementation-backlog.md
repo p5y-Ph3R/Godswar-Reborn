@@ -20,9 +20,9 @@
 | B13 - Structured logs, traces, readiness **(completed 2026-07-31)** | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | implemented B13 signals; deferred section 16 gaps stay explicit | Disable exporter/sink, keep audits | Medium | Medium |
 | B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
-| B16 - Redis decision ADR **(completed 2026-07-31: defer)** | Avoid premature infrastructure | measured repository/topology evidence and ADR 0003 | B13-B15 | Explicit defer; unknown SLO/TTL/outage/cost inputs recorded | Evidence/contract review | candidate capacity/latency gaps | Documentation revert | Small | Low |
-| B17 - Redis coordination adapter **(evaluated 2026-07-31: conditional, not activated)** | Enable measured multi-process coordination only after its gate | Future async tickets, presence, routing, and leases carrying PG-issued fences | Superseding approval after B16, B15 | No false implementation; exact reopening trigger and future acceptance boundary recorded | None until activated | None until activated | No runtime change | Conditional Large | High |
-| B18 - Fair map mailboxes and replication | Complete ECS/I/O isolation | `MapInstance`, `GameSessionRegistry`, movement/monster loops, broadcast | B02, B10 | Only owner loop mutates map ECS; DB/socket fanout off tick; bounded fairness | deterministic replay, slow client, overload | tick/queue/fanout | Per-map legacy mode | Large | High |
+| B16 - Redis decision ADR **(completed 2026-07-31: historical defer)** | Avoid premature infrastructure | evidence and ADR 0003 | B13-B15 | Defer correctly reflected the then-known one-process target | Evidence review | candidate capacity gaps | Documentation revert | Small | Low |
+| B17 - Redis coordination **(approved; not deployed)** | Coordinate future processes | Async tickets, routes, presence, and PG-fenced leases | B15, B18, second process, budgets | Two processes route/fence correctly; Redis loss cannot lose value | restart/slow/expiry, reconnect, PG fence | Redis/lease/route signals | Drain to local mode | Large | High |
+| B18A/B - Realm/instance identity and fair mailboxes **(B18A completed; B18B next)** | Scale-out identity and ECS isolation | typed IDs, local placement/lifecycle, then owner mailboxes and fanout | ADR 0004, B02, B10 | Tempest-compatible, isolated/single-owned instances; I/O off tick | lifecycle/isolation, replay, slow client, overload | instance/tick/queue/fanout | Local placement/legacy map mode | Large | High |
 | B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
 | B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
@@ -92,43 +92,37 @@ fence required for safe multi-process ownership.
 
 **B13 completed 2026-07-31:** the
 [implementation evidence](../data-architecture-b13-observability-readiness-20260731.md)
-records bounded structured production logging, bounded low-cardinality
-Prometheus metrics, bounded privacy-aware traces, cached liveness/readiness,
-critical-task supervision, loopback-only management endpoints, authenticated
-graceful drain, in-image Docker health probes, operational alerts, dashboards,
-and incident runbooks. A real PostgreSQL outage kept liveness true, removed
-readiness, and recovered without restarting the server. The management plane
-is not published by Docker. Upstream collection, alert routing, and public
-L3/L4 DDoS mitigation remain deployment responsibilities, not claims made by
-the application.
+records bounded logs/metrics/traces, readiness, task supervision, private
+management endpoints, authenticated drain, health probes, dashboards, and
+runbooks. PostgreSQL outage/recovery passed without a server restart;
+upstream telemetry and L3/L4 mitigation remain deployment responsibilities.
 
 **B14 completed 2026-07-31:** the
 [implementation evidence](../data-architecture-b14-raw-auth-retirement-20260731.md)
 records fail-closed defaults, explicit loopback-only `legacy-raw` rollback,
-mutually exclusive secure activation, credential clearing, TLS/ticket checks,
-and sealed PreviewReadyV6 acceptance. The playable
-`7FB43C8D...BA07F9` Origin pairing passed exact offline gates but is not
-installed or live re-accepted; no production deployment or upstream
-protection is claimed.
+secure activation, credential clearing, TLS/ticket checks, and sealed client
+acceptance. It claims neither production deployment nor upstream protection.
 
 **B15 completed and verified 2026-07-31:** the
 [implementation evidence](../data-architecture-b15-player-ownership-fence-20260731.md)
-records the PostgreSQL-issued owner UUID and monotonic generation carried by
-durable command envelopes, transaction-wide row locking across all 18
-valuable executor families and the direct Zodiac-level transaction,
-post-commit validation, session/ECS and realtime-effect fencing, token-safe
-projection and retry behavior, fail-closed PostgreSQL composition, and
-bounded ownership metrics. JSON/local storage remains process-local
-compatibility only. The final gate passed **263 managed checks** plus **42
-required PostgreSQL checks across 4 migration scenarios**, with no failures
-and disposable database cleanup verified.
+records the PostgreSQL-issued owner UUID/generation, transaction-wide fence
+validation for valuable writes, post-commit/session/ECS revalidation, and
+bounded metrics. Its final gate passed **263 managed checks** and **42
+PostgreSQL checks across 4 scenarios**.
 
-**B16 completed and B17 evaluated 2026-07-31:** the
-[decision evidence](../data-architecture-b16-b17-redis-decision-20260731.md)
-and ADR 0003 defer Redis for the current one-process topology. B17 is closed
-as conditional-not-activated: no client, adapter, container, configuration,
-or runtime dependency was added. Reopening requires measured multi-process
-demand, approved SLO/outage/cost inputs, and an async ticket contract.
+**B16/B17 decision history:** the
+[original evidence](../data-architecture-b16-b17-redis-decision-20260731.md)
+and ADR 0003 preserve the one-process defer. ADR 0004 now confirms
+multi-realm instances and reopens B17. Redis remains absent until a second
+process and operational budgets exist.
+
+**B18A completed and verified 2026-07-31:** the
+[implementation evidence](../data-architecture-b18a-realm-instance-foundation-20260731.md)
+records Tempest realm authority, typed realm/node/instance/map identities,
+bounded local placement/lifecycle, and the legacy `MapInstance` bridge. It
+does not claim live duplicate dungeon routing, Redis, or a second process.
+B18B instance-aware `GameSessionRegistry` routing and owner mailboxes are
+next.
 
 ## 18.2 First three low-risk implementation tasks
 
@@ -142,7 +136,8 @@ demand, approved SLO/outage/cost inputs, and an async ticket contract.
 - **Completed prerequisite for scale-out/Redis and multi-owner writes:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
-- **Requires a new architectural decision first:** reopening B17 for Redis/process placement and B21 for MongoDB; character deletion retention; reward failure semantics.
+- **Requires operational inputs before activation:** B17 Redis provider/SLO/cost and two-process routing/failure policy.
+- **Requires a new architectural decision first:** B21 for MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 
 ## 18.4 Architectural mistakes to avoid

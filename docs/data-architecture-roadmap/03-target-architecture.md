@@ -47,13 +47,32 @@ single-owner map/player ECS   feature-specific persistence contract
 PostgreSQL outbox ---> eventual cache/external projections only
                       (at least once; versioned and rebuildable)
 
-Optional only after measured scale-out decision:
+Approved when the first two-process slice becomes runnable:
 session coordinator ---> Redis tickets/leases/routing/presence directly
                          (atomic TTL coordination carrying a PG-issued fence)
 PostgreSQL outbox -----> Redis read caches/projections only
 
 MongoDB: absent unless a future ADR proves a document workload.
 ```
+
+[ADR 0004](../adr/0004-realm-and-world-instance-topology.md) adds the
+deployment/instance view without changing that dependency direction:
+
+```text
+stable gateway
+    |
+    +--> Tempest open-world worker(s)
+    +--> future realm worker(s)
+    `--> cross-realm instance worker pool
+            +--> scheduled battlefield WorldInstanceId
+            `--> on-demand dungeon WorldInstanceId
+```
+
+`RealmId` identifies a logical realm, `ServerNodeId` identifies a running
+node, `WorldInstanceId` identifies one simulation, and `MapId` identifies
+content. One worker may own many instances and many instances may share a
+map definition. B18A first proves these boundaries with a local placement
+implementation; it does not claim remote workers or Redis.
 
 The transactional outbox never drives the immediate live-player result. The PG commit result returns directly to the owning mailbox with its committed aggregate version. The owner either serializes conflicting player-value commands or applies only the exact next version; a stale version is ignored and a version gap triggers a PG reload before updating ECS/replying. It also revalidates the current session/entity/ownership generation. Outbox consumers handle eventual caches, indexes, notifications, and external projections.
 
@@ -81,7 +100,7 @@ Domain/ECS code must not reference Npgsql, a Redis client, sockets, packet buffe
 | ECS/map owner | Fixed-step runtime authority, deterministic updates, runtime events | Block on database/network/external API |
 | Persistence contracts | Feature-specific reads and transactions | Expose Npgsql types to gameplay; model all stores as identical key/value APIs |
 | PostgreSQL adapters | SQL, locks, constraints, versions, inbox/outbox/audit, current-state rows | Send client packets or mutate ECS directly |
-| Optional Redis adapters | Disposable sessions/routing/rate limits/caches with TTL and fencing | Own player value or participate in cross-store dual writes |
+| Redis adapters after the two-process activation boundary | Disposable tickets, node/instance routing, presence, leases, rate limits, and caches with TTL/fencing | Own player value or participate in cross-store dual writes |
 | Persistence worker | Coalesced low-value checkpoints, outbox delivery, retries, reconciliation | Run unbounded queues or silently discard failed valuable writes |
 | Replication | Convert immutable accepted ECS/application results to client snapshots/events | Decide authoritative outcomes |
 | Observability | Low-cardinality metrics, redacted logs, trace context, health/readiness | Log credentials, ticket/cookie/key material, raw payloads, or identifiers as metric labels |

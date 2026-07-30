@@ -64,3 +64,16 @@ Before implementation, add a short ADR/data record containing:
 | Player-generated content | Ownership, publication state, moderation, version metadata | Edit lease/cache | Possible only after document-shape/access evidence and an ADR | Object storage for assets; search/moderation platforms likely |
 | Cosmetic collections | Entitlement/ownership rows, equipped selection | Summary cache | Not justified | Treat as player value |
 | Daily/weekly challenges | Definitions, period key, progress, claims | Timer/display cache | Not justified | PG uniqueness prevents double claim |
+
+## 11.4 Confirmed instance families
+
+ADR 0004 confirms Pindus, Ni Mini Valley, and Lelantine as scheduled
+battlefield content, with Pindus planned for cross-realm play. Medusa Island,
+Atlantis, Wonderland, and Bay Under Attack are confirmed on-demand dungeon
+instance content.
+
+Their runtime ECS state belongs to the owning `WorldInstanceId`. PostgreSQL
+owns admission, lockout, result, and reward records once those gameplay
+features are implemented. Redis will own only disposable node placement,
+routes, tickets, reconnect leases, and live projections after B17 activates.
+MongoDB is not justified for these instance families.

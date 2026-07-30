@@ -1,3 +1,4 @@
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
@@ -129,10 +130,12 @@ internal sealed partial class PostgresGameStore
                 lifecycle_state, lifecycle_version
             )
             VALUES (
-                @accountId, 1, @name, @gender, 0, @camp, @profession, @level,
-                0, @experience, 0, @currentHp, @currentMp, 0, @faith, @zodiacType,
-                @zodiacLuckyStatus, @zodiacLuckyExpiresAt, @zodiacLevel, @zodiacEnergy,
-                @zodiacEnergyRemainderX100, @zodiacOnlineDay, @zodiacOnlineDurationTicks,
+                @accountId, @realmId, @name, @gender, 0, @camp,
+                @profession, @level, 0, @experience, 0, @currentHp,
+                @currentMp, 0, @faith, @zodiacType, @zodiacLuckyStatus,
+                @zodiacLuckyExpiresAt, @zodiacLevel, @zodiacEnergy,
+                @zodiacEnergyRemainderX100, @zodiacOnlineDay,
+                @zodiacOnlineDurationTicks,
                 @zodiacLastOnlineAt, @zodiacLastCompensationDay,
                 @zodiacAccumulatedExperienceX100, @zodiacAccumulatedTalentExperienceX100,
                 0, 0, 0, 0, 0,
@@ -144,6 +147,9 @@ internal sealed partial class PostgresGameStore
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", character.AccountId);
+            command.Parameters.AddWithValue(
+                "realmId",
+                RealmId.Tempest.Value);
             command.Parameters.AddWithValue("name", character.Name);
             command.Parameters.AddWithValue("gender", character.Gender == 0 ? "female" : "male");
             command.Parameters.AddWithValue("camp", (short)character.Camp);

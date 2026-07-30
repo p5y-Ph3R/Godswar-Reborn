@@ -217,6 +217,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateCharacterLifecycleFoundation(),
         CreateProgressionRewardFoundation(),
         CreateProgressionIntervalAuthority(),
-        CreatePetDurabilityFoundation()
+        CreatePetDurabilityFoundation(),
+        CreateTempestRealmAuthority()
     ];
 }
