@@ -6,7 +6,8 @@ internal static class LegacyCommandIdentityPolicy
         CommandFamily family) =>
         family switch
         {
-            CommandFamily.TalentUpgrade =>
+            CommandFamily.TalentUpgrade or
+            CommandFamily.ZodiacSkillGridActivation =>
                 CommandIdentityStrength.LegacyAggregateVersion,
             CommandFamily.DeveloperItemGrant or
             CommandFamily.DeveloperBagClear or

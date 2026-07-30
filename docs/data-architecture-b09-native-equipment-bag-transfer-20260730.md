@@ -269,10 +269,13 @@ receipts, inventory revision/ledger guarantees, or a strict outbox event.
 This remains an explicit reconciliation gap.
 
 Right-click equip is opcode `10051`, normally an exact 92-byte packet. The
-same opcode and byte shape is also used for pet egg hatching; the server
-distinguishes the action only after reading the authoritative bag item.
-Captured evidence appears at
-`captures/working-multiplayer-20260514-193356.log:5856-5858`.
+stored client-to-server evidence is
+`captures/working-multiplayer-20260514-193356.log:5840-5841`; lines
+5855-5859 are server-to-client equipment snapshots and are not hatch-request
+evidence. The legacy server handler also routes opcode `10051` to pet egg
+hatching after reading the authoritative bag item, but no stored retail
+client-to-server hatch capture currently proves that it uses an identical
+request shape.
 
 The native shim cannot safely decide whether those untrusted bytes mean equip
 or hatch. It therefore does not assign family 15 to opcode 10051. Right-click

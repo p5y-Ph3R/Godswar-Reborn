@@ -1,10 +1,12 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Talents;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Talents;
+using Godswar.Server.Infrastructure.Zodiac;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure;
@@ -79,11 +81,16 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresHolyStoneCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        ZodiacSkillGridActivationCommands =
+            new PostgresZodiacSkillGridActivationCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
                 new TalentUpgradeOutboxConsumer(),
-                new CharacterInventoryOutboxConsumer()
+                new CharacterInventoryOutboxConsumer(),
+                new ZodiacSkillGridActivationOutboxConsumer()
             ],
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
@@ -130,6 +137,10 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IHolyStoneCommandExecutor HolyStoneCommands { get; }
+
+    public IZodiacSkillGridActivationCommandExecutor
+        ZodiacSkillGridActivationCommands
+    { get; }
 
     public bool OutboxEnabled { get; }
 

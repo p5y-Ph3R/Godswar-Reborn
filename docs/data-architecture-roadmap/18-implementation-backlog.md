@@ -102,10 +102,17 @@ successful Drill spends 230 or 2,300 Gold; mutation, revisions, ledgers,
 inbox, audit, and strict outbox commit before authoritative projection and
 the terminal result. Cross-city retry preserves one UUID and replays the
 durable receipt through the active equivalent Artisan.
+The [durable Zodiac skill-grid activation increment](../data-architecture-b09-zodiac-grid-activation-20260730.md)
+adds family-19 identity for the one-time inactive-to-active transition.
+PostgreSQL derives the shipped premium-Gold cost, locks the owning character,
+commits the grid plus any paid wallet revision and ledger with audit, inbox,
+and strict outbox evidence, and safely replays the current projection across
+reconnect without sending a second native success animation.
 Tokenless transfers, right-click equip, advanced Holy Stone drilling,
-remaining inventory, reward, and currency mutations remain compatibility
-paths; B09 is not complete until those operations gain truthful retry
-identity and move behind the durable transaction boundary.
+repeatable Zodiac grid upgrades, and remaining inventory, reward,
+progression, and currency mutations remain compatibility paths; B09 is not
+complete until those operations gain truthful retry identity and move behind
+the durable transaction boundary.
 
 ## 18.2 First three low-risk implementation tasks
 

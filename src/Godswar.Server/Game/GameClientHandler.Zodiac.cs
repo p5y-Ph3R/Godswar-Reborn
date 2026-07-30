@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -6,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IZodiacSkillGridActivationCommandExecutor?
+        _zodiacSkillGridActivationCommands;
+
     private async Task HandleZodiacAsync(
         GamePacket packet,
         CancellationToken cancellationToken)
@@ -100,6 +105,28 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (_zodiacSkillGridActivationCommands is not null)
+        {
+            await HandleDurableZodiacSkillGridActivationAsync(
+                request,
+                cancellationToken);
+            return;
+        }
+
+        await HandleCompatibilityZodiacSkillGridActivationAsync(
+            request,
+            cancellationToken);
+    }
+
+    private async Task HandleCompatibilityZodiacSkillGridActivationAsync(
+        ZodiacSyncRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null || _account is null)
+        {
+            return;
+        }
+
         // The only trusted client value is the requested zero-based grid
         // index. Cost, current level, ownership, and wallet balance are all
         // derived and committed by the store.
@@ -113,9 +140,19 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[zodiac] rejected skill-grid ownership mismatch account={_account.Id} character={_character.Name}");
+            CommandMetrics.Record(
+                CommandFamily.ZodiacSkillGridActivation,
+                CommandIdentityStrength.LegacyAggregateVersion,
+                CommandOutcome.PreconditionFailed);
             return;
         }
 
+        CommandMetrics.Record(
+            CommandFamily.ZodiacSkillGridActivation,
+            CommandIdentityStrength.LegacyAggregateVersion,
+            result.Committed
+                ? CommandOutcome.Accepted
+                : CommandOutcome.PreconditionFailed);
         _registry.UpdateCharacter(
             _session,
             _character,
@@ -138,6 +175,155 @@ internal sealed partial class GameClientHandler
 
         // A full sync corrects both successful and rejected/stale client state.
         await SendZodiacFullSyncAsync(cancellationToken);
+    }
+
+    private async Task HandleDurableZodiacSkillGridActivationAsync(
+        ZodiacSyncRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null || _account is null)
+        {
+            return;
+        }
+
+        if (!ZodiacSkillGridActivationCommandEnvelope.TryCreateCommand(
+                request.Value1,
+                ZodiacSkillGridActivationCommandEnvelope
+                    .ExpectedInactiveLevel,
+                out var command))
+        {
+            CommandMetrics.Record(
+                CommandFamily.ZodiacSkillGridActivation,
+                CommandIdentityStrength.LegacyAggregateVersion,
+                CommandOutcome.InvalidIntent);
+            Console.WriteLine(
+                $"[zodiac] durable skill-grid activation rejected invalid grid={request.Value1}");
+            await SendZodiacFullSyncAsync(cancellationToken);
+            return;
+        }
+
+        var envelope = ZodiacSkillGridActivationCommandEnvelope.Create(
+            new CommandSubject(_account.Id, _character.Id),
+            new CommandConnectionCorrelation(
+                _commandConnectionId,
+                _session.IsSecure
+                    ? CommandTransportKind.SecureTlsLegacy
+                    : CommandTransportKind.LegacyTcp),
+            DateTimeOffset.UtcNow,
+            command);
+
+        ZodiacSkillGridActivationExecutionResult execution;
+        try
+        {
+            execution =
+                await _zodiacSkillGridActivationCommands!.ExecuteAsync(
+                    envelope,
+                    cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            CommandMetrics.Record(
+                envelope.Family,
+                envelope.IdentityStrength,
+                CommandOutcome.Cancelled);
+            throw;
+        }
+        catch
+        {
+            CommandMetrics.Record(
+                envelope.Family,
+                envelope.IdentityStrength,
+                CommandOutcome.ProviderUnavailable);
+            throw;
+        }
+
+        var outcome = execution.Disposition switch
+        {
+            ZodiacSkillGridActivationExecutionDisposition.Committed =>
+                CommandOutcome.Accepted,
+            ZodiacSkillGridActivationExecutionDisposition.Duplicate =>
+                CommandOutcome.Duplicate,
+            ZodiacSkillGridActivationExecutionDisposition
+                .RequestHashConflict =>
+                CommandOutcome.RequestHashConflict,
+            ZodiacSkillGridActivationExecutionDisposition.InvalidIntent =>
+                CommandOutcome.InvalidIntent,
+            ZodiacSkillGridActivationExecutionDisposition
+                .PreconditionFailed =>
+                CommandOutcome.PreconditionFailed,
+            _ => throw new InvalidDataException(
+                "The Zodiac activation executor returned an unknown result.")
+        };
+        CommandMetrics.Record(
+            envelope.Family,
+            envelope.IdentityStrength,
+            outcome);
+
+        if (execution.HasAuthoritativeProjection)
+        {
+            ApplyDurableZodiacSkillGridActivationProjection(
+                _character,
+                command.GridIndex,
+                execution);
+            _registry.UpdateCharacter(
+                _session,
+                _character,
+                advanceWorldRevision: false);
+
+            if (execution.Disposition ==
+                ZodiacSkillGridActivationExecutionDisposition.Committed)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.ZodiacSkillGridActivated(
+                        command.GridIndex),
+                    cancellationToken,
+                    "ZodiacSkillGridActivated");
+            }
+
+            await _session.SendAsync(
+                BuildLocalPlayerStatusUpdate(),
+                cancellationToken,
+                "ZodiacSkillGridGoldRefresh");
+        }
+
+        Console.WriteLine(
+            "[zodiac] durable skill-grid activation " +
+            $"account={_account.Id} character={_character.Name} " +
+            $"grid={command.GridIndex} outcome={outcome} " +
+            $"gold={(execution.HasAuthoritativeProjection ? execution.CurrentGold : _character.Gold)} " +
+            $"level={(execution.HasAuthoritativeProjection ? execution.CurrentLevel : ZodiacSkillGridCatalog.GetLevel(_character, command.GridIndex))}");
+        await SendZodiacFullSyncAsync(cancellationToken);
+    }
+
+    internal static void ApplyDurableZodiacSkillGridActivationProjection(
+        GameCharacter character,
+        int gridIndex,
+        ZodiacSkillGridActivationExecutionResult execution)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        ArgumentNullException.ThrowIfNull(execution);
+        if (!execution.HasAuthoritativeProjection ||
+            !ZodiacSkillGridCatalog.IsValidGrid(gridIndex))
+        {
+            throw new ArgumentException(
+                "A valid authoritative Zodiac projection is required.",
+                nameof(execution));
+        }
+
+        lock (character.ZodiacSync)
+        {
+            character.Gold = execution.CurrentGold;
+            character.ZodiacSkillGridLevels =
+                ZodiacSkillGridActivation.NormalizeLevels(
+                    character.ZodiacSkillGridLevels);
+            character.ZodiacSkillGridSkillIds =
+                ZodiacSkillGridActivation.NormalizeSkillIds(
+                    character.ZodiacSkillGridSkillIds);
+            character.ZodiacSkillGridLevels[gridIndex] =
+                execution.CurrentLevel;
+            character.ZodiacSkillGridSkillIds[gridIndex] =
+                execution.SelectedSkillId;
+        }
     }
 
     private async Task HandleZodiacSkillGridUpgradeAsync(

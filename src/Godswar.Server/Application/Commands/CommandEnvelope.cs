@@ -23,7 +23,8 @@ internal enum CommandFamily : ushort
     EquipmentBagTransfer = 15,
     HolyStoneMount = 16,
     HolyStoneRemove = 17,
-    HolyStoneDrill = 18
+    HolyStoneDrill = 18,
+    ZodiacSkillGridActivation = 19
 }
 
 internal enum CommandIdentityStrength : byte

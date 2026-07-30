@@ -32,6 +32,7 @@ document organization; the assessment and recommendations remain intact.
 - [B09 secure native kit-bag move/swap increment](docs/data-architecture-b09-native-kit-bag-move-20260730.md)
 - [B09 secure native equipment/bag transfer increment](docs/data-architecture-b09-native-equipment-bag-transfer-20260730.md)
 - [B09 secure native Holy Stone increment](docs/data-architecture-b09-native-holy-stone-20260730.md)
+- [B09 durable Zodiac skill-grid activation increment](docs/data-architecture-b09-zodiac-grid-activation-20260730.md)
 
 ## Roadmap sections
 

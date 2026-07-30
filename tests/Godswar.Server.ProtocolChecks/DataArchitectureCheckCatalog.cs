@@ -32,6 +32,15 @@ internal static class DataArchitectureCheckCatalog
             "Legacy talent command envelope",
             LegacyTalentCommandEnvelopeChecks.RunAsync),
         (
+            "Durable Zodiac skill-grid activation command contract",
+            ZodiacSkillGridActivationCommandContractChecks.RunAsync),
+        (
+            "Durable Zodiac skill-grid activation handler",
+            ZodiacSkillGridActivationDurableHandlerChecks.RunAsync),
+        (
+            "Durable Zodiac activation persistence contracts",
+            ZodiacSkillGridActivationPersistenceChecks.RunAsync),
+        (
             "Durable Gear Mentor Make Attribute Stone command contract",
             MakeAttributeStoneCommandContractChecks.RunAsync),
         (

@@ -49,6 +49,11 @@ internal static partial class Program
                 PostgresHolyStoneCommandIntegrationChecks.CheckName,
                 PostgresHolyStoneCommandIntegrationChecks.RunAsync),
             (
+                PostgresZodiacSkillGridActivationCommandIntegrationChecks
+                    .CheckName,
+                PostgresZodiacSkillGridActivationCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

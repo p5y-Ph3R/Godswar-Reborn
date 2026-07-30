@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Operations;
@@ -118,7 +119,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IEquipmentBagTransferCommandExecutor?
             equipmentBagTransferCommands = null,
         IHolyStoneCommandExecutor?
-            holyStoneCommands = null)
+            holyStoneCommands = null,
+        IZodiacSkillGridActivationCommandExecutor?
+            zodiacSkillGridActivationCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -149,6 +152,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _kitBagItemMoveCommands = kitBagItemMoveCommands;
         _equipmentBagTransferCommands = equipmentBagTransferCommands;
         _holyStoneCommands = holyStoneCommands;
+        _zodiacSkillGridActivationCommands =
+            zodiacSkillGridActivationCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

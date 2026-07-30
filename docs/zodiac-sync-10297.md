@@ -122,6 +122,18 @@ Invalid, already-active, insufficient-gold, and wrong-owner requests never
 receive SID `100`, because the client treats every SID `100` response as
 success. Rejected requests receive only authoritative state synchronization.
 
+With PostgreSQL, this one-time `level 0 -> 1` transition now uses a stable
+family-19 command identity derived from the authenticated account, character,
+grid index, and expected inactive level. A paid success commits the grid,
+Gold wallet revision, negative Gold ledger, permanent audit/inbox receipt,
+and strict outbox event in one transaction before acknowledgement. Free
+activation does not invent a zero-delta wallet revision or ledger entry.
+Insufficient Gold is not stored as a terminal result, so the same request can
+succeed after a later top-up. Exact reconnect retry returns the permanent
+receipt plus the current authoritative projection and suppresses a second
+SID `100` animation. See
+[`data-architecture-b09-zodiac-grid-activation-20260730.md`](data-architecture-b09-zodiac-grid-activation-20260730.md).
+
 ## Skill-grid upgrade (SID `101`)
 
 Native `Origin.exe` sends an ordinary click on an already-active grid as
