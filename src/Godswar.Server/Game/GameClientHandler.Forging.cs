@@ -228,7 +228,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = result.Character;
+        InstallUpdatedCharacter(result.Character);
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
 
         // The result must arrive before authoritative bag/status refreshes:

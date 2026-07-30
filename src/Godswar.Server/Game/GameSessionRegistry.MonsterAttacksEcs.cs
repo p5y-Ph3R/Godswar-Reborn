@@ -260,34 +260,17 @@ internal sealed partial class GameSessionRegistry
                 DateTimeOffset.UtcNow);
         }
 
-        if (_store is not null)
+        try
         {
-            try
-            {
-                int currentHp;
-                int currentMp;
-                long vitalsRevision;
-                lock (target.VitalsSync)
-                {
-                    currentHp = target.CurrentHp;
-                    currentMp = target.CurrentMp;
-                    vitalsRevision = target.VitalsRevision;
-                }
-
-                await _store.SaveCharacterVitalsAsync(
-                    targetContext.AccountId,
-                    targetContext.CharacterId,
-                    currentHp,
-                    currentMp,
-                    vitalsRevision,
-                    cancellationToken);
-            }
-            catch (Exception ex) when (
-                ex is not OperationCanceledException)
-            {
-                Console.WriteLine(
-                    $"[monster] victim vitals persistence deferred character={targetContext.DisplayName}: {ex.Message}");
-            }
+            await PersistRoutineVitalsAsync(
+                targetContext,
+                cancellationToken);
+        }
+        catch (Exception ex) when (
+            ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[monster] victim vitals persistence deferred character={targetContext.DisplayName}: {ex.Message}");
         }
 
         Console.WriteLine(

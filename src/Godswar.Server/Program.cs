@@ -127,11 +127,27 @@ var controlledHostShutdown =
         controlledHostEvidence is not null,
         shutdown);
 
+ICharacterCheckpointStore characterCheckpointStore =
+    postgresApplicationDataRuntime?.CharacterCheckpoints ??
+    new LegacyCharacterCheckpointStore(store);
+await using var characterCheckpoints =
+    new CharacterCheckpointCoordinator(
+        characterCheckpointStore,
+        options.Storage.Checkpoints);
 var registry = new GameSessionRegistry(
     store,
     options.Game.ZodiacEnergy,
     options.Game.Monsters.Runtime,
-    options.Game.Players.Runtime);
+    options.Game.Players.Runtime,
+    characterCheckpoints);
+var gameHandlerFactory = new GameClientHandlerFactory(
+    store,
+    registry,
+    measuredCharacterSnapshots,
+    worldContent,
+    options.Game.DeveloperCommands,
+    characterCheckpoints,
+    postgresApplicationDataRuntime);
 var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
     options.Network.MaxActiveConnections,
     options.Network.MaxUnauthenticatedConnections,
@@ -162,60 +178,10 @@ var gameServer = rawCompatibilityEnabled
         listenerProfile.Game.Port,
         options.Network,
         admission,
-        session => new GameClientHandler(
+        session => gameHandlerFactory.Create(
             session,
-            store,
-            registry,
-            measuredCharacterSnapshots,
-            worldContent,
-            options.Game.DeveloperCommands,
             legacyAuthenticationAccess:
-                legacyAuthenticationAccess,
-            talentUpgradeCommands:
-                postgresApplicationDataRuntime?
-                    .TalentUpgradeCommands,
-            developerItemGrantCommands:
-                postgresApplicationDataRuntime?
-                    .DeveloperItemGrantCommands,
-            developerBagClearCommands:
-                postgresApplicationDataRuntime?
-                    .DeveloperBagClearCommands,
-            makeAttributeStoneCommands:
-                postgresApplicationDataRuntime?
-                    .MakeAttributeStoneCommands,
-            gearMentorMaterialConversionCommands:
-                postgresApplicationDataRuntime?
-                    .MaterialConversionCommands,
-            gearMentorDecomposeGearCommands:
-                postgresApplicationDataRuntime?
-                    .DecomposeGearCommands,
-            gearEnhancementCommands:
-                postgresApplicationDataRuntime?
-                    .GearEnhancementCommands,
-            equipmentForgeCommands:
-                postgresApplicationDataRuntime?
-                    .EquipmentForgeCommands,
-            kitBagItemDeleteCommands:
-                postgresApplicationDataRuntime?
-                    .KitBagItemDeleteCommands,
-            kitBagItemMoveCommands:
-                postgresApplicationDataRuntime?
-                    .KitBagItemMoveCommands,
-            equipmentBagTransferCommands:
-                postgresApplicationDataRuntime?
-                    .EquipmentBagTransferCommands,
-            holyStoneCommands:
-                postgresApplicationDataRuntime?
-                    .HolyStoneCommands,
-            zodiacSkillGridActivationCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridActivationCommands,
-            zodiacSkillGridUpgradeCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridUpgradeCommands,
-            zodiacSkillGridSelectionCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridSelectionCommands))
+                legacyAuthenticationAccess))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -289,59 +255,9 @@ var secureGameServer = secureTransportFactory is null
         listenerProfile.Game.Port,
         options.Network,
         admission,
-        session => new GameClientHandler(
+        session => gameHandlerFactory.Create(
             session,
-            store,
-            registry,
-            measuredCharacterSnapshots,
-            worldContent,
-            options.Game.DeveloperCommands,
-            phase4AcceptanceFaults,
-            talentUpgradeCommands:
-                postgresApplicationDataRuntime?
-                    .TalentUpgradeCommands,
-            developerItemGrantCommands:
-                postgresApplicationDataRuntime?
-                    .DeveloperItemGrantCommands,
-            developerBagClearCommands:
-                postgresApplicationDataRuntime?
-                    .DeveloperBagClearCommands,
-            makeAttributeStoneCommands:
-                postgresApplicationDataRuntime?
-                    .MakeAttributeStoneCommands,
-            gearMentorMaterialConversionCommands:
-                postgresApplicationDataRuntime?
-                    .MaterialConversionCommands,
-            gearMentorDecomposeGearCommands:
-                postgresApplicationDataRuntime?
-                    .DecomposeGearCommands,
-            gearEnhancementCommands:
-                postgresApplicationDataRuntime?
-                    .GearEnhancementCommands,
-            equipmentForgeCommands:
-                postgresApplicationDataRuntime?
-                    .EquipmentForgeCommands,
-            kitBagItemDeleteCommands:
-                postgresApplicationDataRuntime?
-                    .KitBagItemDeleteCommands,
-            kitBagItemMoveCommands:
-                postgresApplicationDataRuntime?
-                    .KitBagItemMoveCommands,
-            equipmentBagTransferCommands:
-                postgresApplicationDataRuntime?
-                    .EquipmentBagTransferCommands,
-            holyStoneCommands:
-                postgresApplicationDataRuntime?
-                    .HolyStoneCommands,
-            zodiacSkillGridActivationCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridActivationCommands,
-            zodiacSkillGridUpgradeCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridUpgradeCommands,
-            zodiacSkillGridSelectionCommands:
-                postgresApplicationDataRuntime?
-                    .ZodiacSkillGridSelectionCommands),
+            phase4AcceptanceFaults),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");
@@ -405,10 +321,18 @@ var runtimeTasks = new List<Task>
     registry.RunZodiacEnergyAccrualAsync(shutdown.Token)
 };
 var endpointServers = new List<TcpEndpointServer>(2);
-var supervisedTasks = new List<Task>(4);
+var supervisedTasks = new List<Task>(runtimeTasks);
+Task? checkpointTask = null;
 
 try
 {
+    checkpointTask = characterCheckpoints.RunAsync();
+    supervisedTasks.Add(checkpointTask);
+    await characterCheckpoints.WaitUntilReadyAsync(
+        shutdown.Token).WaitAsync(
+            TimeSpan.FromSeconds(10),
+            shutdown.Token);
+
     if (postgresApplicationDataRuntime?.OutboxEnabled == true)
     {
         var outboxTask =
@@ -497,10 +421,16 @@ try
     }
 
     await Task.WhenAll(runtimeTasks);
+    characterCheckpoints.Complete();
+    if (checkpointTask.IsFaulted)
+    {
+        await checkpointTask;
+    }
 }
 catch
 {
     shutdown.Cancel();
+    characterCheckpoints.Complete();
     try
     {
         await Task.WhenAll(runtimeTasks);
@@ -508,6 +438,10 @@ catch
     catch
     {
         // Preserve the initiating startup/runtime exception below.
+    }
+    if (checkpointTask?.IsFaulted == true)
+    {
+        await checkpointTask;
     }
     throw;
 }

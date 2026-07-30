@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using Godswar.Server.Networking.Secure.Realtime;
 using Godswar.Server.Operations;
 using Godswar.Server.Packets;
@@ -16,9 +15,7 @@ internal sealed partial class GameClientHandler
     private readonly CancellationTokenSource _realtimeMovementStop =
         new();
     private CancellationTokenSource? _realtimeMovementLifetime;
-    private Channel<RealtimePositionSave>? _realtimePositionSaves;
     private Task? _realtimeMovementTask;
-    private Task? _realtimePositionSaveTask;
     private AuthoritativePlayerMovementSystem?
         _authoritativePlayerMovement;
     private int _realtimeCharacterId;
@@ -42,15 +39,6 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _realtimePositionSaves =
-            Channel.CreateBounded<RealtimePositionSave>(
-                new BoundedChannelOptions(1)
-                {
-                    FullMode = BoundedChannelFullMode.DropOldest,
-                    SingleReader = true,
-                    SingleWriter = true,
-                    AllowSynchronousContinuations = false
-                });
         _realtimeMovementLifetime =
             CancellationTokenSource.CreateLinkedTokenSource(
                 hostCancellation,
@@ -58,29 +46,20 @@ internal sealed partial class GameClientHandler
         var lifetime = _realtimeMovementLifetime.Token;
         _realtimeMovementTask =
             RunRealtimeMovementAsync(lifetime);
-        _realtimePositionSaveTask =
-            RunRealtimePositionSavesAsync(
-                _realtimePositionSaves.Reader,
-                lifetime);
     }
 
     private async Task StopRealtimeMovementAsync()
     {
         _realtimeMovementStop.Cancel();
-        _realtimePositionSaves?.Writer.TryComplete();
         await ObserveRealtimeTaskAsync(
             _realtimeMovementTask,
             "simulation");
-        await ObserveRealtimeTaskAsync(
-            _realtimePositionSaveTask,
-            "position persistence");
         await ObserveRealtimeTaskAsync(
             _mapTransitionTimeoutTask,
             "map-transition deadline");
         _realtimeMovementLifetime?.Dispose();
         _realtimeMovementLifetime = null;
         _realtimeMovementTask = null;
-        _realtimePositionSaveTask = null;
         _mapTransitionTimeoutTask = null;
         _realtimeMovementStop.Dispose();
     }
@@ -526,7 +505,18 @@ internal sealed partial class GameClientHandler
         }
         if (effects.PositionSave is { } save)
         {
-            _realtimePositionSaves?.Writer.TryWrite(save);
+            if (_character is not null &&
+                _character.Id == save.CharacterId)
+            {
+                await PersistPositionCheckpointAsync(
+                    _character,
+                    save.MapId,
+                    save.X,
+                    save.Z,
+                    save.Revision,
+                    force: false,
+                    cancellationToken);
+            }
         }
     }
 

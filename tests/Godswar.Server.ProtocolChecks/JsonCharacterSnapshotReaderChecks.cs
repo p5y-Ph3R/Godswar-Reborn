@@ -16,6 +16,7 @@ internal static class JsonCharacterSnapshotReaderChecks
         await AssertFullSnapshotMappingAsync();
         await AssertAmbiguousSlotFailsAsync();
         await AssertConcurrentReadsAreNotTornAsync();
+        await AssertLocalCheckpointCompatibilityAsync();
     }
 
     private static async Task AssertInputAndMissingAccountFailuresAsync()
@@ -159,6 +160,14 @@ internal static class JsonCharacterSnapshotReaderChecks
                 character.PositionX,
                 loaded.Location.PositionX,
                 "JSON location X");
+            Check.Equal(
+                character.PositionZ,
+                loaded.Location.PositionZ,
+                "JSON location Z");
+            Check.Equal(
+                character.PositionRevision,
+                loaded.Location.PositionRevision,
+                "JSON position revision");
             Check.Equal(
                 character.Level,
                 loaded.Progression.Level,
@@ -341,6 +350,7 @@ internal static class JsonCharacterSnapshotReaderChecks
             CurrentHp = 1_250,
             CurrentMp = 150,
             VitalsRevision = 4,
+            PositionRevision = 6,
             TalentPoints = 100,
             TalentExperience = 25,
             HolySuitPoints = 12,
@@ -362,6 +372,106 @@ internal static class JsonCharacterSnapshotReaderChecks
             ZodiacAccumulatedTalentExperienceX100 = 200,
             CreatedUtc = DateTime.UtcNow.AddDays(-2)
         };
+
+    private static async Task
+        AssertLocalCheckpointCompatibilityAsync()
+    {
+        await WithStoreAsync(async (_, store) =>
+        {
+            await store.EnsureSeedDataAsync();
+            var account = await store.LoginOrCreateAccountAsync(
+                "json-checkpoint-owner",
+                "local-test");
+            var character = await store.CreateCharacterAsync(
+                account.Id,
+                new GameCharacter
+                {
+                    Name = "JsonCheckpoint",
+                    Camp = GameDefaults.SpartaCamp,
+                    Profession = 1,
+                    Level = 10,
+                    MaxHp = 1_000,
+                    MaxMp = 200,
+                    CurrentHp = 900,
+                    CurrentMp = 150
+                });
+            var checkpoints =
+                new LegacyCharacterCheckpointStore(store);
+            var first = await checkpoints.AcquireAsync(
+                account.Id,
+                character.Id,
+                Guid.NewGuid()) ??
+                throw new InvalidOperationException(
+                    "Local checkpoint owner was not acquired.");
+
+            var position = new CharacterPositionCheckpoint(
+                account.Id,
+                character.Id,
+                first.Owner,
+                CurrentMap: 7,
+                PositionX: 12.5f,
+                PositionZ: -8.25f,
+                Revision: 1);
+            Check.True(
+                (await checkpoints.WritePositionAsync(position))
+                    .Satisfies(1),
+                "local position checkpoint applies");
+            Check.True(
+                (await checkpoints.WriteVitalsAsync(
+                    new CharacterVitalsCheckpoint(
+                        account.Id,
+                        character.Id,
+                        first.Owner,
+                        CurrentHp: 777,
+                        CurrentMp: 123,
+                        Revision: 1))).Satisfies(1),
+                "local vitals checkpoint applies");
+
+            var replacement = await checkpoints.AcquireAsync(
+                account.Id,
+                character.Id,
+                Guid.NewGuid()) ??
+                throw new InvalidOperationException(
+                    "Replacement local owner was not acquired.");
+            Check.Equal(
+                first.Owner.Generation + 1,
+                replacement.Owner.Generation,
+                "local replacement advances the owner generation");
+            Check.Equal(
+                (int)CharacterCheckpointWriteStatus.OwnershipLost,
+                (int)(await checkpoints.WritePositionAsync(
+                    position with { Revision = 2 })).Status,
+                "replaced local owner is fenced");
+            Check.Equal(
+                (int)CharacterCheckpointReleaseStatus.Released,
+                (int)await checkpoints.ReleaseAsync(
+                    account.Id,
+                    character.Id,
+                    replacement.Owner),
+                "local owner releases cleanly");
+
+            var snapshot = await store.ReadAsync(account.Id);
+            var persisted = snapshot.Character ??
+                throw new InvalidOperationException(
+                    "Local checkpoint character disappeared.");
+            Check.Equal(
+                1L,
+                persisted.Location.PositionRevision,
+                "local adapter persists position revision");
+            Check.Equal(
+                7,
+                (int)persisted.Location.CurrentMap,
+                "local adapter persists position values");
+            Check.Equal(
+                1L,
+                persisted.Vitals.Revision,
+                "local adapter persists vitals revision");
+            Check.Equal(
+                777,
+                persisted.CalculatedStats.CurrentHp,
+                "local adapter persists vitals values");
+        });
+    }
 
     private static async Task WriteDatabaseAsync(
         string path,

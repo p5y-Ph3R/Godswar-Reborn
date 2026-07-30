@@ -139,6 +139,7 @@ internal sealed partial class GameClientHandler
         }
 
         GameDefaults.InitializeStartingLocation(_character);
+        _character.MarkPositionChanged();
         lock (_character.VitalsSync)
         {
             _character.CurrentHp = Math.Max(1, _character.MaxHp / 10);
@@ -148,37 +149,22 @@ internal sealed partial class GameClientHandler
         _positionDirty = false;
         _lastPositionPersistUtc = DateTime.UtcNow;
 
-        var accountId = _account?.Id ?? _character.AccountId;
-        var characterId = _character.Id;
-        var mapId = _character.CurrentMap;
-        var positionX = _character.PositionX;
-        var positionZ = _character.PositionZ;
-        await _positionPersistence.AdvanceAndPersistAsync(
-            token => _store.SaveCharacterPositionAsync(
-                accountId,
-                characterId,
-                mapId,
-                positionX,
-                positionZ,
-                token),
-            cancellationToken);
-        int revivedHp;
-        int revivedMp;
-        long revivedVitalsRevision;
-        lock (_character.VitalsSync)
+        if (!await PersistPositionCheckpointAsync(
+                _character,
+                force: true,
+                cancellationToken))
         {
-            revivedHp = _character.CurrentHp;
-            revivedMp = _character.CurrentMp;
-            revivedVitalsRevision = _character.VitalsRevision;
+            throw new InvalidOperationException(
+                "The revival position checkpoint was not durable.");
         }
-
-        await _store.SaveCharacterVitalsAsync(
-            accountId,
-            _character.Id,
-            revivedHp,
-            revivedMp,
-            revivedVitalsRevision,
-            cancellationToken);
+        if (!await PersistVitalsCheckpointAsync(
+                _character,
+                force: true,
+                cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "The revival vitals checkpoint was not durable.");
+        }
     }
 
     private async Task HandleBasicAttackAsync(GamePacket packet, CancellationToken cancellationToken)

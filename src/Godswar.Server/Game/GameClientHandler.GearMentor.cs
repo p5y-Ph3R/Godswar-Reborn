@@ -209,7 +209,7 @@ internal sealed partial class GameClientHandler
 
         if (transaction?.Character is not null)
         {
-            _character = transaction.Character;
+            InstallUpdatedCharacter(transaction.Character);
             _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         }
 

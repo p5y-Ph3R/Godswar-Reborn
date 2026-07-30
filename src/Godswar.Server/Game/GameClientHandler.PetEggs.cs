@@ -39,7 +39,7 @@ internal sealed partial class GameClientHandler
 
         if (result.Character is not null)
         {
-            _character = result.Character;
+            InstallUpdatedCharacter(result.Character);
             _registry.UpdateCharacter(
                 _session,
                 _character,

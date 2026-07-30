@@ -80,6 +80,23 @@ internal static partial class CharacterSnapshotContractChecks
             (int)ownership.Reason,
             "snapshot ownership mismatch has a finite reason");
 
+        var staleLocation = valid with
+        {
+            Character = valid.Character! with
+            {
+                Location = valid.Character.Location with
+                {
+                    PositionRevision = -1
+                }
+            }
+        };
+        var invalidLocation = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(staleLocation));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.InvalidData,
+            (int)invalidLocation.Reason,
+            "negative position revision has a finite invalid-data reason");
+
         var defaultSkills = valid with
         {
             Character = valid.Character! with
@@ -138,6 +155,10 @@ internal static partial class CharacterSnapshotContractChecks
         Check.Equal(7, character.AccountId, "hydrated account ID");
         Check.Equal("SnapshotHero", character.Name, "hydrated character name");
         Check.Equal((byte)7, character.CurrentMap, "hydrated map");
+        Check.Equal(
+            4L,
+            character.PositionRevision,
+            "load preserves persisted position revision");
         Check.Equal(42L, character.VitalsRevision, "load preserves persisted vitals revision");
         Check.Equal(9_500, character.MaxHp, "calculated maximum HP wins over base HP");
         Check.Equal(8_900, character.CurrentHp, "calculated current HP hydrates");

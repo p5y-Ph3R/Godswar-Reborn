@@ -99,7 +99,7 @@ internal sealed partial class GameClientHandler
                 CommandFamily.DeveloperItemGrant,
                 CommandIdentityStrength.UnsupportedLegacyRetry,
                 CommandOutcome.Accepted);
-            _character = mountResult.Character;
+            InstallUpdatedCharacter(mountResult.Character);
             _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
             await SendKitBagRefreshAsync(cancellationToken);
             await SendDeveloperItemFeedbackAsync(
@@ -150,7 +150,7 @@ internal sealed partial class GameClientHandler
                 CommandFamily.DeveloperBagClear,
                 CommandIdentityStrength.UnsupportedLegacyRetry,
                 CommandOutcome.Accepted);
-            _character = cleared;
+            InstallUpdatedCharacter(cleared);
             _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
             _pendingUnequipFollowup = null;
             ClearForgeSelection();
@@ -212,7 +212,7 @@ internal sealed partial class GameClientHandler
             CommandFamily.DeveloperItemGrant,
             CommandIdentityStrength.UnsupportedLegacyRetry,
             CommandOutcome.Accepted);
-        _character = result.Character;
+        InstallUpdatedCharacter(result.Character);
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         await SendKitBagRefreshAsync(cancellationToken);
         Console.WriteLine(

@@ -97,7 +97,6 @@ internal sealed partial class GameSessionRegistry
             var character = context.Character;
             int currentHp;
             int currentMp;
-            long vitalsRevision;
             lock (character.VitalsSync)
             {
                 currentHp = character.CurrentHp;
@@ -128,30 +127,16 @@ internal sealed partial class GameSessionRegistry
                 Remove(context.Session);
             }
 
-            if (_store is not null)
+            try
             {
-                try
-                {
-                    lock (character.VitalsSync)
-                    {
-                        currentHp = character.CurrentHp;
-                        currentMp = character.CurrentMp;
-                        vitalsRevision = character.VitalsRevision;
-                    }
-
-                    await _store.SaveCharacterVitalsAsync(
-                        context.AccountId,
-                        context.CharacterId,
-                        currentHp,
-                        currentMp,
-                        vitalsRevision,
-                        cancellationToken);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    Console.WriteLine(
-                        $"[recovery] vitals persistence deferred character={context.DisplayName}: {ex.Message}");
-                }
+                await PersistRoutineVitalsAsync(
+                    context,
+                    cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[recovery] vitals persistence deferred character={context.DisplayName}: {ex.Message}");
             }
 
             lock (character.VitalsSync)

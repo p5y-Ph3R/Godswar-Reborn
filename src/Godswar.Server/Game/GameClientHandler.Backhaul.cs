@@ -365,22 +365,9 @@ internal sealed partial class GameClientHandler
 
         try
         {
-            int currentHp;
-            int currentMp;
-            long vitalsRevision;
-            lock (character.VitalsSync)
-            {
-                currentHp = character.CurrentHp;
-                currentMp = character.CurrentMp;
-                vitalsRevision = character.VitalsRevision;
-            }
-
-            await _store.SaveCharacterVitalsAsync(
-                _account.Id,
-                character.Id,
-                currentHp,
-                currentMp,
-                vitalsRevision,
+            await PersistVitalsCheckpointAsync(
+                character,
+                force: false,
                 cancellationToken);
         }
         catch (Exception error)

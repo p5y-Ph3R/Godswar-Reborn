@@ -325,7 +325,8 @@ internal sealed partial class PostgresGameStore
                     reader.GetFieldValue<int[]>(43)),
             ZodiacSkillGridSkillIds =
                 ZodiacSkillGridActivation.NormalizeSkillIds(
-                    reader.GetFieldValue<int[]>(44))
+                    reader.GetFieldValue<int[]>(44)),
+            PositionRevision = reader.GetInt64(45)
         };
     }
 

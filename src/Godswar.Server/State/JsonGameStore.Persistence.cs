@@ -118,6 +118,7 @@ internal sealed partial class JsonGameStore
             CurrentHp = character.CurrentHp,
             CurrentMp = character.CurrentMp,
             VitalsRevision = character.VitalsRevision,
+            PositionRevision = character.PositionRevision,
             TalentPoints = character.TalentPoints,
             TalentExperience = character.TalentExperience,
             HolySuitPoints = character.HolySuitPoints,

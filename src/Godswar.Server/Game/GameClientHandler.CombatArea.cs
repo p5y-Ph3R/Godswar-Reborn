@@ -198,21 +198,14 @@ internal sealed partial class GameClientHandler
         {
             try
             {
-                int currentHp;
-                long vitalsRevision;
                 lock (character.VitalsSync)
                 {
-                    currentHp = character.CurrentHp;
                     currentMana = character.CurrentMp;
-                    vitalsRevision = character.VitalsRevision;
                 }
 
-                await _store.SaveCharacterVitalsAsync(
-                    _account.Id,
-                    character.Id,
-                    currentHp,
-                    currentMana,
-                    vitalsRevision,
+                await PersistVitalsCheckpointAsync(
+                    character,
+                    force: false,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

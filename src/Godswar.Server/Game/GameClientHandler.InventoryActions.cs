@@ -252,11 +252,11 @@ internal sealed partial class GameClientHandler
             envelope.Family,
             envelope.IdentityStrength,
             CommandOutcome.Accepted);
-        _character = result.Character;
+        InstallUpdatedCharacter(result.Character);
         await RefreshActiveCharacterStatsAsync(
             "talent-upgrade",
             cancellationToken);
-        _registry.UpdateCharacter(_session, _character);
+        _registry.UpdateCharacter(_session, _character!);
         await _session.SendAsync(
             BuildLocalPlayerStatusUpdate(),
             cancellationToken,
@@ -406,7 +406,7 @@ internal sealed partial class GameClientHandler
         if (previousItemId != 0
             && EquipmentSlots.GetItemId(updatedCharacter.Equipment, updatedCharacter.Profession, equipmentSlot) == previousItemId)
         {
-            _character = updatedCharacter;
+            InstallUpdatedCharacter(updatedCharacter);
             Console.WriteLine(
                 $"[equip-re] StorageItem unequip did not move item: character={_character.Name} slot={equipmentSlot} item={previousItemId} destination={destinationSlot}");
             await SendEquipmentBagTransferRejectionRefreshAsync(
@@ -422,7 +422,7 @@ internal sealed partial class GameClientHandler
             previousEquipmentEntry);
         if (actualDestinationSlot != destinationSlot)
         {
-            _character = updatedCharacter;
+            InstallUpdatedCharacter(updatedCharacter);
             await RefreshActiveCharacterStatsAsync("unequip-destination-mismatch", cancellationToken);
             _registry.UpdateCharacter(_session, _character);
             Console.WriteLine(
@@ -445,7 +445,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = updatedCharacter;
+        InstallUpdatedCharacter(updatedCharacter);
         await RefreshActiveCharacterStatsAsync("unequip", cancellationToken);
         _registry.UpdateCharacter(_session, _character);
         _pendingUnequipFollowup = previousItemId == 0

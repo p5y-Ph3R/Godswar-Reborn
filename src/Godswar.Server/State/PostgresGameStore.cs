@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
@@ -43,13 +42,12 @@ internal sealed partial class PostgresGameStore : IGameStore
               ON grid.user_id = cb.id
              AND grid.grid_index = requested_grid.grid_index
             ORDER BY requested_grid.grid_index
-        )
+        ),
+        cb.position_revision
         """;
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresSchemaMigrationRunner _schemaMigrationRunner;
-    private readonly ConcurrentDictionary<int, SemaphoreSlim> _vitalsPersistenceLocks = [];
-
     public PostgresGameStore(string connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))

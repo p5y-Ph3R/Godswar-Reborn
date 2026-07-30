@@ -27,9 +27,7 @@ internal sealed partial class GameSessionRegistry
         {
             GameCharacter character;
             int accountId;
-            int currentHp;
             int currentMana;
-            long vitalsRevision;
             lock (_gate)
             {
                 if (!_sessions.TryGetValue(session, out var context) ||
@@ -70,38 +68,31 @@ internal sealed partial class GameSessionRegistry
                         statusRevision,
                         MovementSpeedBonus: mount.SpeedBonus);
                     character.CurrentMp -= MountCatalog.RideManaCost;
-                    currentHp = character.CurrentHp;
                     currentMana = character.CurrentMp;
                     character.MarkVitalsChanged();
-                    vitalsRevision = character.VitalsRevision;
                     state.Revision = statusRevision;
                     state.RuntimeStatuses[MountCatalog.RuntimeStatusKind] = status;
                     RefreshSkillCastControlSnapshot(state);
                 }
             }
 
-            if (_store is not null)
+            if (_checkpointCoordinator is not null ||
+                _store is not null)
             {
                 try
                 {
                     // Ride is not externally successful until its MP cost is
                     // durable. Do not let a socket cancellation after status
                     // publication refund the cast on the next login.
-                    await _store.SaveCharacterVitalsAsync(
+                    await FlushVitalsAsync(
                         accountId,
-                        character.Id,
-                        currentHp,
-                        currentMana,
-                        vitalsRevision,
+                        character,
                         CancellationToken.None);
                 }
                 catch
                 {
                     state.RuntimeStatuses.Remove(MountCatalog.RuntimeStatusKind);
                     RefreshSkillCastControlSnapshot(state);
-                    int rollbackHp;
-                    int rollbackMana;
-                    long rollbackRevision;
                     lock (character.VitalsSync)
                     {
                         character.CurrentMp = Math.Min(
@@ -110,19 +101,13 @@ internal sealed partial class GameSessionRegistry
                                 int.MaxValue,
                                 (long)character.CurrentMp + MountCatalog.RideManaCost));
                         character.MarkVitalsChanged();
-                        rollbackHp = character.CurrentHp;
-                        rollbackMana = character.CurrentMp;
-                        rollbackRevision = character.VitalsRevision;
                     }
 
                     try
                     {
-                        await _store.SaveCharacterVitalsAsync(
+                        await FlushVitalsAsync(
                             accountId,
-                            character.Id,
-                            rollbackHp,
-                            rollbackMana,
-                            rollbackRevision,
+                            character,
                             CancellationToken.None);
                     }
                     catch (Exception rollbackError)

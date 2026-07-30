@@ -75,6 +75,9 @@ internal static partial class Program
                 "PostgreSQL migration safety foundation",
                 PostgresMigrationFoundationChecks.RunAsync),
             (
+                PostgresCharacterCheckpointIntegrationChecks.CheckName,
+                PostgresCharacterCheckpointIntegrationChecks.RunAsync),
+            (
                 PostgresEconomyLedgerMigrationIntegrationChecks.CheckName,
                 PostgresEconomyLedgerMigrationIntegrationChecks.RunAsync),
             (

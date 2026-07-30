@@ -360,6 +360,7 @@ internal sealed partial class GameClientHandler
 
         _character.PositionX = positionX;
         _character.PositionZ = positionZ;
+        _character.MarkPositionChanged();
         _positionDirty = true;
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         movement = new AcceptedMapMovementSegment(
@@ -382,25 +383,22 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var accountId = _account.Id;
+        var character = _character;
         var characterId = _character.Id;
         var mapId = _character.CurrentMap;
         var x = _character.PositionX;
         var z = _character.PositionZ;
-        var epoch = _positionPersistence.CaptureEpoch();
+        var revision = _character.PositionRevision;
         try
         {
-            var persisted =
-                await _positionPersistence.PersistIfCurrentAsync(
-                    epoch,
-                    token => _store.SaveCharacterPositionAsync(
-                        accountId,
-                        characterId,
-                        mapId,
-                        x,
-                        z,
-                        token),
-                    cancellationToken);
+            var persisted = await PersistPositionCheckpointAsync(
+                character,
+                mapId,
+                x,
+                z,
+                revision,
+                force,
+                cancellationToken);
             if (!persisted)
             {
                 return;
@@ -415,11 +413,18 @@ internal sealed partial class GameClientHandler
             }
             _lastPositionPersistUtc = now;
             Console.WriteLine(
-                $"[world] saved position character={_character.Name} map={mapId} x={x:F2} z={z:F2} force={force} epoch={epoch}");
+                $"[world] saved position character={_character.Name} " +
+                $"map={mapId} x={x:F2} z={z:F2} force={force} " +
+                $"revision={revision}");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (
+            !force &&
+            (ex is not OperationCanceledException ||
+             !cancellationToken.IsCancellationRequested))
         {
-            Console.WriteLine($"[world] failed to save position character={_character.Name}: {ex.Message}");
+            Console.WriteLine(
+                "[world] deferred position checkpoint " +
+                $"reason={ex.GetType().Name}");
         }
     }
 

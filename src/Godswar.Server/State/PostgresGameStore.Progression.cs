@@ -38,32 +38,21 @@ internal sealed partial class PostgresGameStore
         long vitalsRevision,
         CancellationToken cancellationToken = default)
     {
-        var persistenceLock = _vitalsPersistenceLocks.GetOrAdd(
-            characterId,
-            static _ => new SemaphoreSlim(1, 1));
-        await persistenceLock.WaitAsync(cancellationToken);
-        try
-        {
-            await using var command = _dataSource.CreateCommand("""
-                UPDATE character_base
-                SET "curHP" = GREATEST(0, @currentHp),
-                    "curMP" = GREATEST(0, @currentMp),
-                    vitals_revision = @vitalsRevision
-                WHERE id = @characterId
-                  AND account_id = @accountId
-                  AND vitals_revision < @vitalsRevision;
-                """);
-            command.Parameters.AddWithValue("accountId", accountId);
-            command.Parameters.AddWithValue("characterId", characterId);
-            command.Parameters.AddWithValue("currentHp", currentHp);
-            command.Parameters.AddWithValue("currentMp", currentMp);
-            command.Parameters.AddWithValue("vitalsRevision", vitalsRevision);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        finally
-        {
-            persistenceLock.Release();
-        }
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE character_base
+            SET "curHP" = GREATEST(0, @currentHp),
+                "curMP" = GREATEST(0, @currentMp),
+                vitals_revision = @vitalsRevision
+            WHERE id = @characterId
+              AND account_id = @accountId
+              AND vitals_revision < @vitalsRevision;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue("currentHp", currentHp);
+        command.Parameters.AddWithValue("currentMp", currentMp);
+        command.Parameters.AddWithValue("vitalsRevision", vitalsRevision);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<CharacterProgressionResult?> ApplyMonsterKillRewardAsync(

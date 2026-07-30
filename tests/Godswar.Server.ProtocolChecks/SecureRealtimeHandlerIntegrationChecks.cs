@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Reflection;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Realtime;
@@ -23,6 +24,8 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         FindHandlerMethod("PublishRealtimeMovementEffectsAsync");
     private static readonly MethodInfo HandlePacketMethod =
         FindHandlerMethod("HandlePacketAsync");
+    private static readonly Guid CheckpointOwnerId =
+        new("998c11bb-6a72-469f-af17-1bcc8daa1785");
 
     public static async Task RunAsync()
     {
@@ -281,7 +284,11 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
             CharacterSnapshotReaderTestFixtures.Unused,
             WorldContentReaderTestFixtures.Empty,
             phase4AcceptanceFaults:
-                phase4AcceptanceFaults);
+                phase4AcceptanceFaults,
+            characterCheckpoints:
+                new GameHandlerCheckpointCoordinatorStub());
+        character.CheckpointOwnerId = CheckpointOwnerId;
+        character.CheckpointOwnerGeneration = 1;
         SetField(
             handler,
             "_account",

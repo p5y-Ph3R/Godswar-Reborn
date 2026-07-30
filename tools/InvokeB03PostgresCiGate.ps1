@@ -61,8 +61,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 30
-    expectedMigrationHead = '20260730_029_holy_stone_material_templates'
+    expectedMigrationCount = 31
+    expectedMigrationHead = '20260730_030_character_checkpoint_versions'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -119,6 +119,9 @@ try {
     Invoke-RequiredProtocolCheck `
         -Phase 'migration-foundation' `
         -Name 'PostgreSQL migration safety foundation'
+    Invoke-RequiredProtocolCheck `
+        -Phase 'migration-foundation-checkpoints' `
+        -Name 'PostgreSQL character checkpoint migration contract'
 
     $failureCategory = 'empty-bootstrap'
     New-DisposableDatabase $databaseNames.Empty
@@ -235,7 +238,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 30 `
+        -InitialMigrationCount 31 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -264,6 +267,7 @@ try {
         'PostgreSQL durable Zodiac skill-grid upgrade',
         'PostgreSQL durable Zodiac skill-grid selection',
         'PostgreSQL character-creation economy baseline',
+        'PostgreSQL versioned character checkpoints',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

@@ -48,13 +48,47 @@ internal sealed partial class JsonGameStore :
         return Task.CompletedTask;
     }
 
-    public async Task SaveCharacterPositionAsync(
+    public Task SaveCharacterPositionAsync(
         int accountId,
         int characterId,
         byte currentMap,
         float positionX,
         float positionZ,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SaveCharacterPositionCoreAsync(
+            accountId,
+            characterId,
+            currentMap,
+            positionX,
+            positionZ,
+            revision: null,
+            cancellationToken);
+
+    internal Task SaveCharacterPositionCheckpointAsync(
+        int accountId,
+        int characterId,
+        byte currentMap,
+        float positionX,
+        float positionZ,
+        long revision,
+        CancellationToken cancellationToken = default) =>
+        SaveCharacterPositionCoreAsync(
+            accountId,
+            characterId,
+            currentMap,
+            positionX,
+            positionZ,
+            revision,
+            cancellationToken);
+
+    private async Task SaveCharacterPositionCoreAsync(
+        int accountId,
+        int characterId,
+        byte currentMap,
+        float positionX,
+        float positionZ,
+        long? revision,
+        CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try
@@ -65,10 +99,19 @@ internal sealed partial class JsonGameStore :
             {
                 return;
             }
+            if (revision.HasValue &&
+                revision.Value <= character.PositionRevision)
+            {
+                return;
+            }
 
             character.CurrentMap = currentMap;
             character.PositionX = positionX;
             character.PositionZ = positionZ;
+            if (revision.HasValue)
+            {
+                character.PositionRevision = revision.Value;
+            }
             await SaveUnsafeAsync(db, cancellationToken);
         }
         finally

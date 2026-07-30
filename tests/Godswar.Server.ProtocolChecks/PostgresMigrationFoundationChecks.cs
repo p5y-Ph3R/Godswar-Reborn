@@ -13,6 +13,7 @@ internal static partial class PostgresMigrationFoundationChecks
         await PostgresInboxOutboxHardeningMigrationChecks.RunAsync();
         await PostgresEconomyLedgerMigrationChecks.RunAsync();
         CheckHolyStoneMaterialMigration();
+        await PostgresCharacterCheckpointMigrationChecks.RunAsync();
         CheckDatabaseCleanupMigrations();
         CheckStableChecksums();
         CheckImmutableHistory();
@@ -22,7 +23,7 @@ internal static partial class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(30, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(31, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -73,7 +74,8 @@ internal static partial class PostgresMigrationFoundationChecks
                     "20260729_026_command_inbox_outbox_hardening",
                     "20260729_027_economy_ledger_foundation",
                     "20260729_028_economy_ledger_hardening",
-                    "20260730_029_holy_stone_material_templates"
+                    "20260730_029_holy_stone_material_templates",
+                    "20260730_030_character_checkpoint_versions"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

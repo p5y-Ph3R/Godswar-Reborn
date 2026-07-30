@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresSchemaReleaseIntegrationChecks
+internal static partial class PostgresSchemaReleaseIntegrationChecks
 {
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_SCHEMA_RELEASE_CONNECTION_STRING";
@@ -88,6 +88,14 @@ internal static class PostgresSchemaReleaseIntegrationChecks
             1,
             snapshot.PacketCaptureForeignKeyCount,
             "packet transactions retain the capture-session cascade foreign key");
+        Check.Equal(
+            3,
+            snapshot.CheckpointColumnCount,
+            "all additive character checkpoint columns exist");
+        Check.Equal(
+            4,
+            snapshot.CheckpointConstraintCount,
+            "all character checkpoint constraints exist and validate");
         Check.Equal(0, snapshot.UnvalidatedConstraintCount, "all constraints validate");
         Check.Equal(0, snapshot.InvalidIndexCount, "all indexes are valid and ready");
     }
@@ -148,6 +156,16 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                 ?? throw new InvalidOperationException(
                     "Economy baseline or ledger evidence disappeared during startup."),
                 "current release startup preserves economy evidence rows");
+        }
+
+        if (before.CheckpointFingerprint is not null)
+        {
+            Check.Equal(
+                before.CheckpointFingerprint,
+                after.CheckpointFingerprint
+                ?? throw new InvalidOperationException(
+                    "Character checkpoint state disappeared during startup."),
+                "schema release preserves owner fences and checkpoint revisions");
         }
     }
 
@@ -216,12 +234,48 @@ internal static class PostgresSchemaReleaseIntegrationChecks
                                         to_jsonb(character_row) -
                                         ARRAY[
                                             'wallet_revision',
-                                            'inventory_revision'
+                                            'inventory_revision',
+                                            'position_revision',
+                                            'checkpoint_owner_id',
+                                            'checkpoint_owner_generation'
                                         ]::text[]
                                     )::text,
                                     '|' ORDER BY character_row.id),
                                 ''))
                          FROM public.character_base character_row);
+                    """)
+                : null;
+        var checkpointColumnCount =
+            await RelationExistsAsync(connection, "public.character_base")
+                ? await ReadInt32Async(connection, """
+                    SELECT count(*)::integer
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'character_base'
+                      AND column_name = ANY(ARRAY[
+                          'position_revision',
+                          'checkpoint_owner_id',
+                          'checkpoint_owner_generation'
+                      ]::text[]);
+                    """)
+                : 0;
+        var checkpointFingerprint =
+            checkpointColumnCount == 3
+                ? await ReadTextAsync(connection, """
+                    SELECT count(*)::text || ':' ||
+                        md5(COALESCE(
+                            string_agg(
+                                character_row.id::text || ':' ||
+                                COALESCE(
+                                    character_row.checkpoint_owner_id::text,
+                                    '<null>') || ':' ||
+                                character_row.checkpoint_owner_generation::text ||
+                                ':' ||
+                                character_row.position_revision::text || ':' ||
+                                character_row.vitals_revision::text,
+                                '|' ORDER BY character_row.id),
+                            ''))
+                    FROM public.character_base character_row;
                     """)
                 : null;
         var packetPayloadFingerprint =
@@ -350,6 +404,19 @@ internal static class PostgresSchemaReleaseIntegrationChecks
               AND confdeltype = 'c'
               AND convalidated;
             """);
+        var checkpointConstraintCount = await ReadInt32Async(connection, """
+            SELECT count(*)::integer
+            FROM pg_constraint
+            WHERE conrelid = to_regclass('public.character_base')
+              AND conname = ANY(ARRAY[
+                  'ck_character_base_position_revision',
+                  'ck_character_base_vitals_revision',
+                  'ck_character_base_checkpoint_owner_generation',
+                  'ck_character_base_checkpoint_owner_pair'
+              ]::text[])
+              AND contype = 'c'
+              AND convalidated;
+            """);
         var unvalidatedConstraints = await ReadInt32Async(connection, """
             SELECT count(*)::integer
             FROM pg_constraint constraint_row
@@ -376,14 +443,18 @@ internal static class PostgresSchemaReleaseIntegrationChecks
             $"|{inventoryFingerprint}|{accountCharacterFingerprint}|" +
             $"{packetPayloadFingerprint}|{petFingerprint}|" +
             $"{economyFingerprint}|" +
+            $"{checkpointFingerprint}|" +
             $"{packetRelationCount}:{hasFunction}:{triggerCount}:" +
-            $"{captureForeignKeyCount}:{unvalidatedConstraints}:{invalidIndexes}";
+            $"{captureForeignKeyCount}:{checkpointColumnCount}:" +
+            $"{checkpointConstraintCount}:{unvalidatedConstraints}:" +
+            $"{invalidIndexes}";
 
         return new SchemaReleaseSnapshot(
             markerCount,
             migrations,
             inventoryFingerprint,
             accountCharacterFingerprint,
+            checkpointFingerprint,
             packetPayloadFingerprint,
             petFingerprint,
             economyFingerprint,
@@ -391,62 +462,11 @@ internal static class PostgresSchemaReleaseIntegrationChecks
             hasFunction,
             triggerCount,
             captureForeignKeyCount,
+            checkpointColumnCount,
+            checkpointConstraintCount,
             unvalidatedConstraints,
             invalidIndexes,
             releaseFingerprint);
     }
 
-    private static async Task<bool> RelationExistsAsync(
-        NpgsqlConnection connection,
-        string qualifiedName)
-    {
-        await using var command = new NpgsqlCommand(
-            "SELECT to_regclass(@qualifiedName) IS NOT NULL;",
-            connection);
-        command.Parameters.AddWithValue("qualifiedName", qualifiedName);
-        return (bool)(await command.ExecuteScalarAsync()
-                      ?? throw new InvalidOperationException(
-                          "Relation check returned null."));
-    }
-
-    private static async Task<int> ReadInt32Async(
-        NpgsqlConnection connection,
-        string sql) =>
-        Convert.ToInt32(await ReadScalarAsync(connection, sql));
-
-    private static async Task<bool> ReadBooleanAsync(
-        NpgsqlConnection connection,
-        string sql) =>
-        Convert.ToBoolean(await ReadScalarAsync(connection, sql));
-
-    private static async Task<string> ReadTextAsync(
-        NpgsqlConnection connection,
-        string sql) =>
-        Convert.ToString(await ReadScalarAsync(connection, sql))
-        ?? throw new InvalidOperationException("Text query returned null.");
-
-    private static async Task<object> ReadScalarAsync(
-        NpgsqlConnection connection,
-        string sql)
-    {
-        await using var command = new NpgsqlCommand(sql, connection);
-        return await command.ExecuteScalarAsync()
-               ?? throw new InvalidOperationException("Scalar query returned null.");
-    }
-
-    private sealed record SchemaReleaseSnapshot(
-        int CoreMarkerCount,
-        IReadOnlyList<AppliedPostgresSchemaMigration> AppliedMigrations,
-        string? InventoryFingerprint,
-        string? AccountCharacterFingerprint,
-        string? PacketPayloadFingerprint,
-        string? PetFingerprint,
-        string? EconomyFingerprint,
-        int PacketRelationCount,
-        bool HasOpcodeNameFunction,
-        int OpcodeNameTriggerCount,
-        int PacketCaptureForeignKeyCount,
-        int UnvalidatedConstraintCount,
-        int InvalidIndexCount,
-        string ReleaseFingerprint);
 }

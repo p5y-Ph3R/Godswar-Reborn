@@ -63,94 +63,6 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly Dictionary<uint, NpcSpawnDefinition> _mapNpcsByInteractionId = new();
     private WorldSectorVisibilityTracker<NpcSpawnDefinition>? _npcVisibility;
 
-    public GameClientHandler(
-        ClientSession session,
-        IGameStore store,
-        GameSessionRegistry registry,
-        ICharacterSnapshotReader characterSnapshots,
-        IWorldContentReader worldContent,
-        DeveloperCommandOptions? developerCommands = null,
-        SecurePhase4AcceptanceFaults?
-            phase4AcceptanceFaults = null,
-        TimeSpan? mapTransitionReadyTimeout = null,
-        TimeSpan? backhaulSkillCastTime = null,
-        LegacyAuthenticationAccess?
-            legacyAuthenticationAccess = null,
-        ITalentUpgradeCommandExecutor?
-            talentUpgradeCommands = null,
-        IDeveloperItemGrantCommandExecutor?
-            developerItemGrantCommands = null,
-        IDeveloperBagClearCommandExecutor?
-            developerBagClearCommands = null,
-        IMakeAttributeStoneCommandExecutor?
-            makeAttributeStoneCommands = null,
-        IGearMentorMaterialConversionCommandExecutor?
-            gearMentorMaterialConversionCommands = null,
-        IGearMentorDecomposeGearCommandExecutor?
-            gearMentorDecomposeGearCommands = null,
-        IGearEnhancementCommandExecutor?
-            gearEnhancementCommands = null,
-        IEquipmentForgeCommandExecutor?
-            equipmentForgeCommands = null,
-        IKitBagItemDeleteCommandExecutor?
-            kitBagItemDeleteCommands = null,
-        IKitBagItemMoveCommandExecutor?
-            kitBagItemMoveCommands = null,
-        IEquipmentBagTransferCommandExecutor?
-            equipmentBagTransferCommands = null,
-        IHolyStoneCommandExecutor?
-            holyStoneCommands = null,
-        IZodiacSkillGridActivationCommandExecutor?
-            zodiacSkillGridActivationCommands = null,
-        IZodiacSkillGridUpgradeCommandExecutor?
-            zodiacSkillGridUpgradeCommands = null,
-        IZodiacSkillGridSelectionCommandExecutor?
-            zodiacSkillGridSelectionCommands = null)
-    {
-        if (backhaulSkillCastTime < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(backhaulSkillCastTime));
-        }
-
-        _session = session;
-        _store = store;
-        _registry = registry;
-        _characterSnapshots =
-            characterSnapshots ?? throw new ArgumentNullException(
-                nameof(characterSnapshots));
-        _worldContent =
-            worldContent ?? throw new ArgumentNullException(
-                nameof(worldContent));
-        _talentUpgradeCommands = talentUpgradeCommands;
-        _developerItemGrantCommands = developerItemGrantCommands;
-        _developerBagClearCommands = developerBagClearCommands;
-        _makeAttributeStoneCommands = makeAttributeStoneCommands;
-        _gearMentorMaterialConversionCommands =
-            gearMentorMaterialConversionCommands;
-        _gearMentorDecomposeGearCommands =
-            gearMentorDecomposeGearCommands;
-        _gearEnhancementCommands = gearEnhancementCommands;
-        _equipmentForgeCommands = equipmentForgeCommands;
-        _kitBagItemDeleteCommands = kitBagItemDeleteCommands;
-        _kitBagItemMoveCommands = kitBagItemMoveCommands;
-        _equipmentBagTransferCommands = equipmentBagTransferCommands;
-        _holyStoneCommands = holyStoneCommands;
-        _zodiacSkillGridActivationCommands =
-            zodiacSkillGridActivationCommands;
-        _zodiacSkillGridUpgradeCommands =
-            zodiacSkillGridUpgradeCommands;
-        _zodiacSkillGridSelectionCommands =
-            zodiacSkillGridSelectionCommands;
-        _developerCommands = developerCommands ?? new DeveloperCommandOptions();
-        _legacyAuthenticationAccess =
-            legacyAuthenticationAccess;
-        _phase4AcceptanceFaults = phase4AcceptanceFaults;
-        _mapTransitionReadyTimeout =
-            mapTransitionReadyTimeout ?? DefaultMapTransitionReadyTimeout;
-        _backhaulSkillCastTime = backhaulSkillCastTime;
-    }
-
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         _registry.RegisterSkillCastInterruptionSink(
@@ -211,15 +123,6 @@ internal sealed partial class GameClientHandler : IClientHandler
                 Console.WriteLine($"[zodiac] failed saving final online interval: {ex.Message}");
             }
 
-            try
-            {
-                await PersistCharacterPositionAsync(force: true, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[world] failed saving final position: {ex.Message}");
-            }
-
             if (_registered)
             {
                 try
@@ -238,6 +141,8 @@ internal sealed partial class GameClientHandler : IClientHandler
             // Also clears a status state preserved across a revive if re-entry
             // failed before the session could rejoin the world registry.
             _registry.RemovePlayerStatusState(_session);
+
+            await FinalizeCheckpointOwnershipAsync();
 
             if (_account is not null && _accountSessionRegistered)
             {

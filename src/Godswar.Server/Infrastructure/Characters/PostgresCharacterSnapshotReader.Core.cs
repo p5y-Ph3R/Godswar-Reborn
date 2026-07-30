@@ -55,7 +55,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
             new CharacterLocationSnapshot(
                 ToByte(reader.GetInt16(9), "map"),
                 reader.GetFloat(15),
-                reader.GetFloat(16)),
+                reader.GetFloat(16),
+                reader.GetInt64(45)),
             new CharacterProgressionSnapshot(
                 reader.GetInt32(10),
                 reader.GetInt32(27),
@@ -224,7 +225,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
                   ON grid.user_id = cb.id
                  AND grid.grid_index = requested_grid.grid_index
                 ORDER BY requested_grid.grid_index
-            )
+            ),
+            cb.position_revision
         FROM character_base cb
         LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
         WHERE cb.account_id = @accountId

@@ -137,7 +137,7 @@ internal sealed partial class GameClientHandler
                 previousKitBagEntry,
                 StringComparison.Ordinal))
         {
-            _character = updatedCharacter;
+            InstallUpdatedCharacter(updatedCharacter);
             Console.WriteLine(
                 $"[equip-re] StorageItem equip did not move item: character={_character.Name} sourceSlot={sourceSlot} requestedTarget={requestedEquipmentSlot} item={kitBagItemId}");
             await SendEquipRejectionRefreshAsync(
@@ -149,7 +149,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = updatedCharacter;
+        InstallUpdatedCharacter(updatedCharacter);
         await RefreshActiveCharacterStatsAsync("equip", cancellationToken);
         _registry.UpdateCharacter(_session, _character);
         var equippedSlot = ResolveEquippedSlotForAck(
@@ -224,7 +224,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = updatedCharacter;
+        InstallUpdatedCharacter(updatedCharacter);
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         Console.WriteLine(
             $"[equip-re] kitbag move character={_character.Name} source={sourceSlot} destination={destinationSlot}");
@@ -275,7 +275,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _character = updatedCharacter;
+        InstallUpdatedCharacter(updatedCharacter);
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         Console.WriteLine(
             $"[inventory] deleted kitbag item character={_character.Name} source={sourceSlot} item={itemId}");

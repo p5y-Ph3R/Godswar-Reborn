@@ -14,7 +14,7 @@
 | B07 - Resolve legacy operation identity and add command envelope | Separate transport identity from business retry | compatibility spike for shim operation ID/server token/limited semantics, then codecs/handlers/application envelope for one command | B01B, B02 and client compatibility decision | Chosen command has a stable cross-reconnect operation identity or explicitly documented weaker guarantee; auth IDs are server-derived | malformed, legitimate repeated command, duplicate, reconnect, request-hash conflict | command outcomes/duplicates/unsupported legacy retries | Per-command legacy adapter | Medium | Medium |
 | B08 - PostgreSQL inbox/outbox foundation | Make retries/events safe | new migrations, Npgsql helpers/worker, operation-specific transaction, versioned/ordered consumer policy | B03, B07 | Same transaction as sample mutation; restart resumes outbox; consumers handle stale/gap ordering correctly | crash at all commit/delivery points, concurrent pollers, v2-before-v1 | backlog/age/retry/poison/gaps | Disable dispatcher; authoritative rows/inbox remain | Large | High |
 | B09 - Inventory/currency ledger migration | Protect economy | inventory/crafting/mentor/GM handlers, wallet schema, audits | B08 | Existing valuable commands are idempotent, constrained, audited | races, duplicate, overflow, disconnect-after-commit, reconciliation | economy command/ledger mismatch | Feature-specific compatibility adapter | Large | High |
-| B10 - Checkpoint versions and bounded workers | Keep I/O off ticks and reject stale saves | position/vitals coordinators, background loops, PG columns, task supervisor | B02-B03 | Bounded queues; position transfer requires exactly one affected row; stale owner/revision cannot overwrite; loop faults stop readiness | zero-row/wrong-owner, delay/reorder/crash/queue/critical fault | dirty age, queue, conflicts, heartbeat | Single-instance legacy coordinator flag | Large | High |
+| B10 - Checkpoint versions and bounded workers **(completed 2026-07-30)** | Keep I/O off ticks and reject stale saves | position/vitals coordinators, background loops, PG columns, task supervisor | B02-B03 | Bounded queues; position transfer requires exactly one affected row; stale owner/revision cannot overwrite; loop faults stop readiness | zero-row/wrong-owner, delay/reorder/crash/queue/critical fault | dirty age, queue, conflicts, heartbeat | Coordinated prior-binary rollback; additive migration retained | Large | High |
 | B11 - Character lifecycle/tombstone | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
 | B12 - Progression/reward/pet durability | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
 | B13 - Structured logs, traces, readiness | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | all section 16 signals | Disable exporter/sink, keep audits | Medium | Medium |
@@ -53,77 +53,20 @@ player-ownership fence remains required before safe multi-process ownership.
 
 **B09 completed 2026-07-30:** the
 [closure evidence](../data-architecture-b09-closure-20260730.md) records the
-secure mutation boundary, gates, limitations, and B10-B12 handoff. The
-[foundation increment](../data-architecture-b09-economy-ledger-increment-20260729.md)
-records the immutable opening economy baselines, wallet/inventory revisions,
-currency and item ledgers, report-only reconciliation, and the first
-commit-before-response item grant using an explicit client operation UUID.
-The [secure native Make Attribute Stone increment](../data-architecture-b09-native-make-attribute-stone-20260729.md)
-activates that marker with a bounded reconnect registry, authenticated terminal
-result, durable Mentor transaction, authoritative refresh, and exact replay.
-The [secure native Transform/Combine increment](../data-architecture-b09-native-material-conversions-20260729.md)
-extends the same boundary to both material-conversion families, including all
-recipes, family-separated reconnect identity, pre-route durable replay,
-immutable ledger evidence, and strict projection events.
-The [secure native Decompose increment](../data-architecture-b09-native-decompose-20260729.md)
-adds ordered one-to-three selection identity and persists each exact random
-Dust outcome so reconnect replay never rerolls.
-The [secure native Gear Enhancement increment](../data-architecture-b09-native-gear-enhancement-20260730.md)
-places Gear Mentor and Origin Enhancer attribute Enhance/Add/Delete behind
-three family-isolated UUIDs and one authoritative transaction that commits the
-gear update, both material consumptions, revision, ledger, audit, inbox, and
-strict outbox evidence before acknowledgement.
-The [secure native Equipment Forge increment](../data-architecture-b09-native-equipment-forge-20260730.md)
-adds family-isolated identity for ordinary Forge and stores its one
-server-generated random roll. Successful and failed rolls consume their exact
-materials and Silver once, while exact retry replays the permanent outcome
-without rerolling.
-The [secure native kit-bag item-delete increment](../data-architecture-b09-native-kit-bag-delete-20260730.md)
-adds family-13 identity and replay-before-reread handling for confirmed
-ground deletion. It deletes only the exact server-captured item instance,
-persists empty and stale selections as permanent non-mutating outcomes, and
-commits its revision, ledger, audit, inbox, and strict outbox evidence before
-acknowledgement.
-The [secure native kit-bag move/swap increment](../data-architecture-b09-native-kit-bag-move-20260730.md)
-adds ordered family-14 identity and replay-before-reread handling for both
-empty-destination movement and occupied-destination swaps. It preserves the
-exact database item IDs, advances one revision, writes one or two ordered
-full-state ledgers, commits one strict outbox event, and suppresses the
-non-idempotent stock move acknowledgement on replay.
-The [secure native equipment/bag transfer increment](../data-architecture-b09-native-equipment-bag-transfer-20260730.md)
-adds family-15 identity for explicit drag/drop equip and unequip. It infers
-direction only after replay and exact locked-state checks, persists Ride
-runtime rejection, moves one stable item-instance ID, recalculates the
-authoritative equipment projection, and never swaps occupied locations.
-The [secure native Holy Stone increment](../data-architecture-b09-native-holy-stone-20260730.md)
-adds family-16/17/18 identity for exact Mount, Remove, and basic Drill
-packets. PostgreSQL locks and validates the weapon, material, bag, and wallet;
-successful Drill spends 230 or 2,300 Gold; mutation, revisions, ledgers,
-inbox, audit, and strict outbox commit before authoritative projection and
-the terminal result. Cross-city retry preserves one UUID and replays the
-durable receipt through the active equivalent Artisan.
-The [durable Zodiac skill-grid activation increment](../data-architecture-b09-zodiac-grid-activation-20260730.md)
-adds family-19 identity for the one-time inactive-to-active transition.
-PostgreSQL derives the shipped premium-Gold cost, locks the owning character,
-commits the grid plus any paid wallet revision and ledger with audit, inbox,
-and strict outbox evidence, and safely replays the current projection across
-reconnect without sending a second native success animation.
-The [durable repeatable Zodiac skill-grid upgrade increment](../data-architecture-b09-zodiac-grid-upgrade-20260730.md)
-adds native family-20 SID-101 UUIDs. Under the live Zodiac gate, PostgreSQL
-persists successful mutations or deterministic rejection receipts; success
-also publishes latest-wins per-grid state, and replay suppresses a second
-native animation.
-The [durable Zodiac skill-grid selection increment](../data-architecture-b09-zodiac-grid-selection-20260730.md)
-adds native family-21 SID-102 identity, strict managed validation, one
-PostgreSQL state/audit/inbox/outbox transaction, authoritative projection,
-and replay-safe native response ordering.
-The [advanced Holy Stone classification](../data-architecture-b09-holy-stone-advanced-classification-20260730.md)
-keeps action 701 navigation available but rejects value-bearing traffic before
-mutation until a clear retail wire capture exists. The
-[finite mutation audit](../data-architecture-b09-mutation-closure-audit-20260730.md)
-closes secure tokenless downgrade paths, assigns ambiguous opcode 10051 to the
-coupled B12 bag-activation/pet-hatch slice, and classifies all other reachable
-store mutations. Raw TCP remains weaker and is not replay-safe.
+PostgreSQL economy ledgers, durable native command families, exact replay,
+finite mutation audit, frozen-tree gates, limitations, and B10-B12 handoff.
+The entry-point roadmap links every detailed B09 increment. Raw TCP remains
+weaker and is not replay-safe.
+
+**B10 completed 2026-07-30:** the
+[implementation evidence](../data-architecture-b10-character-checkpoints-20260730.md)
+records independent position/vitals revisions, the PostgreSQL owner UUID and
+monotonic generation fence, exact replay/conflict/stale-owner results, the
+bounded process-wide coalescing worker, finite direct barriers and retries,
+supervised readiness/shutdown, runtime lifecycle integration, configuration,
+metrics, and PostgreSQL/JSON authority distinction. The production guarantee
+is PostgreSQL-backed; JSON ownership remains process-local compatibility.
+The next dependency-ordered ticket is B11 character lifecycle and tombstones.
 
 ## 18.2 First three low-risk implementation tasks
 

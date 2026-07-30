@@ -101,7 +101,11 @@ internal static partial class CharacterSnapshotContractChecks
                 "SnapshotHero",
                 FixedUtc),
             new CharacterAppearanceSnapshot(1, 2, 3, 4, 5, 6),
-            new CharacterLocationSnapshot(7, 12.5f, -33.25f),
+            new CharacterLocationSnapshot(
+                7,
+                12.5f,
+                -33.25f,
+                PositionRevision: 4),
             new CharacterProgressionSnapshot(80, 1_234_567, 99, 98, 97),
             new CharacterVitalsSnapshot(1_500, 177, 8_900, 1_100, 42),
             new CharacterWalletSnapshot(10_000_000, 9_000_000),

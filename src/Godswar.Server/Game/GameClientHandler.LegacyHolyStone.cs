@@ -109,7 +109,7 @@ internal sealed partial class GameClientHandler
                 "HolyStoneKitBagDeleteAck");
         }
 
-        _character = updatedCharacter;
+        InstallUpdatedCharacter(updatedCharacter);
         await RefreshActiveCharacterStatsAsync(
             $"holy-stone-{operation}",
             cancellationToken);

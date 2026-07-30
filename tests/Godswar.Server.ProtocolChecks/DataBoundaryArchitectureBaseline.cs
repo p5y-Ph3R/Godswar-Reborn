@@ -22,11 +22,14 @@ internal static class DataBoundaryArchitectureBaseline
 {
     public static readonly LegacyStoreCallAllowance[] StoreCalls =
     [
-        new("Game/GameClientHandler.Backhaul.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameClientHandler.CombatArea.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameClientHandler.CombatEcsSkill.cs", "SaveCharacterVitalsAsync", 2),
-        new("Game/GameClientHandler.CombatSkill.cs", "SaveCharacterVitalsAsync", 2),
-        new("Game/GameClientHandler.CombatStunStatus.cs", "SaveCharacterVitalsAsync", 2),
+        new(
+            "Game/GameClientHandler.CharacterCheckpoints.cs",
+            "SaveCharacterPositionAsync",
+            1),
+        new(
+            "Game/GameClientHandler.CharacterCheckpoints.cs",
+            "SaveCharacterVitalsAsync",
+            1),
         new("Game/GameClientHandler.cs", "MarkAccountOfflineAsync", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", "AddDeveloperMountAsync", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", "AddForgingMaterialAsync", 1),
@@ -44,9 +47,6 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByIdAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByUsernameAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetActiveWorldBossRespawnAsync", 1),
-        new("Game/GameClientHandler.MapTransitions.cs", "SaveCharacterPositionAsync", 2),
-        new("Game/GameClientHandler.MovementCombat.cs", "SaveCharacterPositionAsync", 1),
-        new("Game/GameClientHandler.MovementCombat.cs", "SaveCharacterVitalsAsync", 1),
         new(
             "Game/GameClientHandler.LegacyHolyStone.cs",
             "ApplyWeaponHolyStoneAsync",
@@ -57,21 +57,14 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.Pets.cs", "GetOwnedPetsAsync", 1),
         new("Game/GameClientHandler.Pets.cs", "TransitionPetPresenceAsync", 1),
         new("Game/GameClientHandler.PlayerVisibility.cs", "GetCharacterStatsAsync", 1),
-        new("Game/GameClientHandler.PlayerVisibility.cs", "SaveCharacterPositionAsync", 1),
         new("Game/GameClientHandler.Progression.cs", "ActivateWorldBossAreaAsync", 1),
         new("Game/GameClientHandler.Progression.cs", "ApplyMonsterKillRewardAsync", 1),
         new("Game/GameClientHandler.Progression.cs", "GetCharacterStatsAsync", 1),
         new("Game/GameClientHandler.Progression.cs", "GetSkillStatesAsync", 1),
         new(
-            "Game/GameClientHandler.RealtimeMovement.Persistence.cs",
-            "SaveCharacterPositionAsync",
+            "Game/GameSessionRegistry.CharacterCheckpoints.cs",
+            "SaveCharacterVitalsAsync",
             1),
-        new("Game/GameClientHandler.Ride.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameSessionRegistry.BackgroundLoops.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameSessionRegistry.MonsterAttacks.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameSessionRegistry.MonsterAttacksEcs.cs", "SaveCharacterVitalsAsync", 1),
-        new("Game/GameSessionRegistry.MountStatus.cs", "SaveCharacterVitalsAsync", 2),
-        new("Game/GameSessionRegistry.PlayerRecoveryEcs.cs", "SaveCharacterVitalsAsync", 1),
         new("Game/GameSessionRegistry.Progression.cs", "ApplyZodiacOnlineTimeAsync", 1),
         new(
             "Game/GameSessionRegistry.Progression.cs",
@@ -112,7 +105,9 @@ internal static class DataBoundaryArchitectureBaseline
 
     public static readonly ReferenceAllowance[] StoreTypeReferences =
     [
-        new("Game/GameClientHandler.cs", 2),
+        new("GameClientHandlerFactory.cs", 1),
+        new("Game/GameClientHandler.Construction.cs", 1),
+        new("Game/GameClientHandler.cs", 1),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 1),
         new("Game/LoginClientHandler.cs", 2),
@@ -122,12 +117,18 @@ internal static class DataBoundaryArchitectureBaseline
 
     public static readonly ReferenceAllowance[] StoreFieldReferences =
     [
-        new("Game/GameClientHandler.Backhaul.cs", 1),
-        new("Game/GameClientHandler.CombatArea.cs", 1),
-        new("Game/GameClientHandler.CombatEcsSkill.cs", 2),
-        new("Game/GameClientHandler.CombatSkill.cs", 2),
-        new("Game/GameClientHandler.CombatStunStatus.cs", 2),
-        new("Game/GameClientHandler.cs", 3),
+        new(
+            "Application/Characters/CharacterCheckpointCoordinator.cs",
+            2),
+        new(
+            "Application/Characters/CharacterCheckpointCoordinator.Direct.cs",
+            2),
+        new(
+            "Application/Characters/CharacterCheckpointCoordinator.Worker.cs",
+            2),
+        new("Game/GameClientHandler.CharacterCheckpoints.cs", 2),
+        new("Game/GameClientHandler.Construction.cs", 1),
+        new("Game/GameClientHandler.cs", 2),
         new("Game/GameClientHandler.DeveloperCommands.cs", 3),
         new("Game/GameClientHandler.Equipment.cs", 3),
         new("Game/GameClientHandler.Forging.cs", 1),
@@ -135,22 +136,15 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.GearMentor.cs", 1),
         new("Game/GameClientHandler.InventoryActions.cs", 2),
         new("Game/GameClientHandler.LoginWorldEntry.cs", 5),
-        new("Game/GameClientHandler.MapTransitions.cs", 2),
-        new("Game/GameClientHandler.MovementCombat.cs", 2),
         new("Game/GameClientHandler.LegacyHolyStone.cs", 1),
         new("Game/GameClientHandler.PetEggs.cs", 2),
         new("Game/GameClientHandler.PetLevel.cs", 1),
         new("Game/GameClientHandler.Pets.cs", 2),
-        new("Game/GameClientHandler.PlayerVisibility.cs", 2),
+        new("Game/GameClientHandler.PlayerVisibility.cs", 1),
         new("Game/GameClientHandler.Progression.cs", 4),
-        new("Game/GameClientHandler.RealtimeMovement.Persistence.cs", 1),
-        new("Game/GameClientHandler.Ride.cs", 1),
-        new("Game/GameSessionRegistry.BackgroundLoops.cs", 2),
+        new("Game/GameSessionRegistry.CharacterCheckpoints.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
-        new("Game/GameSessionRegistry.MonsterAttacks.cs", 2),
-        new("Game/GameSessionRegistry.MonsterAttacksEcs.cs", 2),
-        new("Game/GameSessionRegistry.MountStatus.cs", 3),
-        new("Game/GameSessionRegistry.PlayerRecoveryEcs.cs", 2),
+        new("Game/GameSessionRegistry.MountStatus.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusMutations.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusPublishing.cs", 1),
         new("Game/GameSessionRegistry.Progression.cs", 13),
@@ -161,7 +155,8 @@ internal static class DataBoundaryArchitectureBaseline
 
     public static readonly ReferenceAllowance[] StoreParameterReferences =
     [
-        new("Game/GameClientHandler.cs", 2),
+        new("GameClientHandlerFactory.cs", 2),
+        new("Game/GameClientHandler.Construction.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 2),
         new("Game/LoginClientHandler.cs", 2),

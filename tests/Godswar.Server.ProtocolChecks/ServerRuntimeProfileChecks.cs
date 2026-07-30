@@ -5,7 +5,7 @@ using Godswar.Server.Operations;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class ServerRuntimeProfileChecks
+internal static partial class ServerRuntimeProfileChecks
 {
     private const string RuntimeEnvironment =
         "GODSWAR_RUNTIME_PROFILE";
@@ -19,6 +19,7 @@ internal static class ServerRuntimeProfileChecks
         CheckPolicyMatrix();
         CheckMissingFileDoesNotCreateDefaults();
         CheckStrictEnvironmentOverrides();
+        CheckCheckpointConfiguration();
         CheckCheckedInProfiles();
         CheckMetrics();
         return Task.CompletedTask;

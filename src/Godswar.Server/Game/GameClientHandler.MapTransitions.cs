@@ -1,4 +1,3 @@
-using Godswar.Server.Game.Maps;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 
@@ -10,8 +9,6 @@ internal sealed partial class GameClientHandler
     private static readonly TimeSpan DefaultMapTransitionReadyTimeout =
         TimeSpan.FromSeconds(60);
 
-    private readonly CharacterPositionPersistenceCoordinator
-        _positionPersistence = new();
     private readonly TimeSpan _mapTransitionReadyTimeout;
     private PendingMapTransition? _pendingMapTransition;
     private Task? _mapTransitionTimeoutTask;
@@ -92,15 +89,14 @@ internal sealed partial class GameClientHandler
 
         try
         {
-            await _positionPersistence.AdvanceAndPersistAsync(
-                token => _store.SaveCharacterPositionAsync(
-                    accountId,
-                    characterId,
+            if (!await PersistRelocationCheckpointAsync(
                     targetMapId,
                     targetX,
                     targetZ,
-                    token),
-                cancellationToken);
+                    cancellationToken))
+            {
+                return false;
+            }
         }
         catch (Exception error)
             when (error is not OperationCanceledException ||
@@ -219,15 +215,15 @@ internal sealed partial class GameClientHandler
     {
         try
         {
-            await _positionPersistence.AdvanceAndPersistAsync(
-                token => _store.SaveCharacterPositionAsync(
-                    accountId,
-                    characterId,
+            if (!await PersistRelocationCheckpointAsync(
                     sourceMapId,
                     sourceX,
                     sourceZ,
-                    token),
-                cancellationToken);
+                    cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "The source-position checkpoint was not admitted.");
+            }
             _positionDirty = false;
             _lastPositionPersistUtc = DateTime.UtcNow;
             Console.WriteLine(

@@ -140,7 +140,8 @@ internal sealed partial class JsonGameStore
             new CharacterLocationSnapshot(
                 character.CurrentMap,
                 character.PositionX,
-                character.PositionZ),
+                character.PositionZ,
+                character.PositionRevision),
             new CharacterProgressionSnapshot(
                 character.Level,
                 character.Experience,

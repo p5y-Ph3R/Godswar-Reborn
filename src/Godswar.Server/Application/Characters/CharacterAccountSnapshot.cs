@@ -42,7 +42,8 @@ internal sealed record CharacterAppearanceSnapshot(
 internal sealed record CharacterLocationSnapshot(
     byte CurrentMap,
     float PositionX,
-    float PositionZ);
+    float PositionZ,
+    long PositionRevision);
 
 internal sealed record CharacterProgressionSnapshot(
     int Level,

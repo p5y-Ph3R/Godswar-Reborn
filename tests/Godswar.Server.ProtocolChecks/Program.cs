@@ -36,7 +36,6 @@ internal static partial class Program
             ("Authoritative Sparta backhaul casting", BackhaulSkillHandlerChecks.RunAsync),
             ("Authoritative map traversal catalog", MapTraversalCatalogChecks.RunAsync),
             ("Native local-player scene-change packet", MapSceneChangePacketChecks.RunAsync),
-            ("Character position persistence epoch ordering", CharacterPositionPersistenceCoordinatorChecks.RunAsync),
             ("Player combat and committed-progression ECS parity", PlayerCombatEcsParityChecks.RunAsync),
             ("Live reversible player-combat ECS adapter", PlayerCombatEcsLiveAdapterChecks.RunAsync),
             ("Player movement ECS projection parity", PlayerMovementEcsParityChecks.RunAsync),

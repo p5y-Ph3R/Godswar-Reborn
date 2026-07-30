@@ -277,23 +277,16 @@ internal sealed partial class GameClientHandler
         int currentMana,
         CancellationToken cancellationToken)
     {
-        int refundedHp;
-        long refundedVitalsRevision;
         lock (character.VitalsSync)
         {
-            refundedHp = character.CurrentHp;
             currentMana = character.CurrentMp;
-            refundedVitalsRevision = character.VitalsRevision;
         }
 
         try
         {
-            await _store.SaveCharacterVitalsAsync(
-                _account?.Id ?? character.AccountId,
-                character.Id,
-                refundedHp,
-                currentMana,
-                refundedVitalsRevision,
+            await PersistVitalsCheckpointAsync(
+                character,
+                force: false,
                 cancellationToken);
         }
         catch (Exception ex) when (
@@ -323,22 +316,9 @@ internal sealed partial class GameClientHandler
 
         try
         {
-            int currentHp;
-            int currentMp;
-            long vitalsRevision;
-            lock (character.VitalsSync)
-            {
-                currentHp = character.CurrentHp;
-                currentMp = character.CurrentMp;
-                vitalsRevision = character.VitalsRevision;
-            }
-
-            await _store.SaveCharacterVitalsAsync(
-                _account.Id,
-                character.Id,
-                currentHp,
-                currentMp,
-                vitalsRevision,
+            await PersistVitalsCheckpointAsync(
+                character,
+                force: false,
                 cancellationToken);
         }
         catch (Exception ex) when (

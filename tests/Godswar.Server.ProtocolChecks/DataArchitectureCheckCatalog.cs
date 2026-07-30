@@ -26,6 +26,15 @@ internal static class DataArchitectureCheckCatalog
             "Character snapshot query metrics",
             CharacterSnapshotMetricsChecks.RunAsync),
         (
+            "Bounded character checkpoint coordinator",
+            CharacterCheckpointCoordinatorChecks.RunAsync),
+        (
+            "Game-handler checkpoint lifecycle",
+            GameHandlerCheckpointLifecycleChecks.RunAsync),
+        (
+            "PostgreSQL character checkpoint migration contract",
+            PostgresCharacterCheckpointMigrationChecks.RunAsync),
+        (
             "Snapshot-backed character client bootstrap",
             CharacterSnapshotHandlerChecks.RunAsync),
         (

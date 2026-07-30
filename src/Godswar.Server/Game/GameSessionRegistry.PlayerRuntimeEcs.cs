@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Players;
@@ -18,8 +19,13 @@ internal sealed partial class GameSessionRegistry
         IGameStore? store,
         ZodiacEnergyOptions? zodiacEnergyOptions,
         MonsterRuntimeMode monsterRuntimeMode,
-        PlayerRuntimeMode playerRuntimeMode)
-        : this(store, zodiacEnergyOptions, monsterRuntimeMode)
+        PlayerRuntimeMode playerRuntimeMode,
+        ICharacterCheckpointCoordinator? checkpointCoordinator = null)
+        : this(
+            store,
+            zodiacEnergyOptions,
+            monsterRuntimeMode,
+            checkpointCoordinator)
     {
         if (!Enum.IsDefined(playerRuntimeMode))
         {

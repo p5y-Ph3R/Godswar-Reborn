@@ -64,6 +64,7 @@ internal static partial class CharacterLoadSnapshotHydrator
             CurrentMap = snapshot.Location.CurrentMap,
             PositionX = snapshot.Location.PositionX,
             PositionZ = snapshot.Location.PositionZ,
+            PositionRevision = snapshot.Location.PositionRevision,
             Level = snapshot.Progression.Level,
             Experience = snapshot.Progression.Experience,
             TalentPoints = snapshot.Progression.TalentPoints,

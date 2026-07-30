@@ -33,6 +33,8 @@ internal sealed class PostgresApplicationDataRuntime :
         _dataSource = NpgsqlDataSource.Create(connectionString);
         CharacterSnapshots =
             new PostgresCharacterSnapshotReader(_dataSource);
+        CharacterCheckpoints =
+            new PostgresCharacterCheckpointStore(_dataSource);
         TalentUpgradeCommands =
             new PostgresTalentUpgradeCommandExecutor(
                 _dataSource,
@@ -107,6 +109,8 @@ internal sealed class PostgresApplicationDataRuntime :
     }
 
     public ICharacterSnapshotReader CharacterSnapshots { get; }
+
+    public ICharacterCheckpointStore CharacterCheckpoints { get; }
 
     public ITalentUpgradeCommandExecutor TalentUpgradeCommands { get; }
 

@@ -51,6 +51,7 @@ internal sealed partial class GameClientHandler
 
         _character.PositionX = decision.CurrentX;
         _character.PositionZ = decision.CurrentZ;
+        _character.MarkPositionChanged();
         _positionDirty = true;
         _registry.UpdateCharacter(
             _session,

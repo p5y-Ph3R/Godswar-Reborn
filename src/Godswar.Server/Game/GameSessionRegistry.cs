@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -13,7 +14,6 @@ internal sealed partial class GameSessionRegistry
     private static readonly TimeSpan PlayerRecoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
-    private readonly ConcurrentDictionary<int, ClientSession> _accountSessions = [];
     private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
     private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
     private readonly ConcurrentDictionary<ClientSession, PlayerStatusState> _playerStatusStates = [];
@@ -21,6 +21,7 @@ internal sealed partial class GameSessionRegistry
     private readonly ConcurrentDictionary<ClientSession, ZodiacOnlineSessionState> _zodiacOnlineSessions = [];
     private readonly ConcurrentDictionary<ClientSession, ProgressionBoostOnlineSessionState> _progressionBoostOnlineSessions = [];
     private readonly ConcurrentDictionary<int, ClientSession> _progressionBoostCharacterOwners = [];
+    private readonly ICharacterCheckpointCoordinator? _checkpointCoordinator;
     private readonly IGameStore? _store;
     private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
     private readonly TimeSpan _zodiacPersistenceInterval;
@@ -29,9 +30,11 @@ internal sealed partial class GameSessionRegistry
     public GameSessionRegistry(
         IGameStore? store = null,
         ZodiacEnergyOptions? zodiacEnergyOptions = null,
-        MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs)
+        MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
+        ICharacterCheckpointCoordinator? checkpointCoordinator = null)
     {
         _store = store;
+        _checkpointCoordinator = checkpointCoordinator;
         if (!Enum.IsDefined(monsterRuntimeMode))
         {
             throw new ArgumentOutOfRangeException(
@@ -391,32 +394,6 @@ internal sealed partial class GameSessionRegistry
         }
 
         _progressionBoostCharacterOwners[characterId] = session;
-    }
-
-    public ClientSession? ReplaceAccountSession(int accountId, ClientSession session)
-    {
-        ClientSession? replaced = null;
-        _accountSessions.AddOrUpdate(
-            accountId,
-            session,
-            (_, existing) =>
-            {
-                if (!ReferenceEquals(existing, session))
-                {
-                    replaced = existing;
-                }
-
-                return session;
-            });
-
-        return replaced;
-    }
-
-    public bool RemoveAccountSession(int accountId, ClientSession session)
-    {
-        return _accountSessions.TryGetValue(accountId, out var existing)
-            && ReferenceEquals(existing, session)
-            && _accountSessions.TryRemove(new KeyValuePair<int, ClientSession>(accountId, session));
     }
 
     public async Task<int> BroadcastToMapAsync(

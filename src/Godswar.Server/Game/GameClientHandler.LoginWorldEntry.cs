@@ -269,6 +269,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!await EnsureCheckpointOwnershipAsync(cancellationToken))
+        {
+            return;
+        }
+
         ResetPlayerMovementEcs();
         if (_character.CurrentHp <= 0)
         {

@@ -80,6 +80,14 @@ internal sealed class GameCharacter
 
     public long VitalsRevision { get; set; }
 
+    public long PositionRevision { get; set; }
+
+    [JsonIgnore]
+    public Guid CheckpointOwnerId { get; set; }
+
+    [JsonIgnore]
+    public long CheckpointOwnerGeneration { get; set; }
+
     public int TalentPoints { get; set; } = 10;
 
     public int TalentExperience { get; set; }
@@ -111,5 +119,11 @@ internal sealed class GameCharacter
     {
         VitalsRevision = checked(VitalsRevision + 1);
         return VitalsRevision;
+    }
+
+    internal long MarkPositionChanged()
+    {
+        PositionRevision = checked(PositionRevision + 1);
+        return PositionRevision;
     }
 }

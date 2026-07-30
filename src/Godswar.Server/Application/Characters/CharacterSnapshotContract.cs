@@ -89,6 +89,12 @@ internal static class CharacterSnapshotContract
         {
             throw Invalid("Character position must be finite.");
         }
+
+        if (location.PositionRevision < 0)
+        {
+            throw Invalid(
+                "Character position revision must not be negative.");
+        }
     }
 
     private static void ValidateProgression(

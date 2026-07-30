@@ -243,27 +243,20 @@ internal sealed partial class GameClientHandler
         {
             if (manaCost > 0)
             {
-                int refundedHp;
-                long refundedVitalsRevision;
                 lock (_character.VitalsSync)
                 {
                     _character.CurrentMp = Math.Min(
                         Math.Max(0, _character.MaxMp),
                         (int)Math.Min(int.MaxValue, (long)_character.CurrentMp + manaCost));
                     _character.MarkVitalsChanged();
-                    refundedHp = _character.CurrentHp;
                     currentMana = _character.CurrentMp;
-                    refundedVitalsRevision = _character.VitalsRevision;
                 }
 
                 try
                 {
-                    await _store.SaveCharacterVitalsAsync(
-                        _account?.Id ?? _character.AccountId,
-                        _character.Id,
-                        refundedHp,
-                        currentMana,
-                        refundedVitalsRevision,
+                    await PersistVitalsCheckpointAsync(
+                        _character,
+                        force: false,
                         cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -414,22 +407,9 @@ internal sealed partial class GameClientHandler
         {
             try
             {
-                int currentHp;
-                int currentMp;
-                long vitalsRevision;
-                lock (_character.VitalsSync)
-                {
-                    currentHp = _character.CurrentHp;
-                    currentMp = _character.CurrentMp;
-                    vitalsRevision = _character.VitalsRevision;
-                }
-
-                await _store.SaveCharacterVitalsAsync(
-                    _account.Id,
-                    _character.Id,
-                    currentHp,
-                    currentMp,
-                    vitalsRevision,
+                await PersistVitalsCheckpointAsync(
+                    _character,
+                    force: false,
                     cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

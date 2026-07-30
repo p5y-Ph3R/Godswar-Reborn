@@ -36,6 +36,7 @@ internal sealed partial class GameClientHandler
 
         _character.PositionX = decision.AuthoritativeX;
         _character.PositionZ = decision.AuthoritativeZ;
+        _character.MarkPositionChanged();
         _positionDirty = true;
         _realtimeSnapshotDirty = true;
         _registry.UpdateCharacter(
@@ -74,7 +75,7 @@ internal sealed partial class GameClientHandler
             _character.CurrentMap,
             _character.PositionX,
             _character.PositionZ,
-            _positionPersistence.CaptureEpoch());
+            _character.PositionRevision);
         return new RealtimeAcceptedMovementResult(
             TransitionStarted: false,
             viewerMovement,
@@ -85,4 +86,12 @@ internal sealed partial class GameClientHandler
         bool TransitionStarted,
         byte[]? ViewerMovement,
         RealtimePositionSave? PositionSave);
+
+    private readonly record struct RealtimePositionSave(
+        int AccountId,
+        int CharacterId,
+        byte MapId,
+        float X,
+        float Z,
+        long Revision);
 }

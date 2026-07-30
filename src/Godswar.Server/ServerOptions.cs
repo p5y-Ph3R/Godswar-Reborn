@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Networking;
@@ -57,6 +58,7 @@ internal sealed class ServerOptions
         Game ??= new GameEndpointOptions();
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
+        Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
@@ -182,6 +184,33 @@ internal sealed class ServerOptions
         Storage.Outbox.CommandTimeoutMilliseconds = ReadInt(
             "GODSWAR_OUTBOX_COMMAND_TIMEOUT_MILLISECONDS",
             Storage.Outbox.CommandTimeoutMilliseconds);
+        Storage.Checkpoints.QueueCapacity = ReadInt(
+            "GODSWAR_CHECKPOINT_QUEUE_CAPACITY",
+            Storage.Checkpoints.QueueCapacity);
+        Storage.Checkpoints.WorkerCount = ReadInt(
+            "GODSWAR_CHECKPOINT_WORKER_COUNT",
+            Storage.Checkpoints.WorkerCount);
+        Storage.Checkpoints.DirectOperationConcurrency = ReadInt(
+            "GODSWAR_CHECKPOINT_DIRECT_OPERATION_CONCURRENCY",
+            Storage.Checkpoints.DirectOperationConcurrency);
+        Storage.Checkpoints.DirectAdmissionTimeoutMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_DIRECT_ADMISSION_TIMEOUT_MILLISECONDS",
+            Storage.Checkpoints.DirectAdmissionTimeoutMilliseconds);
+        Storage.Checkpoints.CommandTimeoutMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_COMMAND_TIMEOUT_MILLISECONDS",
+            Storage.Checkpoints.CommandTimeoutMilliseconds);
+        Storage.Checkpoints.BaseRetryDelayMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_BASE_RETRY_DELAY_MILLISECONDS",
+            Storage.Checkpoints.BaseRetryDelayMilliseconds);
+        Storage.Checkpoints.MaximumRetryDelayMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_MAXIMUM_RETRY_DELAY_MILLISECONDS",
+            Storage.Checkpoints.MaximumRetryDelayMilliseconds);
+        Storage.Checkpoints.MaximumRetryAgeMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_MAXIMUM_RETRY_AGE_MILLISECONDS",
+            Storage.Checkpoints.MaximumRetryAgeMilliseconds);
+        Storage.Checkpoints.ShutdownDrainTimeoutMilliseconds = ReadInt(
+            "GODSWAR_CHECKPOINT_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
+            Storage.Checkpoints.ShutdownDrainTimeoutMilliseconds);
 
         return this;
     }
@@ -208,6 +237,7 @@ internal sealed class ServerOptions
         Authentication ??= new AuthenticationOptions();
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
+        Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -218,6 +248,7 @@ internal sealed class ServerOptions
         Network.Validate();
         Authentication.Validate();
         Storage.Outbox.Validate();
+        Storage.Checkpoints.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
         if (Secure.Enabled)
         {
@@ -396,6 +427,9 @@ internal sealed class StorageOptions
     public string PostgresConnectionString { get; set; } = string.Empty;
 
     public PostgresOutboxDispatcherOptions Outbox { get; set; } = new();
+
+    public CharacterCheckpointWorkerOptions Checkpoints { get; set; } =
+        new();
 }
 
 internal static class JsonDefaults
