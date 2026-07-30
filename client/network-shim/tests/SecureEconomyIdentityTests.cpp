@@ -9,6 +9,7 @@
 #include "SecureHolyStoneIdentityTests.h"
 #include "SecureKitBagItemDeleteIdentityTests.h"
 #include "SecureKitBagItemMoveIdentityTests.h"
+#include "SecureZodiacSkillGridUpgradeIdentityTests.h"
 
 int RunSecureEconomyIdentityTests() {
     return RunSecureEquipmentBagTransferIdentityTests() +
@@ -19,5 +20,6 @@ int RunSecureEconomyIdentityTests() {
         RunSecureGearMentorDecomposeIdentityTests() +
         RunSecureHolyStoneIdentityTests() +
         RunSecureKitBagItemDeleteIdentityTests() +
-        RunSecureKitBagItemMoveIdentityTests();
+        RunSecureKitBagItemMoveIdentityTests() +
+        RunSecureZodiacSkillGridUpgradeIdentityTests();
 }

@@ -10,6 +10,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IMakeAttributeStoneCommandExecutor?
+        _makeAttributeStoneCommands;
+
     private async Task<bool> TryRejectUnroutedSecureCommandAsync(
         GamePacket packet,
         uint? npcId,

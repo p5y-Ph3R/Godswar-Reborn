@@ -24,7 +24,7 @@ All integer fields and UUID bytes use network order.
 | `1` | `1` | Disposition | finite value below |
 | `2` | `2` | Command family | nonzero |
 | `4` | `4` | Result code | family-owned finite result |
-| `8` | `8` | Inventory revision | revision at the recorded outcome |
+| `8` | `8` | Authoritative revision | aggregate revision at the recorded outcome |
 | `16` | `16` | Client operation ID | nonzero canonical UUID bytes |
 
 Disposition values are:
@@ -36,10 +36,14 @@ Disposition values are:
 - `4=Conflict`: the operation ID was already bound to different canonical
   request content.
 
-An applied result must have a nonzero inventory revision. Revision zero is
-permitted when no inventory revision exists for a terminal rejection,
-conflict, or replayed stored rejection. A nonzero revision may still accompany
-those outcomes when the authoritative transaction recorded one.
+An applied result must have a nonzero authoritative revision. Inventory
+commands place their inventory revision here; other command families place
+their own documented aggregate revision here. Revision zero is permitted when
+no aggregate revision exists for a terminal rejection, conflict, or replayed
+stored rejection. A nonzero revision may still accompany those outcomes when
+the authoritative transaction recorded one. Version-1 native code retains
+the source-level member name `inventoryRevision`; that legacy name does not
+change the field's wire semantics.
 
 Unknown versions, dispositions, zero command families, zero UUIDs, non-exact
 payload sizes, wrong endpoint roles, and wrong directions fail closed.
@@ -50,7 +54,7 @@ The gameplay caller may emit this result only when all applicable conditions
 are true:
 
 1. Any command that entered its authoritative executor has committed the
-   terminal PostgreSQL inbox outcome and associated inventory, ledger, audit,
+   terminal PostgreSQL inbox outcome and its applicable state, ledger, audit,
    and outbox changes.
 2. A rejection without an inbox is limited to a deterministic pre-dispatch or
    validation path where no authoritative mutation could have started.
@@ -89,10 +93,21 @@ The wired families and stable terminal result codes are:
 | `10` | Gear Mentor / Origin Enhancer: Enhance Attribute | `1010` | `1002`, `1006`, `1007`, `1008`, `1009`, `1018`, `1019`, `1023`, `1026`, `1031` |
 | `11` | Gear Mentor / Origin Enhancer: Add Attribute | `1013` | `1002`, `1006`, `1007`, `1011`, `1012`, `1018`, `1019`, `1021`, `1027` |
 | `12` | Gear Mentor / Origin Enhancer: Delete Attribute | `1030` | `1002`, `1006`, `1007`, `1018`, `1019`, `1028`, `1029` |
+| `13` | Kit-bag item delete | `1` | `0`, `2`, `3` |
+| `14` | Kit-bag move/swap | `1`, `2` | `0`, `3`, `4`, `5` |
+| `15` | Equipment/bag transfer | `1`, `2` | `0`, `3..13` |
+| `16` | Holy Stone Mount | `800` | `0`, `100`, `200`, `300`, `400`, `500`, `700`, `900`, `2200` |
+| `17` | Holy Stone Remove | `1200` | `0`, `100`, `200`, `1000`, `1100` |
+| `18` | Holy Stone Drill | `1500` | `0`, `100`, `200`, `1300`, `1400` |
+| `20` | Zodiac skill-grid upgrade | `1` | `0`, `2..8` |
 
 Every additional family must define stable finite result codes, keep retry
 identity isolated from other families, and demonstrate durable inbox replay
 semantics before wiring a terminal result.
+
+Family `19` is the managed-only, one-shot Zodiac activation identity. It has
+no native UUID marker and therefore is intentionally absent from this result
+frame.
 
 Family `3` result codes are the durable Forge status enum, not the stock
 packet's `resultKind`. A failed roll uses disposition `Applied`, code `2`, and

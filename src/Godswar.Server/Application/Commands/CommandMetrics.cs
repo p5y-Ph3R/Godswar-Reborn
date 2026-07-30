@@ -96,6 +96,8 @@ internal static class CommandMetrics
                 "holy_stone_drill",
             CommandFamily.ZodiacSkillGridActivation =>
                 "zodiac_skill_grid_activation",
+            CommandFamily.ZodiacSkillGridUpgrade =>
+                "zodiac_skill_grid_upgrade",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

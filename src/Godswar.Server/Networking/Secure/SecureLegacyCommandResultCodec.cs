@@ -30,7 +30,7 @@ internal static class SecureLegacyCommandResultCodec
             result.ResultCode);
         BinaryPrimitives.WriteUInt64BigEndian(
             output[8..],
-            result.InventoryRevision);
+            result.AuthoritativeRevision);
         if (!result.OperationId.TryWriteBytes(
                 output[16..],
                 bigEndian: true,
@@ -62,7 +62,7 @@ internal static class SecureLegacyCommandResultCodec
             (SecureLegacyCommandDisposition)source[1];
         var commandFamily =
             BinaryPrimitives.ReadUInt16BigEndian(source[2..]);
-        var inventoryRevision =
+        var authoritativeRevision =
             BinaryPrimitives.ReadUInt64BigEndian(source[8..]);
         var operationId = new Guid(source[16..32], bigEndian: true);
         if (!SecureProtocolValidation.IsLegacyCommandDisposition(
@@ -70,7 +70,7 @@ internal static class SecureLegacyCommandResultCodec
             commandFamily == 0 ||
             operationId == Guid.Empty ||
             disposition == SecureLegacyCommandDisposition.Applied &&
-                inventoryRevision == 0)
+                authoritativeRevision == 0)
         {
             return false;
         }
@@ -79,7 +79,7 @@ internal static class SecureLegacyCommandResultCodec
             disposition,
             commandFamily,
             BinaryPrimitives.ReadUInt32BigEndian(source[4..]),
-            inventoryRevision,
+            authoritativeRevision,
             operationId);
         return true;
     }
@@ -92,6 +92,6 @@ internal static class SecureLegacyCommandResultCodec
             result.OperationId != Guid.Empty &&
             (result.Disposition !=
                 SecureLegacyCommandDisposition.Applied ||
-                result.InventoryRevision != 0);
+                result.AuthoritativeRevision != 0);
     }
 }

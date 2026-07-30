@@ -8,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IGearMentorDecomposeGearCommandExecutor?
+        _gearMentorDecomposeGearCommands;
+
     private async Task HandleDurableGearMentorDecomposeAsync(
         uint npcId,
         Guid clientOperationId,

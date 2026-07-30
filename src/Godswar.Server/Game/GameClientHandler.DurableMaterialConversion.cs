@@ -8,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IGearMentorMaterialConversionCommandExecutor?
+        _gearMentorMaterialConversionCommands;
+
     private async Task
         HandleDurableGearMentorMaterialConversionAsync(
             GearMentorOperation operation,

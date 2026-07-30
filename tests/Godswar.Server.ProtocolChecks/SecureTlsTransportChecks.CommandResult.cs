@@ -16,7 +16,7 @@ internal static partial class SecureTlsTransportChecks
             SecureLegacyCommandDisposition.Applied,
             commandFamily: 7,
             resultCode: 1017,
-            inventoryRevision: 42,
+            authoritativeRevision: 42,
             Guid.Parse("10213243-5465-7687-98a9-bacbdcedfe0f"));
 
         await ExpectExceptionAsync<InvalidOperationException>(
@@ -84,7 +84,7 @@ internal static partial class SecureTlsTransportChecks
             SecureLegacyCommandDisposition.Rejected,
             commandFamily: 1,
             resultCode: 1002,
-            inventoryRevision: 0,
+            authoritativeRevision: 0,
             Guid.Parse("30415263-7485-96a7-b8c9-daebfc0d1e2f"));
         await ExpectExceptionAsync<InvalidOperationException>(
             async () => await session.SendLegacyCommandResultAsync(
@@ -102,7 +102,7 @@ internal static partial class SecureTlsTransportChecks
             SecureLegacyCommandDisposition.Rejected,
             commandFamily: 1,
             resultCode: 1002,
-            inventoryRevision: 0,
+            authoritativeRevision: 0,
             Guid.Parse("20314253-6475-8697-a8b9-cadbecfd0e1f"));
 
         await ExpectExceptionAsync<InvalidOperationException>(

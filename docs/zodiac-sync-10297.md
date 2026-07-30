@@ -139,7 +139,20 @@ SID `100` animation. See
 Native `Origin.exe` sends an ordinary click on an already-active grid as
 module `255`, SID `101`, `v1=gridIndex`, `v2=-1`. Module `0` is also accepted
 for compatibility, but every cost and requirement remains server-owned. The
-server uses the shipped `SkillTrainConfig.lua` arrays:
+exact request is reverse-derived and covered by the managed/native goldens;
+the repository does not contain a stored retail client-to-server SID-101
+capture. The exact native grid-1 vector is:
+
+```text
+1800392800000000FF00650001000000FFFFFFFF00000000
+```
+
+Secure legacy transport assigns each click a family-20 UUID that remains
+pending across reconnect until an authenticated terminal result. Raw TCP has
+no truthful retry identity and remains an explicitly instrumented
+compatibility path.
+
+The server uses the shipped `SkillTrainConfig.lua` arrays:
 
 - `UpdateE[1..49]`: Zodiac-energy cost for level `1 -> 2` through `49 -> 50`;
 - `UpdateS[1..49]`: Talent Point cost (`character_base."SkillPoint"`);
@@ -147,16 +160,27 @@ server uses the shipped `SkillTrainConfig.lua` arrays:
 
 Level `50` is final. One grid costs `827,921` energy and `726,024` Talent
 Points in total from level `1` through `50`. PostgreSQL locks the owning
-character row and commits both balances and the grid row in one transaction;
-JSON uses its serialized store gate. The live-session gate also serializes the
-mutation against Zodiac energy accrual and Zodiac-level changes.
+character row and checks the character-scoped inbox before mutable grid state.
+It commits both balances, the grid row, permanent audit/inbox evidence, and a
+successful latest-wins outbox event in one transaction. Deterministic inactive,
+maximum, Zodiac-gated, and resource-limited outcomes also receive permanent
+non-mutating receipts. JSON uses its serialized compatibility store gate. The
+live-session gate serializes the durable mutation and projection against
+Zodiac energy accrual and Zodiac-level changes.
 
-On success the server sends the 24-byte SID `101` response with
-`v1=gridIndex`, refreshes the Player Status Talent Point field, and sends a
-full sync. Inactive, maximum-level, Zodiac-gated, resource-limited, invalid,
-and wrong-owner requests do not receive SID `101`: the native handler blindly
-increments the displayed grid level on every such response. A full sync safely
-repairs rejected or stale UI state.
+On a newly committed success the server sends the 24-byte SID `101` response
+with `v1=gridIndex`, refreshes the Player Status Talent Point field, sends a
+full sync, and only then sends the secure terminal result. Exact replay
+suppresses SID `101` and returns the current authoritative projection before
+settling the UUID. Inactive, maximum-level, Zodiac-gated, resource-limited,
+invalid, conflicting, and wrong-owner requests do not receive SID `101`: the
+native handler blindly increments the displayed grid level on every such
+response. Stored deterministic rejections and exact replays carry an
+authoritative projection, so Player Status plus a full sync safely repairs
+their rejected or stale UI state. Invalid-envelope, request-conflict, and
+wrong-owner outcomes have no authoritative durable projection; they settle
+only through the secure terminal result and fabricate no state. See
+[`data-architecture-b09-zodiac-grid-upgrade-20260730.md`](data-architecture-b09-zodiac-grid-upgrade-20260730.md).
 
 SID `102` is a separate native skill-selection mode, not part of activation or
 ordinary grid upgrading. It sends module `255`, `v1=gridIndex`, and a selected

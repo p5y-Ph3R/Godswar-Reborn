@@ -40,6 +40,7 @@ internal sealed partial class GameClientHandler
         if (request.IsSkillGridUpgrade)
         {
             await HandleZodiacSkillGridUpgradeAsync(
+                packet,
                 request,
                 cancellationToken);
             return;
@@ -327,6 +328,7 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task HandleZodiacSkillGridUpgradeAsync(
+        GamePacket packet,
         ZodiacSyncRequest request,
         CancellationToken cancellationToken)
     {
@@ -334,6 +336,47 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 "[zodiac] rejected skill-grid upgrade without account/character");
+            return;
+        }
+
+        if (packet.ClientOperationId is { } clientOperationId)
+        {
+            await HandleDurableZodiacSkillGridUpgradeAsync(
+                request,
+                clientOperationId,
+                cancellationToken);
+            return;
+        }
+
+        if (_session.IsSecure)
+        {
+            // The secure shim assigns a fresh UUID to every canonical SID 101
+            // click. Missing identity on that transport is not a legacy
+            // compatibility signal and must never reach a mutable store path.
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.ZodiacSkillGridUpgrade);
+            CommandMetrics.Record(
+                CommandFamily.ZodiacSkillGridUpgrade,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.InvalidIntent);
+            Console.Error.WriteLine(
+                "[zodiac] rejected secure skill-grid upgrade without " +
+                $"operation identity account={_account.Id} " +
+                $"character={_character.Name}");
+            return;
+        }
+
+        await HandleCompatibilityZodiacSkillGridUpgradeAsync(
+            request,
+            cancellationToken);
+    }
+
+    private async Task HandleCompatibilityZodiacSkillGridUpgradeAsync(
+        ZodiacSyncRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (_character is null || _account is null)
+        {
             return;
         }
 
@@ -350,9 +393,23 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[zodiac] rejected skill-grid upgrade ownership mismatch account={_account.Id} character={_character.Name}");
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.ZodiacSkillGridUpgrade);
+            CommandMetrics.Record(
+                CommandFamily.ZodiacSkillGridUpgrade,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.PreconditionFailed);
             return;
         }
 
+        CommandMetrics.RecordUnsupportedLegacyIdentity(
+            CommandFamily.ZodiacSkillGridUpgrade);
+        CommandMetrics.Record(
+            CommandFamily.ZodiacSkillGridUpgrade,
+            CommandIdentityStrength.UnsupportedLegacyRetry,
+            result.Committed
+                ? CommandOutcome.Accepted
+                : CommandOutcome.PreconditionFailed);
         _registry.UpdateCharacter(
             _session,
             _character,

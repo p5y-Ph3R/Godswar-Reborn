@@ -8,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IEquipmentForgeCommandExecutor?
+        _equipmentForgeCommands;
+
     private async Task HandleDurableForgeStartAsync(
         Guid clientOperationId,
         CancellationToken cancellationToken)

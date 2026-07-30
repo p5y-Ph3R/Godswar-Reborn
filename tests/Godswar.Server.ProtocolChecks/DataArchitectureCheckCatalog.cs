@@ -41,6 +41,15 @@ internal static class DataArchitectureCheckCatalog
             "Durable Zodiac activation persistence contracts",
             ZodiacSkillGridActivationPersistenceChecks.RunAsync),
         (
+            "Durable Zodiac skill-grid upgrade command contract",
+            ZodiacSkillGridUpgradeCommandContractChecks.RunAsync),
+        (
+            "Durable Zodiac skill-grid upgrade handler and replay",
+            ZodiacSkillGridUpgradeDurableHandlerChecks.RunAsync),
+        (
+            "Durable Zodiac upgrade persistence contracts",
+            ZodiacSkillGridUpgradePersistenceChecks.RunAsync),
+        (
             "Durable Gear Mentor Make Attribute Stone command contract",
             MakeAttributeStoneCommandContractChecks.RunAsync),
         (

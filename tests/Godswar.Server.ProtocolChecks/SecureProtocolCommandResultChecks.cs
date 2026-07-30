@@ -12,7 +12,7 @@ internal static partial class SecureProtocolCodecChecks
             SecureLegacyCommandDisposition.Applied,
             commandFamily: 0x1234,
             resultCode: 0x89ABCDEF,
-            inventoryRevision: 0x0102030405060708,
+            authoritativeRevision: 0x0102030405060708,
             operationId);
         var encoded = new byte[
             SecureProtocolConstants.LegacyCommandResultBytes];
@@ -47,9 +47,13 @@ internal static partial class SecureProtocolCodecChecks
             decoded.ResultCode,
             "command result code round trips");
         Check.Equal(
-            result.InventoryRevision,
+            result.AuthoritativeRevision,
+            decoded.AuthoritativeRevision,
+            "command authoritative revision round trips");
+        Check.Equal(
+            decoded.AuthoritativeRevision,
             decoded.InventoryRevision,
-            "command inventory revision round trips");
+            "inventory revision compatibility alias is exact");
         Check.Equal(
             result.OperationId,
             decoded.OperationId,

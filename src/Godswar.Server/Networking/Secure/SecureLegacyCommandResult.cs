@@ -14,7 +14,7 @@ internal readonly record struct SecureLegacyCommandResult
         SecureLegacyCommandDisposition disposition,
         ushort commandFamily,
         uint resultCode,
-        ulong inventoryRevision,
+        ulong authoritativeRevision,
         Guid operationId)
     {
         if (!SecureProtocolValidation.IsLegacyCommandDisposition(
@@ -33,17 +33,17 @@ internal readonly record struct SecureLegacyCommandResult
                 nameof(operationId));
         }
         if (disposition == SecureLegacyCommandDisposition.Applied &&
-            inventoryRevision == 0)
+            authoritativeRevision == 0)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(inventoryRevision),
-                "An applied durable command must identify its inventory revision.");
+                nameof(authoritativeRevision),
+                "An applied durable command must identify its authoritative revision.");
         }
 
         Disposition = disposition;
         CommandFamily = commandFamily;
         ResultCode = resultCode;
-        InventoryRevision = inventoryRevision;
+        AuthoritativeRevision = authoritativeRevision;
         OperationId = operationId;
     }
 
@@ -53,7 +53,11 @@ internal readonly record struct SecureLegacyCommandResult
 
     public uint ResultCode { get; }
 
-    public ulong InventoryRevision { get; }
+    public ulong AuthoritativeRevision { get; }
+
+    // Compatibility alias for inventory command callers. The version-1 wire
+    // field is aggregate-owned and is not limited to inventory aggregates.
+    public ulong InventoryRevision => AuthoritativeRevision;
 
     public Guid OperationId { get; }
 }

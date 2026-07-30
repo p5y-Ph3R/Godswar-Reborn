@@ -24,7 +24,8 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.EquipmentBagTransfer or
             CommandFamily.HolyStoneMount or
             CommandFamily.HolyStoneRemove or
-            CommandFamily.HolyStoneDrill =>
+            CommandFamily.HolyStoneDrill or
+            CommandFamily.ZodiacSkillGridUpgrade =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,

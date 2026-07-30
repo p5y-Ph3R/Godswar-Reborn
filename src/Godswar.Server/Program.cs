@@ -209,7 +209,10 @@ var gameServer = rawCompatibilityEnabled
                     .HolyStoneCommands,
             zodiacSkillGridActivationCommands:
                 postgresApplicationDataRuntime?
-                    .ZodiacSkillGridActivationCommands))
+                    .ZodiacSkillGridActivationCommands,
+            zodiacSkillGridUpgradeCommands:
+                postgresApplicationDataRuntime?
+                    .ZodiacSkillGridUpgradeCommands))
     : null;
 
 using SecureServerCertificate? secureCertificate =
@@ -329,7 +332,10 @@ var secureGameServer = secureTransportFactory is null
                     .HolyStoneCommands,
             zodiacSkillGridActivationCommands:
                 postgresApplicationDataRuntime?
-                    .ZodiacSkillGridActivationCommands),
+                    .ZodiacSkillGridActivationCommands,
+            zodiacSkillGridUpgradeCommands:
+                postgresApplicationDataRuntime?
+                    .ZodiacSkillGridUpgradeCommands),
         transportFactory: secureTransportFactory);
 
 Console.WriteLine($"Godswar .NET {Environment.Version.Major} server starting");

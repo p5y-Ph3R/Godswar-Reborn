@@ -8,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IDeveloperBagClearCommandExecutor?
+        _developerBagClearCommands;
+
     private async Task HandleDurableDeveloperBagClearAsync(
         GamePacket packet,
         Guid clientOperationId,

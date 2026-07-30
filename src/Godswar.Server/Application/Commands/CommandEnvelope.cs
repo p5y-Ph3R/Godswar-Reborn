@@ -24,7 +24,8 @@ internal enum CommandFamily : ushort
     HolyStoneMount = 16,
     HolyStoneRemove = 17,
     HolyStoneDrill = 18,
-    ZodiacSkillGridActivation = 19
+    ZodiacSkillGridActivation = 19,
+    ZodiacSkillGridUpgrade = 20
 }
 
 internal enum CommandIdentityStrength : byte

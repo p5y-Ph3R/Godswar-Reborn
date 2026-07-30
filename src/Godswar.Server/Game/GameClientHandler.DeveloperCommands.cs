@@ -12,6 +12,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IDeveloperItemGrantCommandExecutor?
+        _developerItemGrantCommands;
+
     private async Task<bool> HandleDeveloperItemCommandAsync(
         GamePacket packet,
         CancellationToken cancellationToken)

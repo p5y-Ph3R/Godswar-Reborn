@@ -34,22 +34,6 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly GameSessionRegistry _registry;
     private readonly ICharacterSnapshotReader _characterSnapshots;
     private readonly IWorldContentReader _worldContent;
-    private readonly ITalentUpgradeCommandExecutor?
-        _talentUpgradeCommands;
-    private readonly IDeveloperItemGrantCommandExecutor?
-        _developerItemGrantCommands;
-    private readonly IDeveloperBagClearCommandExecutor?
-        _developerBagClearCommands;
-    private readonly IMakeAttributeStoneCommandExecutor?
-        _makeAttributeStoneCommands;
-    private readonly IGearMentorMaterialConversionCommandExecutor?
-        _gearMentorMaterialConversionCommands;
-    private readonly IGearMentorDecomposeGearCommandExecutor?
-        _gearMentorDecomposeGearCommands;
-    private readonly IGearEnhancementCommandExecutor?
-        _gearEnhancementCommands;
-    private readonly IEquipmentForgeCommandExecutor?
-        _equipmentForgeCommands;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
@@ -121,7 +105,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IHolyStoneCommandExecutor?
             holyStoneCommands = null,
         IZodiacSkillGridActivationCommandExecutor?
-            zodiacSkillGridActivationCommands = null)
+            zodiacSkillGridActivationCommands = null,
+        IZodiacSkillGridUpgradeCommandExecutor?
+            zodiacSkillGridUpgradeCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -154,6 +140,8 @@ internal sealed partial class GameClientHandler : IClientHandler
         _holyStoneCommands = holyStoneCommands;
         _zodiacSkillGridActivationCommands =
             zodiacSkillGridActivationCommands;
+        _zodiacSkillGridUpgradeCommands =
+            zodiacSkillGridUpgradeCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

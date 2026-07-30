@@ -54,6 +54,11 @@ internal static partial class Program
                 PostgresZodiacSkillGridActivationCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresZodiacSkillGridUpgradeCommandIntegrationChecks
+                    .CheckName,
+                PostgresZodiacSkillGridUpgradeCommandIntegrationChecks
+                    .RunAsync),
+            (
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks
                     .CheckName,
                 PostgresCharacterCreationEconomyBaselineIntegrationChecks

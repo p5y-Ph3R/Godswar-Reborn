@@ -261,6 +261,7 @@ try {
         'PostgreSQL durable equipment/bag transfer transactions',
         'PostgreSQL durable Holy Stone transactions',
         'PostgreSQL durable Zodiac skill-grid activation',
+        'PostgreSQL durable Zodiac skill-grid upgrade',
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',

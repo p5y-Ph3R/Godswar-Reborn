@@ -6,6 +6,7 @@
 #include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
+#include "SecureZodiacSkillGridUpgradeIdentity.h"
 
 #include <Windows.h>
 
@@ -168,6 +169,11 @@ private:
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeHolyStoneCommand(
         const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeZodiacSkillGridUpgrade(
+        const LegacyZodiacSkillGridUpgradeCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     void Prune(std::uint64_t now) noexcept;

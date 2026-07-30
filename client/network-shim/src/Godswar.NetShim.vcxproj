@@ -101,6 +101,7 @@
     <ClInclude Include="SecureKitBagItemMoveIdentity.h" />
     <ClInclude Include="SecureLegacyCommandIdentity.h" />
     <ClInclude Include="SecureLegacyFrameStream.h" />
+    <ClInclude Include="SecureZodiacSkillGridUpgradeIdentity.h" />
     <ClInclude Include="SecurePendingOperationRegistry.h" />
     <ClInclude Include="SecureGameControl.h" />
     <ClInclude Include="SecureGameGrantRegistry.h" />
@@ -156,6 +157,7 @@
     <ClCompile Include="SecureLegacyCommandOperation.cpp" />
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
+    <ClCompile Include="SecureZodiacSkillGridUpgradeIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
@@ -165,6 +167,7 @@
     <ClCompile Include="SecurePendingOperationRegistry.KitBagItemMove.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Snapshot.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Storage.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Zodiac.cpp" />
     <ClCompile Include="SecureRealtimeMovementProtocol.cpp" />
     <ClCompile Include="SecureRealtimeMovementRouter.cpp" />
     <ClCompile Include="SecureOuterStream.Control.cpp" />

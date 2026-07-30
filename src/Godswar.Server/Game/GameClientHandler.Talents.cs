@@ -9,6 +9,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly ITalentUpgradeCommandExecutor?
+        _talentUpgradeCommands;
+
     private async Task HandleUseOrEquipAsync(
         GamePacket packet,
         CancellationToken cancellationToken)

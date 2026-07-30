@@ -108,9 +108,14 @@ PostgreSQL derives the shipped premium-Gold cost, locks the owning character,
 commits the grid plus any paid wallet revision and ledger with audit, inbox,
 and strict outbox evidence, and safely replays the current projection across
 reconnect without sending a second native success animation.
+The [durable repeatable Zodiac skill-grid upgrade increment](../data-architecture-b09-zodiac-grid-upgrade-20260730.md)
+adds native family-20 SID-101 UUIDs. Under the live Zodiac gate, PostgreSQL
+persists successful mutations or deterministic rejection receipts; success
+also publishes latest-wins per-grid state, and replay suppresses a second
+native animation.
 Tokenless transfers, right-click equip, advanced Holy Stone drilling,
-repeatable Zodiac grid upgrades, and remaining inventory, reward,
-progression, and currency mutations remain compatibility paths; B09 is not
+Zodiac skill selection, and remaining inventory, reward, progression, and
+currency mutations remain compatibility paths; B09 is not
 complete until those operations gain truthful retry identity and move behind
 the durable transaction boundary.
 

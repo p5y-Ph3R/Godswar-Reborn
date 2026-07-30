@@ -69,3 +69,9 @@ executors. The original tokenless paths remain compatibility-only; native
 inventory and crafting commands do not gain a durable retry guarantee until
 the secure shim preserves one operation ID through acknowledgement uncertainty
 and reconnect.
+
+Later B09 increments use those native UUIDs for inventory commands and
+repeatable Zodiac SID-101 upgrades. Zodiac upgrade contracts keep transport
+fields out of canonical intent, persist deterministic per-click rejections,
+and expose progression resources without treating them as currency-ledger
+rows.

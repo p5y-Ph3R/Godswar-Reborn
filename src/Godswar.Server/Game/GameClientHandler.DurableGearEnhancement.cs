@@ -8,6 +8,9 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private readonly IGearEnhancementCommandExecutor?
+        _gearEnhancementCommands;
+
     private async Task HandleDurableGearEnhancementAsync(
         uint npcId,
         int dialogIndex,

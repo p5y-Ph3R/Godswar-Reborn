@@ -170,6 +170,24 @@ SecurePendingOperationRegistry::DescribePacket(
         return inventoryResult;
     }
 
+    LegacyZodiacSkillGridUpgradeCommand zodiacUpgrade{};
+    switch (ClassifyLegacyZodiacSkillGridUpgradePacket(
+                packet,
+                packetBytes,
+                &zodiacUpgrade)) {
+        case LegacyZodiacSkillGridUpgradePacketKind::Commit:
+            return DescribeZodiacSkillGridUpgrade(
+                zodiacUpgrade,
+                now,
+                descriptor);
+        case LegacyZodiacSkillGridUpgradePacketKind::
+                InvalidMutation:
+            return SecureOperationRegistryResult::InvalidPacket;
+        case LegacyZodiacSkillGridUpgradePacketKind::Unrelated:
+        default:
+            break;
+    }
+
     LegacyHolyStoneCommand holyStoneCommand{};
     switch (ClassifyLegacyHolyStonePacket(
                 packet,
