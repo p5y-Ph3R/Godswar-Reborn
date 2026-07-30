@@ -1,7 +1,8 @@
 # Godswar Server Data Architecture Roadmap
 
 Status: implementation roadmap; backlog B01A through B15 completed and
-verified as of 2026-07-31. B16 is next.
+verified as of 2026-07-31. B16 is completed with Redis deferred; conditional
+B17 was evaluated and not activated. B18 is next.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -45,6 +46,7 @@ document organization; the assessment and recommendations remain intact.
 - [B13 structured observability, readiness, and graceful drain](docs/data-architecture-b13-observability-readiness-20260731.md)
 - [B14 raw authentication retirement](docs/data-architecture-b14-raw-auth-retirement-20260731.md)
 - [B15 PostgreSQL player ownership fence](docs/data-architecture-b15-player-ownership-fence-20260731.md)
+- [B16 Redis decision and B17 conditional evaluation](docs/data-architecture-b16-b17-redis-decision-20260731.md)
 
 ## Roadmap sections
 

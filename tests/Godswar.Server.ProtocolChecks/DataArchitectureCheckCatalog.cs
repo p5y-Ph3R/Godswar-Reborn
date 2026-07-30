@@ -38,6 +38,9 @@ internal static class DataArchitectureCheckCatalog
             "Fail-closed durable registry composition",
             DurableRegistryCompositionChecks.RunAsync),
         (
+            DeferredRedisArchitectureChecks.CheckName,
+            DeferredRedisArchitectureChecks.RunAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
         (

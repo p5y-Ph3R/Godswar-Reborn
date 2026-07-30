@@ -20,8 +20,8 @@
 | B13 - Structured logs, traces, readiness **(completed 2026-07-31)** | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | implemented B13 signals; deferred section 16 gaps stay explicit | Disable exporter/sink, keep audits | Medium | Medium |
 | B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
-| B16 - Redis decision ADR | Avoid premature infrastructure | measurements, capacity inputs, section 7 ADR | B13-B15 and product scale decision | Explicit defer/approve with SLO/TTL/outage/cost | failure model prototype if approved | candidate load/latency | Defer Redis | Small | Low |
-| B17 - Redis coordination adapter, conditional | Enable measured multi-process session/routing needs | Redis package/config/key library/Lua, tickets/presence/routing and leases carrying PG-issued fences | Approved B16, B15 | Cross-instance ticket/lease/reconnect safe; Redis restart cannot reset fence; PG remains value owner | Redis restart/eviction/slow, fence reinstall, split ownership | latency/errors/lease/presence | Drain to one process/PG-local adapter | Large | High |
+| B16 - Redis decision ADR **(completed 2026-07-31: defer)** | Avoid premature infrastructure | measured repository/topology evidence and ADR 0003 | B13-B15 | Explicit defer; unknown SLO/TTL/outage/cost inputs recorded | Evidence/contract review | candidate capacity/latency gaps | Documentation revert | Small | Low |
+| B17 - Redis coordination adapter **(evaluated 2026-07-31: conditional, not activated)** | Enable measured multi-process coordination only after its gate | Future async tickets, presence, routing, and leases carrying PG-issued fences | Superseding approval after B16, B15 | No false implementation; exact reopening trigger and future acceptance boundary recorded | None until activated | None until activated | No runtime change | Conditional Large | High |
 | B18 - Fair map mailboxes and replication | Complete ECS/I/O isolation | `MapInstance`, `GameSessionRegistry`, movement/monster loops, broadcast | B02, B10 | Only owner loop mutates map ECS; DB/socket fanout off tick; bounded fairness | deterministic replay, slow client, overload | tick/queue/fanout | Per-map legacy mode | Large | High |
 | B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
@@ -121,8 +121,14 @@ projection and retry behavior, fail-closed PostgreSQL composition, and
 bounded ownership metrics. JSON/local storage remains process-local
 compatibility only. The final gate passed **263 managed checks** plus **42
 required PostgreSQL checks across 4 migration scenarios**, with no failures
-and disposable database cleanup verified. **B16, the Redis decision ADR, is
-next.**
+and disposable database cleanup verified.
+
+**B16 completed and B17 evaluated 2026-07-31:** the
+[decision evidence](../data-architecture-b16-b17-redis-decision-20260731.md)
+and ADR 0003 defer Redis for the current one-process topology. B17 is closed
+as conditional-not-activated: no client, adapter, container, configuration,
+or runtime dependency was added. Reopening requires measured multi-process
+demand, approved SLO/outage/cost inputs, and an async ticket contract.
 
 ## 18.2 First three low-risk implementation tasks
 
@@ -136,7 +142,7 @@ next.**
 - **Completed prerequisite for scale-out/Redis and multi-owner writes:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
-- **Requires architectural decision first:** B16 Redis; B17 process placement/routing; B21 MongoDB; character deletion retention; reward failure semantics.
+- **Requires a new architectural decision first:** reopening B17 for Redis/process placement and B21 for MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 
 ## 18.4 Architectural mistakes to avoid

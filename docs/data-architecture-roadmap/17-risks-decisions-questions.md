@@ -13,6 +13,7 @@ These are repository-supported facts, not assumed approval of every target recom
 7. Applied migration IDs/checksums are immutable under the documented policy, and the current runner enforces exact-prefix compatibility.
 8. Several valuable PG operations already use transactions/row locks, but there is no general durable inbox/outbox or stable client operation ID.
 9. Content reads are split across generated package catalogs, PG catalogs, and captured fallbacks.
+10. B16 defers Redis; B17 was evaluated and is conditional-not-activated because the current one-process topology has no measured shared-coordination requirement.
 
 ## Roadmap recommendations pending approval
 
@@ -20,10 +21,9 @@ These are repository-supported facts, not assumed approval of every target recom
 2. Continue direct Npgsql for transactional paths; do not introduce EF Core now.
 3. Persist selected durable facets, never the entire ECS world.
 4. Commit valuable commands before success acknowledgement and use PG inbox/audit/outbox instead of cross-store dual writes.
-5. Defer Redis until a measured coordination/cache requirement exists; PG remains the durable fencing authority if Redis is later added.
-6. Do not introduce MongoDB during the initial migration.
-7. Make raw account-creating/username-only authentication impossible outside an explicit local-development profile, then retire it when client compatibility permits.
-8. Remain a modular monolith until measured scale and an ownership/placement design justify process separation.
+5. Do not introduce MongoDB during the initial migration.
+6. Make raw account-creating/username-only authentication impossible outside an explicit local-development profile, then retire it when client compatibility permits.
+7. Remain a modular monolith until measured scale and an ownership/placement design justify process separation.
 
 ## Assumptions
 
@@ -51,16 +51,18 @@ Priority 0:
 Priority 1:
 
 7. What are target concurrent players per process/world/map, peak login rate, regions, tick/snapshot rates, and acceptable loss/latency?
-8. When is a second game/login/zone process expected? This decides Redis timing and the ownership/placement design.
-9. What reconnect/resume guarantee and maximum window are required?
-10. Are zones/maps permanently assigned to processes, dynamically placed, or still one-process for the foreseeable future?
-11. What RPO, RTO, backup retention, privacy, security-audit, and economy-audit retention are required?
-12. Which hosting/upstream L3/L4 provider will protect arbitrary TCP and UDP ports?
+8. What measured topology or capacity result should reopen B17, and who owns the superseding Redis ADR?
+9. When is a second game/login/zone process expected, and which service owns placement and routing?
+10. What reconnect/resume guarantee and maximum window are required?
+11. What Redis latency, outage, staleness, eviction, provider, region, and cost budgets would apply if B17 reopens?
+12. Are zones/maps permanently assigned to processes, dynamically placed, or still one-process for the foreseeable future?
+13. What RPO, RTO, backup retention, privacy, security-audit, and economy-audit retention are required?
+14. Which hosting/upstream L3/L4 provider will protect arbitrary TCP and UDP ports?
 
 Priority 2:
 
-13. Should content be authored in source/generated resources, in PostgreSQL, or via a future tool, and how are revisions approved?
-14. Should packet captures remain in the gameplay database, move to a separate research database, or archive to object storage?
-15. Is durable chat/moderation history required?
-16. Which future features are actually scheduled: guilds, trade, auction, mail, quests, housing, achievements, player-generated content?
-17. What data residency, payment, child-safety, and account-deletion obligations apply?
+15. Should content be authored in source/generated resources, in PostgreSQL, or via a future tool, and how are revisions approved?
+16. Should packet captures remain in the gameplay database, move to a separate research database, or archive to object storage?
+17. Is durable chat/moderation history required?
+18. Which future features are actually scheduled: guilds, trade, auction, mail, quests, housing, achievements, player-generated content?
+19. What data residency, payment, child-safety, and account-deletion obligations apply?

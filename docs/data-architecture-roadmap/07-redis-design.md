@@ -2,7 +2,34 @@
 
 ## 7.1 Decision and introduction gate
 
-Redis is **deferred**, not part of the initial database migration. A topology change by itself is not sufficient: PostgreSQL can issue/consume low-rate tickets and allocate ownership fences. Introduce Redis only after an ADR confirms a cross-process/TTL use case **and measurements or SLOs show that PostgreSQL plus local memory is inadequate**, for example:
+Redis is **deferred** by
+[ADR 0003](../adr/0003-defer-redis-coordination.md). B16 completed the
+decision gate on 2026-07-31; B17 was evaluated and closed as conditional,
+not activated. No Redis implementation or deployment is claimed.
+
+The evidence is concrete:
+
+- `Program.cs` composes login, game, `GameSessionRegistry`, the shared
+  `InMemoryGameTicketStore`, and optional UDP runtime in one process;
+- Compose defines one server and PostgreSQL, with no separate login, gateway,
+  zone, placement, or coordinator service;
+- account sessions, ticket state, admission, presence, and routing are
+  process-local and bounded;
+- the current limits are 512 active connections, 1,024 outstanding-ticket
+  capacity, and a 60-second ticket TTL;
+- no measurement shows ticket saturation or unacceptable coordination
+  latency; and
+- B15 made PostgreSQL the monotonic player-fence authority for every valuable
+  transaction.
+
+The repository has no approved second-process date, cross-instance reconnect
+contract, player/login capacity target, Redis SLO, provider, regional
+topology, or cost budget. Adding Redis now would create a network dependency
+without solving a current requirement.
+
+Redis may be reconsidered only after a superseding ADR confirms a real
+cross-process/TTL use case **and measurements or approved SLOs show that
+PostgreSQL plus local memory is inadequate**, for example:
 
 - login and game endpoints run in different processes, share enough ticket traffic to justify a TTL store, and a measured PG ticket path is insufficient;
 - multiple game/zone instances need player-to-server routing or duplicate-login fencing;
@@ -10,7 +37,16 @@ Redis is **deferred**, not part of the initial database migration. A topology ch
 - cross-instance presence, invitations, matchmaking, or coarse abuse limits are required;
 - a measured read projection cannot be served economically from PostgreSQL/in-process memory.
 
-Before that gate, the current `InMemoryGameTicketStore`, registry presence, and bounded limiter tables remain simpler and safer. Do not add Redis merely to replace ordinary dictionaries in one process.
+Before that gate, the current `InMemoryGameTicketStore`, registry presence,
+and bounded limiter tables remain simpler and safer. Do not add Redis merely
+to replace ordinary dictionaries in one process.
+
+An approved B17 must first replace synchronous `IGameTicketStore` network
+operations with asynchronous, deadline-bearing application contracts.
+Synchronous Redis I/O in network handlers or ECS loops is forbidden. The
+activation record must also define peak demand, p95/p99 latency, timeout,
+availability, maximum staleness, recovery, eviction, memory, and cost
+budgets.
 
 ## 7.2 Key and value conventions after the gate
 
