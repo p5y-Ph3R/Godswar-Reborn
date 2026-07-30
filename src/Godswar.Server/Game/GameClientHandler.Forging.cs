@@ -146,10 +146,31 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (_session.IsSecure && packet.ClientOperationId.HasValue)
+        if (_session.IsSecure &&
+            !packet.ClientOperationId.HasValue)
+        {
+            ClearForgeSelection();
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.EquipmentForge);
+            CommandMetrics.Record(
+                CommandFamily.EquipmentForge,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.InvalidIntent);
+            await _session.SendAsync(
+                PacketBuilder.ForgeResult(
+                    success: false,
+                    resultKind: 0),
+                cancellationToken,
+                "ForgeRejected");
+            Console.WriteLine(
+                "[forge] rejected secure start without operation UUID");
+            return;
+        }
+
+        if (_session.IsSecure)
         {
             await HandleDurableForgeStartAsync(
-                packet.ClientOperationId.Value,
+                packet.ClientOperationId!.Value,
                 cancellationToken);
             return;
         }

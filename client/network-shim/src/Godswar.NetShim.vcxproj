@@ -102,6 +102,7 @@
     <ClInclude Include="SecureLegacyCommandIdentity.h" />
     <ClInclude Include="SecureLegacyFrameStream.h" />
     <ClInclude Include="SecureZodiacSkillGridUpgradeIdentity.h" />
+    <ClInclude Include="SecureZodiacSkillGridSelectionIdentity.h" />
     <ClInclude Include="SecurePendingOperationRegistry.h" />
     <ClInclude Include="SecureGameControl.h" />
     <ClInclude Include="SecureGameGrantRegistry.h" />
@@ -158,6 +159,7 @@
     <ClCompile Include="SecureLegacyCommandResult.cpp" />
     <ClCompile Include="SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="SecureZodiacSkillGridUpgradeIdentity.cpp" />
+    <ClCompile Include="SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />

@@ -20,6 +20,7 @@ internal static class HolyStoneProtocol
     public const int MountSubId = 101;
     public const int RemoveSubId = 201;
     public const int DrillSubId = 301;
+    public const int AdvancedDrillSubId = 701;
     public const int MountAliasOneSubId = 106;
     public const int MountAliasTwoSubId = 206;
     public const int MountAliasThreeSubId = 306;
@@ -44,7 +45,19 @@ internal static class HolyStoneProtocol
         args.Count == FunctionArgumentCount &&
         args.All(static value => value == -1);
 
-    public static bool IsExactMountNavigation(GamePacket packet)
+    public static bool IsExactMountNavigation(GamePacket packet) =>
+        IsExactNavigation(packet, MountSubId);
+
+    public static bool IsExactAdvancedDrillNavigation(
+        GamePacket packet) =>
+        IsExactNavigation(packet, AdvancedDrillSubId);
+
+    public static bool IsAdvancedDrillSubId(int subId) =>
+        subId == AdvancedDrillSubId;
+
+    private static bool IsExactNavigation(
+        GamePacket packet,
+        int expectedSubId)
     {
         if (packet.Opcode != Opcodes.NpcFunctionAction ||
             packet.Length != PacketBytes ||
@@ -70,7 +83,7 @@ internal static class HolyStoneProtocol
                 sizeof(int)));
         if (!IsEndpoint(npcId, dialogIndex) ||
             duplicateDialog != dialogIndex ||
-            subId != MountSubId)
+            subId != expectedSubId)
         {
             return false;
         }

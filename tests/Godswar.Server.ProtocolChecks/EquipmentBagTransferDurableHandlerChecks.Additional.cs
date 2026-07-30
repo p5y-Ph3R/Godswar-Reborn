@@ -415,7 +415,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             "transfer cancellation emits no terminal response");
     }
 
-    private static async Task CheckOpcode10051PathIsUnaffectedAsync()
+    private static async Task
+        CheckOpcode10051CompatibilityAndAmbiguityAsync()
     {
         await using var fixture = CreateFixture(
             EquipmentBagTransferExecutionResult.ReplayNotFound(),
@@ -428,9 +429,9 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             CreateBreakItemPacket());
 
         Check.Equal(
-            1,
+            0,
             fixture.Store.EquipCount,
-            "opcode 10051 still uses inferred compatibility equip");
+            "secure tokenless opcode 10051 cannot mutate through compatibility equip");
         Check.Equal(
             0,
             fixture.Executor!.ReplayCount,
@@ -439,9 +440,26 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             0,
             fixture.Transport.CommandResults.Count,
             "opcode 10051 emits no family-15 secure result");
+        Check.True(
+            fixture.Transport.ReadLegacyPackets().Count > 0,
+            "secure ambiguous opcode 10051 receives authoritative refresh");
+
+        await InvokePacketAsync(
+            fixture.Handler,
+            CreateBreakItemPacket(OperationId));
+
+        Check.Equal(
+            0,
+            fixture.Store.EquipCount,
+            "identified opcode 10051 cannot downgrade to compatibility");
+        Check.Equal(
+            0,
+            fixture.Executor.ReplayCount,
+            "ambiguous opcode 10051 identity is not misrouted to family 15");
     }
 
-    private static GamePacket CreateBreakItemPacket()
+    private static GamePacket CreateBreakItemPacket(
+        Guid? operationId = null)
     {
         var packet = new byte[92];
         BinaryPrimitives.WriteUInt16LittleEndian(
@@ -459,7 +477,7 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet.AsSpan(14, sizeof(ushort)),
             checked((ushort)(KitBagSlot % 24)));
-        return new GamePacket(packet);
+        return new GamePacket(packet, operationId);
     }
 
     private static async Task InvokePacketAsync(

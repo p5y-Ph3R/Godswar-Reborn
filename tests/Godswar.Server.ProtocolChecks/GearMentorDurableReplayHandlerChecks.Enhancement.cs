@@ -17,6 +17,8 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         FindHandlerMethod("HandleDurableGearEnhancementAsync");
     private static readonly MethodInfo HandleGearEnhancementMethod =
         FindHandlerMethod("HandleGearEnhancerOperationAsync");
+    private static readonly MethodInfo HandleGearMentorTransactionMethod =
+        FindHandlerMethod("HandleGearMentorTransactionAsync");
 
     private static async Task
         CheckUnavailableGearEnhancementLeavesOperationPendingAsync()
@@ -51,6 +53,128 @@ internal static partial class GearMentorDurableReplayHandlerChecks
             0,
             fixture.Transport.Events.Count,
             "a valid-route replay miss leaves the UUID pending");
+    }
+
+    private static async Task
+        CheckSecureTokenlessGearEnhancementFailsClosedAsync()
+    {
+        var executor = new EnhancementExecutor(
+            GearEnhancementExecutionResult.ReplayNotFound());
+        await using var fixture = CreateEnhancementFixture(executor);
+        SetField(
+            fixture.Handler,
+            "_gearEnhancerSelectionContext",
+            new GearEnhancerSelectionContext(
+                fixture.AccountId,
+                fixture.LiveCharacter.Id,
+                GearEnhancerProtocol.SpartaOriginEnhancerNpcId,
+                GearEnhancerProtocol.OriginDialogIndex,
+                GearEnhancementOperation.Add,
+                DateTimeOffset.UtcNow.AddMinutes(1)));
+
+        var args = Enumerable.Repeat(
+                -1,
+                GearEnhancerProtocol.FunctionActionArgumentCount)
+            .ToArray();
+        args[GearEnhancerProtocol.GearArgumentIndex] = 100;
+        args[GearEnhancerProtocol.CatalystArgumentIndex] = 101;
+        args[GearEnhancerProtocol.AttributeStoneArgumentIndex] = 102;
+        var invocation = HandleGearEnhancementMethod.Invoke(
+            fixture.Handler,
+            [
+                (uint)GearEnhancerProtocol.SpartaOriginEnhancerNpcId,
+                GearEnhancerProtocol.OriginDialogIndex,
+                GearEnhancerProtocol.AddAttributeSubId,
+                args,
+                (Guid?)null,
+                CancellationToken.None
+            ]) as Task
+            ?? throw new InvalidOperationException(
+                "Gear Enhancement handler did not return a task.");
+        await invocation;
+
+        Check.Equal(
+            0,
+            executor.ReplayCount,
+            "secure tokenless enhancement does not query durable replay");
+        Check.Equal(
+            0,
+            executor.ExecuteCount,
+            "secure tokenless enhancement cannot mutate");
+        Check.Equal(
+            0,
+            fixture.Transport.CommandResults.Count,
+            "secure tokenless enhancement has no UUID to settle");
+        var packets = fixture.Transport.ReadClearLegacyPackets();
+        Check.Equal(
+            1,
+            packets.Count,
+            "secure tokenless enhancement sends one stock rejection");
+        AssertNpcResult(
+            packets[0],
+            GearEnhancerProtocol.SpartaOriginEnhancerNpcId,
+            GearEnhancerProtocol.InvalidSelectionResultSubId,
+            "secure tokenless enhancement",
+            GearEnhancerProtocol.OriginDialogIndex);
+    }
+
+    private static async Task
+        CheckSecureTokenlessGearMentorTransactionFailsClosedAsync()
+    {
+        await using var fixture = CreateFixture(
+            GearMentorMaterialConversionExecutionResult
+                .ReplayNotFound());
+        SetField(
+            fixture.Handler,
+            "_gearEnhancerSelectionContext",
+            new GearEnhancerSelectionContext(
+                7,
+                fixture.LiveCharacter.Id,
+                GearEnhancerProtocol.SpartaEnhancerNpcId,
+                GearEnhancerProtocol.DialogIndex,
+                operation: null,
+                DateTimeOffset.UtcNow.AddMinutes(1)));
+
+        var args = Enumerable.Repeat(
+                -1,
+                GearEnhancerProtocol.FunctionActionArgumentCount)
+            .ToArray();
+        args[GearEnhancerProtocol.GearArgumentIndex] = 100;
+        var invocation = HandleGearMentorTransactionMethod.Invoke(
+            fixture.Handler,
+            [
+                (uint)GearEnhancerProtocol.SpartaEnhancerNpcId,
+                GearEnhancerProtocol.TransformCrystalSubId,
+                args,
+                (Guid?)null,
+                CancellationToken.None
+            ]) as Task
+            ?? throw new InvalidOperationException(
+                "Gear Mentor transaction handler did not return a task.");
+        await invocation;
+
+        Check.Equal(
+            0,
+            fixture.Executor.TransformReplayCount,
+            "secure tokenless Mentor transaction skips durable replay");
+        Check.Equal(
+            0,
+            fixture.Executor.ExecuteCount,
+            "secure tokenless Mentor transaction cannot mutate");
+        Check.Equal(
+            0,
+            fixture.Transport.CommandResults.Count,
+            "secure tokenless Mentor transaction has no UUID to settle");
+        var packets = fixture.Transport.ReadClearLegacyPackets();
+        Check.Equal(
+            1,
+            packets.Count,
+            "secure tokenless Mentor transaction sends one stock rejection");
+        AssertNpcResult(
+            packets[0],
+            GearEnhancerProtocol.SpartaEnhancerNpcId,
+            GearEnhancerProtocol.SelectedItemMissingResultSubId,
+            "secure tokenless Mentor transaction");
     }
 
     private static async Task CheckOriginGearEnhancementCommitOrderingAsync()

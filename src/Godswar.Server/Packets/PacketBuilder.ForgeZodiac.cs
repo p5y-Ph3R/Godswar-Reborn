@@ -136,6 +136,31 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] ZodiacSkillGridSelected(
+        int gridIndex,
+        int selectedSkillKind)
+    {
+        if (!ZodiacSkillGridCatalog.IsValidGrid(gridIndex) ||
+            !ZodiacSkillGridSelectionCatalog.IsValidIntentSkillKind(
+                selectedSkillKind))
+        {
+            throw new ArgumentOutOfRangeException(
+                !ZodiacSkillGridCatalog.IsValidGrid(gridIndex)
+                    ? nameof(gridIndex)
+                    : nameof(selectedSkillKind));
+        }
+
+        var packet = new byte[24];
+        WriteZodiacHeader(
+            packet,
+            LocalPlayerObjectId,
+            sid: 102,
+            gridIndex,
+            selectedSkillKind,
+            value3: 0);
+        return packet;
+    }
+
     public static byte[] ZodiacAccumulationGain(
         GameCharacter character,
         int experience,

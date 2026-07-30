@@ -252,6 +252,28 @@ internal sealed partial class GameClientHandler
             cancellationToken);
     }
 
+    private async Task RejectUnsupportedDurableKitBagItemDeleteAsync(
+        Guid clientOperationId,
+        CancellationToken cancellationToken)
+    {
+        if (!_session.IsSecure)
+        {
+            return;
+        }
+
+        CommandMetrics.Record(
+            CommandFamily.KitBagItemDelete,
+            CommandIdentityStrength.ClientOperationId,
+            CommandOutcome.InvalidIntent);
+        await SendKitBagRefreshAsync(cancellationToken);
+        await SendSecureKitBagDeleteResultAsync(
+            clientOperationId,
+            resultCode: 0,
+            SecureLegacyCommandDisposition.Rejected,
+            inventoryRevision: 0,
+            cancellationToken);
+    }
+
     private ValueTask SendSecureKitBagDeleteResultAsync(
         Guid clientOperationId,
         uint resultCode,

@@ -25,6 +25,7 @@ internal static partial class HolyStoneDurableHandlerChecks
         await CheckProjectionUncertaintyStaysPendingAsync();
         await CheckSettlementEvictionsAsync();
         await CheckRawExactWireSemanticsAsync();
+        await CheckAdvancedDrillStaysFailClosedAsync();
     }
 
     private static async Task

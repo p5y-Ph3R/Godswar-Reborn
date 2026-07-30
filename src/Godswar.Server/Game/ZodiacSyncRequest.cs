@@ -19,7 +19,13 @@ internal readonly record struct ZodiacSyncRequest(
     public bool IsSkillGridActivation => Module == 0 && Sid == 100;
 
     public bool IsSkillGridUpgrade =>
-        Module is 0 or 0xFF && Sid == 101;
+        Module is 0 or 0xFF &&
+        Sid == 101 &&
+        Value2 == -1 &&
+        Value3 == 0;
+
+    public bool IsSkillGridSelection =>
+        Module is 0 or 0xFF && Sid == 102 && Value3 == 0;
 
     public static bool TryParse(ReadOnlySpan<byte> packet, out ZodiacSyncRequest request)
     {

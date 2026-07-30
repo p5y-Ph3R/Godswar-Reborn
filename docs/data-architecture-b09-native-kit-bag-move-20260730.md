@@ -209,10 +209,12 @@ Rollback requires a matched prior server and shim. Permanent family-14 inbox,
 audit, ledger, compatibility-audit, and outbox rows are valid economy history
 and must remain.
 
-Tokenless legacy moves retain the old compatibility path so the stock client
-can still operate when secure identity is unavailable. They do not gain
+Tokenless raw legacy moves retain the old compatibility path so the stock
+client can still operate before raw transport retirement. They do not gain
 cross-reconnect idempotency, the new ledger/revision guarantees, or a strict
-outbox event; this remains an explicit reconciliation gap.
+outbox event. A recognized tokenless move on a secure connection now fails
+closed with an authoritative bag refresh and no mutation; it cannot bypass
+the family-14 inbox.
 
 The compact stock projection does not expose the PostgreSQL item-instance ID.
 A delayed first execution therefore cannot distinguish an item removed and

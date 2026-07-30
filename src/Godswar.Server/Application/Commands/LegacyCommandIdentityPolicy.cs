@@ -27,6 +27,8 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.HolyStoneDrill or
             CommandFamily.ZodiacSkillGridUpgrade =>
                 CommandIdentityStrength.ClientOperationId,
+            CommandFamily.ZodiacSkillGridSelection =>
+                CommandIdentityStrength.ClientOperationId,
             CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.UnsupportedLegacyRetry,
             _ => throw new ArgumentOutOfRangeException(nameof(family))

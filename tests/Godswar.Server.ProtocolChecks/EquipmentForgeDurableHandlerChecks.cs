@@ -20,7 +20,7 @@ internal static partial class EquipmentForgeDurableHandlerChecks
         await CheckProjectionFailureLeavesPendingAsync();
         await CheckMismatchedReceiptLeavesPendingAsync();
         await CheckRequestConflictIsTerminalAsync();
-        await CheckTokenlessCompatibilityUsesLegacyStoreAsync();
+        await CheckSecureTokenlessRequestFailsClosedAsync();
     }
 
     private static async Task
@@ -251,34 +251,35 @@ internal static partial class EquipmentForgeDurableHandlerChecks
     }
 
     private static async Task
-        CheckTokenlessCompatibilityUsesLegacyStoreAsync()
+        CheckSecureTokenlessRequestFailsClosedAsync()
     {
         await using var fixture = CreateFixture(
             EquipmentForgeExecutionResult.ReplayNotFound());
-        fixture.Store.Result = new ForgeTransactionResult(
-            ForgeTransactionStatus.Succeeded,
-            fixture.LiveCharacter,
-            MaterialType: 2,
-            Probability: 75,
-            SilverSpent: 200,
-            EquipmentBefore,
-            EquipmentAfter);
 
         await InvokeForgeStartAsync(fixture.Handler);
 
-        Check.Equal(1, fixture.Store.ForgeCount, "tokenless Forge uses legacy store");
-        Check.Equal(0, fixture.Executor!.ReplayCount, "tokenless Forge does not use inbox");
-        Check.Equal(0, fixture.Executor.ExecuteCount, "tokenless Forge does not execute durable command");
+        Check.Equal(
+            0,
+            fixture.Store.ForgeCount,
+            "secure tokenless Forge cannot use compatibility store");
+        Check.Equal(
+            0,
+            fixture.Executor!.ReplayCount,
+            "secure tokenless Forge does not query the inbox");
+        Check.Equal(
+            0,
+            fixture.Executor.ExecuteCount,
+            "secure tokenless Forge does not execute a durable command");
         Check.Equal(
             0,
             fixture.Transport.CommandResults.Count,
-            "tokenless Forge sends no secure command result");
+            "secure tokenless Forge has no UUID to settle");
         var packets = fixture.Transport.ReadClearLegacyPackets();
         AssertForgeResult(
             packets[0],
-            expectedSuccess: true,
-            expectedResultKind: 1,
-            "tokenless legacy Forge");
+            expectedSuccess: false,
+            expectedResultKind: 0,
+            "secure tokenless Forge rejection");
     }
 
     private static void AssertDurableResponse(

@@ -12,6 +12,8 @@ inline constexpr std::int32_t LegacyHolyStoneDialog = 30;
 inline constexpr std::int32_t LegacyHolyStoneMountSubId = 101;
 inline constexpr std::int32_t LegacyHolyStoneRemoveSubId = 201;
 inline constexpr std::int32_t LegacyHolyStoneDrillSubId = 301;
+inline constexpr std::int32_t
+    LegacyHolyStoneAdvancedDrillSubId = 701;
 inline constexpr std::int32_t LegacyHolyStoneBagReferenceMinimum = 100;
 inline constexpr std::int32_t LegacyHolyStoneBagReferenceMaximum = 195;
 inline constexpr std::int32_t

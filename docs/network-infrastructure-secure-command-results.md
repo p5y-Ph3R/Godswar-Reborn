@@ -100,6 +100,7 @@ The wired families and stable terminal result codes are:
 | `17` | Holy Stone Remove | `1200` | `0`, `100`, `200`, `1000`, `1100` |
 | `18` | Holy Stone Drill | `1500` | `0`, `100`, `200`, `1300`, `1400` |
 | `20` | Zodiac skill-grid upgrade | `1` | `0`, `2..8` |
+| `21` | Zodiac skill-grid selection | `1` | `0`, `2` invalid intent, `3` inactive grid, `4` wrong row, `5` wrong class, `6` skill not learned, `7` duplicate in row, `8` already selected, `9` wrong owner |
 
 Every additional family must define stable finite result codes, keep retry
 identity isolated from other families, and demonstrate durable inbox replay

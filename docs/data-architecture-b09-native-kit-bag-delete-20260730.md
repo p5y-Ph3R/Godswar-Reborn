@@ -159,7 +159,10 @@ the item was deleted.
 
 Tokenless raw legacy deletion retains the prior compatibility path and is
 counted as unsupported legacy identity. It does not gain cross-reconnect
-idempotency.
+idempotency. A recognized tokenless deletion on a secure connection now
+fails closed with an authoritative bag refresh and no mutation. Identified
+non-canonical packet lengths likewise receive an authenticated rejection
+instead of falling through to compatibility.
 
 ## Verification
 

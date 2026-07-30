@@ -51,13 +51,13 @@ composition, and low-cardinality telemetry. The JSON provider remains a local
 compatibility path without durable inbox/outbox semantics, and B15's
 player-ownership fence remains required before safe multi-process ownership.
 
-**B09 started 2026-07-29:** [increment evidence](../data-architecture-b09-economy-ledger-increment-20260729.md)
+**B09 completed 2026-07-30:** the
+[closure evidence](../data-architecture-b09-closure-20260730.md) records the
+secure mutation boundary, gates, limitations, and B10-B12 handoff. The
+[foundation increment](../data-architecture-b09-economy-ledger-increment-20260729.md)
 records the immutable opening economy baselines, wallet/inventory revisions,
 currency and item ledgers, report-only reconciliation, and the first
 commit-before-response item grant using an explicit client operation UUID.
-The second increment adds exact creation-time baselines, replay-safe
-tokenized mount grants and bag clearing, and the bounded secure
-command-operation marker prerequisite.
 The [secure native Make Attribute Stone increment](../data-architecture-b09-native-make-attribute-stone-20260729.md)
 activates that marker with a bounded reconnect registry, authenticated terminal
 result, durable Mentor transaction, authoritative refresh, and exact replay.
@@ -113,11 +113,17 @@ adds native family-20 SID-101 UUIDs. Under the live Zodiac gate, PostgreSQL
 persists successful mutations or deterministic rejection receipts; success
 also publishes latest-wins per-grid state, and replay suppresses a second
 native animation.
-Tokenless transfers, right-click equip, advanced Holy Stone drilling,
-Zodiac skill selection, and remaining inventory, reward, progression, and
-currency mutations remain compatibility paths; B09 is not
-complete until those operations gain truthful retry identity and move behind
-the durable transaction boundary.
+The [durable Zodiac skill-grid selection increment](../data-architecture-b09-zodiac-grid-selection-20260730.md)
+adds native family-21 SID-102 identity, strict managed validation, one
+PostgreSQL state/audit/inbox/outbox transaction, authoritative projection,
+and replay-safe native response ordering.
+The [advanced Holy Stone classification](../data-architecture-b09-holy-stone-advanced-classification-20260730.md)
+keeps action 701 navigation available but rejects value-bearing traffic before
+mutation until a clear retail wire capture exists. The
+[finite mutation audit](../data-architecture-b09-mutation-closure-audit-20260730.md)
+closes secure tokenless downgrade paths, assigns ambiguous opcode 10051 to the
+coupled B12 bag-activation/pet-hatch slice, and classifies all other reachable
+store mutations. Raw TCP remains weaker and is not replay-safe.
 
 ## 18.2 First three low-risk implementation tasks
 

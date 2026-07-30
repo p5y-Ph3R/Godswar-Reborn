@@ -56,7 +56,10 @@ bool IsCommandFamily(
             SecureLegacyCommandFamily::HolyStoneDrill ||
         family ==
             SecureLegacyCommandFamily::
-                ZodiacSkillGridUpgrade;
+                ZodiacSkillGridUpgrade ||
+        family ==
+            SecureLegacyCommandFamily::
+                ZodiacSkillGridSelection;
 }
 
 bool HasValidRevision(

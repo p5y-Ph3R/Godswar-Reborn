@@ -46,6 +46,15 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (request.IsSkillGridSelection)
+        {
+            await HandleZodiacSkillGridSelectionAsync(
+                packet,
+                request,
+                cancellationToken);
+            return;
+        }
+
         if (!request.IsLevelUpgrade)
         {
             Console.WriteLine(
@@ -103,6 +112,20 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 "[zodiac] rejected skill-grid activation without account/character");
+            return;
+        }
+
+        if (request.Value2 != -1 || request.Value3 != 0)
+        {
+            CommandMetrics.Record(
+                CommandFamily.ZodiacSkillGridActivation,
+                CommandIdentityStrength.LegacyAggregateVersion,
+                CommandOutcome.InvalidIntent);
+            Console.WriteLine(
+                "[zodiac] rejected noncanonical skill-grid activation " +
+                $"character={_character.Name} " +
+                $"reserved-values={request.Value2},{request.Value3}");
+            await SendZodiacFullSyncAsync(cancellationToken);
             return;
         }
 

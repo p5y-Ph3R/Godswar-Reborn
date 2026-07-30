@@ -89,13 +89,18 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresZodiacSkillGridUpgradeCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        ZodiacSkillGridSelectionCommands =
+            new PostgresZodiacSkillGridSelectionCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
                 new TalentUpgradeOutboxConsumer(),
                 new CharacterInventoryOutboxConsumer(),
                 new ZodiacSkillGridActivationOutboxConsumer(),
-                new ZodiacSkillGridUpgradeOutboxConsumer()
+                new ZodiacSkillGridUpgradeOutboxConsumer(),
+                new ZodiacSkillGridSelectionOutboxConsumer()
             ],
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
@@ -149,6 +154,10 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public IZodiacSkillGridUpgradeCommandExecutor
         ZodiacSkillGridUpgradeCommands
+    { get; }
+
+    public IZodiacSkillGridSelectionCommandExecutor
+        ZodiacSkillGridSelectionCommands
     { get; }
 
     public bool OutboxEnabled { get; }

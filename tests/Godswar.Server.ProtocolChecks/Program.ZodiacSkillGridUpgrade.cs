@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Godswar.Server.Game;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -100,6 +101,28 @@ internal static partial class Program
                 out var compatibleRequest) &&
             compatibleRequest.IsSkillGridUpgrade,
             "module-zero SID 101 remains compatible with Lua-style requests");
+
+        var noncanonicalPlaceholder = nativeRequest.ToArray();
+        BinaryPrimitives.WriteInt32LittleEndian(
+            noncanonicalPlaceholder.AsSpan(16, sizeof(int)),
+            0);
+        Check.True(
+            ZodiacSyncRequest.TryParse(
+                noncanonicalPlaceholder,
+                out var invalidPlaceholder) &&
+            !invalidPlaceholder.IsSkillGridUpgrade,
+            "SID 101 rejects a noncanonical placeholder server-side");
+
+        var noncanonicalTail = nativeRequest.ToArray();
+        BinaryPrimitives.WriteInt32LittleEndian(
+            noncanonicalTail.AsSpan(20, sizeof(int)),
+            1);
+        Check.True(
+            ZodiacSyncRequest.TryParse(
+                noncanonicalTail,
+                out var invalidTail) &&
+            !invalidTail.IsSkillGridUpgrade,
+            "SID 101 rejects a nonzero tail server-side");
 
         var eligible = CreateGridUpgradeCharacter(
             gridLevel: 1,

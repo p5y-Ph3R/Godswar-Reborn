@@ -4,7 +4,8 @@ Date: 2026-07-30
 
 Source base: `8b2a708ff5cf3429c03a92dbd10cfbefa2976efc`
 
-Status: increment implemented and verified; B09 remains open
+Status: increment implemented and verified; B09 later closed by
+`data-architecture-b09-closure-20260730.md`
 
 ## Outcome
 
@@ -262,11 +263,13 @@ discover the permanent result.
 
 ## Tokenless and right-click limitations
 
-Tokenless opcode-10052 transfers retain the existing compatibility handler.
-This preserves original-client operation when secure identity is absent, but
-does not provide cross-reconnect idempotency, permanent family-15 inbox
-receipts, inventory revision/ledger guarantees, or a strict outbox event.
-This remains an explicit reconciliation gap.
+Tokenless opcode-10052 transfers retain the existing compatibility handler
+only on raw legacy TCP. On a secure connection, every supported stock shape
+must receive identity from the native shim; a tokenless transfer is rejected
+with an authoritative refresh and cannot downgrade around the family-15
+inbox. Raw compatibility preserves original-client operation but cannot
+provide cross-reconnect idempotency, permanent family-15 inbox receipts,
+inventory revision/ledger guarantees, or a strict outbox event.
 
 Right-click equip is opcode `10051`, normally an exact 92-byte packet. The
 stored client-to-server evidence is
@@ -278,11 +281,17 @@ client-to-server hatch capture currently proves that it uses an identical
 request shape.
 
 The native shim cannot safely decide whether those untrusted bytes mean equip
-or hatch. It therefore does not assign family 15 to opcode 10051. Right-click
-equip and pet hatching remain on their existing server-selected compatibility
-paths. Extending durability here requires a broader authoritative bag-item
-activation command or a controlled client protocol change; native heuristics
-or item-hint trust would misclassify eggs and are not acceptable.
+or hatch. It therefore does not assign family 15 to opcode 10051. Raw TCP
+retains the existing server-selected compatibility path. Secure opcode-10051
+traffic now fails closed and receives authoritative state refreshes; it cannot
+downgrade into either compatibility mutation. Extending durability requires a
+broader authoritative bag-item activation command or a controlled client
+protocol change; native heuristics or item-hint trust would misclassify eggs
+and are not acceptable.
+
+The coupled durable bag-item activation and pet-hatch contract is assigned to
+B12. The complete finite mutation audit and safe design alternatives are in
+`data-architecture-b09-mutation-closure-audit-20260730.md`.
 
 ## Verification status
 
@@ -322,7 +331,7 @@ cancellation, and downgrade rejection; and disposable PostgreSQL success,
 eligibility, stale-state, conflict, concurrency, rollback, after-commit,
 stable-ID, ledger, outbox, corruption, and reconciliation scenarios.
 
-## Rollback and remaining B09 work
+## Rollback and later work
 
 Rollback requires a matched prior server and native shim. Already committed
 family-15 inbox, audit, ledger, compatibility-audit, and outbox rows are valid
@@ -335,7 +344,7 @@ limitation remains. Different-state replacement and every retry after a
 durable result are protected. Eliminating ABA requires an authenticated
 durable item-instance token in a controlled client projection and command.
 
-B09 remains open. Tokenless equipment transfers, right-click equip,
-Holy Stone operations, rewards, and remaining inventory and currency
-mutations still need truthful retry identity and authoritative durable
-transactions.
+B09 later closed its finite secure mutation surface in
+`data-architecture-b09-closure-20260730.md`. Right-click bag activation
+remains a B12 feature boundary, and raw TCP remains explicitly
+non-idempotent until its later retirement decision.

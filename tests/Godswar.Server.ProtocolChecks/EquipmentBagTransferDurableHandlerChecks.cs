@@ -20,8 +20,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         await CheckActiveRideBlocksMountTransferDurablyAsync();
         await CheckRideReplayPrecedesRuntimeObservationAsync();
         await CheckUnsupportedLengthCannotDowngradeAsync();
-        await CheckTokenlessTransferUsesCompatibilityPathAsync();
-        await CheckOpcode10051PathIsUnaffectedAsync();
+        await CheckSecureTokenlessTransferFailsClosedAsync();
+        await CheckOpcode10051CompatibilityAndAmbiguityAsync();
         await CheckProviderOutageLeavesOperationPendingAsync();
         await CheckProjectionFailureLeavesOperationPendingAsync();
         await CheckCommittedProjectionMismatchLeavesOperationPendingAsync();
@@ -147,7 +147,7 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
     }
 
     private static async Task
-        CheckTokenlessTransferUsesCompatibilityPathAsync()
+        CheckSecureTokenlessTransferFailsClosedAsync()
     {
         await using var fixture = CreateFixture(
             EquipmentBagTransferExecutionResult.ReplayNotFound());
@@ -158,9 +158,9 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             operationId: null);
 
         Check.Equal(
-            1,
+            0,
             fixture.Store.UnequipCount,
-            "tokenless transfer uses compatibility store");
+            "secure tokenless transfer cannot use compatibility store");
         Check.Equal(
             0,
             fixture.Executor!.ReplayCount,
@@ -170,10 +170,10 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             fixture.Transport.CommandResults.Count,
             "tokenless transfer emits no secure command result");
         Check.Equal(
-            1,
+            0,
             CountTransferAcknowledgements(
                 fixture.Transport.ReadLegacyPackets()),
-            "tokenless transfer keeps stock acknowledgement");
+            "secure tokenless transfer emits no mutation acknowledgement");
     }
 
     private static async Task

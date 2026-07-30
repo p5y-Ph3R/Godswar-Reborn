@@ -89,13 +89,21 @@ internal static partial class
     }
 
     private static GamePacket CreateActivationPacket(
-        int gridIndex = GridIndex)
+        int gridIndex = GridIndex,
+        int value2 = -1,
+        int value3 = 0)
     {
         var packet = Convert.FromHexString(
             "18003928000000000000640001000000FFFFFFFF00000000");
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(12, sizeof(int)),
             gridIndex);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(16, sizeof(int)),
+            value2);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(20, sizeof(int)),
+            value3);
         return new GamePacket(packet);
     }
 

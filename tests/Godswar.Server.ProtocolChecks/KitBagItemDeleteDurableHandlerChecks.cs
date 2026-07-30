@@ -22,8 +22,8 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
         await CheckMismatchedReceiptLeavesPendingAsync();
         await CheckRequestConflictIsTerminalAsync();
         await CheckCancellationLeavesPendingAsync();
-        await CheckTokenlessRequestUsesCompatibilityPathAsync();
-        await CheckNonCanonicalLengthUsesCompatibilityPathAsync();
+        await CheckSecureTokenlessRequestFailsClosedAsync();
+        await CheckIdentifiedNonCanonicalLengthFailsClosedAsync();
     }
 
     private static async Task
@@ -278,7 +278,7 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
     }
 
     private static async Task
-        CheckTokenlessRequestUsesCompatibilityPathAsync()
+        CheckSecureTokenlessRequestFailsClosedAsync()
     {
         await using var fixture = CreateFixture(
             KitBagItemDeleteExecutionResult.ReplayNotFound());
@@ -287,13 +287,29 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
 
         await InvokeDeleteAsync(fixture.Handler, operationId: null);
 
-        AssertCompatibilityResponse(
-            fixture,
-            "tokenless kit-bag deletion");
+        Check.Equal(
+            0,
+            fixture.Store.DeleteCount,
+            "secure tokenless deletion cannot use compatibility store");
+        Check.Equal(
+            0,
+            fixture.Executor!.ReplayCount,
+            "secure tokenless deletion skips durable replay");
+        Check.Equal(
+            0,
+            fixture.Transport.CommandResults.Count,
+            "secure tokenless deletion has no UUID result");
+        var packets = fixture.Transport.ReadClearLegacyPackets();
+        Check.True(
+            packets.Any(packet => ReadOpcode(packet) == 0x2731),
+            "secure tokenless deletion refreshes the bag");
+        Check.True(
+            packets.All(packet => !IsDeleteAcknowledgement(packet)),
+            "secure tokenless deletion sends no delete acknowledgement");
     }
 
     private static async Task
-        CheckNonCanonicalLengthUsesCompatibilityPathAsync()
+        CheckIdentifiedNonCanonicalLengthFailsClosedAsync()
     {
         await using var fixture = CreateFixture(
             KitBagItemDeleteExecutionResult.ReplayNotFound());
@@ -305,8 +321,13 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
             OperationId,
             packetLength: 32);
 
-        AssertCompatibilityResponse(
+        Check.Equal(
+            0,
+            fixture.Store.DeleteCount,
+            "identified non-canonical deletion cannot downgrade");
+        AssertRejectedResponse(
             fixture,
+            SecureLegacyCommandDisposition.Rejected,
             "non-canonical-length kit-bag deletion");
     }
 
@@ -318,34 +339,6 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
                 kitBag))?.Character
         ?? throw new InvalidOperationException(
             "Legacy kit-bag delete result did not hydrate.");
-
-    private static void AssertCompatibilityResponse(
-        DeleteHandlerFixture fixture,
-        string description)
-    {
-        Check.Equal(
-            1,
-            fixture.Store.DeleteCount,
-            $"{description} uses the compatibility store");
-        Check.Equal(
-            0,
-            fixture.Executor!.ReplayCount,
-            $"{description} does not check the durable inbox");
-        Check.Equal(
-            0,
-            fixture.Executor.ExecuteCount,
-            $"{description} does not execute a durable command");
-        Check.Equal(
-            0,
-            fixture.Transport.CommandResults.Count,
-            $"{description} sends no secure command result");
-        var packets = fixture.Transport.ReadClearLegacyPackets();
-        Check.Equal(
-            1,
-            packets.Count,
-            $"{description} sends one stock acknowledgement");
-        AssertDeleteAcknowledgement(packets[0], description);
-    }
 
     private static void AssertDurableResponse(
         DeleteHandlerFixture fixture,

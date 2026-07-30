@@ -1,4 +1,5 @@
 using Godswar.Server.Packets;
+using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -32,6 +33,9 @@ internal static class GearEnhancerProtocol
     public const int FirstGearMentorMenuSubId = 1;
     public const int LastGearMentorMenuSubId = 9;
     public const int FunctionActionPayloadLength = 88;
+    public const int FunctionActionPacketBytes =
+        sizeof(ushort) + sizeof(ushort) +
+        FunctionActionPayloadLength;
     public const int FunctionActionArgumentCount = 18;
     public const int GearArgumentIndex = 6;
     public const int CatalystArgumentIndex = 7;
@@ -77,6 +81,12 @@ internal static class GearEnhancerProtocol
     public const int CombineSucceededResultSubId = 304;
     public static readonly TimeSpan SelectionContextLifetime = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan NativeClearCommitCorrelationLifetime = TimeSpan.FromSeconds(1);
+
+    public static bool IsExactFunctionActionPacket(GamePacket packet) =>
+        packet.Opcode == Opcodes.NpcFunctionAction &&
+        packet.Length == FunctionActionPacketBytes &&
+        packet.Buffer.Length == FunctionActionPacketBytes;
+
     public static GearEnhancerEndpoint ResolveEndpoint(byte camp)
     {
         return camp == GameDefaults.SpartaCamp

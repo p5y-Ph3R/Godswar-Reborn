@@ -132,6 +132,32 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (_session.IsSecure &&
+            !clientOperationId.HasValue)
+        {
+            ClearGearEnhancerSelection();
+            var family =
+                ResolveSecureGearMentorCommandFamily(subId) ??
+                throw new InvalidDataException(
+                    $"Gear Mentor operation {subId} has no command family.");
+            CommandMetrics.RecordUnsupportedLegacyIdentity(family);
+            CommandMetrics.Record(
+                family,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.InvalidIntent);
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    GearEnhancerProtocol.DialogIndex,
+                    GearEnhancerProtocol.SelectedItemMissingResultSubId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            Console.WriteLine(
+                "[gear-mentor] rejected secure commit without " +
+                $"operation UUID family={family}");
+            return;
+        }
+
         if (operation == GearMentorOperation.MakeAttributeStone)
         {
             CommandMetrics.RecordUnsupportedLegacyIdentity(

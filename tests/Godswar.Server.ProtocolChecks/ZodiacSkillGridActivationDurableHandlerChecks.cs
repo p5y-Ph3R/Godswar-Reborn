@@ -16,6 +16,7 @@ internal static partial class
         await CheckTransientPreconditionAsync();
         await CheckMissingOwnerPreconditionAsync();
         await CheckInvalidGridNeverExecutesAsync();
+        await CheckReservedValuesFailClosedAsync();
         await CheckMissingProviderUsesCompatibilityAsync();
         await CheckFailureCannotFabricateSuccessAsync();
     }

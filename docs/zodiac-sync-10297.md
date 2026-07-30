@@ -182,12 +182,32 @@ wrong-owner outcomes have no authoritative durable projection; they settle
 only through the secure terminal result and fabricate no state. See
 [`data-architecture-b09-zodiac-grid-upgrade-20260730.md`](data-architecture-b09-zodiac-grid-upgrade-20260730.md).
 
-SID `102` is a separate native skill-selection mode, not part of activation or
-ordinary grid upgrading. It sends module `255`, `v1=gridIndex`, and a selected
-client skill-kind ID. Combat effects remain intentionally unwired until those
-client IDs (captured examples include `10057` and `20053`) are authoritatively
-mapped to server skill templates and the shipped effect/MP rules are covered
-as a separate slice.
+## Skill-grid selection (SID `102`)
+
+Native `Origin.exe` sends module `255`, SID `102`, `v1=gridIndex`,
+`v2=MagicMini.xml Kind`, and `v3=0`. Module `0` is accepted only for legacy
+compatibility. `-1` clears the selection. The exact native grid-1/Kind-10057
+vector is reverse-derived from the installed binary (there is no stored
+retail request capture):
+
+```text
+1800392800000000FF006600010000004927000000000000
+```
+
+The server owns active-grid state, row-prefix rules, exact profession/Kind
+mapping, learned runtime-skill family, duplicate-in-row prevention, and
+current selection. A Kind maps to the five runtime ranks beginning at
+`(Kind % 10000) * 10`. PostgreSQL locks the owning character and atomically
+commits the exact grid update, permanent audit/inbox receipt, and one
+grid-scoped latest-wins outbox event. Secure native UUIDs use family `21` and
+survive reconnect; raw TCP remains an instrumented compatibility path.
+
+The native response handler blindly writes `v2`, so SID `102` is emitted only
+for the first committed success. Replays and rejections suppress it and use a
+full sync to repair stale UI before the secure terminal result. Combat-stat
+and MP-cost effects remain intentionally unwired as a separate gameplay
+slice. See
+[`data-architecture-b09-zodiac-grid-selection-20260730.md`](data-architecture-b09-zodiac-grid-selection-20260730.md).
 
 ## Captured accumulation event
 
@@ -264,7 +284,8 @@ To replace the emulator rates with retail values, capture a below-cap character 
 - `12`: stone/skill-growth action
 - `100`: activate skill grid (implemented)
 - `101`: upgrade skill grid (implemented)
-- `102`: select the skill assigned to a grid (not implemented)
+- `102`: select the skill assigned to a grid (durable selection implemented;
+  combat effect remains separate)
 
 The unimplemented mutations require server-side requirements, costs, caps, and
 atomic persistence. The client tables provide UI requirements but are not

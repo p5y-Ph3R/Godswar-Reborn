@@ -98,6 +98,8 @@ internal static class CommandMetrics
                 "zodiac_skill_grid_activation",
             CommandFamily.ZodiacSkillGridUpgrade =>
                 "zodiac_skill_grid_upgrade",
+            CommandFamily.ZodiacSkillGridSelection =>
+                "zodiac_skill_grid_selection",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

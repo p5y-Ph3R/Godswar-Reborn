@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -119,6 +120,32 @@ internal sealed partial class GameClientHandler
                 "NpcFunctionActionResponse");
             Console.WriteLine(
                 $"[{workflow}] operation page character={_character.Name} npc={npcId} dialog={dialogIndex} operation={operation}");
+            return;
+        }
+
+        if (_session.IsSecure &&
+            !clientOperationId.HasValue)
+        {
+            ClearGearEnhancerSelection();
+            var family =
+                ResolveSecureGearMentorCommandFamily(subId) ??
+                throw new InvalidDataException(
+                    $"Gear Enhancement operation {subId} has no command family.");
+            CommandMetrics.RecordUnsupportedLegacyIdentity(family);
+            CommandMetrics.Record(
+                family,
+                CommandIdentityStrength.UnsupportedLegacyRetry,
+                CommandOutcome.InvalidIntent);
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    dialogIndex,
+                    GearEnhancerProtocol.InvalidSelectionResultSubId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            Console.WriteLine(
+                "[gear-enhancer] rejected secure commit without " +
+                $"operation UUID family={family}");
             return;
         }
 

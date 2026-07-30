@@ -25,10 +25,6 @@ internal sealed partial class GameClientHandler : IClientHandler
     private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ForgeSelectionTtl = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
-    // The client cadence is 1500 ms. A 25 ms allowance prevents a legitimate
-    // swing from being discarded by timer/socket scheduling jitter.
-    private static readonly TimeSpan BasicAttackCooldown = TimeSpan.FromMilliseconds(1475);
-
     private readonly ClientSession _session;
     private readonly IGameStore _store;
     private readonly GameSessionRegistry _registry;
@@ -107,7 +103,9 @@ internal sealed partial class GameClientHandler : IClientHandler
         IZodiacSkillGridActivationCommandExecutor?
             zodiacSkillGridActivationCommands = null,
         IZodiacSkillGridUpgradeCommandExecutor?
-            zodiacSkillGridUpgradeCommands = null)
+            zodiacSkillGridUpgradeCommands = null,
+        IZodiacSkillGridSelectionCommandExecutor?
+            zodiacSkillGridSelectionCommands = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -142,6 +140,8 @@ internal sealed partial class GameClientHandler : IClientHandler
             zodiacSkillGridActivationCommands;
         _zodiacSkillGridUpgradeCommands =
             zodiacSkillGridUpgradeCommands;
+        _zodiacSkillGridSelectionCommands =
+            zodiacSkillGridSelectionCommands;
         _developerCommands = developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;

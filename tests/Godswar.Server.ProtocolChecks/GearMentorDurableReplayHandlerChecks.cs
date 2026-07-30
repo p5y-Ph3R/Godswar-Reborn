@@ -18,6 +18,10 @@ internal static partial class GearMentorDurableReplayHandlerChecks
 
     public static async Task RunAsync()
     {
+        CheckSecureFunctionActionLengthBoundary();
+        await CheckNonCanonicalSecureFunctionActionRejectedAsync();
+        await CheckNonCanonicalDurableReplayStillWinsAsync();
+        await CheckNonCanonicalRoutedGearMentorNeverExecutesAsync();
         await CheckDurableReplayWinsBeforeRouteRejectionAsync();
         await CheckReplayMissContinuesRouteRejectionAsync();
         await CheckUnavailableExecutorLeavesOperationPendingAsync();
@@ -30,6 +34,8 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         await CheckOriginReconnectReplayPrecedesCurrentSnapshotsAsync();
         await CheckPhysicalGearMentorIgnoresInlineScratchTripletAsync();
         await CheckGearEnhancementReplayUsesStoredEndpointAsync();
+        await CheckSecureTokenlessGearEnhancementFailsClosedAsync();
+        await CheckSecureTokenlessGearMentorTransactionFailsClosedAsync();
     }
 
     private static async Task

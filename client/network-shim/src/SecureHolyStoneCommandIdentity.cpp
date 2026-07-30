@@ -41,6 +41,14 @@ bool IsMutationSubId(std::int32_t subId) noexcept {
         subId == LegacyHolyStoneDrillSubId;
 }
 
+bool IsUnsupportedMutationSubId(std::int32_t subId) noexcept {
+    // The original client labels action 701 as advanced drilling, but no
+    // captured client-to-server commit establishes its argument roles.
+    // Keep its empty page transition untagged and fail closed on every
+    // value-bearing shape until an exact wire capture is available.
+    return subId == LegacyHolyStoneAdvancedDrillSubId;
+}
+
 bool IsLegacyMutationAlias(std::int32_t subId) noexcept {
     // These are server response/page values. The old handler also accepted
     // them client-to-server as Mount, so a secure client must not be able to
@@ -109,7 +117,8 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
     const auto subId = static_cast<std::int32_t>(
         ReadUInt32Little(bytes + 16));
     if (!IsMutationSubId(subId) &&
-        !IsLegacyMutationAlias(subId)) {
+        !IsLegacyMutationAlias(subId) &&
+        !IsUnsupportedMutationSubId(subId)) {
         return LegacyHolyStonePacketKind::UnrelatedOrNavigation;
     }
     if (ReadUInt16Little(bytes) != packetBytes ||
@@ -134,6 +143,11 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
     if (subId == LegacyHolyStoneMountSubId &&
         AreAllArgumentsUnset(arguments)) {
         return LegacyHolyStonePacketKind::UnrelatedOrNavigation;
+    }
+    if (IsUnsupportedMutationSubId(subId)) {
+        return AreAllArgumentsUnset(arguments)
+            ? LegacyHolyStonePacketKind::UnrelatedOrNavigation
+            : LegacyHolyStonePacketKind::InvalidMutation;
     }
     if (IsLegacyMutationAlias(subId)) {
         return LegacyHolyStonePacketKind::InvalidMutation;

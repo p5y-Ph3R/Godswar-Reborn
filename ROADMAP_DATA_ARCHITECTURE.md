@@ -1,6 +1,7 @@
 # Godswar Server Data Architecture Roadmap
 
-Status: implementation-ready, modular planning document.
+Status: implementation roadmap; backlog B01A through B09 completed as of
+2026-07-30, with B10 next.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -34,6 +35,10 @@ document organization; the assessment and recommendations remain intact.
 - [B09 secure native Holy Stone increment](docs/data-architecture-b09-native-holy-stone-20260730.md)
 - [B09 durable Zodiac skill-grid activation increment](docs/data-architecture-b09-zodiac-grid-activation-20260730.md)
 - [B09 durable repeatable Zodiac skill-grid upgrade increment](docs/data-architecture-b09-zodiac-grid-upgrade-20260730.md)
+- [B09 durable Zodiac skill-grid selection increment](docs/data-architecture-b09-zodiac-grid-selection-20260730.md)
+- [B09 advanced Holy Stone evidence boundary](docs/data-architecture-b09-holy-stone-advanced-classification-20260730.md)
+- [B09 reachable mutation closure audit](docs/data-architecture-b09-mutation-closure-audit-20260730.md)
+- [B09 completed closure evidence](docs/data-architecture-b09-closure-20260730.md)
 
 ## Roadmap sections
 

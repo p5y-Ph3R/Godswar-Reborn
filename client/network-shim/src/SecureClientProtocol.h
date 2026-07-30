@@ -83,6 +83,7 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     HolyStoneRemove = 17,
     HolyStoneDrill = 18,
     ZodiacSkillGridUpgrade = 20,
+    ZodiacSkillGridSelection = 21,
 };
 
 struct SecureLegacyCommandResult final {

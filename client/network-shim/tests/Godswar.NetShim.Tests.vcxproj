@@ -109,6 +109,9 @@
     <ClCompile Include="SecureZodiacSkillGridUpgradeIdentityTests.cpp" />
     <ClCompile Include="SecureZodiacSkillGridUpgradeParserTests.cpp" />
     <ClCompile Include="SecureZodiacSkillGridUpgradeRegistryTests.cpp" />
+    <ClCompile Include="SecureZodiacSkillGridSelectionIdentityTests.cpp" />
+    <ClCompile Include="SecureZodiacSkillGridSelectionParserTests.cpp" />
+    <ClCompile Include="SecureZodiacSkillGridSelectionRegistryTests.cpp" />
     <ClCompile Include="SecureOriginEnhancerIdentityTests.cpp" />
     <ClCompile Include="SecureOriginEnhancerPacketTests.cpp" />
     <ClCompile Include="SecureLegacyCommandResultStreamTests.cpp" />
@@ -160,6 +163,7 @@
     <ClCompile Include="..\src\SecureLegacyCommandResult.cpp" />
     <ClCompile Include="..\src\SecureLegacyCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureZodiacSkillGridUpgradeIdentity.cpp" />
+    <ClCompile Include="..\src\SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
@@ -237,6 +241,8 @@
     <ClInclude Include="SecureKitBagItemMoveTestSupport.h" />
     <ClInclude Include="SecureZodiacSkillGridUpgradeIdentityTests.h" />
     <ClInclude Include="SecureZodiacSkillGridUpgradeTestSupport.h" />
+    <ClInclude Include="SecureZodiacSkillGridSelectionIdentityTests.h" />
+    <ClInclude Include="SecureZodiacSkillGridSelectionTestSupport.h" />
     <ClInclude Include="SecureOriginEnhancerIdentityTests.h" />
     <ClInclude Include="SecureOriginEnhancerPacketTests.h" />
     <ClInclude Include="SecureLegacyCommandResultStreamTests.h" />
@@ -288,6 +294,7 @@
     <ClInclude Include="..\src\SecureLegacyCommandIdentity.h" />
     <ClInclude Include="..\src\SecureLegacyFrameStream.h" />
     <ClInclude Include="..\src\SecureZodiacSkillGridUpgradeIdentity.h" />
+    <ClInclude Include="..\src\SecureZodiacSkillGridSelectionIdentity.h" />
     <ClInclude Include="..\src\SecurePendingOperationRegistry.h" />
     <ClInclude Include="..\src\SecureGameControl.h" />
     <ClInclude Include="..\src\SecureGameGrantRegistry.h" />

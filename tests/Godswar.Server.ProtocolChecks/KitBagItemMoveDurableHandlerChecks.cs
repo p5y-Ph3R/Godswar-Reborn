@@ -18,7 +18,7 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
         await CheckTerminalRejectionAsync();
         await CheckStaleDestinationRejectionAsync();
         await CheckRequestConflictIsTerminalAsync();
-        await CheckTokenlessMoveUsesCompatibilityPathAsync();
+        await CheckSecureTokenlessMoveFailsClosedAsync();
         await CheckUuidUnsupportedLengthCannotDowngradeAsync();
         await CheckUuidSameSlotCannotDowngradeAsync();
         await CheckProviderOutageLeavesPendingAsync();
@@ -177,7 +177,7 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
     }
 
     private static async Task
-        CheckTokenlessMoveUsesCompatibilityPathAsync()
+        CheckSecureTokenlessMoveFailsClosedAsync()
     {
         await using var fixture = CreateFixture(
             KitBagItemMoveExecutionResult.ReplayNotFound());
@@ -187,9 +187,9 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
         await InvokeMoveAsync(fixture.Handler, operationId: null);
 
         Check.Equal(
-            1,
+            0,
             fixture.Store.MoveCount,
-            "tokenless kit-bag move uses compatibility store");
+            "secure tokenless move cannot use compatibility store");
         Check.Equal(
             0,
             fixture.Executor!.ReplayCount,
@@ -200,11 +200,11 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
             "tokenless kit-bag move sends no secure result");
         var packets = fixture.Transport.ReadClearLegacyPackets();
         Check.True(
-            packets.Count >= 3,
-            "tokenless kit-bag move sends stock projections");
-        AssertMoveAcknowledgement(
-            packets[0],
-            "tokenless kit-bag move");
+            packets.Any(packet => ReadOpcode(packet) == 0x2731),
+            "secure tokenless move refreshes the bag");
+        Check.True(
+            packets.All(packet => !IsMoveAcknowledgement(packet)),
+            "secure tokenless move sends no move acknowledgement");
     }
 
     private static async Task

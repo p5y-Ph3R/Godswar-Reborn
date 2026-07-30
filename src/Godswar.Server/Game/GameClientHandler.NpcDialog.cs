@@ -93,6 +93,16 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (await TryHandleNonCanonicalSecureGearMentorPacketAsync(
+                packet,
+                npcId,
+                dialogIndex,
+                subId,
+                cancellationToken))
+        {
+            return;
+        }
+
         HolyStoneWireIntent? secureHolyStoneIntent = null;
         HolyStoneWireIntent? rawHolyStoneIntent = null;
         if (packet.ClientOperationId.HasValue &&
@@ -141,7 +151,9 @@ internal sealed partial class GameClientHandler
         {
             var exactNavigation =
                 !packet.ClientOperationId.HasValue &&
-                HolyStoneProtocol.IsExactMountNavigation(packet);
+                (HolyStoneProtocol.IsExactMountNavigation(packet) ||
+                 HolyStoneProtocol.IsExactAdvancedDrillNavigation(
+                     packet));
             var exactNpcId = 0u;
             var exactDialogIndex = 0;
             var exactIntent = default(HolyStoneWireIntent);
@@ -156,6 +168,16 @@ internal sealed partial class GameClientHandler
                 exactDialogIndex == dialogIndex;
             if (!exactNavigation && !exactMutation)
             {
+                if (HolyStoneProtocol.IsAdvancedDrillSubId(subId))
+                {
+                    await RejectUnsupportedAdvancedHolyStoneAsync(
+                        packet,
+                        npcId,
+                        dialogIndex,
+                        cancellationToken);
+                    return;
+                }
+
                 await _session.SendAsync(
                     PacketBuilder.NpcFunctionActionResponse(
                         npcId,
@@ -369,6 +391,16 @@ internal sealed partial class GameClientHandler
 
         if (route.Behavior == NpcDialogueBehavior.HolyStone)
         {
+            if (HolyStoneProtocol.IsAdvancedDrillSubId(subId))
+            {
+                await RejectUnsupportedAdvancedHolyStoneAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    cancellationToken);
+                return;
+            }
+
             if (secureHolyStoneIntent is { } holyStoneIntent)
             {
                 await HandleDurableHolyStoneAsync(

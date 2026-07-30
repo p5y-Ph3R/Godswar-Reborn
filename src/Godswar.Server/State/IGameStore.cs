@@ -108,6 +108,13 @@ internal interface IGameStore : IAsyncDisposable
         int gridIndex,
         CancellationToken cancellationToken = default);
 
+    Task<ZodiacSkillGridSelectionResult?> SelectZodiacSkillGridAsync(
+        int accountId,
+        int characterId,
+        int gridIndex,
+        int selectedSkillKind,
+        CancellationToken cancellationToken = default);
+
     Task<ExperienceBoostState> GetExperienceBoostStateAsync(
         int accountId,
         int characterId,

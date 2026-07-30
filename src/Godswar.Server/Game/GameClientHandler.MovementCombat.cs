@@ -10,6 +10,11 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    // The client cadence is 1500 ms. A 25 ms allowance prevents a legitimate
+    // swing from being discarded by timer/socket scheduling jitter.
+    private static readonly TimeSpan BasicAttackCooldown =
+        TimeSpan.FromMilliseconds(1475);
+
     private async Task<bool> HandleWalkAsync(GamePacket packet, CancellationToken cancellationToken)
     {
         if (_character is null)

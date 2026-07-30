@@ -7,6 +7,7 @@
 #include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
 #include "SecureZodiacSkillGridUpgradeIdentity.h"
+#include "SecureZodiacSkillGridSelectionIdentity.h"
 
 #include <Windows.h>
 
@@ -176,6 +177,17 @@ private:
         const LegacyZodiacSkillGridUpgradeCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeZodiacSkillGridSelection(
+        const LegacyZodiacSkillGridSelectionCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeZodiacPacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor,
+        bool* recognized) noexcept;
     void Prune(std::uint64_t now) noexcept;
     Entry* Find(
         SecureLegacyCommandFamily family,

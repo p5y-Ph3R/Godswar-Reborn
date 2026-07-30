@@ -87,6 +87,10 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameSessionRegistry.ZodiacSkillGrids.cs",
             "UpgradeZodiacSkillGridAsync",
             2),
+        new(
+            "Game/GameSessionRegistry.ZodiacSkillGrids.cs",
+            "SelectZodiacSkillGridAsync",
+            2),
         new("Game/LoginClientHandler.cs", "LoginOrCreateAccountAsync", 1),
         new(
             "Security/Authentication/AccountAuthenticationService.cs",
@@ -150,7 +154,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameSessionRegistry.PlayerStatusMutations.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusPublishing.cs", 1),
         new("Game/GameSessionRegistry.Progression.cs", 13),
-        new("Game/GameSessionRegistry.ZodiacSkillGrids.cs", 6),
+        new("Game/GameSessionRegistry.ZodiacSkillGrids.cs", 9),
         new("Game/LoginClientHandler.cs", 3),
         new("Security/Authentication/AccountAuthenticationService.cs", 12)
     ];
@@ -191,7 +195,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 30),
         new("State/PostgresGameStore.Seeding.World.cs", 18),
         new("State/PostgresGameStore.SkillsAndTalents.cs", 7),
-        new("State/PostgresGameStore.ZodiacSkillGrids.cs", 12)
+        new("State/PostgresGameStore.ZodiacSkillGrids.cs", 20)
     ];
 
     public static readonly ReferenceAllowance[] StateToGameUsings =
@@ -255,6 +259,7 @@ internal static class DataBoundaryArchitectureBaseline
         "ProcessGearMentorAsync",
         "SaveCharacterPositionAsync",
         "SaveCharacterVitalsAsync",
+        "SelectZodiacSkillGridAsync",
         "TransitionPetPresenceAsync",
         "TryCreateAccountWithCredentialAsync",
         "TryReplaceAccountCredentialAsync",
@@ -265,7 +270,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "03C18232F6C601EC1BB1B59F03154301F10192DC7B5574EEA5D39066EF20ECE0";
+        "9368203D1026E96914519DB63712744842103DEC10FAB521FE597A7E5A80C791";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

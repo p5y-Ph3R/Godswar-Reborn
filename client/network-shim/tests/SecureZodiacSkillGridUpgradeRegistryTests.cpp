@@ -60,9 +60,9 @@ void CheckPrincipalCharacterAndUnrelatedPackets(Checks* checks) {
             sizeof(packet),
             &descriptor) ==
                 SecureOperationRegistryResult::Success &&
-        !descriptor.hasOperation &&
-        registry.Snapshot().pending == 0,
-        "Zodiac skill selection received an upgrade marker");
+        descriptor.hasOperation &&
+        registry.Snapshot().pending == 1,
+        "Zodiac skill selection was not routed to its own identity");
 }
 
 void CheckIdentityAndReconnect(Checks* checks) {

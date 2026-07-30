@@ -143,6 +143,72 @@ internal sealed partial class GameSessionRegistry
         }
     }
 
+    public async Task<ZodiacSkillGridSelectionResult?>
+        SelectZodiacSkillGridAsync(
+            ClientSession session,
+            int accountId,
+            GameCharacter character,
+            int gridIndex,
+            int selectedSkillKind,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(character);
+        if (_store is null)
+        {
+            return null;
+        }
+
+        if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
+        {
+            var result = await _store.SelectZodiacSkillGridAsync(
+                accountId,
+                character.Id,
+                gridIndex,
+                selectedSkillKind,
+                cancellationToken);
+            if (result is not null)
+            {
+                ApplyZodiacSkillGridSelectionResult(character, result);
+            }
+
+            return result;
+        }
+
+        if (state.AccountId != accountId ||
+            state.CharacterId != character.Id)
+        {
+            return null;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            var result = await _store.SelectZodiacSkillGridAsync(
+                accountId,
+                character.Id,
+                gridIndex,
+                selectedSkillKind,
+                cancellationToken);
+            if (result is null)
+            {
+                return null;
+            }
+
+            ApplyZodiacSkillGridSelectionResult(state.Character, result);
+            if (!ReferenceEquals(state.Character, character))
+            {
+                ApplyZodiacSkillGridSelectionResult(character, result);
+            }
+
+            return result;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
     private static void ApplyZodiacSkillGridActivationResult(
         GameCharacter character,
         ZodiacSkillGridActivationResult result)
@@ -193,6 +259,30 @@ internal sealed partial class GameSessionRegistry
                 result.CurrentLevel;
             character.ZodiacSkillGridSkillIds[result.GridIndex] =
                 result.SelectedSkillId;
+        }
+    }
+
+    private static void ApplyZodiacSkillGridSelectionResult(
+        GameCharacter character,
+        ZodiacSkillGridSelectionResult result)
+    {
+        if (!ZodiacSkillGridCatalog.IsValidGrid(result.GridIndex))
+        {
+            return;
+        }
+
+        lock (character.ZodiacSync)
+        {
+            character.ZodiacSkillGridLevels =
+                ZodiacSkillGridActivation.NormalizeLevels(
+                    character.ZodiacSkillGridLevels);
+            character.ZodiacSkillGridSkillIds =
+                ZodiacSkillGridActivation.NormalizeSkillIds(
+                    character.ZodiacSkillGridSkillIds);
+            character.ZodiacSkillGridLevels[result.GridIndex] =
+                result.CurrentLevel;
+            character.ZodiacSkillGridSkillIds[result.GridIndex] =
+                result.SelectedSkillKind;
         }
     }
 }

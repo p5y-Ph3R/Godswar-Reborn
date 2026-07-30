@@ -48,18 +48,39 @@ internal sealed partial class GameClientHandler
 
             CommandMetrics.RecordUnsupportedLegacyIdentity(
                 CommandFamily.EquipmentBagTransfer);
+            if (_session.IsSecure)
+            {
+                // The secure native shim assigns an operation ID to every
+                // supported stock opcode-10052 shape. A tokenless request on
+                // that transport is therefore an identity downgrade around
+                // the permanent family-15 inbox. Raw legacy TCP retains its
+                // compatibility path until that transport is retired.
+                await SendEquipmentBagTransferRejectionRefreshAsync(
+                    equipmentSlot,
+                    bagSlot,
+                    cancellationToken);
+                return;
+            }
+
             await HandleEquipmentBagTransferAsync(equipmentSlot, bagSlot, cancellationToken);
             return;
         }
 
         if (TryReadStorageItemDelete(packet.Payload, out var deletedSlot))
         {
-            if (_session.IsSecure &&
-                packet.ClientOperationId is { } clientOperationId &&
-                packet.Length == DurableKitBagDeleteRequestBytes)
+            if (packet.ClientOperationId is { } clientOperationId)
             {
-                await HandleDurableKitBagItemDeleteAsync(
-                    deletedSlot,
+                if (_session.IsSecure &&
+                    packet.Length == DurableKitBagDeleteRequestBytes)
+                {
+                    await HandleDurableKitBagItemDeleteAsync(
+                        deletedSlot,
+                        clientOperationId,
+                        cancellationToken);
+                    return;
+                }
+
+                await RejectUnsupportedDurableKitBagItemDeleteAsync(
                     clientOperationId,
                     cancellationToken);
                 return;
@@ -67,6 +88,12 @@ internal sealed partial class GameClientHandler
 
             CommandMetrics.RecordUnsupportedLegacyIdentity(
                 CommandFamily.KitBagItemDelete);
+            if (_session.IsSecure)
+            {
+                await SendKitBagRefreshAsync(cancellationToken);
+                return;
+            }
+
             await HandleDeleteKitBagItemAsync(deletedSlot, cancellationToken);
             return;
         }
@@ -97,6 +124,12 @@ internal sealed partial class GameClientHandler
 
             CommandMetrics.RecordUnsupportedLegacyIdentity(
                 CommandFamily.KitBagItemMove);
+            if (_session.IsSecure)
+            {
+                await SendKitBagRefreshAsync(cancellationToken);
+                return;
+            }
+
             await HandleMoveKitBagItemAsync(moveSourceSlot, moveDestinationSlot, cancellationToken);
             return;
         }
@@ -146,41 +179,6 @@ internal sealed partial class GameClientHandler
             equipmentSlot,
             bagSlot,
             cancellationToken);
-    }
-
-    private async Task HandleBreakItemAsync(GamePacket packet, CancellationToken cancellationToken)
-    {
-        LogInventoryPacket(packet);
-
-        if (_account is null || _character is null)
-        {
-            Console.WriteLine("[equip-re] BreakItem ignored: no active character");
-            return;
-        }
-
-        if (!TryReadBreakItemEquip(packet.Payload, out var sourceSlot))
-        {
-            Console.WriteLine("[equip-re] BreakItem ignored: payload does not contain a valid bag page/index");
-            return;
-        }
-
-        var itemId = KitBagSlots.GetItemId(_character.KitBag, sourceSlot);
-        if (PetSpeciesCatalog.TryGetByEggItemId(itemId, out _))
-        {
-            await HandlePetEggHatchAsync(
-                sourceSlot,
-                cancellationToken);
-            return;
-        }
-
-        if (!EquipmentSlots.TryGetAuthoritativeSlot(itemId, out _))
-        {
-            Console.WriteLine(
-                $"[equip-re] BreakItem ignored: sourceSlot={sourceSlot} item={itemId} is not genuine equipment");
-            return;
-        }
-
-        await HandleEquipItemAsync(sourceSlot, requestedEquipmentSlot: -1, itemIdHint: 0, cancellationToken);
     }
 
     private async Task HandleCompatibilityTalentUpgradeAsync(
