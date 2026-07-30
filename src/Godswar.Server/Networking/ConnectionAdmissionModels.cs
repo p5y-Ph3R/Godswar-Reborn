@@ -18,6 +18,7 @@ internal enum ConnectionAdmissionRejection : byte
     PrefixLimit = 4,
     InvalidRemoteAddress = 5,
     InvalidEndpointRole = 6,
+    Draining = 7,
 }
 
 internal readonly record struct ConnectionAdmissionOptions(
@@ -60,7 +61,8 @@ internal readonly record struct ConnectionAdmissionSnapshot(
     int GameActiveConnections,
     int GameUnauthenticatedConnections,
     int TrackedUnauthenticatedIpAddresses,
-    int TrackedUnauthenticatedPrefixes);
+    int TrackedUnauthenticatedPrefixes,
+    bool IsDraining = false);
 
 internal interface IConnectionAdmission
 {
@@ -71,6 +73,10 @@ internal interface IConnectionAdmission
         out ConnectionAdmissionRejection rejection);
 
     ConnectionAdmissionSnapshot GetSnapshot();
+
+    void BeginDrain()
+    {
+    }
 }
 
 internal static class ConnectionAdmissionMetricTags
@@ -99,6 +105,7 @@ internal static class ConnectionAdmissionMetricTags
             ConnectionAdmissionRejection.PrefixLimit => "prefix_limit",
             ConnectionAdmissionRejection.InvalidRemoteAddress => "invalid_remote_address",
             ConnectionAdmissionRejection.InvalidEndpointRole => "invalid_endpoint_role",
+            ConnectionAdmissionRejection.Draining => "draining",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(rejection),
                 rejection,

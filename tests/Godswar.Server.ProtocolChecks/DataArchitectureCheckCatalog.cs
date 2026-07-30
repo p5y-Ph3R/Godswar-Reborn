@@ -138,6 +138,7 @@ internal static class DataArchitectureCheckCatalog
             CharacterInventoryOutboxConsumerChecks.RunAsync),
         (
             "PostgreSQL talent command precondition",
-            PostgresTalentUpgradeIntegrationChecks.RunAsync)
+            PostgresTalentUpgradeIntegrationChecks.RunAsync),
+        .. B13OperationsCheckCatalog.All
     ];
 }

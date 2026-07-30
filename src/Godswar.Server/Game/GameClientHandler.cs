@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
@@ -9,6 +8,7 @@ using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Operations;
+using Godswar.Server.Operations.Observability;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -83,7 +83,28 @@ internal sealed partial class GameClientHandler : IClientHandler
                 await _characterStateGate.WaitAsync(cancellationToken);
                 try
                 {
-                    await HandlePacketAsync(packet, cancellationToken);
+                    using var activity = ServerActivity.StartPacket(
+                        ServerTraceOperation.GamePacket,
+                        "game",
+                        _session.IsSecure ? "tls" : "raw_tcp");
+                    try
+                    {
+                        await HandlePacketAsync(packet, cancellationToken);
+                        activity.Complete(
+                            ServerTraceOutcome.Accepted);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        activity.Complete(
+                            ServerTraceOutcome.Cancelled);
+                        throw;
+                    }
+                    catch
+                    {
+                        activity.Complete(
+                            ServerTraceOutcome.Faulted);
+                        throw;
+                    }
                 }
                 finally
                 {

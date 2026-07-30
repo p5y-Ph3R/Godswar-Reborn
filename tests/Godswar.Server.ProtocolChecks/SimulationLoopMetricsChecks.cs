@@ -131,7 +131,8 @@ internal static class SimulationLoopMetricsChecks
         listener.Start();
 
         SimulationLoopMetrics.RecordLoopStarted(
-            SimulationLoopKind.RealtimeMovement);
+            SimulationLoopKind.RealtimeMovement,
+            TimeSpan.FromMilliseconds(50));
         SimulationLoopMetrics.RecordTick(
             SimulationLoopKind.RealtimeMovement,
             TimeSpan.FromMilliseconds(4),

@@ -133,6 +133,12 @@ internal sealed partial class CharacterCheckpointCoordinator :
         }
     }
 
+    internal void ForceStop()
+    {
+        _disposeStop.Cancel();
+        _queue.Writer.TryComplete();
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -149,16 +155,20 @@ internal sealed partial class CharacterCheckpointCoordinator :
 
         if (runTask is not null)
         {
+            var forceStopRequested =
+                _disposeStop.IsCancellationRequested;
             try
             {
                 await runTask.WaitAsync(
-                    _options.ShutdownDrainTimeout,
+                    forceStopRequested
+                        ? _options.CommandTimeout
+                        : _options.ShutdownDrainTimeout,
                     _timeProvider,
                     CancellationToken.None);
             }
-            catch (TimeoutException)
+            catch (TimeoutException) when (!forceStopRequested)
             {
-                _disposeStop.Cancel();
+                ForceStop();
                 try
                 {
                     await ObserveCompletionAsync(runTask).WaitAsync(
@@ -170,13 +180,16 @@ internal sealed partial class CharacterCheckpointCoordinator :
                 {
                 }
             }
+            catch (TimeoutException)
+            {
+            }
             catch
             {
                 // The returned run task remains the authoritative fault.
             }
         }
 
-        _disposeStop.Cancel();
+        ForceStop();
         Task directOperationsDrained;
         lock (_sync)
         {

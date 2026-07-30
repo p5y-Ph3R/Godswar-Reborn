@@ -15,6 +15,7 @@ internal sealed class ConnectionAdmission : IConnectionAdmission
     private int _loginUnauthenticatedConnections;
     private int _gameActiveConnections;
     private int _gameUnauthenticatedConnections;
+    private bool _draining;
 
     public ConnectionAdmission(ConnectionAdmissionOptions options)
     {
@@ -46,6 +47,12 @@ internal sealed class ConnectionAdmission : IConnectionAdmission
 
         lock (_gate)
         {
+            if (_draining)
+            {
+                rejection = ConnectionAdmissionRejection.Draining;
+                return false;
+            }
+
             if (_activeConnections >= _options.MaxActiveConnections)
             {
                 rejection = ConnectionAdmissionRejection.ActiveLimit;
@@ -101,7 +108,16 @@ internal sealed class ConnectionAdmission : IConnectionAdmission
                 _gameActiveConnections,
                 _gameUnauthenticatedConnections,
                 _unauthenticatedByAddress.Count,
-                _unauthenticatedByPrefix.Count);
+                _unauthenticatedByPrefix.Count,
+                _draining);
+        }
+    }
+
+    public void BeginDrain()
+    {
+        lock (_gate)
+        {
+            _draining = true;
         }
     }
 

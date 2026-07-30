@@ -1,0 +1,231 @@
+groups:
+  - name: godswar-server-availability
+    interval: 30s
+    rules:
+      - alert: GodswarServerTargetUnavailable
+        expr: up{job="godswar-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          owner: game-platform
+        annotations:
+          summary: Godswar server management target is unavailable
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarServerNotLive
+        expr: godswar_server_operations_liveness == 0
+        for: 1m
+        labels:
+          severity: critical
+          owner: game-platform
+        annotations:
+          summary: Godswar server reports that it is not live
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarCriticalTaskFaulted
+        expr: |
+          count by (instance, task) (
+            godswar_server_operations_critical_tasks{
+              state="faulted"
+            }
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+          owner: game-platform
+        annotations:
+          summary: A finite Godswar critical task faulted
+          runbook: docs/operations/b13-incident-runbooks.md
+
+  - name: godswar-server-persistence
+    interval: 30s
+    rules:
+      - alert: GodswarCheckpointCoordinatorNotReady
+        expr: godswar_server_checkpoints_ready == 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: Character checkpoint coordinator is not ready
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarOutboxBacklogNotDraining
+        expr: |
+          godswar_outbox_backlog > 0
+          and
+          delta(godswar_outbox_backlog[10m]) >= 0
+          and
+          godswar_outbox_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: Durable outbox backlog is not draining
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarOutboxDispatcherFaulted
+        expr: godswar_outbox_dispatcher_state == 3
+        for: 1m
+        labels:
+          severity: critical
+          owner: game-backend
+        annotations:
+          summary: The durable outbox dispatcher faulted
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarOutboxHeartbeatStale
+        expr: |
+          godswar_outbox_dispatcher_state == 1
+          and
+          godswar_outbox_heartbeat_age_seconds > 60
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: The durable outbox dispatcher heartbeat is stale
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarOutboxPoisonedEvent
+        expr: |
+          sum by (instance, consumer, reason) (
+            increase(godswar_outbox_poison_total[5m])
+          ) > 0
+        labels:
+          severity: critical
+          owner: game-backend
+        annotations:
+          summary: A durable outbox event was poisoned
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarOutboxSequenceGap
+        expr: |
+          sum by (instance, consumer) (
+            increase(godswar_outbox_sequence_gaps_total[5m])
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: A strict outbox consumer observed a sequence gap
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarProgressionRetryAging
+        expr: godswar_progression_retry_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: A durable progression interval remains pending
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarProgressionRetryWorkerFaulted
+        expr: godswar_progression_retry_worker_state == 3
+        for: 1m
+        labels:
+          severity: critical
+          owner: game-backend
+        annotations:
+          summary: The durable progression retry worker faulted
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarProgressionRetryHeartbeatStale
+        expr: |
+          godswar_progression_retry_worker_state == 1
+          and
+          godswar_progression_retry_heartbeat_age_seconds > 60
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: The durable progression retry heartbeat is stale
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarDurableCommandProviderUnavailable
+        expr: |
+          sum by (instance, family) (
+            increase(
+              godswar_commands_total{outcome="provider_unavailable"}[5m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: Durable gameplay commands cannot reach their authority
+          runbook: docs/operations/b13-incident-runbooks.md
+
+  - name: godswar-server-telemetry
+    interval: 30s
+    rules:
+      - alert: GodswarOperationalLogsDropped
+        expr: |
+          sum by (instance, log_event, log_outcome) (
+            increase(
+              godswar_server_logs_events{
+                log_outcome=~"rate_limited|oversized|queue_full|sink_failure"
+              }[5m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-platform
+        annotations:
+          summary: The bounded operational logger is dropping events
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarMetricCollectorDrops
+        expr: |
+          sum by (instance, state) (
+            increase(
+              godswar_server_metrics_collector{
+                state=~"dropped_instruments|dropped_series|dropped_tags|dropped_measurements|truncated_snapshots"
+              }[5m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-platform
+        annotations:
+          summary: The Godswar metrics collector reached a finite bound
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarManagementRequestsRejected
+        expr: |
+          sum by (instance, route, outcome) (
+            increase(
+              godswar_server_operations_management_requests{
+                outcome=~"unauthorized|rejected|bad_request|headers_too_large|overloaded"
+              }[5m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-platform
+        annotations:
+          summary: The private management plane rejected bounded requests
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarSimulationMissedDeadline
+        expr: |
+          sum by (instance, simulation_loop) (
+            increase(
+              godswar_server_simulation_tick_missed_deadlines[5m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: gameplay-runtime
+        annotations:
+          summary: A Godswar simulation loop missed a deadline
+          runbook: docs/operations/b13-incident-runbooks.md

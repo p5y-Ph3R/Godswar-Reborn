@@ -42,6 +42,9 @@ services:
       GODSWAR_SECURE_PHASE4_ACCEPTANCE_FAULTS_ENABLED: "false"
       GODSWAR_AUTH_ALLOW_REGISTRATION: "false"
       GODSWAR_AUTH_ALLOW_PLAINTEXT_MIGRATION: "true"
+      GODSWAR_MANAGEMENT_ENABLED: "true"
+      GODSWAR_MANAGEMENT_BIND_HOST: "127.0.0.1"
+      GODSWAR_MANAGEMENT_PORT: "9090"
     ports: !override
       - target: 6599
         published: "6599"
@@ -71,6 +74,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+    stop_grace_period: 45s
     labels:
       com.reborn.network.profile: secure-hybrid
 

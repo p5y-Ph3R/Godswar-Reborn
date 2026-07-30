@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Godswar.Server.Operations.Observability;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -90,6 +91,17 @@ internal sealed class CharacterCheckpointMetrics : IDisposable
         var tags = Tags(facet, status.ToMetricTag());
         _writeOutcomes.Add(1, tags);
         _writeDuration.Record(duration.TotalMilliseconds, tags);
+        ServerActivity.RecordCompleted(
+            ServerTraceOperation.CheckpointWrite,
+            duration,
+            TraceOutcome(status),
+            ActivityKind.Client,
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.Component,
+                facet.ToMetricTag()),
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.Reason,
+                status.ToMetricTag()));
     }
 
     public void RecordFailure(
@@ -100,6 +112,17 @@ internal sealed class CharacterCheckpointMetrics : IDisposable
         var tags = Tags(facet, outcome);
         _writeOutcomes.Add(1, tags);
         _writeDuration.Record(duration.TotalMilliseconds, tags);
+        ServerActivity.RecordCompleted(
+            ServerTraceOperation.CheckpointWrite,
+            duration,
+            ServerTraceOutcome.Faulted,
+            ActivityKind.Client,
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.Component,
+                facet.ToMetricTag()),
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.Reason,
+                "failure"));
     }
 
     public void RecordRetry(CharacterCheckpointFacet facet)
@@ -126,6 +149,18 @@ internal sealed class CharacterCheckpointMetrics : IDisposable
         {
             { FacetTagName, facet.ToMetricTag() },
             { OutcomeTagName, outcome }
+        };
+
+    private static ServerTraceOutcome TraceOutcome(
+        CharacterCheckpointWriteStatus status) =>
+        status switch
+        {
+            CharacterCheckpointWriteStatus.Applied =>
+                ServerTraceOutcome.Accepted,
+            CharacterCheckpointWriteStatus.AlreadyApplied or
+            CharacterCheckpointWriteStatus.Superseded =>
+                ServerTraceOutcome.Duplicate,
+            _ => ServerTraceOutcome.Rejected
         };
 }
 

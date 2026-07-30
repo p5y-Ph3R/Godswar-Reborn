@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Networking;
@@ -14,6 +15,8 @@ internal sealed partial class GameSessionRegistry
     private readonly object _durableProgressionRetryGate = new();
     private readonly Dictionary<string, DurableProgressionRetryEntry>
         _durableProgressionRetries = [];
+    private long _durableProgressionRetryHeartbeat;
+    private int _durableProgressionRetryWorkerState;
 
     internal int DurableProgressionRetryCount
     {
@@ -34,6 +37,10 @@ internal sealed partial class GameSessionRegistry
             return;
         }
 
+        Volatile.Write(
+            ref _durableProgressionRetryWorkerState,
+            (int)DurableProgressionRetryWorkerState.Running);
+        TouchDurableProgressionRetryHeartbeat();
         using var timer = new PeriodicTimer(
             DurableProgressionRetryPollInterval);
         try
@@ -43,6 +50,7 @@ internal sealed partial class GameSessionRegistry
                 await RetryDurableProgressionIntervalsOnceAsync(
                     DateTimeOffset.UtcNow,
                     cancellationToken);
+                TouchDurableProgressionRetryHeartbeat();
             }
         }
         catch (OperationCanceledException)
@@ -50,7 +58,50 @@ internal sealed partial class GameSessionRegistry
         {
             // Normal host shutdown. The handoff is process-local, so the
             // remaining checkpoint tail is intentionally not extended.
+            Volatile.Write(
+                ref _durableProgressionRetryWorkerState,
+                (int)DurableProgressionRetryWorkerState.Stopped);
+            TouchDurableProgressionRetryHeartbeat();
         }
+        catch
+        {
+            Volatile.Write(
+                ref _durableProgressionRetryWorkerState,
+                (int)DurableProgressionRetryWorkerState.Faulted);
+            throw;
+        }
+    }
+
+    internal DurableProgressionRetryRuntimeSnapshot
+        GetDurableProgressionRetrySnapshot()
+    {
+        int count;
+        DateTimeOffset? oldest = null;
+        lock (_durableProgressionRetryGate)
+        {
+            count = _durableProgressionRetries.Count;
+            if (count > 0)
+            {
+                oldest = _durableProgressionRetries.Values
+                    .Min(entry => entry.EnqueuedAt);
+            }
+        }
+
+        var heartbeat = Volatile.Read(
+            ref _durableProgressionRetryHeartbeat);
+        var heartbeatAge = heartbeat <= 0
+            ? TimeSpan.MaxValue
+            : Stopwatch.GetElapsedTime(heartbeat);
+        return new DurableProgressionRetryRuntimeSnapshot(
+            _progressionIntervalSettlementCommands is not null,
+            (DurableProgressionRetryWorkerState)Volatile.Read(
+                ref _durableProgressionRetryWorkerState),
+            DurableProgressionRetryCapacity,
+            count,
+            oldest is null
+                ? TimeSpan.Zero
+                : DateTimeOffset.UtcNow - oldest.Value,
+            heartbeatAge);
     }
 
     internal async Task<int> RetryDurableProgressionIntervalsOnceAsync(
@@ -241,6 +292,13 @@ internal sealed partial class GameSessionRegistry
         }
     }
 
+    private void TouchDurableProgressionRetryHeartbeat()
+    {
+        Volatile.Write(
+            ref _durableProgressionRetryHeartbeat,
+            Stopwatch.GetTimestamp());
+    }
+
     private static void EnsureRetrySucceeded(
         DurableProgressionRetryEntry entry,
         ProgressionIntervalSettlementExecutionResult result)
@@ -273,8 +331,26 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset nextAttemptAt)
     {
         public CommandEnvelope<ProgressionIntervalSettlementCommand>
-            Envelope { get; } = envelope;
+            Envelope
+        { get; } = envelope;
+        public DateTimeOffset EnqueuedAt { get; } = nextAttemptAt;
         public DateTimeOffset NextAttemptAt { get; set; } = nextAttemptAt;
         public int AttemptCount { get; set; }
     }
 }
+
+internal enum DurableProgressionRetryWorkerState : byte
+{
+    NotStarted = 0,
+    Running = 1,
+    Stopped = 2,
+    Faulted = 3,
+}
+
+internal readonly record struct DurableProgressionRetryRuntimeSnapshot(
+    bool Enabled,
+    DurableProgressionRetryWorkerState State,
+    int Capacity,
+    int QueueDepth,
+    TimeSpan OldestAge,
+    TimeSpan HeartbeatAge);

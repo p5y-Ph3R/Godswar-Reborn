@@ -13,6 +13,7 @@ internal static class ConnectionAdmissionChecks
         CheckLimitRejections();
         CheckAddressNormalizationAndPrefixes();
         CheckAuthenticationAndIdempotentRelease();
+        CheckDrainAdmission();
         CheckConcurrentAdmission();
         return Task.CompletedTask;
     }
@@ -34,12 +35,41 @@ internal static class ConnectionAdmissionChecks
             "per_ip_limit",
             ConnectionAdmissionRejection.PerIpLimit.ToMetricTag(),
             "admission rejection metric tag is finite");
+        Check.Equal(
+            "draining",
+            ConnectionAdmissionRejection.Draining.ToMetricTag(),
+            "drain rejection metric tag is finite");
         Check.Throws<ArgumentOutOfRangeException>(
             () => ((NetworkEndpointRole)byte.MaxValue).ToMetricTag(),
             "unknown role cannot create an attacker-controlled metric tag");
         Check.Throws<ArgumentOutOfRangeException>(
             () => ((ConnectionAdmissionRejection)byte.MaxValue).ToMetricTag(),
             "unknown rejection cannot create an attacker-controlled metric tag");
+    }
+
+    private static void CheckDrainAdmission()
+    {
+        var admission = CreateAdmission();
+        using var existing = Acquire(
+            admission,
+            IPAddress.Loopback,
+            NetworkEndpointRole.Game);
+
+        admission.BeginDrain();
+        admission.BeginDrain();
+
+        var snapshot = admission.GetSnapshot();
+        Check.True(snapshot.IsDraining, "drain state is idempotently visible");
+        Check.Equal(
+            1,
+            snapshot.ActiveConnections,
+            "drain preserves existing active sessions");
+        CheckRejected(
+            admission,
+            NetworkEndpointRole.Login,
+            IPAddress.IPv6Loopback,
+            ConnectionAdmissionRejection.Draining,
+            "new admission while draining");
     }
 
     private static void CheckInvalidInputs()

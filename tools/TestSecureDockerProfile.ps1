@@ -158,7 +158,7 @@ try {
         ($health.Count -eq 2 -and
             $health[0] -ceq 'CMD' -and
             $health[1] -ceq '/app/secure-healthcheck.sh') `
-        'The secure container must use the bounded listener healthcheck.'
+        'The secure container must use the bounded management readiness probe.'
 
     Write-Host 'Secure Docker Compose profile checks passed.'
 }

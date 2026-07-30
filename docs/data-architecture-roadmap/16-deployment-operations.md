@@ -37,7 +37,11 @@ Liveness answers only whether the process and critical supervisor are functionin
 - instance not draining;
 - if multi-instance, ownership/Redis coordination healthy enough for new sessions.
 
-The current secure Docker healthcheck only inspects socket presence and the base server has no healthcheck. Replace this with a private authenticated management endpoint; do not expose metrics/health on public game ports.
+Both current Docker profiles use the bounded in-image management readiness
+probe against a loopback-only listener. The listener is not published on a
+host or public game port. Read-only health, metrics, and trace routes are
+process-local; the state-changing drain route fails closed unless an operator
+supplies its bearer token through a secret file.
 
 ## 16.5 Observability
 

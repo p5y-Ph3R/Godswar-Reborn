@@ -37,7 +37,7 @@ internal sealed class SimulationLoopObservation : IDisposable
         _nextExpectedTimestamp = AddSaturated(
             Stopwatch.GetTimestamp(),
             _periodTimestampTicks);
-        SimulationLoopMetrics.RecordLoopStarted(loop);
+        SimulationLoopMetrics.RecordLoopStarted(loop, period);
     }
 
     public SimulationTickObservation BeginTick()

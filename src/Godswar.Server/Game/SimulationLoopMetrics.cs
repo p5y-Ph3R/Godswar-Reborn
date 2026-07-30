@@ -58,6 +58,8 @@ internal static class SimulationLoopMetrics
         new long[LoopKindCount];
     private static readonly long[] LastHeartbeatTimestamps =
         new long[LoopKindCount];
+    private static readonly long[] ExpectedPeriodTimestampTicks =
+        new long[LoopKindCount];
     private static readonly Meter Meter = new(MeterName);
 
     private static readonly ObservableGauge<long> ActiveLoops =
@@ -110,16 +112,45 @@ internal static class SimulationLoopMetrics
             "ms",
             "Age of the latest heartbeat for each active loop kind.");
 
-    public static void RecordLoopStarted(SimulationLoopKind loop)
+    public static void RecordLoopStarted(
+        SimulationLoopKind loop,
+        TimeSpan expectedPeriod)
     {
         var index = GetIndex(loop);
         var loopTag = LoopTag(loop);
+        var expectedTimestampTicks = checked((long)Math.Ceiling(
+            expectedPeriod.TotalSeconds * Stopwatch.Frequency));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
+            expectedTimestampTicks);
 
         Interlocked.Increment(ref ActiveLoopCounts[index]);
+        Volatile.Write(
+            ref ExpectedPeriodTimestampTicks[index],
+            expectedTimestampTicks);
         Volatile.Write(
             ref LastHeartbeatTimestamps[index],
             Stopwatch.GetTimestamp());
         StartedLoops.Add(1, loopTag);
+    }
+
+    public static SimulationLoopRuntimeSnapshot GetRuntimeSnapshot(
+        SimulationLoopKind loop)
+    {
+        var index = GetIndex(loop);
+        var heartbeat = Volatile.Read(
+            ref LastHeartbeatTimestamps[index]);
+        var periodTicks = Volatile.Read(
+            ref ExpectedPeriodTimestampTicks[index]);
+        return new SimulationLoopRuntimeSnapshot(
+            loop,
+            Volatile.Read(ref ActiveLoopCounts[index]),
+            heartbeat <= 0
+                ? TimeSpan.MaxValue
+                : Stopwatch.GetElapsedTime(heartbeat),
+            periodTicks <= 0
+                ? TimeSpan.Zero
+                : TimeSpan.FromSeconds(
+                    (double)periodTicks / Stopwatch.Frequency));
     }
 
     public static void RecordTick(

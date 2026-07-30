@@ -43,8 +43,10 @@ internal sealed class ClientSession : IAsyncDisposable
 
     public string RemoteEndPoint => _transport.RemoteEndPoint;
 
-    internal bool AllowsPayloadDiagnostics =>
-        _transport is not ISecureLegacyByteTransport;
+    // Raw packet bytes, endpoints, and credential-adjacent fields are never
+    // production diagnostics. Protocol fixtures provide the supported packet
+    // inspection path without placing player data in process logs.
+    internal bool AllowsPayloadDiagnostics => false;
 
     internal bool IsSecure =>
         _transport is ISecureControlChannel;

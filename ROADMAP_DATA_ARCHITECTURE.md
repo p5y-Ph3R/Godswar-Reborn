@@ -1,7 +1,7 @@
 # Godswar Server Data Architecture Roadmap
 
-Status: implementation roadmap; backlog B01A through B12 completed and
-verified as of 2026-07-31, with B13 next.
+Status: implementation roadmap; backlog B01A through B13 completed and
+verified as of 2026-07-31, with B14 next.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -42,6 +42,7 @@ document organization; the assessment and recommendations remain intact.
 - [B10 character checkpoints and bounded persistence workers](docs/data-architecture-b10-character-checkpoints-20260730.md)
 - [B11 retry-safe character lifecycle and tombstones](docs/data-architecture-b11-character-lifecycle-20260730.md)
 - [B12 progression, reward, and pet durability](docs/data-architecture-b12-progression-reward-pets-20260731.md)
+- [B13 structured observability, readiness, and graceful drain](docs/data-architecture-b13-observability-readiness-20260731.md)
 
 ## Roadmap sections
 

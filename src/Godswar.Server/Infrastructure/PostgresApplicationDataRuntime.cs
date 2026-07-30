@@ -213,6 +213,20 @@ internal sealed class PostgresApplicationDataRuntime :
         CancellationToken cancellationToken = default) =>
         _outboxDispatcher.RunAsync(cancellationToken);
 
+    public async Task<bool> CheckHealthAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection =
+            await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command =
+            new NpgsqlCommand("SELECT 1;", connection)
+            {
+                CommandTimeout = 1
+            };
+        return await command.ExecuteScalarAsync(cancellationToken)
+            is int and 1;
+    }
+
     public ValueTask DisposeAsync() =>
         _dataSource.DisposeAsync();
 }

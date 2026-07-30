@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Godswar.Server.Application.Messaging;
+using Godswar.Server.Operations.Observability;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Messaging;
@@ -51,12 +52,31 @@ internal sealed partial class PostgresOutboxDispatcher
             return;
         }
 
+        PostgresCommandMetrics.MarkOutboxStarted();
         try
         {
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await DispatchOnceAsync(cancellationToken);
+                try
+                {
+                    await DispatchOnceAsync(cancellationToken);
+                }
+                catch (NpgsqlException)
+                    when (!cancellationToken.IsCancellationRequested)
+                {
+                    PostgresCommandMetrics.RecordRetry(
+                        "dispatcher",
+                        "database_unavailable");
+                }
+                catch (TimeoutException)
+                    when (!cancellationToken.IsCancellationRequested)
+                {
+                    PostgresCommandMetrics.RecordRetry(
+                        "dispatcher",
+                        "database_timeout");
+                }
+                PostgresCommandMetrics.MarkOutboxPassCompleted();
                 await Task.Delay(
                     _options.PollInterval,
                     cancellationToken);
@@ -68,6 +88,12 @@ internal sealed partial class PostgresOutboxDispatcher
             // Host shutdown is a successful dispatcher stop. A claim that
             // was interrupted remains durably leased and is recovered after
             // expiry by the next process.
+            PostgresCommandMetrics.MarkOutboxStopped();
+        }
+        catch
+        {
+            PostgresCommandMetrics.MarkOutboxFaulted();
+            throw;
         }
     }
 
@@ -80,6 +106,12 @@ internal sealed partial class PostgresOutboxDispatcher
         }
 
         var started = Stopwatch.GetTimestamp();
+        using var activity = ServerActivity.Start(
+            ServerTraceOperation.OutboxDispatch,
+            ActivityKind.Client,
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.Component,
+                "outbox"));
         try
         {
             var processed = 0;
@@ -117,7 +149,24 @@ internal sealed partial class PostgresOutboxDispatcher
             }
 
             await RefreshBacklogAsync(cancellationToken);
+            ServerActivity.Complete(
+                activity,
+                ServerTraceOutcome.Accepted);
             return processed;
+        }
+        catch (OperationCanceledException)
+        {
+            ServerActivity.Complete(
+                activity,
+                ServerTraceOutcome.Cancelled);
+            throw;
+        }
+        catch
+        {
+            ServerActivity.Complete(
+                activity,
+                ServerTraceOutcome.Faulted);
+            throw;
         }
         finally
         {

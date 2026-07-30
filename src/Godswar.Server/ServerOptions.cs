@@ -4,6 +4,7 @@ using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Operations;
 using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server;
@@ -34,6 +35,8 @@ internal sealed class ServerOptions
     public SecureNetworkOptions Secure { get; set; } = new();
 
     public AuthenticationOptions Authentication { get; set; } = new();
+
+    public ServerOperationsOptions Operations { get; set; } = new();
 
     public static ServerOptions Load(string path)
     {
@@ -66,7 +69,9 @@ internal sealed class ServerOptions
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
+        Operations ??= new ServerOperationsOptions();
         Secure.ApplyEnvironment();
+        Operations.ApplyEnvironment();
         Authentication.Iterations = ReadInt(
             "GODSWAR_AUTH_ITERATIONS",
             Authentication.Iterations);
@@ -235,6 +240,7 @@ internal sealed class ServerOptions
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
+        Operations ??= new ServerOperationsOptions();
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
@@ -250,6 +256,11 @@ internal sealed class ServerOptions
         Storage.Outbox.Validate();
         Storage.Checkpoints.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
+        Operations.Validate(
+            Login.Port,
+            Game.Port,
+            Secure.Login.Port,
+            Secure.Game.Port);
         if (Secure.Enabled)
         {
             SecureNetworkOptions.ValidateSecureRuntime(Network);

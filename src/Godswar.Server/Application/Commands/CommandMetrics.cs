@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Godswar.Server.Operations.Observability;
 
 namespace Godswar.Server.Application.Commands;
 
@@ -48,6 +49,17 @@ internal static class CommandMetrics
             { "outcome", OutcomeCode(outcome) }
         };
         Commands.Add(1, tags);
+        ServerActivity.RecordCompleted(
+            ServerTraceOperation.ApplicationCommand,
+            TimeSpan.Zero,
+            TraceOutcome(outcome),
+            ActivityKind.Internal,
+            ServerTraceAttribute.FromCode(
+                ServerTraceTag.CommandFamily,
+                FamilyCode(family)),
+            ServerTraceAttribute.FromBoolean(
+                ServerTraceTag.Duplicate,
+                outcome == CommandOutcome.Duplicate));
     }
 
     public static void RecordUnsupportedLegacyIdentity(
@@ -146,5 +158,17 @@ internal static class CommandMetrics
             CommandOutcome.ProviderUnavailable => "provider_unavailable",
             CommandOutcome.Cancelled => "cancelled",
             _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+
+    private static ServerTraceOutcome TraceOutcome(
+        CommandOutcome outcome) =>
+        outcome switch
+        {
+            CommandOutcome.Accepted => ServerTraceOutcome.Accepted,
+            CommandOutcome.Duplicate => ServerTraceOutcome.Duplicate,
+            CommandOutcome.Cancelled => ServerTraceOutcome.Cancelled,
+            CommandOutcome.ProviderUnavailable =>
+                ServerTraceOutcome.Faulted,
+            _ => ServerTraceOutcome.Rejected
         };
 }
