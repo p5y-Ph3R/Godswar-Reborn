@@ -25,6 +25,22 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (packet.ClientOperationId is { } operationId)
+        {
+            await HandleDurablePetLevelUpgradeAsync(
+                operationId,
+                petId,
+                cancellationToken);
+            return;
+        }
+        if (_session.IsSecure || _petDurableCommands is not null)
+        {
+            Console.WriteLine(
+                $"[pet] rejected level-up without secure operation " +
+                $"identity pet={petId}");
+            return;
+        }
+
         CommandMetrics.RecordUnsupportedLegacyIdentity(
             CommandFamily.PetLevelUpgrade);
         PetLevelUpgradeResult result;

@@ -70,7 +70,8 @@ await using PostgresApplicationDataRuntime?
         runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
             ? new PostgresApplicationDataRuntime(
                 options.Storage.PostgresConnectionString,
-                options.Storage.Outbox)
+                options.Storage.Outbox,
+                options.Game.ZodiacEnergy.Snapshot())
             : null;
 ICharacterSnapshotReader characterSnapshotReader =
     runtimeProfile.StorageProvider switch
@@ -140,6 +141,12 @@ var registry = new GameSessionRegistry(
     options.Game.Monsters.Runtime,
     options.Game.Players.Runtime,
     characterCheckpoints);
+if (postgresApplicationDataRuntime is not null)
+{
+    registry.ConfigureProgressionIntervalSettlement(
+        postgresApplicationDataRuntime
+            .ProgressionIntervalSettlementCommands);
+}
 var gameHandlerFactory = new GameClientHandlerFactory(
     store,
     registry,
@@ -318,7 +325,8 @@ var runtimeTasks = new List<Task>
     registry.RunMonsterRoamingAsync(shutdown.Token),
     registry.RunPlayerRecoveryAsync(shutdown.Token),
     registry.RunExperienceBoostStatusReconciliationAsync(shutdown.Token),
-    registry.RunZodiacEnergyAccrualAsync(shutdown.Token)
+    registry.RunZodiacEnergyAccrualAsync(shutdown.Token),
+    registry.RunDurableProgressionRetryAsync(shutdown.Token)
 };
 var endpointServers = new List<TcpEndpointServer>(2);
 var supervisedTasks = new List<Task>(runtimeTasks);

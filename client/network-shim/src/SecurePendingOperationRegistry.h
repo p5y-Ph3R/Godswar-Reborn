@@ -7,6 +7,7 @@
 #include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
+#include "SecurePetCommandIdentity.h"
 #include "SecureZodiacSkillGridUpgradeIdentity.h"
 #include "SecureZodiacSkillGridSelectionIdentity.h"
 
@@ -128,6 +129,8 @@ private:
         bool capturesLifecycleIntent = false;
         std::uint8_t lifecycleIntent[
             SecureCharacterLifecycleIntentBytes]{};
+        bool capturesPetIntent = false;
+        LegacyPetCommandIntent petIntent{};
         int forgeEquipmentBagSlot = -1;
         int forgePrimaryMaterialBagSlot = -1;
         std::size_t forgeOddsCount = 0;
@@ -167,6 +170,15 @@ private:
     SecureOperationRegistryResult
     DescribeCharacterLifecycle(
         const LegacyCharacterLifecycleIntent& intent,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribePetPacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribePetCommand(
+        const LegacyPetCommandIntent& intent,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeKitBagItemDelete(
@@ -213,6 +225,8 @@ private:
         const std::uint8_t* operationId) noexcept;
     Entry* FindCharacterLifecycle(
         const LegacyCharacterLifecycleIntent& intent) noexcept;
+    Entry* FindPetCommand(
+        const LegacyPetCommandIntent& intent) noexcept;
     Tombstone* FindTombstone(
         const std::uint8_t* operationId) noexcept;
     Entry* FindAvailable() noexcept;

@@ -22,6 +22,7 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         await CheckUnsupportedLengthCannotDowngradeAsync();
         await CheckSecureTokenlessTransferFailsClosedAsync();
         await CheckOpcode10051CompatibilityAndAmbiguityAsync();
+        await CheckActiveRideBlocksDurableRightClickMountAsync();
         await CheckProviderOutageLeavesOperationPendingAsync();
         await CheckProjectionFailureLeavesOperationPendingAsync();
         await CheckCommittedProjectionMismatchLeavesOperationPendingAsync();

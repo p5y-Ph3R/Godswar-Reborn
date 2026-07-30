@@ -263,6 +263,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var pendingReward = damageResult.Killed
+            ? await PrepareMonsterKillRewardAsync(damageResult)
+            : null;
         _nextBasicAttackAt = now + BasicAttackCooldown;
         var attackSelector = _character.Profession is 2 or 3 ? (byte)5 : (byte)3;
         var selfPacket = PacketBuilder.PhysicalDamage(
@@ -309,9 +312,11 @@ internal sealed partial class GameClientHandler
             "BasicAttackWorld",
             healthMutation: damageResult.HealthMutation);
 
-        if (damageResult.Killed)
+        if (pendingReward is not null)
         {
-            await AwardMonsterKillAsync(damageResult, cancellationToken);
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
+                cancellationToken);
         }
 
         Console.WriteLine(

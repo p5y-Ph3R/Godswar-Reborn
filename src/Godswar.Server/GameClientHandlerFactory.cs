@@ -65,5 +65,11 @@ internal sealed class GameClientHandlerFactory(
             characterCheckpoints:
                 characterCheckpoints,
             characterLifecycleCommands:
-                postgresRuntime?.CharacterLifecycleCommands);
+                postgresRuntime?.CharacterLifecycleCommands,
+            monsterDeathRewardCommands:
+                postgresRuntime?.MonsterDeathRewardCommands,
+            petDurableCommands:
+                postgresRuntime?.PetDurableCommands,
+            requiresDurableMonsterRewardCommands:
+                postgresRuntime is not null);
 }

@@ -68,6 +68,7 @@ enum class SecureLegacyCommandDisposition : std::uint8_t {
 };
 
 enum class SecureLegacyCommandFamily : std::uint16_t {
+    PetLevelUpgrade = 2,
     EquipmentForge = 3,
     MakeAttributeStone = 6,
     TransformCrystal = 7,
@@ -86,6 +87,8 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     ZodiacSkillGridSelection = 21,
     CharacterCreate = 22,
     CharacterDelete = 23,
+    BagItemActivation = 26,
+    PetPresenceTransition = 27,
 };
 
 struct SecureLegacyCommandResult final {

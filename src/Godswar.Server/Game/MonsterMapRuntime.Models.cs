@@ -43,7 +43,8 @@ internal sealed record MonsterRuntimeSnapshot(
     MonsterCombatPhase CombatPhase,
     DateTimeOffset? StunnedUntil,
     uint SpawnGeneration,
-    ulong HealthRevision)
+    ulong HealthRevision,
+    Guid RuntimeInstanceId)
 {
     public uint ObjectId => Definition.ObjectId;
 
@@ -60,6 +61,27 @@ internal sealed record MonsterRuntimeSnapshot(
         Facing,
         CurrentHealth,
         MaximumHealth);
+}
+
+internal static class MonsterRuntimeIdentity
+{
+    // Direct runtime construction is used by deterministic parity tests. The
+    // production factory supplies a fresh per-map UUID; this process UUID is
+    // the safe fallback for direct construction.
+    public static Guid ProcessInstanceId { get; } = Guid.NewGuid();
+
+    public static Guid Resolve(Guid? runtimeInstanceId)
+    {
+        var resolved = runtimeInstanceId ?? ProcessInstanceId;
+        if (resolved == Guid.Empty)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(runtimeInstanceId),
+                "A monster runtime identity cannot be empty.");
+        }
+
+        return resolved;
+    }
 }
 
 internal enum MonsterRuntimeUpdateKind

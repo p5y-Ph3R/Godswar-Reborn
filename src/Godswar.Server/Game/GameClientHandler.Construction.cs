@@ -1,5 +1,7 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Zodiac;
@@ -58,7 +60,12 @@ internal sealed partial class GameClientHandler
         ICharacterCheckpointCoordinator?
             characterCheckpoints = null,
         ICharacterLifecycleCommandExecutor?
-            characterLifecycleCommands = null)
+            characterLifecycleCommands = null,
+        IMonsterDeathRewardCommandExecutor?
+            monsterDeathRewardCommands = null,
+        IPetDurableCommandExecutor?
+            petDurableCommands = null,
+        bool requiresDurableMonsterRewardCommands = false)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -98,6 +105,11 @@ internal sealed partial class GameClientHandler
         _characterCheckpoints = characterCheckpoints;
         _characterLifecycleCommands =
             characterLifecycleCommands;
+        _monsterDeathRewardCommands =
+            monsterDeathRewardCommands;
+        _requiresDurableMonsterRewardCommands =
+            requiresDurableMonsterRewardCommands;
+        _petDurableCommands = petDurableCommands;
         _developerCommands =
             developerCommands ?? new DeveloperCommandOptions();
         _legacyAuthenticationAccess = legacyAuthenticationAccess;

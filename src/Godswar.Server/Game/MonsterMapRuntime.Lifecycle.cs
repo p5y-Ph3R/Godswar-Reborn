@@ -9,7 +9,8 @@ internal sealed partial class MonsterMapRuntime
         byte mapId,
         CapturedMonsterSpawn definition,
         DateTimeOffset initializedAt,
-        WorldBossRespawnState? activeWorldBossRespawn)
+        WorldBossRespawnState? activeWorldBossRespawn,
+        Guid runtimeInstanceId)
     {
         if (definition.MapId != mapId)
         {
@@ -35,7 +36,8 @@ internal sealed partial class MonsterMapRuntime
             BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(20, 4)),
             BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(24, 4)),
             CreateSeed(mapId, definition.ObjectId),
-            spawnGeneration: 1);
+            spawnGeneration: 1,
+            runtimeInstanceId);
         if (activeWorldBossRespawn is not null &&
             activeWorldBossRespawn.MapId == mapId &&
             activeWorldBossRespawn.RespawnAt > initializedAt &&
@@ -137,7 +139,8 @@ internal sealed partial class MonsterMapRuntime
             retired.MaximumHealth,
             retired.MaximumHealth,
             retired.RandomState,
-            checked(retired.SpawnGeneration + 1));
+            checked(retired.SpawnGeneration + 1),
+            retired.RuntimeInstanceId);
         respawned.NextMovementAt = now + NextIdleDelay(respawned);
         return respawned;
     }
@@ -168,7 +171,8 @@ internal sealed partial class MonsterMapRuntime
             monster.CombatPhase,
             monster.StunnedUntil,
             monster.SpawnGeneration,
-            monster.HealthRevision);
+            monster.HealthRevision,
+            monster.RuntimeInstanceId);
     }
 
     private static TimeSpan NextIdleDelay(MonsterRuntimeState monster)

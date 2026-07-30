@@ -20,6 +20,24 @@ internal sealed partial class GameClientHandler
         var resultCode = FailureCode(operation);
         PetPresenceTransitionResult? transition = null;
 
+        if (packet.ClientOperationId is { } operationId &&
+            petId != 0)
+        {
+            await HandleDurablePetPresenceAsync(
+                operationId,
+                petId,
+                operation,
+                cancellationToken);
+            return;
+        }
+        if (_session.IsSecure || _petDurableCommands is not null)
+        {
+            Console.WriteLine(
+                $"[pet] rejected presence operation without secure " +
+                $"identity operation={operation} pet={petId}");
+            return;
+        }
+
         if (petId != 0 && _account is not null && _character is not null)
         {
             try

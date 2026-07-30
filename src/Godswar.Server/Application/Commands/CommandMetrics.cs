@@ -108,6 +108,14 @@ internal static class CommandMetrics
                 "character_restore",
             CommandFamily.CharacterPurge =>
                 "character_purge",
+            CommandFamily.BagItemActivation =>
+                "bag_item_activation",
+            CommandFamily.PetPresenceTransition =>
+                "pet_presence_transition",
+            CommandFamily.MonsterRewardSettlement =>
+                "monster_reward_settlement",
+            CommandFamily.ProgressionIntervalSettlement =>
+                "progression_interval_settlement",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 
@@ -121,6 +129,8 @@ internal static class CommandMetrics
                 "client_operation_id",
             CommandIdentityStrength.UnsupportedLegacyRetry =>
                 "unsupported_legacy_retry",
+            CommandIdentityStrength.ServerOperationId =>
+                "server_operation_id",
             _ => throw new ArgumentOutOfRangeException(nameof(strength))
         };
 

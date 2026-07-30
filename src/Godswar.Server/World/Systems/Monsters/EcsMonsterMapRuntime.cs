@@ -18,6 +18,7 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
     private readonly Queue<MonsterRuntimeUpdate> _pendingUpdates = [];
     private readonly MonsterEcsSimulationFrame _frame = new();
     private readonly EcsSystemScheduler _scheduler;
+    private readonly Guid _runtimeInstanceId;
     private DateTimeOffset _lastAdvanceAt;
 
     public EcsMonsterMapRuntime(
@@ -26,10 +27,13 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
         DateTimeOffset initializedAt,
         TimeSpan? corpseDespawnDelay = null,
         TimeSpan? respawnDelay = null,
-        WorldBossRespawnState? activeWorldBossRespawn = null)
+        WorldBossRespawnState? activeWorldBossRespawn = null,
+        Guid? runtimeInstanceId = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         MapId = mapId;
+        _runtimeInstanceId =
+            MonsterRuntimeIdentity.Resolve(runtimeInstanceId);
         var corpseDelay =
             corpseDespawnDelay ??
             MonsterMapRuntime.DefaultCorpseDespawnDelay;
@@ -61,7 +65,8 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
                 initializedAt,
                 corpseDelay,
                 ordinaryRespawnDelay,
-                activeWorldBossRespawn);
+                activeWorldBossRespawn,
+                _runtimeInstanceId);
             _entities.Add(definition.ObjectId, entity);
         }
 

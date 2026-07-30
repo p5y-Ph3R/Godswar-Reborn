@@ -24,7 +24,7 @@ internal static partial class PostgresMigrationFoundationChecks
 
     private static void CheckForwardOnlyCatalog()
     {
-        Check.Equal(32, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
+        Check.Equal(35, PostgresSchemaMigrationCatalog.All.Count, "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
         Check.Equal(
             "20260723_000_legacy_schema_baseline",
@@ -77,7 +77,10 @@ internal static partial class PostgresMigrationFoundationChecks
                     "20260729_028_economy_ledger_hardening",
                     "20260730_029_holy_stone_material_templates",
                     "20260730_030_character_checkpoint_versions",
-                    "20260730_031_character_lifecycle_foundation"
+                    "20260730_031_character_lifecycle_foundation",
+                    "20260731_032_progression_reward_foundation",
+                    "20260731_033_progression_interval_authority",
+                    "20260731_034_pet_durability_foundation"
                 ]),
             "explicit migration catalog remains ordered and complete");
         Check.True(

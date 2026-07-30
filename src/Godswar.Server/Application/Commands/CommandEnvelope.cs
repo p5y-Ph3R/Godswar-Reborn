@@ -30,14 +30,19 @@ internal enum CommandFamily : ushort
     CharacterCreate = 22,
     CharacterDelete = 23,
     CharacterRestore = 24,
-    CharacterPurge = 25
+    CharacterPurge = 25,
+    BagItemActivation = 26,
+    PetPresenceTransition = 27,
+    MonsterRewardSettlement = 28,
+    ProgressionIntervalSettlement = 29
 }
 
 internal enum CommandIdentityStrength : byte
 {
     LegacyAggregateVersion = 1,
     ClientOperationId = 2,
-    UnsupportedLegacyRetry = 3
+    UnsupportedLegacyRetry = 3,
+    ServerOperationId = 4
 }
 
 internal enum CommandTransportKind : byte

@@ -28,6 +28,15 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (packet.ClientOperationId is { } operationId)
+        {
+            await HandleDurableBagItemActivationAsync(
+                operationId,
+                sourceSlot,
+                cancellationToken);
+            return;
+        }
+
         var itemId = KitBagSlots.GetItemId(
             _character.KitBag,
             sourceSlot);
@@ -38,7 +47,7 @@ internal sealed partial class GameClientHandler
                 itemId,
                 out var authoritativeEquipmentSlot);
 
-        if (_session.IsSecure || packet.ClientOperationId.HasValue)
+        if (_session.IsSecure || _petDurableCommands is not null)
         {
             // Opcode 10051 is shared by right-click equipment activation and
             // pet-egg hatching. Until the client supplies a truthful action

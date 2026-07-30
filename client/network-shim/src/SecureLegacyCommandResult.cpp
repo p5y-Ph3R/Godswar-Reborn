@@ -24,6 +24,8 @@ bool IsDisposition(
 bool IsCommandFamily(
     SecureLegacyCommandFamily family) noexcept {
     return family ==
+            SecureLegacyCommandFamily::PetLevelUpgrade ||
+        family ==
             SecureLegacyCommandFamily::EquipmentForge ||
         family ==
             SecureLegacyCommandFamily::MakeAttributeStone ||
@@ -63,7 +65,11 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::CharacterCreate ||
         family ==
-            SecureLegacyCommandFamily::CharacterDelete;
+            SecureLegacyCommandFamily::CharacterDelete ||
+        family ==
+            SecureLegacyCommandFamily::BagItemActivation ||
+        family ==
+            SecureLegacyCommandFamily::PetPresenceTransition;
 }
 
 bool HasValidRevision(

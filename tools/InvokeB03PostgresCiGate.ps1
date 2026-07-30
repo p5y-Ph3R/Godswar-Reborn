@@ -63,8 +63,8 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 32
-    expectedMigrationHead = '20260730_031_character_lifecycle_foundation'
+    expectedMigrationCount = 35
+    expectedMigrationHead = '20260731_034_pet_durability_foundation'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -263,7 +263,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 32 `
+        -InitialMigrationCount 35 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -294,6 +294,9 @@ try {
         'PostgreSQL character-creation economy baseline',
         'PostgreSQL versioned character checkpoints',
         'PostgreSQL durable character lifecycle commands',
+        'PostgreSQL exactly-once monster reward settlement',
+        'PostgreSQL durable online progression intervals',
+        'PostgreSQL retry-safe pet value commands',
         'PostgreSQL outbox dispatcher recovery and ordering',
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',

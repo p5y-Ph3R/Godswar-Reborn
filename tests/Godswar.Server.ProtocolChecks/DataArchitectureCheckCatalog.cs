@@ -44,6 +44,21 @@ internal static class DataArchitectureCheckCatalog
             CharacterLifecycleDurableHandlerChecks.CheckName,
             CharacterLifecycleDurableHandlerChecks.RunAsync),
         (
+            "Monster-death reward migration contract",
+            ProgressionRewardMigrationChecks.RunAsync),
+        (
+            "Durable monster-death reward command contract",
+            MonsterDeathRewardCommandContractChecks.RunAsync),
+        (
+            "Monster-death reward commit-before-delivery boundary",
+            MonsterDeathRewardCommitBoundaryChecks.RunAsync),
+        (
+            "Durable online progression interval settlement",
+            ProgressionIntervalSettlementChecks.RunAsync),
+        (
+            "Durable pet command contracts",
+            PetDurableCommandContractChecks.RunAsync),
+        (
             "Snapshot-backed character client bootstrap",
             CharacterSnapshotHandlerChecks.RunAsync),
         (

@@ -277,6 +277,9 @@ internal sealed partial class GameClientHandler
         }
 
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        var pendingReward = damageResult.Killed
+            ? await PrepareMonsterKillRewardAsync(damageResult)
+            : null;
 
         var appliedDamage = damageResult.BeforeHealth - damageResult.AfterHealth;
         // The working server reports the resolved hit amount even when it exceeds
@@ -398,9 +401,11 @@ internal sealed partial class GameClientHandler
             "SkillCastImpactWorld",
             expectedSpawnGeneration: damageResult.Monster.SpawnGeneration);
 
-        if (damageResult.Killed)
+        if (pendingReward is not null)
         {
-            await AwardMonsterKillAsync(damageResult, cancellationToken);
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
+                cancellationToken);
         }
 
         if (_account is not null)

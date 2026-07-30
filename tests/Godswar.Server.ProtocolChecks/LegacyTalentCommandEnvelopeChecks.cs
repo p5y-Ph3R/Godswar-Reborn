@@ -373,10 +373,10 @@ internal static class LegacyTalentCommandEnvelopeChecks
                 CommandFamily.TalentUpgrade),
             "talent has a natural legacy aggregate version");
         Check.Equal(
-            (int)CommandIdentityStrength.UnsupportedLegacyRetry,
+            (int)CommandIdentityStrength.ClientOperationId,
             (int)LegacyCommandIdentityPolicy.GetIdentityStrength(
                 CommandFamily.PetLevelUpgrade),
-            "pet level cannot fabricate a retry identity");
+            "secure pet level carries a client operation identity");
         Check.Equal(
             (int)CommandIdentityStrength.ClientOperationId,
             (int)LegacyCommandIdentityPolicy.GetIdentityStrength(

@@ -55,6 +55,11 @@ internal sealed partial class PostgresGameStore
             return rejected;
         }
 
+        await EnsureRawPetMutationAllowedAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
         var pets = await LockCharacterPetsAsync(
             connection,
             transaction,

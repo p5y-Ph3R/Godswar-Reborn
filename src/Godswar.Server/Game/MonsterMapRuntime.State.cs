@@ -15,7 +15,8 @@ internal sealed partial class MonsterMapRuntime
             uint currentHealth,
             uint maximumHealth,
             uint randomState,
-            uint spawnGeneration)
+            uint spawnGeneration,
+            Guid runtimeInstanceId)
         {
             Definition = definition;
             HomeX = homeX;
@@ -29,6 +30,7 @@ internal sealed partial class MonsterMapRuntime
             MaximumHealth = maximumHealth;
             RandomState = randomState;
             SpawnGeneration = spawnGeneration;
+            RuntimeInstanceId = runtimeInstanceId;
         }
 
         public CapturedMonsterSpawn Definition { get; }
@@ -56,6 +58,7 @@ internal sealed partial class MonsterMapRuntime
         public DateTimeOffset? RespawnAt { get; set; }
         public uint RandomState { get; set; }
         public uint SpawnGeneration { get; }
+        public Guid RuntimeInstanceId { get; }
         public ulong HealthRevision { get; set; }
         public int? AggroCharacterId { get; set; }
         public MonsterCombatPhase CombatPhase { get; set; }

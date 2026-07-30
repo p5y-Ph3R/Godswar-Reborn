@@ -1,0 +1,280 @@
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Progression;
+using Godswar.Server.Networking;
+
+namespace Godswar.Server.Game;
+
+internal sealed partial class GameSessionRegistry
+{
+    private const int DurableProgressionRetryCapacity = 4_096;
+    private static readonly TimeSpan DurableProgressionRetryPollInterval =
+        TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DurableProgressionMaximumRetryDelay =
+        TimeSpan.FromSeconds(30);
+    private readonly object _durableProgressionRetryGate = new();
+    private readonly Dictionary<string, DurableProgressionRetryEntry>
+        _durableProgressionRetries = [];
+
+    internal int DurableProgressionRetryCount
+    {
+        get
+        {
+            lock (_durableProgressionRetryGate)
+            {
+                return _durableProgressionRetries.Count;
+            }
+        }
+    }
+
+    public async Task RunDurableProgressionRetryAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_progressionIntervalSettlementCommands is null)
+        {
+            return;
+        }
+
+        using var timer = new PeriodicTimer(
+            DurableProgressionRetryPollInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RetryDurableProgressionIntervalsOnceAsync(
+                    DateTimeOffset.UtcNow,
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal host shutdown. The handoff is process-local, so the
+            // remaining checkpoint tail is intentionally not extended.
+        }
+    }
+
+    internal async Task<int> RetryDurableProgressionIntervalsOnceAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var executor = _progressionIntervalSettlementCommands;
+        if (executor is null)
+        {
+            return 0;
+        }
+
+        var due = SnapshotDurableProgressionRetries(
+            entry => entry.NextAttemptAt <= now);
+        var committed = 0;
+        foreach (var entry in due)
+        {
+            try
+            {
+                var result = await ExecuteDurableProgressionIntervalAsync(
+                    executor,
+                    entry.Envelope,
+                    cancellationToken);
+                EnsureRetrySucceeded(entry, result);
+                RemoveDurableProgressionRetry(entry);
+                committed++;
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                RecordDurableProgressionRetryFailure(
+                    entry,
+                    now,
+                    ex);
+            }
+        }
+
+        return committed;
+    }
+
+    private async Task RetryDurableProgressionForCharacterAsync(
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        var executor = _progressionIntervalSettlementCommands;
+        if (executor is null)
+        {
+            return;
+        }
+
+        var pending = SnapshotDurableProgressionRetries(
+            entry => entry.Envelope.Subject.CharacterId == characterId);
+        foreach (var entry in pending)
+        {
+            var result = await ExecuteDurableProgressionIntervalAsync(
+                executor,
+                entry.Envelope,
+                cancellationToken);
+            EnsureRetrySucceeded(entry, result);
+            RemoveDurableProgressionRetry(entry);
+        }
+    }
+
+    private async Task ReleaseDurableProgressionSessionAsync(
+        ClientSession session,
+        CancellationToken cancellationToken)
+    {
+        if (_zodiacOnlineSessions.ContainsKey(session) ||
+            _progressionBoostOnlineSessions.ContainsKey(session) ||
+            !_durableProgressionOnlineSessions.TryGetValue(
+                session,
+                out var state))
+        {
+            return;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (state.Pending is not null)
+            {
+                HandoffDurableProgressionRetry(
+                    state.Pending.Envelope);
+            }
+
+            _durableProgressionOnlineSessions.TryRemove(
+                new KeyValuePair<
+                    ClientSession,
+                    DurableProgressionOnlineSessionState>(
+                    session,
+                    state));
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    private void HandoffDurableProgressionRetry(
+        CommandEnvelope<ProgressionIntervalSettlementCommand> envelope)
+    {
+        lock (_durableProgressionRetryGate)
+        {
+            if (_durableProgressionRetries.ContainsKey(
+                    envelope.OperationId))
+            {
+                return;
+            }
+
+            if (_durableProgressionRetries.Count >=
+                DurableProgressionRetryCapacity)
+            {
+                throw new InvalidOperationException(
+                    "The bounded durable progression retry handoff is full.");
+            }
+
+            _durableProgressionRetries.Add(
+                envelope.OperationId,
+                new DurableProgressionRetryEntry(
+                    envelope,
+                    DateTimeOffset.UtcNow));
+        }
+    }
+
+    private DurableProgressionRetryEntry[]
+        SnapshotDurableProgressionRetries(
+            Func<DurableProgressionRetryEntry, bool> predicate)
+    {
+        lock (_durableProgressionRetryGate)
+        {
+            return _durableProgressionRetries.Values
+                .Where(predicate)
+                .ToArray();
+        }
+    }
+
+    private void RemoveDurableProgressionRetry(
+        DurableProgressionRetryEntry entry)
+    {
+        lock (_durableProgressionRetryGate)
+        {
+            if (_durableProgressionRetries.TryGetValue(
+                    entry.Envelope.OperationId,
+                    out var current) &&
+                ReferenceEquals(current, entry))
+            {
+                _durableProgressionRetries.Remove(
+                    entry.Envelope.OperationId);
+            }
+        }
+    }
+
+    private void RecordDurableProgressionRetryFailure(
+        DurableProgressionRetryEntry entry,
+        DateTimeOffset now,
+        Exception exception)
+    {
+        int attempt;
+        lock (_durableProgressionRetryGate)
+        {
+            if (!_durableProgressionRetries.TryGetValue(
+                    entry.Envelope.OperationId,
+                    out var current) ||
+                !ReferenceEquals(current, entry))
+            {
+                return;
+            }
+
+            attempt = ++entry.AttemptCount;
+            var exponent = Math.Min(attempt - 1, 5);
+            var delay = TimeSpan.FromSeconds(1 << exponent);
+            entry.NextAttemptAt =
+                now + (delay > DurableProgressionMaximumRetryDelay
+                    ? DurableProgressionMaximumRetryDelay
+                    : delay);
+        }
+
+        if (attempt == 1 || (attempt & (attempt - 1)) == 0)
+        {
+            Console.WriteLine(
+                $"[progression] deferred disconnect interval retry " +
+                $"character={entry.Envelope.Subject.CharacterId} " +
+                $"attempt={attempt}: {exception.Message}");
+        }
+    }
+
+    private static void EnsureRetrySucceeded(
+        DurableProgressionRetryEntry entry,
+        ProgressionIntervalSettlementExecutionResult result)
+    {
+        if (!result.IsSuccess ||
+            result.Receipt is null ||
+            result.Projection is null)
+        {
+            throw new InvalidOperationException(
+                "The deferred progression interval was rejected: " +
+                result.Disposition);
+        }
+
+        if (result.Receipt.OnlineSessionId !=
+                entry.Envelope.Command.OnlineSessionId ||
+            result.Receipt.IntervalSequence !=
+                entry.Envelope.Command.IntervalSequence ||
+            result.Receipt.OnlineFromUtc !=
+                entry.Envelope.Command.OnlineFromUtc ||
+            result.Receipt.OnlineUntilUtc !=
+                entry.Envelope.Command.OnlineUntilUtc)
+        {
+            throw new InvalidOperationException(
+                "The deferred progression receipt did not match its envelope.");
+        }
+    }
+
+    private sealed class DurableProgressionRetryEntry(
+        CommandEnvelope<ProgressionIntervalSettlementCommand> envelope,
+        DateTimeOffset nextAttemptAt)
+    {
+        public CommandEnvelope<ProgressionIntervalSettlementCommand>
+            Envelope { get; } = envelope;
+        public DateTimeOffset NextAttemptAt { get; set; } = nextAttemptAt;
+        public int AttemptCount { get; set; }
+    }
+}

@@ -3,6 +3,7 @@ using System.Reflection;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Protocol;
@@ -74,7 +75,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         TransferSlotState? persistedState = null,
         bool projectionFails = false,
         bool providerUnavailable = false,
-        int equipmentSlot = EquipmentSlot)
+        int equipmentSlot = EquipmentSlot,
+        IPetDurableCommandExecutor? petDurableCommands = null)
     {
         var baseSnapshot =
             CharacterSnapshotContractChecks.CreateValidSnapshot();
@@ -130,7 +132,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             registry,
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
-            equipmentBagTransferCommands: executor);
+            equipmentBagTransferCommands: executor,
+            petDurableCommands: petDurableCommands);
         SetField(
             handler,
             "_account",

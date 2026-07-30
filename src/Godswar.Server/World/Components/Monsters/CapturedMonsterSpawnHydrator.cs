@@ -30,10 +30,16 @@ internal static class CapturedMonsterSpawnHydrator
         DateTimeOffset initializedAt,
         TimeSpan corpseDespawnDelay,
         TimeSpan ordinaryRespawnDelay,
-        WorldBossRespawnState? activeWorldBossRespawn)
+        WorldBossRespawnState? activeWorldBossRespawn,
+        Guid runtimeInstanceId)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(definition);
+        if (runtimeInstanceId == Guid.Empty)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(runtimeInstanceId));
+        }
 
         if (definition.MapId != mapId)
         {
@@ -88,7 +94,11 @@ internal static class CapturedMonsterSpawnHydrator
         };
 
         var entity = world.CreateEntity();
-        world.Add(entity, new MonsterIdentityComponent(definition));
+        world.Add(
+            entity,
+            new MonsterIdentityComponent(
+                definition,
+                runtimeInstanceId));
         world.Add(entity, transform);
         world.Add(entity, vitals);
         world.Add(entity, movement);

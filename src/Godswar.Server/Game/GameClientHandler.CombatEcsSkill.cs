@@ -75,6 +75,9 @@ internal sealed partial class GameClientHandler
             _session,
             character,
             advanceWorldRevision: false);
+        var pendingReward = damageResult.Killed
+            ? await PrepareMonsterKillRewardAsync(damageResult)
+            : null;
 
         var appliedDamage =
             damageResult.BeforeHealth - damageResult.AfterHealth;
@@ -198,10 +201,10 @@ internal sealed partial class GameClientHandler
                 expectedSpawnGeneration:
                     damageResult.Monster.SpawnGeneration);
 
-        if (damageResult.Killed)
+        if (pendingReward is not null)
         {
-            await AwardMonsterKillAsync(
-                damageResult,
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
                 cancellationToken);
         }
 

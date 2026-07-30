@@ -35,6 +35,11 @@ internal sealed partial class PostgresGameStore
                 PetEggHatchStatus.CharacterNotFound);
         }
 
+        await EnsureRawPetMutationAllowedAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
         var pets = await LockCharacterPetsAsync(
             connection,
             transaction,

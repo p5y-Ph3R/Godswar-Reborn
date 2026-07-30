@@ -16,7 +16,7 @@
 | B09 - Inventory/currency ledger migration | Protect economy | inventory/crafting/mentor/GM handlers, wallet schema, audits | B08 | Existing valuable commands are idempotent, constrained, audited | races, duplicate, overflow, disconnect-after-commit, reconciliation | economy command/ledger mismatch | Feature-specific compatibility adapter | Large | High |
 | B10 - Checkpoint versions and bounded workers **(completed 2026-07-30)** | Keep I/O off ticks and reject stale saves | position/vitals coordinators, background loops, PG columns, task supervisor | B02-B03 | Bounded queues; position transfer requires exactly one affected row; stale owner/revision cannot overwrite; loop faults stop readiness | zero-row/wrong-owner, delay/reorder/crash/queue/critical fault | dirty age, queue, conflicts, heartbeat | Coordinated prior-binary rollback; additive migration retained | Large | High |
 | B11 - Character lifecycle/tombstone **(completed 2026-07-30)** | Make create/delete recoverable and retry-safe | character handler/store/schema/audit, confirmed account-slot constraint | B07-B08 | Duplicate-safe create/delete; approved character cardinality; restore window; controlled purge | concurrent/lost-ACK create, slot limit, delete, restore/purge | lifecycle/audit counts | Keep tombstone columns; disable purge | Medium | High |
-| B12 - Progression/reward/pet durability | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
+| B12 - Progression/reward/pet durability **(completed 2026-07-31)** | Close post-combat and pet retry gaps | progression/combat kill projection/zodiac/pet files; non-repeating boot/map-runtime + spawn/death event identity | B08-B10 | One reward per death ID that cannot repeat after restart; the same ID survives retries; intervals/pets retry safely | death retry/restart/collision, interval overlap, pet concurrency | duplicate/lost reward, revision conflict | Slice feature flags | Large | High |
 | B13 - Structured logs, traces, readiness | Operate safely | logging call sites, `Operations`, metrics/exporter/private management endpoint | B02-B03; can start in parallel | No secret/raw production payload logs; actionable readiness/traces | redaction, log flood, exporter down, critical-task fault | all section 16 signals | Disable exporter/sink, keep audits | Medium | Medium |
 | B14 - Raw authentication retirement | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Single-process PG/local owner implementation | Large | High |
@@ -73,8 +73,22 @@ tombstones, 30-day restore plus 7-day purge grace, account-owned monotonic
 lifecycle revision, secure client operation families 22/23, service-only
 restore/purge families 24/25, and atomic PostgreSQL inbox/audit/outbox
 evidence. The production guarantee is the secure PostgreSQL path. Raw TCP and
-JSON remain explicitly weaker compatibility paths. The next
-dependency-ordered ticket is B12 progression, reward, and pet durability.
+JSON remain explicitly weaker compatibility paths. Its B12 handoff has since
+been completed and is recorded below.
+
+**B12 completed 2026-07-31:** the
+[implementation evidence](../data-architecture-b12-progression-reward-pets-20260731.md)
+records the globally unique and immutable monster-death reward settlement,
+server-sequenced online progression intervals, secure native pet operation
+families 2/26/27, retry-safe pet hatch/level/presence mutations, and family-26
+inventory ledger/reconciliation integration. PostgreSQL is the production
+authority; JSON and unidentified raw TCP remain weaker local compatibility
+paths. Failed disconnect checkpoints have a bounded process-owned retry
+handoff; a full process crash can still lose only its uncommitted interval
+tail. A crash before the lethal runtime event reaches PostgreSQL remains an
+explicit combat-journal gap, and B15's shared player-ownership fence remains
+required for safe multi-process ownership. The next dependency-ordered ticket
+is B13 structured logs, traces, and readiness.
 
 ## 18.2 First three low-risk implementation tasks
 

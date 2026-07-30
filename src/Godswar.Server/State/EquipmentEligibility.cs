@@ -26,8 +26,25 @@ internal static class EquipmentEligibility
         int characterLevel,
         string equipment,
         uint itemId,
-        int equipmentSlot)
+        int equipmentSlot) =>
+        ValidateEquip(
+            profession,
+            characterLevel,
+            itemId,
+            equipmentSlot,
+            slot => EquipmentSlots.GetItemId(
+                equipment,
+                profession,
+                slot));
+
+    public static EquipmentEligibilityResult ValidateEquip(
+        byte profession,
+        int characterLevel,
+        uint itemId,
+        int equipmentSlot,
+        Func<int, uint> equippedItemAtSlot)
     {
+        ArgumentNullException.ThrowIfNull(equippedItemAtSlot);
         if (!Templates.TryGetValue(itemId, out var template) ||
             !EquipmentSlots.IsEquipmentKind(template.Kind))
         {
@@ -70,7 +87,7 @@ internal static class EquipmentEligibility
             var mountLevel = template.MinLevel ?? 1;
             foreach (var mountGearSlot in MountGearSlots())
             {
-                var gearId = EquipmentSlots.GetItemId(equipment, profession, mountGearSlot);
+                var gearId = equippedItemAtSlot(mountGearSlot);
                 if (gearId != 0 &&
                     Templates.TryGetValue(gearId, out var gearTemplate) &&
                     (gearTemplate.MinLevel ?? 1) > mountLevel)
@@ -82,10 +99,8 @@ internal static class EquipmentEligibility
         }
         else if (IsMountGearKind(template.Kind))
         {
-            var mountId = EquipmentSlots.GetItemId(
-                equipment,
-                profession,
-                EquipmentSlots.Mount);
+            var mountId =
+                equippedItemAtSlot(EquipmentSlots.Mount);
             if (mountId == 0 ||
                 !Templates.TryGetValue(mountId, out var mountTemplate) ||
                 !mountTemplate.Kind.Equals("mount", StringComparison.OrdinalIgnoreCase))

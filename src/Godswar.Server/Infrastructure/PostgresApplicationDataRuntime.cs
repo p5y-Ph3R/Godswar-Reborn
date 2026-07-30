@@ -1,12 +1,19 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.Infrastructure.Pets;
+using Godswar.Server.Infrastructure.Progression;
+using Godswar.Server.Infrastructure.Rewards;
 using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure;
@@ -24,7 +31,8 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public PostgresApplicationDataRuntime(
         string connectionString,
-        PostgresOutboxDispatcherOptions outboxOptions)
+        PostgresOutboxDispatcherOptions outboxOptions,
+        ZodiacEnergyPolicy zodiacEnergyPolicy)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         ArgumentNullException.ThrowIfNull(outboxOptions);
@@ -99,6 +107,19 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresZodiacSkillGridSelectionCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        MonsterDeathRewardCommands =
+            new PostgresMonsterDeathRewardCommandExecutor(
+                _dataSource,
+                outboxOptions);
+        ProgressionIntervalSettlementCommands =
+            new PostgresProgressionIntervalSettlementCommandExecutor(
+                _dataSource,
+                outboxOptions,
+                zodiacEnergyPolicy);
+        PetDurableCommands =
+            new PostgresPetDurableCommandExecutor(
+                _dataSource,
+                outboxOptions);
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
             [
@@ -107,7 +128,10 @@ internal sealed class PostgresApplicationDataRuntime :
                 new CharacterInventoryOutboxConsumer(),
                 new ZodiacSkillGridActivationOutboxConsumer(),
                 new ZodiacSkillGridUpgradeOutboxConsumer(),
-                new ZodiacSkillGridSelectionOutboxConsumer()
+                new ZodiacSkillGridSelectionOutboxConsumer(),
+                new MonsterDeathRewardOutboxConsumer(),
+                new ProgressionIntervalSettlementOutboxConsumer(),
+                new PetDurableOutboxConsumer()
             ],
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
@@ -172,6 +196,16 @@ internal sealed class PostgresApplicationDataRuntime :
     public IZodiacSkillGridSelectionCommandExecutor
         ZodiacSkillGridSelectionCommands
     { get; }
+
+    public IMonsterDeathRewardCommandExecutor
+        MonsterDeathRewardCommands
+    { get; }
+
+    public IProgressionIntervalSettlementCommandExecutor
+        ProgressionIntervalSettlementCommands
+    { get; }
+
+    public IPetDurableCommandExecutor PetDurableCommands { get; }
 
     public bool OutboxEnabled { get; }
 

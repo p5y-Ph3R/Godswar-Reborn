@@ -10,89 +10,104 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private async Task AwardMonsterKillAsync(
-        MonsterDamageResult damageResult,
-        CancellationToken cancellationToken)
+    private async Task<PendingMonsterKillReward?>
+        PrepareMonsterKillRewardAsync(
+            MonsterDamageResult damageResult)
     {
         if (_account is null || _character is null || !damageResult.Killed)
         {
-            return;
+            return null;
         }
 
         var reward = MonsterRewardCatalog.Resolve(damageResult.Monster, _character.Level);
-        if (reward.Experience == 0 && reward.TalentExperience == 0)
-        {
-            await ActivateWorldBossAreaIfApplicableAsync(
-                damageResult,
-                DateTimeOffset.UtcNow,
-                cancellationToken);
-            await SendMonsterDeathProgressionAsync(
-                damageResult.ObjectId,
-                damageResult.Monster.SpawnGeneration,
-                _character.Experience,
-                _character.TalentExperience,
-                _character.TalentPoints,
-                cancellationToken);
-            Console.WriteLine(
-                $"[reward] no eligible reward character={_character.Name} level={_character.Level} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier}");
-            return;
-        }
-
         var rewardTime = DateTimeOffset.UtcNow;
-        ExperienceBoostState experienceBoosts;
-        try
+        var experienceBoosts = ExperienceBoostState.Empty;
+        if (reward.Experience > 0 || reward.TalentExperience > 0)
         {
-            experienceBoosts = await _registry.GetExperienceBoostStateAsync(
-                _session,
-                _account.Id,
-                _character.Id,
-                _character.Camp,
-                _character.CurrentMap,
-                rewardTime,
-                cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            experienceBoosts = ExperienceBoostState.Empty;
-            Console.WriteLine(
-                $"[reward] boost resolution failed character={_character.Name}: {ex.Message}");
+            try
+            {
+                experienceBoosts =
+                    await _registry.GetExperienceBoostStateAsync(
+                        _session,
+                        _account.Id,
+                        _character.Id,
+                        _character.Camp,
+                        _character.CurrentMap,
+                        rewardTime,
+                        CancellationToken.None);
+            }
+            catch (Exception ex)
+                when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine(
+                    $"[reward] boost resolution failed character={_character.Name}: {ex.Message}");
+            }
         }
 
         var awardedExperience = experienceBoosts.ApplyTo(reward.Experience);
         var awardedTalentExperience = experienceBoosts.ApplyToTalent(reward.TalentExperience);
-        await ActivateWorldBossAreaIfApplicableAsync(
-            damageResult,
-            rewardTime,
-            cancellationToken);
 
-        CharacterProgressionResult? progression;
+        MonsterRewardSettlement? settlement;
         try
         {
-            progression = await _store.ApplyMonsterKillRewardAsync(
-                _account.Id,
-                _character.Id,
+            settlement = await SettleMonsterRewardWithImmediateRetryAsync(
+                damageResult,
                 awardedExperience,
                 awardedTalentExperience,
-                cancellationToken);
+                rewardTime);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine(
                 $"[reward] persistence failed character={_character.Name} monster={damageResult.ObjectId}: {ex.Message}");
+            return null;
+        }
+
+        if (settlement is null)
+        {
+            Console.WriteLine(
+                $"[reward] settlement unavailable account={_account.Id} character={_character.Id} monster={damageResult.ObjectId}");
+            return null;
+        }
+
+        ApplyMonsterRewardProjection(settlement);
+        var worldBossControl =
+            await ActivateWorldBossAreaControlIfApplicableAsync(
+                damageResult,
+                rewardTime,
+                settlement.DeathEventId);
+        return new PendingMonsterKillReward(
+            damageResult,
+            reward,
+            experienceBoosts,
+            awardedExperience,
+            awardedTalentExperience,
+            settlement,
+            worldBossControl);
+    }
+
+    private async Task PublishMonsterKillRewardAsync(
+        PendingMonsterKillReward pending,
+        CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
             return;
         }
 
-        if (progression is null)
-        {
-            Console.WriteLine(
-                $"[reward] character missing account={_account.Id} character={_character.Id} monster={damageResult.ObjectId}");
-            return;
-        }
+        var damageResult = pending.DamageResult;
+        var reward = pending.Reward;
+        var experienceBoosts = pending.ExperienceBoosts;
+        var awardedExperience = pending.AwardedExperience;
+        var awardedTalentExperience = pending.AwardedTalentExperience;
+        var settlement = pending.Settlement;
+        var progression = settlement.Progression;
 
         Console.WriteLine(
             $"[reward] character={_character.Name} base-exp={reward.Experience} awarded-exp={awardedExperience} exp-bonus-bps={experienceBoosts.TotalBonusBasisPoints} base-talent-exp={reward.TalentExperience} awarded-talent-exp={awardedTalentExperience} talent-bonus-bps={experienceBoosts.TotalTalentBonusBasisPoints} boosts={string.Join(',', experienceBoosts.ActiveBoosts.Select(boost => boost.StatusId))}");
 
-        if (_registry.PlayerRuntimeMode == PlayerRuntimeMode.Ecs)
+        if (settlement.IsFirstCommit &&
+            _registry.PlayerRuntimeMode == PlayerRuntimeMode.Ecs)
         {
             try
             {
@@ -116,12 +131,10 @@ internal sealed partial class GameClientHandler
             }
         }
 
-        _character.Level = progression.CurrentLevel;
-        _character.Experience = progression.CurrentExperience;
-        _character.TalentExperience = progression.CurrentTalentExperience;
-        _character.TalentPoints = progression.CurrentTalentPoints;
+        ApplyMonsterRewardProjection(settlement);
 
-        if (progression.LevelUps.Count > 0)
+        if (settlement.IsFirstCommit &&
+            progression.LevelUps.Count > 0)
         {
             try
             {
@@ -154,7 +167,9 @@ internal sealed partial class GameClientHandler
 
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
 
-        foreach (var levelUp in progression.LevelUps)
+        foreach (var levelUp in settlement.IsFirstCommit
+                     ? progression.LevelUps
+                     : [])
         {
             await _session.SendAsync(
                 PacketBuilder.PlayerLevelUp(
@@ -184,7 +199,8 @@ internal sealed partial class GameClientHandler
                 "MonsterKillLevelUpWorld");
         }
 
-        if (progression.ExperienceGained > 0)
+        if (settlement.IsFirstCommit &&
+            progression.ExperienceGained > 0)
         {
             await _session.SendAsync(
                 PacketBuilder.ExperienceGain(
@@ -198,7 +214,8 @@ internal sealed partial class GameClientHandler
                 "MonsterKillProgressionStatus");
         }
 
-        if (progression.TalentExperienceGained > 0)
+        if (settlement.IsFirstCommit &&
+            progression.TalentExperienceGained > 0)
         {
             await _session.SendAsync(
                 PacketBuilder.TalentExperienceGain(progression.TalentExperienceGained),
@@ -209,12 +226,13 @@ internal sealed partial class GameClientHandler
         await SendMonsterDeathProgressionAsync(
             damageResult.ObjectId,
             damageResult.Monster.SpawnGeneration,
-            progression.CurrentExperience,
-            progression.CurrentTalentExperience,
-            progression.CurrentTalentPoints,
+            _character.Experience,
+            _character.TalentExperience,
+            _character.TalentPoints,
             cancellationToken);
 
-        if (progression.TalentPointsGained > 0)
+        if (settlement.IsFirstCommit &&
+            progression.TalentPointsGained > 0)
         {
             await _session.SendAsync(
                 BuildLocalPlayerStatusUpdate(),
@@ -222,24 +240,91 @@ internal sealed partial class GameClientHandler
                 "MonsterKillTalentPointCarry");
         }
 
+        await PublishWorldBossAreaControlAsync(
+            pending.WorldBossControl,
+            cancellationToken);
         Console.WriteLine(
-            $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} tier={damageResult.Monster.Definition.Tier} level={progression.PreviousLevel}->{progression.CurrentLevel} exp=+{progression.ExperienceGained}->{progression.CurrentExperience}/{progression.NextLevelExperience} talent-exp=+{progression.TalentExperienceGained}->{progression.CurrentTalentExperience} talent-points=+{progression.TalentPointsGained}->{progression.CurrentTalentPoints}");
+            $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} death={settlement.DeathEventId:N} durable={settlement.IsDurable} first={settlement.IsFirstCommit} level={progression.PreviousLevel}->{_character.Level} exp=+{(settlement.IsFirstCommit ? progression.ExperienceGained : 0)}->{_character.Experience} talent-exp=+{(settlement.IsFirstCommit ? progression.TalentExperienceGained : 0)}->{_character.TalentExperience} talent-points=+{(settlement.IsFirstCommit ? progression.TalentPointsGained : 0)}->{_character.TalentPoints}");
     }
 
-    private async Task ActivateWorldBossAreaIfApplicableAsync(
+    private void ApplyMonsterRewardProjection(
+        MonsterRewardSettlement settlement)
+    {
+        if (_character is null)
+        {
+            return;
+        }
+
+        var progression = settlement.Progression;
+        var authoritative = settlement.Projection;
+        _character.Level =
+            authoritative?.Level ?? progression.CurrentLevel;
+        _character.Experience =
+            authoritative?.Experience ?? progression.CurrentExperience;
+        _character.TalentExperience =
+            authoritative?.TalentExperience ??
+            progression.CurrentTalentExperience;
+        _character.TalentPoints =
+            authoritative?.TalentPoints ??
+            progression.CurrentTalentPoints;
+        _registry.UpdateCharacter(
+            _session,
+            _character,
+            advanceWorldRevision: false);
+    }
+
+    private sealed record PendingMonsterKillReward(
+        MonsterDamageResult DamageResult,
+        MonsterKillReward Reward,
+        ExperienceBoostState ExperienceBoosts,
+        int AwardedExperience,
+        int AwardedTalentExperience,
+        MonsterRewardSettlement Settlement,
+        FactionAreaExperienceControl? WorldBossControl);
+
+    private async Task<MonsterRewardSettlement?>
+        SettleLegacyMonsterRewardAsync(
+            Guid deathEventId,
+            int awardedExperience,
+            int awardedTalentExperience,
+            CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return null;
+        }
+
+        var progression = await _store.ApplyMonsterKillRewardAsync(
+            _account.Id,
+            _character.Id,
+            awardedExperience,
+            awardedTalentExperience,
+            cancellationToken);
+        return progression is null
+            ? null
+            : new MonsterRewardSettlement(
+                deathEventId,
+                progression,
+                Projection: null,
+                IsFirstCommit: true,
+                IsDurable: false);
+    }
+
+    private async Task<FactionAreaExperienceControl?>
+        ActivateWorldBossAreaControlIfApplicableAsync(
         MonsterDamageResult damageResult,
         DateTimeOffset killedAt,
-        CancellationToken cancellationToken)
+        Guid deathEventId)
     {
         if (_character is null ||
             !WorldBossCatalog.Default.IsWorldBoss(
                 _character.CurrentMap,
                 damageResult.Monster.Definition.TemplateKey))
         {
-            return;
+            return null;
         }
 
-        var deathToken = $"{_character.CurrentMap}:{damageResult.ObjectId}:{killedAt.UtcTicks}";
+        var deathToken = $"monster-death:{deathEventId:N}";
         try
         {
             var control = await _store.ActivateWorldBossAreaAsync(
@@ -248,14 +333,30 @@ internal sealed partial class GameClientHandler
                 _character.Camp,
                 killedAt,
                 deathToken,
-                cancellationToken);
-            if (control is null)
-            {
-                return;
-            }
-
+                CancellationToken.None);
+            return control;
+        }
+        catch (Exception ex)
+        {
             Console.WriteLine(
-                $"[world-boss] area-control map={control.MapId} camp={control.ControllingCamp} boss={control.BossTemplateKey} expires={control.ExpiresAt:O}");
+                $"[world-boss] area-control activation failed map={_character.CurrentMap} boss={damageResult.Monster.Definition.TemplateKey}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task PublishWorldBossAreaControlAsync(
+        FactionAreaExperienceControl? control,
+        CancellationToken cancellationToken)
+    {
+        if (control is null)
+        {
+            return;
+        }
+
+        Console.WriteLine(
+            $"[world-boss] area-control map={control.MapId} camp={control.ControllingCamp} boss={control.BossTemplateKey} expires={control.ExpiresAt:O}");
+        try
+        {
             await _registry.SendExperienceBoostStatusesAsync(
                 mapId: control.MapId,
                 camp: null,
@@ -265,7 +366,7 @@ internal sealed partial class GameClientHandler
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine(
-                $"[world-boss] area-control activation failed map={_character.CurrentMap} boss={damageResult.Monster.Definition.TemplateKey}: {ex.Message}");
+                $"[world-boss] status refresh deferred map={control.MapId} boss={control.BossTemplateKey}: {ex.Message}");
         }
     }
 

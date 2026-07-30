@@ -156,6 +156,9 @@ SecurePendingOperationRegistry::DescribePacket(
     if (lifecycleResult != SecureOperationRegistryResult::Success ||
         descriptor->hasOperation)
         return lifecycleResult;
+    const auto petResult = DescribePetPacket(packet, packetBytes, now, descriptor);
+    if (petResult != SecureOperationRegistryResult::Success ||
+        descriptor->hasOperation) return petResult;
     if (IsLegacyForgeOpcode(opcode)) {
         return DescribeForgePacket(
             packet,
@@ -469,7 +472,6 @@ SecurePendingOperationRegistry::Resolve(
     if (!ReadNow(&now)) {
         return SecureOperationRegistryResult::ClockFailure;
     }
-
     AcquireSRWLockExclusive(&lock_);
     Prune(now);
     Entry* entry = FindByOperationId(result.operationId);

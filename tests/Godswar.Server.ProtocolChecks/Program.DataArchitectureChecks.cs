@@ -88,6 +88,17 @@ internal static partial class Program
                 PostgresCharacterLifecycleCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresMonsterDeathRewardIntegrationChecks.CheckName,
+                PostgresMonsterDeathRewardIntegrationChecks.RunAsync),
+            (
+                PostgresProgressionIntervalSettlementIntegrationChecks
+                    .CheckName,
+                PostgresProgressionIntervalSettlementIntegrationChecks
+                    .RunAsync),
+            (
+                PostgresPetDurableCommandIntegrationChecks.CheckName,
+                PostgresPetDurableCommandIntegrationChecks.RunAsync),
+            (
                 PostgresEconomyLedgerMigrationIntegrationChecks.CheckName,
                 PostgresEconomyLedgerMigrationIntegrationChecks.RunAsync),
             (

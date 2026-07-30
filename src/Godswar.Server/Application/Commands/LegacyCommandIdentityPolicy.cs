@@ -29,12 +29,16 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.CharacterCreate or
             CommandFamily.CharacterDelete or
             CommandFamily.CharacterRestore or
-            CommandFamily.CharacterPurge =>
+            CommandFamily.CharacterPurge or
+            CommandFamily.BagItemActivation or
+            CommandFamily.PetPresenceTransition or
+            CommandFamily.PetLevelUpgrade =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.ZodiacSkillGridSelection =>
                 CommandIdentityStrength.ClientOperationId,
-            CommandFamily.PetLevelUpgrade =>
-                CommandIdentityStrength.UnsupportedLegacyRetry,
+            CommandFamily.MonsterRewardSettlement or
+            CommandFamily.ProgressionIntervalSettlement =>
+                CommandIdentityStrength.ServerOperationId,
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 }

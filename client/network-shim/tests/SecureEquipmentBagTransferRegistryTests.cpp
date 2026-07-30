@@ -4,7 +4,7 @@ namespace {
 
 using namespace equipment_bag_transfer_test;
 
-void CheckSharedOpcode10051StaysUnmarked(Checks* checks) {
+void CheckSharedOpcode10051UsesBagActivationIdentity(Checks* checks) {
     Hooks hooks{};
     SecurePendingOperationRegistry registry(
         &hooks,
@@ -17,8 +17,9 @@ void CheckSharedOpcode10051StaysUnmarked(Checks* checks) {
 
     // captures/working-multiplayer-20260514-193356.log:5840-5841.
     // This is the captured client-to-server right-click request. Server-side
-    // routing also uses opcode 10051 for pet-egg activation after resolving
-    // the authoritative bag item, so the shim cannot classify the operation.
+    // routing also uses opcode 10051 for pet-egg activation. The stable intent
+    // is the authoritative bag slot; the server decides whether that slot is
+    // equipment or an egg without trusting the client item hint.
     const std::uint8_t packet[92]{
         0x5C, 0x00, 0x43, 0x27, 0x49, 0xF9, 0x93, 0x77,
         0xDB, 0x05, 0x00, 0x00, 0x01, 0x00, 0x17, 0x00,
@@ -41,9 +42,9 @@ void CheckSharedOpcode10051StaysUnmarked(Checks* checks) {
                 SecureOperationRegistryResult::Success &&
             descriptor.packetBytes == sizeof(packet) &&
             descriptor.opcode == 10051 &&
-            !descriptor.hasOperation &&
-            registry.Snapshot().pending == 0,
-        "Shared opcode 10051 received an operation marker");
+            descriptor.hasOperation &&
+            registry.Snapshot().pending == 1,
+        "Shared opcode 10051 missed its bag-activation operation marker");
 }
 
 void CheckPrincipalCharacterAndIdentity(Checks* checks) {
@@ -411,7 +412,7 @@ void CheckResultCodec(Checks* checks) {
 
 int RunSecureEquipmentBagTransferRegistryTests() {
     Checks checks{};
-    CheckSharedOpcode10051StaysUnmarked(&checks);
+    CheckSharedOpcode10051UsesBagActivationIdentity(&checks);
     CheckPrincipalCharacterAndIdentity(&checks);
     CheckPrincipalAndCharacterIsolation(&checks);
     CheckTerminalSettlement(&checks);

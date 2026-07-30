@@ -41,7 +41,8 @@ internal static class MonsterEcsState
             combat.Phase,
             combat.StunnedUntil,
             vitals.SpawnGeneration,
-            vitals.HealthRevision);
+            vitals.HealthRevision,
+            identity.RuntimeInstanceId);
     }
 
     public static void StopCombatMovement(

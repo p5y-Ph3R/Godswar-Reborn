@@ -28,6 +28,7 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
     private readonly Queue<MonsterRuntimeUpdate> _pendingUpdates = new();
     private readonly TimeSpan _corpseDespawnDelay;
     private readonly TimeSpan _respawnDelay;
+    private readonly Guid _runtimeInstanceId;
 
     public MonsterMapRuntime(
         byte mapId,
@@ -35,10 +36,13 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
         DateTimeOffset initializedAt,
         TimeSpan? corpseDespawnDelay = null,
         TimeSpan? respawnDelay = null,
-        WorldBossRespawnState? activeWorldBossRespawn = null)
+        WorldBossRespawnState? activeWorldBossRespawn = null,
+        Guid? runtimeInstanceId = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         MapId = mapId;
+        _runtimeInstanceId =
+            MonsterRuntimeIdentity.Resolve(runtimeInstanceId);
         _corpseDespawnDelay = corpseDespawnDelay ?? DefaultCorpseDespawnDelay;
         _respawnDelay = respawnDelay ?? DefaultRespawnDelay;
         if (_corpseDespawnDelay <= TimeSpan.Zero)
@@ -63,7 +67,8 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                     mapId,
                     definition,
                     initializedAt,
-                    activeWorldBossRespawn));
+                    activeWorldBossRespawn,
+                    _runtimeInstanceId));
     }
 
     public byte MapId { get; }

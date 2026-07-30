@@ -4,7 +4,8 @@ using Godswar.Server.State;
 namespace Godswar.Server.World.Components.Monsters;
 
 internal readonly record struct MonsterIdentityComponent(
-    CapturedMonsterSpawn Definition);
+    CapturedMonsterSpawn Definition,
+    Guid RuntimeInstanceId);
 
 internal struct MonsterTransformComponent
 {

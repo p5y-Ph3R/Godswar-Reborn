@@ -103,6 +103,21 @@ internal sealed partial class GameClientHandler
         }
 
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+        var pendingRewards = new List<PendingMonsterKillReward>();
+        foreach (var hit in hits)
+        {
+            if (!hit.Result.Killed)
+            {
+                continue;
+            }
+
+            var pendingReward =
+                await PrepareMonsterKillRewardAsync(hit.Result);
+            if (pendingReward is not null)
+            {
+                pendingRewards.Add(pendingReward);
+            }
+        }
 
         var selfVisual = PacketBuilder.SelfTargetSkillCastVisual(
             packet.Buffer,
@@ -186,12 +201,11 @@ internal sealed partial class GameClientHandler
             "AreaSkill",
             publishCastVisual);
 
-        foreach (var hit in hits)
+        foreach (var pendingReward in pendingRewards)
         {
-            if (hit.Result.Killed)
-            {
-                await AwardMonsterKillAsync(hit.Result, cancellationToken);
-            }
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
+                cancellationToken);
         }
 
         if (_account is not null)

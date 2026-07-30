@@ -189,6 +189,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                                         ARRAY[
                                             'wallet_revision',
                                             'inventory_revision',
+                                            'progression_reward_revision',
                                             'position_revision',
                                             'checkpoint_owner_id',
                                             'checkpoint_owner_generation',

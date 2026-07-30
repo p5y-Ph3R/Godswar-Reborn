@@ -1,7 +1,7 @@
 # B11 character lifecycle and tombstones
 
 Date: 2026-07-30
-Status: implementation complete; final verification results pending
+Status: completed and verified
 Next roadmap ticket: B12 - progression, reward, and pet durability
 
 ## Outcome
