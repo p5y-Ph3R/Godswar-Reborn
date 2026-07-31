@@ -33,6 +33,15 @@ internal sealed class LegacyCharacterCheckpointStore(
             if (state.Owner is { } existing &&
                 existing.OwnerId == ownerId)
             {
+                if (_gameStore is ILocalPlayerOwnershipRegistry
+                    existingOwnershipRegistry)
+                {
+                    await existingOwnershipRegistry.BindAsync(
+                        accountId,
+                        characterId,
+                        existing,
+                        cancellationToken);
+                }
                 return new CharacterCheckpointOwnership(
                     existing,
                     state.Position.Revision,
@@ -53,9 +62,18 @@ internal sealed class LegacyCharacterCheckpointStore(
 
             var generation = checked(state.Generation + 1);
             state.Generation = generation;
-            state.Owner = new PlayerOwnershipFence(
+            var owner = new PlayerOwnershipFence(
                 ownerId,
                 generation);
+            if (_gameStore is ILocalPlayerOwnershipRegistry ownershipRegistry)
+            {
+                await ownershipRegistry.BindAsync(
+                    accountId,
+                    characterId,
+                    owner,
+                    cancellationToken);
+            }
+            state.Owner = owner;
             state.Position = new PositionState(
                 character.CurrentMap,
                 character.PositionX,
@@ -218,6 +236,15 @@ internal sealed class LegacyCharacterCheckpointStore(
                 return CharacterCheckpointReleaseStatus.OwnershipLost;
             }
 
+            if (_gameStore is ILocalPlayerOwnershipRegistry ownershipRegistry &&
+                !await ownershipRegistry.ReleaseAsync(
+                    accountId,
+                    characterId,
+                    owner,
+                    cancellationToken))
+            {
+                return CharacterCheckpointReleaseStatus.OwnershipLost;
+            }
             state.Owner = null;
             _states.TryRemove(
                 new KeyValuePair<CharacterKey, LocalState>(key, state));

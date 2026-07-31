@@ -30,19 +30,37 @@ internal static class DurableRegistryCompositionChecks
     {
         var progression = new ProgressionExecutorStub();
         var checkpoints = new GameHandlerCheckpointCoordinatorStub();
+        var focusedStore = new FocusedStore();
 
         Check.Throws<InvalidOperationException>(
             () => _ = new GameSessionRegistry(
+                store: focusedStore,
                 progressionIntervalSettlementCommands: progression,
                 requiresDurablePlayerPersistence: true),
             "durable registry rejects missing checkpoint coordinator");
         Check.Throws<InvalidOperationException>(
             () => _ = new GameSessionRegistry(
+                store: focusedStore,
                 checkpointCoordinator: checkpoints,
                 requiresDurablePlayerPersistence: true),
             "durable registry rejects missing progression executor");
+        Check.Throws<InvalidOperationException>(
+            () => _ = new GameSessionRegistry(
+                checkpointCoordinator: checkpoints,
+                progressionIntervalSettlementCommands: progression,
+                experienceBoosts: focusedStore,
+                requiresDurablePlayerPersistence: true),
+            "durable registry rejects missing Zodiac store");
+        Check.Throws<InvalidOperationException>(
+            () => _ = new GameSessionRegistry(
+                checkpointCoordinator: checkpoints,
+                progressionIntervalSettlementCommands: progression,
+                zodiacLevelStore: focusedStore,
+                requiresDurablePlayerPersistence: true),
+            "durable registry rejects missing experience-boost reader");
 
         var complete = new GameSessionRegistry(
+            store: focusedStore,
             checkpointCoordinator: checkpoints,
             progressionIntervalSettlementCommands: progression,
             requiresDurablePlayerPersistence: true);
@@ -98,6 +116,7 @@ internal static class DurableRegistryCompositionChecks
             CurrentMap = State.GameDefaults.SpartaCapitalMap
         };
         var durable = new GameSessionRegistry(
+            store: new FocusedStore(),
             checkpointCoordinator:
                 new GameHandlerCheckpointCoordinatorStub(),
             progressionIntervalSettlementCommands:
@@ -357,4 +376,6 @@ internal static class DurableRegistryCompositionChecks
             throw new NotSupportedException(
                 "Composition checks do not execute progression.");
     }
+
+    private sealed class FocusedStore : GameStoreTestStub;
 }

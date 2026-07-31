@@ -81,12 +81,12 @@ internal sealed partial class GameClientHandler
         IReadOnlyList<PetBootstrapSnapshot> pets;
         try
         {
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.GetOwnedPets);
-            pets = await _store.GetOwnedPetsAsync(
+            pets = (await _ownedPetSnapshots.ReadOwnedPetsAsync(
                 _account.Id,
                 _character.Id,
-                cancellationToken);
+                cancellationToken))
+                .Select(CharacterLoadSnapshotHydrator.MapPet)
+                .ToArray();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

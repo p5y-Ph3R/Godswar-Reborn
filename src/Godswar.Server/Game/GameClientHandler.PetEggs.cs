@@ -63,12 +63,13 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         try
         {
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.GetOwnedPets);
-            var ownedPets = await _store.GetOwnedPetsAsync(
+            var ownedPets =
+                (await _ownedPetSnapshots.ReadOwnedPetsAsync(
                 _account.Id,
                 _character.Id,
-                cancellationToken);
+                cancellationToken))
+                .Select(CharacterLoadSnapshotHydrator.MapPet)
+                .ToArray();
             await _session.SendAsync(
                 PacketBuilder.OwnedPetList(ownedPets),
                 cancellationToken,

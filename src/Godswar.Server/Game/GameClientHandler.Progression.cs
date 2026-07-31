@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Networking;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.World;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -144,14 +145,17 @@ internal sealed partial class GameClientHandler
         {
             try
             {
-                LegacyPersistenceMetrics.Record(
-                    LegacyPersistenceOperation.GetCharacterStats);
-                var refreshedStats = await _store.GetCharacterStatsAsync(
-                    _account.Id,
-                    _character.Id,
-                    cancellationToken);
-                if (refreshedStats is not null)
+                var refreshedProjection =
+                    await _characterRuntimeProjections
+                        .ReadCalculatedStatsAsync(
+                            _account.Id,
+                            _character.Id,
+                            cancellationToken);
+                if (refreshedProjection is not null)
                 {
+                    var refreshedStats =
+                        CharacterLoadSnapshotHydrator.MapCalculatedStats(
+                            refreshedProjection);
                     // The killing skill's MP cost is persisted after this reward
                     // sequence. Refresh derived maxima without restoring the
                     // older database vitals and accidentally refunding that cost.
@@ -337,16 +341,18 @@ internal sealed partial class GameClientHandler
         var deathToken = $"monster-death:{deathEventId:N}";
         try
         {
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.ActivateWorldBossArea);
-            var control = await _store.ActivateWorldBossAreaAsync(
-                _character.CurrentMap,
-                damageResult.Monster.Definition.TemplateKey,
-                _character.Camp,
-                killedAt,
-                deathToken,
+            var result = await _worldBossAreaControl.ActivateAsync(
+                new WorldBossAreaActivation(
+                    _character.CurrentMap,
+                    damageResult.Monster.Definition.TemplateKey,
+                    _character.Camp,
+                    killedAt,
+                    deathToken),
                 CancellationToken.None);
-            return control;
+            return !result.IsSuccess || result.Control is null
+                ? null
+                : FocusedGameplayProjectionCompatibility.ToLegacy(
+                    result.Control);
         }
         catch (Exception ex)
         {
@@ -432,13 +438,11 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
-        LegacyPersistenceMetrics.Record(
-            LegacyPersistenceOperation.GetSkillStates);
-        var skills = await _store.GetSkillStatesAsync(
+        return await _characterRuntimeProjections.IsSkillLearnedAsync(
             _account.Id,
             _character.Id,
+            checked((int)skillId),
             cancellationToken);
-        return skills.Any(skill => skill.SkillId == (int)skillId);
     }
 
     private async Task BroadcastToCurrentMapAsync(GamePacket packet, CancellationToken cancellationToken)

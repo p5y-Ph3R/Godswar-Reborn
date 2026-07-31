@@ -1,5 +1,7 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -29,8 +31,13 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
         try
         {
             await using var storeA = new PostgresGameStore(connectionString);
-            await using var storeB = new PostgresGameStore(connectionString);
             await storeA.EnsureSeedDataAsync();
+            await using var dataSourceA =
+                NpgsqlDataSource.Create(connectionString);
+            await using var dataSourceB =
+                NpgsqlDataSource.Create(connectionString);
+            var zodiacStoreA = new PostgresZodiacLevelStore(dataSourceA);
+            var zodiacStoreB = new PostgresZodiacLevelStore(dataSourceB);
 
             var account = await storeA.LoginOrCreateAccountAsync(
                 username,
@@ -58,7 +65,7 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
                     "PostgreSQL Zodiac fixture could not acquire ownership.");
             var ownership = acquired.Owner;
 
-            var wrongOwner = await storeA.UpgradeZodiacLevelAsync(
+            var wrongOwner = await zodiacStoreA.UpgradeAsync(
                 account.Id + 1,
                 character.Id,
                 ownership);
@@ -67,11 +74,11 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
                 "PostgreSQL Zodiac upgrade binds character ownership");
 
             var raced = await Task.WhenAll(
-                storeA.UpgradeZodiacLevelAsync(
+                zodiacStoreA.UpgradeAsync(
                     account.Id,
                     character.Id,
                     ownership),
-                storeB.UpgradeZodiacLevelAsync(
+                zodiacStoreB.UpgradeAsync(
                     account.Id,
                     character.Id,
                     ownership));
@@ -88,7 +95,7 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
                 ?? throw new InvalidOperationException(
                     "PostgreSQL Zodiac rejection unexpectedly disappeared");
             Check.Equal(
-                (int)ZodiacLevelUpgradeStatus.InsufficientEnergy,
+                (int)ZodiacLevelUpgradeStoreStatus.InsufficientEnergy,
                 (int)rejected.Status,
                 "concurrent PostgreSQL duplicate sees committed energy");
 
@@ -101,7 +108,7 @@ internal static class PostgresZodiacLevelUpgradeIntegrationChecks
             var staleRejected = false;
             try
             {
-                await storeA.UpgradeZodiacLevelAsync(
+                await zodiacStoreA.UpgradeAsync(
                     account.Id,
                     character.Id,
                     ownership);

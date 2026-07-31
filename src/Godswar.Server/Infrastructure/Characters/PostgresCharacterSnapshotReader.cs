@@ -1,5 +1,6 @@
 using System.Data;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Pets;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -18,6 +19,8 @@ internal interface IPostgresCharacterSnapshotReadProbe
 
 internal sealed partial class PostgresCharacterSnapshotReader :
     ICharacterSnapshotReader,
+    ICharacterRuntimeProjectionReader,
+    IOwnedPetSnapshotReader,
     IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;

@@ -12,11 +12,14 @@ internal sealed partial class GameSessionRegistry
         }
 
         if (_checkpointCoordinator is null ||
-            _progressionIntervalSettlementCommands is null)
+            _progressionIntervalSettlementCommands is null ||
+            _zodiacLevelStore is null ||
+            _experienceBoosts is null)
         {
             throw new InvalidOperationException(
-                "PostgreSQL player persistence requires both the character " +
-                "checkpoint coordinator and progression interval executor.");
+                "PostgreSQL player persistence requires character " +
+                "checkpoints, progression interval settlement, focused " +
+                "experience-boost reads, and focused Zodiac-level writes.");
         }
     }
 

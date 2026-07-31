@@ -67,6 +67,14 @@ internal sealed partial class GameClientHandler
             monsterDeathRewardCommands = null,
         IPetDurableCommandExecutor?
             petDurableCommands = null,
+        ICharacterRuntimeProjectionReader?
+            characterRuntimeProjections = null,
+        IOwnedPetSnapshotReader?
+            ownedPetSnapshots = null,
+        IWorldBossAreaControlStore?
+            worldBossAreaControl = null,
+        IWorldBossRespawnReader?
+            worldBossRespawns = null,
         IPlayerCoordinationLeaseIssuer?
             playerCoordination = null,
         IAccountDirectory? accountDirectory = null,
@@ -129,6 +137,30 @@ internal sealed partial class GameClientHandler
         _requiresDurablePlayerCommands =
             requiresDurablePlayerCommands;
         _petDurableCommands = petDurableCommands;
+        _characterRuntimeProjections =
+            characterRuntimeProjections ??
+            gameStore as ICharacterRuntimeProjectionReader ??
+            throw new ArgumentException(
+                "A character runtime projection reader is required.",
+                nameof(characterRuntimeProjections));
+        _ownedPetSnapshots =
+            ownedPetSnapshots ??
+            gameStore as IOwnedPetSnapshotReader ??
+            throw new ArgumentException(
+                "An owned-pet snapshot reader is required.",
+                nameof(ownedPetSnapshots));
+        _worldBossAreaControl =
+            worldBossAreaControl ??
+            gameStore as IWorldBossAreaControlStore ??
+            throw new ArgumentException(
+                "A world-boss area-control store is required.",
+                nameof(worldBossAreaControl));
+        _worldBossRespawns =
+            worldBossRespawns ??
+            gameStore as IWorldBossRespawnReader ??
+            throw new ArgumentException(
+                "A world-boss respawn reader is required.",
+                nameof(worldBossRespawns));
         _playerCoordination = playerCoordination;
         if (_requiresDurablePlayerCommands &&
             new object?[]

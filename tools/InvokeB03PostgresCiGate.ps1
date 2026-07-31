@@ -297,6 +297,7 @@ try {
         'PostgreSQL official NPC dialogue publication',
         'PostgreSQL pinned world-content baseline',
         'PostgreSQL consistent character snapshot reader',
+        'PostgreSQL focused progression and world-boss persistence',
         'PostgreSQL focused account persistence adapter',
         'PostgreSQL talent command precondition',
         'PostgreSQL talent inbox/outbox transaction',

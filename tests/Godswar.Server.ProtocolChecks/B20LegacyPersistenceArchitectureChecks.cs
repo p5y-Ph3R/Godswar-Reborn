@@ -11,12 +11,7 @@ internal static class B20LegacyPersistenceArchitectureChecks
     private static readonly HashSet<string> ReadMembers = new(
         StringComparer.Ordinal)
     {
-        "GetActiveWorldBossRespawnAsync",
-        "GetCharacterStatsAsync",
-        "GetExperienceBoostStateAsync",
         "GetFirstCharacterAsync",
-        "GetOwnedPetsAsync",
-        "GetSkillStatesAsync"
     };
 
     public static Task RunAsync()

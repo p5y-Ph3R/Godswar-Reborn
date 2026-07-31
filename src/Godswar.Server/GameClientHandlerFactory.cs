@@ -20,6 +20,7 @@ internal sealed class GameClientHandlerFactory(
     IWorldContentReader worldContent,
     DeveloperCommandOptions developerCommands,
     ICharacterCheckpointCoordinator characterCheckpoints,
+    ServerGameplayPersistenceProviders gameplayPersistence,
     PostgresApplicationDataRuntime? postgresRuntime,
     IPlayerCoordinationLeaseIssuer? playerCoordination = null)
 {
@@ -75,6 +76,14 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.MonsterDeathRewardCommands,
             petDurableCommands:
                 postgresRuntime?.PetDurableCommands,
+            characterRuntimeProjections:
+                gameplayPersistence.CharacterRuntime,
+            ownedPetSnapshots:
+                gameplayPersistence.OwnedPets,
+            worldBossAreaControl:
+                gameplayPersistence.WorldBossAreaControl,
+            worldBossRespawns:
+                gameplayPersistence.WorldBossRespawns,
             playerCoordination:
                 playerCoordination,
             accountDirectory:

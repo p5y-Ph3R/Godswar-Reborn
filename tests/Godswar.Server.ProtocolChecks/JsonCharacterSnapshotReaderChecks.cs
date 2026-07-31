@@ -7,7 +7,7 @@ namespace Godswar.Server.ProtocolChecks;
 /// <summary>
 /// Focused local-store coverage for the registered B06 bootstrap boundary.
 /// </summary>
-internal static class JsonCharacterSnapshotReaderChecks
+internal static partial class JsonCharacterSnapshotReaderChecks
 {
     public static async Task RunAsync()
     {
@@ -17,6 +17,7 @@ internal static class JsonCharacterSnapshotReaderChecks
         await AssertAmbiguousSlotFailsAsync();
         await AssertConcurrentReadsAreNotTornAsync();
         await AssertLocalCheckpointCompatibilityAsync();
+        await AssertGameplayPersistenceCompositionAsync();
     }
 
     private static async Task AssertInputAndMissingAccountFailuresAsync()

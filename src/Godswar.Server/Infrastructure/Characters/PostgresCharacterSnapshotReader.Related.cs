@@ -46,38 +46,10 @@ internal sealed partial class PostgresCharacterSnapshotReader
             reader,
             "owned pets",
             cancellationToken);
-        var petRows = await ReadPetRowsAsync(
+        var pets = await ReadOwnedPetSnapshotsAsync(
             reader,
             accountId,
             cancellationToken);
-        await RequireNextResultAsync(
-            reader,
-            "pet stat values",
-            cancellationToken);
-        var petStats = await ReadPetStatValuesAsync(
-            reader,
-            cancellationToken);
-        await RequireNextResultAsync(
-            reader,
-            "pet character bonuses",
-            cancellationToken);
-        var petBonuses = await ReadPetBonusesAsync(
-            reader,
-            cancellationToken);
-        await RequireNextResultAsync(
-            reader,
-            "pet skills",
-            cancellationToken);
-        var petSkills = await ReadPetSkillsAsync(
-            reader,
-            cancellationToken);
-
-        var pets = petRows
-            .Select(row => row.ToSnapshot(
-                GetPetRows(petStats, row.PetId),
-                GetPetRows(petBonuses, row.PetId),
-                GetPetRows(petSkills, row.PetId)))
-            .ToImmutableArray();
         return new CharacterRelatedReadResult(
             stats,
             skills,

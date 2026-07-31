@@ -121,7 +121,7 @@ internal static partial class CharacterLoadSnapshotHydrator
             snapshot.PersonalBoosts.ToArray());
     }
 
-    private static CharacterStats MapCalculatedStats(
+    internal static CharacterStats MapCalculatedStats(
         CharacterCalculatedStatsSnapshot stats) =>
         new()
         {

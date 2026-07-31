@@ -1,10 +1,13 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Pets;
 
 namespace Godswar.Server.State;
 
-internal sealed partial class JsonGameStore
+internal sealed partial class JsonGameStore :
+    ICharacterRuntimeProjectionReader,
+    IOwnedPetSnapshotReader
 {
     public async Task<CharacterAccountSnapshot> ReadAsync(
         int accountId,
@@ -341,4 +344,40 @@ internal sealed partial class JsonGameStore
 
     private static DateTimeOffset? ToUtcOffset(DateTimeOffset? value) =>
         value.HasValue ? ToUtcOffset(value.Value) : null;
+
+    async Task<CharacterCalculatedStatsSnapshot?>
+        ICharacterRuntimeProjectionReader.ReadCalculatedStatsAsync(
+            int accountId,
+            int characterId,
+            CancellationToken cancellationToken)
+    {
+        var snapshot = await ReadAsync(accountId, cancellationToken);
+        return snapshot.Character?.Identity.CharacterId == characterId
+            ? snapshot.Character.CalculatedStats
+            : null;
+    }
+
+    async Task<bool> ICharacterRuntimeProjectionReader.IsSkillLearnedAsync(
+        int accountId,
+        int characterId,
+        int skillId,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await ReadAsync(accountId, cancellationToken);
+        return snapshot.Character?.Identity.CharacterId == characterId &&
+               snapshot.Character.Skills.Any(skill =>
+                   skill.SkillId == skillId);
+    }
+
+    async Task<ImmutableArray<CharacterPetSnapshot>>
+        IOwnedPetSnapshotReader.ReadOwnedPetsAsync(
+            int accountId,
+            int characterId,
+            CancellationToken cancellationToken)
+    {
+        var snapshot = await ReadAsync(accountId, cancellationToken);
+        return snapshot.Character?.Identity.CharacterId == characterId
+            ? snapshot.Character.Pets
+            : ImmutableArray<CharacterPetSnapshot>.Empty;
+    }
 }

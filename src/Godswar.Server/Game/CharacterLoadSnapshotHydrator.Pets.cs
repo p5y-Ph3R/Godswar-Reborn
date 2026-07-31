@@ -5,7 +5,7 @@ namespace Godswar.Server.Game;
 
 internal static partial class CharacterLoadSnapshotHydrator
 {
-    private static PetBootstrapSnapshot MapPet(
+    internal static PetBootstrapSnapshot MapPet(
         CharacterPetSnapshot pet) =>
         new(
             pet.PetId,

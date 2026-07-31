@@ -1,16 +1,140 @@
+using System.Collections.Immutable;
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Application.World;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
 internal abstract class GameStoreTestStub :
     IGameStore,
+    ICharacterRuntimeProjectionReader,
+    IOwnedPetSnapshotReader,
+    IExperienceBoostStateReader,
+    IZodiacLevelStore,
+    IWorldBossAreaControlStore,
+    IWorldBossRespawnReader,
     IAccountCredentialStore,
     IAccountDirectory,
     IAccountPresenceWriter,
     ILegacyAccountLoginStore
 {
+    async Task<ExperienceBoostSnapshot>
+        IExperienceBoostStateReader.ReadAsync(
+            ExperienceBoostReadRequest request,
+            CancellationToken cancellationToken)
+    {
+        ExperienceBoostContract.ValidateRequest(request);
+        var state = await GetExperienceBoostStateAsync(
+            request.AccountId,
+            request.CharacterId,
+            request.Camp,
+            checked((byte)request.MapId),
+            request.ReadAtUtc,
+            cancellationToken);
+        return FocusedGameplayProjectionCompatibility.ToApplication(
+            state,
+            request.ReadAtUtc);
+    }
+
+    async Task<WorldBossAreaActivationResult>
+        IWorldBossAreaControlStore.ActivateAsync(
+            WorldBossAreaActivation activation,
+            CancellationToken cancellationToken)
+    {
+        if (!WorldBossPersistenceContract.IsValid(activation))
+        {
+            return WorldBossAreaActivationResult.Invalid();
+        }
+
+        var control = await ActivateWorldBossAreaAsync(
+            activation.MapId,
+            activation.BossTemplateKey,
+            activation.ControllingCamp,
+            activation.KilledAtUtc,
+            activation.DeathToken,
+            cancellationToken);
+        return control is null
+            ? WorldBossAreaActivationResult.NotConfigured()
+            : WorldBossAreaActivationResult.Committed(
+                FocusedGameplayProjectionCompatibility.ToApplication(
+                    control));
+    }
+
+    async Task<WorldBossRespawnSnapshot?>
+        IWorldBossRespawnReader.ReadActiveAsync(
+            WorldBossRespawnReadRequest request,
+            CancellationToken cancellationToken)
+    {
+        var respawn = await GetActiveWorldBossRespawnAsync(
+            request.MapId,
+            request.ReadAtUtc,
+            cancellationToken);
+        return respawn is null
+            ? null
+            : new WorldBossRespawnSnapshot(
+                respawn.MapId,
+                respawn.BossTemplateKey,
+                respawn.RespawnAt);
+    }
+
+    async Task<ZodiacLevelUpgradeStoreResult?>
+        IZodiacLevelStore.UpgradeAsync(
+            int accountId,
+            int characterId,
+            PlayerOwnershipFence ownership,
+            CancellationToken cancellationToken)
+    {
+        var result = await UpgradeZodiacLevelAsync(
+            accountId,
+            characterId,
+            ownership,
+            cancellationToken);
+        return result is null
+            ? null
+            : FocusedGameplayProjectionCompatibility.ToApplication(result);
+    }
+
+    async Task<CharacterCalculatedStatsSnapshot?>
+        ICharacterRuntimeProjectionReader.ReadCalculatedStatsAsync(
+            int accountId,
+            int characterId,
+            CancellationToken cancellationToken)
+    {
+        var stats = await GetCharacterStatsAsync(
+            accountId,
+            characterId,
+            cancellationToken);
+        return stats is null
+            ? null
+            : FocusedGameplayProjectionCompatibility.ToApplication(stats);
+    }
+
+    async Task<bool> ICharacterRuntimeProjectionReader.IsSkillLearnedAsync(
+        int accountId,
+        int characterId,
+        int skillId,
+        CancellationToken cancellationToken) =>
+        (await GetSkillStatesAsync(
+            accountId,
+            characterId,
+            cancellationToken)).Any(skill => skill.SkillId == skillId);
+
+    async Task<System.Collections.Immutable.ImmutableArray<
+        CharacterPetSnapshot>> IOwnedPetSnapshotReader.ReadOwnedPetsAsync(
+            int accountId,
+            int characterId,
+            CancellationToken cancellationToken) =>
+        (await GetOwnedPetsAsync(
+            accountId,
+            characterId,
+            cancellationToken))
+        .Select(FocusedGameplayProjectionCompatibility.ToApplication)
+        .ToImmutableArray();
+
     public virtual Task EnsureSeedDataAsync(
         CancellationToken cancellationToken = default) =>
         Task.CompletedTask;

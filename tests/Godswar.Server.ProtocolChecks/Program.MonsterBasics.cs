@@ -270,7 +270,7 @@ internal static partial class Program
         return Task.CompletedTask;
     }
 
-    private static Task CheckPersistedWorldBossRespawnAsync()
+    private static async Task CheckPersistedWorldBossRespawnAsync()
     {
         var initializedAt = new DateTimeOffset(2026, 7, 19, 0, 0, 0, TimeSpan.Zero);
         var respawnAt = initializedAt.AddHours(6);
@@ -301,7 +301,7 @@ internal static partial class Program
             atRespawn.Updates[0].Kind == MonsterRuntimeUpdateKind.Respawned,
             "persisted lifecycle emits respawn event");
         Check.True(atRespawn.Updates[0].Monster.IsAlive, "respawned world boss is alive");
-        return Task.CompletedTask;
+        await CheckJsonFocusedWorldBossPersistenceAsync();
     }
 
     private static Task CheckMonsterRuntimeAppearancePatchAsync()

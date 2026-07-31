@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -23,6 +24,8 @@ internal sealed partial class GameSessionRegistry
     private readonly ConcurrentDictionary<int, ClientSession> _progressionBoostCharacterOwners = [];
     private readonly ICharacterCheckpointCoordinator? _checkpointCoordinator;
     private readonly IGameStore? _store;
+    private readonly IZodiacLevelStore? _zodiacLevelStore;
+    private readonly IExperienceBoostStateReader? _experienceBoosts;
     private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
     private readonly TimeSpan _zodiacPersistenceInterval;
     private readonly MonsterRuntimeMode _monsterRuntimeMode;
@@ -34,15 +37,23 @@ internal sealed partial class GameSessionRegistry
         ICharacterCheckpointCoordinator? checkpointCoordinator = null,
         IProgressionIntervalSettlementCommandExecutor?
             progressionIntervalSettlementCommands = null,
+        IZodiacLevelStore? zodiacLevelStore = null,
+        IExperienceBoostStateReader? experienceBoosts = null,
         bool requiresDurablePlayerPersistence = false,
         WorldInstanceRuntimeOptions? worldInstanceOptions = null)
     {
         _worldInstanceOptions = SnapshotWorldInstanceOptions(
             worldInstanceOptions);
-        _store = store;
+        var persistence = ResolveFocusedPersistence(
+            store,
+            zodiacLevelStore,
+            experienceBoosts);
+        _store = persistence.LegacyStore;
         _checkpointCoordinator = checkpointCoordinator;
         _progressionIntervalSettlementCommands =
             progressionIntervalSettlementCommands;
+        _zodiacLevelStore = persistence.ZodiacLevels;
+        _experienceBoosts = persistence.ExperienceBoosts;
         _requiresDurablePlayerPersistence =
             requiresDurablePlayerPersistence;
         ValidateDurablePlayerPersistenceComposition();
@@ -61,6 +72,21 @@ internal sealed partial class GameSessionRegistry
         _zodiacPersistenceInterval = TimeSpan.FromSeconds(
             zodiacEnergyOptions.PersistenceIntervalSeconds);
     }
+
+    private static (
+        T? LegacyStore,
+        IZodiacLevelStore? ZodiacLevels,
+        IExperienceBoostStateReader? ExperienceBoosts)
+        ResolveFocusedPersistence<T>(
+            T? broadStore,
+            IZodiacLevelStore? zodiacLevels,
+            IExperienceBoostStateReader? experienceBoosts)
+        where T : class =>
+        (
+            broadStore,
+            zodiacLevels ?? broadStore as IZodiacLevelStore,
+            experienceBoosts ??
+                broadStore as IExperienceBoostStateReader);
 
     public void JoinMap(
         ClientSession session,

@@ -11,14 +11,37 @@ internal sealed partial class PostgresCharacterSnapshotReader
             NpgsqlDataReader reader,
             CancellationToken cancellationToken)
     {
-        if (!await reader.ReadAsync(cancellationToken))
-        {
+        return await ReadOptionalCalculatedStatsAsync(
+                   reader,
+                   cancellationToken) ??
             throw new CharacterSnapshotUnavailableException(
                 CharacterSnapshotFailureReason.MissingCalculatedStats,
                 "The loaded character has no calculated-stat projection.");
+    }
+
+    private static async Task<CharacterCalculatedStatsSnapshot?>
+        ReadOptionalCalculatedStatsAsync(
+            NpgsqlDataReader reader,
+            CancellationToken cancellationToken)
+    {
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
         }
 
-        var result = new CharacterCalculatedStatsSnapshot(
+        var result = MapCalculatedStats(reader);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            throw new InvalidDataException(
+                "Calculated-stat projection returned duplicate rows.");
+        }
+
+        return result;
+    }
+
+    private static CharacterCalculatedStatsSnapshot MapCalculatedStats(
+        NpgsqlDataReader reader) =>
+        new(
             reader.GetInt32(0),
             reader.GetInt32(1),
             reader.GetString(2),
@@ -55,14 +78,6 @@ internal sealed partial class PostgresCharacterSnapshotReader
             reader.GetInt16(34),
             reader.GetInt32(35),
             reader.GetInt32(36));
-        if (await reader.ReadAsync(cancellationToken))
-        {
-            throw new InvalidDataException(
-                "Calculated-stat projection returned duplicate rows.");
-        }
-
-        return result;
-    }
 
     private static async Task<ImmutableArray<CharacterSkillSnapshot>>
         ReadSkillsAsync(
@@ -183,9 +198,16 @@ internal sealed partial class PostgresCharacterSnapshotReader
             armor_rank,
             armor_aura_effect,
             learned_skill_count
-        FROM character_stat_summary
-        WHERE account_id = @accountId
-          AND user_id = @characterId;
+        FROM character_stat_summary summary
+        WHERE summary.account_id = @accountId
+          AND summary.user_id = @characterId
+          AND EXISTS (
+              SELECT 1
+              FROM character_base character
+              WHERE character.id = summary.user_id
+                AND character.account_id = summary.account_id
+                AND character.lifecycle_state = 'active'
+          );
 
         """;
 
@@ -201,6 +223,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
           ON template.skill_id = skills.skill_id
         WHERE character.account_id = @accountId
           AND character.id = @characterId
+          AND character.lifecycle_state = 'active'
           AND character.profession = ANY(template.class_ids)
         ORDER BY skills.skill_id;
 

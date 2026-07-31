@@ -1,6 +1,8 @@
 using Godswar.Server.Application.Accounts;
-using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Accounts;
+using Godswar.Server.Infrastructure.Progression;
+using Godswar.Server.Infrastructure.World;
+using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
@@ -57,7 +59,11 @@ internal sealed partial class PostgresGameStore :
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresAccountStore _accountStore;
-    private readonly PostgresPlayerOwnershipGuard _playerOwnershipGuard;
+    private readonly PostgresExperienceBoostStateReader
+        _experienceBoostStateReader;
+    private readonly PostgresWorldBossAreaControlStore
+        _worldBossAreaControlStore;
+    private readonly PostgresZodiacLevelStore _zodiacLevelStore;
     private readonly PostgresSchemaMigrationRunner _schemaMigrationRunner;
     public PostgresGameStore(string connectionString)
     {
@@ -68,8 +74,11 @@ internal sealed partial class PostgresGameStore :
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
         _accountStore = new PostgresAccountStore(_dataSource);
-        _playerOwnershipGuard =
-            new PostgresPlayerOwnershipGuard(_dataSource);
+        _experienceBoostStateReader =
+            new PostgresExperienceBoostStateReader(_dataSource);
+        _worldBossAreaControlStore =
+            new PostgresWorldBossAreaControlStore(_dataSource);
+        _zodiacLevelStore = new PostgresZodiacLevelStore(_dataSource);
         _schemaMigrationRunner = new PostgresSchemaMigrationRunner(_dataSource);
     }
 

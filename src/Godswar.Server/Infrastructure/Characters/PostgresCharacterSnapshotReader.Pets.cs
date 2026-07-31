@@ -6,6 +6,46 @@ namespace Godswar.Server.Infrastructure.Characters;
 
 internal sealed partial class PostgresCharacterSnapshotReader
 {
+    private static async Task<ImmutableArray<CharacterPetSnapshot>>
+        ReadOwnedPetSnapshotsAsync(
+            NpgsqlDataReader reader,
+            int accountId,
+            CancellationToken cancellationToken)
+    {
+        var petRows = await ReadPetRowsAsync(
+            reader,
+            accountId,
+            cancellationToken);
+        await RequireNextResultAsync(
+            reader,
+            "pet stat values",
+            cancellationToken);
+        var petStats = await ReadPetStatValuesAsync(
+            reader,
+            cancellationToken);
+        await RequireNextResultAsync(
+            reader,
+            "pet character bonuses",
+            cancellationToken);
+        var petBonuses = await ReadPetBonusesAsync(
+            reader,
+            cancellationToken);
+        await RequireNextResultAsync(
+            reader,
+            "pet skills",
+            cancellationToken);
+        var petSkills = await ReadPetSkillsAsync(
+            reader,
+            cancellationToken);
+
+        return petRows
+            .Select(row => row.ToSnapshot(
+                GetPetRows(petStats, row.PetId),
+                GetPetRows(petBonuses, row.PetId),
+                GetPetRows(petSkills, row.PetId)))
+            .ToImmutableArray();
+    }
+
     private static async Task<IReadOnlyList<PetRow>> ReadPetRowsAsync(
         NpgsqlDataReader reader,
         int accountId,
@@ -271,6 +311,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         JOIN character_base character
           ON character.id = pet.user_id
          AND character.account_id = @accountId
+         AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
         ORDER BY pet.id;
 
@@ -290,6 +331,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         JOIN character_base character
           ON character.id = pet.user_id
          AND character.account_id = @accountId
+         AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
         ORDER BY value.pet_id, value.stat_code;
 
@@ -304,6 +346,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         JOIN character_base character
           ON character.id = pet.user_id
          AND character.account_id = @accountId
+         AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
         ORDER BY bonus.pet_id, bonus.effect_code;
 
@@ -321,6 +364,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         JOIN character_base character
           ON character.id = pet.user_id
          AND character.account_id = @accountId
+         AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
         ORDER BY skill.pet_id, skill.slot_index, skill.skill_id;
         """;

@@ -7,6 +7,7 @@ using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Reconciliation;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Application.World;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
@@ -17,6 +18,7 @@ using Godswar.Server.Infrastructure.Rewards;
 using Godswar.Server.Infrastructure.Reconciliation;
 using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
+using Godswar.Server.Infrastructure.World;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -47,8 +49,18 @@ internal sealed class PostgresApplicationDataRuntime :
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
         Accounts = new PostgresAccountStore(_dataSource);
-        CharacterSnapshots =
+        var characterReader =
             new PostgresCharacterSnapshotReader(_dataSource);
+        CharacterSnapshots = characterReader;
+        CharacterRuntimeProjections = characterReader;
+        OwnedPetSnapshots = characterReader;
+        ExperienceBoosts =
+            new PostgresExperienceBoostStateReader(_dataSource);
+        var worldBossState =
+            new PostgresWorldBossAreaControlStore(_dataSource);
+        WorldBossAreaControl = worldBossState;
+        WorldBossRespawns = worldBossState;
+        ZodiacLevels = new PostgresZodiacLevelStore(_dataSource);
         CharacterCheckpoints =
             new PostgresCharacterCheckpointStore(_dataSource);
         CharacterLifecycleCommands =
@@ -159,6 +171,20 @@ internal sealed class PostgresApplicationDataRuntime :
     public PostgresAccountStore Accounts { get; }
 
     public ICharacterSnapshotReader CharacterSnapshots { get; }
+
+    public ICharacterRuntimeProjectionReader
+        CharacterRuntimeProjections
+    { get; }
+
+    public IOwnedPetSnapshotReader OwnedPetSnapshots { get; }
+
+    public IExperienceBoostStateReader ExperienceBoosts { get; }
+
+    public IWorldBossAreaControlStore WorldBossAreaControl { get; }
+
+    public IWorldBossRespawnReader WorldBossRespawns { get; }
+
+    public IZodiacLevelStore ZodiacLevels { get; }
 
     public ICharacterCheckpointStore CharacterCheckpoints { get; }
 

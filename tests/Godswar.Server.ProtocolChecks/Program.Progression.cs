@@ -86,7 +86,7 @@ internal static partial class Program
         }
     }
 
-    private static Task CheckExperienceBoostStackingAsync()
+    private static async Task CheckExperienceBoostStackingAsync()
     {
         var expiresAt = DateTimeOffset.UtcNow.AddHours(1);
         var state = new ExperienceBoostState(
@@ -120,7 +120,7 @@ internal static partial class Program
             uint.MaxValue,
             finiteVip.RemainingSeconds(DateTimeOffset.UtcNow),
             "finite VIP status remains permanent-looking until server reconciliation removes it");
-        return Task.CompletedTask;
+        await CheckJsonFocusedExperienceBoostReadAsync();
     }
 
     private static async Task CheckOnlineProgressionBoostDurationAsync()

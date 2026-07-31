@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.World;
 using Godswar.Server.Networking;
 using Godswar.Server.Operations;
 using Godswar.Server.Packets;
@@ -411,12 +412,14 @@ internal sealed partial class GameClientHandler
         WorldBossRespawnState? activeWorldBossRespawn = null;
         try
         {
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.GetActiveWorldBossRespawn);
-            activeWorldBossRespawn = await _store.GetActiveWorldBossRespawnAsync(
-                _character.CurrentMap,
-                monsterRuntimeInitializedAt,
+            var respawn = await _worldBossRespawns.ReadActiveAsync(
+                new WorldBossRespawnReadRequest(
+                    _character.CurrentMap,
+                    monsterRuntimeInitializedAt),
                 cancellationToken);
+            activeWorldBossRespawn = respawn is null
+                ? null
+                : FocusedGameplayProjectionCompatibility.ToLegacy(respawn);
             if (!RevalidateCurrentPlayerOwnership(ownership))
             {
                 return;

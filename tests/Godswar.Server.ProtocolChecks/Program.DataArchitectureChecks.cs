@@ -129,6 +129,9 @@ internal static partial class Program
                 "PostgreSQL consistent character snapshot reader",
                 PostgresCharacterSnapshotReaderIntegrationChecks.RunAsync),
             (
+                PostgresFocusedGameplayStateIntegrationChecks.CheckName,
+                PostgresFocusedGameplayStateIntegrationChecks.RunAsync),
+            (
                 PostgresAccountStoreIntegrationChecks.CheckName,
                 PostgresAccountStoreIntegrationChecks.RunAsync)
         ];

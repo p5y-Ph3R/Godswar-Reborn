@@ -3,6 +3,7 @@ using System.Text;
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Zodiac;
@@ -32,6 +33,11 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly IAccountPresenceWriter _accountPresence;
     private readonly GameSessionRegistry _registry;
     private readonly ICharacterSnapshotReader _characterSnapshots;
+    private readonly ICharacterRuntimeProjectionReader
+        _characterRuntimeProjections;
+    private readonly IOwnedPetSnapshotReader _ownedPetSnapshots;
+    private readonly IWorldBossAreaControlStore _worldBossAreaControl;
+    private readonly IWorldBossRespawnReader _worldBossRespawns;
     private readonly IWorldContentReader _worldContent;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();

@@ -55,12 +55,6 @@ internal interface IGameStore : IAsyncDisposable
         ZodiacEnergyPolicy policy,
         CancellationToken cancellationToken = default);
 
-    Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
-        int accountId,
-        int characterId,
-        PlayerOwnershipFence ownership,
-        CancellationToken cancellationToken = default);
-
     Task<ZodiacSkillGridActivationResult?> ActivateZodiacSkillGridAsync(
         int accountId,
         int characterId,
@@ -80,14 +74,6 @@ internal interface IGameStore : IAsyncDisposable
         int selectedSkillKind,
         CancellationToken cancellationToken = default);
 
-    Task<ExperienceBoostState> GetExperienceBoostStateAsync(
-        int accountId,
-        int characterId,
-        byte camp,
-        byte mapId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken = default);
-
     Task ConsumeCharacterBoostOnlineTimeAsync(
         int accountId,
         int characterId,
@@ -95,32 +81,9 @@ internal interface IGameStore : IAsyncDisposable
         DateTimeOffset onlineUntil,
         CancellationToken cancellationToken = default);
 
-    Task<FactionAreaExperienceControl?> ActivateWorldBossAreaAsync(
-        short mapId,
-        string bossTemplateKey,
-        byte controllingCamp,
-        DateTimeOffset killedAt,
-        string deathToken,
-        CancellationToken cancellationToken = default);
-
-    Task<WorldBossRespawnState?> GetActiveWorldBossRespawnAsync(
-        short mapId,
-        DateTimeOffset now,
-        CancellationToken cancellationToken = default);
-
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);
-
-    Task<CharacterStats?> GetCharacterStatsAsync(
-        int accountId,
-        int characterId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<PetBootstrapSnapshot>> GetOwnedPetsAsync(
-        int accountId,
-        int characterId,
-        CancellationToken cancellationToken = default);
 
     Task<PetEggHatchResult> HatchPetEggAsync(
         int accountId,
@@ -221,11 +184,6 @@ internal interface IGameStore : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<TalentState>> GetTalentStatesAsync(
-        int accountId,
-        int characterId,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<SkillState>> GetSkillStatesAsync(
         int accountId,
         int characterId,
         CancellationToken cancellationToken = default);

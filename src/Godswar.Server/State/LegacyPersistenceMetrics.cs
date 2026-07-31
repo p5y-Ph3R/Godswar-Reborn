@@ -9,7 +9,6 @@ namespace Godswar.Server.State;
 /// </summary>
 internal enum LegacyPersistenceOperation : byte
 {
-    ActivateWorldBossArea = 1,
     ActivateZodiacSkillGrid = 2,
     AddDeveloperMount = 3,
     AddForgingMaterial = 4,
@@ -24,12 +23,7 @@ internal enum LegacyPersistenceOperation : byte
     EnhanceGear = 13,
     EnsureSeedData = 14,
     ForgeEquipment = 15,
-    GetActiveWorldBossRespawn = 16,
-    GetCharacterStats = 17,
-    GetExperienceBoostState = 18,
     GetFirstCharacter = 19,
-    GetOwnedPets = 20,
-    GetSkillStates = 21,
     HatchPetEgg = 22,
     MoveEquipmentToKitBag = 23,
     MoveKitBagItem = 24,
@@ -42,7 +36,6 @@ internal enum LegacyPersistenceOperation : byte
     TransitionPetPresence = 31,
     UpgradePetLevel = 32,
     UpgradeTalent = 33,
-    UpgradeZodiacLevel = 34,
     UpgradeZodiacSkillGrid = 35
 }
 
@@ -96,8 +89,6 @@ internal static class LegacyPersistenceMetrics
         LegacyPersistenceOperation operation) =>
         operation switch
         {
-            LegacyPersistenceOperation.ActivateWorldBossArea =>
-                "activate_world_boss_area",
             LegacyPersistenceOperation.ActivateZodiacSkillGrid =>
                 "activate_zodiac_skill_grid",
             LegacyPersistenceOperation.AddDeveloperMount =>
@@ -124,16 +115,8 @@ internal static class LegacyPersistenceMetrics
                 "ensure_seed_data",
             LegacyPersistenceOperation.ForgeEquipment =>
                 "forge_equipment",
-            LegacyPersistenceOperation.GetActiveWorldBossRespawn =>
-                "get_active_world_boss_respawn",
-            LegacyPersistenceOperation.GetCharacterStats =>
-                "get_character_stats",
-            LegacyPersistenceOperation.GetExperienceBoostState =>
-                "get_experience_boost_state",
             LegacyPersistenceOperation.GetFirstCharacter =>
                 "get_first_character",
-            LegacyPersistenceOperation.GetOwnedPets => "get_owned_pets",
-            LegacyPersistenceOperation.GetSkillStates => "get_skill_states",
             LegacyPersistenceOperation.HatchPetEgg => "hatch_pet_egg",
             LegacyPersistenceOperation.MoveEquipmentToKitBag =>
                 "move_equipment_to_kit_bag",
@@ -156,8 +139,6 @@ internal static class LegacyPersistenceMetrics
             LegacyPersistenceOperation.UpgradePetLevel =>
                 "upgrade_pet_level",
             LegacyPersistenceOperation.UpgradeTalent => "upgrade_talent",
-            LegacyPersistenceOperation.UpgradeZodiacLevel =>
-                "upgrade_zodiac_level",
             LegacyPersistenceOperation.UpgradeZodiacSkillGrid =>
                 "upgrade_zodiac_skill_grid",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))

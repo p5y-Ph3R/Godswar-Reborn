@@ -325,12 +325,16 @@ internal sealed partial class GameClientHandler
         CharacterStats? stats;
         if (accountId > 0)
         {
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.GetCharacterStats);
-            stats = await _store.GetCharacterStatsAsync(
+            var projection =
+                await _characterRuntimeProjections
+                    .ReadCalculatedStatsAsync(
                 accountId,
                 character.Id,
                 cancellationToken);
+            stats = projection is null
+                ? null
+                : CharacterLoadSnapshotHydrator.MapCalculatedStats(
+                    projection);
         }
         else
         {

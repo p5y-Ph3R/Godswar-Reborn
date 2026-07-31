@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.State;
@@ -44,6 +45,19 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
 
         await using var reader =
             new PostgresCharacterSnapshotReader(connectionString);
+        ICharacterRuntimeProjectionReader runtimeProjectionReader = reader;
+        IOwnedPetSnapshotReader ownedPetSnapshotReader = reader;
+        var focusedStats =
+            await runtimeProjectionReader.ReadCalculatedStatsAsync(
+                fixture.AccountId,
+                fixture.CharacterId) ??
+            throw new InvalidOperationException(
+                "Focused stats reader returned no parity fixture.");
+        var focusedPets =
+            await ownedPetSnapshotReader.ReadOwnedPetsAsync(
+                fixture.AccountId,
+                fixture.CharacterId);
+
         var accountSnapshot =
             await reader.ReadAsync(fixture.AccountId);
         var snapshot = accountSnapshot.Character ??
@@ -51,10 +65,24 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 "B06 reader returned an empty parity fixture.");
 
         AssertCoreParity(legacyCharacter, snapshot);
-        AssertStatsParity(legacyStats, snapshot.CalculatedStats);
+        AssertStatsParity(legacyStats, focusedStats);
+        Check.Equal(
+            focusedStats,
+            snapshot.CalculatedStats,
+            "focused stats match the consistent login snapshot");
         AssertSkillParity(legacySkills, snapshot.Skills);
+        await AssertScalarSkillParityAsync(
+            runtimeProjectionReader,
+            fixture,
+            legacySkills);
         AssertTalentParity(legacyTalents, snapshot.Talents);
+        AssertPetParity(legacyPets, focusedPets);
         AssertPetParity(legacyPets, snapshot.Pets);
+        await AssertFocusedOwnershipBoundaryAsync(
+            runtimeProjectionReader,
+            ownedPetSnapshotReader,
+            fixture,
+            legacySkills[0].SkillId);
         AssertPersonalBoost(snapshot);
 
         var hydrated =
@@ -77,6 +105,104 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             legacyPets.Count,
             hydrated.Pets.Count,
             "hydration preserves the complete pet count");
+    }
+
+    private static async Task AssertScalarSkillParityAsync(
+        ICharacterRuntimeProjectionReader reader,
+        SnapshotFixture fixture,
+        IReadOnlyList<SkillState> legacySkills)
+    {
+        Check.True(
+            legacySkills.Count > 0,
+            "rich fixture exposes at least one learned skill");
+        Check.True(
+            legacySkills.Any(static skill => skill.SkillId == 0),
+            "Warrior parity fixture preserves learned Light Chop skill ID zero");
+        foreach (var skill in legacySkills)
+        {
+            Check.True(
+                await reader.IsSkillLearnedAsync(
+                    fixture.AccountId,
+                    fixture.CharacterId,
+                    skill.SkillId),
+                $"focused scalar reader finds learned skill {skill.SkillId}");
+        }
+
+        Check.True(
+            !await reader.IsSkillLearnedAsync(
+                fixture.AccountId,
+                fixture.CharacterId,
+                int.MaxValue),
+            "focused scalar reader rejects an unlearned skill");
+    }
+
+    private static async Task AssertFocusedOwnershipBoundaryAsync(
+        ICharacterRuntimeProjectionReader runtimeReader,
+        IOwnedPetSnapshotReader petReader,
+        SnapshotFixture fixture,
+        int learnedSkillId)
+    {
+        var otherAccountId = checked(fixture.AccountId + 1);
+        Check.True(
+            await runtimeReader.ReadCalculatedStatsAsync(
+                otherAccountId,
+                fixture.CharacterId) is null,
+            "focused stats cannot cross an account ownership boundary");
+        Check.True(
+            !await runtimeReader.IsSkillLearnedAsync(
+                otherAccountId,
+                fixture.CharacterId,
+                learnedSkillId),
+            "focused learned-skill lookup cannot cross an account ownership boundary");
+        Check.Equal(
+            0,
+            (await petReader.ReadOwnedPetsAsync(
+                otherAccountId,
+                fixture.CharacterId)).Length,
+            "focused pet lookup cannot cross an account ownership boundary");
+    }
+
+    private static async Task AssertFocusedProjectionContractsAsync(
+        ICharacterRuntimeProjectionReader runtimeReader,
+        IOwnedPetSnapshotReader petReader)
+    {
+        await ExpectArgumentOutOfRangeAsync(
+            () => runtimeReader.ReadCalculatedStatsAsync(0, 1),
+            "focused stats reject a non-positive account ID");
+        await ExpectArgumentOutOfRangeAsync(
+            () => runtimeReader.IsSkillLearnedAsync(1, 1, -1),
+            "focused skill lookup rejects a negative skill ID");
+        await ExpectArgumentOutOfRangeAsync(
+            () => petReader.ReadOwnedPetsAsync(1, 0),
+            "focused pet lookup rejects a non-positive character ID");
+    }
+
+    private static async Task
+        AssertFocusedProjectionContractValidationAsync()
+    {
+        const string unusedConnectionString =
+            "Host=127.0.0.1;Port=1;Database=unused;" +
+            "Username=unused;Password=unused;Timeout=1";
+        await using var reader =
+            new PostgresCharacterSnapshotReader(unusedConnectionString);
+        await AssertFocusedProjectionContractsAsync(reader, reader);
+    }
+
+    private static async Task ExpectArgumentOutOfRangeAsync(
+        Func<Task> action,
+        string description)
+    {
+        try
+        {
+            await action();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Expected ArgumentOutOfRangeException: {description}.");
     }
 
     private static void AssertCoreParity(
@@ -321,59 +447,6 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 actual[index].NextCost,
                 $"snapshot talent {index} next cost");
         }
-    }
-
-    private static void AssertPetParity(
-        IReadOnlyList<PetBootstrapSnapshot> expected,
-        IReadOnlyList<CharacterPetSnapshot> actual)
-    {
-        Check.Equal(
-            expected.Count,
-            actual.Count,
-            "snapshot pet count matches the legacy reader");
-        Check.Equal(1, actual.Count, "rich fixture owns one pet");
-        var legacy = expected[0];
-        var snapshot = actual[0];
-        Check.Equal(legacy.PetId, snapshot.PetId, "snapshot pet ID");
-        Check.Equal(legacy.Name, snapshot.Name, "snapshot pet name");
-        Check.Equal(legacy.Level, snapshot.Level, "snapshot pet level");
-        Check.Equal(
-            legacy.Experience,
-            snapshot.Experience,
-            "snapshot pet experience");
-        Check.Equal(
-            (short)legacy.Aptitude,
-            snapshot.Aptitude,
-            "snapshot pet aptitude");
-        Check.Equal(legacy.Rank, snapshot.Rank, "snapshot pet rank");
-        Check.Equal(
-            legacy.Revision,
-            snapshot.Revision,
-            "snapshot pet revision");
-        Check.Equal(
-            legacy.StatValues.Count,
-            snapshot.StatValues.Length,
-            "snapshot pet stat count");
-        Check.Equal(
-            legacy.CharacterBonuses.Count,
-            snapshot.CharacterBonuses.Length,
-            "snapshot pet bonus count");
-        Check.Equal(
-            legacy.Skills.Count,
-            snapshot.Skills.Length,
-            "snapshot pet skill count");
-        Check.Equal(
-            legacy.StatValues[0].AddedSavvy,
-            snapshot.StatValues[0].AddedSavvy,
-            "snapshot first pet stat value");
-        Check.Equal(
-            legacy.CharacterBonuses[0].EffectCode,
-            snapshot.CharacterBonuses[0].EffectCode,
-            "snapshot accepts the schema-valid zero pet effect code");
-        Check.Equal(
-            legacy.Skills[0].SkillId,
-            snapshot.Skills[0].SkillId,
-            "snapshot first pet skill");
     }
 
     private static void AssertPersonalBoost(CharacterLoadSnapshot snapshot)

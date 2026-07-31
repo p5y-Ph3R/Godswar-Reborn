@@ -3,6 +3,9 @@ using System.Text.Json;
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 
 namespace Godswar.Server.State;
@@ -10,6 +13,11 @@ namespace Godswar.Server.State;
 internal sealed partial class JsonGameStore :
     IGameStore,
     ICharacterSnapshotReader,
+    ICharacterRuntimeProjectionReader,
+    IOwnedPetSnapshotReader,
+    IExperienceBoostStateReader,
+    IWorldBossAreaControlStore,
+    IWorldBossRespawnReader,
     IAccountCredentialStore,
     IAccountDirectory,
     IAccountPresenceWriter,
@@ -260,7 +268,9 @@ internal sealed partial class JsonGameStore :
             var db = await LoadUnsafeAsync(cancellationToken);
             if (!db.Characters.Any(character =>
                     character.Id == characterId &&
-                    character.AccountId == accountId))
+                    character.AccountId == accountId &&
+                    character.LifecycleState ==
+                        CharacterLifecycleState.Active))
             {
                 return ExperienceBoostState.Empty;
             }
@@ -437,6 +447,122 @@ internal sealed partial class JsonGameStore :
         {
             _lock.Release();
         }
+    }
+
+    async Task<ExperienceBoostSnapshot> IExperienceBoostStateReader.ReadAsync(
+        ExperienceBoostReadRequest request,
+        CancellationToken cancellationToken)
+    {
+        ExperienceBoostContract.ValidateRequest(request);
+        var state = await GetExperienceBoostStateAsync(
+            request.AccountId,
+            request.CharacterId,
+            request.Camp,
+            checked((byte)request.MapId),
+            request.ReadAtUtc,
+            cancellationToken);
+        return FocusedGameplayProjectionCompatibility.ToApplication(
+            state,
+            request.ReadAtUtc);
+    }
+
+    async Task<WorldBossAreaActivationResult>
+        IWorldBossAreaControlStore.ActivateAsync(
+            WorldBossAreaActivation activation,
+            CancellationToken cancellationToken)
+    {
+        if (!WorldBossPersistenceContract.IsValid(activation))
+        {
+            return WorldBossAreaActivationResult.Invalid();
+        }
+
+        if (!WorldBossCatalog.Default.IsWorldBoss(
+                activation.MapId,
+                activation.BossTemplateKey))
+        {
+            return WorldBossAreaActivationResult.NotConfigured();
+        }
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var database = await LoadUnsafeAsync(cancellationToken);
+            var tokenOwner = database.FactionAreaExperienceControls
+                .FirstOrDefault(control => string.Equals(
+                    control.DeathToken,
+                    activation.DeathToken,
+                    StringComparison.Ordinal));
+            if (tokenOwner is not null)
+            {
+                return tokenOwner.MapId == activation.MapId
+                    ? WorldBossAreaActivationResult.Duplicate(
+                        FocusedGameplayProjectionCompatibility.ToApplication(
+                            tokenOwner))
+                    : WorldBossAreaActivationResult.Invalid();
+            }
+
+            var existing = database.FactionAreaExperienceControls
+                .FirstOrDefault(control =>
+                    control.MapId == activation.MapId);
+            if (existing is not null)
+            {
+                var current =
+                    FocusedGameplayProjectionCompatibility.ToApplication(
+                        existing);
+                if (existing.ActivatedAt >= activation.KilledAtUtc)
+                {
+                    return WorldBossAreaActivationResult.Stale(current);
+                }
+            }
+
+            var control = existing ?? new FactionAreaExperienceControl
+            {
+                MapId = checked((byte)activation.MapId)
+            };
+            control.ControllingCamp = activation.ControllingCamp;
+            control.BossTemplateKey = activation.BossTemplateKey;
+            control.DeathToken = activation.DeathToken;
+            control.BonusBasisPoints = 2_500;
+            control.ActivatedAt = activation.KilledAtUtc;
+            control.ExpiresAt = activation.KilledAtUtc +
+                WorldBossCatalog.Default.RespawnInterval;
+            if (existing is null)
+            {
+                database.FactionAreaExperienceControls.Add(control);
+            }
+
+            await SaveUnsafeAsync(database, cancellationToken);
+            return WorldBossAreaActivationResult.Committed(
+                FocusedGameplayProjectionCompatibility.ToApplication(
+                    control));
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    async Task<WorldBossRespawnSnapshot?>
+        IWorldBossRespawnReader.ReadActiveAsync(
+            WorldBossRespawnReadRequest request,
+            CancellationToken cancellationToken)
+    {
+        WorldBossPersistenceContract.Validate(request);
+        var respawn = await GetActiveWorldBossRespawnAsync(
+            request.MapId,
+            request.ReadAtUtc,
+            cancellationToken);
+        if (respawn is null)
+        {
+            return null;
+        }
+
+        var mapped = new WorldBossRespawnSnapshot(
+            respawn.MapId,
+            respawn.BossTemplateKey,
+            respawn.RespawnAt);
+        WorldBossPersistenceContract.Validate(mapped);
+        return mapped;
     }
 
 }

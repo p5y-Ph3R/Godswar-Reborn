@@ -33,10 +33,10 @@ internal sealed record B20LegacyPersistenceBaselineSnapshot(
 internal static class B20LegacyPersistenceBaseline
 {
     public const bool RetirementComplete = false;
-    public const int ExpectedBroadStoreCalls = 43;
+    public const int ExpectedBroadStoreCalls = 33;
     public const int ExpectedJsonSpecificCalls = 1;
-    public const int ExpectedReadCalls = 8;
-    public const int ExpectedMutationOrMixedCalls = 35;
+    public const int ExpectedReadCalls = 1;
+    public const int ExpectedMutationOrMixedCalls = 32;
     public const int ExpectedBootstrapCalls = 1;
     public const int ExpectedJsonStoreImplementationFiles = 10;
     public const int ExpectedPostgresStoreImplementationFiles = 31;
@@ -105,11 +105,11 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/JsonGameStore.ZodiacSkillGrids.cs", 1),
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 1),
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 1),
-        A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/Program.cs", 2),
+        A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/Program.cs", 1),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerRuntimeProfilePolicy.cs", 3),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerWorldContentComposition.cs", 1),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerStartupCommandDispatcher.cs", 1),
-        A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/Program.cs", 1),
+        A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/ServerGameplayPersistenceComposition.cs", 1),
         A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/Application/Characters/MeasuredCharacterSnapshotReader.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/ServerWorldContentComposition.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/Infrastructure/WorldContent/GeneratedWorldContentReaderLoader.cs", 1),

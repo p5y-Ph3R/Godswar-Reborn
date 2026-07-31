@@ -104,12 +104,12 @@ internal static class PlayerOwnershipArchitectureChecks
         string repositoryRoot)
     {
         var path =
-            "src/Godswar.Server/State/" +
-            "PostgresGameStore.Progression.cs";
+            "src/Godswar.Server/Infrastructure/Zodiac/" +
+            "PostgresZodiacLevelStore.cs";
         var method = MethodSlice(
             ReadSource(repositoryRoot, path),
-            "public async Task<ZodiacLevelUpgradeResult?> " +
-            "UpgradeZodiacLevelAsync");
+            "public async Task<ZodiacLevelUpgradeStoreResult?> " +
+            "UpgradeAsync");
         AssertOrdered(
             method,
             path,

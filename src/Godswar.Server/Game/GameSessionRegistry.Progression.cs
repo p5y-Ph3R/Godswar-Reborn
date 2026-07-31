@@ -69,7 +69,7 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (_store is null)
+        if (_experienceBoosts is null)
         {
             return ExperienceBoostState.Empty;
         }
@@ -78,15 +78,17 @@ internal sealed partial class GameSessionRegistry
             session,
             now,
             cancellationToken);
-        LegacyPersistenceMetrics.Record(
-            LegacyPersistenceOperation.GetExperienceBoostState);
-        return await _store.GetExperienceBoostStateAsync(
-            accountId,
-            characterId,
-            camp,
-            mapId,
-            now,
+        var snapshot = await _experienceBoosts.ReadAsync(
+            new ExperienceBoostReadRequest(
+                accountId,
+                characterId,
+                camp,
+                mapId,
+                now),
             cancellationToken);
+        return FocusedGameplayProjectionCompatibility.ToLegacy(
+            snapshot,
+            now);
     }
 
     public async Task FinishProgressionBoostOnlineSessionAsync(
@@ -330,7 +332,7 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(character);
         ownership.Validate();
-        if (_store is null)
+        if (_zodiacLevelStore is null)
         {
             return null;
         }
@@ -351,13 +353,15 @@ internal sealed partial class GameSessionRegistry
                 accountId,
                 character.Id,
                 ownership);
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.UpgradeZodiacLevel);
-            var untrackedResult = await _store.UpgradeZodiacLevelAsync(
+            var focusedResult = await _zodiacLevelStore.UpgradeAsync(
                 accountId,
                 character.Id,
                 ownership,
                 cancellationToken);
+            var untrackedResult = focusedResult is null
+                ? null
+                : FocusedGameplayProjectionCompatibility.ToLegacy(
+                    focusedResult);
             RequireCurrentZodiacLevelOwner(
                 session,
                 accountId,
@@ -388,13 +392,15 @@ internal sealed partial class GameSessionRegistry
                 accountId,
                 character.Id,
                 ownership);
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.UpgradeZodiacLevel);
-            var result = await _store.UpgradeZodiacLevelAsync(
+            var focusedResult = await _zodiacLevelStore.UpgradeAsync(
                 accountId,
                 character.Id,
                 ownership,
                 cancellationToken);
+            var result = focusedResult is null
+                ? null
+                : FocusedGameplayProjectionCompatibility.ToLegacy(
+                    focusedResult);
             RequireCurrentZodiacLevelOwner(
                 session,
                 accountId,

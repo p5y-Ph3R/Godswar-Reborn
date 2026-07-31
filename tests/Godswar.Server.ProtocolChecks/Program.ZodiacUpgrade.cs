@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Game;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -154,6 +155,42 @@ internal static partial class Program
             overCap.CurrentEnergy,
             "an explicit administrative over-cap balance remains spendable");
 
+        var focusedSuccess = new ZodiacLevelUpgradeStoreResult(
+            ZodiacLevelUpgradeStoreStatus.Succeeded,
+            PreviousLevel: 1,
+            CurrentLevel: 2,
+            RequiredCharacterLevel: 10,
+            EnergyCost: 500,
+            CurrentEnergy: 500,
+            CurrentEnergyRemainderX100: 25);
+        focusedSuccess.Validate();
+        Check.True(
+            focusedSuccess.Committed,
+            "focused Zodiac-level contract identifies committed success");
+
+        var focusedRejection = new ZodiacLevelUpgradeStoreResult(
+            ZodiacLevelUpgradeStoreStatus.InsufficientEnergy,
+            PreviousLevel: 1,
+            CurrentLevel: 1,
+            RequiredCharacterLevel: 10,
+            EnergyCost: 500,
+            CurrentEnergy: 499,
+            CurrentEnergyRemainderX100: 99);
+        focusedRejection.Validate();
+        Check.True(
+            !focusedRejection.Committed,
+            "focused Zodiac-level contract identifies terminal rejection");
+        Check.Throws<InvalidDataException>(
+            () => new ZodiacLevelUpgradeStoreResult(
+                ZodiacLevelUpgradeStoreStatus.Succeeded,
+                PreviousLevel: 1,
+                CurrentLevel: 1,
+                RequiredCharacterLevel: 10,
+                EnergyCost: 500,
+                CurrentEnergy: 500,
+                CurrentEnergyRemainderX100: 0).Validate(),
+            "focused Zodiac-level contract rejects inconsistent success evidence");
+
         return Task.CompletedTask;
     }
 
@@ -185,14 +222,26 @@ internal static partial class Program
                     });
                 accountId = account.Id;
                 characterId = character.Id;
-                var ownership =
-                    new PlayerOwnershipFence(Guid.NewGuid(), 1);
+                var checkpoints = new LegacyCharacterCheckpointStore(store);
+                var acquired = await checkpoints.AcquireAsync(
+                        account.Id,
+                        character.Id,
+                        Guid.NewGuid()) ??
+                    throw new InvalidOperationException(
+                        "JSON Zodiac fixture did not acquire ownership");
+                var ownership = acquired.Owner;
 
                 var wrongOwner = await store.UpgradeZodiacLevelAsync(
                     account.Id + 1,
                     character.Id,
                     ownership);
                 Check.True(wrongOwner is null, "wrong account cannot upgrade Zodiac");
+
+                await AssertJsonZodiacOwnershipRejectedAsync(
+                    store,
+                    account.Id,
+                    character.Id,
+                    new PlayerOwnershipFence(Guid.NewGuid(), 1));
 
                 var result = await store.UpgradeZodiacLevelAsync(
                     account.Id,
@@ -212,6 +261,13 @@ internal static partial class Program
                     (int)ZodiacLevelUpgradeStatus.InsufficientEnergy,
                     (int)second.Status,
                     "second upgrade is revalidated against committed energy");
+                Check.Equal(
+                    (int)CharacterCheckpointReleaseStatus.Released,
+                    (int)await checkpoints.ReleaseAsync(
+                        account.Id,
+                        character.Id,
+                        ownership),
+                    "JSON Zodiac fixture releases local ownership");
             }
 
             await using var reloaded = new JsonGameStore(dataPath);
@@ -230,6 +286,32 @@ internal static partial class Program
         {
             Directory.Delete(dataPath, recursive: true);
         }
+    }
+
+    private static async Task AssertJsonZodiacOwnershipRejectedAsync(
+        JsonGameStore store,
+        int accountId,
+        int characterId,
+        PlayerOwnershipFence ownership)
+    {
+        try
+        {
+            _ = await store.UpgradeZodiacLevelAsync(
+                accountId,
+                characterId,
+                ownership);
+        }
+        catch (PlayerOwnershipValidationException exception)
+        {
+            Check.Equal(
+                (int)PlayerOwnershipValidationStatus.OwnershipLost,
+                (int)exception.Status,
+                "JSON Zodiac rejects a stale ownership fence");
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "JSON Zodiac accepted a stale ownership fence.");
     }
 
     private static async Task CheckZodiacLevelUpgradeSerializationAsync()

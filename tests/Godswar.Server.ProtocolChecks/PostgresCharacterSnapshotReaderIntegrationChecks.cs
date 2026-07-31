@@ -16,6 +16,8 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
 
     public static async Task RunAsync()
     {
+        await AssertFocusedProjectionContractValidationAsync();
+
         var connectionString =
             Environment.GetEnvironmentVariable(ConnectionStringVariable);
         if (string.IsNullOrWhiteSpace(connectionString))

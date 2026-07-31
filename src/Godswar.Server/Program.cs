@@ -3,7 +3,6 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
-using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.RelayGateway;
 using Godswar.Server.Networking.SemanticGateway;
@@ -70,26 +69,10 @@ try
     var accountPersistence = ServerAccountPersistenceComposition.Create(
         postgresApplicationDataRuntime,
         jsonGameStore);
-    ICharacterSnapshotReader characterSnapshotReader =
-        runtimeProfile.StorageProvider switch
-        {
-            GameStorageProviderKind.Postgres =>
-                postgresApplicationDataRuntime?.CharacterSnapshots ??
-                throw new InvalidOperationException(
-                    "PostgreSQL character snapshot reader was not composed."),
-            GameStorageProviderKind.Json =>
-                jsonGameStore ??
-                throw new InvalidOperationException(
-                    "JSON character snapshot reader was not composed."),
-            _ => throw new InvalidOperationException(
-                "Validated storage provider has no character snapshot reader.")
-        };
-    var measuredCharacterSnapshots =
-        new MeasuredCharacterSnapshotReader(
-            characterSnapshotReader,
-            runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
-                ? CharacterSnapshotProvider.PostgreSql
-                : CharacterSnapshotProvider.Json);
+    var gameplayPersistence =
+        ServerGameplayPersistenceComposition.Create(
+            postgresApplicationDataRuntime,
+            jsonGameStore);
     var worldContent =
         await ServerWorldContentComposition.TryLoadAsync(
             runtimeProfile,
@@ -126,6 +109,10 @@ try
         characterCheckpoints,
         postgresApplicationDataRuntime?
             .ProgressionIntervalSettlementCommands,
+        zodiacLevelStore:
+            gameplayPersistence.ZodiacLevels,
+        experienceBoosts:
+            gameplayPersistence.ExperienceBoosts,
         requiresDurablePlayerPersistence:
             postgresApplicationDataRuntime is not null,
         worldInstanceOptions:
@@ -135,10 +122,11 @@ try
         accountPersistence.Directory,
         accountPersistence.Presence,
         registry,
-        measuredCharacterSnapshots,
+        gameplayPersistence.CharacterSnapshots,
         worldContent,
         options.Game.DeveloperCommands,
         characterCheckpoints,
+        gameplayPersistence,
         postgresApplicationDataRuntime,
         coordination.Worker);
     var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(

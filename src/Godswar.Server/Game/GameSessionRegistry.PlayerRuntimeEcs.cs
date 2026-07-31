@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Players;
@@ -24,6 +25,8 @@ internal sealed partial class GameSessionRegistry
         ICharacterCheckpointCoordinator? checkpointCoordinator = null,
         IProgressionIntervalSettlementCommandExecutor?
             progressionIntervalSettlementCommands = null,
+        IZodiacLevelStore? zodiacLevelStore = null,
+        IExperienceBoostStateReader? experienceBoosts = null,
         bool requiresDurablePlayerPersistence = false,
         WorldInstanceRuntimeOptions? worldInstanceOptions = null)
         : this(
@@ -32,6 +35,8 @@ internal sealed partial class GameSessionRegistry
             monsterRuntimeMode,
             checkpointCoordinator,
             progressionIntervalSettlementCommands,
+            zodiacLevelStore,
+            experienceBoosts,
             requiresDurablePlayerPersistence,
             worldInstanceOptions)
     {
