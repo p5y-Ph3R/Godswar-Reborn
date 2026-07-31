@@ -22,6 +22,7 @@ internal static class DataBoundaryArchitectureBaseline
 {
     public static readonly LegacyStoreCallAllowance[] StoreCalls =
     [
+        new("Program.cs", "EnsureSeedDataAsync", 1),
         new(
             "Game/GameClientHandler.CharacterCheckpoints.cs",
             "SaveCharacterPositionAsync",
@@ -106,7 +107,27 @@ internal static class DataBoundaryArchitectureBaseline
         new(
             "Security/Authentication/AccountAuthenticationService.cs",
             "TryReplaceAccountCredentialAsync",
-            2)
+            2),
+        new(
+            "State/LegacyCharacterCheckpointStore.cs",
+            "GetFirstCharacterAsync",
+            1),
+        new(
+            "State/LegacyCharacterCheckpointStore.cs",
+            "SaveCharacterPositionAsync",
+            1),
+        new(
+            "State/LegacyCharacterCheckpointStore.cs",
+            "SaveCharacterVitalsAsync",
+            1),
+        new(
+            "State/LegacySemanticGatewayDataSession.cs",
+            "EnsureSeedDataAsync",
+            1),
+        new(
+            "State/LegacySemanticGatewayDataSession.cs",
+            "GetFirstCharacterAsync",
+            1)
     ];
 
     public static readonly ReferenceAllowance[] StoreTypeReferences =

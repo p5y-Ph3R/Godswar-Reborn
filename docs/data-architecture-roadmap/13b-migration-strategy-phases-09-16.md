@@ -158,6 +158,15 @@ rehearsal, and declared business RPO/RTO remain Phase 13/15 deployment work.
 
 ## Phase 16 - Remove legacy persistence and temporary compatibility
 
+**B20A local implementation status (2026-07-31):** the exact production and
+operations dependency baseline is now frozen. It records 60 legacy data
+invocations, JSON/broad-store composition, bootstrap/projection dependencies,
+compiled-seed consumers, and capture-backed content while enforcing zero
+runtime access to research capture authority. This is a source ratchet, not a
+runtime zero-use observation. Account/authentication/session extraction is
+the next slice; JSON removal, schema archival, and the observation window
+remain open.
+
 - **Goal:** leave one production authority and no permanent dual path.
 - **Scope/tasks:** remove production `JsonGameStore`; remove broad `IGameStore` after all callers migrate; archive/drop obsolete views/columns only after measured no-read period; remove raw insecure auth from production; separate capture corpus.
 - **Likely files/modules:** `JsonGameStore*`, `IGameStore`, old handlers/config, legacy schema/capture adapters.

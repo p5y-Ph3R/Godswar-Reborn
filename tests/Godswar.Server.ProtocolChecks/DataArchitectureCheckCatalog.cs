@@ -8,6 +8,9 @@ internal static class DataArchitectureCheckCatalog
             "Data-boundary architecture ratchet",
             DataBoundaryArchitectureChecks.RunAsync),
         (
+            B20LegacyPersistenceArchitectureChecks.CheckName,
+            B20LegacyPersistenceArchitectureChecks.RunAsync),
+        (
             "Pinned immutable world-content reader",
             WorldContentReaderChecks.RunAsync),
         (

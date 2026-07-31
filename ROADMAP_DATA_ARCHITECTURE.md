@@ -1,13 +1,16 @@
 # Godswar Server Data Architecture Roadmap
 
-Status: implementation roadmap; backlog B01A through B19 is completed and
-verified as a repository/local foundation as of 2026-07-31. B16's original
+Status: implementation roadmap; backlog B01A through B19 and B20A are
+completed and verified as repository/local foundations as of 2026-07-31.
+B16's original
 Redis defer remains historical evidence. B18A/B and B18C1/C2 established
 bounded local world owners and an unchanged-client semantic edge with exact
 authenticated worker routing. B17 Redis coordination is completed behind an
 explicit opt-in provider. B19 adds bounded report-only PostgreSQL
 reconciliation and an isolated logical-restore drill. `Local` coordination
-remains the default. No managed Redis deployment, production backup/PITR,
+remains the default. B20A freezes the exact legacy persistence inventory;
+the behavioral migration and zero-use observation window remain open. No
+managed Redis deployment, production backup/PITR,
 declared RPO/RTO, production capacity, provider SLA, or cross-realm failover
 is claimed.
 
@@ -64,6 +67,7 @@ document organization; the assessment and recommendations remain intact.
 - [B18C2 semantic gateway and authenticated worker backhaul](docs/data-architecture-b18c2-semantic-gateway-backhaul-20260731.md)
 - [B19 reconciliation and restore drills](docs/data-architecture-b19-reconciliation-restore-20260731.md)
 - [B19 operations runbook](docs/operations/b19-reconciliation-restore-runbook.md)
+- [B20A legacy persistence inventory and retirement ratchet](docs/data-architecture-b20a-legacy-inventory-ratchet-20260731.md)
 
 ## Roadmap sections
 

@@ -34,7 +34,7 @@ internal sealed record DataBoundaryAnalysis(
 internal static class DataBoundaryArchitectureAnalyzer
 {
     private static readonly Regex StoreCallPattern = new(
-        @"\b(?:_store|store)\s*(?:[!?]\s*)?\.\s*" +
+        @"\b(?:_gameStore|_store|store)\s*(?:[!?]\s*)?\.\s*" +
         @"(?<member>[A-Za-z_][A-Za-z0-9_]*)",
         RegexOptions.CultureInvariant);
 
@@ -178,12 +178,6 @@ internal static class DataBoundaryArchitectureAnalyzer
         var members = gameStoreMethods.ToHashSet(StringComparer.Ordinal);
         foreach (var (path, source) in sourceFiles)
         {
-            if (IsUnder(path, "State/") ||
-                path.Equals("Program.cs", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
             foreach (Match match in StoreCallPattern.Matches(source))
             {
                 var member = match.Groups["member"].Value;

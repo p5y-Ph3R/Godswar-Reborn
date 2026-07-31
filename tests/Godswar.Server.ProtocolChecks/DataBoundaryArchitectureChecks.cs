@@ -331,6 +331,20 @@ internal static class DataBoundaryArchitectureChecks
                     StringComparison.Ordinal)),
             "architecture analyzer rejects calls on legacy store parameters");
 
+        var legacyAdapterCall = Copy(clean);
+        legacyAdapterCall["State/Adapter.cs"] =
+            "internal sealed class Adapter(IGameStore gameStore) " +
+            "{ private readonly IGameStore _gameStore = gameStore; " +
+            "void Load() => _gameStore.LoadAsync(); }";
+        Check.True(
+            DataBoundaryArchitectureAnalyzer
+                .Analyze(legacyAdapterCall, baseline)
+                .NewDebt
+                .Any(static value => value.Contains(
+                    "store call State/Adapter.cs|LoadAsync",
+                    StringComparison.Ordinal)),
+            "architecture analyzer rejects unreviewed State adapter calls");
+
         var newConsumer = Copy(clean);
         newConsumer["Game/NewConsumer.cs"] =
             "internal sealed class NewConsumer(IGameStore store);";
