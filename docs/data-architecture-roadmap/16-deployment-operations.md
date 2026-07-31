@@ -76,6 +76,12 @@ Dashboards should cover login/session, world/tick, persistence/economy, networki
 
 ## 16.6 Backups and disaster recovery
 
+- B19 implements a mandatory local/CI logical recovery drill against an
+  isolated PostgreSQL 17.9 container. It verifies the exact migration head,
+  clean synthetic reconciliation, custom-dump SHA-256/size, restored logical
+  fingerprint, restored reconciliation, timing evidence, and exact cleanup.
+  Its zero-loss observation applies only to the quiesced synthetic snapshot;
+  it is not a production RPO/RTO claim.
 - Define RPO/RTO before production.
 - Use automated PostgreSQL backups plus WAL/PITR as supported by the chosen provider.
 - Encrypt backups, restrict access, record checksums/schema/build/content versions, and test restoration on schedule.
@@ -83,6 +89,12 @@ Dashboards should cover login/session, world/tick, persistence/economy, networki
 - Redis coordination/cache does not determine player-data RPO; rebuild it. If Redis persistence is enabled, it shortens operational recovery only.
 - Preserve immutable economy/security audits according to retention policy.
 - Document region/provider failure, database corruption, origin exposure, credential/key compromise, and rollback runbooks.
+
+Use the
+[B19 reconciliation and restore runbook](../operations/b19-reconciliation-restore-runbook.md)
+for the implemented local gate and its promotion boundary. A provider,
+backup/WAL retention, off-host or off-region isolation, production-volume
+rehearsal, and approved business RPO/RTO are still required before production.
 
 ## 16.7 Capacity and DDoS responsibilities
 

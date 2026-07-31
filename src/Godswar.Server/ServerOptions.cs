@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Reconciliation;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Networking;
@@ -64,6 +65,7 @@ internal sealed partial class ServerOptions
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
+        Storage.Reconciliation ??= new ReconciliationOptions();
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
@@ -230,6 +232,7 @@ internal sealed partial class ServerOptions
         Storage.Checkpoints.ShutdownDrainTimeoutMilliseconds = ReadInt(
             "GODSWAR_CHECKPOINT_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
             Storage.Checkpoints.ShutdownDrainTimeoutMilliseconds);
+        ApplyReconciliationEnvironment();
 
         return this;
     }
@@ -261,6 +264,7 @@ internal sealed partial class ServerOptions
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
+        Storage.Reconciliation ??= new ReconciliationOptions();
         Game.DeveloperCommands.AllowedAccountIds = (Game.DeveloperCommands.AllowedAccountIds ?? [])
             .Where(accountId => accountId > 0)
             .Distinct()
@@ -279,6 +283,8 @@ internal sealed partial class ServerOptions
         Authentication.Validate();
         Storage.Outbox.Validate();
         Storage.Checkpoints.Validate();
+        Storage.Reconciliation.Validate();
+        ValidateReconciliationStorage();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
         ValidateCoordinationTopology();
         if (Backhaul.Enabled)
@@ -490,18 +496,6 @@ internal sealed class DeveloperCommandOptions
     {
         return Enabled && accountId > 0 && (AllowedAccountIds ?? []).Contains(accountId);
     }
-}
-
-internal sealed class StorageOptions
-{
-    public string Provider { get; set; } = string.Empty;
-
-    public string PostgresConnectionString { get; set; } = string.Empty;
-
-    public PostgresOutboxDispatcherOptions Outbox { get; set; } = new();
-
-    public CharacterCheckpointWorkerOptions Checkpoints { get; set; } =
-        new();
 }
 
 internal static class JsonDefaults

@@ -14,7 +14,8 @@ internal enum CriticalTaskKind : byte
     ZodiacEnergyAccrual = 10,
     DurableProgressionRetry = 11,
     PostgresReadiness = 12,
-    RedisCoordination = 13
+    RedisCoordination = 13,
+    Reconciliation = 14
 }
 
 internal enum CriticalTaskState : byte
@@ -272,6 +273,8 @@ internal static class CriticalTaskCodes
                 "postgres_readiness",
             CriticalTaskKind.RedisCoordination =>
                 "redis_coordination",
+            CriticalTaskKind.Reconciliation =>
+                "reconciliation",
             _ => throw new ArgumentOutOfRangeException(nameof(task))
         };
 

@@ -3,6 +3,7 @@ using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Application.Rewards;
+using Godswar.Server.Application.Reconciliation;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Infrastructure.Characters;
@@ -11,6 +12,7 @@ using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Pets;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.Rewards;
+using Godswar.Server.Infrastructure.Reconciliation;
 using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.State;
@@ -28,11 +30,14 @@ internal sealed class PostgresApplicationDataRuntime :
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresOutboxDispatcher _outboxDispatcher;
+    private readonly PostgresReconciliationWorker
+        _reconciliationWorker;
 
     public PostgresApplicationDataRuntime(
         string connectionString,
         PostgresOutboxDispatcherOptions outboxOptions,
-        ZodiacEnergyPolicy zodiacEnergyPolicy)
+        ZodiacEnergyPolicy zodiacEnergyPolicy,
+        ReconciliationOptions? reconciliationOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         ArgumentNullException.ThrowIfNull(outboxOptions);
@@ -120,21 +125,32 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresPetDurableCommandExecutor(
                 _dataSource,
                 outboxOptions);
+        var outboxConsumers =
+            PostgresOutboxConsumerCatalog.Create();
         _outboxDispatcher = new PostgresOutboxDispatcher(
             _dataSource,
-            [
-                new CharacterLifecycleOutboxConsumer(),
-                new TalentUpgradeOutboxConsumer(),
-                new CharacterInventoryOutboxConsumer(),
-                new ZodiacSkillGridActivationOutboxConsumer(),
-                new ZodiacSkillGridUpgradeOutboxConsumer(),
-                new ZodiacSkillGridSelectionOutboxConsumer(),
-                new MonsterDeathRewardOutboxConsumer(),
-                new ProgressionIntervalSettlementOutboxConsumer(),
-                new PetDurableOutboxConsumer()
-            ],
+            outboxConsumers,
             outboxOptions);
         OutboxEnabled = outboxOptions.Enabled;
+        var effectiveReconciliationOptions =
+            reconciliationOptions ?? new ReconciliationOptions();
+        effectiveReconciliationOptions.Validate();
+        var reconciliationMetrics = new ReconciliationMetrics();
+        _reconciliationWorker = new PostgresReconciliationWorker(
+            new ReconciliationRunner(
+                new PostgresReconciliationReader(
+                    _dataSource,
+                    outboxConsumers),
+                effectiveReconciliationOptions,
+                reconciliationMetrics),
+            effectiveReconciliationOptions,
+            reconciliationMetrics);
+        ReconciliationRepair =
+            new PostgresExpiredOutboxLeaseRepairer(
+                _outboxDispatcher,
+                reconciliationMetrics);
+        ReconciliationEnabled =
+            effectiveReconciliationOptions.Enabled;
     }
 
     public ICharacterSnapshotReader CharacterSnapshots { get; }
@@ -209,9 +225,21 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public bool OutboxEnabled { get; }
 
+    public bool ReconciliationEnabled { get; }
+
+    public IReconciliationRepairer ReconciliationRepair { get; }
+
     public Task RunOutboxAsync(
         CancellationToken cancellationToken = default) =>
         _outboxDispatcher.RunAsync(cancellationToken);
+
+    public Task RunReconciliationAsync(
+        CancellationToken cancellationToken = default) =>
+        _reconciliationWorker.RunAsync(cancellationToken);
+
+    public ReconciliationWorkerSnapshot
+        GetReconciliationSnapshot() =>
+        _reconciliationWorker.GetSnapshot();
 
     public async Task<bool> CheckHealthAsync(
         CancellationToken cancellationToken = default)

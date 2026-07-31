@@ -81,6 +81,17 @@
 
 ## Phase 12 - Backfill and reconciliation
 
+**B19 local implementation status (2026-07-31):** the repository now has a
+disabled-by-default, report-only PostgreSQL reconciliation worker and CLI.
+It performs a resumable bounded logical sweep across character/economy,
+progression/pet, lifecycle, outbox/consumer-position, exact schema-manifest,
+and published NPC-content evidence. Its 32 finite categories include
+wallet/inventory ledger-chain checks. Findings accumulate across sweep
+segments; no player-value repair exists. The only explicit mutation is the
+existing compare-and-swap recovery of matched expired outbox leases. Signed
+reports, production backfill execution, production-sized estimates, and B20
+legacy-writer retirement remain open.
+
 - **Goal:** prove new authoritative representations match legacy data before cutover.
 - **Scope/tasks:** backfill versions/content revisions; create one audited opening-balance/cutover ledger entry for each existing wallet rather than inventing historical transactions; compare `character_items` with projections; validate balances/progression/pets; instrument and inventory reads/writes of legacy account/character columns before any archive/drop; inventory capture dependencies; produce signed reconciliation reports.
 - **Likely files/modules:** migrations, `tools`, `database/fixtures`, `docs/database-migrations.md`.
@@ -94,6 +105,14 @@
 - **Complexity:** Medium/Large.
 
 ## Phase 13 - Reliability, observability, and operations
+
+**B19 local implementation status (2026-07-31):** a supervised worker,
+first-complete-sweep readiness, finite metrics/alerts, checksum evidence CLI,
+and a mandatory isolated PostgreSQL 17.9 custom-dump/restore/fingerprint gate
+are implemented. The drill proves only a quiesced synthetic logical snapshot
+and refuses to claim production RPO/RTO. Provider backups, WAL/PITR,
+off-region retention, authenticated repair audit, production-volume restore
+rehearsal, and declared business RPO/RTO remain Phase 13/15 deployment work.
 
 - **Goal:** make persistence health and failures visible and actionable.
 - **Scope/tasks:** structured redacted logging; OpenTelemetry traces/metrics exporter on private endpoint; readiness/liveness/drain; critical-task supervisor; outbox/reconciliation worker supervision; dashboards/runbooks; backup/PITR/restore drills.

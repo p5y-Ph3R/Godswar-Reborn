@@ -11,7 +11,8 @@ internal static class ServerStartupCommandDispatcher
     {
         if (await ManagementProbeCommand.TryRunAsync(args) ||
             await ControlledHostValidationCommand.TryRunAsync(args) ||
-            await RelayGatewayCommand.TryRunAsync(args))
+            await RelayGatewayCommand.TryRunAsync(args) ||
+            await PostgresReconciliationCommand.TryRunAsync(args))
         {
             return true;
         }

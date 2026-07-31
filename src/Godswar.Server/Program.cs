@@ -61,7 +61,8 @@ try
                 ? new PostgresApplicationDataRuntime(
                     options.Storage.PostgresConnectionString,
                     options.Storage.Outbox,
-                    options.Game.ZodiacEnergy.Snapshot())
+                    options.Game.ZodiacEnergy.Snapshot(),
+                    options.Storage.Reconciliation)
                 : null;
     ICharacterSnapshotReader characterSnapshotReader =
         runtimeProfile.StorageProvider switch
@@ -372,6 +373,9 @@ try
                 CriticalTaskKind.OutboxDispatcher,
                 postgresApplicationDataRuntime.RunOutboxAsync);
         }
+        ServerReconciliationComposition.StartWorkerIfEnabled(
+            criticalTasks,
+            postgresApplicationDataRuntime);
 
         if (secureUdpRuntime is not null)
         {

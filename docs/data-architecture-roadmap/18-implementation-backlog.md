@@ -25,7 +25,7 @@
 | B18A/B - Realm/instance identity and fair mailboxes **(completed 2026-07-31)** | Local scale-out foundation | typed IDs, placement/runtime directory, instance sessions, owner mailboxes, bounded fanout | ADR 0004, B02, B10 | Isolated single-owned instances; I/O outside owner commands | lifecycle/isolation/transfer/overload | instance/queue/fanout | Tempest default-map bridge | Large | High |
 | B18C1 - Local opaque TCP relay **(completed 2026-07-31)** | Prove a process boundary | `Networking/RelayGateway`, worker node/public port, Docker-free smoke | B18A/B | One bounded relay reaches one private combined worker; no semantic claims | in-process plus real two-process smoke | finite snapshot/meter | Omit relay mode | Medium | Medium |
 | B18C2 - Semantic gateway/backhaul **(completed and verified 2026-07-31)** | Move session/routing authority to the gateway | loopback auth edge, mTLS worker hop, exact realm/map/instance/node route and admission identity | B18C1, B15 | Single-use login; exact route/drain/replay/capacity policy | focused and real mTLS multi-worker checks | bounded gateway/route signals | Drain to B18C1/direct worker | Large | High |
-| B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
+| B19 - Reconciliation/restore drills **(completed local foundation 2026-07-31)** | Detect drift | worker/tools/runbook/CI | B08-B12 | Bounded report/lease repair and isolated restore; production RPO/RTO gated | interruption, repair, restore | mismatch/repair/restore time | Disable worker | Medium | Medium |
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
 | B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
 
@@ -113,18 +113,18 @@ bounded metrics. Its final gate passed **263 managed checks** and **42
 PostgreSQL checks across 4 scenarios**.
 
 **B16-B18C rollout:** [B16/B17](../data-architecture-b16-b17-redis-decision-20260731.md)
-preserves the historic defer. [B18A](../data-architecture-b18a-realm-instance-foundation-20260731.md)
-and [B18B](../data-architecture-b18b-instance-routing-mailboxes-20260731.md)
-completed local identity, routing, and owners.
-[B18C1](../data-architecture-b18c1-local-relay-gateway-20260731.md) is
-completed and verified.
+records the historic defer; [B18A](../data-architecture-b18a-realm-instance-foundation-20260731.md),
+[B18B](../data-architecture-b18b-instance-routing-mailboxes-20260731.md),
+[B18C1](../data-architecture-b18c1-local-relay-gateway-20260731.md), and
 [B18C2](../data-architecture-b18c2-semantic-gateway-backhaul-20260731.md)
-is completed and verified as a local-first semantic gateway/private-worker
-boundary. [B17](../data-architecture-b17-redis-coordination-20260731.md) is
-completed and verified behind an opt-in provider; public deployment remains
-gated. Closeout passed the 286-check managed protocol catalog, the mandatory
-43-check/5-scenario PostgreSQL gate, and the mandatory
-26-check/5-scenario Redis gate.
+complete the local identity/owner/gateway boundary. Opt-in
+[B17](../data-architecture-b17-redis-coordination-20260731.md) is verified;
+public deployment remains gated.
+
+**B19 completed locally:** see its
+[evidence](../data-architecture-b19-reconciliation-restore-20260731.md) and
+[runbook](../operations/b19-reconciliation-restore-runbook.md). Production
+PITR, RPO/RTO, and repair authorization remain gated.
 
 ## 18.2 Dependency and parallelization notes
 

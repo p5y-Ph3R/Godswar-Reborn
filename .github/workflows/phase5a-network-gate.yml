@@ -209,3 +209,64 @@ jobs:
           path: artifacts/b17/redis-ci-result.json
           if-no-files-found: error
           retention-days: 14
+
+  b19-postgresql-recovery-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore GodswarServer.sln
+
+      - name: Release build
+        shell: pwsh
+        run: dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
+
+      - name: Mandatory isolated B19 reconciliation recovery gate
+        shell: pwsh
+        run: |
+          ./tools/InvokeB19PostgresRecoveryGate.ps1 `
+            -PostgresImage 'postgres:17.9-alpine' `
+            -ReportPath 'artifacts/b19/recovery-gate-result.json'
+
+      - name: B19 recovery gate summary
+        if: always()
+        shell: pwsh
+        run: |
+          $report = 'artifacts/b19/recovery-gate-result.json'
+          if (Test-Path -LiteralPath $report -PathType Leaf) {
+            $result = Get-Content -LiteralPath $report -Raw |
+              ConvertFrom-Json
+            @(
+              '## B19 PostgreSQL reconciliation recovery gate'
+              ''
+              "- Status: ``$($result.status)``"
+              "- Source tree dirty: ``$($result.sourceTreeDirty)``"
+              "- Duration: ``$($result.durationMs) ms``"
+              "- Dump: ``$($result.recovery.dumpBytes) bytes``"
+              "- Restore: ``$($result.recovery.restoreDurationMs) ms``"
+              "- Verified ready: ``$($result.recovery.verifiedReadyDurationMs) ms``"
+              "- Production RPO claim: ``$($result.recovery.productionRpoClaim)``"
+              "- Production RTO claim: ``$($result.recovery.productionRtoClaim)``"
+              "- Machine result: ``$report``"
+            ) | Out-File `
+              -FilePath $env:GITHUB_STEP_SUMMARY `
+              -Encoding utf8 `
+              -Append
+          }
+
+      - name: Upload B19 recovery gate result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b19-postgresql-recovery-result
+          path: artifacts/b19/recovery-gate-result.json
+          if-no-files-found: error
+          retention-days: 14

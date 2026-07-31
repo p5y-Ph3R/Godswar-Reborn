@@ -1,14 +1,15 @@
 # Godswar Server Data Architecture Roadmap
 
-Status: implementation roadmap; backlog B01A through B15 completed and
-verified as of 2026-07-31. B16's original Redis defer remains historical
-evidence. B18A/B and B18C1/C2 established bounded local world owners and an
-unchanged-client semantic edge with exact authenticated worker routing. B17
-Redis coordination is completed and verified behind an explicit opt-in provider:
-atomic tickets/admissions, worker routes, presence, and PostgreSQL-fenced
-player leases can cross processes without moving durable player value out of
-PostgreSQL. `Local` remains the default. No managed Redis deployment, HA,
-production capacity, provider SLA, or cross-realm failover is claimed.
+Status: implementation roadmap; backlog B01A through B19 is completed and
+verified as a repository/local foundation as of 2026-07-31. B16's original
+Redis defer remains historical evidence. B18A/B and B18C1/C2 established
+bounded local world owners and an unchanged-client semantic edge with exact
+authenticated worker routing. B17 Redis coordination is completed behind an
+explicit opt-in provider. B19 adds bounded report-only PostgreSQL
+reconciliation and an isolated logical-restore drill. `Local` coordination
+remains the default. No managed Redis deployment, production backup/PITR,
+declared RPO/RTO, production capacity, provider SLA, or cross-realm failover
+is claimed.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -61,6 +62,8 @@ document organization; the assessment and recommendations remain intact.
 - [B18B local instance routing and single-owner mailboxes](docs/data-architecture-b18b-instance-routing-mailboxes-20260731.md)
 - [B18C1 local relay gateway](docs/data-architecture-b18c1-local-relay-gateway-20260731.md)
 - [B18C2 semantic gateway and authenticated worker backhaul](docs/data-architecture-b18c2-semantic-gateway-backhaul-20260731.md)
+- [B19 reconciliation and restore drills](docs/data-architecture-b19-reconciliation-restore-20260731.md)
+- [B19 operations runbook](docs/operations/b19-reconciliation-restore-runbook.md)
 
 ## Roadmap sections
 

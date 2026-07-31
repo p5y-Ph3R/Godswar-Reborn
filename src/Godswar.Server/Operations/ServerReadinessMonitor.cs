@@ -3,6 +3,7 @@ using Godswar.Server.Application.Coordination;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.Infrastructure.Reconciliation;
 using Godswar.Server.Networking.Secure.Udp;
 
 namespace Godswar.Server.Operations;
@@ -176,9 +177,20 @@ internal sealed class ServerReadinessMonitor
             (outbox.State == OutboxDispatcherState.Running &&
              outbox.HeartbeatAge <=
                 _options.MaximumWorkerHeartbeatAge);
+        var reconciliation =
+            _postgres?.GetReconciliationSnapshot();
+        var reconciliationReady =
+            reconciliation is not { Enabled: true } ||
+            (reconciliation.Value.State ==
+                ReconciliationWorkerState.Running &&
+             reconciliation.Value.FirstPassCompleted &&
+             reconciliation.Value.HeartbeatAge <=
+                reconciliation.Value.MaximumHealthyHeartbeatAge);
         _state.SetDependency(
             ServerReadinessDependency.PersistenceWorkers,
-            progressionReady && outboxReady);
+            progressionReady &&
+            outboxReady &&
+            reconciliationReady);
 
         _state.SetDependency(
             ServerReadinessDependency.BoundedQueues,

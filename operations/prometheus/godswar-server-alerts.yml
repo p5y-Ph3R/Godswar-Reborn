@@ -161,6 +161,51 @@ groups:
           summary: Durable gameplay commands cannot reach their authority
           runbook: docs/operations/b13-incident-runbooks.md
 
+      - alert: GodswarReconciliationFindingDetected
+        expr: |
+          sum by (instance, category) (
+            increase(godswar_reconciliation_findings_total[15m])
+          ) > 0
+        labels:
+          severity: critical
+          owner: game-backend
+        annotations:
+          summary: PostgreSQL reconciliation detected durable-state drift
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarReconciliationRunFailed
+        expr: |
+          sum by (instance, outcome) (
+            increase(
+              godswar_reconciliation_runs_total{
+                outcome=~"database_unavailable|database_timeout|timed_out"
+              }[15m]
+            )
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: game-backend
+        annotations:
+          summary: A bounded PostgreSQL reconciliation run did not complete
+          runbook: docs/operations/b13-incident-runbooks.md
+
+      - alert: GodswarReconciliationRepairFailed
+        expr: |
+          sum by (instance, outcome) (
+            increase(
+              godswar_reconciliation_repair_attempts_total{
+                outcome=~"cancelled|failed"
+              }[15m]
+            )
+          ) > 0
+        labels:
+          severity: critical
+          owner: game-backend
+        annotations:
+          summary: An expired-outbox-lease repair did not complete
+          runbook: docs/operations/b13-incident-runbooks.md
+
   - name: godswar-server-telemetry
     interval: 30s
     rules:

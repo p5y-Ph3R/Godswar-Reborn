@@ -144,6 +144,12 @@ the
 B17 Redis coordination is now opt-in; `Local` remains the default. See the
 [B17 evidence](docs/data-architecture-b17-redis-coordination-20260731.md).
 
+## Reconciliation and local recovery
+
+See the B19 reconciliation/isolated-recovery
+[evidence](docs/data-architecture-b19-reconciliation-restore-20260731.md) and
+[runbook](docs/operations/b19-reconciliation-restore-runbook.md).
+
 ## Docker
 
 ```powershell

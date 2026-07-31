@@ -220,6 +220,7 @@ internal static class DataArchitectureCheckCatalog
         (
             "PostgreSQL talent command precondition",
             PostgresTalentUpgradeIntegrationChecks.RunAsync),
+        .. B19ReconciliationCheckCatalog.All,
         .. B13OperationsCheckCatalog.All
     ];
 }

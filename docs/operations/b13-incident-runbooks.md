@@ -292,4 +292,9 @@ secret.
 - Any threshold/configuration change has an owner, evidence window and rollback
   condition.
 
-Production restore, PITR and declared RPO/RTO drills remain B19/provider work.
+B19 now owns the bounded reconciliation and disposable logical-restore
+runbook in
+[`b19-reconciliation-restore-runbook.md`](b19-reconciliation-restore-runbook.md).
+Its quiesced synthetic result is local verification only. Production backup
+retention, WAL/PITR, provider failover, production-sized restore rehearsal,
+and declared RPO/RTO remain provider and operations work.

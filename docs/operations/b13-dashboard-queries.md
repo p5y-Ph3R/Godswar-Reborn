@@ -104,6 +104,29 @@ Add standard Npgsql connection/pool panels only after their exact exported
 names and dimensions have been verified. Database, user and connection-string
 values must not become labels.
 
+## Reconciliation and recovery
+
+| Panel | Query |
+| --- | --- |
+| Reconciliation outcomes | `sum by (mode,outcome) (increase(godswar_reconciliation_runs_total[1h]))` |
+| Findings by finite category | `sum by (category) (increase(godswar_reconciliation_findings_total[1h]))` |
+| Rows scanned | `sum by (scope) (rate(godswar_reconciliation_rows_scanned_total[15m]))` |
+| Report p95 duration | `histogram_quantile(0.95, sum by (le,mode,outcome) (rate(godswar_reconciliation_run_duration_ms_bucket[1h])))` |
+| Repair attempts | `sum by (outcome) (increase(godswar_reconciliation_repair_attempts_total[1h]))` |
+| Recovered lease rows | `sum(increase(godswar_reconciliation_repair_rows_total{outcome="recovered"}[1h]))` |
+| Repair p95 duration | `histogram_quantile(0.95, sum by (le,outcome) (rate(godswar_reconciliation_repair_duration_ms_bucket[1h])))` |
+
+A `completed` result means every scope of the current logical sweep reached
+its end and includes findings accumulated across its segments. A `truncated`
+result is progress, never a clean receipt. Correlate findings with worker
+readiness/heartbeat and the machine evidence; do not infer repair authority
+from a panel.
+
+Logical-restore duration, dump size/hash, source/restored fingerprint, cleanup,
+and the explicitly false production RPO/RTO claims are machine-report fields,
+not continuously exported application metrics. Compare only equivalent
+authorized recovery-gate runs.
+
 ## Checkpoints and progression retry
 
 ```promql
