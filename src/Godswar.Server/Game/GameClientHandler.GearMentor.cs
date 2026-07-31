@@ -365,7 +365,8 @@ internal sealed partial class GameClientHandler
             _registry.IsCanonicalMapNpc(
                 _character.CurrentMap,
                 _npcCatalogRevision,
-                candidate))
+                candidate,
+                _session))
         {
             npc = candidate;
             return true;

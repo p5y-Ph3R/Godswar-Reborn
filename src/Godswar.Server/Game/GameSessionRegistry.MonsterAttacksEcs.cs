@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -15,7 +16,7 @@ internal sealed partial class GameSessionRegistry
     private long _nextMonsterAttackEventId;
 
     private async Task ProcessMonsterAttackEcsAsync(
-        MapInstance map,
+        WorldInstanceRuntime runtime,
         MonsterRuntimeUpdate attack,
         CancellationToken cancellationToken)
     {
@@ -25,7 +26,8 @@ internal sealed partial class GameSessionRegistry
         }
 
         GameSessionContext? targetContext;
-        var statusContext = map.Snapshot().FirstOrDefault(context =>
+        var members = SnapshotMonsterAttackMembers(runtime);
+        var statusContext = members.FirstOrDefault(context =>
             context.WorldReady &&
             context.CharacterId == targetCharacterId);
         var damageResolvedAt = DateTimeOffset.UtcNow;
@@ -46,9 +48,10 @@ internal sealed partial class GameSessionRegistry
         var deathInterruptionTask = Task.CompletedTask;
         lock (_gate)
         {
-            targetContext = map.Snapshot().FirstOrDefault(context =>
-                context.WorldReady &&
-                context.CharacterId == targetCharacterId);
+            targetContext = ResolveCurrentMonsterAttackTarget(
+                runtime,
+                members,
+                targetCharacterId);
             if (targetContext is not null)
             {
                 if (statusContext is null ||
@@ -106,7 +109,8 @@ internal sealed partial class GameSessionRegistry
 
         if (targetContext is null)
         {
-            map.ClearMonsterAggroForCharacter(
+            ClearMonsterAttackAggro(
+                runtime,
                 targetCharacterId,
                 DateTimeOffset.UtcNow);
             return;
@@ -120,7 +124,8 @@ internal sealed partial class GameSessionRegistry
                     MonsterPlayerDamageRejectionReason
                         .StaleAttackEvent))
             {
-                map.ClearMonsterAggroForCharacter(
+                ClearMonsterAttackAggro(
+                    runtime,
                     targetCharacterId,
                     DateTimeOffset.UtcNow);
             }
@@ -142,7 +147,9 @@ internal sealed partial class GameSessionRegistry
             WorldObjectIds.ForPlayer(target.Id);
         try
         {
-            await targetContext.Session.SendAsync(
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                targetContext,
                 PacketBuilder.SkillCastImpact(
                     monster.ObjectId,
                     LocalPlayerObjectId,
@@ -151,7 +158,9 @@ internal sealed partial class GameSessionRegistry
                     attack.TargetZ),
                 cancellationToken,
                 "MonsterAttackImpactSelf");
-            await targetContext.Session.SendAsync(
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                targetContext,
                 PacketBuilder.PhysicalDamage(
                     monster.ObjectId,
                     monster.X,
@@ -164,7 +173,9 @@ internal sealed partial class GameSessionRegistry
                 "MonsterAttackDamageSelf");
             if (killed)
             {
-                await targetContext.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    targetContext,
                     PacketBuilder.PlayerDeath(
                         LocalPlayerObjectId,
                         target.PositionX,
@@ -181,13 +192,13 @@ internal sealed partial class GameSessionRegistry
             Remove(targetContext.Session);
         }
 
-        foreach (var observer in map.Snapshot())
+        foreach (var observer in SnapshotMonsterAttackMembers(runtime))
         {
             if (!observer.WorldReady ||
                 ReferenceEquals(
                     observer.Session,
                     targetContext.Session) ||
-                !map.IsMonsterVisibleTo(
+                !runtime.Map.IsMonsterVisibleTo(
                     observer.Session,
                     monster.ObjectId))
             {
@@ -196,7 +207,9 @@ internal sealed partial class GameSessionRegistry
 
             try
             {
-                await observer.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    observer,
                     PacketBuilder.SkillCastImpact(
                         monster.ObjectId,
                         worldTargetObjectId,
@@ -205,7 +218,9 @@ internal sealed partial class GameSessionRegistry
                         attack.TargetZ),
                     cancellationToken,
                     "MonsterAttackImpactWorld");
-                await observer.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    observer,
                     PacketBuilder.PhysicalDamage(
                         monster.ObjectId,
                         monster.X,
@@ -218,7 +233,9 @@ internal sealed partial class GameSessionRegistry
                     "MonsterAttackDamageWorld");
                 if (killed)
                 {
-                    await observer.Session.SendAsync(
+                    await TrySendWorldInstancePacketAsync(
+                        runtime,
+                        observer,
                         PacketBuilder.PlayerDeath(
                             worldTargetObjectId,
                             target.PositionX,
@@ -255,7 +272,8 @@ internal sealed partial class GameSessionRegistry
                     $"[mount] failed clearing Ride after death character={targetContext.DisplayName}: {ex.Message}");
             }
 
-            map.ClearMonsterAggroForCharacter(
+            ClearMonsterAttackAggro(
+                runtime,
                 targetCharacterId,
                 DateTimeOffset.UtcNow);
         }

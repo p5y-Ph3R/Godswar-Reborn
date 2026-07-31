@@ -160,12 +160,21 @@ internal static class DurableRegistryCompositionChecks
             ReadSource(
                 root,
                 "src/Godswar.Server/Game/" +
-                "GameSessionRegistry.cs"),
+                "GameSessionRegistry.WorldMembership.cs"),
             "durable world-join ownership",
             "var ownership = PlayerOwnership(character)",
+            "ValidateWorldJoinOwnership(",
+            "new GameSessionContext(");
+        AssertOrdered(
+            ReadSource(
+                root,
+                "src/Godswar.Server/Game/" +
+                "GameSessionRegistry.WorldMembership.cs"),
+            "durable world-join ownership guard",
+            "private void ValidateWorldJoinOwnership",
             "_requiresDurablePlayerPersistence",
             "!ownership.IsValid",
-            "new GameSessionContext(");
+            "IsCurrentAccountSession(");
 
         var composition = ReadSource(
             root,

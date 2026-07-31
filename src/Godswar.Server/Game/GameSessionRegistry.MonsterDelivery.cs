@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -18,7 +17,10 @@ internal sealed partial class GameSessionRegistry
         MonsterHealthMutation? healthMutation = null,
         uint? expectedSpawnGeneration = null)
     {
-        if (!_maps.TryGetValue(mapId, out var map))
+        if (!TryResolveWorldInstance(
+                mapId,
+                excludeSession,
+                out var runtime))
         {
             return 0;
         }
@@ -40,7 +42,11 @@ internal sealed partial class GameSessionRegistry
         }
 
         var sent = 0;
-        foreach (var context in map.Snapshot())
+        var recipients = InvokeWorldOwner(
+            runtime,
+            static map => map.Snapshot(),
+            cancellationToken);
+        foreach (var context in recipients)
         {
             if (!context.WorldReady ||
                 excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
@@ -52,17 +58,20 @@ internal sealed partial class GameSessionRegistry
             {
                 await using var deliveryLease =
                     healthMutation is { } versionedMutation
-                        ? await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                        ? await runtime.Map
+                            .AcquireMonsterViewerHealthDeliveryLeaseAsync(
                             context.Session,
                             [versionedMutation],
                             cancellationToken)
                         : expectedSpawnGeneration is { } versionedGeneration
-                            ? await map.AcquireMonsterViewerDeliveryLeaseAsync(
+                            ? await runtime.Map
+                                .AcquireMonsterViewerDeliveryLeaseAsync(
                                 context.Session,
                                 monsterId,
                                 versionedGeneration,
                                 cancellationToken)
-                            : await map.AcquireMonsterViewerDeliveryLeaseAsync(
+                            : await runtime.Map
+                                .AcquireMonsterViewerDeliveryLeaseAsync(
                                 context.Session,
                                 monsterId,
                                 cancellationToken);
@@ -150,13 +159,13 @@ internal sealed partial class GameSessionRegistry
         if (!_sessions.TryGetValue(session, out var context) ||
             context.MapId != mapId ||
             !context.WorldReady ||
-            !_maps.TryGetValue(mapId, out var map))
+            !TryGetWorldInstance(context, out var runtime))
         {
             return false;
         }
 
         await using var deliveryLease =
-            await map.AcquireMonsterViewerDeliveryLeaseAsync(
+            await runtime.Map.AcquireMonsterViewerDeliveryLeaseAsync(
                 session,
                 monsterId,
                 expectedSpawnGeneration,
@@ -191,13 +200,13 @@ internal sealed partial class GameSessionRegistry
         if (!_sessions.TryGetValue(session, out var context) ||
             context.MapId != mapId ||
             !context.WorldReady ||
-            !_maps.TryGetValue(mapId, out var map))
+            !TryGetWorldInstance(context, out var runtime))
         {
             return false;
         }
 
         await using var deliveryLease =
-            await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+            await runtime.Map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
                 session,
                 [healthMutation],
                 cancellationToken);
@@ -237,7 +246,7 @@ internal sealed partial class GameSessionRegistry
             !_sessions.TryGetValue(session, out var context) ||
             context.MapId != mapId ||
             !context.WorldReady ||
-            !_maps.TryGetValue(mapId, out var map))
+            !TryGetWorldInstance(context, out var runtime))
         {
             return false;
         }
@@ -245,7 +254,7 @@ internal sealed partial class GameSessionRegistry
         var mutations = hits.Select(hit => hit.HealthMutation).ToArray();
         var hitsByObjectId = hits.ToDictionary(hit => hit.HealthMutation.ObjectId);
         await using var deliveryLease =
-            await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+            await runtime.Map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
                 session,
                 mutations,
                 cancellationToken);
@@ -316,7 +325,10 @@ internal sealed partial class GameSessionRegistry
             return Math.Max(visualRecipients, impactRecipients);
         }
 
-        if (!_maps.TryGetValue(mapId, out var map))
+        if (!TryResolveWorldInstance(
+                mapId,
+                excludeSession,
+                out var runtime))
         {
             return 0;
         }
@@ -325,7 +337,11 @@ internal sealed partial class GameSessionRegistry
         var hitsByObjectId = hits.ToDictionary(
             hit => hit.HealthMutation.ObjectId);
         var sent = 0;
-        foreach (var context in map.Snapshot())
+        var recipients = InvokeWorldOwner(
+            runtime,
+            static map => map.Snapshot(),
+            cancellationToken);
+        foreach (var context in recipients)
         {
             if (!context.WorldReady ||
                 excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
@@ -336,7 +352,8 @@ internal sealed partial class GameSessionRegistry
             try
             {
                 await using var deliveryLease =
-                    await map.AcquireMonsterViewerHealthDeliveryLeaseAsync(
+                    await runtime.Map
+                        .AcquireMonsterViewerHealthDeliveryLeaseAsync(
                         context.Session,
                         mutations,
                         cancellationToken);

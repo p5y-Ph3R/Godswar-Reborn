@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -7,28 +7,49 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
+    internal Task ProcessMonsterAttackForSessionAsync(
+        ClientSession session,
+        MonsterRuntimeUpdate attack,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (!_sessions.TryGetValue(
+                session,
+                out var context) ||
+            !TryGetWorldInstance(context, out var runtime))
+        {
+            throw new MonsterAttackTargetUnavailableException(
+                attack.TargetCharacterId ?? 0);
+        }
+
+        return ProcessMonsterAttackAsync(
+            runtime,
+            attack,
+            cancellationToken);
+    }
+
     private async Task ProcessMonsterAttackAsync(
-        MapInstance map,
+        WorldInstanceRuntime runtime,
         MonsterRuntimeUpdate attack,
         CancellationToken cancellationToken)
     {
         if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
         {
             await ProcessMonsterAttackEcsAsync(
-                map,
+                runtime,
                 attack,
                 cancellationToken);
             return;
         }
 
         await ProcessMonsterAttackLegacyAsync(
-            map,
+            runtime,
             attack,
             cancellationToken);
     }
 
     private async Task ProcessMonsterAttackLegacyAsync(
-        MapInstance map,
+        WorldInstanceRuntime runtime,
         MonsterRuntimeUpdate attack,
         CancellationToken cancellationToken)
     {
@@ -38,8 +59,10 @@ internal sealed partial class GameSessionRegistry
         }
 
         GameSessionContext? targetContext;
-        var statusContext = map.Snapshot().FirstOrDefault(context =>
-            context.WorldReady && context.CharacterId == targetCharacterId);
+        var members = SnapshotMonsterAttackMembers(runtime);
+        var statusContext = members.FirstOrDefault(context =>
+            context.WorldReady &&
+            context.CharacterId == targetCharacterId);
         var damageResolvedAt = DateTimeOffset.UtcNow;
         // Runtime statuses have their own gate. Snapshot the mitigation before
         // taking the registry gate so status publication and a monster attack
@@ -53,8 +76,10 @@ internal sealed partial class GameSessionRegistry
         var deathInterruptionTask = Task.CompletedTask;
         lock (_gate)
         {
-            targetContext = map.Snapshot().FirstOrDefault(context =>
-                context.WorldReady && context.CharacterId == targetCharacterId);
+            targetContext = ResolveCurrentMonsterAttackTarget(
+                runtime,
+                members,
+                targetCharacterId);
             if (targetContext is null)
             {
                 damage = 0;
@@ -113,7 +138,10 @@ internal sealed partial class GameSessionRegistry
 
         if (targetContext is null || damage == 0)
         {
-            map.ClearMonsterAggroForCharacter(targetCharacterId, DateTimeOffset.UtcNow);
+            ClearMonsterAttackAggro(
+                runtime,
+                targetCharacterId,
+                DateTimeOffset.UtcNow);
             return;
         }
 
@@ -127,7 +155,9 @@ internal sealed partial class GameSessionRegistry
         var worldTargetObjectId = WorldObjectIds.ForPlayer(target.Id);
         try
         {
-            await targetContext.Session.SendAsync(
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                targetContext,
                 PacketBuilder.SkillCastImpact(
                     monster.ObjectId,
                     LocalPlayerObjectId,
@@ -136,7 +166,9 @@ internal sealed partial class GameSessionRegistry
                     attack.TargetZ),
                 cancellationToken,
                 "MonsterAttackImpactSelf");
-            await targetContext.Session.SendAsync(
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                targetContext,
                 PacketBuilder.PhysicalDamage(
                     monster.ObjectId,
                     monster.X,
@@ -149,7 +181,9 @@ internal sealed partial class GameSessionRegistry
                 "MonsterAttackDamageSelf");
             if (killed)
             {
-                await targetContext.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    targetContext,
                     PacketBuilder.PlayerDeath(
                         LocalPlayerObjectId,
                         target.PositionX,
@@ -165,18 +199,22 @@ internal sealed partial class GameSessionRegistry
             Remove(targetContext.Session);
         }
 
-        foreach (var observer in map.Snapshot())
+        foreach (var observer in SnapshotMonsterAttackMembers(runtime))
         {
             if (!observer.WorldReady ||
                 ReferenceEquals(observer.Session, targetContext.Session) ||
-                !map.IsMonsterVisibleTo(observer.Session, monster.ObjectId))
+                !runtime.Map.IsMonsterVisibleTo(
+                    observer.Session,
+                    monster.ObjectId))
             {
                 continue;
             }
 
             try
             {
-                await observer.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    observer,
                     PacketBuilder.SkillCastImpact(
                         monster.ObjectId,
                         worldTargetObjectId,
@@ -185,7 +223,9 @@ internal sealed partial class GameSessionRegistry
                         attack.TargetZ),
                     cancellationToken,
                     "MonsterAttackImpactWorld");
-                await observer.Session.SendAsync(
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    observer,
                     PacketBuilder.PhysicalDamage(
                         monster.ObjectId,
                         monster.X,
@@ -198,7 +238,9 @@ internal sealed partial class GameSessionRegistry
                     "MonsterAttackDamageWorld");
                 if (killed)
                 {
-                    await observer.Session.SendAsync(
+                    await TrySendWorldInstancePacketAsync(
+                        runtime,
+                        observer,
                         PacketBuilder.PlayerDeath(
                             worldTargetObjectId,
                             target.PositionX,
@@ -236,7 +278,10 @@ internal sealed partial class GameSessionRegistry
 
         if (killed)
         {
-            map.ClearMonsterAggroForCharacter(targetCharacterId, DateTimeOffset.UtcNow);
+            ClearMonsterAttackAggro(
+                runtime,
+                targetCharacterId,
+                DateTimeOffset.UtcNow);
         }
 
         try
@@ -253,5 +298,44 @@ internal sealed partial class GameSessionRegistry
         Console.WriteLine(
             $"[monster] attack monster={monster.ObjectId} tier={monster.Definition.Tier} target={targetContext.DisplayName} damage={damage} hp={target.CurrentHp}/{target.MaxHp} killed={killed}");
     }
+
+    private IReadOnlyList<GameSessionContext>
+        SnapshotMonsterAttackMembers(
+            WorldInstanceRuntime runtime) =>
+        InvokeWorldOwner(
+            runtime,
+            static map => map.Snapshot());
+
+    private GameSessionContext? ResolveCurrentMonsterAttackTarget(
+        WorldInstanceRuntime runtime,
+        IReadOnlyList<GameSessionContext> members,
+        int targetCharacterId)
+    {
+        var candidate = members.FirstOrDefault(context =>
+            context.WorldReady &&
+            context.CharacterId == targetCharacterId);
+        if (candidate is null ||
+            !_sessions.TryGetValue(
+                candidate.Session,
+                out var current) ||
+            current.WorldInstanceId != runtime.InstanceId ||
+            current.CharacterId != targetCharacterId ||
+            !current.WorldReady)
+        {
+            return null;
+        }
+
+        return current;
+    }
+
+    private void ClearMonsterAttackAggro(
+        WorldInstanceRuntime runtime,
+        int targetCharacterId,
+        DateTimeOffset now) =>
+        InvokeWorldOwner(
+            runtime,
+            map => map.ClearMonsterAggroForCharacter(
+                targetCharacterId,
+                now));
 
 }

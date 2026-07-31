@@ -71,8 +71,10 @@ stable gateway
 `RealmId` identifies a logical realm, `ServerNodeId` identifies a running
 node, `WorldInstanceId` identifies one simulation, and `MapId` identifies
 content. One worker may own many instances and many instances may share a
-map definition. B18A first proves these boundaries with a local placement
-implementation; it does not claim remote workers or Redis.
+map definition. B18A introduced the identities and local placement; B18B
+now composes a local runtime directory, instance-aware sessions, and one
+bounded owner mailbox per `WorldInstanceId`. Neither milestone claims remote
+workers or Redis.
 
 The transactional outbox never drives the immediate live-player result. The PG commit result returns directly to the owning mailbox with its committed aggregate version. The owner either serializes conflicting player-value commands or applies only the exact next version; a stale version is ignored and a version gap triggers a PG reload before updating ECS/replying. It also revalidates the current session/entity/ownership generation. Outbox consumers handle eventual caches, indexes, notifications, and external projections.
 

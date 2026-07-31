@@ -28,10 +28,10 @@ internal sealed partial class GameClientHandler
             !_registered ||
             !_worldPresenceAnnounced ||
             IsMapTransitionPending ||
-            !_registry.TryGetMapSessionByCharacterId(
+            !_registry.TryGetCurrentWorldSessionByCharacterId(
+                _session,
                 character.CurrentMap,
                 character.Id,
-                excludeSession: null,
                 out var context) ||
             !ReferenceEquals(context.Session, _session))
         {
@@ -296,10 +296,10 @@ internal sealed partial class GameClientHandler
                 BackhaulMovementTolerance ||
             MathF.Abs(character.PositionZ - sourceZ) >
                 BackhaulMovementTolerance ||
-            !_registry.TryGetMapSessionByCharacterId(
+            !_registry.TryGetCurrentWorldSessionByCharacterId(
+                _session,
                 sourceMapId,
                 characterId,
-                excludeSession: null,
                 out var context))
         {
             return false;

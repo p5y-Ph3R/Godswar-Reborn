@@ -145,6 +145,7 @@ internal sealed partial class MapInstance
 
     private MapNpcCatalogSnapshot CreateNpcCatalogSnapshot() =>
         new(
+            WorldInstanceId,
             MapId,
             _npcCatalogRevision,
             NpcCatalogDefinitions.ReadOnlyClone(_npcCatalogDefinitions));

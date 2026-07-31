@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 
@@ -9,6 +10,8 @@ internal sealed record GameSessionContext(
     int AccountId,
     int CharacterId,
     string CharacterName,
+    RealmId RealmId,
+    WorldInstanceId WorldInstanceId,
     byte MapId,
     uint ObjectId,
     GameCharacter Character,

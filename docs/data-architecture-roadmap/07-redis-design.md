@@ -13,14 +13,15 @@ battlefields and on-demand dungeons also require independently routed
 B17 is therefore **reopened and Redis is approved for future cross-process
 coordination**. No Redis implementation or deployment is claimed. The
 current process still composes a bounded `InMemoryGameTicketStore`,
-process-local registry/presence, and all maps in one server; Compose still
-contains only the server and PostgreSQL.
+process-local registry/presence, and all world-instance runtimes in one
+server; Compose still contains only the server and PostgreSQL.
 
-B18A first introduces realm, node, map, and world-instance identities plus a
-local placement implementation. Redis activation begins only when a second
-gateway/worker or worker process becomes runnable and exercises a shared
-coordination contract. It must not be added merely to replace local
-dictionaries before that boundary exists.
+B18A introduced realm, node, map, and world-instance identities plus local
+placement. B18B now provides the local runtime directory, exact session
+routing, and bounded instance-owner mailboxes. Redis activation begins only
+when a second gateway/worker or worker process becomes runnable and
+exercises a shared coordination contract. It must not be added merely to
+replace the working local implementation before that boundary exists.
 
 Before enabling the Redis-backed path, B17 must:
 

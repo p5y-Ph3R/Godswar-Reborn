@@ -426,6 +426,7 @@ internal sealed partial class GameClientHandler
         }
 
         var runtimeMonsterCount = _registry.InitializeMapMonsters(
+            _session,
             _character.CurrentMap,
             monsterDefinitions,
             monsterRuntimeInitializedAt,

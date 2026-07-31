@@ -27,30 +27,11 @@ if (await ControlledHostValidationCommand.TryRunAsync(args))
 }
 
 var optionsPath = args.Length > 0 ? args[0] : "appsettings.json";
-ServerOptions options;
-ValidatedServerRuntimeProfile runtimeProfile;
-try
+if (!ServerRuntimeBootstrap.TryLoadOptions(
+        optionsPath,
+        out var options,
+        out var runtimeProfile))
 {
-    options = ServerOptions.Load(optionsPath);
-    runtimeProfile = ServerRuntimeProfilePolicy.Validate(options);
-}
-catch (ServerStartupConfigurationException ex)
-{
-    var reason =
-        ServerRuntimeProfilePolicy.RejectionCode(ex.Reason);
-    ServerProfileMetrics.RecordStartupRejection(reason);
-    Console.Error.WriteLine(
-        $"[startup] rejected reason={reason}");
-    Environment.ExitCode = 2;
-    return;
-}
-catch (Exception)
-{
-    const string reason = "invalid_configuration";
-    ServerProfileMetrics.RecordStartupRejection(reason);
-    Console.Error.WriteLine(
-        $"[startup] rejected reason={reason}");
-    Environment.ExitCode = 2;
     return;
 }
 
@@ -152,7 +133,9 @@ try
         postgresApplicationDataRuntime?
             .ProgressionIntervalSettlementCommands,
         requiresDurablePlayerPersistence:
-            postgresApplicationDataRuntime is not null);
+            postgresApplicationDataRuntime is not null,
+        worldInstanceOptions:
+            options.Game.WorldInstances);
     var gameHandlerFactory = new GameClientHandlerFactory(
         store,
         registry,
@@ -518,17 +501,15 @@ try
         {
             fatalRuntimeFailure = true;
         }
+        if (!await ServerRuntimeShutdown.TryDisposeWorldInstancesAsync(
+                registry, observability))
+        {
+            fatalRuntimeFailure = true;
+        }
         serverOperationalState.MarkStopped();
     }
 
-    if (fatalRuntimeFailure)
-    {
-        Environment.ExitCode = 4;
-    }
-    else
-    {
-        observability.RecordLifecycle("server", "stopped");
-    }
+    ServerRuntimeShutdown.SetProcessOutcome(fatalRuntimeFailure, observability);
 }
 catch
 {

@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using Godswar.Server.Game;
@@ -12,13 +11,6 @@ namespace Godswar.Server.ProtocolChecks;
 internal static partial class BackhaulSkillHandlerChecks
 {
     private const uint LethalAttackMonsterObjectId = 94_013;
-
-    private static readonly FieldInfo RegistryMapsField =
-        typeof(GameSessionRegistry).GetField(
-            "_maps",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException(
-            "GameSessionRegistry._maps was not found.");
 
     private static readonly FieldInfo PlayerStatusStatesField =
         typeof(GameSessionRegistry).GetField(
@@ -33,13 +25,6 @@ internal static partial class BackhaulSkillHandlerChecks
             BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new InvalidOperationException(
             "GameClientHandler._pendingSkillCast was not found.");
-
-    private static readonly MethodInfo ProcessMonsterAttackMethod =
-        typeof(GameSessionRegistry).GetMethod(
-            "ProcessMonsterAttackAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException(
-            "GameSessionRegistry.ProcessMonsterAttackAsync was not found.");
 
     public static async Task
         RunAuthoritativeInterruptionBoundariesAsync()
@@ -290,18 +275,11 @@ internal static partial class BackhaulSkillHandlerChecks
             TargetVitalsRevision:
                 fixture.Character.VitalsRevision,
             AttackEventId: 1);
-        var task = ProcessMonsterAttackMethod.Invoke(
-            fixture.Registry,
-            [
-                GetRegistryMap(
-                    fixture.Registry,
-                    PeloponneseMapId),
+        await fixture.Registry
+            .ProcessMonsterAttackForSessionAsync(
+                fixture.Socket.Session,
                 attack,
-                CancellationToken.None
-            ]) as Task
-            ?? throw new InvalidOperationException(
-                "ProcessMonsterAttackAsync returned no task.");
-        await task;
+                CancellationToken.None);
     }
 
     private static async Task AssertBoundaryCastStartedAsync(
@@ -320,21 +298,6 @@ internal static partial class BackhaulSkillHandlerChecks
         Check.True(
             HasPendingSkillCast(fixture.Handler),
             $"{description} reserves an authoritative pending cast");
-    }
-
-    private static MapInstance GetRegistryMap(
-        GameSessionRegistry registry,
-        byte mapId)
-    {
-        var maps =
-            (ConcurrentDictionary<byte, MapInstance>)
-            (RegistryMapsField.GetValue(registry)
-             ?? throw new InvalidOperationException(
-                 "GameSessionRegistry._maps returned null."));
-        return maps.TryGetValue(mapId, out var map)
-            ? map
-            : throw new InvalidOperationException(
-                $"Registry map {mapId} was not found.");
     }
 
     private static bool IsPendingInterruptionClaimed(

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 
@@ -9,7 +10,7 @@ internal sealed partial class GameSessionRegistry
     private readonly ConcurrentDictionary<
         ClientSession,
         NpcCatalogSubscription> _npcCatalogSubscriptions = [];
-    private readonly ConcurrentDictionary<byte, SemaphoreSlim>
+    private readonly ConcurrentDictionary<WorldInstanceId, SemaphoreSlim>
         _npcCatalogPublicationGates = [];
 
     internal NpcCatalogSubscription RegisterNpcCatalogUpdates(
@@ -50,28 +51,49 @@ internal sealed partial class GameSessionRegistry
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(definitions);
-        var publicationGate = _npcCatalogPublicationGates.GetOrAdd(
+        var runtime = TryResolveWorldInstance(
             mapId,
+            originSession,
+            out var routedRuntime)
+            ? routedRuntime
+            : GetOrCreateDefaultWorldInstance(mapId);
+        var publicationGate = _npcCatalogPublicationGates.GetOrAdd(
+            runtime.InstanceId,
             static _ => new SemaphoreSlim(1, 1));
         await publicationGate.WaitAsync(cancellationToken);
         try
         {
-            var map = _maps.GetOrAdd(
-                mapId,
-                id => new MapInstance(
-                    id,
-                    _monsterRuntimeMode,
-                    _playerRuntimeMode));
-            var publication = map.PublishNpcDefinitions(definitions);
-            if (publication.Changed)
+            var dispatch = InvokeWorldOwner(
+                runtime,
+                map =>
+                {
+                    var publication =
+                        map.PublishNpcDefinitions(definitions);
+                    var recipients = publication.Changed
+                        ? map.Snapshot()
+                            .Where(context =>
+                                originSession is null ||
+                                !ReferenceEquals(
+                                    context.Session,
+                                    originSession))
+                            .OrderBy(
+                                static context =>
+                                    context.ObjectId)
+                            .ToArray()
+                        : [];
+                    return new NpcCatalogPublicationDispatch(
+                        publication,
+                        recipients);
+                },
+                cancellationToken);
+            if (dispatch.Publication.Changed)
             {
                 await NotifyNpcCatalogSubscribersAsync(
-                    map,
-                    publication.Snapshot,
-                    originSession);
+                    dispatch.Publication.Snapshot,
+                    dispatch.Recipients);
             }
 
-            return publication.Snapshot;
+            return dispatch.Publication.Snapshot;
         }
         finally
         {
@@ -82,32 +104,41 @@ internal sealed partial class GameSessionRegistry
     internal bool IsCanonicalMapNpc(
         byte mapId,
         long expectedRevision,
-        NpcSpawnDefinition definition)
+        NpcSpawnDefinition definition,
+        ClientSession? routingSession = null)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        return _maps.TryGetValue(mapId, out var map) &&
-               map.IsCanonicalNpc(expectedRevision, definition);
+        return TryResolveWorldInstance(
+                   mapId,
+                   routingSession,
+                   out var runtime) &&
+               InvokeWorldOwner(
+                   runtime,
+                   map => map.IsCanonicalNpc(
+                       expectedRevision,
+                       definition));
     }
 
     internal bool IsCanonicalMapNpcCatalog(
         byte mapId,
-        long expectedRevision)
+        long expectedRevision,
+        ClientSession? routingSession = null)
     {
-        return _maps.TryGetValue(mapId, out var map) &&
-               map.SnapshotNpcCatalog().Revision == expectedRevision;
+        return TryResolveWorldInstance(
+                   mapId,
+                   routingSession,
+                   out var runtime) &&
+               InvokeWorldOwner(
+                   runtime,
+                   map =>
+                       map.SnapshotNpcCatalog().Revision ==
+                       expectedRevision);
     }
 
     private async Task NotifyNpcCatalogSubscribersAsync(
-        MapInstance map,
         MapNpcCatalogSnapshot snapshot,
-        ClientSession? originSession)
+        IReadOnlyList<GameSessionContext> recipients)
     {
-        var recipients = map.Snapshot()
-            .Where(context =>
-                originSession is null ||
-                !ReferenceEquals(context.Session, originSession))
-            .OrderBy(static context => context.ObjectId)
-            .ToArray();
         foreach (var recipient in recipients)
         {
             if (!_npcCatalogSubscriptions.TryGetValue(
@@ -127,6 +158,7 @@ internal sealed partial class GameSessionRegistry
             {
                 Console.WriteLine(
                     $"[npc] catalog revision delivery failed " +
+                    $"instance={snapshot.WorldInstanceId} " +
                     $"map={snapshot.MapId} revision={snapshot.Revision} " +
                     $"character={recipient.DisplayName}: {ex.Message}");
                 recipient.Session.Disconnect();
@@ -138,9 +170,14 @@ internal sealed partial class GameSessionRegistry
     private static MapNpcCatalogSnapshot CloneNpcCatalogSnapshot(
         MapNpcCatalogSnapshot snapshot) =>
         new(
+            snapshot.WorldInstanceId,
             snapshot.MapId,
             snapshot.Revision,
             NpcCatalogDefinitions.ReadOnlyClone(snapshot.Definitions));
+
+    private readonly record struct NpcCatalogPublicationDispatch(
+        MapNpcCatalogPublication Publication,
+        GameSessionContext[] Recipients);
 }
 
 internal sealed class NpcCatalogSubscription

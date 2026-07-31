@@ -24,14 +24,16 @@ internal sealed partial class GameSessionRegistry
         ICharacterCheckpointCoordinator? checkpointCoordinator = null,
         IProgressionIntervalSettlementCommandExecutor?
             progressionIntervalSettlementCommands = null,
-        bool requiresDurablePlayerPersistence = false)
+        bool requiresDurablePlayerPersistence = false,
+        WorldInstanceRuntimeOptions? worldInstanceOptions = null)
         : this(
             store,
             zodiacEnergyOptions,
             monsterRuntimeMode,
             checkpointCoordinator,
             progressionIntervalSettlementCommands,
-            requiresDurablePlayerPersistence)
+            requiresDurablePlayerPersistence,
+            worldInstanceOptions)
     {
         if (!Enum.IsDefined(playerRuntimeMode))
         {

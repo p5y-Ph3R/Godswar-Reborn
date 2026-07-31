@@ -1,3 +1,4 @@
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
 
@@ -7,6 +8,7 @@ internal sealed partial class GameClientHandler
 {
     private readonly Dictionary<uint, NpcSpawnDefinition>
         _mapNpcsByObjectId = [];
+    private WorldInstanceId _npcCatalogWorldInstanceId;
     private long _npcCatalogRevision;
     private NpcCatalogSubscription? _npcCatalogSubscription;
 
@@ -52,10 +54,16 @@ internal sealed partial class GameClientHandler
         {
             if (_character is null ||
                 snapshot.MapId != _character.CurrentMap ||
+                snapshot.WorldInstanceId !=
+                    _npcCatalogWorldInstanceId ||
+                !_registry.IsSessionInWorldInstance(
+                    _session,
+                    snapshot.WorldInstanceId) ||
                 snapshot.Revision <= _npcCatalogRevision ||
                 !_registry.IsCanonicalMapNpcCatalog(
                     snapshot.MapId,
-                    snapshot.Revision))
+                    snapshot.Revision,
+                    _session))
             {
                 return;
             }
@@ -146,6 +154,8 @@ internal sealed partial class GameClientHandler
         }
 
         _npcVisibility = tracker;
+        _npcCatalogWorldInstanceId =
+            snapshot.WorldInstanceId;
         _npcCatalogRevision = snapshot.Revision;
     }
 
@@ -154,6 +164,7 @@ internal sealed partial class GameClientHandler
         _npcVisibility = null;
         _mapNpcsByInteractionId.Clear();
         _mapNpcsByObjectId.Clear();
+        _npcCatalogWorldInstanceId = default;
         _npcCatalogRevision = 0;
     }
 

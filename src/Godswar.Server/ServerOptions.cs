@@ -66,6 +66,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
+        Game.WorldInstances ??= new WorldInstanceRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
@@ -116,6 +117,30 @@ internal sealed class ServerOptions
         Game.Players.Runtime = ReadPlayerRuntime(
             "GODSWAR_PLAYER_RUNTIME",
             Game.Players.Runtime);
+        Game.WorldInstances.MaximumRuntimes = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_MAXIMUM_RUNTIMES",
+            Game.WorldInstances.MaximumRuntimes);
+        Game.WorldInstances.MaximumPlayerAssignments = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_MAXIMUM_PLAYER_ASSIGNMENTS",
+            Game.WorldInstances.MaximumPlayerAssignments);
+        Game.WorldInstances.MaximumRetiredInstanceIds = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_MAXIMUM_RETIRED_INSTANCE_IDS",
+            Game.WorldInstances.MaximumRetiredInstanceIds);
+        Game.WorldInstances.DefaultOpenWorldPlayerCapacity = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_DEFAULT_OPEN_WORLD_PLAYER_CAPACITY",
+            Game.WorldInstances.DefaultOpenWorldPlayerCapacity);
+        Game.WorldInstances.MailboxCapacity = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_MAILBOX_CAPACITY",
+            Game.WorldInstances.MailboxCapacity);
+        Game.WorldInstances.OwnerInvocationTimeoutMilliseconds = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_OWNER_INVOCATION_TIMEOUT_MILLISECONDS",
+            Game.WorldInstances.OwnerInvocationTimeoutMilliseconds);
+        Game.WorldInstances.ShutdownDrainTimeoutMilliseconds = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
+            Game.WorldInstances.ShutdownDrainTimeoutMilliseconds);
+        Game.WorldInstances.MaximumFanoutConcurrency = ReadInt(
+            "GODSWAR_WORLD_INSTANCE_MAXIMUM_FANOUT_CONCURRENCY",
+            Game.WorldInstances.MaximumFanoutConcurrency);
         Game.DeveloperCommands.Enabled = ReadBool(
             "GODSWAR_DEVELOPER_COMMANDS_ENABLED",
             Game.DeveloperCommands.Enabled);
@@ -240,6 +265,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
+        Game.WorldInstances ??= new WorldInstanceRuntimeOptions();
         Network ??= new NetworkRuntimeOptions();
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
@@ -254,6 +280,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy.Normalize();
         Game.Monsters.Validate();
         Game.Players.Validate();
+        Game.WorldInstances.Validate();
         Network.Validate();
         Authentication.Validate();
         Storage.Outbox.Validate();
@@ -367,6 +394,8 @@ internal sealed class GameEndpointOptions : EndpointOptions
     public MonsterRuntimeOptions Monsters { get; set; } = new();
 
     public PlayerRuntimeOptions Players { get; set; } = new();
+
+    public WorldInstanceRuntimeOptions WorldInstances { get; set; } = new();
 }
 
 internal sealed class ZodiacEnergyOptions

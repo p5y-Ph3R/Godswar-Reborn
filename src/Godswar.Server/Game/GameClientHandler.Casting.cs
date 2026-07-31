@@ -485,10 +485,10 @@ internal sealed partial class GameClientHandler
                 _session,
                 DateTimeOffset.UtcNow) !=
                 PlayerSkillCastControl.None ||
-            !_registry.TryGetMapSessionByCharacterId(
+            !_registry.TryGetCurrentWorldSessionByCharacterId(
+                _session,
                 context.MapId,
                 context.CharacterId,
-                excludeSession: null,
                 out var currentContext))
         {
             return false;

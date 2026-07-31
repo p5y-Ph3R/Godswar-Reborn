@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -10,57 +11,128 @@ internal sealed partial class GameSessionRegistry
 {
     private void AddToMap(GameSessionContext context)
     {
-        GetOrCreateMap(context.MapId).AddOrUpdate(context);
+        var runtime = GetRequiredWorldInstance(context);
+        InvokeWorldOwner(
+            runtime,
+            map => map.AddOrUpdate(context));
     }
 
-    private MapInstance.PlayerTransfer StageMapTransfer(
+    private WorldInstancePlayerTransfer StageMapTransfer(
         GameSessionContext context) =>
-        GetOrCreateMap(context.MapId).StagePlayerTransfer(context);
+        StageMapTransferCore(
+            context,
+            transformOverride: null);
 
-    private MapInstance.PlayerTransfer StageMapTransfer(
+    private WorldInstancePlayerTransfer StageMapTransfer(
         GameSessionContext context,
         byte targetMapId,
         float targetX,
         float targetZ) =>
-        GetOrCreateMap(context.MapId).StagePlayerTransfer(
+        StageMapTransferCore(
             context,
             new PlayerTransformOverride(
                 targetMapId,
                 targetX,
                 targetZ));
 
-    private MapInstance GetOrCreateMap(byte mapId) =>
-        _maps.GetOrAdd(
-            mapId,
-            mapId => new MapInstance(
-                mapId,
-                _monsterRuntimeMode,
-                _playerRuntimeMode));
+    private WorldInstancePlayerTransfer StageMapTransferCore(
+        GameSessionContext context,
+        PlayerTransformOverride? transformOverride)
+    {
+        var runtime = GetRequiredWorldInstance(context);
+        var transfer = InvokeWorldOwner(
+            runtime,
+            map => map.StagePlayerTransfer(
+                context,
+                transformOverride));
+        return new WorldInstancePlayerTransfer(
+            this,
+            runtime,
+            transfer);
+    }
 
     private void EnsureMapObjectIdAvailable(GameSessionContext context)
     {
-        if (!_maps.TryGetValue(context.MapId, out var map))
+        if (!TryGetWorldInstance(context, out var runtime))
         {
             return;
         }
 
-        var collision = map.Snapshot()
-            .FirstOrDefault(candidate =>
-                !ReferenceEquals(candidate.Session, context.Session) &&
-                candidate.ObjectId == context.ObjectId);
+        var collision = InvokeWorldOwner(
+            runtime,
+            map => map.Snapshot()
+                .FirstOrDefault(candidate =>
+                    !ReferenceEquals(
+                        candidate.Session,
+                        context.Session) &&
+                    candidate.ObjectId == context.ObjectId));
         if (collision is not null)
         {
             throw new InvalidOperationException(
-                $"World object ID {context.ObjectId} is already assigned to character {collision.CharacterName} on map {context.MapId}.");
+                $"World object ID {context.ObjectId} is already assigned " +
+                $"to character {collision.CharacterName} in world instance " +
+                $"{context.WorldInstanceId}.");
         }
     }
 
     private void RemoveFromMap(GameSessionContext context)
     {
-        if (_maps.TryGetValue(context.MapId, out var map))
+        if (TryGetWorldInstance(context, out var runtime))
         {
-            map.Remove(context.Session, out _);
-            map.ClearMonsterAggroForCharacter(context.CharacterId, DateTimeOffset.UtcNow);
+            InvokeWorldOwner(
+                runtime,
+                map =>
+                {
+                    map.Remove(context.Session, out _);
+                    map.ClearMonsterAggroForCharacter(
+                        context.CharacterId,
+                        DateTimeOffset.UtcNow);
+                });
+        }
+    }
+
+    private sealed class WorldInstancePlayerTransfer :
+        IDisposable
+    {
+        private readonly GameSessionRegistry _registry;
+        private readonly WorldInstanceRuntime _runtime;
+        private MapInstance.PlayerTransfer? _transfer;
+
+        public WorldInstancePlayerTransfer(
+            GameSessionRegistry registry,
+            WorldInstanceRuntime runtime,
+            MapInstance.PlayerTransfer transfer)
+        {
+            _registry = registry;
+            _runtime = runtime;
+            _transfer = transfer;
+        }
+
+        public void Commit(Action publishRegistryContext)
+        {
+            ArgumentNullException.ThrowIfNull(
+                publishRegistryContext);
+            var transfer = _transfer ??
+                throw new ObjectDisposedException(
+                    nameof(WorldInstancePlayerTransfer));
+            _registry.InvokeWorldOwner(
+                _runtime,
+                _ => transfer.Commit(
+                    publishRegistryContext));
+            _transfer = null;
+        }
+
+        public void Dispose()
+        {
+            var transfer = Interlocked.Exchange(
+                ref _transfer,
+                null);
+            if (transfer is not null)
+            {
+                _registry.InvokeWorldOwner(
+                    _runtime,
+                    _ => transfer.Dispose());
+            }
         }
     }
 

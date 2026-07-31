@@ -38,6 +38,11 @@
 
 ## Phase 11 - TCP/UDP application integration
 
+- **Current increment:** B18B completes process-local `WorldInstanceId`
+  session routing, one bounded owner mailbox per map runtime, and bounded
+  socket fanout outside owner commands. It does not yet claim that every
+  transport command uses that mailbox, a second process exists, or Redis
+  routing is active.
 - **Goal:** route all network inputs through typed command envelopes and single-owner mailboxes with explicit reliability.
 - **Scope/tasks:** classify every opcode; require secure principal in production; add bounded map/player ingress; remove DB/socket fanout from tick; preserve UDP movement semantics and TLS fallback; make viewer replication fairness-aware.
 - **Likely files/modules:** `LoginClientHandler`, partial `GameClientHandler` files, `ClientSession`, secure realtime classes, `GameSessionRegistry`, `MapInstance`, ECS boundaries.

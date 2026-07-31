@@ -36,6 +36,7 @@ internal static class MapEcsShadowChecks
         var sparta = new MapInstance(0);
         var character = CreateCharacter(0, 100f, -100f);
         var joined = CreateContext(
+            sparta,
             session,
             character,
             worldReady: false,
@@ -190,6 +191,7 @@ internal static class MapEcsShadowChecks
 
         var invalidCharacter = CreateCharacter(1, 0f, 0f);
         var invalidForMap = CreateContext(
+            sparta,
             session,
             invalidCharacter,
             worldReady: true,
@@ -359,6 +361,7 @@ internal static class MapEcsShadowChecks
     }
 
     private static GameSessionContext CreateContext(
+        MapInstance map,
         ClientSession session,
         GameCharacter character,
         bool worldReady,
@@ -368,6 +371,8 @@ internal static class MapEcsShadowChecks
             AccountId,
             CharacterId,
             character.Name,
+            map.RealmId,
+            map.WorldInstanceId,
             character.CurrentMap,
             PlayerObjectId,
             character,

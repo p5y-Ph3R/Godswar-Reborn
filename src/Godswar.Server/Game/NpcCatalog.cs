@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
 internal sealed record MapNpcCatalogSnapshot(
+    WorldInstanceId WorldInstanceId,
     byte MapId,
     long Revision,
     IReadOnlyList<NpcSpawnDefinition> Definitions);

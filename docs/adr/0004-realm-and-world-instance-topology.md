@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-31
 - Decision owner: Godswar server maintainers
-- Roadmap tickets: B17 and B18A
+- Roadmap tickets: B17, B18A, and B18B
 - Supersedes: the target-topology and B17-activation conclusions of
   [ADR 0003](0003-defer-redis-coordination.md)
 
@@ -217,7 +217,38 @@ map behavior to remain compatible; multiple instances of one map definition
 must have distinct placement identities and single assignments; and
 lifecycle transitions must reject invalid reactivation, closing with live
 assignments, or admission while draining. Actual instance-aware
-`GameSessionRegistry` routing and isolated mutable ECS ownership remain B18B.
+`GameSessionRegistry` routing and isolated mutable ECS ownership were
+deliberately deferred to B18B and are recorded below.
+
+## B18B implementation boundary
+
+B18B now composes the local placement model into the live one-process
+runtime:
+
+- `GameSessionContext` carries `RealmId` and `WorldInstanceId`;
+- `LocalWorldInstanceRuntimeDirectory` uses `WorldInstanceId` as its primary
+  runtime key and retains a separate Tempest default-open-world byte-map
+  projection;
+- repeated dungeon and battlefield runtimes may share one content `MapId`
+  without sharing map state, population, NPCs, monsters, or broadcasts;
+- each `WorldInstanceRuntime` owns a bounded FIFO
+  `BoundedSingleOwnerMailbox<MapInstance>`;
+- membership, NPC catalog, and authoritative monster mutations enter through
+  that owner boundary; and
+- socket fanout and durable database work stay outside owner commands.
+
+The legacy byte-map API resolves a routed session's exact instance when one
+exists and otherwise resolves only Tempest's default open world. It never
+means "all instances that use this map definition." Legacy portal targets
+likewise select a default open-world instance; explicit dungeon or
+battlefield admission must supply a `WorldInstanceId`.
+
+B18B remains process-local. It does not implement a gateway/worker backhaul,
+Redis, remote placement or transfer, cross-process reconnect, client-facing
+dungeon admission, scheduled battlefield orchestration, or cross-realm
+settlement. Existing per-player durable fencing and feature-level
+coordination also remain distinct from the map mailbox. See the
+[B18B implementation evidence](../data-architecture-b18b-instance-routing-mailboxes-20260731.md).
 
 ## B17 activation and rollout
 
@@ -234,8 +265,9 @@ deployed**. Before its runtime slice is enabled, the team must still record:
 
 The rollout order is:
 
-1. B18A local identities and placement.
-2. B18 owner mailboxes and transport-independent instance routing.
+1. B18A local identities and placement. **Completed.**
+2. B18B owner mailboxes and transport-independent local instance routing.
+   **Implemented.**
 3. A runnable gateway/worker split in local development.
 4. B17 Redis adapter, two-process tests, observability, and failure policy.
 5. Controlled instance transfer, scheduled battlefield, then cross-realm

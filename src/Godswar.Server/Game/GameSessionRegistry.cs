@@ -15,7 +15,6 @@ internal sealed partial class GameSessionRegistry
     private static readonly TimeSpan PlayerRecoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
-    private readonly ConcurrentDictionary<byte, MapInstance> _maps = [];
     private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
     private readonly ConcurrentDictionary<ClientSession, PlayerStatusState> _playerStatusStates = [];
     private readonly ConcurrentDictionary<ClientSession, long> _playerLifeRevisions = [];
@@ -35,8 +34,11 @@ internal sealed partial class GameSessionRegistry
         ICharacterCheckpointCoordinator? checkpointCoordinator = null,
         IProgressionIntervalSettlementCommandExecutor?
             progressionIntervalSettlementCommands = null,
-        bool requiresDurablePlayerPersistence = false)
+        bool requiresDurablePlayerPersistence = false,
+        WorldInstanceRuntimeOptions? worldInstanceOptions = null)
     {
+        _worldInstanceOptions = SnapshotWorldInstanceOptions(
+            worldInstanceOptions);
         _store = store;
         _checkpointCoordinator = checkpointCoordinator;
         _progressionIntervalSettlementCommands =
@@ -67,139 +69,15 @@ internal sealed partial class GameSessionRegistry
         uint objectId,
         bool worldReady = true,
         DateTimeOffset? joinedAt = null)
-    {
-        var onlineStartedAt = joinedAt ?? DateTimeOffset.UtcNow;
-        var ownership = PlayerOwnership(character);
-        if (_requiresDurablePlayerPersistence &&
-            !ownership.IsValid)
-        {
-            throw new InvalidOperationException(
-                "Durable world join requires an acquired player " +
-                "ownership fence.");
-        }
-        if (ownership.IsValid &&
-            !IsCurrentAccountSession(
-                accountId,
-                session,
-                ownership))
-        {
-            throw new InvalidOperationException(
-                "The world join does not own the current player fence.");
-        }
-
-        var context = new GameSessionContext(
+        => JoinWorldInstanceCore(
             session,
             accountId,
-            character.Id,
-            character.Name,
-            character.CurrentMap,
-            objectId,
             character,
+            objectId,
+            GetOrCreateDefaultWorldInstance(
+                character.CurrentMap),
             worldReady,
-            0)
-        {
-            Ownership = ownership
-        };
-        GameSessionContext? previous = null;
-        lock (_gate)
-        {
-            EnsureMapObjectIdAvailable(context);
-            var previousMapRemoved =
-                _sessions.TryGetValue(session, out previous) &&
-                previous.MapId != character.CurrentMap;
-            MapInstance.PlayerTransfer? transfer = null;
-            if (previousMapRemoved &&
-                _playerRuntimeMode == PlayerRuntimeMode.Ecs)
-            {
-                transfer = StageMapTransfer(context);
-            }
-            else if (previousMapRemoved)
-            {
-                RemoveFromMap(previous!);
-            }
-
-            try
-            {
-                if (transfer is not null)
-                {
-                    RemoveFromMap(previous!);
-                    transfer.Commit(() => _sessions[session] = context);
-                }
-                else
-                {
-                    AddToMap(context);
-                    _sessions[session] = context;
-                }
-            }
-            catch
-            {
-                if (transfer is null &&
-                    previousMapRemoved &&
-                    previous is not null)
-                {
-                    AddToMap(previous);
-                }
-
-                throw;
-            }
-            finally
-            {
-                transfer?.Dispose();
-            }
-
-            if (previous is not null &&
-                previous.CharacterId != character.Id)
-            {
-                _nextPlayerRecoveryAt.TryRemove(
-                    previous.CharacterId,
-                    out _);
-                RemovePlayerRuntimeEcs(session);
-            }
-
-            _playerLifeRevisions.TryAdd(session, 0);
-            _nextPlayerRecoveryAt[character.Id] =
-                onlineStartedAt + PlayerRecoveryInterval;
-            _zodiacOnlineSessions.AddOrUpdate(
-                session,
-                _ => new ZodiacOnlineSessionState(
-                    accountId,
-                    character.Id,
-                    character,
-                    onlineStartedAt),
-                (_, existing) =>
-                {
-                    if (existing.CharacterId == character.Id)
-                    {
-                        existing.Character = character;
-                        return existing;
-                    }
-
-                    return new ZodiacOnlineSessionState(
-                        accountId,
-                        character.Id,
-                        character,
-                        onlineStartedAt);
-                });
-            if (worldReady)
-            {
-                StartProgressionBoostOnlineSession(
-                    session,
-                    accountId,
-                    character.Id,
-                    previous?.CharacterId,
-                    onlineStartedAt);
-            }
-        }
-
-        if (previous is null)
-        {
-            Console.WriteLine($"[world] joined map={context.MapId} character={context.DisplayName} object={context.ObjectId} account={accountId} population={GetMapPopulation(context.MapId)}");
-        }
-        else if (previous.MapId != context.MapId)
-        {
-            Console.WriteLine($"[world] moved map={previous.MapId}->{context.MapId} character={context.DisplayName} object={context.ObjectId} account={accountId} population={GetMapPopulation(context.MapId)}");
-        }
-    }
+            joinedAt);
 
     public void Remove(ClientSession session, bool preservePlayerStatus = false)
     {
@@ -239,7 +117,17 @@ internal sealed partial class GameSessionRegistry
                 return false;
             }
 
-            RemoveFromMap(context);
+            try
+            {
+                RemoveFromMap(context);
+                ReleaseWorldPlacement(context);
+            }
+            catch
+            {
+                AddToMap(context);
+                _sessions[session] = context;
+                throw;
+            }
             _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
             RemovePlayerRuntimeEcs(session);
             if (!preservePlayerStatus &&
@@ -259,7 +147,11 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
-        Console.WriteLine($"[world] left map={context.MapId} character={context.DisplayName} account={context.AccountId} population={GetMapPopulation(context.MapId)}");
+        Console.WriteLine(
+            $"[world] left realm={context.RealmId} " +
+            $"instance={context.WorldInstanceId} map={context.MapId} " +
+            $"character={context.DisplayName} account={context.AccountId} " +
+            $"population={GetWorldInstancePopulation(context.WorldInstanceId)}");
         return true;
     }
 
@@ -296,10 +188,17 @@ internal sealed partial class GameSessionRegistry
                 return;
             }
 
+            var worldInstance =
+                existing.MapId == character.CurrentMap
+                    ? GetRequiredWorldInstance(existing)
+                    : GetOrCreateDefaultWorldInstance(
+                        character.CurrentMap);
             var updated = existing with
             {
                 CharacterId = character.Id,
                 CharacterName = character.Name,
+                RealmId = worldInstance.RealmId,
+                WorldInstanceId = worldInstance.InstanceId,
                 MapId = character.CurrentMap,
                 Character = character,
                 WorldRevision = advanceWorldRevision
@@ -309,24 +208,31 @@ internal sealed partial class GameSessionRegistry
 
             EnsureMapObjectIdAvailable(updated);
 
-            var previousMapRemoved = existing.MapId != updated.MapId;
-            MapInstance.PlayerTransfer? transfer = null;
-            if (previousMapRemoved &&
-                _playerRuntimeMode == PlayerRuntimeMode.Ecs)
-            {
-                transfer = StageMapTransfer(updated);
-            }
-            else if (previousMapRemoved)
-            {
-                RemoveFromMap(existing);
-            }
-
+            var instanceChanged =
+                existing.WorldInstanceId !=
+                    updated.WorldInstanceId;
+            var placementChange =
+                PrepareWorldPlacement(existing, updated);
+            WorldInstancePlayerTransfer? transfer = null;
+            var sourceRemoved = false;
             try
             {
-                if (transfer is not null)
+                if (instanceChanged &&
+                    _playerRuntimeMode ==
+                        PlayerRuntimeMode.Ecs)
+                {
+                    transfer = StageMapTransfer(updated);
+                }
+                if (instanceChanged)
                 {
                     RemoveFromMap(existing);
-                    transfer.Commit(() => _sessions[session] = updated);
+                    sourceRemoved = true;
+                }
+
+                if (transfer is not null)
+                {
+                    transfer.Commit(
+                        () => _sessions[session] = updated);
                 }
                 else
                 {
@@ -336,11 +242,16 @@ internal sealed partial class GameSessionRegistry
             }
             catch
             {
-                if (transfer is null && previousMapRemoved)
+                if (sourceRemoved)
                 {
                     AddToMap(existing);
+                    _sessions[session] = existing;
                 }
 
+                RollBackWorldPlacement(
+                    placementChange,
+                    existing,
+                    updated);
                 throw;
             }
             finally
@@ -417,15 +328,24 @@ internal sealed partial class GameSessionRegistry
                 return true;
             }
 
-            if (_maps.TryGetValue(existing.MapId, out var map))
+            if (TryGetWorldInstance(
+                    existing,
+                    out var worldInstance))
             {
-                unseenPlayers = map.Snapshot()
-                    .Where(candidate =>
-                        candidate.WorldReady &&
-                        !ReferenceEquals(candidate.Session, session) &&
-                        (!knownWorldRevisions.TryGetValue(candidate.ObjectId, out var knownRevision) ||
-                         knownRevision != candidate.WorldRevision))
-                    .ToArray();
+                unseenPlayers = InvokeWorldOwner(
+                    worldInstance,
+                    map => map.Snapshot()
+                        .Where(candidate =>
+                            candidate.WorldReady &&
+                            !ReferenceEquals(
+                                candidate.Session,
+                                session) &&
+                            (!knownWorldRevisions.TryGetValue(
+                                 candidate.ObjectId,
+                                 out var knownRevision) ||
+                             knownRevision !=
+                                 candidate.WorldRevision))
+                        .ToArray());
                 if (unseenPlayers.Count > 0)
                 {
                     return false;
@@ -472,143 +392,6 @@ internal sealed partial class GameSessionRegistry
         }
 
         _progressionBoostCharacterOwners[characterId] = session;
-    }
-
-    public async Task<int> BroadcastToMapAsync(
-        byte mapId,
-        ReadOnlyMemory<byte> packet,
-        CancellationToken cancellationToken,
-        ClientSession? excludeSession = null,
-        string? label = null,
-        bool framed = true)
-    {
-        if (!_maps.TryGetValue(mapId, out var map))
-        {
-            return 0;
-        }
-
-        var sent = 0;
-        foreach (var context in map.Snapshot())
-        {
-            if (!context.WorldReady ||
-                excludeSession is not null && ReferenceEquals(context.Session, excludeSession))
-            {
-                continue;
-            }
-
-            try
-            {
-                await context.Session.SendAsync(packet, cancellationToken, label, framed);
-                sent++;
-            }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-            {
-                Remove(context.Session);
-            }
-        }
-
-        return sent;
-    }
-
-    public int GetMapPopulation(byte mapId)
-    {
-        return _maps.TryGetValue(mapId, out var map) ? map.Population : 0;
-    }
-
-    public IReadOnlyList<GameSessionContext> GetMapSessions(byte mapId, ClientSession? excludeSession = null)
-    {
-        if (!_maps.TryGetValue(mapId, out var map))
-        {
-            return [];
-        }
-
-        return map.Snapshot()
-            .Where(context =>
-                context.WorldReady &&
-                (excludeSession is null || !ReferenceEquals(context.Session, excludeSession)))
-            .ToArray();
-    }
-
-    public bool TryGetMapSessionByObjectId(
-        byte mapId,
-        uint objectId,
-        ClientSession? excludeSession,
-        out GameSessionContext context)
-    {
-        context = default!;
-        if (!_maps.TryGetValue(mapId, out var map))
-        {
-            return false;
-        }
-
-        foreach (var candidate in map.Snapshot())
-        {
-            if (!candidate.WorldReady ||
-                excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
-            {
-                continue;
-            }
-
-            if (candidate.ObjectId != objectId)
-            {
-                continue;
-            }
-
-            context = candidate;
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryGetMapSessionByCharacterId(
-        byte mapId,
-        int characterId,
-        ClientSession? excludeSession,
-        out GameSessionContext context)
-    {
-        context = default!;
-        if (!_maps.TryGetValue(mapId, out var map))
-        {
-            return false;
-        }
-
-        foreach (var candidate in map.Snapshot())
-        {
-            if (!candidate.WorldReady ||
-                excludeSession is not null && ReferenceEquals(candidate.Session, excludeSession))
-            {
-                continue;
-            }
-
-            if (candidate.CharacterId != characterId)
-            {
-                continue;
-            }
-
-            context = candidate;
-            return true;
-        }
-
-        return false;
-    }
-
-    public int InitializeMapMonsters(
-        byte mapId,
-        IReadOnlyList<CapturedMonsterSpawn> definitions,
-        DateTimeOffset? initializedAt = null,
-        WorldBossRespawnState? activeWorldBossRespawn = null)
-    {
-        var map = _maps.GetOrAdd(
-            mapId,
-            id => new MapInstance(
-                id,
-                _monsterRuntimeMode,
-                _playerRuntimeMode));
-        return map.InitializeMonsters(
-            definitions,
-            initializedAt ?? DateTimeOffset.UtcNow,
-            activeWorldBossRespawn).Count;
     }
 
 }

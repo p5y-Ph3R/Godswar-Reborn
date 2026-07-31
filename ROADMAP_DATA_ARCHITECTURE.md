@@ -3,8 +3,11 @@
 Status: implementation roadmap; backlog B01A through B15 completed and
 verified as of 2026-07-31. B16's original Redis defer remains historical
 evidence. ADR 0004 has reopened B17 for the confirmed future multi-process
-topology, without claiming a Redis implementation. B18A is completed and
-verified; B18B instance-aware routing and single-owner mailboxes are next.
+topology, without claiming a Redis implementation. B18A and B18B are
+implemented: live local runtimes now route by `WorldInstanceId` through
+bounded single-owner map mailboxes while retaining the original client's
+Tempest byte-map bridge. This is still one process, not Redis or distributed
+routing.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -51,6 +54,7 @@ document organization; the assessment and recommendations remain intact.
 - [B16 Redis decision and B17 conditional evaluation](docs/data-architecture-b16-b17-redis-decision-20260731.md)
 - [ADR 0004: realm, node, and world-instance topology](docs/adr/0004-realm-and-world-instance-topology.md)
 - [B18A realm and world-instance identity foundation](docs/data-architecture-b18a-realm-instance-foundation-20260731.md)
+- [B18B local instance routing and single-owner mailboxes](docs/data-architecture-b18b-instance-routing-mailboxes-20260731.md)
 
 ## Roadmap sections
 

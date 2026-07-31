@@ -120,8 +120,11 @@ internal sealed partial class PlayerCombatEcsAdapter
         _targetEntities.Clear();
         MonsterRuntimeSnapshot? selected = null;
         var snapshots = kind == PlayerCombatIntentKind.AreaSkill
-            ? registry.GetMapMonsterSnapshots(character.CurrentMap)
+            ? registry.GetMapMonsterSnapshots(
+                session,
+                character.CurrentMap)
             : registry.TryGetMonsterSnapshot(
+                session,
                 character.CurrentMap,
                 targetObjectId,
                 out var target)
@@ -200,6 +203,7 @@ internal sealed partial class PlayerCombatEcsAdapter
         if (registry.TryGetMonsterSnapshot(
                 intent.MapId,
                 intent.TargetObjectId,
+                intent.CharacterId,
                 out var current))
         {
             if (current.SpawnGeneration !=

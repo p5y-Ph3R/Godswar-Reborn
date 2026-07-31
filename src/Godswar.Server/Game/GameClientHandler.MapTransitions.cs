@@ -96,6 +96,10 @@ internal sealed partial class GameClientHandler
         var sourceZ = _character.PositionZ;
         var accountId = _account.Id;
         var characterId = _character.Id;
+        var sourceWorldInstanceCaptured =
+            _registry.TryGetSessionWorldInstanceId(
+                _session,
+                out var sourceWorldInstanceId);
 
         try
         {
@@ -167,6 +171,17 @@ internal sealed partial class GameClientHandler
                 CancellationToken.None);
             return false;
         }
+        if (!sourceWorldInstanceCaptured)
+        {
+            // A successful authoritative transfer requires a source
+            // membership. Losing that identity between validation and
+            // publication is an invariant violation; reconnecting is safer
+            // than broadcasting the departure into an unrelated instance.
+            _session.Disconnect();
+            throw new InvalidOperationException(
+                "The successful map transfer has no captured source " +
+                "world-instance identity.");
+        }
 
         _positionDirty = false;
         _lastPositionPersistUtc = DateTime.UtcNow;
@@ -191,8 +206,8 @@ internal sealed partial class GameClientHandler
 
         try
         {
-            await _registry.BroadcastToMapAsync(
-                sourceMapId,
+            await _registry.BroadcastToWorldInstanceAsync(
+                sourceWorldInstanceId,
                 PacketBuilder.RemoveWorldObjects(
                     WorldObjectIds.ForPlayer(characterId)),
                 cancellationToken,

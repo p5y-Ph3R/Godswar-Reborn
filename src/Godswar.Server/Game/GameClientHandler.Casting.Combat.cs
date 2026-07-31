@@ -67,6 +67,7 @@ internal sealed partial class GameClientHandler
         else
         {
             if (!_registry.TryGetMonsterSnapshot(
+                    _session,
                     character.CurrentMap,
                     cast.TargetObjectId,
                     out var target) ||
@@ -168,6 +169,7 @@ internal sealed partial class GameClientHandler
         }
 
         return _registry.TryGetMonsterSnapshot(
+                   _session,
                    character.CurrentMap,
                    cast.TargetObjectId,
                    out var target) &&

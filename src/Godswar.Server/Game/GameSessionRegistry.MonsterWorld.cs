@@ -1,4 +1,5 @@
-using System.Collections.Concurrent;
+using Godswar.Server.Domain.World.Instances;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -11,67 +12,150 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        foreach (var map in _maps.Values.OrderBy(map => map.MapId))
+        var ticks = new List<WorldInstanceMonsterTick>();
+        foreach (var runtime in WorldInstances.Snapshot())
         {
-            var tick = _playerRuntimeMode ==
-                PlayerRuntimeMode.Ecs
-                ? map.AdvanceMonsters(
-                    now,
-                    GetPlayerLifeRevision)
-                : map.AdvanceMonsters(now);
+            if (runtime.Descriptor.LifecycleState ==
+                WorldInstanceLifecycleState.Closed)
+            {
+                continue;
+            }
+
+            var tick = InvokeWorldOwner(
+                runtime,
+                map => _playerRuntimeMode ==
+                    PlayerRuntimeMode.Ecs
+                    ? map.AdvanceMonsters(
+                        now,
+                        GetPlayerLifeRevision)
+                    : map.AdvanceMonsters(now));
             if (!tick.PositionsChanged && tick.Updates.Count == 0)
             {
                 continue;
             }
 
-            foreach (var attack in tick.Updates.Where(update => update.Kind == MonsterRuntimeUpdateKind.Attacked))
-            {
-                try
-                {
-                    await ProcessMonsterAttackAsync(
-                        map,
-                        attack,
-                        cancellationToken);
-                }
-                catch (MonsterAttackTargetUnavailableException ex)
-                {
-                    map.ClearMonsterAggroForCharacter(
-                        ex.TargetCharacterId,
-                        now);
-                    Console.WriteLine(
-                        $"[monster] skipped stale target character={ex.TargetCharacterId} map={map.MapId}");
-                }
-            }
+            var sessions = InvokeWorldOwner(
+                runtime,
+                static map => map.Snapshot());
+            ticks.Add(
+                new WorldInstanceMonsterTick(
+                    runtime,
+                    tick,
+                    sessions));
+        }
 
-            foreach (var context in map.Snapshot())
+        await Parallel.ForEachAsync(
+            ticks,
+            new ParallelOptions
             {
-                if (!context.WorldReady)
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism =
+                    _worldInstanceOptions
+                        .MaximumFanoutConcurrency
+            },
+            async (worldTick, token) =>
+            {
+                foreach (var attack in
+                         worldTick.Tick.Updates.Where(
+                             update => update.Kind ==
+                                 MonsterRuntimeUpdateKind
+                                     .Attacked))
                 {
-                    continue;
+                    try
+                    {
+                        await ProcessMonsterAttackAsync(
+                            worldTick.Runtime,
+                            attack,
+                            token);
+                    }
+                    catch (
+                        MonsterAttackTargetUnavailableException
+                            ex)
+                    {
+                        InvokeWorldOwner(
+                            worldTick.Runtime,
+                            map =>
+                                map.ClearMonsterAggroForCharacter(
+                                    ex.TargetCharacterId,
+                                    now));
+                        Console.WriteLine(
+                            $"[monster] skipped stale target " +
+                            $"character={ex.TargetCharacterId} " +
+                            $"instance=" +
+                            $"{worldTick.Runtime.InstanceId} " +
+                            $"map={worldTick.Runtime.MapId}");
+                    }
                 }
+            });
 
+        var deliveries = RoundRobinMonsterDeliveries(ticks);
+        await Parallel.ForEachAsync(
+            deliveries,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism =
+                    _worldInstanceOptions
+                        .MaximumFanoutConcurrency
+            },
+            async (delivery, token) =>
+            {
                 try
                 {
                     await SendMonsterRuntimeTickAsync(
-                        map,
-                        context,
-                        tick,
-                        cancellationToken);
+                        delivery.Runtime,
+                        delivery.Context,
+                        delivery.Tick,
+                        token);
                 }
-                catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+                catch (Exception ex)
+                    when (ex is IOException or
+                        ObjectDisposedException)
                 {
-                    Remove(context.Session);
+                    Remove(delivery.Context.Session);
+                }
+            });
+    }
+
+    private static IReadOnlyList<MonsterTickDelivery>
+        RoundRobinMonsterDeliveries(
+            IReadOnlyList<WorldInstanceMonsterTick> ticks)
+    {
+        var queues = ticks
+            .Select(tick => new Queue<GameSessionContext>(
+                tick.Sessions.Where(
+                    static context =>
+                        context.WorldReady)))
+            .ToArray();
+        var result = new List<MonsterTickDelivery>(
+            queues.Sum(static queue => queue.Count));
+        while (queues.Any(static queue => queue.Count > 0))
+        {
+            for (var index = 0;
+                 index < queues.Length;
+                 index++)
+            {
+                if (queues[index].TryDequeue(
+                        out var context))
+                {
+                    result.Add(new MonsterTickDelivery(
+                        ticks[index].Runtime,
+                        context,
+                        ticks[index].Tick));
                 }
             }
         }
+
+        return result;
     }
 
-    private static async Task SendMonsterRuntimeTickAsync(
-        MapInstance map,
+    private async Task SendMonsterRuntimeTickAsync(
+        WorldInstanceRuntime runtime,
         GameSessionContext context,
         MonsterRuntimeTick tick,
         CancellationToken cancellationToken)
     {
+        var map = runtime.Map;
         await using var transition = await map.BeginMonsterVisibilityTransitionAsync(
             context.Session,
             context.Character.PositionX,
@@ -209,10 +293,23 @@ internal sealed partial class GameSessionRegistry
                 continue;
             }
 
+            var currentMonster = update.Kind is (
+                    MonsterRuntimeUpdateKind.Started or
+                    MonsterRuntimeUpdateKind.Arrived or
+                    MonsterRuntimeUpdateKind.Returned)
+                ? InvokeWorldOwner(
+                    runtime,
+                    ownedMap =>
+                        ownedMap.TryGetMonsterSnapshot(
+                            monster.ObjectId,
+                            out var snapshot)
+                            ? snapshot
+                            : null)
+                : null;
             if (update.Kind is (MonsterRuntimeUpdateKind.Started or
                     MonsterRuntimeUpdateKind.Arrived or
                     MonsterRuntimeUpdateKind.Returned) &&
-                (!map.TryGetMonsterSnapshot(monster.ObjectId, out var currentMonster) ||
+                (currentMonster is null ||
                  !currentMonster.IsAlive ||
                  !currentMonster.IsSpawned ||
                  currentMonster.SpawnGeneration != monster.SpawnGeneration ||
@@ -261,4 +358,13 @@ internal sealed partial class GameSessionRegistry
         transition.Commit();
     }
 
+    private sealed record WorldInstanceMonsterTick(
+        WorldInstanceRuntime Runtime,
+        MonsterRuntimeTick Tick,
+        IReadOnlyList<GameSessionContext> Sessions);
+
+    private sealed record MonsterTickDelivery(
+        WorldInstanceRuntime Runtime,
+        GameSessionContext Context,
+        MonsterRuntimeTick Tick);
 }

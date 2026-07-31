@@ -11,21 +11,40 @@ internal sealed partial class GameSessionRegistry
         byte mapId,
         byte? camp,
         string reason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ClientSession? routingSession = null)
     {
-        if (_store is null || !_maps.TryGetValue(mapId, out var map))
+        if (_store is null ||
+            !TryResolveWorldInstance(
+                mapId,
+                routingSession,
+                out var runtime))
         {
             return 0;
         }
 
+        var recipients = InvokeWorldOwner(
+            runtime,
+            map => map.Snapshot()
+                .Where(context =>
+                    context.WorldReady &&
+                    (camp is null ||
+                     context.Character.Camp == camp.Value))
+                .ToArray(),
+            cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var sent = 0;
-        foreach (var context in map.Snapshot().Where(context =>
-                     context.WorldReady &&
-                     (camp is null || context.Character.Camp == camp.Value)))
+        foreach (var context in recipients)
         {
             try
             {
+                if (!IsCurrentWorldInstanceRecipient(
+                        runtime.InstanceId,
+                        context))
+                {
+                    continue;
+                }
+
                 var boosts = await GetExperienceBoostStateAsync(
                     context.Session,
                     context.AccountId,
@@ -34,6 +53,13 @@ internal sealed partial class GameSessionRegistry
                     context.MapId,
                     now,
                     cancellationToken);
+                if (!IsCurrentWorldInstanceRecipient(
+                        runtime.InstanceId,
+                        context))
+                {
+                    continue;
+                }
+
                 if (await RefreshExperienceStatusesAndPublishAsync(
                         context.Session,
                         boosts,

@@ -254,6 +254,7 @@ internal sealed partial class GameClientHandler
                 break;
             case PlayerCombatRejectionReason.OutOfRange:
                 if (_registry.TryGetMonsterSnapshot(
+                        _session,
                         character.CurrentMap,
                         cast.TargetObjectId,
                         out var target))

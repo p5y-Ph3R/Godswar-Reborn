@@ -33,15 +33,13 @@ internal static class WorldInstanceMapIdentityChecks
 
         var sharedMap = new WorldMapId(40);
         var firstDungeon = new MapInstance(
-            RealmId.Tempest,
-            WorldInstanceId.New(),
-            sharedMap,
-            InstanceKind.Dungeon);
+            CreateDescriptor(
+                sharedMap,
+                InstanceKind.Dungeon));
         var secondDungeon = new MapInstance(
-            RealmId.Tempest,
-            WorldInstanceId.New(),
-            sharedMap,
-            InstanceKind.Dungeon);
+            CreateDescriptor(
+                sharedMap,
+                InstanceKind.Dungeon));
         Check.True(
             firstDungeon.WorldInstanceId !=
                 secondDungeon.WorldInstanceId,
@@ -53,12 +51,22 @@ internal static class WorldInstanceMapIdentityChecks
 
         Check.Throws<ArgumentOutOfRangeException>(
             () => _ = new MapInstance(
-                RealmId.Tempest,
-                WorldInstanceId.New(),
-                new WorldMapId(256),
-                InstanceKind.Battlefield),
+                CreateDescriptor(
+                    new WorldMapId(256),
+                    InstanceKind.Battlefield)),
             "extended map IDs cannot silently enter the legacy byte runtime");
 
         return Task.CompletedTask;
     }
+
+    private static WorldInstanceDescriptor CreateDescriptor(
+        WorldMapId mapId,
+        InstanceKind kind) =>
+        WorldInstanceDescriptor.Create(
+            RealmId.Tempest,
+            WorldInstanceId.New(),
+            mapId,
+            kind,
+            playerCapacity: 100,
+            DateTimeOffset.UtcNow);
 }

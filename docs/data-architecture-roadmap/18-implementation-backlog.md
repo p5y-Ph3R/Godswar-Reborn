@@ -22,7 +22,7 @@
 | B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
 | B16 - Redis decision ADR **(completed 2026-07-31: historical defer)** | Avoid premature infrastructure | evidence and ADR 0003 | B13-B15 | Defer correctly reflected the then-known one-process target | Evidence review | candidate capacity gaps | Documentation revert | Small | Low |
 | B17 - Redis coordination **(approved; not deployed)** | Coordinate future processes | Async tickets, routes, presence, and PG-fenced leases | B15, B18, second process, budgets | Two processes route/fence correctly; Redis loss cannot lose value | restart/slow/expiry, reconnect, PG fence | Redis/lease/route signals | Drain to local mode | Large | High |
-| B18A/B - Realm/instance identity and fair mailboxes **(B18A completed; B18B next)** | Scale-out identity and ECS isolation | typed IDs, local placement/lifecycle, then owner mailboxes and fanout | ADR 0004, B02, B10 | Tempest-compatible, isolated/single-owned instances; I/O off tick | lifecycle/isolation, replay, slow client, overload | instance/tick/queue/fanout | Local placement/legacy map mode | Large | High |
+| B18A/B - Realm/instance identity and fair mailboxes **(completed 2026-07-31)** | Local scale-out foundation | typed IDs, placement/runtime directory, instance sessions, owner mailboxes, bounded fanout | ADR 0004, B02, B10 | Isolated single-owned instances; I/O outside owner commands | lifecycle/isolation/transfer/overload | instance/queue/fanout | Tempest default-map bridge | Large | High |
 | B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
 | B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
@@ -120,9 +120,15 @@ process and operational budgets exist.
 [implementation evidence](../data-architecture-b18a-realm-instance-foundation-20260731.md)
 records Tempest realm authority, typed realm/node/instance/map identities,
 bounded local placement/lifecycle, and the legacy `MapInstance` bridge. It
-does not claim live duplicate dungeon routing, Redis, or a second process.
-B18B instance-aware `GameSessionRegistry` routing and owner mailboxes are
-next.
+does not claim Redis or a second process.
+
+**B18B completed 2026-07-31:** the
+[implementation evidence](../data-architecture-b18b-instance-routing-mailboxes-20260731.md)
+records the local runtime directory, exact sessions/transfers, isolated
+same-map instances, Tempest byte-map bridge, one bounded owner per map,
+owner-routed membership/NPC/monster mutations, bounded fanout, shutdown, and
+checks. It does not claim Redis, multiple processes, remote/client admission,
+scheduled battlefields, or cross-realm settlement.
 
 ## 18.2 First three low-risk implementation tasks
 
@@ -137,6 +143,8 @@ next.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
 - **Requires operational inputs before activation:** B17 Redis provider/SLO/cost and two-process routing/failure policy.
+- **Next scale-out proof:** a local gateway/worker split using B18 before
+  Redis.
 - **Requires a new architectural decision first:** B21 for MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 

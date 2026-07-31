@@ -367,7 +367,8 @@ internal sealed partial class GameClientHandler
                 mapId: control.MapId,
                 camp: null,
                 reason: "world-boss-control",
-                cancellationToken: cancellationToken);
+                cancellationToken: cancellationToken,
+                routingSession: _session);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -448,12 +449,13 @@ internal sealed partial class GameClientHandler
         var outboundPacket = packet.Opcode == Opcodes.Walk
             ? PacketBuilder.PlayerWorldMovement(packet.Buffer.AsSpan(), WorldObjectIds.ForPlayer(_character.Id))
             : packet.Buffer;
-        var excludeSelf = packet.Opcode == Opcodes.Walk ? _session : null;
-        var recipients = await _registry.BroadcastToMapAsync(
-            _character.CurrentMap,
+        var recipients =
+            await _registry.BroadcastToCurrentWorldInstanceAsync(
+            _session,
             outboundPacket,
             cancellationToken,
-            excludeSelf);
+            includeRoutingSession:
+                packet.Opcode != Opcodes.Walk);
 
         if (packet.Opcode == Opcodes.Walk && recipients > 0)
         {

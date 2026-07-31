@@ -1,3 +1,5 @@
+using Godswar.Server.Domain.World.Instances;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 
 namespace Godswar.Server.Game;
@@ -5,8 +7,8 @@ namespace Godswar.Server.Game;
 internal sealed partial class GameSessionRegistry
 {
     /// <summary>
-    /// Atomically moves an active session between map-owned worlds while
-    /// keeping it hidden until the destination snapshot has been delivered.
+    /// Legacy portal transfer. A byte target always resolves to Tempest's
+    /// default open-world instance, never every instance sharing that map.
     /// </summary>
     public bool TryTransferMap(
         ClientSession session,
@@ -29,82 +31,157 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
+        var target = GetOrCreateDefaultWorldInstance(
+            targetMapId);
         lock (_gate)
         {
-            if (!_sessions.TryGetValue(session, out var existing) ||
-                existing.MapId != expectedSourceMapId ||
-                existing.Character.CurrentMap != expectedSourceMapId ||
-                !existing.WorldReady ||
-                existing.Ownership.IsValid &&
-                !IsCurrentAccountSession(
-                    existing.AccountId,
+            if (!_sessions.TryGetValue(
                     session,
-                    existing.Ownership))
+                    out var existing) ||
+                existing.MapId != expectedSourceMapId)
             {
                 return false;
             }
 
-            var character = existing.Character;
-            var nextWorldRevision =
-                checked(existing.WorldRevision + 1);
-            var oldMapId = character.CurrentMap;
-            var oldX = character.PositionX;
-            var oldZ = character.PositionZ;
+            return TryTransferWorldInstanceCore(
+                session,
+                existing,
+                target,
+                targetX,
+                targetZ);
+        }
+    }
 
-            var updated = existing with
+    internal bool TryTransferWorldInstance(
+        ClientSession session,
+        WorldInstanceId expectedSourceInstanceId,
+        WorldInstanceId targetInstanceId,
+        float targetX,
+        float targetZ)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (expectedSourceInstanceId == targetInstanceId ||
+            !MapTraversalLimits.IsFiniteAndBounded(
+                new MapTraversalPosition(targetX, targetZ)) ||
+            !WorldInstances.TryFind(
+                targetInstanceId,
+                out var target))
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(
+                    session,
+                    out var existing) ||
+                existing.WorldInstanceId !=
+                    expectedSourceInstanceId)
             {
-                MapId = targetMapId,
-                Character = character,
-                WorldReady = false,
-                WorldRevision = nextWorldRevision
-            };
-
-            MapInstance.PlayerTransfer? transfer = null;
-            var sourceRemoved = false;
-            var characterMutated = false;
-            try
-            {
-                EnsureMapObjectIdAvailable(updated);
-                transfer = StageMapTransfer(
-                    updated,
-                    targetMapId,
-                    targetX,
-                    targetZ);
-                RemoveFromMap(existing);
-                sourceRemoved = true;
-                character.CurrentMap = targetMapId;
-                character.PositionX = targetX;
-                character.PositionZ = targetZ;
-                characterMutated = true;
-                transfer.Commit(() => _sessions[session] = updated);
-
-                Console.WriteLine(
-                    $"[world] staged hidden map transfer " +
-                    $"map={existing.MapId}->{updated.MapId} " +
-                    $"character={updated.DisplayName} object={updated.ObjectId} " +
-                    $"account={updated.AccountId}");
-                return true;
+                return false;
             }
-            catch
-            {
-                if (characterMutated)
-                {
-                    character.CurrentMap = oldMapId;
-                    character.PositionX = oldX;
-                    character.PositionZ = oldZ;
-                }
-                if (sourceRemoved)
-                {
-                    AddToMap(existing);
-                    _sessions[session] = existing;
-                }
 
-                throw;
-            }
-            finally
+            return TryTransferWorldInstanceCore(
+                session,
+                existing,
+                target,
+                targetX,
+                targetZ);
+        }
+    }
+
+    private bool TryTransferWorldInstanceCore(
+        ClientSession session,
+        GameSessionContext existing,
+        WorldInstanceRuntime target,
+        float targetX,
+        float targetZ)
+    {
+        if (target.Descriptor.LifecycleState !=
+                WorldInstanceLifecycleState.Active ||
+            existing.Character.CurrentMap != existing.MapId ||
+            !existing.WorldReady ||
+            existing.Ownership.IsValid &&
+            !IsCurrentAccountSession(
+                existing.AccountId,
+                session,
+                existing.Ownership))
+        {
+            return false;
+        }
+
+        var character = existing.Character;
+        var nextWorldRevision =
+            checked(existing.WorldRevision + 1);
+        var oldMapId = character.CurrentMap;
+        var oldX = character.PositionX;
+        var oldZ = character.PositionZ;
+        var updated = existing with
+        {
+            RealmId = target.RealmId,
+            WorldInstanceId = target.InstanceId,
+            MapId = target.MapId,
+            Character = character,
+            WorldReady = false,
+            WorldRevision = nextWorldRevision
+        };
+
+        EnsureMapObjectIdAvailable(updated);
+        var placementChange =
+            PrepareWorldPlacement(existing, updated);
+        WorldInstancePlayerTransfer? transfer = null;
+        var sourceRemoved = false;
+        var characterMutated = false;
+        try
+        {
+            transfer = StageMapTransfer(
+                updated,
+                target.MapId,
+                targetX,
+                targetZ);
+            RemoveFromMap(existing);
+            sourceRemoved = true;
+
+            character.CurrentMap = target.MapId;
+            character.PositionX = targetX;
+            character.PositionZ = targetZ;
+            characterMutated = true;
+            transfer.Commit(
+                () => _sessions[session] = updated);
+
+            Console.WriteLine(
+                $"[world] staged hidden instance transfer " +
+                $"instance={existing.WorldInstanceId}" +
+                $"->{updated.WorldInstanceId} " +
+                $"map={existing.MapId}->{updated.MapId} " +
+                $"character={updated.DisplayName} " +
+                $"object={updated.ObjectId} " +
+                $"account={updated.AccountId}");
+            return true;
+        }
+        catch
+        {
+            if (characterMutated)
             {
-                transfer?.Dispose();
+                character.CurrentMap = oldMapId;
+                character.PositionX = oldX;
+                character.PositionZ = oldZ;
             }
+            if (sourceRemoved)
+            {
+                AddToMap(existing);
+                _sessions[session] = existing;
+            }
+
+            RollBackWorldPlacement(
+                placementChange,
+                existing,
+                updated);
+            throw;
+        }
+        finally
+        {
+            transfer?.Dispose();
         }
     }
 }

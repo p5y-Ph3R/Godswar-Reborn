@@ -203,6 +203,7 @@ internal sealed partial class GameClientHandler
         }
 
         if (!_registry.TryGetMonsterSnapshot(
+                _session,
                 _character.CurrentMap,
                 attack.TargetObjectId,
                 out var target) ||

@@ -331,6 +331,8 @@ internal static class NpcCatalogRevisionChecks
             character.AccountId,
             character.Id,
             character.Name,
+            map.RealmId,
+            map.WorldInstanceId,
             mapId,
             playerObjectId,
             character,

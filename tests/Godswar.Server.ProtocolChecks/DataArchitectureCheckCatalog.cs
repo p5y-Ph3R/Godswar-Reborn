@@ -47,6 +47,24 @@ internal static class DataArchitectureCheckCatalog
             WorldInstanceMapIdentityChecks.CheckName,
             WorldInstanceMapIdentityChecks.RunAsync),
         (
+            WorldInstanceRuntimeOptionsChecks.CheckName,
+            WorldInstanceRuntimeOptionsChecks.RunAsync),
+        (
+            BoundedSingleOwnerMailboxChecks.CheckName,
+            BoundedSingleOwnerMailboxChecks.RunAsync),
+        (
+            WorldInstanceRuntimeDirectoryChecks.CheckName,
+            WorldInstanceRuntimeDirectoryChecks.RunAsync),
+        (
+            WorldInstanceSessionRoutingChecks.CheckName,
+            WorldInstanceSessionRoutingChecks.RunAsync),
+        (
+            MonsterWorldOwnerRoutingChecks.CheckName,
+            MonsterWorldOwnerRoutingChecks.RunAsync),
+        (
+            WorldInstanceEgressRevalidationChecks.CheckName,
+            WorldInstanceEgressRevalidationChecks.RunAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
         (

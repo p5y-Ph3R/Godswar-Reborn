@@ -71,7 +71,9 @@ internal sealed partial class GameClientHandler
         }
 
         var requestedDamage = SkillCombatResolver.CalculateDamage(character, combat);
-        var candidates = _registry.GetMapMonsterSnapshots(character.CurrentMap)
+        var candidates = _registry.GetMapMonsterSnapshots(
+                _session,
+                character.CurrentMap)
             .Where(monster =>
                 monster.IsSpawned &&
                 monster.IsAlive &&

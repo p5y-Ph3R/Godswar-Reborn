@@ -18,6 +18,11 @@ These are repository-supported facts, not assumed approval of every target recom
     cross-realm Pindus, and ephemeral battlefield/dungeon instances; B17 is
     reopened and approved for future coordination but is not implemented or
     deployed.
+11. B18A/B provide process-local realm/instance placement, a live runtime
+    directory keyed by `WorldInstanceId`, instance-aware sessions and
+    transfers, and one bounded map-owner mailbox per local runtime. The
+    legacy byte-map bridge resolves only Tempest's default open world unless
+    a routed session supplies an exact instance.
 
 ## Roadmap recommendations pending approval
 
