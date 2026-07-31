@@ -2,7 +2,6 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
-using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -23,11 +22,7 @@ internal static class ProgressionIntervalRetryHandoffChecks
         var character = hydrated.Character;
         var executor = new FailThenCommitExecutor(failures: 2);
         var registry = new GameSessionRegistry(
-            new StubStore(),
-            zodiacEnergyOptions: null,
-            MonsterRuntimeMode.Ecs,
-            PlayerRuntimeMode.Ecs);
-        registry.ConfigureProgressionIntervalSettlement(executor);
+            progressionIntervalSettlementCommands: executor);
         await using var session = new ClientSession(
             new ScriptedLegacyByteTransport());
         GameHandlerOwnershipTestFences.Bind(
@@ -171,6 +166,4 @@ internal static class ProgressionIntervalRetryHandoffChecks
                     receipt));
         }
     }
-
-    private sealed class StubStore : GameStoreTestStub;
 }

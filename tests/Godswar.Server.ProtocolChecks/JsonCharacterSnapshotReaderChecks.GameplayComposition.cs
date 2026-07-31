@@ -55,7 +55,8 @@ internal static partial class JsonCharacterSnapshotReaderChecks
                 ReferenceEquals(store, providers.ExperienceBoosts) &&
                 ReferenceEquals(store, providers.WorldBossAreaControl) &&
                 ReferenceEquals(store, providers.WorldBossRespawns) &&
-                ReferenceEquals(store, providers.ZodiacLevels),
+                ReferenceEquals(store, providers.ZodiacLevels) &&
+                ReferenceEquals(store, providers.CharacterCheckpoints),
                 "JSON gameplay composition binds every focused contract to one local provider");
 
             var stats = await providers.CharacterRuntime
@@ -91,7 +92,7 @@ internal static partial class JsonCharacterSnapshotReaderChecks
                 pets.Length,
                 "focused JSON pet projection exposes the local provider's bounded empty collection");
 
-            var checkpointStore = new LegacyCharacterCheckpointStore(store);
+            var checkpointStore = providers.CharacterCheckpoints;
             var ownership = await checkpointStore.AcquireAsync(
                     account.Id,
                     character.Id,
@@ -130,6 +131,23 @@ internal static partial class JsonCharacterSnapshotReaderChecks
                     character.Id,
                     ownership.Owner),
                 "focused JSON Zodiac rejects a deleted character");
+            Check.Equal(
+                (int)CharacterCheckpointWriteStatus.OwnershipLost,
+                (int)(await checkpointStore.WriteVitalsAsync(
+                    new CharacterVitalsCheckpoint(
+                        account.Id,
+                        character.Id,
+                        ownership.Owner,
+                        CurrentHp: 1_800,
+                        CurrentMp: 0,
+                        Revision: 1))).Status,
+                "focused JSON checkpoints reject an inactive character");
+            Check.True(
+                await checkpointStore.AcquireAsync(
+                    account.Id,
+                    character.Id,
+                    ownership.Owner.OwnerId) is null,
+                "focused JSON checkpoints do not reacquire an inactive character");
             Check.Equal(
                 (int)CharacterCheckpointReleaseStatus.Released,
                 (int)await checkpointStore.ReleaseAsync(

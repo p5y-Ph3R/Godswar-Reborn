@@ -211,16 +211,6 @@ internal abstract class GameStoreTestStub :
             CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
-    public virtual Task<ZodiacEnergyAccrualResult?>
-        ApplyZodiacOnlineTimeAsync(
-            int accountId,
-            int characterId,
-            DateTimeOffset onlineFrom,
-            DateTimeOffset onlineUntil,
-            ZodiacEnergyPolicy policy,
-            CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
     public virtual Task<ZodiacLevelUpgradeResult?>
         UpgradeZodiacLevelAsync(
             int accountId,
@@ -253,14 +243,6 @@ internal abstract class GameStoreTestStub :
             byte mapId,
             DateTimeOffset now,
             CancellationToken cancellationToken = default) =>
-        throw Unsupported();
-
-    public virtual Task ConsumeCharacterBoostOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
     public virtual Task<ZodiacSkillGridSelectionResult?>
@@ -312,39 +294,6 @@ internal abstract class GameStoreTestStub :
             int characterId,
             CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<PetBootstrapSnapshot>>([]);
-
-    public virtual Task<PetEggHatchResult> HatchPetEggAsync(
-        int accountId,
-        int characterId,
-        int kitBagSlot,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(
-            PetEggHatchResult.Rejected(
-                PetEggHatchStatus.CharacterNotFound));
-
-    public virtual Task<PetPresenceTransitionResult>
-        TransitionPetPresenceAsync(
-            int accountId,
-            int characterId,
-            long petId,
-            PetPresenceOperation operation,
-            CancellationToken cancellationToken = default) =>
-        Task.FromResult(
-            new PetPresenceTransitionResult(
-                PetPresenceTransitionStatus.PetNotFound,
-                petId,
-                IsCarried: false,
-                IsSummoned: false));
-
-    public virtual Task<PetLevelUpgradeResult> UpgradePetLevelAsync(
-        int accountId,
-        int characterId,
-        long petId,
-        CancellationToken cancellationToken = default) =>
-        Task.FromResult(
-            PetLevelUpgradeResult.Rejected(
-                PetLevelUpgradeStatus.PetNotFound,
-                petId));
 
     public virtual Task<GameCharacter> CreateCharacterAsync(
         int accountId,

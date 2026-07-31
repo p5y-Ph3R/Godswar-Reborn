@@ -131,7 +131,7 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (_store is null ||
+        if (_progressionIntervalSettlementCommands is null ||
             !_progressionBoostOnlineSessions.TryGetValue(session, out var state) ||
             !_progressionBoostCharacterOwners.TryGetValue(state.CharacterId, out var owner) ||
             !ReferenceEquals(owner, session))
@@ -152,7 +152,7 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset onlineUntil,
         CancellationToken cancellationToken)
     {
-        if (_store is null)
+        if (_progressionIntervalSettlementCommands is null)
         {
             return;
         }
@@ -166,46 +166,20 @@ internal sealed partial class GameSessionRegistry
             }
 
             var onlineFrom = state.LastAccountedAt;
-            if (_progressionIntervalSettlementCommands is not null)
+            var outcome =
+                await SettleDurableProgressionIntervalAsync(
+                    session,
+                    state.AccountId,
+                    state.CharacterId,
+                    onlineFrom,
+                    onlineUntil,
+                    sendNotification: false,
+                    cancellationToken);
+            if (outcome.Projection is not null)
             {
-                var outcome =
-                    await SettleDurableProgressionIntervalAsync(
-                        session,
-                        state.AccountId,
-                        state.CharacterId,
-                        onlineFrom,
-                        onlineUntil,
-                        sendNotification: false,
-                        cancellationToken);
-                if (outcome.Projection is not null)
-                {
-                    state.LastAccountedAt =
-                        outcome.Projection.LastIntervalEndUtc;
-                }
-
-                return;
+                state.LastAccountedAt =
+                    outcome.Projection.LastIntervalEndUtc;
             }
-
-            RequireLegacyRegistryMutationAllowed(
-                "consume_character_boost_online_time");
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.ConsumeCharacterBoostOnlineTime);
-            await _store.ConsumeCharacterBoostOnlineTimeAsync(
-                state.AccountId,
-                state.CharacterId,
-                onlineFrom,
-                onlineUntil,
-                cancellationToken);
-            state.LastAccountedAt = onlineUntil;
-            ObserveCommittedOnlineDurationEcs(
-                session,
-                state.AccountId,
-                state.CharacterId,
-                Godswar.Server.World.Components.Players
-                    .PlayerOnlineDurationTarget
-                    .ProgressionBoosts,
-                onlineFrom,
-                onlineUntil);
         }
         finally
         {
@@ -215,7 +189,8 @@ internal sealed partial class GameSessionRegistry
 
     public async Task RunZodiacEnergyAccrualAsync(CancellationToken cancellationToken)
     {
-        if (!_zodiacEnergyPolicy.Enabled || _store is null)
+        if (!_zodiacEnergyPolicy.Enabled ||
+            _progressionIntervalSettlementCommands is null)
         {
             return;
         }
@@ -250,7 +225,8 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        if (!_zodiacEnergyPolicy.Enabled || _store is null)
+        if (!_zodiacEnergyPolicy.Enabled ||
+            _progressionIntervalSettlementCommands is null)
         {
             return 0;
         }
@@ -300,9 +276,7 @@ internal sealed partial class GameSessionRegistry
 
         try
         {
-            if (_store is null ||
-                (!_zodiacEnergyPolicy.Enabled &&
-                 _progressionIntervalSettlementCommands is null))
+            if (_progressionIntervalSettlementCommands is null)
             {
                 return;
             }
@@ -381,9 +355,17 @@ internal sealed partial class GameSessionRegistry
             return null;
         }
 
-        // The same gate surrounds online-time persistence. Keeping the durable
-        // mutation and both live mirrors inside it prevents a completed accrual
-        // from restoring the pre-upgrade level or energy afterward.
+        if (_progressionIntervalSettlementCommands is not null)
+        {
+            return await UpgradeZodiacLevelWithDurableProgressionGateAsync(
+                session,
+                accountId,
+                character,
+                ownership,
+                state,
+                cancellationToken);
+        }
+
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -449,7 +431,7 @@ internal sealed partial class GameSessionRegistry
         bool sendNotification,
         CancellationToken cancellationToken)
     {
-        if (_store is null)
+        if (_progressionIntervalSettlementCommands is null)
         {
             return false;
         }
@@ -457,101 +439,39 @@ internal sealed partial class GameSessionRegistry
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
-            if (_progressionIntervalSettlementCommands is not null)
-            {
-                var outcome =
-                    await SettleDurableProgressionIntervalAsync(
-                        session,
-                        state.AccountId,
-                        state.CharacterId,
-                        state.LastAccountedAt,
-                        onlineUntil,
-                        sendNotification,
-                        cancellationToken);
-                if (outcome.Projection is null)
-                {
-                    return false;
-                }
-
-                state.LastAccountedAt =
-                    outcome.Projection.LastIntervalEndUtc;
-                ApplyDurableProgressionProjection(
-                    state.Character,
-                    outcome.Projection);
-                if (!sendNotification ||
-                    outcome.NotificationGainX100 <= 0)
-                {
-                    return false;
-                }
-
-                await session.SendAsync(
-                    PacketBuilder.ZodiacEnergyIncrease(
-                        outcome.Projection.ZodiacEnergy,
-                        outcome.NotificationGainX100),
-                    cancellationToken,
-                    outcome.NotificationIncludedCompensation
-                        ? "ZodiacEnergyCompensation"
-                        : "ZodiacEnergyIncrease");
-                return true;
-            }
-
-            RequireLegacyRegistryMutationAllowed(
-                "apply_zodiac_online_time");
-            if (onlineUntil <= state.LastAccountedAt)
+            var outcome =
+                await SettleDurableProgressionIntervalAsync(
+                    session,
+                    state.AccountId,
+                    state.CharacterId,
+                    state.LastAccountedAt,
+                    onlineUntil,
+                    sendNotification,
+                    cancellationToken);
+            if (outcome.Projection is null)
             {
                 return false;
             }
 
-            var onlineFrom = state.LastAccountedAt;
-            LegacyPersistenceMetrics.Record(
-                LegacyPersistenceOperation.ApplyZodiacOnlineTime);
-            var result = await _store.ApplyZodiacOnlineTimeAsync(
-                state.AccountId,
-                state.CharacterId,
-                onlineFrom,
-                onlineUntil,
-                _zodiacEnergyPolicy,
-                cancellationToken);
-            if (result is null)
-            {
-                return false;
-            }
-
-            state.LastAccountedAt = result.LastOnlineAt;
-            ObserveCommittedOnlineDurationEcs(
-                session,
-                state.AccountId,
-                state.CharacterId,
-                Godswar.Server.World.Components.Players
-                    .PlayerOnlineDurationTarget
-                    .Zodiac,
-                onlineFrom,
-                result.LastOnlineAt);
-            lock (state.Character.ZodiacSync)
-            {
-                state.Character.ZodiacEnergy = result.CurrentEnergy;
-                state.Character.ZodiacEnergyRemainderX100 = result.CurrentEnergyRemainderX100;
-                state.Character.ZodiacOnlineDay = result.OnlineDay;
-                state.Character.ZodiacOnlineDurationTicksToday = result.OnlineDurationTicksToday;
-                state.Character.ZodiacLastOnlineAt = result.LastOnlineAt;
-                state.Character.ZodiacLastCompensationDay = result.LastCompensationDay;
-            }
-
-            if (!sendNotification || result.GainedEnergyX100 <= 0)
+            state.LastAccountedAt =
+                outcome.Projection.LastIntervalEndUtc;
+            ApplyDurableProgressionProjection(
+                state.Character,
+                outcome.Projection);
+            if (!sendNotification ||
+                outcome.NotificationGainX100 <= 0)
             {
                 return false;
             }
 
             await session.SendAsync(
                 PacketBuilder.ZodiacEnergyIncrease(
-                    result.CurrentEnergy,
-                    result.GainedEnergyX100),
+                    outcome.Projection.ZodiacEnergy,
+                    outcome.NotificationGainX100),
                 cancellationToken,
-                result.CompensationApplied
+                outcome.NotificationIncludedCompensation
                     ? "ZodiacEnergyCompensation"
                     : "ZodiacEnergyIncrease");
-            Console.WriteLine(
-                $"[zodiac] energy character={state.Character.Name} gain={result.GainedEnergyX100 / 100m:0.##} total={result.CurrentEnergy}.{result.CurrentEnergyRemainderX100:00} compensation={result.CompensationApplied}");
             return true;
         }
         finally

@@ -1,9 +1,11 @@
 using System.Buffers.Binary;
+using System.Collections.Immutable;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json.Nodes;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Progression;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -41,25 +43,14 @@ internal static partial class Program
                 accountId = account.Id;
             }
 
-            var joinedAt = new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero);
-            var statePath = Path.Combine(dataPath, "state.json");
-            var stateJson = JsonNode.Parse(await File.ReadAllTextAsync(statePath))?.AsObject()
-                ?? throw new InvalidOperationException("JSON world boost-clock test could not parse state.json");
-            stateJson["characterExperienceBoosts"] = new JsonArray
-            {
-                new JsonObject
-                {
-                    ["characterId"] = character.Id,
-                    ["statusId"] = ExperienceStatusIds.MaxExperiencePotion,
-                    ["kind"] = ExperienceBoostKinds.Consumable,
-                    ["bonusBasisPoints"] = 30_000,
-                    ["priority"] = 11,
-                    ["activatedAt"] = joinedAt.AddDays(-1),
-                    ["expiresAt"] = joinedAt.AddDays(-1).AddSeconds(1_000),
-                    ["source"] = "world-clock"
-                }
-            };
-            await File.WriteAllTextAsync(statePath, stateJson.ToJsonString(JsonDefaults.Indented));
+            var joinedAt = new DateTimeOffset(
+                2026,
+                7,
+                20,
+                1,
+                0,
+                0,
+                TimeSpan.Zero);
 
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             using var firstOutbound = new TcpClient();
@@ -76,9 +67,13 @@ internal static partial class Program
             await using var secondSession =
                 new ClientSession(new RawTcpLegacyTransport(secondOutbound));
 
-            await using var store = new JsonGameStore(dataPath);
-            await store.EnsureSeedDataAsync();
-            var registry = new GameSessionRegistry(store);
+            var persistence = new WorldBoostClockPersistence(
+                accountId,
+                character.Id,
+                TimeSpan.FromSeconds(1_000));
+            var registry = new GameSessionRegistry(
+                progressionIntervalSettlementCommands: persistence,
+                experienceBoosts: persistence);
 
             var beforeWorld = await registry.GetExperienceBoostStateAsync(
                 firstSession,
@@ -93,7 +88,11 @@ internal static partial class Program
                 beforeWorld.ActiveBoosts.Single().RemainingSeconds(joinedAt.AddHours(5)),
                 "account login and character selection do not start the boost clock");
 
-            registry.ReplaceAccountSession(accountId, firstSession);
+            GameHandlerOwnershipTestFences.Bind(
+                registry,
+                firstSession,
+                accountId,
+                character);
             registry.JoinMap(
                 firstSession,
                 accountId,
@@ -134,13 +133,22 @@ internal static partial class Program
                 firstCheckpoint.ActiveBoosts.Single().RemainingSeconds(joinedAt.AddSeconds(120)),
                 "world-ready play checkpoints the online countdown");
 
-            var replaced = registry.ReplaceAccountSession(accountId, secondSession);
-            Check.True(ReferenceEquals(firstSession, replaced), "second login identifies the prior account session");
             await registry.FinishProgressionBoostOnlineSessionAsync(
                 firstSession,
                 joinedAt.AddSeconds(150),
                 CancellationToken.None);
+            var replaced = registry.ReplaceAccountSession(
+                accountId,
+                secondSession);
+            Check.True(
+                ReferenceEquals(firstSession, replaced),
+                "second login identifies the prior account session");
             registry.Remove(firstSession);
+            GameHandlerOwnershipTestFences.Bind(
+                registry,
+                secondSession,
+                accountId,
+                character);
             registry.JoinMap(
                 secondSession,
                 accountId,
@@ -178,12 +186,14 @@ internal static partial class Program
                 joinedAt.AddSeconds(190),
                 CancellationToken.None);
             registry.Remove(secondSession);
-            var afterLogout = await store.GetExperienceBoostStateAsync(
+            var afterLogout = await registry.GetExperienceBoostStateAsync(
+                secondSession,
                 accountId,
                 character.Id,
                 character.Camp,
                 character.CurrentMap,
-                joinedAt.AddDays(30));
+                joinedAt.AddDays(30),
+                CancellationToken.None);
             Check.Equal(
                 870u,
                 afterLogout.ActiveBoosts.Single().RemainingSeconds(joinedAt.AddDays(30)),
@@ -193,6 +203,113 @@ internal static partial class Program
         {
             listener.Stop();
             Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
+    private sealed class WorldBoostClockPersistence(
+        int accountId,
+        int characterId,
+        TimeSpan initialDuration) :
+        IProgressionIntervalSettlementCommandExecutor,
+        IExperienceBoostStateReader
+    {
+        private readonly object _gate = new();
+        private readonly Dictionary<
+            string,
+            ProgressionIntervalSettlementReceipt> _committed =
+                new(StringComparer.Ordinal);
+        private long _remainingTicks = initialDuration.Ticks;
+
+        public Task<ExperienceBoostSnapshot> ReadAsync(
+            ExperienceBoostReadRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ExperienceBoostContract.ValidateRequest(request);
+            lock (_gate)
+            {
+                if (request.AccountId != accountId ||
+                    request.CharacterId != characterId ||
+                    _remainingTicks <= 0)
+                {
+                    return Task.FromResult(
+                        ExperienceBoostSnapshot.Empty);
+                }
+
+                return Task.FromResult(
+                    new ExperienceBoostSnapshot(
+                        ImmutableArray.Create(
+                            new ExperienceBoostEntry(
+                                Godswar.Server.Application.Progression
+                                    .ExperienceStatusIds
+                                    .MaxExperiencePotion,
+                                Godswar.Server.Application.Progression
+                                    .ExperienceBoostKinds.Consumable,
+                                BonusBasisPoints: 30_000,
+                                Priority: 11,
+                                request.ReadAtUtc +
+                                    TimeSpan.FromTicks(
+                                        _remainingTicks),
+                                Source: "world-clock"))));
+            }
+        }
+
+        public Task<ProgressionIntervalSettlementExecutionResult>
+            ExecuteAsync(
+                CommandEnvelope<ProgressionIntervalSettlementCommand>
+                    envelope,
+                CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (_committed.TryGetValue(
+                        envelope.OperationId,
+                        out var committed))
+                {
+                    return Task.FromResult(
+                        ProgressionIntervalSettlementExecutionResult
+                            .Duplicate(
+                                committed,
+                                committed.Projection));
+                }
+
+                var command = envelope.Command;
+                _remainingTicks = Math.Max(
+                    0,
+                    _remainingTicks -
+                        (command.OnlineUntilUtc -
+                         command.OnlineFromUtc).Ticks);
+                var projection = new ProgressionIntervalProjection(
+                    command.OnlineSessionId,
+                    command.IntervalSequence,
+                    command.OnlineUntilUtc,
+                    command.IntervalSequence,
+                    ZodiacEnergy: 0,
+                    ZodiacEnergyRemainderX100: 0,
+                    DateOnly.FromDateTime(
+                        command.OnlineUntilUtc.UtcDateTime),
+                    command.OnlineUntilUtc.UtcTicks -
+                        command.OnlineFromUtc.UtcTicks,
+                    ZodiacLastCompensationDay: null);
+                var receipt =
+                    new ProgressionIntervalSettlementReceipt(
+                        envelope.Subject.CharacterId,
+                        command.OnlineSessionId,
+                        command.IntervalSequence,
+                        command.OnlineFromUtc,
+                        command.OnlineUntilUtc,
+                        GainedZodiacEnergyX100: 0,
+                        ZodiacCompensationApplied: false,
+                        UpdatedBoostCount: 1,
+                        projection,
+                        AuditReference: "world-clock",
+                        Guid.NewGuid());
+                _committed.Add(envelope.OperationId, receipt);
+                return Task.FromResult(
+                    ProgressionIntervalSettlementExecutionResult
+                        .Committed(receipt));
+            }
         }
     }
 

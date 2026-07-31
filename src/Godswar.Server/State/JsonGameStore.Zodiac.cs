@@ -4,12 +4,8 @@ using Godswar.Server.Application.Zodiac;
 namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore :
-    IZodiacLevelStore,
-    ILocalPlayerOwnershipRegistry
+    IZodiacLevelStore
 {
-    private readonly Dictionary<(int AccountId, int CharacterId),
-        PlayerOwnershipFence> _localPlayerOwnership = [];
-
     public async Task<ZodiacLevelUpgradeResult?> UpgradeZodiacLevelAsync(
         int accountId,
         int characterId,
@@ -59,47 +55,6 @@ internal sealed partial class JsonGameStore :
         return result is null
             ? null
             : FocusedGameplayProjectionCompatibility.ToApplication(result);
-    }
-
-    async Task ILocalPlayerOwnershipRegistry.BindAsync(
-        int accountId,
-        int characterId,
-        PlayerOwnershipFence ownership,
-        CancellationToken cancellationToken)
-    {
-        ownership.Validate();
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(characterId);
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            _localPlayerOwnership[(accountId, characterId)] = ownership;
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    async Task<bool> ILocalPlayerOwnershipRegistry.ReleaseAsync(
-        int accountId,
-        int characterId,
-        PlayerOwnershipFence ownership,
-        CancellationToken cancellationToken)
-    {
-        ownership.Validate();
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var key = (accountId, characterId);
-            return _localPlayerOwnership.TryGetValue(key, out var current) &&
-                   current == ownership &&
-                   _localPlayerOwnership.Remove(key);
-        }
-        finally
-        {
-            _lock.Release();
-        }
     }
 
     private void RequireCurrentLocalOwnership(

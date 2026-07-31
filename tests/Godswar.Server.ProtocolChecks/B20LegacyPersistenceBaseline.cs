@@ -33,10 +33,10 @@ internal sealed record B20LegacyPersistenceBaselineSnapshot(
 internal static class B20LegacyPersistenceBaseline
 {
     public const bool RetirementComplete = false;
-    public const int ExpectedBroadStoreCalls = 33;
-    public const int ExpectedJsonSpecificCalls = 1;
-    public const int ExpectedReadCalls = 1;
-    public const int ExpectedMutationOrMixedCalls = 32;
+    public const int ExpectedBroadStoreCalls = 25;
+    public const int ExpectedJsonSpecificCalls = 0;
+    public const int ExpectedReadCalls = 0;
+    public const int ExpectedMutationOrMixedCalls = 24;
     public const int ExpectedBootstrapCalls = 1;
     public const int ExpectedJsonStoreImplementationFiles = 10;
     public const int ExpectedPostgresStoreImplementationFiles = 31;
@@ -52,7 +52,6 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 1),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/IGameStore.cs", 1),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/JsonGameStore.cs", 1),
-        A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 2),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/PostgresGameStore.cs", 1),
 
         // Broad PostgreSQL store implementation. New persistence belongs in
@@ -103,7 +102,6 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/JsonGameStore.Progression.cs", 1),
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/JsonGameStore.Zodiac.cs", 1),
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/JsonGameStore.ZodiacSkillGrids.cs", 1),
-        A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 1),
         A(B20LegacyDependencyKind.JsonStoreType, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 1),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/Program.cs", 1),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerRuntimeProfilePolicy.cs", 3),
@@ -113,15 +111,12 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/Application/Characters/MeasuredCharacterSnapshotReader.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/ServerWorldContentComposition.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/Infrastructure/WorldContent/GeneratedWorldContentReaderLoader.cs", 1),
-        A(B20LegacyDependencyKind.LegacyCheckpointAdapter, "src/Godswar.Server/Program.cs", 1),
-        A(B20LegacyDependencyKind.LegacyCheckpointAdapter, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/GameDatabase.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.Accounts.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.CharacterLifecycle.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.CharacterSnapshots.cs", 3),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.Persistence.cs", 6),
-        A(B20LegacyDependencyKind.JsonCheckpointCall, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 1),
         A(B20LegacyDependencyKind.JsonToolConfiguration, "tools/Godswar.Server.B18CSmoke/SmokeWorkspace.cs", 2),
 
         // Fresh-install bootstrap and compatibility projections.

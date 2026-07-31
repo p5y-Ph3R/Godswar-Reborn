@@ -1,8 +1,7 @@
 using System.Buffers.Binary;
-using System.Reflection;
-using Godswar.Server.Application.Accounts;
-using Godswar.Server.Game;
-using Godswar.Server.Networking;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -14,13 +13,6 @@ internal static class PetLevelUpgradeProtocolChecks
     private const int AccountId = 13;
     private const int CharacterId = 2;
     private const uint PetId = 1;
-
-    private static readonly MethodInfo HandlePacketMethod =
-        typeof(GameClientHandler).GetMethod(
-            "HandlePacketAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException(
-            "GameClientHandler.HandlePacketAsync was not found.");
 
     private static readonly int[] ExpectedAdvancementCosts =
     [
@@ -321,27 +313,45 @@ internal static class PetLevelUpgradeProtocolChecks
 
     private static async Task CheckSuccessfulUpgradeAsync()
     {
-        var result = new PetLevelUpgradeResult(
-            PetLevelUpgradeStatus.Succeeded,
-            PetId,
-            PreviousLevel: 1,
-            Level: 2,
-            PreviousExperience: 300_000_000,
-            Experience: 299_998_500,
-            ExperienceSpent: 1_500,
-            Revision: 15,
-            BasicSavvy: new PetSavvy(
-                2m,
-                18m,
-                6m,
-                8m,
-                10m,
-                12m));
-        var store = new PetLevelStore(result);
-
-        var response = await InvokeAsync(
-            store,
-            CreateUpgradePacket(PetId));
+        var basicSavvy = new PetSavvy(
+            2m,
+            18m,
+            6m,
+            8m,
+            10m,
+            12m);
+        var operationId = Guid.NewGuid();
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Upgrade = envelope =>
+                PetDurableExecutionResult.Committed(
+                    new PetDurableReceipt(
+                        CommandFamily.PetLevelUpgrade,
+                        PetDurableReceiptStatus.PetLevelUpgraded,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        KitBagSlot: -1,
+                        EquipmentSlot: -1,
+                        PetId,
+                        PetLevel: 2,
+                        PetExperience: 299_998_500,
+                        PetRevision: 15,
+                        IsCarried: false,
+                        IsSummoned: false,
+                        PresenceOperation: 0,
+                        AggregateRevision: 1,
+                        AuditReference: "pet-level-check",
+                        OutboxEventId: Guid.NewGuid()))
+        };
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [CreatePet(2, 299_998_500, 15, basicSavvy)],
+            executor);
+        await fixture.InvokeAsync(
+            CreateUpgradePacket(PetId, operationId));
+        var response = fixture.Transport.ReadLegacyPackets().Single();
 
         Check.True(
             response.SequenceEqual(
@@ -349,123 +359,195 @@ internal static class PetLevelUpgradeProtocolChecks
                     PetId,
                     level: 2,
                     currentExperience: 299_998_500,
-                    result.BasicSavvy)),
+                    basicSavvy)),
             "successful level-up emits the native authoritative refresh");
-        Check.Equal(1, store.CallCount, "pet level-up persists once");
-        Check.Equal(
-            AccountId,
-            store.AccountId,
-            "pet level-up uses the authenticated account");
-        Check.Equal(
-            CharacterId,
-            store.CharacterId,
-            "pet level-up uses the active character");
-        Check.Equal(
-            (long)PetId,
-            store.PetId,
-            "pet level-up uses the requested pet ID");
+        Check.Equal(1, executor.UpgradeCount, "pet level-up persists once");
+        Check.True(
+            executor.UpgradeEnvelope is { } envelope &&
+            envelope.Subject.AccountId == AccountId &&
+            envelope.Subject.CharacterId == CharacterId &&
+            envelope.Command.PetId == PetId &&
+            envelope.Command.ClientOperationId == operationId,
+            "pet level-up binds authenticated subject and operation ID");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Applied,
+                    CommandFamily: (ushort)CommandFamily.PetLevelUpgrade,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            "pet level-up terminates with one durable command result");
     }
 
     private static async Task CheckInvalidRequestsAsync()
     {
-        var result = PetLevelUpgradeResult.Rejected(
-            PetLevelUpgradeStatus.PetNotFound,
-            PetId);
-        var store = new PetLevelStore(result);
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Upgrade = _ => throw new InvalidOperationException(
+                "Invalid pet level requests cannot execute.")
+        };
         var malformed = new byte[7];
         BinaryPrimitives.WriteUInt16LittleEndian(malformed, 7);
         BinaryPrimitives.WriteUInt16LittleEndian(
             malformed.AsSpan(2),
             Opcodes.PetLevelUpgradeRequest);
 
-        var malformedResponse = await InvokeAsync(
-            store,
-            new GamePacket(malformed));
-        var zeroIdResponse = await InvokeAsync(
-            store,
-            CreateUpgradePacket(petId: 0));
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [],
+            executor);
+        await fixture.InvokeAsync(
+            new GamePacket(malformed, Guid.NewGuid()));
+        await fixture.InvokeAsync(
+            CreateUpgradePacket(petId: 0, Guid.NewGuid()));
+        await fixture.InvokeAsync(CreateUpgradePacket(PetId));
+        var responses = fixture.Transport.ReadLegacyPackets();
 
         Check.Equal(
             0,
-            malformedResponse.Length,
-            "malformed pet level-up emits no invented native frame");
+            responses.Count,
+            "invalid or unidentified pet level-up emits no native frame");
         Check.Equal(
             0,
-            zeroIdResponse.Length,
-            "zero-ID pet level-up emits no invented native frame");
-        Check.Equal(
-            0,
-            store.CallCount,
+            executor.UpgradeCount,
             "invalid pet level-up cannot reach persistence");
     }
 
     private static async Task CheckRejectedUpgradeAsync()
     {
-        var store = new PetLevelStore(
-            PetLevelUpgradeResult.Rejected(
-                PetLevelUpgradeStatus.InsufficientExperience,
-                PetId,
-                level: 1,
-                experience: 1_499,
-                revision: 14));
-
-        var response = await InvokeAsync(
-            store,
-            CreateUpgradePacket(PetId));
+        var operationId = Guid.NewGuid();
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Upgrade = envelope =>
+                PetDurableExecutionResult.Rejected(
+                    new PetDurableReceipt(
+                        CommandFamily.PetLevelUpgrade,
+                        PetDurableReceiptStatus.PetInsufficientExperience,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        KitBagSlot: -1,
+                        EquipmentSlot: -1,
+                        PetId,
+                        PetLevel: 1,
+                        PetExperience: 1_499,
+                        PetRevision: 14,
+                        IsCarried: false,
+                        IsSummoned: false,
+                        PresenceOperation: 0,
+                        AggregateRevision: 0,
+                        AuditReference: "pet-level-rejection-check",
+                        OutboxEventId: null))
+        };
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [CreatePet(1, 1_499, 14, new PetSavvy(1, 2, 3, 4, 5, 6))],
+            executor);
+        await fixture.InvokeAsync(
+            CreateUpgradePacket(PetId, operationId));
+        var responses = fixture.Transport.ReadLegacyPackets();
 
         Check.Equal(
             0,
-            response.Length,
+            responses.Count,
             "rejected upgrade emits no success-only native frame");
         Check.Equal(
             1,
-            store.CallCount,
+            executor.UpgradeCount,
             "well-formed rejected upgrade reaches persistence once");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Rejected,
+                    ResultCode:
+                        (uint)PetDurableReceiptStatus.PetInsufficientExperience,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            "insufficient experience returns its durable terminal result");
     }
 
-    private static async Task<byte[]> InvokeAsync(
-        PetLevelStore store,
-        GamePacket packet)
+    private static GameCharacter CreateCharacter() =>
+        new()
+        {
+            Id = CharacterId,
+            AccountId = AccountId,
+            Name = "test2",
+            Equipment = GameDefaults.DefaultEquipment(1),
+            KitBag = GameDefaults.EmptyKitBag
+        };
+
+    private static PetBootstrapSnapshot CreatePet(
+        short level,
+        long experience,
+        long revision,
+        PetSavvy savvy)
     {
-        var transport = new ScriptedLegacyByteTransport();
-        await using var session = new ClientSession(transport);
-        var handler = new GameClientHandler(
-            session,
-            store,
-            new GameSessionRegistry(
-                store: null,
-                zodiacEnergyOptions: null,
-                monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-                playerRuntimeMode: PlayerRuntimeMode.Ecs),
-            CharacterSnapshotReaderTestFixtures.Unused,
-            WorldContentReaderTestFixtures.Empty);
-        SetField(
-            handler,
-            "_account",
-            new AccountIdentity(AccountId, "test2"));
-        SetField(
-            handler,
-            "_character",
-            new GameCharacter
-            {
-                Id = CharacterId,
-                AccountId = AccountId,
-                Name = "test2"
-            });
-
-        var task = HandlePacketMethod.Invoke(
-            handler,
-            [packet, CancellationToken.None]) as Task
-            ?? throw new InvalidOperationException(
-                "GameClientHandler.HandlePacketAsync returned no task.");
-        await task;
-
-        var clearBytes = transport.WrittenBytes;
-        new PacketCipher().Transform(clearBytes);
-        return clearBytes;
+        var initial = new[]
+        {
+            savvy.Agility,
+            savvy.Strength,
+            savvy.Accuracy,
+            savvy.Technique,
+            savvy.Wisdom,
+            savvy.Luck
+        };
+        return new PetBootstrapSnapshot(
+            PetId,
+            AccountId,
+            CharacterId,
+            SpeciesId: 1,
+            Name: "Rock Elf",
+            Sex: 0,
+            level,
+            experience,
+            PetAptitude.Godly,
+            Rank: 0,
+            CompletedRebirths: 0,
+            RebirthsRemaining: 0,
+            CompletedPetMerges: 0,
+            HasSoulContract: false,
+            HasOwnerMergeTalent: false,
+            CurrentEnergy: 100,
+            MaximumEnergy: 100,
+            Amity: 100,
+            Satiety: 100,
+            RemainingLifetime: 600,
+            AvailableStatPoints: 0,
+            GrowthRevealed: true,
+            IsBound: false,
+            ActivityState: "owned",
+            IsCarried: false,
+            IsSummoned: false,
+            ContributesToCharacter: false,
+            revision,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            initial.Select((value, index) =>
+                new PetStatValueSnapshot(
+                    checked((short)(index + 1)),
+                    value,
+                    AddedSavvy: 0,
+                    BaseGrowthRate: 1,
+                    GrowthAcceleration: 0,
+                    revision)).ToArray(),
+            CharacterBonuses: [],
+            Skills: []);
     }
 
-    private static GamePacket CreateUpgradePacket(uint petId)
+    private static GamePacket CreateUpgradePacket(
+        uint petId,
+        Guid? operationId = null)
     {
         var packet = new byte[8];
         BinaryPrimitives.WriteUInt16LittleEndian(packet, 8);
@@ -473,50 +555,6 @@ internal static class PetLevelUpgradeProtocolChecks
             packet.AsSpan(2),
             Opcodes.PetLevelUpgradeRequest);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4), petId);
-        return new GamePacket(packet);
-    }
-
-    private static void SetField<T>(
-        GameClientHandler handler,
-        string name,
-        T value)
-    {
-        var field = typeof(GameClientHandler).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException(
-                $"GameClientHandler.{name} was not found.");
-        field.SetValue(handler, value);
-    }
-
-    private sealed class PetLevelStore : GameStoreTestStub
-    {
-        private readonly PetLevelUpgradeResult _result;
-
-        public PetLevelStore(PetLevelUpgradeResult result)
-        {
-            _result = result;
-        }
-
-        public int CallCount { get; private set; }
-
-        public int AccountId { get; private set; }
-
-        public int CharacterId { get; private set; }
-
-        public long PetId { get; private set; }
-
-        public override Task<PetLevelUpgradeResult> UpgradePetLevelAsync(
-            int accountId,
-            int characterId,
-            long petId,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            AccountId = accountId;
-            CharacterId = characterId;
-            PetId = petId;
-            return Task.FromResult(_result);
-        }
+        return new GamePacket(packet, operationId);
     }
 }

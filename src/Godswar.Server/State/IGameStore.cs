@@ -47,14 +47,6 @@ internal interface IGameStore : IAsyncDisposable
         int talentExperience,
         CancellationToken cancellationToken = default);
 
-    Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        ZodiacEnergyPolicy policy,
-        CancellationToken cancellationToken = default);
-
     Task<ZodiacSkillGridActivationResult?> ActivateZodiacSkillGridAsync(
         int accountId,
         int characterId,
@@ -74,35 +66,9 @@ internal interface IGameStore : IAsyncDisposable
         int selectedSkillKind,
         CancellationToken cancellationToken = default);
 
-    Task ConsumeCharacterBoostOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        CancellationToken cancellationToken = default);
-
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);
-
-    Task<PetEggHatchResult> HatchPetEggAsync(
-        int accountId,
-        int characterId,
-        int kitBagSlot,
-        CancellationToken cancellationToken = default);
-
-    Task<PetPresenceTransitionResult> TransitionPetPresenceAsync(
-        int accountId,
-        int characterId,
-        long petId,
-        PetPresenceOperation operation,
-        CancellationToken cancellationToken = default);
-
-    Task<PetLevelUpgradeResult> UpgradePetLevelAsync(
-        int accountId,
-        int characterId,
-        long petId,
-        CancellationToken cancellationToken = default);
 
     Task<GameCharacter> CreateCharacterAsync(int accountId, GameCharacter character, CancellationToken cancellationToken = default);
 

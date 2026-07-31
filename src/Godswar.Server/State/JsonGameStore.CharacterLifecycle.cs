@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Domain.World.Instances;
 
@@ -5,6 +6,11 @@ namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore
 {
+    private readonly Dictionary<(int AccountId, int CharacterId),
+        PlayerOwnershipFence> _localPlayerOwnership = [];
+    private readonly Dictionary<(int AccountId, int CharacterId), long>
+        _localPlayerOwnershipGenerations = [];
+
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -92,6 +98,238 @@ internal sealed partial class JsonGameStore
             _lock.Release();
         }
     }
+
+    public async Task<CharacterCheckpointOwnership?> AcquireAsync(
+        int accountId,
+        int characterId,
+        Guid ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        CharacterCheckpointValidation.ValidateIdentity(
+            accountId,
+            characterId,
+            new PlayerOwnershipFence(ownerId, 1));
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var character = (await LoadUnsafeAsync(cancellationToken))
+                .Characters
+                .FirstOrDefault(candidate =>
+                    candidate.AccountId == accountId &&
+                    candidate.Id == characterId &&
+                    candidate.LifecycleState ==
+                        CharacterLifecycleState.Active);
+            if (character is null)
+            {
+                return null;
+            }
+
+            var key = (accountId, characterId);
+            var generation =
+                _localPlayerOwnership.TryGetValue(key, out var current)
+                    && current.OwnerId == ownerId
+                    ? current.Generation
+                    : _localPlayerOwnershipGenerations.TryGetValue(
+                        key,
+                        out var previousGeneration)
+                        ? checked(previousGeneration + 1)
+                        : 1;
+            var ownership = new PlayerOwnershipFence(
+                ownerId,
+                generation);
+            var acquired = new CharacterCheckpointOwnership(
+                ownership,
+                character.PositionRevision,
+                character.VitalsRevision);
+            acquired.Validate();
+            _localPlayerOwnership[key] = ownership;
+            _localPlayerOwnershipGenerations[key] = generation;
+            return acquired;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<CharacterCheckpointWriteResult>
+        WritePositionAsync(
+            CharacterPositionCheckpoint checkpoint,
+            CancellationToken cancellationToken = default)
+    {
+        checkpoint.Validate();
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == checkpoint.AccountId &&
+                candidate.Id == checkpoint.CharacterId);
+            if (character is null)
+            {
+                return CheckpointResult(
+                    CharacterCheckpointWriteStatus.CharacterNotFound,
+                    storedRevision: null);
+            }
+
+            if (!HasCurrentLocalOwnership(
+                    character,
+                    checkpoint.Owner))
+            {
+                return CheckpointResult(
+                    CharacterCheckpointWriteStatus.OwnershipLost,
+                    character.PositionRevision);
+            }
+
+            var precondition = ClassifyCheckpointRevision(
+                character.PositionRevision,
+                checkpoint.Revision,
+                character.CurrentMap == checkpoint.CurrentMap &&
+                character.PositionX.Equals(checkpoint.PositionX) &&
+                character.PositionZ.Equals(checkpoint.PositionZ));
+            if (precondition.HasValue)
+            {
+                return CheckpointResult(
+                    precondition.Value,
+                    character.PositionRevision);
+            }
+
+            character.CurrentMap = checkpoint.CurrentMap;
+            character.PositionX = checkpoint.PositionX;
+            character.PositionZ = checkpoint.PositionZ;
+            character.PositionRevision = checkpoint.Revision;
+            await SaveUnsafeAsync(db, cancellationToken);
+            return CheckpointResult(
+                CharacterCheckpointWriteStatus.Applied,
+                checkpoint.Revision);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<CharacterCheckpointWriteResult> WriteVitalsAsync(
+        CharacterVitalsCheckpoint checkpoint,
+        CancellationToken cancellationToken = default)
+    {
+        checkpoint.Validate();
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var db = await LoadUnsafeAsync(cancellationToken);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == checkpoint.AccountId &&
+                candidate.Id == checkpoint.CharacterId);
+            if (character is null)
+            {
+                return CheckpointResult(
+                    CharacterCheckpointWriteStatus.CharacterNotFound,
+                    storedRevision: null);
+            }
+
+            if (!HasCurrentLocalOwnership(
+                    character,
+                    checkpoint.Owner))
+            {
+                return CheckpointResult(
+                    CharacterCheckpointWriteStatus.OwnershipLost,
+                    character.VitalsRevision);
+            }
+
+            var precondition = ClassifyCheckpointRevision(
+                character.VitalsRevision,
+                checkpoint.Revision,
+                character.CurrentHp == checkpoint.CurrentHp &&
+                character.CurrentMp == checkpoint.CurrentMp);
+            if (precondition.HasValue)
+            {
+                return CheckpointResult(
+                    precondition.Value,
+                    character.VitalsRevision);
+            }
+
+            character.CurrentHp = checkpoint.CurrentHp;
+            character.CurrentMp = checkpoint.CurrentMp;
+            character.VitalsRevision = checkpoint.Revision;
+            await SaveUnsafeAsync(db, cancellationToken);
+            return CheckpointResult(
+                CharacterCheckpointWriteStatus.Applied,
+                checkpoint.Revision);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<CharacterCheckpointReleaseStatus> ReleaseAsync(
+        int accountId,
+        int characterId,
+        PlayerOwnershipFence owner,
+        CancellationToken cancellationToken = default)
+    {
+        CharacterCheckpointValidation.ValidateIdentity(
+            accountId,
+            characterId,
+            owner);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var key = (accountId, characterId);
+            if (!_localPlayerOwnership.TryGetValue(
+                    key,
+                    out var current))
+            {
+                return CharacterCheckpointReleaseStatus.AlreadyReleased;
+            }
+            if (current != owner)
+            {
+                return CharacterCheckpointReleaseStatus.OwnershipLost;
+            }
+
+            _localPlayerOwnership.Remove(key);
+            return CharacterCheckpointReleaseStatus.Released;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private bool HasCurrentLocalOwnership(
+        GameCharacter character,
+        PlayerOwnershipFence owner) =>
+        character.LifecycleState == CharacterLifecycleState.Active &&
+        _localPlayerOwnership.TryGetValue(
+            (character.AccountId, character.Id),
+            out var current) &&
+        current == owner;
+
+    private static CharacterCheckpointWriteStatus?
+        ClassifyCheckpointRevision(
+            long storedRevision,
+            long requestedRevision,
+            bool payloadMatches)
+    {
+        if (storedRevision > requestedRevision)
+        {
+            return CharacterCheckpointWriteStatus.Superseded;
+        }
+        if (storedRevision == requestedRevision)
+        {
+            return payloadMatches
+                ? CharacterCheckpointWriteStatus.AlreadyApplied
+                : CharacterCheckpointWriteStatus.RevisionConflict;
+        }
+
+        return null;
+    }
+
+    private static CharacterCheckpointWriteResult CheckpointResult(
+        CharacterCheckpointWriteStatus status,
+        long? storedRevision) =>
+        new(status, storedRevision);
 
     public async Task<GameCharacter> CreateCharacterAsync(
         int accountId,

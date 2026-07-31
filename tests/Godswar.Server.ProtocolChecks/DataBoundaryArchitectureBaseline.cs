@@ -54,18 +54,10 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameClientHandler.LegacyHolyStone.cs",
             "ApplyWeaponHolyStoneAsync",
             1),
-        new("Game/GameClientHandler.PetEggs.cs", "HatchPetEggAsync", 1),
-        new("Game/GameClientHandler.PetLevel.cs", "UpgradePetLevelAsync", 1),
-        new("Game/GameClientHandler.Pets.cs", "TransitionPetPresenceAsync", 1),
         new("Game/GameClientHandler.Progression.cs", "ApplyMonsterKillRewardAsync", 1),
         new(
             "Game/GameSessionRegistry.CharacterCheckpoints.cs",
             "SaveCharacterVitalsAsync",
-            1),
-        new("Game/GameSessionRegistry.Progression.cs", "ApplyZodiacOnlineTimeAsync", 1),
-        new(
-            "Game/GameSessionRegistry.Progression.cs",
-            "ConsumeCharacterBoostOnlineTimeAsync",
             1),
         new(
             "Game/GameSessionRegistry.ZodiacSkillGrids.cs",
@@ -79,18 +71,6 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameSessionRegistry.ZodiacSkillGrids.cs",
             "SelectZodiacSkillGridAsync",
             2),
-        new(
-            "State/LegacyCharacterCheckpointStore.cs",
-            "GetFirstCharacterAsync",
-            1),
-        new(
-            "State/LegacyCharacterCheckpointStore.cs",
-            "SaveCharacterPositionAsync",
-            1),
-        new(
-            "State/LegacyCharacterCheckpointStore.cs",
-            "SaveCharacterVitalsAsync",
-            1)
     ];
 
     public static readonly ReferenceAllowance[] StoreTypeReferences =
@@ -125,16 +105,12 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.InventoryActions.cs", 2),
         new("Game/GameClientHandler.DurableCharacterLifecycle.cs", 2),
         new("Game/GameClientHandler.LegacyHolyStone.cs", 1),
-        new("Game/GameClientHandler.PetEggs.cs", 1),
-        new("Game/GameClientHandler.PetLevel.cs", 1),
-        new("Game/GameClientHandler.Pets.cs", 1),
         new("Game/GameClientHandler.Progression.cs", 1),
         new("Game/GameSessionRegistry.CharacterCheckpoints.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.MountStatus.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusMutations.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusPublishing.cs", 1),
-        new("Game/GameSessionRegistry.Progression.cs", 8),
         new("Game/GameSessionRegistry.ZodiacSkillGrids.cs", 9)
     ];
 
@@ -143,7 +119,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("GameClientHandlerFactory.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 2),
-        new("Program.cs", 5),
+        new("Program.cs", 4),
         new("Security/Authentication/AccountAuthenticationService.cs", 1)
     ];
 
@@ -168,7 +144,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.PetPresence.cs", 18),
         new("State/PostgresGameStore.PetPresenceAudit.cs", 10),
         new("State/PostgresGameStore.Pets.cs", 6),
-        new("State/PostgresGameStore.Progression.cs", 12),
+        new("State/PostgresGameStore.Progression.cs", 4),
         new("State/PostgresGameStore.Seeding.Items.cs", 25),
         new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 30),
         new("State/PostgresGameStore.Seeding.World.cs", 18),
@@ -204,9 +180,7 @@ internal static class DataBoundaryArchitectureBaseline
         "AddForgingMaterialAsync",
         "ApplyMonsterKillRewardAsync",
         "ApplyWeaponHolyStoneAsync",
-        "ApplyZodiacOnlineTimeAsync",
         "ClearKitBagAsync",
-        "ConsumeCharacterBoostOnlineTimeAsync",
         "CreateCharacterAsync",
         "DeleteCharacterAsync",
         "DeleteKitBagItemAsync",
@@ -216,7 +190,6 @@ internal static class DataBoundaryArchitectureBaseline
         "GetCharactersAsync",
         "GetFirstCharacterAsync",
         "GetTalentStatesAsync",
-        "HatchPetEggAsync",
         "MoveEquipmentToKitBagAsync",
         "MoveKitBagItemAsync",
         "MoveKitBagToEquipmentAsync",
@@ -224,14 +197,12 @@ internal static class DataBoundaryArchitectureBaseline
         "SaveCharacterPositionAsync",
         "SaveCharacterVitalsAsync",
         "SelectZodiacSkillGridAsync",
-        "TransitionPetPresenceAsync",
-        "UpgradePetLevelAsync",
         "UpgradeTalentAsync",
         "UpgradeZodiacSkillGridAsync"
     ];
 
     public const string GameStoreSignatureSha256 =
-        "2BA4907F2436C935FE1C3546179D9300EA19882F40A33CF6A57ED3B3B66AE6E7";
+        "195BFE83A341B4E04F74FD2950749B64D05E357A5FF74FB5ECBF1666C4FFB231";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

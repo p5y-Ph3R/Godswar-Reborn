@@ -94,12 +94,9 @@ try
             worldContent.Manifest.Revision,
             shutdown.Token);
 
-    ICharacterCheckpointStore characterCheckpointStore =
-        postgresApplicationDataRuntime?.CharacterCheckpoints ??
-        new LegacyCharacterCheckpointStore(store);
     await using var characterCheckpoints =
         new CharacterCheckpointCoordinator(
-            characterCheckpointStore,
+            gameplayPersistence.CharacterCheckpoints,
             options.Storage.Checkpoints);
     var registry = new GameSessionRegistry(
         store,

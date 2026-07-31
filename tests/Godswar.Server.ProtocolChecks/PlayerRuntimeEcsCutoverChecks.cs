@@ -1,10 +1,12 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Progression;
 using Godswar.Server.Game;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PlayerRuntimeEcsCutoverChecks
+internal static partial class PlayerRuntimeEcsCutoverChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
@@ -254,8 +256,14 @@ internal static class PlayerRuntimeEcsCutoverChecks
         await using var socket =
             await RuntimePolicySessionSocket.CreateAsync();
         await using var store = new RuntimePolicyStore();
-        var registry = CreateRegistry(store);
+        var progression = new RuntimePolicyProgressionExecutor();
+        var registry = CreateRegistry(store, progression);
         var character = CreateCharacter();
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            socket.Session,
+            character.AccountId,
+            character);
         registry.JoinMap(
             socket.Session,
             character.AccountId,
@@ -277,8 +285,12 @@ internal static class PlayerRuntimeEcsCutoverChecks
             TimeSpan.FromSeconds(10).Ticks,
             first.ProgressionElapsedTicks,
             "ECS observes committed progression duration");
+        Check.Equal(
+            TimeSpan.FromSeconds(10).Ticks,
+            first.ZodiacElapsedTicks,
+            "one durable interval advances both online clocks");
 
-        store.FailProgressionSave = true;
+        progression.FailSettlement = true;
         var progressionFailed = false;
         try
         {
@@ -305,8 +317,12 @@ internal static class PlayerRuntimeEcsCutoverChecks
             first.ProgressionElapsedTicks,
             failed.ProgressionElapsedTicks,
             "failed save does not advance ECS online watermark");
+        Check.Equal(
+            first.ZodiacElapsedTicks,
+            failed.ZodiacElapsedTicks,
+            "failed settlement advances neither online clock");
 
-        store.FailProgressionSave = false;
+        progression.FailSettlement = false;
         _ = await registry.GetExperienceBoostStateAsync(
             socket.Session,
             character.AccountId,
@@ -318,35 +334,43 @@ internal static class PlayerRuntimeEcsCutoverChecks
         var retried = registry.GetPlayerOnlineDurationEcsDiagnostics(
             socket.Session);
         Check.Equal(
-            TimeSpan.FromSeconds(25).Ticks,
+            TimeSpan.FromSeconds(20).Ticks,
             retried.ProgressionElapsedTicks,
-            "successful retry includes the uncommitted online tail");
+            "successful retry commits the exact pending interval");
+        Check.Equal(
+            TimeSpan.FromSeconds(20).Ticks,
+            retried.ZodiacElapsedTicks,
+            "successful retry advances both clocks to its receipt");
+
+        _ = await registry.GetExperienceBoostStateAsync(
+            socket.Session,
+            character.AccountId,
+            character.Id,
+            character.Camp,
+            character.CurrentMap,
+            Start.AddSeconds(25),
+            CancellationToken.None);
+        var caughtUp = registry.GetPlayerOnlineDurationEcsDiagnostics(
+            socket.Session);
+        Check.Equal(
+            TimeSpan.FromSeconds(25).Ticks,
+            caughtUp.ProgressionElapsedTicks,
+            "the next checkpoint settles the post-retry online tail");
+        Check.Equal(
+            TimeSpan.FromSeconds(25).Ticks,
+            caughtUp.ZodiacElapsedTicks,
+            "the post-retry tail advances both online clocks");
 
         _ = await registry.AdvanceZodiacEnergyAccrualOnceAsync(
-            Start.AddSeconds(10),
-            CancellationToken.None);
-        store.FailZodiacSave = true;
-        _ = await registry.AdvanceZodiacEnergyAccrualOnceAsync(
-            Start.AddSeconds(20),
-            CancellationToken.None);
-        var zodiacFailed =
-            registry.GetPlayerOnlineDurationEcsDiagnostics(
-                socket.Session);
-        Check.Equal(
-            TimeSpan.FromSeconds(10).Ticks,
-            zodiacFailed.ZodiacElapsedTicks,
-            "failed Zodiac save does not advance ECS watermark");
-        store.FailZodiacSave = false;
-        _ = await registry.AdvanceZodiacEnergyAccrualOnceAsync(
-            Start.AddSeconds(25),
+            Start.AddSeconds(30),
             CancellationToken.None);
         var zodiacRetried =
             registry.GetPlayerOnlineDurationEcsDiagnostics(
                 socket.Session);
         Check.Equal(
-            TimeSpan.FromSeconds(25).Ticks,
+            TimeSpan.FromSeconds(30).Ticks,
             zodiacRetried.ZodiacElapsedTicks,
-            "Zodiac retry emits the committed full interval");
+            "Zodiac cadence settles the next combined interval");
 
         await registry.FinishProgressionBoostOnlineSessionAsync(
             socket.Session,
@@ -360,6 +384,12 @@ internal static class PlayerRuntimeEcsCutoverChecks
         var replacement = CreateCharacter();
         replacement.Id++;
         replacement.Name = "RuntimeReplacementHero";
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            socket.Session,
+            replacement.AccountId,
+            replacement,
+            new PlayerOwnershipFence(Guid.NewGuid(), 2));
         registry.JoinMap(
             socket.Session,
             replacement.AccountId,
@@ -381,14 +411,19 @@ internal static class PlayerRuntimeEcsCutoverChecks
             swapped.ProgressionElapsedTicks,
             "same-session character swap resets ECS online diagnostics");
         Check.Equal(
-            0L,
+            TimeSpan.FromSeconds(5).Ticks,
             swapped.ZodiacElapsedTicks,
-            "character swap cannot retain prior-character Zodiac time");
+            "character swap starts a fresh combined Zodiac clock");
         registry.Remove(socket.Session);
 
         await using var reconnect =
             await RuntimePolicySessionSocket.CreateAsync();
         var reconnectAt = Start.AddDays(30);
+        GameHandlerOwnershipTestFences.Bind(
+            registry,
+            reconnect.Session,
+            character.AccountId,
+            character);
         registry.JoinMap(
             reconnect.Session,
             character.AccountId,
@@ -403,21 +438,23 @@ internal static class PlayerRuntimeEcsCutoverChecks
             character.CurrentMap,
             reconnectAt.AddSeconds(5),
             CancellationToken.None);
-        var lastInterval = store.ProgressionIntervals.Last();
+        var lastInterval = progression.Envelopes.Last().Command;
         Check.Equal(
             TimeSpan.FromSeconds(5),
-            lastInterval.Until - lastInterval.From,
+            lastInterval.OnlineUntilUtc - lastInterval.OnlineFromUtc,
             "offline month is excluded from online-only duration");
         registry.Remove(reconnect.Session);
     }
 
     private static GameSessionRegistry CreateRegistry(
-        IGameStore? store) =>
+        IGameStore? store,
+        IProgressionIntervalSettlementCommandExecutor? progression = null) =>
         new(
             store,
             null,
             MonsterRuntimeMode.Legacy,
-            PlayerRuntimeMode.Ecs);
+            PlayerRuntimeMode.Ecs,
+            progressionIntervalSettlementCommands: progression);
 
     private static GameCharacter CreateCharacter() =>
         new()
@@ -455,11 +492,7 @@ internal static class PlayerRuntimeEcsCutoverChecks
     private sealed class RuntimePolicyStore : GameStoreTestStub
     {
         public bool FailVitalsSave { get; set; }
-        public bool FailProgressionSave { get; set; }
-        public bool FailZodiacSave { get; set; }
         public int VitalsSaveAttempts { get; private set; }
-        public List<(DateTimeOffset From, DateTimeOffset Until)>
-            ProgressionIntervals { get; } = [];
 
         public override Task SaveCharacterVitalsAsync(
             int accountId,
@@ -476,23 +509,6 @@ internal static class PlayerRuntimeEcsCutoverChecks
                 : Task.CompletedTask;
         }
 
-        public override Task ConsumeCharacterBoostOnlineTimeAsync(
-            int accountId,
-            int characterId,
-            DateTimeOffset onlineFrom,
-            DateTimeOffset onlineUntil,
-            CancellationToken cancellationToken = default)
-        {
-            if (FailProgressionSave)
-            {
-                throw new InvalidOperationException(
-                    "expected progression failure");
-            }
-
-            ProgressionIntervals.Add((onlineFrom, onlineUntil));
-            return Task.CompletedTask;
-        }
-
         public override Task<ExperienceBoostState> GetExperienceBoostStateAsync(
             int accountId,
             int characterId,
@@ -502,32 +518,6 @@ internal static class PlayerRuntimeEcsCutoverChecks
             CancellationToken cancellationToken = default) =>
             Task.FromResult(ExperienceBoostState.Empty);
 
-        public override Task<ZodiacEnergyAccrualResult?>
-            ApplyZodiacOnlineTimeAsync(
-                int accountId,
-                int characterId,
-                DateTimeOffset onlineFrom,
-                DateTimeOffset onlineUntil,
-                ZodiacEnergyPolicy policy,
-                CancellationToken cancellationToken = default)
-        {
-            if (FailZodiacSave)
-            {
-                throw new InvalidOperationException(
-                    "expected Zodiac failure");
-            }
-
-            return Task.FromResult<ZodiacEnergyAccrualResult?>(
-                new ZodiacEnergyAccrualResult(
-                    GainedEnergyX100: 0,
-                    CurrentEnergy: 0,
-                    CurrentEnergyRemainderX100: 0,
-                    DateOnly.FromDateTime(onlineUntil.UtcDateTime),
-                    (onlineUntil - onlineFrom).Ticks,
-                    onlineUntil,
-                    LastCompensationDay: null,
-                    CompensationApplied: false));
-        }
-
     }
+
 }

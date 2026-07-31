@@ -29,7 +29,6 @@ internal static class B20LegacyPersistenceTelemetryArchitectureChecks
     public const string CheckName =
         "B20 legacy persistence telemetry coverage";
 
-    private const string ServerPrefix = "src/Godswar.Server/";
     private const int MaximumReportedViolations = 24;
 
     public static Task RunAsync()
@@ -134,38 +133,10 @@ internal static class B20LegacyPersistenceTelemetryArchitectureChecks
                 allowance.Count);
         }
 
-        foreach (var allowance in
-                 B20LegacyPersistenceBaseline.References.Where(
-                     static candidate =>
-                         candidate.Kind ==
-                         B20LegacyDependencyKind.JsonCheckpointCall))
-        {
-            if (!allowance.Path.StartsWith(
-                    ServerPrefix,
-                    StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    "The concrete JSON checkpoint path is outside the " +
-                    "server source root.");
-            }
-            Add(
-                expected,
-                new LegacyPersistenceTelemetryKey(
-                    NormalizePath(allowance.Path[ServerPrefix.Length..]),
-                    LegacyPersistenceOperation.
-                        SaveCharacterPositionCheckpoint),
-                allowance.Count);
-        }
-
         var required = expected.Values.Sum();
-        var baselineRequired = checked(
+        var baselineRequired =
             DataBoundaryArchitectureBaseline.StoreCalls.Sum(
-                static allowance => allowance.Count) +
-            B20LegacyPersistenceBaseline.References
-                .Where(static allowance =>
-                    allowance.Kind ==
-                    B20LegacyDependencyKind.JsonCheckpointCall)
-                .Sum(static allowance => allowance.Count));
+                static allowance => allowance.Count);
         if (required != baselineRequired)
         {
             throw new InvalidDataException(
@@ -261,7 +232,7 @@ internal static class B20LegacyPersistenceTelemetryArchitectureChecks
     {
         var key = new LegacyPersistenceTelemetryKey(
             "Game/Legacy.cs",
-            LegacyPersistenceOperation.GetFirstCharacter);
+            LegacyPersistenceOperation.EnsureSeedData);
         var expected = new Dictionary<
             LegacyPersistenceTelemetryKey,
             int>
@@ -270,9 +241,9 @@ internal static class B20LegacyPersistenceTelemetryArchitectureChecks
         };
         const string record =
             "LegacyPersistenceMetrics.Record(" +
-            "LegacyPersistenceOperation.GetFirstCharacter);";
+            "LegacyPersistenceOperation.EnsureSeedData);";
         const string call =
-            "await _store.GetFirstCharacterAsync();";
+            "await _store.EnsureSeedDataAsync();";
         var exact = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [key.Path] = record + call

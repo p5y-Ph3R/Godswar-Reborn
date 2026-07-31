@@ -1,4 +1,6 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Progression;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Game;
 using Godswar.Server.Packets;
@@ -222,7 +224,7 @@ internal static partial class Program
                     });
                 accountId = account.Id;
                 characterId = character.Id;
-                var checkpoints = new LegacyCharacterCheckpointStore(store);
+                var checkpoints = (ICharacterCheckpointStore)store;
                 var acquired = await checkpoints.AcquireAsync(
                         account.Id,
                         character.Id,
@@ -318,7 +320,9 @@ internal static partial class Program
     {
         await using var socket = await RuntimePolicySessionSocket.CreateAsync();
         await using var store = new SerializedZodiacStore();
-        var registry = new GameSessionRegistry(store);
+        var registry = new GameSessionRegistry(
+            progressionIntervalSettlementCommands: store,
+            zodiacLevelStore: store);
         var startedAt = new DateTimeOffset(
             2026,
             7,
@@ -383,9 +387,14 @@ internal static partial class Program
         Check.True(result.Committed, "serialized Zodiac level-up commits");
         Check.Equal(2, (int)character.ZodiacLevel, "serialized live Zodiac level");
         Check.Equal(500, character.ZodiacEnergy, "serialized live Zodiac energy");
+
+        await CheckReverseZodiacLevelUpgradeSerializationAsync();
     }
 
-    private sealed class SerializedZodiacStore : GameStoreTestStub
+    private sealed class SerializedZodiacStore :
+        IProgressionIntervalSettlementCommandExecutor,
+        IZodiacLevelStore,
+        IAsyncDisposable
     {
         private readonly TaskCompletionSource<bool> _accrualEntered =
             NewCompletionSource();
@@ -400,39 +409,53 @@ internal static partial class Program
 
         public void ReleaseAccrual() => _releaseAccrual.TrySetResult(true);
 
-        public override async Task<ZodiacEnergyAccrualResult?>
-            ApplyZodiacOnlineTimeAsync(
-                int accountId,
-                int characterId,
-                DateTimeOffset onlineFrom,
-                DateTimeOffset onlineUntil,
-                ZodiacEnergyPolicy policy,
+        public async Task<ProgressionIntervalSettlementExecutionResult>
+            ExecuteAsync(
+                CommandEnvelope<ProgressionIntervalSettlementCommand>
+                    envelope,
                 CancellationToken cancellationToken = default)
         {
             _accrualEntered.TrySetResult(true);
             await _releaseAccrual.Task.WaitAsync(cancellationToken);
-            return new ZodiacEnergyAccrualResult(
-                GainedEnergyX100: 0,
-                CurrentEnergy: 1_000,
-                CurrentEnergyRemainderX100: 0,
-                OnlineDay: DateOnly.FromDateTime(onlineUntil.UtcDateTime),
-                OnlineDurationTicksToday: (onlineUntil - onlineFrom).Ticks,
-                LastOnlineAt: onlineUntil,
-                LastCompensationDay: null,
-                CompensationApplied: false);
+            var command = envelope.Command;
+            var projection = new ProgressionIntervalProjection(
+                command.OnlineSessionId,
+                command.IntervalSequence,
+                command.OnlineUntilUtc,
+                command.IntervalSequence,
+                ZodiacEnergy: 1_000,
+                ZodiacEnergyRemainderX100: 0,
+                DateOnly.FromDateTime(
+                    command.OnlineUntilUtc.UtcDateTime),
+                command.OnlineUntilUtc.UtcTicks -
+                    command.OnlineFromUtc.UtcTicks,
+                ZodiacLastCompensationDay: null);
+            var receipt = new ProgressionIntervalSettlementReceipt(
+                envelope.Subject.CharacterId,
+                command.OnlineSessionId,
+                command.IntervalSequence,
+                command.OnlineFromUtc,
+                command.OnlineUntilUtc,
+                GainedZodiacEnergyX100: 0,
+                ZodiacCompensationApplied: false,
+                UpdatedBoostCount: 0,
+                projection,
+                AuditReference: "serialized-zodiac",
+                Guid.NewGuid());
+            return ProgressionIntervalSettlementExecutionResult.Committed(
+                receipt);
         }
 
-        public override Task<ZodiacLevelUpgradeResult?>
-            UpgradeZodiacLevelAsync(
+        public Task<ZodiacLevelUpgradeStoreResult?> UpgradeAsync(
                 int accountId,
                 int characterId,
                 PlayerOwnershipFence ownership,
                 CancellationToken cancellationToken = default)
         {
             _upgradeEntered.TrySetResult(true);
-            return Task.FromResult<ZodiacLevelUpgradeResult?>(
-                new ZodiacLevelUpgradeResult(
-                    ZodiacLevelUpgradeStatus.Succeeded,
+            return Task.FromResult<ZodiacLevelUpgradeStoreResult?>(
+                new ZodiacLevelUpgradeStoreResult(
+                    ZodiacLevelUpgradeStoreStatus.Succeeded,
                     PreviousLevel: 1,
                     CurrentLevel: 2,
                     RequiredCharacterLevel: 10,
@@ -440,6 +463,8 @@ internal static partial class Program
                     CurrentEnergy: 500,
                     CurrentEnergyRemainderX100: 0));
         }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         private static TaskCompletionSource<bool> NewCompletionSource() =>
             new(TaskCreationOptions.RunContinuationsAsynchronously);

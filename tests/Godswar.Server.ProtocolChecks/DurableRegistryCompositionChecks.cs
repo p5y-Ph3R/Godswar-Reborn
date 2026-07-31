@@ -211,20 +211,23 @@ internal static class DurableRegistryCompositionChecks
                 $"durable registry composition retains {token}");
         }
 
-        AssertGuardPrecedes(
-            ReadSource(
-                root,
-                "src/Godswar.Server/Game/" +
-                "GameSessionRegistry.Progression.cs"),
-            "consume_character_boost_online_time",
-            "_store.ConsumeCharacterBoostOnlineTimeAsync");
-        AssertGuardPrecedes(
-            ReadSource(
-                root,
-                "src/Godswar.Server/Game/" +
-                "GameSessionRegistry.Progression.cs"),
-            "apply_zodiac_online_time",
-            "_store.ApplyZodiacOnlineTimeAsync");
+        var progression = ReadSource(
+            root,
+            "src/Godswar.Server/Game/" +
+            "GameSessionRegistry.Progression.cs");
+        foreach (var retiredMutation in new[]
+                 {
+                     "_store.ConsumeCharacterBoostOnlineTimeAsync",
+                     "_store.ApplyZodiacOnlineTimeAsync"
+                 })
+        {
+            Check.True(
+                !progression.Contains(
+                    retiredMutation,
+                    StringComparison.Ordinal),
+                $"retired registry fallback remains absent: " +
+                retiredMutation);
+        }
         AssertGuardPrecedes(
             ReadSource(
                 root,

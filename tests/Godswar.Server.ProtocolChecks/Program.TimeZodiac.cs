@@ -301,8 +301,6 @@ internal static partial class Program
             $"godswar-zodiac-check-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
         var luckyExpiry = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
-        var onlineStart = new DateTimeOffset(2026, 8, 1, 13, 0, 0, TimeSpan.Zero);
-        var energyPolicy = new ZodiacEnergyOptions().Snapshot();
 
         try
         {
@@ -324,14 +322,6 @@ internal static partial class Program
                         ZodiacAccumulatedExperienceX100 = 12_345,
                         ZodiacAccumulatedTalentExperienceX100 = 6_789
                     });
-                var partialOnline = await store.ApplyZodiacOnlineTimeAsync(
-                    account.Id,
-                    created.Id,
-                    onlineStart,
-                    onlineStart.AddSeconds(299),
-                    energyPolicy)
-                    ?? throw new InvalidOperationException("Zodiac online interval was not persisted");
-                Check.Equal(0, partialOnline.GainedEnergyX100, "disconnect before five minutes grants no energy");
             }
 
             await using var reloadedStore = new JsonGameStore(dataPath);
@@ -345,27 +335,11 @@ internal static partial class Program
             Check.Equal((byte)7, character.ZodiacLevel, "Zodiac level persists");
             Check.Equal(54_321, character.ZodiacEnergy, "Zodiac energy persists");
             Check.Equal(
-                TimeSpan.FromSeconds(299).Ticks,
+                0L,
                 character.ZodiacOnlineDurationTicksToday,
-                "partial online interval persists across disconnect");
+                "JSON compatibility reload does not invent online duration");
             Check.Equal(12_345, character.ZodiacAccumulatedExperienceX100, "Zodiac combat EXP field persists");
             Check.Equal(6_789, character.ZodiacAccumulatedTalentExperienceX100, "Zodiac talent EXP field persists");
-
-            var resumedTick = await reloadedStore.ApplyZodiacOnlineTimeAsync(
-                accountReloaded.Id,
-                character.Id,
-                onlineStart.AddSeconds(299),
-                onlineStart.AddMinutes(5),
-                energyPolicy)
-                ?? throw new InvalidOperationException("Resumed Zodiac interval was not persisted");
-            Check.Equal(2_000, resumedTick.GainedEnergyX100, "reconnect resumes the persisted five-minute remainder");
-            var afterResumedTick = await reloadedStore.GetFirstCharacterAsync(accountReloaded.Id)
-                ?? throw new InvalidOperationException("Resumed Zodiac character was not reloaded");
-            Check.Equal(54_341, afterResumedTick.ZodiacEnergy, "completed resumed tick persists its energy");
-            Check.Equal(
-                TimeSpan.FromMinutes(5).Ticks,
-                afterResumedTick.ZodiacOnlineDurationTicksToday,
-                "daily online accounting includes both sides of reconnect");
 
             var creationPayload = new byte[71];
             creationPayload[35] = 11;

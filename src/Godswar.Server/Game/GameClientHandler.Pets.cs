@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -14,11 +15,13 @@ internal sealed partial class GameClientHandler
         PetPresenceOperation operation,
         CancellationToken cancellationToken)
     {
-        var petId = TryReadPetId(packet, out var parsedPetId)
-            ? parsedPetId
-            : 0u;
-        var resultCode = FailureCode(operation);
-        PetPresenceTransitionResult? transition = null;
+        if (!TryReadPetId(packet, out var petId))
+        {
+            Console.WriteLine(
+                $"[pet] rejected malformed presence operation=" +
+                $"{operation} length={packet.Length}");
+            return;
+        }
 
         if (packet.ClientOperationId is { } operationId &&
             petId != 0)
@@ -30,44 +33,11 @@ internal sealed partial class GameClientHandler
                 cancellationToken);
             return;
         }
-        if (_session.IsSecure || _petDurableCommands is not null)
-        {
-            Console.WriteLine(
-                $"[pet] rejected presence operation without secure " +
-                $"identity operation={operation} pet={petId}");
-            return;
-        }
-
-        if (petId != 0 && _account is not null && _character is not null)
-        {
-            try
-            {
-                LegacyPersistenceMetrics.Record(
-                    LegacyPersistenceOperation.TransitionPetPresence);
-                transition = await _store.TransitionPetPresenceAsync(
-                    _account.Id,
-                    _character.Id,
-                    petId,
-                    operation,
-                    cancellationToken);
-                if (transition.Succeeded)
-                {
-                    resultCode = SuccessCode(operation);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Console.WriteLine(
-                    $"[pet] operation failed operation={operation} pet={petId} character={_character.Name} error={ex.GetType().Name}");
-            }
-        }
-
-        await _session.SendAsync(
-            PacketBuilder.PetOperationResult(petId, resultCode),
-            cancellationToken,
-            "PetOperationResult");
+        CommandMetrics.RecordUnsupportedLegacyIdentity(
+            CommandFamily.PetPresenceTransition);
         Console.WriteLine(
-            $"[pet] operation={operation} pet={petId} character={_character?.Name ?? "<none>"} result={resultCode} store={transition?.Status.ToString() ?? "RejectedRequest"}");
+            $"[pet] rejected presence operation without durable " +
+            $"identity operation={operation} pet={petId}");
     }
 
     private async Task RestorePersistedPetPresenceAsync(
@@ -152,35 +122,4 @@ internal sealed partial class GameClientHandler
         return petId != 0;
     }
 
-    private static PetOperationResultCode SuccessCode(
-        PetPresenceOperation operation) =>
-        operation switch
-        {
-            PetPresenceOperation.Take =>
-                PetOperationResultCode.TakeSucceeded,
-            PetPresenceOperation.CallOut =>
-                PetOperationResultCode.CallOutSucceeded,
-            PetPresenceOperation.Recall =>
-                PetOperationResultCode.RecallSucceeded,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(operation),
-                operation,
-                "Unknown pet operation.")
-        };
-
-    private static PetOperationResultCode FailureCode(
-        PetPresenceOperation operation) =>
-        operation switch
-        {
-            PetPresenceOperation.Take =>
-                PetOperationResultCode.TakeFailed,
-            PetPresenceOperation.CallOut =>
-                PetOperationResultCode.CallOutFailed,
-            PetPresenceOperation.Recall =>
-                PetOperationResultCode.RecallFailed,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(operation),
-                operation,
-                "Unknown pet operation.")
-        };
 }

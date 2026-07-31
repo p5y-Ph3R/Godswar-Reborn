@@ -222,11 +222,6 @@ internal static partial class Program
                         .RemainingSeconds(firstOnlineAt),
                     "legacy eight-hour Talent grant restores its original duration");
 
-                await store.ConsumeCharacterBoostOnlineTimeAsync(
-                    accountId,
-                    characterId,
-                    firstOnlineAt,
-                    firstOnlineAt.AddSeconds(90));
             }
 
             // Reopening the provider and advancing wall time by a week models
@@ -242,37 +237,15 @@ internal static partial class Program
                     mapId: 0,
                     secondOnlineAt);
                 Check.Equal(
-                    57_510u,
+                    57_600u,
                     resumed.ActiveBoosts.Single(boost => boost.Kind == ExperienceBoostKinds.Guild)
                         .RemainingSeconds(secondOnlineAt),
                     "EXP duration pauses through logout and restart");
                 Check.Equal(
-                    28_710u,
+                    28_800u,
                     resumed.ActiveBoosts.Single(boost => boost.Kind == ExperienceBoostKinds.Talent)
                         .RemainingSeconds(secondOnlineAt),
                     "Talent duration pauses through logout and restart");
-
-                await restartedStore.ConsumeCharacterBoostOnlineTimeAsync(
-                    accountId,
-                    characterId,
-                    secondOnlineAt,
-                    secondOnlineAt.AddSeconds(10));
-                var checkpointed = await restartedStore.GetExperienceBoostStateAsync(
-                    accountId,
-                    characterId,
-                    GameDefaults.SpartaCamp,
-                    mapId: 0,
-                    secondOnlineAt.AddSeconds(10));
-                Check.Equal(
-                    57_500u,
-                    checkpointed.ActiveBoosts.Single(boost => boost.Kind == ExperienceBoostKinds.Guild)
-                        .RemainingSeconds(secondOnlineAt.AddSeconds(10)),
-                    "reconnected online interval resumes the EXP countdown exactly once");
-                Check.Equal(
-                    28_700u,
-                    checkpointed.ActiveBoosts.Single(boost => boost.Kind == ExperienceBoostKinds.Talent)
-                        .RemainingSeconds(secondOnlineAt.AddSeconds(10)),
-                    "reconnected online interval resumes the Talent countdown exactly once");
             }
         }
         finally

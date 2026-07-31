@@ -1,8 +1,7 @@
 using System.Buffers.Binary;
-using System.Reflection;
-using Godswar.Server.Application.Accounts;
-using Godswar.Server.Game;
-using Godswar.Server.Networking;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -16,13 +15,6 @@ internal static class PetEggHatchProtocolChecks
     private const int EggSlot = 25;
     private const uint EggItemId = 10150;
     private const long PetId = 77;
-
-    private static readonly MethodInfo HandlePacketMethod =
-        typeof(GameClientHandler).GetMethod(
-            "HandlePacketAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException(
-            "GameClientHandler.HandlePacketAsync was not found.");
 
     public static async Task RunAsync()
     {
@@ -76,36 +68,63 @@ internal static class PetEggHatchProtocolChecks
             3_500,
             new Random(3_500));
         var pet = CreatePet(addedSavvy, growth);
-        var store = new PetEggStore(
-            new PetEggHatchResult(
-                PetEggHatchStatus.Succeeded,
-                updated,
-                PetId,
-                SpeciesType: 1,
-                PetAptitude.Godly,
-                growth.BaseGrowthRates,
-                addedSavvy,
-                growth),
-            [pet]);
-
-        var packets = await InvokeAsync(
-            store,
+        var operationId = Guid.NewGuid();
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Activate = envelope =>
+                PetDurableExecutionResult.Committed(
+                    new PetDurableReceipt(
+                        CommandFamily.BagItemActivation,
+                        PetDurableReceiptStatus.EggHatched,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        envelope.Command.KitBagSlot,
+                        EquipmentSlot: -1,
+                        PetId,
+                        PetLevel: 1,
+                        PetExperience: 0,
+                        PetRevision: 0,
+                        IsCarried: false,
+                        IsSummoned: false,
+                        PresenceOperation: 0,
+                        AggregateRevision: 1,
+                        AuditReference: "pet-hatch-check",
+                        OutboxEventId: Guid.NewGuid()))
+        };
+        await using var fixture = PetDurableHandlerFixture.Create(
             initial,
-            CreateEggUsePacket(EggSlot));
+            updated,
+            [pet],
+            executor);
+        await fixture.InvokeAsync(
+            CreateEggUsePacket(EggSlot, operationId));
+        var packets = fixture.Transport.ReadLegacyPackets();
         var expected = PacketBuilder
-            .KitBagMutationDeletionAcknowledgements(
-                initial.KitBag,
-                updated.KitBag)
-            .Concat(PacketBuilder.KitBagDetailPages(updated))
+            .KitBagDetailPages(updated)
             .Concat(PacketBuilder.KitBagSlotIndexes(updated))
             .Append(PacketBuilder.OwnedPetList([pet]))
             .ToArray();
 
-        Check.Equal(1, store.HatchCalls, "egg hatch persists once");
-        Check.Equal(AccountId, store.AccountId, "egg hatch account");
-        Check.Equal(CharacterId, store.CharacterId, "egg hatch character");
-        Check.Equal(EggSlot, store.KitBagSlot, "egg hatch authoritative slot");
-        Check.Equal(1, store.PetReads, "successful hatch reloads owned pets");
+        Check.Equal(1, executor.ActivateCount, "egg hatch persists once");
+        Check.True(
+            executor.ActivationEnvelope is { } envelope &&
+            envelope.Subject.AccountId == AccountId &&
+            envelope.Subject.CharacterId == CharacterId &&
+            envelope.Command.KitBagSlot == EggSlot &&
+            envelope.Command.ClientOperationId == operationId,
+            "egg hatch binds account, character, slot, and operation ID");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Applied,
+                    CommandFamily: (ushort)CommandFamily.BagItemActivation,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            "egg hatch terminates with one durable command result");
         Check.Equal(
             expected.Length,
             packets.Count,
@@ -126,23 +145,60 @@ internal static class PetEggHatchProtocolChecks
     private static async Task CheckRejectedHatchAsync()
     {
         var character = CharacterWithEgg(stack: 1);
-        var store = new PetEggStore(
-            PetEggHatchResult.Rejected(
-                PetEggHatchStatus.PetCapacityReached,
-                character),
-            []);
-
-        var packets = await InvokeAsync(
-            store,
+        var operationId = Guid.NewGuid();
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Activate = envelope =>
+                PetDurableExecutionResult.Rejected(
+                    new PetDurableReceipt(
+                        CommandFamily.BagItemActivation,
+                        PetDurableReceiptStatus.PetCapacityReached,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        envelope.Command.KitBagSlot,
+                        EquipmentSlot: -1,
+                        PetId: 0,
+                        PetLevel: 0,
+                        PetExperience: 0,
+                        PetRevision: 0,
+                        IsCarried: false,
+                        IsSummoned: false,
+                        PresenceOperation: 0,
+                        AggregateRevision: 0,
+                        AuditReference: "pet-capacity-check",
+                        OutboxEventId: null))
+        };
+        await using var fixture = PetDurableHandlerFixture.Create(
             character,
-            CreateEggUsePacket(EggSlot));
+            character,
+            [],
+            executor);
+        await fixture.InvokeAsync(
+            CreateEggUsePacket(EggSlot, operationId));
+        var packets = fixture.Transport.ReadLegacyPackets();
         var expected = PacketBuilder
             .KitBagDetailPages(character)
             .Concat(PacketBuilder.KitBagSlotIndexes(character))
+            .Append(PacketBuilder.OwnedPetList([]))
             .ToArray();
 
-        Check.Equal(1, store.HatchCalls, "capacity rejection reaches store");
-        Check.Equal(0, store.PetReads, "rejected hatch does not reload pets");
+        Check.Equal(
+            1,
+            executor.ActivateCount,
+            "capacity rejection reaches the durable executor");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Rejected,
+                    ResultCode:
+                        (uint)PetDurableReceiptStatus.PetCapacityReached,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            "capacity rejection returns its durable terminal result");
         Check.Equal(
             expected.Length,
             packets.Count,
@@ -155,42 +211,9 @@ internal static class PetEggHatchProtocolChecks
         }
     }
 
-    private static async Task<List<byte[]>> InvokeAsync(
-        PetEggStore store,
-        GameCharacter character,
-        GamePacket packet)
-    {
-        var transport = new ScriptedLegacyByteTransport();
-        await using var session = new ClientSession(transport);
-        var handler = new GameClientHandler(
-            session,
-            store,
-            new GameSessionRegistry(
-                store: null,
-                zodiacEnergyOptions: null,
-                monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-                playerRuntimeMode: PlayerRuntimeMode.Ecs),
-            CharacterSnapshotReaderTestFixtures.Unused,
-            WorldContentReaderTestFixtures.Empty);
-        SetField(
-            handler,
-            "_account",
-            new AccountIdentity(AccountId, "test2"));
-        SetField(handler, "_character", character);
-
-        var task = HandlePacketMethod.Invoke(
-            handler,
-            [packet, CancellationToken.None]) as Task
-            ?? throw new InvalidOperationException(
-                "GameClientHandler.HandlePacketAsync returned no task.");
-        await task;
-
-        var clearBytes = transport.WrittenBytes;
-        new PacketCipher().Transform(clearBytes);
-        return SplitPackets(clearBytes);
-    }
-
-    private static GamePacket CreateEggUsePacket(int slot)
+    private static GamePacket CreateEggUsePacket(
+        int slot,
+        Guid operationId)
     {
         var page = Math.DivRem(slot, 24, out var index);
         var packet = new byte[92];
@@ -209,7 +232,7 @@ internal static class PetEggHatchProtocolChecks
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(72),
             uint.MaxValue);
-        return new GamePacket(packet);
+        return new GamePacket(packet, operationId);
     }
 
     private static GameCharacter CharacterWithEgg(short stack)
@@ -320,90 +343,8 @@ internal static class PetEggHatchProtocolChecks
                     Revision: 0)
             ]);
 
-    private static List<byte[]> SplitPackets(byte[] clearBytes)
-    {
-        var packets = new List<byte[]>();
-        var offset = 0;
-        while (offset < clearBytes.Length)
-        {
-            Check.True(
-                clearBytes.Length - offset >= 4,
-                "pet-egg response has a complete header");
-            var length = BinaryPrimitives.ReadUInt16LittleEndian(
-                clearBytes.AsSpan(offset, 2));
-            Check.True(
-                length >= 4 &&
-                length <= clearBytes.Length - offset,
-                "pet-egg response has a bounded packet");
-            packets.Add(
-                clearBytes.AsSpan(offset, length).ToArray());
-            offset += length;
-        }
-
-        return packets;
-    }
-
     private static ushort ReadOpcode(byte[] packet) =>
         BinaryPrimitives.ReadUInt16LittleEndian(
             packet.AsSpan(2, sizeof(ushort)));
 
-    private static void SetField<T>(
-        GameClientHandler handler,
-        string name,
-        T value)
-    {
-        var field = typeof(GameClientHandler).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException(
-                $"GameClientHandler.{name} was not found.");
-        field.SetValue(handler, value);
-    }
-
-    private sealed class PetEggStore : GameStoreTestStub
-    {
-        private readonly PetEggHatchResult _result;
-        private readonly IReadOnlyList<PetBootstrapSnapshot> _pets;
-
-        public PetEggStore(
-            PetEggHatchResult result,
-            IReadOnlyList<PetBootstrapSnapshot> pets)
-        {
-            _result = result;
-            _pets = pets;
-        }
-
-        public int HatchCalls { get; private set; }
-
-        public int PetReads { get; private set; }
-
-        public int AccountId { get; private set; }
-
-        public int CharacterId { get; private set; }
-
-        public int KitBagSlot { get; private set; }
-
-        public override Task<PetEggHatchResult> HatchPetEggAsync(
-            int accountId,
-            int characterId,
-            int kitBagSlot,
-            CancellationToken cancellationToken = default)
-        {
-            HatchCalls++;
-            AccountId = accountId;
-            CharacterId = characterId;
-            KitBagSlot = kitBagSlot;
-            return Task.FromResult(_result);
-        }
-
-        public override Task<IReadOnlyList<PetBootstrapSnapshot>>
-            GetOwnedPetsAsync(
-                int accountId,
-                int characterId,
-                CancellationToken cancellationToken = default)
-        {
-            PetReads++;
-            return Task.FromResult(_pets);
-        }
-    }
 }

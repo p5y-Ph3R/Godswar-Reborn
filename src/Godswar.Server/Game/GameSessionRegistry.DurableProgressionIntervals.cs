@@ -37,33 +37,22 @@ internal sealed partial class GameSessionRegistry
         onlineUntil =
             ProgressionIntervalSettlementCommandEnvelope.CanonicalizeUtc(
                 onlineUntil.ToUniversalTime());
-        await RetryDurableProgressionForCharacterAsync(
+        var state = GetOrCreateDurableProgressionSession(
             session,
             accountId,
             characterId,
-            ownership,
-            cancellationToken);
-        var state = _durableProgressionOnlineSessions.AddOrUpdate(
-            session,
-            _ => new DurableProgressionOnlineSessionState(
-                accountId,
-                characterId,
-                onlineFrom,
-                ownership),
-            (_, existing) =>
-                existing.AccountId == accountId &&
-                existing.CharacterId == characterId &&
-                existing.Ownership == ownership
-                    ? existing
-                    : new DurableProgressionOnlineSessionState(
-                        accountId,
-                        characterId,
-                        onlineFrom,
-                        ownership));
+            onlineFrom,
+            ownership);
 
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            await RetryDurableProgressionForCharacterAsync(
+                session,
+                accountId,
+                characterId,
+                ownership,
+                cancellationToken);
             if (state.Superseded)
             {
                 return new DurableProgressionSettlementOutcome(
@@ -129,6 +118,141 @@ internal sealed partial class GameSessionRegistry
         finally
         {
             state.Gate.Release();
+        }
+    }
+
+    private DurableProgressionOnlineSessionState
+        GetOrCreateDurableProgressionSession(
+            ClientSession session,
+            int accountId,
+            int characterId,
+            DateTimeOffset onlineFrom,
+            PlayerOwnershipFence ownership) =>
+        _durableProgressionOnlineSessions.AddOrUpdate(
+            session,
+            _ => new DurableProgressionOnlineSessionState(
+                accountId,
+                characterId,
+                onlineFrom,
+                ownership),
+            (_, existing) =>
+                existing.AccountId == accountId &&
+                existing.CharacterId == characterId &&
+                existing.Ownership == ownership
+                    ? existing
+                    : new DurableProgressionOnlineSessionState(
+                        accountId,
+                        characterId,
+                        onlineFrom,
+                        ownership));
+
+    private async Task<ZodiacLevelUpgradeResult?>
+        UpgradeZodiacLevelWithDurableProgressionGateAsync(
+            ClientSession session,
+            int accountId,
+            GameCharacter character,
+            PlayerOwnershipFence ownership,
+            ZodiacOnlineSessionState zodiacState,
+            CancellationToken cancellationToken)
+    {
+        DateTimeOffset onlineAnchor;
+        await zodiacState.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            onlineAnchor = zodiacState.LastAccountedAt;
+        }
+        finally
+        {
+            zodiacState.Gate.Release();
+        }
+
+        // Resolve an unknown prior interval outcome before a level mutation.
+        // A zero-length request creates no new interval, but retries the exact
+        // pending server operation if one exists.
+        _ = await SettleDurableProgressionIntervalAsync(
+            session,
+            accountId,
+            character.Id,
+            onlineAnchor,
+            onlineAnchor,
+            sendNotification: false,
+            cancellationToken);
+
+        var durableState = GetOrCreateDurableProgressionSession(
+            session,
+            accountId,
+            character.Id,
+            onlineAnchor,
+            ownership);
+        // Online accrual takes the Zodiac gate before the durable progression
+        // gate. Use the same order and hold both through projection refresh
+        // and level mutation so an interval committed between the zero-length
+        // retry and this section cannot be overwritten by an older snapshot.
+        await zodiacState.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            await durableState.Gate.WaitAsync(cancellationToken);
+            try
+            {
+                if (durableState.Superseded)
+                {
+                    throw new PlayerOwnershipValidationException(
+                        PlayerOwnershipValidationStatus.OwnershipLost);
+                }
+
+                if (durableState.LastProjection is { } projection &&
+                    projection.LastIntervalEndUtc >=
+                        zodiacState.LastAccountedAt)
+                {
+                    zodiacState.LastAccountedAt =
+                        projection.LastIntervalEndUtc;
+                    ApplyDurableProgressionProjection(
+                        zodiacState.Character,
+                        projection);
+                }
+
+                RequireCurrentZodiacLevelOwner(
+                    session,
+                    accountId,
+                    character.Id,
+                    ownership);
+                var focusedResult = await _zodiacLevelStore!.UpgradeAsync(
+                    accountId,
+                    character.Id,
+                    ownership,
+                    cancellationToken);
+                var result = focusedResult is null
+                    ? null
+                    : FocusedGameplayProjectionCompatibility.ToLegacy(
+                        focusedResult);
+                RequireCurrentZodiacLevelOwner(
+                    session,
+                    accountId,
+                    character.Id,
+                    ownership);
+                if (result is null)
+                {
+                    return null;
+                }
+
+                ApplyZodiacLevelUpgradeResult(
+                    zodiacState.Character,
+                    result);
+                if (!ReferenceEquals(zodiacState.Character, character))
+                {
+                    ApplyZodiacLevelUpgradeResult(character, result);
+                }
+
+                return result;
+            }
+            finally
+            {
+                durableState.Gate.Release();
+            }
+        }
+        finally
+        {
+            zodiacState.Gate.Release();
         }
     }
 

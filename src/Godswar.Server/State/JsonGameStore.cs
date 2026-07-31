@@ -12,6 +12,7 @@ namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore :
     IGameStore,
+    ICharacterCheckpointStore,
     ICharacterSnapshotReader,
     ICharacterRuntimeProjectionReader,
     IOwnedPetSnapshotReader,
@@ -63,59 +64,22 @@ internal sealed partial class JsonGameStore :
         return Task.CompletedTask;
     }
 
-    public Task SaveCharacterPositionAsync(
+    public async Task SaveCharacterPositionAsync(
         int accountId,
         int characterId,
         byte currentMap,
         float positionX,
         float positionZ,
-        CancellationToken cancellationToken = default) =>
-        SaveCharacterPositionCoreAsync(
-            accountId,
-            characterId,
-            currentMap,
-            positionX,
-            positionZ,
-            revision: null,
-            cancellationToken);
-
-    internal Task SaveCharacterPositionCheckpointAsync(
-        int accountId,
-        int characterId,
-        byte currentMap,
-        float positionX,
-        float positionZ,
-        long revision,
-        CancellationToken cancellationToken = default) =>
-        SaveCharacterPositionCoreAsync(
-            accountId,
-            characterId,
-            currentMap,
-            positionX,
-            positionZ,
-            revision,
-            cancellationToken);
-
-    private async Task SaveCharacterPositionCoreAsync(
-        int accountId,
-        int characterId,
-        byte currentMap,
-        float positionX,
-        float positionZ,
-        long? revision,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
         try
         {
             var db = await LoadUnsafeAsync(cancellationToken);
-            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
             if (character is null)
-            {
-                return;
-            }
-            if (revision.HasValue &&
-                revision.Value <= character.PositionRevision)
             {
                 return;
             }
@@ -123,10 +87,6 @@ internal sealed partial class JsonGameStore :
             character.CurrentMap = currentMap;
             character.PositionX = positionX;
             character.PositionZ = positionZ;
-            if (revision.HasValue)
-            {
-                character.PositionRevision = revision.Value;
-            }
             await SaveUnsafeAsync(db, cancellationToken);
         }
         finally
@@ -147,19 +107,23 @@ internal sealed partial class JsonGameStore :
         try
         {
             var db = await LoadUnsafeAsync(cancellationToken);
-            var character = db.Characters.FirstOrDefault(c => c.AccountId == accountId && c.Id == characterId);
-            if (character is null)
+            var character = db.Characters.FirstOrDefault(candidate =>
+                candidate.AccountId == accountId &&
+                candidate.Id == characterId);
+            if (character is null ||
+                vitalsRevision <= character.VitalsRevision)
             {
                 return;
             }
 
-            if (vitalsRevision <= character.VitalsRevision)
-            {
-                return;
-            }
-
-            character.CurrentHp = Math.Clamp(currentHp, 0, Math.Max(1, character.MaxHp));
-            character.CurrentMp = Math.Clamp(currentMp, 0, Math.Max(0, character.MaxMp));
+            character.CurrentHp = Math.Clamp(
+                currentHp,
+                0,
+                Math.Max(1, character.MaxHp));
+            character.CurrentMp = Math.Clamp(
+                currentMp,
+                0,
+                Math.Max(0, character.MaxMp));
             character.VitalsRevision = vitalsRevision;
             await SaveUnsafeAsync(db, cancellationToken);
         }
@@ -213,40 +177,6 @@ internal sealed partial class JsonGameStore :
                 character.TalentExperience,
                 gainedTalentPoints,
                 character.TalentPoints);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    public async Task<ZodiacEnergyAccrualResult?> ApplyZodiacOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        ZodiacEnergyPolicy policy,
-        CancellationToken cancellationToken = default)
-    {
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var db = await LoadUnsafeAsync(cancellationToken);
-            var character = db.Characters.FirstOrDefault(candidate =>
-                candidate.AccountId == accountId &&
-                candidate.Id == characterId);
-            if (character is null)
-            {
-                return null;
-            }
-
-            var result = ZodiacEnergyAccrual.Apply(
-                character,
-                onlineFrom,
-                onlineUntil,
-                policy);
-            await SaveUnsafeAsync(db, cancellationToken);
-            return result;
         }
         finally
         {
@@ -332,46 +262,6 @@ internal sealed partial class JsonGameStore :
             }
 
             return new ExperienceBoostState(boosts.OrderBy(boost => boost.Kind).ToArray());
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
-    public async Task ConsumeCharacterBoostOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        CancellationToken cancellationToken = default)
-    {
-        if (onlineUntil <= onlineFrom)
-        {
-            return;
-        }
-
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var db = await LoadUnsafeAsync(cancellationToken);
-            if (!db.Characters.Any(character =>
-                    character.Id == characterId &&
-                    character.AccountId == accountId))
-            {
-                return;
-            }
-
-            foreach (var boost in db.CharacterExperienceBoosts.Where(candidate =>
-                         candidate.CharacterId == characterId))
-            {
-                CharacterBoostOnlineDuration.Consume(
-                    boost,
-                    onlineFrom,
-                    onlineUntil);
-            }
-
-            await SaveUnsafeAsync(db, cancellationToken);
         }
         finally
         {

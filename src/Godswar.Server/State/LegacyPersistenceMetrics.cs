@@ -14,27 +14,20 @@ internal enum LegacyPersistenceOperation : byte
     AddForgingMaterial = 4,
     ApplyMonsterKillReward = 5,
     ApplyWeaponHolyStone = 6,
-    ApplyZodiacOnlineTime = 7,
     ClearKitBag = 8,
-    ConsumeCharacterBoostOnlineTime = 9,
     CreateCharacter = 10,
     DeleteCharacter = 11,
     DeleteKitBagItem = 12,
     EnhanceGear = 13,
     EnsureSeedData = 14,
     ForgeEquipment = 15,
-    GetFirstCharacter = 19,
-    HatchPetEgg = 22,
     MoveEquipmentToKitBag = 23,
     MoveKitBagItem = 24,
     MoveKitBagToEquipment = 25,
     ProcessGearMentor = 26,
     SaveCharacterPosition = 27,
-    SaveCharacterPositionCheckpoint = 28,
     SaveCharacterVitals = 29,
     SelectZodiacSkillGrid = 30,
-    TransitionPetPresence = 31,
-    UpgradePetLevel = 32,
     UpgradeTalent = 33,
     UpgradeZodiacSkillGrid = 35
 }
@@ -99,11 +92,7 @@ internal static class LegacyPersistenceMetrics
                 "apply_monster_kill_reward",
             LegacyPersistenceOperation.ApplyWeaponHolyStone =>
                 "apply_weapon_holy_stone",
-            LegacyPersistenceOperation.ApplyZodiacOnlineTime =>
-                "apply_zodiac_online_time",
             LegacyPersistenceOperation.ClearKitBag => "clear_kit_bag",
-            LegacyPersistenceOperation.ConsumeCharacterBoostOnlineTime =>
-                "consume_character_boost_online_time",
             LegacyPersistenceOperation.CreateCharacter =>
                 "create_character",
             LegacyPersistenceOperation.DeleteCharacter =>
@@ -115,9 +104,6 @@ internal static class LegacyPersistenceMetrics
                 "ensure_seed_data",
             LegacyPersistenceOperation.ForgeEquipment =>
                 "forge_equipment",
-            LegacyPersistenceOperation.GetFirstCharacter =>
-                "get_first_character",
-            LegacyPersistenceOperation.HatchPetEgg => "hatch_pet_egg",
             LegacyPersistenceOperation.MoveEquipmentToKitBag =>
                 "move_equipment_to_kit_bag",
             LegacyPersistenceOperation.MoveKitBagItem =>
@@ -128,16 +114,10 @@ internal static class LegacyPersistenceMetrics
                 "process_gear_mentor",
             LegacyPersistenceOperation.SaveCharacterPosition =>
                 "save_character_position",
-            LegacyPersistenceOperation.SaveCharacterPositionCheckpoint =>
-                "save_character_position_checkpoint",
             LegacyPersistenceOperation.SaveCharacterVitals =>
                 "save_character_vitals",
             LegacyPersistenceOperation.SelectZodiacSkillGrid =>
                 "select_zodiac_skill_grid",
-            LegacyPersistenceOperation.TransitionPetPresence =>
-                "transition_pet_presence",
-            LegacyPersistenceOperation.UpgradePetLevel =>
-                "upgrade_pet_level",
             LegacyPersistenceOperation.UpgradeTalent => "upgrade_talent",
             LegacyPersistenceOperation.UpgradeZodiacSkillGrid =>
                 "upgrade_zodiac_skill_grid",

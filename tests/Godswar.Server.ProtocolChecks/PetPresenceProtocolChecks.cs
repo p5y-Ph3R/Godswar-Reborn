@@ -1,8 +1,7 @@
 using System.Buffers.Binary;
-using System.Reflection;
-using Godswar.Server.Application.Accounts;
-using Godswar.Server.Game;
-using Godswar.Server.Networking;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
+using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -14,13 +13,6 @@ internal static class PetPresenceProtocolChecks
     private const int AccountId = 13;
     private const int CharacterId = 2;
     private const uint PetId = 1;
-
-    private static readonly MethodInfo HandlePacketMethod =
-        typeof(GameClientHandler).GetMethod(
-            "HandlePacketAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException(
-            "GameClientHandler.HandlePacketAsync was not found.");
 
     public static async Task RunAsync()
     {
@@ -98,35 +90,123 @@ internal static class PetPresenceProtocolChecks
         PetPresenceOperation expectedOperation,
         PetOperationResultCode expectedCode)
     {
-        var store = new PetPresenceStore(
-            PetPresenceTransitionStatus.Succeeded);
-        var response = await InvokeAsync(
-            store,
-            CreateActionPacket(opcode, PetId));
+        var operationId = Guid.NewGuid();
+        var expectedCommandOperation = expectedOperation switch
+        {
+            PetPresenceOperation.Take =>
+                PetPresenceCommandOperation.Take,
+            PetPresenceOperation.CallOut =>
+                PetPresenceCommandOperation.CallOut,
+            PetPresenceOperation.Recall =>
+                PetPresenceCommandOperation.Recall,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(expectedOperation))
+        };
+        var isSummoned = expectedOperation == PetPresenceOperation.CallOut;
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Transition = envelope =>
+                PetDurableExecutionResult.Committed(
+                    new PetDurableReceipt(
+                        CommandFamily.PetPresenceTransition,
+                        PetDurableReceiptStatus.PresenceChanged,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        KitBagSlot: -1,
+                        EquipmentSlot: -1,
+                        PetId,
+                        PetLevel: 1,
+                        PetExperience: 0,
+                        PetRevision: 2,
+                        IsCarried: true,
+                        IsSummoned: isSummoned,
+                        PresenceOperation:
+                            checked((byte)((byte)envelope.Command.Operation + 1)),
+                        AggregateRevision: 1,
+                        AuditReference: "pet-presence-check",
+                        OutboxEventId: Guid.NewGuid()))
+        };
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [CreatePet(isCarried: true, isSummoned, revision: 2)],
+            executor);
+        await fixture.InvokeAsync(
+            CreateActionPacket(opcode, PetId, operationId));
+        var packets = fixture.Transport.ReadLegacyPackets();
+        var response = packets.Single(packet =>
+            ReadOpcode(packet) == Opcodes.PetOperationResult);
 
         Check.True(
             response.SequenceEqual(
                 PacketBuilder.PetOperationResult(PetId, expectedCode)),
             $"{expectedOperation} emits its native success code");
-        Check.Equal(1, store.CallCount, $"{expectedOperation} persists once");
-        Check.Equal(AccountId, store.AccountId, "authenticated pet account");
         Check.Equal(
-            CharacterId,
-            store.CharacterId,
-            "active pet character");
-        Check.Equal((long)PetId, store.PetId, "authoritative pet ID");
+            1,
+            executor.TransitionCount,
+            $"{expectedOperation} persists once");
         Check.True(
-            store.Operation == expectedOperation,
-            $"{expectedOperation} reaches the matching store transition");
+            executor.TransitionEnvelope is { } envelope &&
+            envelope.Subject.AccountId == AccountId &&
+            envelope.Subject.CharacterId == CharacterId &&
+            envelope.Command.PetId == PetId &&
+            envelope.Command.Operation == expectedCommandOperation &&
+            envelope.Command.ClientOperationId == operationId,
+            $"{expectedOperation} reaches the focused durable transition");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Applied,
+                    CommandFamily:
+                        (ushort)CommandFamily.PetPresenceTransition,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            $"{expectedOperation} returns one durable command result");
     }
 
     private static async Task CheckRejectedActionAsync()
     {
-        var store = new PetPresenceStore(
-            PetPresenceTransitionStatus.PetNotTaken);
-        var response = await InvokeAsync(
-            store,
-            CreateActionPacket(Opcodes.PetCallOutRequest, PetId));
+        var operationId = Guid.NewGuid();
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Transition = envelope =>
+                PetDurableExecutionResult.Rejected(
+                    new PetDurableReceipt(
+                        CommandFamily.PetPresenceTransition,
+                        PetDurableReceiptStatus.PetNotTaken,
+                        envelope.Subject.AccountId,
+                        envelope.Subject.CharacterId,
+                        KitBagSlot: -1,
+                        EquipmentSlot: -1,
+                        PetId,
+                        PetLevel: 1,
+                        PetExperience: 0,
+                        PetRevision: 1,
+                        IsCarried: false,
+                        IsSummoned: false,
+                        PresenceOperation: 2,
+                        AggregateRevision: 0,
+                        AuditReference: "pet-presence-rejection-check",
+                        OutboxEventId: null))
+        };
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [CreatePet(isCarried: false, isSummoned: false, revision: 1)],
+            executor);
+        await fixture.InvokeAsync(
+            CreateActionPacket(
+                Opcodes.PetCallOutRequest,
+                PetId,
+                operationId));
+        var response = fixture.Transport.ReadLegacyPackets().Single(packet =>
+            ReadOpcode(packet) == Opcodes.PetOperationResult);
 
         Check.True(
             response.SequenceEqual(
@@ -134,29 +214,55 @@ internal static class PetPresenceProtocolChecks
                     PetId,
                     PetOperationResultCode.CallOutFailed)),
             "store rejection emits Call Out failure");
-        Check.Equal(1, store.CallCount, "rejected action reaches store once");
+        Check.Equal(
+            1,
+            executor.TransitionCount,
+            "rejected action reaches durable persistence once");
+        Check.True(
+            fixture.Transport.CommandResults is
+            [
+                {
+                    Disposition:
+                        SecureLegacyCommandDisposition.Rejected,
+                    ResultCode: (uint)PetDurableReceiptStatus.PetNotTaken,
+                    OperationId: var completedOperation
+                }
+            ] &&
+            completedOperation == operationId,
+            "rejected presence action returns its durable terminal result");
     }
 
     private static async Task CheckMalformedActionAsync()
     {
-        var store = new PetPresenceStore(
-            PetPresenceTransitionStatus.Succeeded);
+        var executor = new DelegatingPetDurableCommandExecutor
+        {
+            Transition = _ => throw new InvalidOperationException(
+                "Malformed presence requests cannot execute.")
+        };
         var malformed = new byte[7];
         BinaryPrimitives.WriteUInt16LittleEndian(malformed, 7);
         BinaryPrimitives.WriteUInt16LittleEndian(
             malformed.AsSpan(2),
             Opcodes.PetTakeRequest);
-        var response = await InvokeAsync(store, new GamePacket(malformed));
+        var character = CreateCharacter();
+        await using var fixture = PetDurableHandlerFixture.Create(
+            character,
+            character,
+            [],
+            executor);
+        await fixture.InvokeAsync(
+            new GamePacket(malformed, Guid.NewGuid()));
+        await fixture.InvokeAsync(
+            CreateActionPacket(Opcodes.PetTakeRequest, PetId));
+        var responses = fixture.Transport.ReadLegacyPackets();
 
-        Check.True(
-            response.SequenceEqual(
-                PacketBuilder.PetOperationResult(
-                    0,
-                    PetOperationResultCode.TakeFailed)),
-            "malformed Take receives a bounded failure");
         Check.Equal(
             0,
-            store.CallCount,
+            responses.Count,
+            "malformed or unidentified Take emits no invented result");
+        Check.Equal(
+            0,
+            executor.TransitionCount,
             "malformed pet request cannot reach persistence");
     }
 
@@ -170,116 +276,77 @@ internal static class PetPresenceProtocolChecks
             $"{code} frame bytes");
     }
 
-    private static async Task<byte[]> InvokeAsync(
-        PetPresenceStore store,
-        GamePacket packet)
-    {
-        var transport = new ScriptedLegacyByteTransport();
-        await using var session = new ClientSession(transport);
-        var handler = new GameClientHandler(
-            session,
-            store,
-            new GameSessionRegistry(
-                store: null,
-                zodiacEnergyOptions: null,
-                monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-                playerRuntimeMode: PlayerRuntimeMode.Ecs),
-            CharacterSnapshotReaderTestFixtures.Unused,
-            WorldContentReaderTestFixtures.Empty);
-        SetField(
-            handler,
-            "_account",
-            new AccountIdentity(AccountId, "test2"));
-        SetField(
-            handler,
-            "_character",
-            new GameCharacter
-            {
-                Id = CharacterId,
-                AccountId = AccountId,
-                Name = "test2"
-            });
-
-        var task = HandlePacketMethod.Invoke(
-            handler,
-            [packet, CancellationToken.None]) as Task
-            ?? throw new InvalidOperationException(
-                "GameClientHandler.HandlePacketAsync returned no task.");
-        await task;
-
-        var clearBytes = transport.WrittenBytes;
-        new PacketCipher().Transform(clearBytes);
-        return clearBytes;
-    }
-
     private static GamePacket CreateActionPacket(
         ushort opcode,
-        uint petId)
+        uint petId,
+        Guid? operationId = null)
     {
         var packet = new byte[8];
         BinaryPrimitives.WriteUInt16LittleEndian(packet, 8);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2), opcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4), petId);
-        return new GamePacket(packet);
+        return new GamePacket(packet, operationId);
     }
 
-    private static void SetField<T>(
-        GameClientHandler handler,
-        string name,
-        T value)
-    {
-        var field = typeof(GameClientHandler).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException(
-                $"GameClientHandler.{name} was not found.");
-        field.SetValue(handler, value);
-    }
+    private static ushort ReadOpcode(byte[] packet) =>
+        BinaryPrimitives.ReadUInt16LittleEndian(packet.AsSpan(2));
 
-    private sealed class PetPresenceStore : GameStoreTestStub
-    {
-        private readonly PetPresenceTransitionStatus _status;
-
-        public PetPresenceStore(
-            PetPresenceTransitionStatus status)
+    private static GameCharacter CreateCharacter() =>
+        new()
         {
-            _status = status;
-        }
+            Id = CharacterId,
+            AccountId = AccountId,
+            Name = "test2",
+            Equipment = GameDefaults.DefaultEquipment(1),
+            KitBag = GameDefaults.EmptyKitBag
+        };
 
-        public int CallCount { get; private set; }
-
-        public int AccountId { get; private set; }
-
-        public int CharacterId { get; private set; }
-
-        public long PetId { get; private set; }
-
-        public PetPresenceOperation Operation { get; private set; }
-
-        public override Task<PetPresenceTransitionResult>
-            TransitionPetPresenceAsync(
-                int accountId,
-                int characterId,
-                long petId,
-                PetPresenceOperation operation,
-                CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            AccountId = accountId;
-            CharacterId = characterId;
-            PetId = petId;
-            Operation = operation;
-            return Task.FromResult(
-                new PetPresenceTransitionResult(
-                    _status,
-                    petId,
-                    IsCarried:
-                        _status ==
-                        PetPresenceTransitionStatus.Succeeded,
-                    IsSummoned:
-                        _status ==
-                        PetPresenceTransitionStatus.Succeeded &&
-                        operation == PetPresenceOperation.CallOut));
-        }
-    }
+    private static PetBootstrapSnapshot CreatePet(
+        bool isCarried,
+        bool isSummoned,
+        long revision) =>
+        new(
+            PetId,
+            AccountId,
+            CharacterId,
+            SpeciesId: 1,
+            Name: "Rock Elf",
+            Sex: 0,
+            Level: 1,
+            Experience: 0,
+            PetAptitude.Godly,
+            Rank: 0,
+            CompletedRebirths: 0,
+            RebirthsRemaining: 0,
+            CompletedPetMerges: 0,
+            HasSoulContract: false,
+            HasOwnerMergeTalent: false,
+            CurrentEnergy: 100,
+            MaximumEnergy: 100,
+            Amity: 100,
+            Satiety: 100,
+            RemainingLifetime: 600,
+            AvailableStatPoints: 0,
+            GrowthRevealed: true,
+            IsBound: false,
+            ActivityState: "owned",
+            isCarried,
+            isSummoned,
+            // Summoning does not itself enable the optional owner-merge
+            // contribution. That requires HasOwnerMergeTalent as a separate
+            // persisted precondition.
+            ContributesToCharacter: false,
+            revision,
+            DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch,
+            Enumerable.Range(1, 6).Select(index =>
+                new PetStatValueSnapshot(
+                    checked((short)index),
+                    InitialSavvy: index,
+                    AddedSavvy: 0,
+                    BaseGrowthRate: 1,
+                    GrowthAcceleration: 0,
+                    revision)).ToArray(),
+            CharacterBonuses: [],
+            Skills: []);
 }

@@ -14,7 +14,8 @@ internal sealed record ServerGameplayPersistenceProviders(
     IExperienceBoostStateReader ExperienceBoosts,
     IWorldBossAreaControlStore WorldBossAreaControl,
     IWorldBossRespawnReader WorldBossRespawns,
-    IZodiacLevelStore ZodiacLevels);
+    IZodiacLevelStore ZodiacLevels,
+    ICharacterCheckpointStore CharacterCheckpoints);
 
 internal static class ServerGameplayPersistenceComposition
 {
@@ -52,6 +53,10 @@ internal static class ServerGameplayPersistenceComposition
         var zodiacLevels = postgresRuntime?.ZodiacLevels ??
             localProvider as IZodiacLevelStore ??
             throw Missing("Zodiac-level store");
+        var characterCheckpoints =
+            postgresRuntime?.CharacterCheckpoints ??
+            localProvider as ICharacterCheckpointStore ??
+            throw Missing("character checkpoint store");
 
         return new ServerGameplayPersistenceProviders(
             measuredCharacterSnapshots,
@@ -60,7 +65,8 @@ internal static class ServerGameplayPersistenceComposition
             experienceBoosts,
             worldBossAreaControl,
             worldBossRespawns,
-            zodiacLevels);
+            zodiacLevels,
+            characterCheckpoints);
     }
 
     private static InvalidOperationException Missing(string provider) =>

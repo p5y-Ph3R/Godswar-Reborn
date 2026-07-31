@@ -33,55 +33,6 @@ internal sealed partial class PostgresGameStore
                 .ToArray());
     }
 
-    public async Task ConsumeCharacterBoostOnlineTimeAsync(
-        int accountId,
-        int characterId,
-        DateTimeOffset onlineFrom,
-        DateTimeOffset onlineUntil,
-        CancellationToken cancellationToken = default)
-    {
-        if (onlineUntil <= onlineFrom)
-        {
-            return;
-        }
-
-        await using var command = _dataSource.CreateCommand("""
-            UPDATE character_experience_modifiers modifier
-            SET remaining_online_ticks = GREATEST(
-                0,
-                COALESCE(
-                    modifier.remaining_online_ticks,
-                    GREATEST(
-                        0,
-                        ROUND(EXTRACT(EPOCH FROM (
-                            modifier.expires_at - modifier.activated_at
-                        )) * 10000000)::bigint)
-                ) - GREATEST(
-                    0,
-                    ROUND(EXTRACT(EPOCH FROM (
-                        @onlineUntil - GREATEST(@onlineFrom, modifier.activated_at)
-                    )) * 10000000)::bigint
-                )
-            )
-            FROM character_base character
-            WHERE modifier.character_id = @characterId
-              AND character.id = modifier.character_id
-              AND character.account_id = @accountId
-              AND (
-                  modifier.remaining_online_ticks > 0
-                  OR modifier.remaining_online_ticks IS NULL
-                     AND modifier.expires_at IS NOT NULL
-                     AND modifier.expires_at > modifier.activated_at
-              )
-              AND modifier.activated_at < @onlineUntil;
-            """);
-        command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("onlineFrom", onlineFrom);
-        command.Parameters.AddWithValue("onlineUntil", onlineUntil);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
     public async Task<FactionAreaExperienceControl?>
         ActivateWorldBossAreaAsync(
             short mapId,

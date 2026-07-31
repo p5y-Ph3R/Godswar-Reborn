@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -54,7 +55,8 @@ internal sealed partial class GameClientHandler
             // discriminator, the secure request cannot be routed to either
             // durable aggregate without guessing. Never downgrade secure or
             // otherwise identified traffic into either compatibility
-            // mutation. Raw legacy TCP retains its existing behavior.
+            // mutation. Unidentified raw pet eggs fail closed below; only
+            // the separate equipment compatibility path remains available.
             Console.WriteLine(
                 "[equip-re] BreakItem ignored: operation identity is " +
                 "ambiguous between equipment activation and pet hatch");
@@ -77,9 +79,12 @@ internal sealed partial class GameClientHandler
 
         if (isPetEgg)
         {
-            await HandlePetEggHatchAsync(
-                sourceSlot,
-                cancellationToken);
+            CommandMetrics.RecordUnsupportedLegacyIdentity(
+                CommandFamily.BagItemActivation);
+            Console.WriteLine(
+                "[equip-re] BreakItem ignored: pet hatch requires " +
+                "durable operation identity");
+            await SendKitBagRefreshAsync(cancellationToken);
             return;
         }
 
