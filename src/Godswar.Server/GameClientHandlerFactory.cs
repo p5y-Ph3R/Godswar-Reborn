@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
@@ -12,6 +13,8 @@ namespace Godswar.Server;
 
 internal sealed class GameClientHandlerFactory(
     IGameStore store,
+    IAccountDirectory accountDirectory,
+    IAccountPresenceWriter accountPresence,
     GameSessionRegistry registry,
     ICharacterSnapshotReader characterSnapshots,
     IWorldContentReader worldContent,
@@ -74,6 +77,10 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.PetDurableCommands,
             playerCoordination:
                 playerCoordination,
+            accountDirectory:
+                accountDirectory,
+            accountPresence:
+                accountPresence,
             requiresDurableMonsterRewardCommands:
                 postgresRuntime is not null,
             requiresDurablePlayerCommands:

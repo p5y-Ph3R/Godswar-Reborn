@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -258,11 +259,9 @@ internal static partial class BackhaulSkillHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = character.AccountId,
-                Username = "backhaul-handler"
-            });
+            new AccountIdentity(
+                character.AccountId,
+                "backhaul-handler"));
         SetField(handler, "_character", character);
         SetField(handler, "_registered", true);
         SetField(handler, "_worldPresenceAnnounced", true);

@@ -41,12 +41,6 @@ internal sealed partial class JsonGameStore
         File.Move(tempPath, _statePath, overwrite: true);
     }
 
-    private static string CleanUsername(string username)
-    {
-        username = username.Trim('\0', ' ', '\t', '\r', '\n');
-        return string.IsNullOrWhiteSpace(username) ? "player" : username;
-    }
-
     private static string CleanCharacterName(string name)
     {
         name = name.Trim('\0', ' ', '\t', '\r', '\n');

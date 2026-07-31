@@ -19,7 +19,7 @@ internal static partial class EquipmentKindGuardChecks
             await using var store = new JsonGameStore(dataPath);
             await store.EnsureSeedDataAsync();
             var account = await store.LoginOrCreateAccountAsync(
-                $"equipment-kind-{Guid.NewGuid():N}",
+                "eqkind-" + Guid.NewGuid().ToString("N")[..20],
                 string.Empty);
             var material = CompactItemEntry.Parse("[9930,,,,,,1,1,0,1,0]");
             var mount = CompactItemEntry.Parse("[14220,,,,,,1,1,0,1,0]");

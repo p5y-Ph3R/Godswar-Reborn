@@ -31,7 +31,6 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameClientHandler.CharacterCheckpoints.cs",
             "SaveCharacterVitalsAsync",
             1),
-        new("Game/GameClientHandler.cs", "MarkAccountOfflineAsync", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", "AddDeveloperMountAsync", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", "AddForgingMaterialAsync", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", "ClearKitBagAsync", 1),
@@ -51,8 +50,6 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameClientHandler.DurableCharacterLifecycle.cs",
             "DeleteCharacterAsync",
             1),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByIdAsync", 1),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", "FindAccountByUsernameAsync", 1),
         new("Game/GameClientHandler.LoginWorldEntry.cs", "GetActiveWorldBossRespawnAsync", 1),
         new(
             "Game/GameClientHandler.LegacyHolyStone.cs",
@@ -91,23 +88,6 @@ internal static class DataBoundaryArchitectureBaseline
             "Game/GameSessionRegistry.ZodiacSkillGrids.cs",
             "SelectZodiacSkillGridAsync",
             2),
-        new("Game/LoginClientHandler.cs", "LoginOrCreateAccountAsync", 1),
-        new(
-            "Security/Authentication/AccountAuthenticationService.cs",
-            "FindAccountCredentialAsync",
-            4),
-        new(
-            "Security/Authentication/AccountAuthenticationService.cs",
-            "MarkAccountOnlineAsync",
-            3),
-        new(
-            "Security/Authentication/AccountAuthenticationService.cs",
-            "TryCreateAccountWithCredentialAsync",
-            1),
-        new(
-            "Security/Authentication/AccountAuthenticationService.cs",
-            "TryReplaceAccountCredentialAsync",
-            2),
         new(
             "State/LegacyCharacterCheckpointStore.cs",
             "GetFirstCharacterAsync",
@@ -119,14 +99,6 @@ internal static class DataBoundaryArchitectureBaseline
         new(
             "State/LegacyCharacterCheckpointStore.cs",
             "SaveCharacterVitalsAsync",
-            1),
-        new(
-            "State/LegacySemanticGatewayDataSession.cs",
-            "EnsureSeedDataAsync",
-            1),
-        new(
-            "State/LegacySemanticGatewayDataSession.cs",
-            "GetFirstCharacterAsync",
             1)
     ];
 
@@ -137,9 +109,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.cs", 1),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 1),
-        new("Game/LoginClientHandler.cs", 2),
-        new("Program.cs", 1),
-        new("Security/Authentication/AccountAuthenticationService.cs", 2)
+        new("Program.cs", 1)
     ];
 
     public static readonly ReferenceAllowance[] StoreFieldReferences =
@@ -155,7 +125,7 @@ internal static class DataBoundaryArchitectureBaseline
             2),
         new("Game/GameClientHandler.CharacterCheckpoints.cs", 2),
         new("Game/GameClientHandler.Construction.cs", 1),
-        new("Game/GameClientHandler.cs", 2),
+        new("Game/GameClientHandler.cs", 1),
         new("Game/GameClientHandler.DeveloperCommands.cs", 3),
         new("Game/GameClientHandler.Equipment.cs", 3),
         new("Game/GameClientHandler.Forging.cs", 1),
@@ -163,7 +133,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameClientHandler.GearMentor.cs", 1),
         new("Game/GameClientHandler.InventoryActions.cs", 2),
         new("Game/GameClientHandler.DurableCharacterLifecycle.cs", 2),
-        new("Game/GameClientHandler.LoginWorldEntry.cs", 3),
+        new("Game/GameClientHandler.LoginWorldEntry.cs", 1),
         new("Game/GameClientHandler.LegacyHolyStone.cs", 1),
         new("Game/GameClientHandler.PetEggs.cs", 2),
         new("Game/GameClientHandler.PetLevel.cs", 1),
@@ -176,20 +146,16 @@ internal static class DataBoundaryArchitectureBaseline
         new("Game/GameSessionRegistry.PlayerStatusMutations.cs", 1),
         new("Game/GameSessionRegistry.PlayerStatusPublishing.cs", 1),
         new("Game/GameSessionRegistry.Progression.cs", 13),
-        new("Game/GameSessionRegistry.ZodiacSkillGrids.cs", 9),
-        new("Game/LoginClientHandler.cs", 3),
-        new("Security/Authentication/AccountAuthenticationService.cs", 12)
+        new("Game/GameSessionRegistry.ZodiacSkillGrids.cs", 9)
     ];
 
     public static readonly ReferenceAllowance[] StoreParameterReferences =
     [
         new("GameClientHandlerFactory.cs", 2),
-        new("Game/GameClientHandler.Construction.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 2),
-        new("Game/LoginClientHandler.cs", 2),
-        new("Program.cs", 8),
-        new("Security/Authentication/AccountAuthenticationService.cs", 3)
+        new("Program.cs", 5),
+        new("Security/Authentication/AccountAuthenticationService.cs", 1)
     ];
 
     public static readonly ReferenceAllowance[] LegacyNpgsqlReferences =
@@ -198,7 +164,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/DatabaseMigrations/PostgresSchemaMigrationRunner.cs", 17),
         new("State/PostgresGameStore.Characters.cs", 1),
         new("State/PostgresGameStore.CharacterLookup.cs", 3),
-        new("State/PostgresGameStore.Characters.Persistence.cs", 15),
+        new("State/PostgresGameStore.Characters.Persistence.cs", 14),
         new("State/PostgresGameStore.Crafting.cs", 7),
         new("State/PostgresGameStore.cs", 5),
         new("State/PostgresGameStore.Experience.cs", 4),
@@ -260,9 +226,6 @@ internal static class DataBoundaryArchitectureBaseline
         "DeleteKitBagItemAsync",
         "EnhanceGearAsync",
         "EnsureSeedDataAsync",
-        "FindAccountByIdAsync",
-        "FindAccountByUsernameAsync",
-        "FindAccountCredentialAsync",
         "ForgeEquipmentAsync",
         "GetActiveWorldBossRespawnAsync",
         "GetCharactersAsync",
@@ -273,9 +236,6 @@ internal static class DataBoundaryArchitectureBaseline
         "GetSkillStatesAsync",
         "GetTalentStatesAsync",
         "HatchPetEggAsync",
-        "LoginOrCreateAccountAsync",
-        "MarkAccountOfflineAsync",
-        "MarkAccountOnlineAsync",
         "MoveEquipmentToKitBagAsync",
         "MoveKitBagItemAsync",
         "MoveKitBagToEquipmentAsync",
@@ -284,8 +244,6 @@ internal static class DataBoundaryArchitectureBaseline
         "SaveCharacterVitalsAsync",
         "SelectZodiacSkillGridAsync",
         "TransitionPetPresenceAsync",
-        "TryCreateAccountWithCredentialAsync",
-        "TryReplaceAccountCredentialAsync",
         "UpgradePetLevelAsync",
         "UpgradeTalentAsync",
         "UpgradeZodiacLevelAsync",
@@ -293,7 +251,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "EE8186DC323C9047010CBDD0E548C003200E212938E00047D78E2263883BA7AF";
+        "6512C142A948281469C7E910ACD5C37C5636E743FA7635F104CE67101A80807A";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

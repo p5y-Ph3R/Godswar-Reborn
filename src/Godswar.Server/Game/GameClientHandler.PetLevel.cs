@@ -46,6 +46,8 @@ internal sealed partial class GameClientHandler
         PetLevelUpgradeResult result;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradePetLevel);
             result = await _store.UpgradePetLevelAsync(
                 _account.Id,
                 _character.Id,

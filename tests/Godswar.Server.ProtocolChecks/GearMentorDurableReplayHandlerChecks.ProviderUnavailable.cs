@@ -1,4 +1,5 @@
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
@@ -43,11 +44,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
             SetField(
                 handler,
                 "_account",
-                new GameAccount
-                {
-                    Id = snapshot.AccountId,
-                    Username = "provider-unavailable-check"
-                });
+                new AccountIdentity(
+                    snapshot.AccountId,
+                    "provider-unavailable-check"));
             SetField(
                 handler,
                 "_character",
@@ -101,11 +100,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "provider-unavailable-check"
-            });
+            new AccountIdentity(
+                snapshot.AccountId,
+                "provider-unavailable-check"));
         SetField(
             handler,
             "_character",

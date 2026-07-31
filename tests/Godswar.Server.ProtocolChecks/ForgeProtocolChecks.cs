@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Game;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -126,7 +127,7 @@ internal static class ForgeProtocolChecks
 
     private static void CheckSelectionIdentityBinding()
     {
-        var account = new GameAccount { Id = 13 };
+        var account = new AccountIdentity(13, "forge-check");
         var character = new GameCharacter { Id = 2, AccountId = 13 };
         Check.True(
             GameClientHandler.ForgeSelectionMatchesIdentity(13, 2, account, character),

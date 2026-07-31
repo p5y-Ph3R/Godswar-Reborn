@@ -18,8 +18,19 @@ internal sealed record SemanticGatewayCharacterRoute(
     MapId MapId);
 
 /// <summary>
+/// Minimal durable projection used to route an authenticated account. The
+/// reader fails closed when more than one active character exists.
+/// </summary>
+internal interface ISemanticGatewayCharacterRouteReader
+{
+    Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
+        int accountId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Focused application boundary used by the semantic gateway. Persistence
-/// providers and broad legacy stores remain behind the composition adapter.
+/// providers remain behind the infrastructure composition session.
 /// </summary>
 internal interface ISemanticGatewayDataSession : IAsyncDisposable
 {

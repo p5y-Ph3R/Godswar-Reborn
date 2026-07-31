@@ -11,6 +11,12 @@ internal static class DataArchitectureCheckCatalog
             B20LegacyPersistenceArchitectureChecks.CheckName,
             B20LegacyPersistenceArchitectureChecks.RunAsync),
         (
+            B20LegacyPersistenceTelemetryArchitectureChecks.CheckName,
+            B20LegacyPersistenceTelemetryArchitectureChecks.RunAsync),
+        (
+            LegacyPersistenceMetricsChecks.CheckName,
+            LegacyPersistenceMetricsChecks.RunAsync),
+        (
             "Pinned immutable world-content reader",
             WorldContentReaderChecks.RunAsync),
         (
@@ -22,6 +28,9 @@ internal static class DataArchitectureCheckCatalog
         (
             "JSON consistent character snapshot reader",
             JsonCharacterSnapshotReaderChecks.RunAsync),
+        (
+            JsonSemanticGatewayDataSessionChecks.CheckName,
+            JsonSemanticGatewayDataSessionChecks.RunAsync),
         (
             "Single-character slot mutation guard",
             CharacterSlotMutationChecks.RunAsync),

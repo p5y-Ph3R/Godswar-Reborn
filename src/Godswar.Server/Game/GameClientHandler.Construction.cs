@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Inventory;
@@ -17,7 +18,7 @@ internal sealed partial class GameClientHandler
 {
     public GameClientHandler(
         ClientSession session,
-        IGameStore store,
+        IGameStore gameStore,
         GameSessionRegistry registry,
         ICharacterSnapshotReader characterSnapshots,
         IWorldContentReader worldContent,
@@ -68,6 +69,8 @@ internal sealed partial class GameClientHandler
             petDurableCommands = null,
         IPlayerCoordinationLeaseIssuer?
             playerCoordination = null,
+        IAccountDirectory? accountDirectory = null,
+        IAccountPresenceWriter? accountPresence = null,
         bool requiresDurableMonsterRewardCommands = false,
         bool requiresDurablePlayerCommands = false)
     {
@@ -78,7 +81,17 @@ internal sealed partial class GameClientHandler
         }
 
         _session = session;
-        _store = store;
+        _store = gameStore;
+        _accountDirectory = accountDirectory ??
+            gameStore as IAccountDirectory ??
+            throw new ArgumentException(
+                "An account directory is required.",
+                nameof(accountDirectory));
+        _accountPresence = accountPresence ??
+            gameStore as IAccountPresenceWriter ??
+            throw new ArgumentException(
+                "An account presence writer is required.",
+                nameof(accountPresence));
         _registry = registry;
         _characterSnapshots =
             characterSnapshots ?? throw new ArgumentNullException(

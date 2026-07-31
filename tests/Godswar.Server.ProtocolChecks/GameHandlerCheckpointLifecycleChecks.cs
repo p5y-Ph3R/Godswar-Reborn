@@ -292,11 +292,9 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
     {
         AccountField.SetValue(
             handler,
-            new GameAccount
-            {
-                Id = accountId,
-                Username = "checkpoint-fixture"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                accountId,
+                "checkpoint-fixture"));
         CharacterField.SetValue(handler, character);
         var registry =
             (GameSessionRegistry?)RegistryField.GetValue(handler) ??

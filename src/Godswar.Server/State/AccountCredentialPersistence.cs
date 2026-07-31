@@ -1,24 +1,12 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server.State;
 
 internal static class AccountCredentialPersistence
 {
-    public static string RequireUsername(string username)
-    {
-        ArgumentNullException.ThrowIfNull(username);
-        if (username.Length is < 1 or >
-                AuthenticationOptions.MaximumUsernameBytes ||
-            username.Any(static character =>
-                character is < '!' or > '~'))
-        {
-            throw new ArgumentException(
-                $"Account username must contain 1..{AuthenticationOptions.MaximumUsernameBytes} printable ASCII bytes.",
-                nameof(username));
-        }
-
-        return username;
-    }
+    public static string RequireUsername(string username) =>
+        AccountUsername.Require(username);
 
     public static string RequireVersionedVerifier(
         string versionedVerifier)

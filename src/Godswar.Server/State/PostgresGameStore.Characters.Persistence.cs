@@ -280,21 +280,6 @@ internal sealed partial class PostgresGameStore
             ?? throw new InvalidOperationException("Inserted character could not be reloaded.");
     }
 
-    private static GameAccount ReadAccount(NpgsqlDataReader reader)
-    {
-        return new GameAccount
-        {
-            Id = reader.GetInt32(0),
-            Username = reader.GetString(1),
-            Password = string.Empty,
-            CreatedUtc = reader.GetDateTime(3).ToUniversalTime(),
-            VipTier = (VipTier)reader.GetInt16(4),
-            VipExpiresAt = reader.IsDBNull(5)
-                ? null
-                : new DateTimeOffset(reader.GetDateTime(5).ToUniversalTime())
-        };
-    }
-
     private static GameCharacter ReadCharacter(NpgsqlDataReader reader)
     {
         return new GameCharacter

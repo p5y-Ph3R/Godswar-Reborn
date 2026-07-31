@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server.State;
@@ -9,7 +10,7 @@ internal sealed partial class JsonGameStore
         string password,
         CancellationToken cancellationToken = default)
     {
-        username = CleanUsername(username);
+        username = AccountUsername.NormalizeLegacy(username);
         password ??= string.Empty;
 
         await _lock.WaitAsync(cancellationToken);
@@ -200,6 +201,89 @@ internal sealed partial class JsonGameStore
         return Task.CompletedTask;
     }
 
+    async Task<AccountIdentity>
+        ILegacyAccountLoginStore.LoginOrCreateLegacyAccountAsync(
+            string username,
+            string password,
+            CancellationToken cancellationToken)
+    {
+        var account = await LoginOrCreateAccountAsync(
+            username,
+            password,
+            cancellationToken);
+        return ToIdentity(account);
+    }
+
+    async Task<Godswar.Server.Application.Accounts.StoredAccountCredential?>
+        IAccountCredentialStore.FindAccountCredentialAsync(
+            string username,
+            CancellationToken cancellationToken)
+    {
+        var stored = await FindAccountCredentialAsync(
+            username,
+            cancellationToken);
+        return stored is null
+            ? null
+            : new Godswar.Server.Application.Accounts.StoredAccountCredential(
+                ToIdentity(stored.Account),
+                stored.Verifier);
+    }
+
+    async Task<AccountIdentity?>
+        IAccountCredentialStore.TryCreateAccountWithCredentialAsync(
+            string username,
+            string versionedVerifier,
+            CancellationToken cancellationToken)
+    {
+        var account = await TryCreateAccountWithCredentialAsync(
+            username,
+            versionedVerifier,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    Task<bool> IAccountCredentialStore.TryReplaceAccountCredentialAsync(
+        int accountId,
+        string expectedVerifier,
+        string versionedVerifier,
+        CancellationToken cancellationToken) =>
+        TryReplaceAccountCredentialAsync(
+            accountId,
+            expectedVerifier,
+            versionedVerifier,
+            cancellationToken);
+
+    async Task<AccountIdentity?> IAccountDirectory.FindAccountByIdAsync(
+        int accountId,
+        CancellationToken cancellationToken)
+    {
+        var account = await FindAccountByIdAsync(
+            accountId,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    async Task<AccountIdentity?>
+        IAccountDirectory.FindAccountByUsernameAsync(
+            string username,
+            CancellationToken cancellationToken)
+    {
+        var account = await FindAccountByUsernameAsync(
+            username,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    Task IAccountPresenceWriter.MarkAccountOnlineAsync(
+        int accountId,
+        CancellationToken cancellationToken) =>
+        MarkAccountOnlineAsync(accountId, cancellationToken);
+
+    Task IAccountPresenceWriter.MarkAccountOfflineAsync(
+        int accountId,
+        CancellationToken cancellationToken) =>
+        MarkAccountOfflineAsync(accountId, cancellationToken);
+
     private static GameAccount? FindByUsername(
         GameDatabase database,
         string username)
@@ -210,4 +294,7 @@ internal sealed partial class JsonGameStore
                 username,
                 StringComparison.OrdinalIgnoreCase));
     }
+
+    private static AccountIdentity ToIdentity(GameAccount account) =>
+        new(account.Id, account.Username);
 }

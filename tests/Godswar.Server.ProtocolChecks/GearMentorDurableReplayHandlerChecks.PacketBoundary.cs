@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -230,11 +231,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "routed-packet-boundary-check"
-            });
+            new AccountIdentity(
+                snapshot.AccountId,
+                "routed-packet-boundary-check"));
         SetField(handler, "_character", character);
 
         try

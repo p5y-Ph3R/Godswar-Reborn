@@ -1,13 +1,20 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Gateway;
 using Godswar.Server.Game;
 
 namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore :
     IGameStore,
-    ICharacterSnapshotReader
+    ICharacterSnapshotReader,
+    IAccountCredentialStore,
+    IAccountDirectory,
+    IAccountPresenceWriter,
+    ILegacyAccountLoginStore,
+    ISemanticGatewayCharacterRouteReader
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> PathLocks =
         new(StringComparer.OrdinalIgnoreCase);

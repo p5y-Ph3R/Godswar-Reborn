@@ -30,11 +30,9 @@ internal static partial class
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = AccountId,
-                Username = "raw-zodiac-uuid-check"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                AccountId,
+                "raw-zodiac-uuid-check"));
         SetField(handler, "_character", CreateCharacter());
 
         await InvokeAsync(
@@ -114,11 +112,9 @@ internal static partial class
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = AccountId,
-                Username = "raw-tokenless-zodiac-check"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                AccountId,
+                "raw-tokenless-zodiac-check"));
         SetField(handler, "_character", CreateCharacter());
 
         await InvokeAsync(

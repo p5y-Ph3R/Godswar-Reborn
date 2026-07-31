@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Pets;
@@ -6,6 +7,7 @@ using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Reconciliation;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
@@ -44,6 +46,7 @@ internal sealed class PostgresApplicationDataRuntime :
         outboxOptions.Validate();
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
+        Accounts = new PostgresAccountStore(_dataSource);
         CharacterSnapshots =
             new PostgresCharacterSnapshotReader(_dataSource);
         CharacterCheckpoints =
@@ -152,6 +155,8 @@ internal sealed class PostgresApplicationDataRuntime :
         ReconciliationEnabled =
             effectiveReconciliationOptions.Enabled;
     }
+
+    public PostgresAccountStore Accounts { get; }
 
     public ICharacterSnapshotReader CharacterSnapshots { get; }
 

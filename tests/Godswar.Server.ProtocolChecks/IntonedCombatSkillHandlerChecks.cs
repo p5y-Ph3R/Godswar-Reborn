@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Text;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Game;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
@@ -380,11 +381,7 @@ internal static partial class IntonedCombatSkillHandlerChecks
             SetField(
                 handler,
                 "_account",
-                new GameAccount
-                {
-                    Id = AccountId,
-                    Username = "intoned-combat"
-                });
+                new AccountIdentity(AccountId, "intoned-combat"));
             SetField(handler, "_character", character);
             SetField(handler, "_registered", true);
             SetField(

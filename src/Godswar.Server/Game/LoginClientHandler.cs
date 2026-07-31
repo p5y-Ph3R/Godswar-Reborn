@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Operations;
@@ -6,28 +7,27 @@ using Godswar.Server.Operations.Observability;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.Security.Authentication;
-using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
 internal sealed class LoginClientHandler : IClientHandler
 {
     private readonly ClientSession _session;
-    private readonly IGameStore _store;
+    private readonly ILegacyAccountLoginStore _legacyAccounts;
     private readonly ServerOptions _options;
     private readonly AccountAuthenticationService? _authentication;
     private readonly SecureGameTarget? _gameTarget;
     private readonly IGameTicketStore? _ticketStore;
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
-    private GameAccount? _authenticatedAccount;
+    private AccountIdentity? _authenticatedAccount;
     private SecureLoginGeneration? _loginGeneration;
     private bool _grantCommitted;
     private bool _loginAttempted;
 
     public LoginClientHandler(
         ClientSession session,
-        IGameStore store,
+        ILegacyAccountLoginStore legacyAccounts,
         ServerOptions options,
         AccountAuthenticationService? authentication = null,
         IGameTicketStore? ticketStore = null,
@@ -36,7 +36,8 @@ internal sealed class LoginClientHandler : IClientHandler
             legacyAuthenticationAccess = null)
     {
         _session = session;
-        _store = store;
+        _legacyAccounts = legacyAccounts ??
+            throw new ArgumentNullException(nameof(legacyAccounts));
         _options = options;
         if ((authentication is null) != (ticketStore is null) ||
             (ticketStore is null) != (gameTarget is null))
@@ -181,7 +182,7 @@ internal sealed class LoginClientHandler : IClientHandler
                         "allowed");
                 var password = PacketText.ReadFixedAscii(payload, 32, 32);
                 _authenticatedAccount =
-                    await _store.LoginOrCreateAccountAsync(
+                    await _legacyAccounts.LoginOrCreateLegacyAccountAsync(
                         username,
                         password,
                         cancellationToken);

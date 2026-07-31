@@ -1,4 +1,5 @@
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -376,11 +377,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = persisted.AccountId,
-                Username = "gear-enhancement-durable-check"
-            });
+            new AccountIdentity(
+                persisted.AccountId,
+                "gear-enhancement-durable-check"));
         SetField(handler, "_character", hydrated.Character);
         return new EnhancementFixture(
             persisted.AccountId,

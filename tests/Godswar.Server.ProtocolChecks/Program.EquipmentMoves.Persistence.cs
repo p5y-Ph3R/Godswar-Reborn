@@ -31,7 +31,7 @@ internal static partial class Program
                 new GameCharacter { Name = "EquipmentGuardHero", Profession = 0 });
 
             var occupiedExplicitOwner = await store.LoginOrCreateAccountAsync(
-                "equipment-occupied-explicit-owner",
+                "equip-occupied-explicit-owner",
                 "");
             const string replacementShieldEntry = "[2000,,,,,,10,12,1,1,0]";
             var occupiedExplicitCharacter = await store.CreateCharacterAsync(

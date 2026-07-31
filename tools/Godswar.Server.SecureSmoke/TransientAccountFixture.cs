@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Packets;
 using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
@@ -16,7 +17,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
     private readonly string _connectionString;
     private readonly PostgresGameStore _store;
     private readonly byte[] _password;
-    private GameAccount? _account;
+    private AccountIdentity? _account;
     private GameCharacter? _character;
 
     private TransientAccountFixture(

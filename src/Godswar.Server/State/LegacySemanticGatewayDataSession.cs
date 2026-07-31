@@ -1,26 +1,28 @@
 using Godswar.Server.Application.Gateway;
-using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server.State;
 
 /// <summary>
-/// Transitional adapter from the focused gateway application contract to
-/// the existing JSON/PostgreSQL stores. Only this persistence-owned type
-/// knows about the broad legacy store.
+/// JSON-only local-development compatibility session. Despite the retained
+/// filename for migration history, this implementation uses only focused
+/// account and route contracts at the gateway boundary.
 /// </summary>
-internal sealed class LegacySemanticGatewayDataSession :
+internal sealed class JsonSemanticGatewayDataSession :
     ISemanticGatewayDataSession
 {
     private readonly AccountAuthenticationService _authentication;
-    private IGameStore? _store;
+    private readonly ISemanticGatewayCharacterRouteReader _routes;
+    private IAsyncDisposable? _owner;
 
-    private LegacySemanticGatewayDataSession(
-        IGameStore store,
-        AccountAuthenticationService authentication)
+    private JsonSemanticGatewayDataSession(
+        IAsyncDisposable owner,
+        AccountAuthenticationService authentication,
+        ISemanticGatewayCharacterRouteReader routes)
     {
-        _store = store;
+        _owner = owner;
         _authentication = authentication;
+        _routes = routes;
     }
 
     public static async ValueTask<ISemanticGatewayDataSession> OpenAsync(
@@ -28,31 +30,21 @@ internal sealed class LegacySemanticGatewayDataSession :
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var profile = ServerRuntimeProfilePolicy.Validate(options);
-        IGameStore store = profile.StorageProvider switch
-        {
-            GameStorageProviderKind.Postgres =>
-                new PostgresGameStore(
-                    options.Storage.PostgresConnectionString),
-            GameStorageProviderKind.Json =>
-                new JsonGameStore(options.DataPath),
-            _ => throw new InvalidDataException(
-                "The gateway storage provider is unsupported.")
-        };
-
+        var json = new JsonGameStore(options.DataPath);
         try
         {
-            await store.EnsureSeedDataAsync(cancellationToken);
-            var authentication = new AccountAuthenticationService(
-                store,
-                options.Authentication);
-            return new LegacySemanticGatewayDataSession(
-                store,
-                authentication);
+            await json.EnsureSeedDataAsync(cancellationToken);
+            return new JsonSemanticGatewayDataSession(
+                json,
+                new AccountAuthenticationService(
+                    json,
+                    json,
+                    options.Authentication),
+                json);
         }
         catch
         {
-            await store.DisposeAsync();
+            await json.DisposeAsync();
             throw;
         }
     }
@@ -75,29 +67,15 @@ internal sealed class LegacySemanticGatewayDataSession :
             : null;
     }
 
-    public async Task<SemanticGatewayCharacterRoute?>
-        FindCharacterRouteAsync(
-            int accountId,
-            CancellationToken cancellationToken = default)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
-        var store = _store ??
-            throw new ObjectDisposedException(
-                nameof(LegacySemanticGatewayDataSession));
-        var character = await store.GetFirstCharacterAsync(
-            accountId,
-            cancellationToken);
-        return character is null
-            ? null
-            : new SemanticGatewayCharacterRoute(
-                character.Id,
-                MapId.FromLegacy(character.CurrentMap));
-    }
+    public Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
+        int accountId,
+        CancellationToken cancellationToken = default) =>
+        FindCharacterRouteCoreAsync(accountId, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {
-        var store = Interlocked.Exchange(ref _store, null);
-        if (store is null)
+        var owner = Interlocked.Exchange(ref _owner, null);
+        if (owner is null)
         {
             return;
         }
@@ -108,12 +86,23 @@ internal sealed class LegacySemanticGatewayDataSession :
         }
         finally
         {
-            await store.DisposeAsync();
+            await owner.DisposeAsync();
         }
+    }
+
+    private Task<SemanticGatewayCharacterRoute?>
+        FindCharacterRouteCoreAsync(
+            int accountId,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        return _routes.FindCharacterRouteAsync(
+            accountId,
+            cancellationToken);
     }
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(
-            Volatile.Read(ref _store) is null,
+            Volatile.Read(ref _owner) is null,
             this);
 }

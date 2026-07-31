@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -118,11 +119,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = baseSnapshot.AccountId,
-                Username = "durable-holy-stone-check"
-            });
+            new AccountIdentity(
+                baseSnapshot.AccountId,
+                "durable-holy-stone-check"));
         SetField(handler, "_character", live);
 
         if (installNpcRoute)

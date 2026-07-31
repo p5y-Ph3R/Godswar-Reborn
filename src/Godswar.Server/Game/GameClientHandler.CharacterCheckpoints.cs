@@ -223,6 +223,8 @@ internal sealed partial class GameClientHandler
                 return false;
             }
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.SaveCharacterPosition);
             await _store.SaveCharacterPositionAsync(
                 accountId,
                 character.Id,
@@ -282,6 +284,8 @@ internal sealed partial class GameClientHandler
                 return false;
             }
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.SaveCharacterVitals);
             await _store.SaveCharacterVitalsAsync(
                 accountId,
                 character.Id,

@@ -345,6 +345,8 @@ internal sealed partial class GameClientHandler
         GameCharacter created;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.CreateCharacter);
             created = await _store.CreateCharacterAsync(
                 _account.Id,
                 character,
@@ -405,6 +407,8 @@ internal sealed partial class GameClientHandler
 
         CommandMetrics.RecordUnsupportedLegacyIdentity(
             CommandFamily.CharacterDelete);
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.DeleteCharacter);
         var deleted = await _store.DeleteCharacterAsync(
             _account.Id,
             characterName,

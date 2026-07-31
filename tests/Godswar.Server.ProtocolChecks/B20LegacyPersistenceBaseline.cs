@@ -33,11 +33,11 @@ internal sealed record B20LegacyPersistenceBaselineSnapshot(
 internal static class B20LegacyPersistenceBaseline
 {
     public const bool RetirementComplete = false;
-    public const int ExpectedBroadStoreCalls = 59;
+    public const int ExpectedBroadStoreCalls = 43;
     public const int ExpectedJsonSpecificCalls = 1;
-    public const int ExpectedReadCalls = 15;
-    public const int ExpectedMutationOrMixedCalls = 43;
-    public const int ExpectedBootstrapCalls = 2;
+    public const int ExpectedReadCalls = 8;
+    public const int ExpectedMutationOrMixedCalls = 35;
+    public const int ExpectedBootstrapCalls = 1;
     public const int ExpectedJsonStoreImplementationFiles = 10;
     public const int ExpectedPostgresStoreImplementationFiles = 31;
 
@@ -50,18 +50,14 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Game/GameClientHandler.cs", 1),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Game/GameSessionRegistry.cs", 2),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 1),
-        A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Game/LoginClientHandler.cs", 2),
-        A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/Security/Authentication/AccountAuthenticationService.cs", 2),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/IGameStore.cs", 1),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/JsonGameStore.cs", 1),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 2),
-        A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 3),
         A(B20LegacyDependencyKind.BroadStoreType, "src/Godswar.Server/State/PostgresGameStore.cs", 1),
 
         // Broad PostgreSQL store implementation. New persistence belongs in
         // focused Infrastructure adapters, not another partial here.
         A(B20LegacyDependencyKind.PostgresBroadStoreType, "src/Godswar.Server/Program.cs", 1),
-        A(B20LegacyDependencyKind.PostgresBroadStoreType, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 1),
         A(B20LegacyDependencyKind.PostgresBroadStoreType, "src/Godswar.Server/State/PostgresGameStore.Accounts.cs", 1),
         A(B20LegacyDependencyKind.PostgresBroadStoreType, "src/Godswar.Server/State/PostgresGameStore.CharacterCreationEconomyBaseline.cs", 1),
         A(B20LegacyDependencyKind.PostgresBroadStoreType, "src/Godswar.Server/State/PostgresGameStore.CharacterLifecycle.cs", 1),
@@ -112,15 +108,13 @@ internal static class B20LegacyPersistenceBaseline
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/Program.cs", 2),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerRuntimeProfilePolicy.cs", 3),
         A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerWorldContentComposition.cs", 1),
-        A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 1),
+        A(B20LegacyDependencyKind.JsonProviderBranch, "src/Godswar.Server/ServerStartupCommandDispatcher.cs", 1),
         A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/Program.cs", 1),
         A(B20LegacyDependencyKind.JsonSnapshotBranch, "src/Godswar.Server/Application/Characters/MeasuredCharacterSnapshotReader.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/ServerWorldContentComposition.cs", 1),
         A(B20LegacyDependencyKind.JsonWorldContentFallback, "src/Godswar.Server/Infrastructure/WorldContent/GeneratedWorldContentReaderLoader.cs", 1),
         A(B20LegacyDependencyKind.LegacyCheckpointAdapter, "src/Godswar.Server/Program.cs", 1),
         A(B20LegacyDependencyKind.LegacyCheckpointAdapter, "src/Godswar.Server/State/LegacyCharacterCheckpointStore.cs", 1),
-        A(B20LegacyDependencyKind.LegacyGatewayAdapter, "src/Godswar.Server/ServerStartupCommandDispatcher.cs", 1),
-        A(B20LegacyDependencyKind.LegacyGatewayAdapter, "src/Godswar.Server/State/LegacySemanticGatewayDataSession.cs", 4),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/GameDatabase.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.Accounts.cs", 1),
         A(B20LegacyDependencyKind.JsonStateAggregate, "src/Godswar.Server/State/JsonGameStore.CharacterLifecycle.cs", 1),
@@ -133,7 +127,7 @@ internal static class B20LegacyPersistenceBaseline
         // Fresh-install bootstrap and compatibility projections.
         A(B20LegacyDependencyKind.LegacySchemaBootstrap, "src/Godswar.Server/Godswar.Server.csproj", 12),
         A(B20LegacyDependencyKind.LegacySchemaBootstrap, "src/Godswar.Server/State/DatabaseMigrations/LegacySchemaBootstrap.cs", 8),
-        A(B20LegacyDependencyKind.LegacySchemaBootstrap, "src/Godswar.Server/State/PostgresGameStore.cs", 1),
+        A(B20LegacyDependencyKind.LegacySchemaBootstrap, "src/Godswar.Server/State/DatabaseMigrations/PostgresSchemaMigrationRunner.cs", 1),
         A(B20LegacyDependencyKind.LegacyDockerInitMount, "docker-compose.yml", 1),
         A(B20LegacyDependencyKind.LegacyLoadoutProjection, "src/Godswar.Server/Infrastructure/Characters/PostgresCharacterSnapshotReader.Core.cs", 1),
         A(B20LegacyDependencyKind.LegacyLoadoutProjection, "src/Godswar.Server/State/PostgresGameStore.CharacterLookup.cs", 2),

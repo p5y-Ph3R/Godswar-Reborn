@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -50,11 +51,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "durable-replay-check"
-            });
+            new AccountIdentity(
+                snapshot.AccountId,
+                "durable-replay-check"));
         SetField(handler, "_character", liveCharacter);
 
         return new ReplayFixture(

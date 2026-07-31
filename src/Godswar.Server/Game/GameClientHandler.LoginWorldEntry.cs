@@ -35,7 +35,7 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
-            _account = await _store.FindAccountByIdAsync(
+            _account = await _accountDirectory.FindAccountByIdAsync(
                 boundPrincipal.AccountId,
                 cancellationToken);
             if (_account is null ||
@@ -68,7 +68,7 @@ internal sealed partial class GameClientHandler
                 .RecordLegacyAuthenticationAttempt(
                     "game",
                     "allowed");
-            _account = await _store.FindAccountByUsernameAsync(
+            _account = await _accountDirectory.FindAccountByUsernameAsync(
                 username,
                 cancellationToken);
             if (_account is null)
@@ -411,6 +411,8 @@ internal sealed partial class GameClientHandler
         WorldBossRespawnState? activeWorldBossRespawn = null;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.GetActiveWorldBossRespawn);
             activeWorldBossRespawn = await _store.GetActiveWorldBossRespawnAsync(
                 _character.CurrentMap,
                 monsterRuntimeInitializedAt,

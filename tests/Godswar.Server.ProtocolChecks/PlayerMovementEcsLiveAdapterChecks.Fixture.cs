@@ -67,11 +67,9 @@ internal static partial class PlayerMovementEcsLiveAdapterChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = character.AccountId,
-                Username = $"movement-{character.AccountId}"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                character.AccountId,
+                $"movement-{character.AccountId}"));
         SetField(handler, "_character", character);
         SetField(handler, "_registered", true);
         if (configureVisibility)

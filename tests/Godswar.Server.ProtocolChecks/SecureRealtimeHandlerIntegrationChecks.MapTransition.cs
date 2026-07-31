@@ -291,12 +291,9 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = character.AccountId,
-                Username =
-                    $"map-transition-{character.AccountId}"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                character.AccountId,
+                $"map-transition-{character.AccountId}"));
         SetField(handler, "_character", character);
         SetField(handler, "_registered", true);
         SetField(handler, "_worldPresenceAnnounced", true);

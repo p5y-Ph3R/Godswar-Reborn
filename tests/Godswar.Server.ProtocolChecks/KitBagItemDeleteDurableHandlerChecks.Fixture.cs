@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -95,11 +96,7 @@ internal static partial class KitBagItemDeleteDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "durable-delete-check"
-            });
+            new AccountIdentity(snapshot.AccountId, "durable-delete-check"));
         SetField(handler, "_character", character);
         return new DeleteHandlerFixture(
             session,

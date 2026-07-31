@@ -78,6 +78,8 @@ internal sealed partial class GameSessionRegistry
             session,
             now,
             cancellationToken);
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.GetExperienceBoostState);
         return await _store.GetExperienceBoostStateAsync(
             accountId,
             characterId,
@@ -184,6 +186,8 @@ internal sealed partial class GameSessionRegistry
 
             RequireLegacyRegistryMutationAllowed(
                 "consume_character_boost_online_time");
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ConsumeCharacterBoostOnlineTime);
             await _store.ConsumeCharacterBoostOnlineTimeAsync(
                 state.AccountId,
                 state.CharacterId,
@@ -347,6 +351,8 @@ internal sealed partial class GameSessionRegistry
                 accountId,
                 character.Id,
                 ownership);
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradeZodiacLevel);
             var untrackedResult = await _store.UpgradeZodiacLevelAsync(
                 accountId,
                 character.Id,
@@ -382,6 +388,8 @@ internal sealed partial class GameSessionRegistry
                 accountId,
                 character.Id,
                 ownership);
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradeZodiacLevel);
             var result = await _store.UpgradeZodiacLevelAsync(
                 accountId,
                 character.Id,
@@ -489,6 +497,8 @@ internal sealed partial class GameSessionRegistry
             }
 
             var onlineFrom = state.LastAccountedAt;
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ApplyZodiacOnlineTime);
             var result = await _store.ApplyZodiacOnlineTimeAsync(
                 state.AccountId,
                 state.CharacterId,

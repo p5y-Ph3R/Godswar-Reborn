@@ -144,6 +144,8 @@ internal sealed partial class GameClientHandler
         {
             try
             {
+                LegacyPersistenceMetrics.Record(
+                    LegacyPersistenceOperation.GetCharacterStats);
                 var refreshedStats = await _store.GetCharacterStatsAsync(
                     _account.Id,
                     _character.Id,
@@ -300,6 +302,8 @@ internal sealed partial class GameClientHandler
             return null;
         }
 
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.ApplyMonsterKillReward);
         var progression = await _store.ApplyMonsterKillRewardAsync(
             _account.Id,
             _character.Id,
@@ -333,6 +337,8 @@ internal sealed partial class GameClientHandler
         var deathToken = $"monster-death:{deathEventId:N}";
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ActivateWorldBossArea);
             var control = await _store.ActivateWorldBossAreaAsync(
                 _character.CurrentMap,
                 damageResult.Monster.Definition.TemplateKey,
@@ -426,7 +432,12 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
-        var skills = await _store.GetSkillStatesAsync(_account.Id, _character.Id, cancellationToken);
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.GetSkillStates);
+        var skills = await _store.GetSkillStatesAsync(
+            _account.Id,
+            _character.Id,
+            cancellationToken);
         return skills.Any(skill => skill.SkillId == (int)skillId);
     }
 

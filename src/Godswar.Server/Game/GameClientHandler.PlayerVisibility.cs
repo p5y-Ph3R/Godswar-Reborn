@@ -322,9 +322,20 @@ internal sealed partial class GameClientHandler
         string reason,
         CancellationToken cancellationToken)
     {
-        var stats = accountId > 0
-            ? await _store.GetCharacterStatsAsync(accountId, character.Id, cancellationToken)
-            : CharacterStats.FromCharacter(character);
+        CharacterStats? stats;
+        if (accountId > 0)
+        {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.GetCharacterStats);
+            stats = await _store.GetCharacterStatsAsync(
+                accountId,
+                character.Id,
+                cancellationToken);
+        }
+        else
+        {
+            stats = CharacterStats.FromCharacter(character);
+        }
 
         if (stats is null)
         {

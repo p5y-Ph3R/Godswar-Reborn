@@ -18,6 +18,8 @@ internal sealed partial class GameClientHandler
         PetEggHatchResult result;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.HatchPetEgg);
             result = await _store.HatchPetEggAsync(
                 _account.Id,
                 _character.Id,
@@ -61,6 +63,8 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.GetOwnedPets);
             var ownedPets = await _store.GetOwnedPetsAsync(
                 _account.Id,
                 _character.Id,

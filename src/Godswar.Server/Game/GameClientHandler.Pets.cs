@@ -42,6 +42,8 @@ internal sealed partial class GameClientHandler
         {
             try
             {
+                LegacyPersistenceMetrics.Record(
+                    LegacyPersistenceOperation.TransitionPetPresence);
                 transition = await _store.TransitionPetPresenceAsync(
                     _account.Id,
                     _character.Id,
@@ -79,6 +81,8 @@ internal sealed partial class GameClientHandler
         IReadOnlyList<PetBootstrapSnapshot> pets;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.GetOwnedPets);
             pets = await _store.GetOwnedPetsAsync(
                 _account.Id,
                 _character.Id,

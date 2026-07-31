@@ -229,6 +229,8 @@ internal sealed partial class GameClientHandler
 
                 try
                 {
+                    LegacyPersistenceMetrics.Record(
+                        LegacyPersistenceOperation.EnhanceGear);
                     transaction = await _store.EnhanceGearAsync(
                         _account.Id,
                         _character.Id,

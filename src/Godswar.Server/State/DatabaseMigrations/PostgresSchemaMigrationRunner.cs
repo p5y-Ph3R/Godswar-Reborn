@@ -44,6 +44,18 @@ internal sealed class PostgresSchemaMigrationRunner
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
+    /// <summary>
+    /// Applies the repository's authoritative schema plan without coupling a
+    /// caller to the transitional bootstrap loader or migration catalog.
+    /// Content publication and compatibility seeding remain separate.
+    /// </summary>
+    public Task InitializeGodswarSchemaAsync(
+        CancellationToken cancellationToken = default) =>
+        InitializeAsync(
+            LegacySchemaBootstrap.LoadAsync,
+            PostgresSchemaMigrationCatalog.All,
+            cancellationToken);
+
     public async Task InitializeAsync(
         Func<CancellationToken, ValueTask<string>> loadLegacyBootstrapSql,
         IReadOnlyList<PostgresSchemaMigration> migrations,

@@ -85,6 +85,8 @@ internal sealed partial class GameSessionRegistry
         // profiles that do not yet compose the shared checkpoint coordinator.
         // Production startup supplies the coordinator and does not use this
         // path.
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.SaveCharacterVitals);
         return _store.SaveCharacterVitalsAsync(
             snapshot.AccountId,
             snapshot.CharacterId,

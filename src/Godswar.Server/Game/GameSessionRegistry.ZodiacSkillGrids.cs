@@ -22,6 +22,8 @@ internal sealed partial class GameSessionRegistry
 
         if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ActivateZodiacSkillGrid);
             var untrackedResult =
                 await _store.ActivateZodiacSkillGridAsync(
                     accountId,
@@ -50,6 +52,8 @@ internal sealed partial class GameSessionRegistry
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ActivateZodiacSkillGrid);
             var result = await _store.ActivateZodiacSkillGridAsync(
                 accountId,
                 character.Id,
@@ -91,6 +95,8 @@ internal sealed partial class GameSessionRegistry
 
         if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradeZodiacSkillGrid);
             var untrackedResult =
                 await _store.UpgradeZodiacSkillGridAsync(
                     accountId,
@@ -119,6 +125,8 @@ internal sealed partial class GameSessionRegistry
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradeZodiacSkillGrid);
             var result = await _store.UpgradeZodiacSkillGridAsync(
                 accountId,
                 character.Id,
@@ -161,6 +169,8 @@ internal sealed partial class GameSessionRegistry
 
         if (!_zodiacOnlineSessions.TryGetValue(session, out var state))
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.SelectZodiacSkillGrid);
             var result = await _store.SelectZodiacSkillGridAsync(
                 accountId,
                 character.Id,
@@ -184,6 +194,8 @@ internal sealed partial class GameSessionRegistry
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.SelectZodiacSkillGrid);
             var result = await _store.SelectZodiacSkillGridAsync(
                 accountId,
                 character.Id,

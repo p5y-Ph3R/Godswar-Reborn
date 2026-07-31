@@ -79,6 +79,8 @@ internal sealed partial class GameClientHandler
                 return true;
             }
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.AddDeveloperMount);
             var mountResult = await _store.AddDeveloperMountAsync(
                 _account.Id,
                 _character.Id,
@@ -144,6 +146,8 @@ internal sealed partial class GameClientHandler
             var deletionAcknowledgements =
                 PacketBuilder.KitBagDeletionAcknowledgements(_character);
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ClearKitBag);
             var cleared = await _store.ClearKitBagAsync(
                 _account.Id,
                 _character.Id,
@@ -210,6 +214,8 @@ internal sealed partial class GameClientHandler
             return true;
         }
 
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.AddForgingMaterial);
         var result = await _store.AddForgingMaterialAsync(
             _account.Id,
             _character.Id,

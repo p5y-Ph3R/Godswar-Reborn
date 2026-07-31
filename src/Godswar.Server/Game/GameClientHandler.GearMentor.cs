@@ -195,6 +195,8 @@ internal sealed partial class GameClientHandler
                     return;
                 }
 
+                LegacyPersistenceMetrics.Record(
+                    LegacyPersistenceOperation.ProcessGearMentor);
                 transaction = await _store.ProcessGearMentorAsync(
                     _account.Id,
                     _character.Id,

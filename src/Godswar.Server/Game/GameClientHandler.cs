@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Talents;
@@ -27,6 +28,8 @@ internal sealed partial class GameClientHandler : IClientHandler
     private static readonly TimeSpan PositionPersistInterval = TimeSpan.FromSeconds(2);
     private readonly ClientSession _session;
     private readonly IGameStore _store;
+    private readonly IAccountDirectory _accountDirectory;
+    private readonly IAccountPresenceWriter _accountPresence;
     private readonly GameSessionRegistry _registry;
     private readonly ICharacterSnapshotReader _characterSnapshots;
     private readonly IWorldContentReader _worldContent;
@@ -34,7 +37,7 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
-    private GameAccount? _account;
+    private AccountIdentity? _account;
     private GameCharacter? _character;
     private HydratedCharacterLoadSnapshot? _characterLoadSnapshot;
     private bool _characterSnapshotLoaded;
@@ -181,7 +184,9 @@ internal sealed partial class GameClientHandler : IClientHandler
                 var removedCurrentSession = _registry.RemoveAccountSession(_account.Id, _session);
                 if (removedCurrentSession)
                 {
-                    await _store.MarkAccountOfflineAsync(_account.Id, CancellationToken.None);
+                    await _accountPresence.MarkAccountOfflineAsync(
+                        _account.Id,
+                        CancellationToken.None);
                     Console.WriteLine($"[game] marked offline account={_account.Username}");
                 }
             }

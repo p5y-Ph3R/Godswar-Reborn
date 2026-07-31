@@ -117,6 +117,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.MoveKitBagToEquipment);
         var updatedCharacter = await _store.MoveKitBagToEquipmentAsync(
             _account.Id,
             _character.Id,
@@ -220,6 +222,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.MoveKitBagItem);
         var updatedCharacter = await _store.MoveKitBagItemAsync(
             _account.Id,
             _character.Id,
@@ -276,6 +280,8 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.DeleteKitBagItem);
         var updatedCharacter = await _store.DeleteKitBagItemAsync(
             _account.Id,
             _character.Id,

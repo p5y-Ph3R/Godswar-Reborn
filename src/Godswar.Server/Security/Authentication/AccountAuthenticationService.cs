@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
-using Godswar.Server.State;
+using Godswar.Server.Application.Accounts;
 
 namespace Godswar.Server.Security.Authentication;
 
 internal sealed class AccountAuthenticationService : IAsyncDisposable
 {
-    private readonly IGameStore _store;
+    private readonly IAccountCredentialStore _credentials;
+    private readonly IAccountPresenceWriter _presence;
     private readonly AuthenticationPolicy _policy;
     private readonly TimeProvider _timeProvider;
     private readonly IPasswordKdfScheduler _scheduler;
@@ -14,12 +15,30 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
     private readonly PasswordHasher _hasher;
 
     public AccountAuthenticationService(
-        IGameStore store,
+        IAccountCredentialStore credentials,
+        AuthenticationOptions options,
+        TimeProvider? timeProvider = null,
+        IPasswordKdfScheduler? scheduler = null)
+        : this(
+            credentials,
+            RequirePresenceWriter(credentials),
+            options,
+            timeProvider,
+            scheduler)
+    {
+    }
+
+    public AccountAuthenticationService(
+        IAccountCredentialStore credentials,
+        IAccountPresenceWriter presence,
         AuthenticationOptions options,
         TimeProvider? timeProvider = null,
         IPasswordKdfScheduler? scheduler = null)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _credentials = credentials ??
+            throw new ArgumentNullException(nameof(credentials));
+        _presence = presence ??
+            throw new ArgumentNullException(nameof(presence));
         _policy = (options ??
             throw new ArgumentNullException(nameof(options))).Snapshot();
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -54,7 +73,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
                 operationDeadline.Token);
         try
         {
-            var stored = await _store.FindAccountCredentialAsync(
+            var stored = await _credentials.FindAccountCredentialAsync(
                 username,
                 operationLifetime.Token);
             var result = stored is null
@@ -122,13 +141,13 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
         var verifier = await _hasher.CreateVerifierAsync(
             password,
             cancellationToken);
-        var account = await _store.TryCreateAccountWithCredentialAsync(
+        var account = await _credentials.TryCreateAccountWithCredentialAsync(
             username,
             verifier,
             cancellationToken);
         if (account is null)
         {
-            var concurrent = await _store.FindAccountCredentialAsync(
+            var concurrent = await _credentials.FindAccountCredentialAsync(
                 username,
                 cancellationToken);
             return concurrent is null
@@ -140,7 +159,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
                     cancellationToken);
         }
 
-        await _store.MarkAccountOnlineAsync(
+        await _presence.MarkAccountOnlineAsync(
             account.Id,
             cancellationToken);
         return new AccountAuthenticationResult(
@@ -187,14 +206,14 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
             password,
             cancellationToken);
         var migrated =
-            await _store.TryReplaceAccountCredentialAsync(
+            await _credentials.TryReplaceAccountCredentialAsync(
                 stored.Account.Id,
                 stored.Verifier,
                 replacement,
                 cancellationToken);
         if (!migrated)
         {
-            var concurrent = await _store.FindAccountCredentialAsync(
+            var concurrent = await _credentials.FindAccountCredentialAsync(
                 stored.Account.Username,
                 cancellationToken);
             return concurrent is null
@@ -206,7 +225,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
                     cancellationToken);
         }
 
-        await _store.MarkAccountOnlineAsync(
+        await _presence.MarkAccountOnlineAsync(
             stored.Account.Id,
             cancellationToken);
         return new AccountAuthenticationResult(
@@ -246,7 +265,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
             var replacement = await _hasher.CreateVerifierAsync(
                 password,
                 cancellationToken);
-            migrated = await _store.TryReplaceAccountCredentialAsync(
+            migrated = await _credentials.TryReplaceAccountCredentialAsync(
                 stored.Account.Id,
                 stored.Verifier,
                 replacement,
@@ -254,7 +273,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
             if (!migrated)
             {
                 var concurrent =
-                    await _store.FindAccountCredentialAsync(
+                    await _credentials.FindAccountCredentialAsync(
                         stored.Account.Username,
                         cancellationToken);
                 return concurrent is null
@@ -268,7 +287,7 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
             }
         }
 
-        await _store.MarkAccountOnlineAsync(
+        await _presence.MarkAccountOnlineAsync(
             stored.Account.Id,
             cancellationToken);
         return new AccountAuthenticationResult(
@@ -287,6 +306,14 @@ internal sealed class AccountAuthenticationService : IAsyncDisposable
             _timeProvider.GetElapsedTime(started));
         return result;
     }
+
+    private static IAccountPresenceWriter RequirePresenceWriter(
+        IAccountCredentialStore credentials) =>
+        credentials as IAccountPresenceWriter ??
+        throw new ArgumentException(
+            "The credential store must also provide account-presence " +
+            "writes when no explicit presence writer is supplied.",
+            nameof(credentials));
 
     private static AuthenticationMetricOutcome ToMetricOutcome(
         AccountAuthenticationStatus status) =>

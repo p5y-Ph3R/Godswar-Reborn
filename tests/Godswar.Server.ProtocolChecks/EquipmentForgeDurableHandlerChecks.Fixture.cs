@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -111,11 +112,9 @@ internal static partial class EquipmentForgeDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = baseSnapshot.AccountId,
-                Username = "durable-forge-check"
-            });
+            new AccountIdentity(
+                baseSnapshot.AccountId,
+                "durable-forge-check"));
         SetField(handler, "_character", character);
         if (stageSelections)
         {

@@ -1,4 +1,5 @@
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -36,11 +37,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "decompose-provider-unavailable-check"
-            });
+            new AccountIdentity(
+                snapshot.AccountId,
+                "decompose-provider-check"));
         SetField(handler, "_character", hydrated.Character);
 
         var invocation = HandleDurableDecomposeMethod.Invoke(
@@ -173,11 +172,9 @@ internal static partial class GearMentorDurableReplayHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "durable-decompose-replay-check"
-            });
+            new AccountIdentity(
+                snapshot.AccountId,
+                "durable-decompose-replay-check"));
         SetField(handler, "_character", liveCharacter);
 
         return new DecomposeReplayFixture(

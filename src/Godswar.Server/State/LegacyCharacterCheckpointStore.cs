@@ -39,6 +39,8 @@ internal sealed class LegacyCharacterCheckpointStore(
                     state.Vitals.Revision);
             }
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.GetFirstCharacter);
             var character = await _gameStore.GetFirstCharacterAsync(
                 accountId,
                 cancellationToken);
@@ -103,6 +105,9 @@ internal sealed class LegacyCharacterCheckpointStore(
 
             if (_gameStore is JsonGameStore jsonStore)
             {
+                LegacyPersistenceMetrics.Record(
+                    LegacyPersistenceOperation.
+                        SaveCharacterPositionCheckpoint);
                 await jsonStore.SaveCharacterPositionCheckpointAsync(
                     checkpoint.AccountId,
                     checkpoint.CharacterId,
@@ -114,6 +119,8 @@ internal sealed class LegacyCharacterCheckpointStore(
             }
             else
             {
+                LegacyPersistenceMetrics.Record(
+                    LegacyPersistenceOperation.SaveCharacterPosition);
                 await _gameStore.SaveCharacterPositionAsync(
                     checkpoint.AccountId,
                     checkpoint.CharacterId,
@@ -162,6 +169,8 @@ internal sealed class LegacyCharacterCheckpointStore(
                 return terminal;
             }
 
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.SaveCharacterVitals);
             await _gameStore.SaveCharacterVitalsAsync(
                 checkpoint.AccountId,
                 checkpoint.CharacterId,

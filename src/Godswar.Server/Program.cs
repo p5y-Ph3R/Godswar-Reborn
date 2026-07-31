@@ -34,6 +34,7 @@ if (!ServerRuntimeBootstrap.TryLoadOptions(
 using var observability = ServerObservabilityRuntime.Start(
     options.Operations.Management.MaximumResponseBytes,
     installConsoleBoundary: controlledHostEvidence is null);
+LegacyPersistenceMetrics.EnsureInitialized();
 observability.RecordLifecycle("server", "starting");
 
 try
@@ -54,6 +55,8 @@ try
         _ => throw new InvalidOperationException(
             "Validated storage provider is not exhaustive.")
     };
+    LegacyPersistenceMetrics.Record(
+        LegacyPersistenceOperation.EnsureSeedData);
     await store.EnsureSeedDataAsync();
     await using PostgresApplicationDataRuntime?
         postgresApplicationDataRuntime =
@@ -64,6 +67,9 @@ try
                     options.Game.ZodiacEnergy.Snapshot(),
                     options.Storage.Reconciliation)
                 : null;
+    var accountPersistence = ServerAccountPersistenceComposition.Create(
+        postgresApplicationDataRuntime,
+        jsonGameStore);
     ICharacterSnapshotReader characterSnapshotReader =
         runtimeProfile.StorageProvider switch
         {
@@ -126,6 +132,8 @@ try
             options.Game.WorldInstances);
     var gameHandlerFactory = new GameClientHandlerFactory(
         store,
+        accountPersistence.Directory,
+        accountPersistence.Presence,
         registry,
         measuredCharacterSnapshots,
         worldContent,
@@ -153,7 +161,7 @@ try
             admission,
             session => new LoginClientHandler(
                 session,
-                store,
+                accountPersistence.LegacyLogin,
                 options,
                 legacyAuthenticationAccess:
                     legacyAuthenticationAccess),
@@ -270,7 +278,8 @@ try
     await using AccountAuthenticationService? secureAuthentication =
         options.Secure.Enabled
             ? new AccountAuthenticationService(
-                store,
+                accountPersistence.Credentials,
+                accountPersistence.Presence,
                 options.Authentication)
             : null;
     using TlsHandshakeGate? secureHandshakeGate =
@@ -298,7 +307,7 @@ try
             admission,
             session => new LoginClientHandler(
                 session,
-                store,
+                accountPersistence.LegacyLogin,
                 options,
                 secureAuthentication,
                 secureGameTickets,

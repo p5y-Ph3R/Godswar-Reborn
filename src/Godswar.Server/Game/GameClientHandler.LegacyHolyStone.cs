@@ -67,6 +67,8 @@ internal sealed partial class GameClientHandler
         }
 
         var kitBagBeforeMutation = _character!.KitBag;
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.ApplyWeaponHolyStone);
         var updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
             _account!.Id,
             _character!.Id,

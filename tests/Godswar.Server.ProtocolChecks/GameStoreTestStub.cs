@@ -1,9 +1,15 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal abstract class GameStoreTestStub : IGameStore
+internal abstract class GameStoreTestStub :
+    IGameStore,
+    IAccountCredentialStore,
+    IAccountDirectory,
+    IAccountPresenceWriter,
+    ILegacyAccountLoginStore
 {
     public virtual Task EnsureSeedDataAsync(
         CancellationToken cancellationToken = default) =>
@@ -15,7 +21,8 @@ internal abstract class GameStoreTestStub : IGameStore
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
-    public virtual Task<StoredAccountCredential?> FindAccountCredentialAsync(
+    public virtual Task<Godswar.Server.State.StoredAccountCredential?>
+        FindAccountCredentialAsync(
         string username,
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
@@ -340,6 +347,71 @@ internal abstract class GameStoreTestStub : IGameStore
 
     public virtual ValueTask DisposeAsync() =>
         ValueTask.CompletedTask;
+
+    async Task<AccountIdentity>
+        ILegacyAccountLoginStore.LoginOrCreateLegacyAccountAsync(
+            string username,
+            string password,
+            CancellationToken cancellationToken)
+    {
+        var account = await LoginOrCreateAccountAsync(
+            username,
+            password,
+            cancellationToken);
+        return ToIdentity(account);
+    }
+
+    async Task<AccountIdentity?> IAccountDirectory.FindAccountByIdAsync(
+        int accountId,
+        CancellationToken cancellationToken)
+    {
+        var account = await FindAccountByIdAsync(
+            accountId,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    async Task<AccountIdentity?>
+        IAccountDirectory.FindAccountByUsernameAsync(
+            string username,
+            CancellationToken cancellationToken)
+    {
+        var account = await FindAccountByUsernameAsync(
+            username,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    async Task<Godswar.Server.Application.Accounts.StoredAccountCredential?>
+        IAccountCredentialStore.FindAccountCredentialAsync(
+            string username,
+            CancellationToken cancellationToken)
+    {
+        var stored = await FindAccountCredentialAsync(
+            username,
+            cancellationToken);
+        return stored is null
+            ? null
+            : new Godswar.Server.Application.Accounts.StoredAccountCredential(
+                ToIdentity(stored.Account),
+                stored.Verifier);
+    }
+
+    async Task<AccountIdentity?>
+        IAccountCredentialStore.TryCreateAccountWithCredentialAsync(
+            string username,
+            string versionedVerifier,
+            CancellationToken cancellationToken)
+    {
+        var account = await TryCreateAccountWithCredentialAsync(
+            username,
+            versionedVerifier,
+            cancellationToken);
+        return account is null ? null : ToIdentity(account);
+    }
+
+    private static AccountIdentity ToIdentity(GameAccount account) =>
+        new(account.Id, account.Username);
 
     private static NotSupportedException Unsupported() =>
         new("This test store method is not used.");

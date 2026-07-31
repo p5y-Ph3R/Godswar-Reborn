@@ -69,11 +69,9 @@ internal static partial class
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = AccountId,
-                Username = "zodiac-upgrade-handler-check"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                AccountId,
+                "zodiac-upgrade-handler-check"));
         SetField(handler, "_character", character);
         return new HandlerFixture(
             session,

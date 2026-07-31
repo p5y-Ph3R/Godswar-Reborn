@@ -213,6 +213,8 @@ internal sealed partial class GameClientHandler
         TalentUpgradeResult? result;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.UpgradeTalent);
             result = await _store.UpgradeTalentAsync(
                 envelope.Subject.AccountId,
                 envelope.Subject.CharacterId,
@@ -396,6 +398,8 @@ internal sealed partial class GameClientHandler
         }
 
         var previousKitBag = _character.KitBag;
+        LegacyPersistenceMetrics.Record(
+            LegacyPersistenceOperation.MoveEquipmentToKitBag);
         var updatedCharacter = await _store.MoveEquipmentToKitBagAsync(
             _account.Id,
             _character.Id,

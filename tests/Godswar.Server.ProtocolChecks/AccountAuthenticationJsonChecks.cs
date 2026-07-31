@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
 
@@ -14,6 +15,7 @@ internal static class AccountAuthenticationJsonChecks
         Directory.CreateDirectory(dataPath);
         try
         {
+            await CheckLegacyUsernameBoundaryAsync(dataPath);
             await CheckAdditivePersistenceAsync(dataPath);
             await CheckAuthenticationFlowsAsync(dataPath);
             await CheckConcurrentMigrationAsync(dataPath);
@@ -23,6 +25,55 @@ internal static class AccountAuthenticationJsonChecks
         {
             Directory.Delete(dataPath, recursive: true);
         }
+    }
+
+    private static async Task CheckLegacyUsernameBoundaryAsync(
+        string dataPath)
+    {
+        await using var store = new JsonGameStore(dataPath);
+        await store.EnsureSeedDataAsync();
+        var legacy = (ILegacyAccountLoginStore)store;
+        var statePath = Path.Combine(dataPath, "state.json");
+        var baseline = await File.ReadAllBytesAsync(statePath);
+        var invalidUsernames = new[]
+        {
+            $" \t{new string('X', AccountIdentity.MaximumUsernameLength + 1)}\r\n",
+            " invalid\u007Fname "
+        };
+
+        foreach (var invalidUsername in invalidUsernames)
+        {
+            var rejected = false;
+            try
+            {
+                _ = await legacy.LoginOrCreateLegacyAccountAsync(
+                    invalidUsername,
+                    "must-not-persist");
+            }
+            catch (ArgumentException)
+            {
+                rejected = true;
+            }
+
+            Check.True(
+                rejected,
+                "invalid post-trim legacy username is rejected");
+            var after = await File.ReadAllBytesAsync(statePath);
+            Check.True(
+                baseline.AsSpan().SequenceEqual(after),
+                "invalid legacy username does not mutate JSON account state");
+            Check.True(
+                !File.Exists(statePath + ".tmp"),
+                "invalid legacy username creates no JSON temporary write");
+        }
+
+        var fallback = await legacy.LoginOrCreateLegacyAccountAsync(
+            "\0 \t\r\n",
+            "legacy-fallback");
+        Check.Equal(
+            "player",
+            fallback.Username,
+            "blank legacy username retains the player fallback");
     }
 
     private static async Task CheckAdditivePersistenceAsync(
@@ -128,9 +179,10 @@ internal static class AccountAuthenticationJsonChecks
             Check.True(
                 accepted.CredentialMigrated,
                 "accepted plaintext is migrated exactly once");
-            Check.True(
-                string.IsNullOrEmpty(accepted.Account!.Password),
-                "successful auth result exposes no verifier");
+            Check.Equal(
+                legacy.Id,
+                accepted.Account!.Id,
+                "successful auth result exposes only the account identity");
             var migrated = (await store.FindAccountCredentialAsync(
                 legacy.Username))!.Verifier;
             Check.True(

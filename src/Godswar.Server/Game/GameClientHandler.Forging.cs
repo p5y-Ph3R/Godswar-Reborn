@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -203,6 +204,8 @@ internal sealed partial class GameClientHandler
         ForgeTransactionResult result;
         try
         {
+            LegacyPersistenceMetrics.Record(
+                LegacyPersistenceOperation.ForgeEquipment);
             result = await _store.ForgeEquipmentAsync(
                 _account.Id,
                 _character.Id,
@@ -335,7 +338,7 @@ internal sealed partial class GameClientHandler
     internal static bool ForgeSelectionMatchesIdentity(
         int? stagedAccountId,
         int? stagedCharacterId,
-        GameAccount? account,
+        AccountIdentity? account,
         GameCharacter? character)
     {
         return account is not null &&

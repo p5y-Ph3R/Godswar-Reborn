@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
@@ -50,11 +51,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = baseSnapshot.AccountId,
-                Username = "raw-holy-stone-check"
-            });
+            new AccountIdentity(
+                baseSnapshot.AccountId,
+                "raw-holy-stone-check"));
         SetField(handler, "_character", live);
 
         var catalog =

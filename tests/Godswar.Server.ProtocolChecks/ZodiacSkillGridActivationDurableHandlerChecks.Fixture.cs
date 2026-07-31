@@ -46,11 +46,9 @@ internal static partial class
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = AccountId,
-                Username = "zodiac-handler-check"
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                AccountId,
+                "zodiac-handler-check"));
         SetField(handler, "_character", character);
         return new HandlerFixture(
             session,

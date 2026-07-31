@@ -166,11 +166,9 @@ internal static class PlayerOwnershipSessionRaceChecks
             WorldContentReaderTestFixtures.Empty);
         RequiredField("_account").SetValue(
             handler,
-            new GameAccount
-            {
-                Id = accountId,
-                Username = character.Name
-            });
+            new Godswar.Server.Application.Accounts.AccountIdentity(
+                accountId,
+                character.Name));
         RequiredField("_character").SetValue(handler, character);
         return handler;
     }

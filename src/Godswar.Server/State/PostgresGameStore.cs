@@ -1,13 +1,19 @@
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Game;
 using Npgsql;
 using NpgsqlTypes;
 
 namespace Godswar.Server.State;
 
-internal sealed partial class PostgresGameStore : IGameStore
+internal sealed partial class PostgresGameStore :
+    IGameStore,
+    IAccountCredentialStore,
+    IAccountDirectory,
+    IAccountPresenceWriter,
+    ILegacyAccountLoginStore
 {
-    private const string AccountColumns = "id, username, password, last_login_time, vip_tier, vip_expires_at";
     private const short ItemLocationEquipment = 0;
     private const short ItemLocationKitBag = 1;
     private const int EquipmentProjectionSlots = 24;
@@ -50,6 +56,7 @@ internal sealed partial class PostgresGameStore : IGameStore
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresAccountStore _accountStore;
     private readonly PostgresPlayerOwnershipGuard _playerOwnershipGuard;
     private readonly PostgresSchemaMigrationRunner _schemaMigrationRunner;
     public PostgresGameStore(string connectionString)
@@ -60,6 +67,7 @@ internal sealed partial class PostgresGameStore : IGameStore
         }
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
+        _accountStore = new PostgresAccountStore(_dataSource);
         _playerOwnershipGuard =
             new PostgresPlayerOwnershipGuard(_dataSource);
         _schemaMigrationRunner = new PostgresSchemaMigrationRunner(_dataSource);
@@ -73,10 +81,8 @@ internal sealed partial class PostgresGameStore : IGameStore
         {
             try
             {
-                await _schemaMigrationRunner.InitializeAsync(
-                    LegacySchemaBootstrap.LoadAsync,
-                    PostgresSchemaMigrationCatalog.All,
-                    cancellationToken);
+                await _schemaMigrationRunner
+                    .InitializeGodswarSchemaAsync(cancellationToken);
                 await ValidatePetGrowthPolicyAsync(cancellationToken);
                 await ValidatePetGrowthStateAsync(cancellationToken);
                 await ValidatePetInitialSavvyPolicyAsync(cancellationToken);
@@ -103,18 +109,12 @@ internal sealed partial class PostgresGameStore : IGameStore
         }
     }
 
-    public async Task MarkAccountOfflineAsync(int accountId, CancellationToken cancellationToken = default)
-    {
-        await using var command = _dataSource.CreateCommand("""
-            UPDATE accounts
-            SET login_status = 0,
-                last_logout_time = now(),
-                total_online_time = total_online_time + GREATEST(0, EXTRACT(EPOCH FROM (now() - last_login_time))::bigint)
-            WHERE id = @accountId;
-            """);
-        command.Parameters.AddWithValue("accountId", accountId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
+    public Task MarkAccountOfflineAsync(
+        int accountId,
+        CancellationToken cancellationToken = default) =>
+        _accountStore.MarkAccountOfflineAsync(
+            accountId,
+            cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

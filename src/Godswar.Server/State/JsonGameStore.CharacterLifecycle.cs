@@ -1,3 +1,6 @@
+using Godswar.Server.Application.Gateway;
+using Godswar.Server.Domain.World.Instances;
+
 namespace Godswar.Server.State;
 
 internal sealed partial class JsonGameStore
@@ -30,6 +33,41 @@ internal sealed partial class JsonGameStore
         CancellationToken cancellationToken = default) =>
         (await GetCharactersAsync(accountId, cancellationToken))
             .FirstOrDefault();
+
+    public async Task<SemanticGatewayCharacterRoute?>
+        FindCharacterRouteAsync(
+            int accountId,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            var routes = (await LoadUnsafeAsync(cancellationToken))
+                .Characters
+                .Where(character =>
+                    character.AccountId == accountId &&
+                    character.LifecycleState ==
+                        CharacterLifecycleState.Active)
+                .OrderBy(character => character.Id)
+                .Take(2)
+                .Select(character => new SemanticGatewayCharacterRoute(
+                    character.Id,
+                    MapId.FromLegacy(character.CurrentMap)))
+                .ToArray();
+            return routes.Length switch
+            {
+                0 => null,
+                1 => routes[0],
+                _ => throw new InvalidDataException(
+                    "The account has more than one active character route.")
+            };
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
     public async Task<CharacterStats?> GetCharacterStatsAsync(
         int accountId,

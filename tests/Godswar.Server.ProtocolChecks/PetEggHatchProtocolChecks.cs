@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -174,11 +175,7 @@ internal static class PetEggHatchProtocolChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = AccountId,
-                Username = "test2"
-            });
+            new AccountIdentity(AccountId, "test2"));
         SetField(handler, "_character", character);
 
         var task = HandlePacketMethod.Invoke(

@@ -1,4 +1,4 @@
-using Godswar.Server.State;
+using Godswar.Server.Application.Accounts;
 
 namespace Godswar.Server.Security.Authentication;
 
@@ -14,7 +14,7 @@ internal enum AccountAuthenticationStatus
 
 internal sealed record AccountAuthenticationResult(
     AccountAuthenticationStatus Status,
-    GameAccount? Account = null,
+    AccountIdentity? Account = null,
     bool CredentialMigrated = false,
     bool AccountCreated = false)
 {

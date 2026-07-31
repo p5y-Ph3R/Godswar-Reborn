@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -140,11 +141,9 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = baseSnapshot.AccountId,
-                Username = "durable-equipment-transfer-check"
-            });
+            new AccountIdentity(
+                baseSnapshot.AccountId,
+                "durable-equipment-transfer-check"));
         SetField(handler, "_character", live);
         return new TransferFixture(
             session,

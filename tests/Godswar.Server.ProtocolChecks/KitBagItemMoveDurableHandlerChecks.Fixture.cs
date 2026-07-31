@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
@@ -110,11 +111,7 @@ internal static partial class KitBagItemMoveDurableHandlerChecks
         SetField(
             handler,
             "_account",
-            new GameAccount
-            {
-                Id = snapshot.AccountId,
-                Username = "durable-move-check"
-            });
+            new AccountIdentity(snapshot.AccountId, "durable-move-check"));
         SetField(handler, "_character", character);
         return new MoveHandlerFixture(
             session,
