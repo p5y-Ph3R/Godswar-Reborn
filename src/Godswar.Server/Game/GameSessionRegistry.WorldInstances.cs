@@ -2,6 +2,7 @@ using Godswar.Server.Application.WorldInstances;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
+using Godswar.Server.Networking.Backhaul;
 using WorldMapId = Godswar.Server.Domain.World.Instances.MapId;
 
 namespace Godswar.Server.Game;
@@ -43,6 +44,19 @@ internal sealed partial class GameSessionRegistry
 
         descriptor = default!;
         return false;
+    }
+
+    internal bool AcceptsGatewayAdmission(
+        GatewayWorldAdmission admission)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        return admission.TargetNodeId ==
+                _worldInstanceOptions.ProcessServerNodeId &&
+            _worldInstanceOptions.TryFindStaticOpenWorld(
+                admission.RealmId,
+                admission.MapId,
+                out var expectedInstanceId) &&
+            expectedInstanceId == admission.WorldInstanceId;
     }
 
     internal bool IsSessionInWorldInstance(
@@ -133,13 +147,36 @@ internal sealed partial class GameSessionRegistry
     private WorldInstanceRuntime GetOrCreateDefaultWorldInstance(
         byte legacyMapId)
     {
-        var result = WorldInstances
-            .GetOrCreateTempestOpenWorldAsync(
-                legacyMapId,
-                _worldInstanceOptions
-                    .DefaultOpenWorldPlayerCapacity,
-                DateTimeOffset.UtcNow,
-                CancellationToken.None)
+        var mapId = WorldMapId.FromLegacy(legacyMapId);
+        var hasAssignedInstance =
+            _worldInstanceOptions.TryFindStaticOpenWorld(
+                RealmId.Tempest,
+                mapId,
+                out var instanceId);
+        if (!hasAssignedInstance &&
+            _worldInstanceOptions.RequireStaticOpenWorldOwnership)
+        {
+            throw new InvalidOperationException(
+                $"Worker does not own a configured open-world route for " +
+                $"Tempest map {legacyMapId}.");
+        }
+
+        var result = (
+            hasAssignedInstance
+                ? WorldInstances.GetOrCreateAssignedOpenWorldAsync(
+                    RealmId.Tempest,
+                    mapId,
+                    instanceId,
+                    _worldInstanceOptions
+                        .DefaultOpenWorldPlayerCapacity,
+                    DateTimeOffset.UtcNow,
+                    CancellationToken.None)
+                : WorldInstances.GetOrCreateTempestOpenWorldAsync(
+                    legacyMapId,
+                    _worldInstanceOptions
+                        .DefaultOpenWorldPlayerCapacity,
+                    DateTimeOffset.UtcNow,
+                    CancellationToken.None))
             .AsTask()
             .GetAwaiter()
             .GetResult();
@@ -151,6 +188,42 @@ internal sealed partial class GameSessionRegistry
         }
 
         return result.Runtime;
+    }
+
+    private WorldInstanceRuntime GetOrCreateGatewayWorldInstance(
+        GatewayWorldAdmission admission)
+    {
+        if (!AcceptsGatewayAdmission(admission))
+        {
+            throw new InvalidOperationException(
+                "Worker does not own the admitted exact world route.");
+        }
+
+        var result = WorldInstances
+            .GetOrCreateAssignedOpenWorldAsync(
+                admission.RealmId,
+                admission.MapId,
+                admission.WorldInstanceId,
+                _worldInstanceOptions
+                    .DefaultOpenWorldPlayerCapacity,
+                DateTimeOffset.UtcNow,
+                CancellationToken.None)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
+        var runtime = result.Runtime;
+        if (!result.Succeeded ||
+            runtime is null ||
+            runtime.RealmId != admission.RealmId ||
+            runtime.ContentMapId != admission.MapId ||
+            runtime.InstanceId != admission.WorldInstanceId)
+        {
+            throw new InvalidOperationException(
+                "Cannot resolve the admitted exact world route: " +
+                $"{result.Status}/{result.PlacementStatus}.");
+        }
+
+        return runtime;
     }
 
     private bool TryGetDefaultWorldInstance(
@@ -305,7 +378,20 @@ internal sealed partial class GameSessionRegistry
             ShutdownDrainTimeoutMilliseconds =
                 options.ShutdownDrainTimeoutMilliseconds,
             MaximumFanoutConcurrency =
-                options.MaximumFanoutConcurrency
+                options.MaximumFanoutConcurrency,
+            StaticOpenWorldInstances =
+                options.StaticOpenWorldInstances
+                    .Select(static route =>
+                        new StaticOpenWorldInstanceOptions
+                        {
+                            RealmId = route.RealmId,
+                            MapId = route.MapId,
+                            WorldInstanceId =
+                                route.WorldInstanceId
+                        })
+                    .ToArray(),
+            RequireStaticOpenWorldOwnership =
+                options.RequireStaticOpenWorldOwnership
         };
     }
 }

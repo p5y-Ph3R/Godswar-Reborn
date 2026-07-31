@@ -68,6 +68,21 @@ internal static class DataArchitectureCheckCatalog
             RelayGatewayChecks.CheckName,
             RelayGatewayChecks.RunAsync),
         (
+            SemanticGatewayChecks.CheckName,
+            SemanticGatewayChecks.RunAsync),
+        (
+            SemanticGatewayChecks.LoginLifecycleCheckName,
+            SemanticGatewayChecks.RunLoginLifecycleAsync),
+        (
+            BackhaulProtocolChecks.CheckName,
+            BackhaulProtocolChecks.RunAsync),
+        (
+            BackhaulProtocolChecks.HostIntegrationCheckName,
+            BackhaulProtocolChecks.RunHostIntegrationAsync),
+        (
+            BackhaulProtocolChecks.RuntimeOptionsCheckName,
+            BackhaulProtocolChecks.RunRuntimeOptionsAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
         (

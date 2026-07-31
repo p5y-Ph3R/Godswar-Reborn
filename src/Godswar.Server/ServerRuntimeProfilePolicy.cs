@@ -97,10 +97,12 @@ internal static class ServerRuntimeProfilePolicy
         }
 
         var secure = options.Secure;
+        var backhaulWorker = options.Backhaul?.Enabled == true;
         var transport = secure?.Enabled == true
             ? ServerListenerTransport.SecureTls
             : ServerListenerTransport.RawTcp;
         if (transport == ServerListenerTransport.RawTcp &&
+            !backhaulWorker &&
             runtimeProfile !=
                 ServerRuntimeProfileKind.LocalDevelopment)
         {
@@ -113,6 +115,7 @@ internal static class ServerRuntimeProfilePolicy
             options.Authentication?.
                 AllowLegacyRawAuthentication == true;
         if (transport == ServerListenerTransport.RawTcp &&
+            !backhaulWorker &&
             !allowsLegacyAuthentication)
         {
             throw Reject(
@@ -122,7 +125,8 @@ internal static class ServerRuntimeProfilePolicy
         }
 
         if (allowsLegacyAuthentication &&
-            (runtimeProfile !=
+            (backhaulWorker ||
+             runtimeProfile !=
                 ServerRuntimeProfileKind.LocalDevelopment ||
              transport != ServerListenerTransport.RawTcp))
         {

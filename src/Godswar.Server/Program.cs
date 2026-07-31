@@ -7,6 +7,7 @@ using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.RelayGateway;
+using Godswar.Server.Networking.SemanticGateway;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Operations;
@@ -28,6 +29,13 @@ if (await ControlledHostValidationCommand.TryRunAsync(args))
 }
 
 if (await RelayGatewayCommand.TryRunAsync(args))
+{
+    return;
+}
+
+if (await SemanticGatewayCommand.TryRunAsync(
+        args,
+        LegacySemanticGatewayDataSession.OpenAsync))
 {
     return;
 }
@@ -155,13 +163,19 @@ try
         options.Network.MaxUnauthenticatedConnections,
         options.Network.MaxUnauthenticatedConnectionsPerIp,
         options.Network.MaxUnauthenticatedConnectionsPerPrefix));
-    var listenerProfile = ServerListenerProfile.Build(options);
-    var rawCompatibilityEnabled =
-        listenerProfile.Transport == ServerListenerTransport.RawTcp;
-    var loginServer = rawCompatibilityEnabled
+    using var workerBackhaulRuntime =
+        WorkerBackhaulRuntime.TryCreate(
+            options,
+            admission,
+            gameHandlerFactory);
+    var listenerProfile = workerBackhaulRuntime is null
+        ? ServerListenerProfile.Build(options)
+        : null;
+    var loginServer =
+        listenerProfile?.Transport == ServerListenerTransport.RawTcp
         ? new TcpEndpointServer(
             NetworkEndpointRole.Login,
-            listenerProfile.Login.Host,
+            listenerProfile!.Login.Host,
             listenerProfile.Login.Port,
             options.Network,
             admission,
@@ -173,10 +187,11 @@ try
                     legacyAuthenticationAccess))
         : null;
 
-    var gameServer = rawCompatibilityEnabled
+    var gameServer =
+        listenerProfile?.Transport == ServerListenerTransport.RawTcp
         ? new TcpEndpointServer(
             NetworkEndpointRole.Game,
-            listenerProfile.Game.Host,
+            listenerProfile!.Game.Host,
             listenerProfile.Game.Port,
             options.Network,
             admission,
@@ -222,14 +237,20 @@ try
         admission,
         shutdown,
         options.Network.GracefulDrainTimeout);
+    ManagementDrainResult BeginRuntimeDrain()
+    {
+        workerBackhaulRuntime?.BeginDrain();
+        return drainCoordinator.BeginDrain();
+    }
+
     Console.CancelKeyPress += (_, eventArgs) =>
     {
         eventArgs.Cancel = true;
-        drainCoordinator.BeginDrain();
+        BeginRuntimeDrain();
     };
     using var processSignals =
         ServerProcessSignalRegistration.Install(
-            () => drainCoordinator.BeginDrain());
+            () => BeginRuntimeDrain());
     ManagementTokenAuthenticator? loadedManagementToken = null;
     try
     {
@@ -267,7 +288,7 @@ try
             observability.GetTracesAsync,
             token => managementToken?.Authenticate(token) == true,
             _ => ValueTask.FromResult(
-                drainCoordinator.BeginDrain()),
+                BeginRuntimeDrain()),
             serverOperationsMetrics.RecordManagement)
         : null;
     var readinessMonitor = new ServerReadinessMonitor(
@@ -308,7 +329,7 @@ try
         ? null
         : new TcpEndpointServer(
             NetworkEndpointRole.Login,
-            listenerProfile.Login.Host,
+            listenerProfile!.Login.Host,
             listenerProfile.Login.Port,
             options.Network,
             admission,
@@ -324,7 +345,7 @@ try
         ? null
         : new TcpEndpointServer(
             NetworkEndpointRole.Game,
-            listenerProfile.Game.Host,
+            listenerProfile!.Game.Host,
             listenerProfile.Game.Port,
             options.Network,
             admission,
@@ -409,12 +430,16 @@ try
                 CriticalTaskKind.GameListener,
                 secureGameServer.RunAsync);
         }
-
-        if (endpointServers.Count != 2)
+        if (workerBackhaulRuntime is not null)
         {
-            throw new InvalidOperationException(
-                "Exactly one coherent login/game listener pair is required.");
+            workerBackhaulRuntime.Start(
+                endpointServers,
+                criticalTasks);
         }
+
+        WorkerBackhaulRuntime.ValidateListenerComposition(
+            workerBackhaulRuntime,
+            endpointServers.Count);
 
         if (managementServer is not null)
         {
@@ -491,6 +516,7 @@ try
     }
     finally
     {
+        workerBackhaulRuntime?.BeginDrain();
         admission.BeginDrain();
         serverOperationalState.TryMarkStopping();
         var shutdownTasks = criticalTasks.Items

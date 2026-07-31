@@ -9,9 +9,10 @@ These are repository-supported facts, not assumed approval of every target recom
 3. The custom ECS has no automatic component serialization or durable whole-world snapshot.
 4. Runtime ECS IDs, sessions, AOI, monster state, tickets, replay windows, and keys currently exist only in process memory.
 5. TLS plus authenticated UDP movement is implemented/tested as an opt-in profile; raw TCP remains the checked-in default.
-6. The authoritative runtime remains one combined modular-monolith worker
-   plus PostgreSQL. B18C1 can add a separate opt-in opaque TCP relay process,
-   but no Redis/Mongo or distributed placement authority exists.
+6. The authoritative gameplay runtime remains a modular-monolith worker
+   plus PostgreSQL. B18C2 can place a separate local-first semantic gateway
+   in front of one or more statically routed private workers, but no
+   Redis/Mongo or distributed placement authority exists.
 7. Applied migration IDs/checksums are immutable under the documented policy, and the current runner enforces exact-prefix compatibility.
 8. Several valuable PG operations already use transactions/row locks, but there is no general durable inbox/outbox or stable client operation ID.
 9. Content reads are split across generated package catalogs, PG catalogs, and captured fallbacks.
@@ -30,6 +31,12 @@ These are repository-supported facts, not assumed approval of every target recom
     interpret packets, route instances, share tickets/sessions, relay secure
     UDP, preserve source IP, coordinate workers, or use Redis. Its managed
     checks and real two-process smoke are complete.
+13. B18C2 provides a loopback-only unchanged-client semantic edge and a
+    TLS 1.3 mutually authenticated private worker backhaul. The gateway owns
+    bounded login generations and one lifetime game admission per generation,
+    routing by exact
+    `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId`; the worker retains ECS,
+    gameplay, and persistence authority. Reconnect requires a full login.
 
 ## Roadmap recommendations pending approval
 
@@ -39,16 +46,16 @@ These are repository-supported facts, not assumed approval of every target recom
 4. Commit valuable commands before success acknowledgement and use PG inbox/audit/outbox instead of cross-store dual writes.
 5. Do not introduce MongoDB during the initial migration.
 6. Make raw account-creating/username-only authentication impossible outside an explicit local-development profile, then retire it when client compatibility permits.
-7. Keep modular-monolith code boundaries while introducing local
-   realm/node/world-instance placement first. Follow B18C1's reversible
-   transport proof with B18C2 semantic gateway/session authority and backhaul
-   before Redis or separate authoritative-worker hosts.
+7. Keep modular-monolith code boundaries behind the completed B18C2
+   semantic gateway/backhaul. Implement B17 next for disposable Redis
+   coordination only; do not treat it as player-value authority.
 
 ## Assumptions
 
-1. The immediate authoritative deployment remains one combined worker plus
-   one PostgreSQL service. A B18C1 relay and worker may run as separate
-   co-located processes for measurement, without implying failure isolation.
+1. The immediate authoritative deployment remains local-first: gateway and
+   worker processes may be co-located with one PostgreSQL service for
+   measurement, without implying remote production placement, failure
+   isolation, or a capacity guarantee.
 2. Position/vitals may lose a small, documented checkpoint tail on crash; inventory/currency/progression value may not.
 3. PostgreSQL 17 remains the target database version.
 4. The original client can use the in-process networking shim for the secure profile.
@@ -74,12 +81,14 @@ Priority 1:
 7. What are target concurrent players per process/realm/map/instance, peak
    login and instance-admission rates, regions, tick/snapshot rates, and
    acceptable loss/latency?
-8. What exact acceptance gate promotes B18C2's semantic gateway/session
-   authority and backhaul beyond B18C1's opaque local relay?
-9. Which B18C2 gateway/placement component owns gateway connection identity,
-   `WorldInstanceId` selection, source/admission identity, sticky routing,
-   draining, transfer, and recovery?
-10. What reconnect/resume guarantee and maximum window are required?
+8. What exact capacity, failure-isolation, security, and provider gate
+   promotes the verified local-first B18C2 boundary to remote production
+   placement?
+9. Which connected open-world maps must be co-located on one worker, and
+   what protocol/state machine will later permit controlled cross-worker
+   portal transfer?
+10. Is B18C2's full-login reconnect contract acceptable, or is a bounded
+    authenticated resume window required later?
 11. What Redis latency, outage, staleness, eviction, provider, region, and
     cost budgets must be approved before B17 is enabled?
 12. Which open-world maps are statically assigned, which are dynamically

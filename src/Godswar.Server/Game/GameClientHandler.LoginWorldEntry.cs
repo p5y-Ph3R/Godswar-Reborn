@@ -79,7 +79,21 @@ internal sealed partial class GameClientHandler
 
             _session.MarkAuthenticated();
         }
-        var replacedSession = _registry.ReplaceAccountSession(_account.Id, _session);
+        var hasGatewayAdmission =
+            _session.GatewayWorldAdmission is not null;
+        if (hasGatewayAdmission &&
+            (!await RefreshCharacterSnapshotAsync(
+                 "login",
+                 cancellationToken) ||
+             !ValidateGatewayAdmission()))
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        var replacedSession = _registry.ReplaceAccountSession(
+            _account.Id,
+            _session);
         _accountSessionRegistered = true;
         if (replacedSession is not null)
         {
@@ -109,8 +123,8 @@ internal sealed partial class GameClientHandler
             _registry.Remove(replacedSession);
             replacedSession.Disconnect();
         }
-
-        if (!await RefreshCharacterSnapshotAsync(
+        if (!hasGatewayAdmission &&
+            !await RefreshCharacterSnapshotAsync(
                 "login",
                 cancellationToken))
         {
@@ -444,12 +458,7 @@ internal sealed partial class GameClientHandler
         // this player remains hidden from all live world broadcasts.
         if (!_registered)
         {
-            _registry.JoinMap(
-                _session,
-                _account?.Id ?? _character.AccountId,
-                _character,
-                WorldObjectIds.ForPlayer(_character.Id),
-                worldReady: false);
+            JoinCurrentWorld(worldReady: false);
             _registered = true;
         }
 

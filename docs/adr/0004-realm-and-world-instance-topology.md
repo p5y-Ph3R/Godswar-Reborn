@@ -118,20 +118,26 @@ association, and routing. It does not own combat, inventory, rewards, or
 world simulation. A worker owns the fixed-step ECS state for each assigned
 `WorldInstanceId`.
 
-The first process-separation proof remains local-first:
+The completed process-separation increments remain local-first:
 
 ```text
-original client -> B18C1 opaque raw-TCP relay
-                -> one private combined authoritative worker
+original client -> B18C1 opaque raw-TCP relay -> one combined worker
+                or
+                -> B18C2 loopback semantic gateway
+                -> mTLS private exact-routed authoritative worker
 ```
 
 B18C1 is not the stable semantic gateway pictured above. It has no
 authentication, session authority, packet interpretation, placement, or
 `WorldInstanceId` route decision. The combined worker still owns networking
 sessions, game handlers, placement, every map/instance and B18B mailbox, and
-all PostgreSQL/JSON access. B18C2 must introduce the semantic
-gateway/session-authority backhaul without changing ECS or durable economy
-semantics.
+all PostgreSQL/JSON access.
+
+B18C2 now supplies the semantic gateway/session-authority boundary without
+changing ECS or durable economy semantics. It is not yet the remote,
+high-availability production gateway in the target diagram: its unchanged
+client edge is deliberately loopback-only, its coordination is in memory,
+and it has no UDP gateway path or live cross-worker transfer.
 
 ## Durable and temporary ownership
 
@@ -188,16 +194,16 @@ forbidden.
    processes.
 4. Reopen B17 and approve Redis as the target coordination store for the
    confirmed multi-process topology.
-5. Do **not** add or deploy Redis merely for the current
-   single-authoritative-worker runtime, whether clients connect directly or
-   through B18C1. A protocol-opaque relay process does not activate B17.
-   Redis begins only after B18C2 provides a semantic gateway/worker or
-   worker/worker boundary that exercises shared coordination and the
-   operational budgets are recorded.
+5. B18C2 now satisfies the semantic gateway/worker prerequisite for B17.
+   Begin B17 next only after the Redis operational budgets are recorded;
+   replace disposable coordination, never PostgreSQL player-value authority.
 6. Keep the server a modular monolith in code and split deployable processes
    only at explicit composition boundaries.
 7. Treat B18C1 as a reversible local/raw-development topology proof, not as
    the production gateway or a distributed authority.
+8. Treat B18C2 as a verified local-first semantic boundary, not as proof of
+   remote production placement, high availability, secure UDP routing, live
+   transfer, or capacity.
 
 ADR 0003 remains the historical evidence for why no Redis package or service
 was added during B16. This ADR supersedes only its assumption that there was
@@ -292,6 +298,45 @@ Completion requires both automated in-process coverage and the Docker-free
 real two-process smoke. Both passed in the carrying tree, alongside the
 275-check managed catalog and the 43-check, five-scenario PostgreSQL gate.
 
+## B18C2 implementation boundary
+
+B18C2 adds the opt-in
+`Godswar.Server --semantic-gateway <serverOptionsPath> <gatewayConfigPath>`
+process and a separate worker backhaul mode. The unchanged original client
+speaks legacy raw TCP only to a loopback listener. The gateway verifies the
+credential locally, creates a bounded login generation, and permits one
+lifetime game admission for that generation. A reconnect requires another
+complete login.
+
+The gateway selects an exact
+`RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` route. It sends fixed,
+authenticated admission metadata across a TLS 1.3 private hop with mutual
+leaf pinning and ALPN, then tunnels the original encrypted game bytes
+unchanged. The worker validates node, route, account, replay, expiry,
+capacity, and drain policy before exposing a bound principal to the existing
+game handler. ECS, map simulation, inventory, economy, and persistence stay
+on the worker.
+
+B18C2 is completed and verified: focused checks passed `5/5`, the full
+managed catalog passed `280/280`, the Release build completed with zero
+warnings and zero errors, the disposable PostgreSQL gate passed `43/43`
+checks plus `5/5` migration scenarios and cleanup, and development
+backhaul-certificate validation passed. See the
+[B18C2 evidence](../data-architecture-b18c2-semantic-gateway-backhaul-20260731.md).
+
+The semantic gateway is the full account-admission authority. mTLS
+authenticates and encrypts the private hop, but it cannot defend a worker
+against a compromised gateway that possesses an accepted pinned key.
+Compromise therefore requires gateway isolation/rebuild, admission draining
+or invalidation, and prompt revocation and rotation of that key and pin at
+every worker.
+
+B18C2 does not implement Redis, distributed discovery, shared presence,
+secure-UDP gateway routing, live cross-worker transfer, remote production
+placement, high availability, or a capacity guarantee. Static open-world
+routes are selected at login; maps joined by direct portal movement must
+remain on the same worker until a controlled transfer protocol exists.
+
 ## B17 activation and rollout
 
 B17 is now **approved for future implementation, not implemented or
@@ -314,15 +359,14 @@ The rollout order is:
    **Completed and verified.**
 4. B18C2 semantic gateway/session authority and backhaul, gateway connection
    identity, `WorldInstanceId` routing, and admission/source identity.
-   **Next.**
+   **Completed and verified.**
 5. B17 Redis adapter, shared-coordination tests, observability, budgets, and
-   failure policy.
+   failure policy. **Next.**
 6. Controlled instance transfer, scheduled battlefield, then cross-realm
    settlement slices.
 
-B18C1 rollback omits relay mode and restores the directly advertised worker
-port. Future distributed rollback drains remote workers to one authoritative
-worker and selects the local placement/coordination implementation.
+B18C2 rollback drains admissions, omits semantic-gateway/worker-backhaul
+mode, and returns to B18C1 or the directly advertised single worker.
 PostgreSQL identities, ownership generations, and durable results are
 retained.
 
@@ -334,6 +378,7 @@ server. It keeps current gameplay runnable while giving process separation a
 stable destination.
 
 The cost is additional identity, placement, lifecycle, transfer, and
-operations work before scale-out is safe. Redis becomes an approved future
-dependency, but it is deliberately absent until a semantic process boundary
-exercises real shared coordination; B18C1's opaque relay alone does not.
+operations work before scale-out is safe. The semantic process boundary is
+now verified locally. Redis remains absent and B17 is next; its activation
+still requires explicit operational budgets and PostgreSQL-fenced failure
+tests.

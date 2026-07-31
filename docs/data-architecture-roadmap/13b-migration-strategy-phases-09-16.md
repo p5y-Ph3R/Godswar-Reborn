@@ -7,8 +7,10 @@
   approved Redis's future cross-process use case. Measure
   concurrency/instances/routing/reconnect load and finish the operational
   SLO/cost gate before activation. B18C1's opaque relay is a second process
-  but owns no shared coordination, so it does not activate Redis. Complete a
-  Mongo ADR only if section 8 evidence appears.
+  but owns no shared coordination. B18C2 now completes the local-first
+  semantic gateway/worker prerequisite; B17 is next, but Redis still waits
+  for its SLO/cost/outage gate. Complete a Mongo ADR only if section 8
+  evidence appears.
 - **Likely files/modules:** architecture/operations docs, load tools, deployment design.
 - **Dependencies:** stable command ownership and production capacity inputs.
 - **Data migrations:** none.
@@ -46,23 +48,33 @@
   `ServerNodeId` and raw advertised game `PublicPort`. It does not terminate
   TLS/auth, interpret packets, relay secure UDP, own sessions, select
   workers, route instances, or activate Redis. Its managed and real
-  two-process smoke evidence is complete.
+  two-process smoke evidence is complete. B18C2 adds a loopback-only
+  semantic legacy edge, hardened local authentication, bounded single-use
+  login admissions, exact
+  `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` routing, and a mutually
+  authenticated TLS private worker backhaul. It is completed and verified.
+  It does not add Redis, UDP routing, live cross-worker transfer, remote
+  production placement, or a capacity guarantee.
 - **Goal:** route all network inputs through typed command envelopes and single-owner mailboxes with explicit reliability.
 - **Scope/tasks:** classify every opcode; require secure principal in production; add bounded map/player ingress; remove DB/socket fanout from tick; preserve UDP movement semantics and TLS fallback; make viewer replication fairness-aware.
 - **Likely files/modules:** `LoginClientHandler`, partial `GameClientHandler`
   files, `ClientSession`, secure realtime classes, `GameSessionRegistry`,
   `MapInstance`, ECS boundaries,
   `src/Godswar.Server/Networking/RelayGateway`, and
+  `src/Godswar.Server/Networking/SemanticGateway`,
+  `src/Godswar.Server/Networking/Backhaul`, and
   `tools/Godswar.Server.B18CSmoke`.
 - **Dependencies:** application contracts, checkpoint/ownership, valuable command idempotency.
 - **Data migrations:** none beyond earlier inbox/fence.
 - **Acceptance criteria:** no networking type calls Npgsql/store; no fixed-step system awaits DB or sequential client fanout; secure profile passes end-to-end and raw path is dev-only/removed.
 - **Tests:** loss/dup/reorder/replay, TCP partial/coalesced/slow client,
   fallback, reconnect, map transfer, queue overload, deterministic replay,
-  and the Docker-free B18C1 real relay/worker process smoke.
+  the Docker-free B18C1 real relay/worker process smoke, and B18C2
+  two-worker mTLS route/drain/failure/replay/full-login coverage.
 - **Metrics:** command queue depth/age/reject, tick drift, fanout latency, transport fallback, stale/replayed packet rejects.
-- **Rollback:** omit `--relay-gateway`, restore the directly advertised
-  worker port, and retain per-command adapter flags/protocol compatibility.
+- **Rollback:** omit `--semantic-gateway`/worker backhaul and return to
+  B18C1 or the directly advertised single worker; retain per-command adapter
+  flags/protocol compatibility and all PostgreSQL state.
 - **Risks:** original client compatibility and packet-order assumptions.
 - **Complexity:** Large.
 

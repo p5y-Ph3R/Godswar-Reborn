@@ -4,8 +4,12 @@ The authoritative worker is an **Existing** .NET 10 modular monolith.
 `src/Godswar.Server/Program.cs` normally composes login, game, ECS/world,
 networking, security, and storage objects in one process. B18C1 also provides
 a separate opt-in `--relay-gateway <configPath>` process that copies opaque
-raw login/game TCP to one private combined worker; it does not move any
-authority out of that worker. The custom ECS kernel under
+raw login/game TCP to one private combined worker. B18C2 adds the separate
+`--semantic-gateway <serverOptionsPath> <gatewayConfigPath>` composition:
+the unchanged client connects only to a loopback legacy edge, authentication
+and single-use admission stay at the gateway, and the authoritative worker
+accepts an exact routed session over a mutually authenticated TLS backhaul.
+The custom ECS kernel under
 `src/Godswar.Server/Ecs` is real and generation-safe. Monster simulation uses
 a per-map `EcsMonsterMapRuntime`; player ECS authority is further along for
 movement, combat, recovery, status, and map membership, but durable
@@ -28,6 +32,12 @@ Networking is **Partially implemented** as two mutually exclusive profiles:
   does not terminate TLS/authentication, interpret packets, route by
   `WorldInstanceId`, share sessions/tickets, relay secure UDP, preserve
   source IP, or coordinate workers.
+- B18C2's semantic gateway is completed and verified as a local-first
+  unchanged-client boundary. It authenticates locally, binds a principal
+  without relying on IP alone, and routes exact
+  `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` admissions over TLS 1.3
+  with mutual leaf pinning. A game admission is single-use for its complete
+  login generation, so reconnect requires a fresh full login.
 
 The largest architectural risk is **ambiguous and unenforced authority across mutable session/ECS copies and durable PostgreSQL rows**. The combination of direct `_store` calls from packet handlers, process-local locks/ownership, separate character-load queries, and missing idempotency/outbox boundaries can duplicate or lose valuable operations when TCP retries, UDP/TCP ordering, reconnects, failures, or a future second authoritative worker process are introduced. A separate P0 security risk is that the legacy raw login path calls `LoginOrCreateAccountAsync`, while the hardened password verifier and one-time ticket path is tied to the secure profile.
 
@@ -35,8 +45,8 @@ The largest architectural risk is **ambiguous and unenforced authority across mu
 
 **Recommendation: PostgreSQL plus Redis for the confirmed target topology,
 introduced in phases.** PostgreSQL only remains correct for the current
-combined authoritative worker, including the completed B18A/B local
-instance-routing foundation and the non-authoritative B18C1 relay.
+local-first deployment, including the completed B18A/B instance-routing
+foundation, B18C1 relay, and B18C2 in-memory semantic authority.
 
 PostgreSQL should become the sole authoritative durable store. The existing relational schema, JSONB catalog fields, explicit Npgsql transactions, row locks, and migration checksum policy already cover the repository's demonstrated durable workload. The initial work should remove JSON-store ambiguity, establish application/persistence boundaries, add idempotency/outbox support, and make one authoritative worker safe before adding another operational dependency.
 
@@ -45,11 +55,11 @@ implemented or deployed**. [ADR 0004](../adr/0004-realm-and-world-instance-topol
 confirms Tempest as the first logical realm, future realms, cross-realm
 Pindus, scheduled battlefields, and on-demand dungeon instances. Those
 requirements need cross-process tickets, placement, routing, presence, and
-leases once B18C2 introduces a semantic gateway/session-authority backhaul
-or multiple authoritative workers that actually share coordination.
-B18C1's fixed-upstream byte relay does not activate that gate. Until then,
-the existing bounded in-memory structures remain the correct disposable
-runtime state.
+leases. B18C2 now provides the required semantic gateway/worker contract,
+but its authority is intentionally in memory and local-first; it adds no
+Redis adapter, distributed discovery, high availability, remote production
+placement, or cross-worker live transfer. B17 is next and must replace only
+that disposable coordination after its operational budgets are approved.
 
 **MongoDB should not be introduced during the initial migration.** No concrete independent document workload was found. Flexible item, NPC, map, monster, skill, and audit payloads already fit PostgreSQL relational tables plus JSONB. Packet-capture research data needs retention and archival policy, not a third operational database. MongoDB should be reconsidered only if a measured content-authoring or player-generated-document workload fails the criteria in section 8.
 
@@ -60,10 +70,10 @@ The migration should be incremental and expand/contract based:
 3. Make PostgreSQL tests mandatory and PostgreSQL the only production authority.
 4. Add aggregate versions, command inboxes, outboxes, audits, and reconciliation for valuable state.
 5. Integrate the TCP/UDP command envelope and ownership fence.
-6. Use the completed local realm/node/world-instance identities and bounded
-   owners through B18C1's local relay proof; build B18C2's semantic
-   gateway/session-authority backhaul next, then add Redis only when that
-   boundary exercises shared coordination and its budgets are recorded.
+6. Use the completed local realm/node/world-instance identities, bounded
+   owners, B18C1 relay proof, and B18C2 semantic gateway/backhaul. Implement
+   B17 next for Redis-backed disposable coordination only after its budgets
+   are recorded; keep PostgreSQL as the valuable-state authority.
 7. Remove the JSON fallback and legacy persistence paths after verified parity and a rollback window.
 
 Benefits are a single owner for every field, commit-before-ack guarantees for player value, safe retries and reconnects, non-blocking ECS ticks, independently testable transport/application/storage layers, reversible migrations, and a clear path to multiple server instances without unsafe dual writes.

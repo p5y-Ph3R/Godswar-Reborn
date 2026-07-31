@@ -82,6 +82,66 @@ This is a local process-boundary proof, not the final semantic gateway. The
 worker still owns TLS/authentication, sessions, UDP, gameplay, and all world
 instances; remote placement and Redis coordination remain later milestones.
 
+## Local semantic gateway/worker
+
+B18C2 gives the unchanged client a loopback-only semantic edge and an mTLS
+private worker hop. It authenticates locally and routes one single-use
+admission to the exact realm/map/instance/node. Reconnect requires a full
+login.
+
+Build and validate the development-certificate generator:
+
+```powershell
+dotnet build .\GodswarServer.sln --configuration Release --nologo
+.\tools\TestDevelopmentBackhaulCertificates.ps1
+```
+
+Create short-lived development material once; the generator neither
+overwrites its output nor installs trust:
+
+```powershell
+$env:GODSWAR_BACKHAUL_DEVELOPMENT_CERTIFICATE_PASSWORD = `
+  'replace-with-a-local-development-password'
+.\tools\NewDevelopmentBackhaulCertificates.ps1
+Get-Content .\artifacts\backhaul-development-tls\backhaul-development-manifest.json
+```
+
+Copy the examples to ignored local files:
+
+```powershell
+Copy-Item .\appsettings.semantic-gateway.example.json `
+  .\appsettings.semantic-gateway.local.json
+Copy-Item .\appsettings.backhaul-worker.example.json `
+  .\appsettings.backhaul-worker.local.json
+```
+
+From the manifest, put `workers[0].leafSha256` in the gateway copy and
+`gateway.leafSha256` in the worker copy. Start the worker:
+
+```powershell
+$env:GODSWAR_BACKHAUL_DEVELOPMENT_CERTIFICATE_PASSWORD = `
+  'replace-with-the-same-local-development-password'
+dotnet .\src\Godswar.Server\bin\Release\net10.0\Godswar.Server.dll `
+  .\appsettings.backhaul-worker.local.json
+```
+
+In another terminal, start the gateway:
+
+```powershell
+$env:GODSWAR_BACKHAUL_DEVELOPMENT_CERTIFICATE_PASSWORD = `
+  'replace-with-the-same-local-development-password'
+$env:GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION = 'true'
+dotnet .\src\Godswar.Server\bin\Release\net10.0\Godswar.Server.dll `
+  --semantic-gateway .\appsettings.json `
+  .\appsettings.semantic-gateway.local.json
+```
+
+The examples have one static route. Add required routes and co-locate maps
+joined by direct portals until transfer exists. This adds no Redis, UDP
+gateway, live transfer, production placement, HA, or capacity guarantee. See
+the
+[B18C2 evidence](docs/data-architecture-b18c2-semantic-gateway-backhaul-20260731.md).
+
 ## Docker
 
 ```powershell

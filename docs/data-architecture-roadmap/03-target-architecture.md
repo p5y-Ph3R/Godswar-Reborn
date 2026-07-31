@@ -50,7 +50,12 @@ PostgreSQL outbox ---> eventual cache/external projections only
 Optional B18C1 local/raw-development topology proof:
 original client ---> opaque bounded TCP relay ---> one combined worker above
 
-Approved after B18C2 creates a semantic shared-coordination boundary:
+Completed B18C2 local-first semantic boundary:
+unchanged client ---> loopback-only legacy edge/authentication
+                 ---> TLS 1.3 mTLS private worker backhaul
+                 ---> exact realm/map/world-instance/node owner above
+
+Approved B17 target after B18C2:
 session coordinator ---> Redis tickets/leases/routing/presence directly
                          (atomic TTL coordination carrying a PG-issued fence)
 PostgreSQL outbox -----> Redis read caches/projections only
@@ -86,9 +91,17 @@ fixed private combined worker. That worker retains authentication,
 networking sessions, packet handlers, every map and B18B mailbox, and
 PostgreSQL/JSON access. The relay does not preserve source IP, forward secure
 UDP, share tickets/sessions, select a worker, or route by `WorldInstanceId`.
-B18C2 must add gateway connection identity, semantic session authority and
-backhaul, and explicit route/admission/source identity before B17 supplies
-shared Redis coordination.
+
+B18C2 now provides the semantic boundary. Its loopback-only unchanged-client
+edge verifies credentials, owns bounded login generations and single-use
+game admissions, and selects an exact
+`RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` route. The private worker
+hop uses TLS 1.3, mutual leaf pinning, ALPN, authenticated fixed-size
+admission metadata, and then the original encrypted game bytes. Workers
+retain ECS, gameplay, and durable authority. Reconnect requires a full login;
+there is no live cross-worker transfer. Connected open-world maps with
+direct portals must be co-located until controlled transfer exists. B17 is
+next and may replace only the gateway's disposable in-memory coordination.
 
 The transactional outbox never drives the immediate live-player result. The PG commit result returns directly to the owning mailbox with its committed aggregate version. The owner either serializes conflicting player-value commands or applies only the exact next version; a stale version is ignored and a version gap triggers a PG reload before updating ECS/replying. It also revalidates the current session/entity/ownership generation. Outbox consumers handle eventual caches, indexes, notifications, and external projections.
 
@@ -109,6 +122,8 @@ Domain/ECS code must not reference Npgsql, a Redis client, sockets, packet buffe
 | Boundary | Responsibility | Must not do |
 | --- | --- | --- |
 | B18C1 opaque TCP relay | Bounded socket lifecycle, fixed private upstream, pooled buffers, deadlines, half-close, tracked drain, finite in-memory snapshot/Meter signals | Terminate TLS/auth, decode packets, route instances, own sessions/value, expose an exporter, relay secure UDP, or coordinate workers |
+| B18C2 semantic gateway | Loopback legacy compatibility, hardened authentication, bounded login generations, single-use admissions, exact route selection, and mTLS worker tunneling | Own ECS/player value, expose legacy raw ports publicly, route UDP, migrate a live session, or claim distributed availability |
+| B18C2 worker backhaul | Authenticate/pin the gateway, validate exact route/account/replay/capacity/drain policy, then expose the bound principal and unchanged ciphertext to the existing handler | Accept an IP-only identity, expose a public login listener, or reinterpret durable outcomes |
 | UDP/TCP transport | Socket lifecycle, TLS, datagram protection, bounded queues, deadlines, framing | Interpret inventory/economy meaning or call stores |
 | Session/authentication | Credential verification, principal, secure ticket, connection ownership, permissions | Trust username/account fields after binding; mutate gameplay value |
 | Packet decoder | Bounds-check and translate bytes to versioned command DTOs | Hydrate ECS or issue SQL |
@@ -117,7 +132,7 @@ Domain/ECS code must not reference Npgsql, a Redis client, sockets, packet buffe
 | ECS/map owner | Fixed-step runtime authority, deterministic updates, runtime events | Block on database/network/external API |
 | Persistence contracts | Feature-specific reads and transactions | Expose Npgsql types to gameplay; model all stores as identical key/value APIs |
 | PostgreSQL adapters | SQL, locks, constraints, versions, inbox/outbox/audit, current-state rows | Send client packets or mutate ECS directly |
-| Redis adapters after the B18C2 shared-coordination boundary | Disposable tickets, node/instance routing, presence, leases, rate limits, and caches with TTL/fencing | Own player value or participate in cross-store dual writes |
+| Redis adapters in B17 after the completed B18C2 boundary | Disposable tickets, node/instance routing, presence, leases, rate limits, and caches with TTL/fencing | Own player value or participate in cross-store dual writes |
 | Persistence worker | Coalesced low-value checkpoints, outbox delivery, retries, reconciliation | Run unbounded queues or silently discard failed valuable writes |
 | Replication | Convert immutable accepted ECS/application results to client snapshots/events | Decide authoritative outcomes |
 | Observability | Low-cardinality metrics, redacted logs, trace context, health/readiness | Log credentials, ticket/cookie/key material, raw payloads, or identifiers as metric labels |

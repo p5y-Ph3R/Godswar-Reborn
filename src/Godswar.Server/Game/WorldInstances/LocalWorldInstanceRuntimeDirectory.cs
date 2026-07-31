@@ -85,6 +85,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 playerCapacity,
                 createdAt,
                 registerTempestDefault: true,
+                instanceId: null,
                 cancellationToken);
         }
         finally
@@ -125,6 +126,75 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 playerCapacity,
                 createdAt,
                 registerTempestDefault: false,
+                instanceId: null,
+                cancellationToken);
+        }
+        finally
+        {
+            _mutationGate.Release();
+        }
+    }
+
+    public async ValueTask<WorldInstanceRuntimeDirectoryResult>
+        GetOrCreateAssignedOpenWorldAsync(
+            RealmId realmId,
+            WorldMapId contentMapId,
+            WorldInstanceId instanceId,
+            int playerCapacity,
+            DateTimeOffset createdAt,
+            CancellationToken cancellationToken)
+    {
+        if (!contentMapId.TryGetLegacyValue(out var legacyMapId))
+        {
+            return Result(
+                WorldInstanceRuntimeDirectoryStatus.LegacyMapUnsupported);
+        }
+
+        await _mutationGate.WaitAsync(cancellationToken);
+        try
+        {
+            ThrowIfDisposed();
+            lock (_indexGate)
+            {
+                if (_runtimes.TryGetValue(
+                        instanceId,
+                        out var assigned))
+                {
+                    return assigned.RealmId == realmId &&
+                           assigned.ContentMapId == contentMapId &&
+                           assigned.Descriptor.LifecycleState ==
+                               WorldInstanceLifecycleState.Active
+                        ? Result(
+                            WorldInstanceRuntimeDirectoryStatus
+                                .ExistingDefault,
+                            assigned)
+                        : Result(
+                            WorldInstanceRuntimeDirectoryStatus
+                                .DefaultUnavailable,
+                            assigned);
+                }
+
+                if (realmId == RealmId.Tempest &&
+                    TryFindTempestOpenWorldCore(
+                        legacyMapId,
+                        out var existing))
+                {
+                    return Result(
+                        WorldInstanceRuntimeDirectoryStatus
+                            .DefaultUnavailable,
+                        existing);
+                }
+            }
+
+            return await CreateCoreAsync(
+                realmId,
+                contentMapId,
+                InstanceKind.OpenWorld,
+                playerCapacity,
+                createdAt,
+                registerTempestDefault:
+                    realmId == RealmId.Tempest,
+                instanceId,
                 cancellationToken);
         }
         finally
@@ -251,14 +321,15 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
             RealmId realmId,
             WorldMapId contentMapId,
             InstanceKind kind,
-            int playerCapacity,
-            DateTimeOffset createdAt,
-            bool registerTempestDefault,
-            CancellationToken cancellationToken)
+        int playerCapacity,
+        DateTimeOffset createdAt,
+        bool registerTempestDefault,
+        WorldInstanceId? instanceId,
+        CancellationToken cancellationToken)
     {
         var descriptor = WorldInstanceDescriptor.Create(
             realmId,
-            WorldInstanceId.New(),
+            instanceId ?? WorldInstanceId.New(),
             contentMapId,
             kind,
             playerCapacity,

@@ -210,6 +210,27 @@ internal sealed partial class GameSessionRegistry
                 routingSession,
                 out var context))
         {
+            var gatewayAdmission =
+                routingSession.GatewayWorldAdmission;
+            if (gatewayAdmission is not null)
+            {
+                if (!gatewayAdmission.MapId.TryGetLegacyValue(
+                        out var admittedMapId) ||
+                    admittedMapId != mapId)
+                {
+                    throw new InvalidOperationException(
+                        "The monster bootstrap map does not match the " +
+                        "gateway admission.");
+                }
+
+                return InitializeWorldInstanceMonsters(
+                    GetOrCreateGatewayWorldInstance(
+                        gatewayAdmission),
+                    definitions,
+                    initializedAt,
+                    activeWorldBossRespawn);
+            }
+
             return InitializeMapMonsters(
                 mapId,
                 definitions,

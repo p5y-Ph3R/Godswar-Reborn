@@ -50,10 +50,12 @@ realm, this sizing decision must be replaced rather than extrapolated.
 
 ## Why this size fits the current repository
 
-This repository presently keeps all authority in one combined
-`Godswar.Server` worker. B18C1 can place an additional opt-in
-`--relay-gateway <configPath>` process in front of its raw login/game TCP
-listeners, but that relay owns no game state:
+This repository keeps gameplay and durable authority in
+`Godswar.Server` workers. B18C1 can place an opt-in opaque relay in front of
+one combined worker. Completed B18C2 can instead run a loopback-only
+unchanged-client semantic gateway that authenticates locally and opens an
+mTLS private backhaul to an exact statically routed worker. B18C2 is a
+local-first boundary, not an internet-edge deployment:
 
 - [`Godswar.Server.csproj`](src/Godswar.Server/Godswar.Server.csproj) targets
   .NET 10 and currently has x86-64 performance evidence only.
@@ -114,15 +116,18 @@ Internet-facing Network Load Balancer
    |
    v
 Private game target: c8i.4xlarge
-  - optional B18C1 raw TCP relay process/container
-       `---- private/loopback TCP ----> combined Godswar.Server worker
-  - worker owns login/authentication, gameplay sessions,
-    all current map-instance mailboxes, and persistence
+  - approved client-facing ingress (still a launch gate)
+       `----> Godswar.Server worker
+  - worker owns gameplay, map-instance mailboxes, and persistence
   - host-local metrics/log collector
    |
    +---- private connection ----> RDS PostgreSQL 17
 
 Administration ----> AWS Systems Manager/private management path
+
+Local B18C2 validation only:
+unchanged client -> loopback semantic gateway
+                 -> TLS 1.3 mTLS private worker backhaul
 ```
 
 The NLB can forward the current TCP compatibility ports and the future secure
@@ -132,26 +137,24 @@ game's authenticated connection ID, ticket, replay protection, or
 single-owner routing. See the
 [AWS NLB protocol documentation](https://docs.aws.amazon.com/elasticloadbalancing/latest/network/introduction.html).
 
-For initial alpha measurement, the B18C1 relay and combined worker may run as
-separate processes or containers on this same `c8i.4xlarge`. That proves and
-measures a local TCP process boundary only: it is the same EC2 failure domain,
-the relay has one fixed private upstream, does not terminate TLS/authentication
-or preserve source IP, and does not route by `WorldInstanceId`. Secure UDP,
-if experimented with, remains direct-to-worker and is not B18C1 acceptance.
+For pre-alpha local measurement, B18C2's semantic gateway and worker may run
+as separate processes on the same host. The legacy client edge must remain
+loopback-only; never publish it behind the NLB. The worker hop uses mutual
+TLS and exact `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` routing, but
+co-location remains one failure domain. B18C2 does not route UDP, preserve a
+session across workers, or prove remote production placement.
 
 For alpha, an Auto Scaling Group with desired/minimum/maximum capacity of one
 can replace an unhealthy host, but it does not make the realm active-active
-and it does not prevent disconnects during replacement. B18C1 supports only
-the co-located opaque TCP relay above; B18C2 semantic backhaul, remote worker
-placement, cross-worker reconnect/transfer, and live map migration do not yet
-exist.
+and it does not prevent disconnects during replacement. B18C2's local
+semantic backhaul exists, but remote worker placement, cross-worker
+reconnect/transfer, and live map migration do not.
 
 PostgreSQL remains the authoritative owner of player value. Redis is still
-absent while all authority remains in one combined worker; B18C1's second
-process does not need shared leases, presence, or routing. Add Redis only
-after B18C2 creates real shared coordination and its operational budgets are
-recorded. Never store the only copy of inventory, currency, equipment,
-progression, pets, or mounts in Redis.
+absent; B18C2's bounded login/admission and route authority is in memory.
+B17 is next, but Redis activation waits for approved latency, outage,
+eviction, region, provider, and cost budgets. Never store the only copy of
+inventory, currency, equipment, progression, pets, or mounts in Redis.
 
 ## Host configuration
 
@@ -261,19 +264,20 @@ Use this order:
 1. Profile and remove the measured code or allocation bottleneck.
 2. Add per-instance observability and isolate the heavy map in the planned
    worker-process architecture.
-3. Add a second game-worker host only after B18C2 semantic gateway/worker
-   backhaul, admission/routing identity, reconnect/transfer policy, and
-   cross-process ownership are implemented.
+3. Add a second game-worker host only after B17 shared coordination and a
+   remote-production ingress, reconnect/transfer, and failure-isolation gate
+   are implemented and verified.
 4. Vertically resize only when the workload cannot yet be partitioned or the
    measurement proves that more host capacity helps.
 
 The future split can place a small gateway/control process, open-world workers,
 and a dungeon/battlefield worker pool on separate EC2 instances. Do not buy
-that fleet yet: B18C1's local raw TCP relay is runnable, but the B18C2
-semantic backhaul and remote placement needed for separate hosts are not.
-Co-locating relay and worker is measurement, not failure isolation. A future
-battlefield worker may be started before a scheduled event, while dungeon
-workers remain available independently.
+that fleet yet: B18C2 verifies semantic admission and mTLS backhaul locally,
+but not remote production placement or shared coordination. Co-locating
+gateway and worker is measurement, not failure isolation. Connected
+open-world map groups must remain on one worker until controlled transfer
+exists. A future battlefield worker may be started before a scheduled event,
+while dungeon workers remain available independently.
 
 ## Availability and cost boundaries
 

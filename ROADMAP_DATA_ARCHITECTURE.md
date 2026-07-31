@@ -9,8 +9,11 @@ bounded single-owner map mailboxes while retaining the original client's
 Tempest byte-map bridge. B18C1 adds an opt-in, separate opaque TCP relay to
 one private combined worker; it is completed and verified as a
 local/raw-development topology proof, not a semantic gateway, distributed
-routing, or Redis. B18C2 is next; B17 follows only after that semantic
-gateway/worker boundary exercises real shared coordination.
+routing, or Redis. B18C2 is also completed and verified: the unchanged
+client reaches a loopback-only semantic edge, which authenticates locally
+and routes one single-use admission over mutually authenticated TLS to an
+exact `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` worker. B17 Redis
+coordination is the next milestone.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -59,6 +62,7 @@ document organization; the assessment and recommendations remain intact.
 - [B18A realm and world-instance identity foundation](docs/data-architecture-b18a-realm-instance-foundation-20260731.md)
 - [B18B local instance routing and single-owner mailboxes](docs/data-architecture-b18b-instance-routing-mailboxes-20260731.md)
 - [B18C1 local relay gateway](docs/data-architecture-b18c1-local-relay-gateway-20260731.md)
+- [B18C2 semantic gateway and authenticated worker backhaul](docs/data-architecture-b18c2-semantic-gateway-backhaul-20260731.md)
 
 ## Roadmap sections
 

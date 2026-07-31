@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
+using Godswar.Server.Networking.Backhaul;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Realtime;
 using Godswar.Server.Protocol;
@@ -55,7 +57,13 @@ internal sealed class ClientSession : IAsyncDisposable
         (_transport as ISecureControlChannel)?.ConnectionContext;
 
     internal SecureBoundGamePrincipal? BoundGamePrincipal =>
-        (_transport as ISecureControlChannel)?.BoundGamePrincipal;
+        (_transport as ISecureControlChannel)?.BoundGamePrincipal ??
+        (_transport as IAuthenticatedGameTransport)?
+            .BoundGamePrincipal;
+
+    internal GatewayWorldAdmission? GatewayWorldAdmission =>
+        (_transport as IAuthenticatedGameTransport)?
+            .WorldAdmission;
 
     internal bool SupportsRealtimeMovement =>
         (_transport as ISecureControlChannel)?
@@ -246,23 +254,30 @@ internal sealed class ClientSession : IAsyncDisposable
         }
 
         var rest = new byte[length - 2];
-        if (!await ReadRemainingAsync(
-            rest,
-            NetworkTimeoutStage.PacketBody,
-            _options.PacketBodyTimeout,
-            cancellationToken,
-            allowEofBeforeAnyByte: true))
+        try
         {
-            return null;
-        }
-        _receiveCipher.Transform(rest);
+            if (!await ReadRemainingAsync(
+                rest,
+                NetworkTimeoutStage.PacketBody,
+                _options.PacketBodyTimeout,
+                cancellationToken,
+                allowEofBeforeAnyByte: true))
+            {
+                return null;
+            }
+            _receiveCipher.Transform(rest);
 
-        var packet = new byte[length];
-        header.CopyTo(packet.AsSpan(0, 2));
-        rest.CopyTo(packet.AsSpan(2));
-        var opcode = BinaryPrimitives.ReadUInt16LittleEndian(
-            packet.AsSpan(2, 2));
-        return new DecodedPacket(packet, length, opcode);
+            var packet = new byte[length];
+            header.CopyTo(packet.AsSpan(0, 2));
+            rest.CopyTo(packet.AsSpan(2));
+            var opcode = BinaryPrimitives.ReadUInt16LittleEndian(
+                packet.AsSpan(2, 2));
+            return new DecodedPacket(packet, length, opcode);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rest);
+        }
     }
 
     public async Task SendAsync(

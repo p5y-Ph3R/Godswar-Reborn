@@ -3,12 +3,44 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
+using Godswar.Server.Networking.Backhaul;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
+    internal void JoinGatewayWorld(
+        ClientSession session,
+        int accountId,
+        GameCharacter character,
+        uint objectId,
+        GatewayWorldAdmission admission,
+        bool worldReady = true,
+        DateTimeOffset? joinedAt = null)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        if (admission.AccountId != accountId ||
+            admission.CharacterId != 0 &&
+            admission.CharacterId != character.Id ||
+            !admission.MapId.TryGetLegacyValue(out var legacyMapId) ||
+            legacyMapId != character.CurrentMap)
+        {
+            throw new InvalidOperationException(
+                "The gateway admission does not match the joining " +
+                "account and character.");
+        }
+
+        JoinWorldInstanceCore(
+            session,
+            accountId,
+            character,
+            objectId,
+            GetOrCreateGatewayWorldInstance(admission),
+            worldReady,
+            joinedAt);
+    }
+
     internal void JoinWorldInstance(
         ClientSession session,
         int accountId,

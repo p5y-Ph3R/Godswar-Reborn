@@ -119,12 +119,7 @@ internal sealed partial class GameClientHandler
 
         if (!_registered)
         {
-            _registry.JoinMap(
-                _session,
-                _account?.Id ?? _character.AccountId,
-                _character,
-                WorldObjectIds.ForPlayer(_character.Id),
-                worldReady: false);
+            JoinCurrentWorld(worldReady: false);
             _registered = true;
         }
 

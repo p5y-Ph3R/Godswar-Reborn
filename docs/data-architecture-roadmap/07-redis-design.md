@@ -11,11 +11,8 @@ battlefields and on-demand dungeons also require independently routed
 `WorldInstanceId` values.
 
 B17 is therefore **reopened and Redis is approved for future cross-process
-coordination**. No Redis implementation or deployment is claimed. The
-combined authoritative worker still composes a bounded
-`InMemoryGameTicketStore`, process-local registry/presence, and all
-world-instance runtimes; Compose still contains only that server and
-PostgreSQL.
+coordination**. It is the next roadmap milestone, but no Redis implementation
+or deployment is claimed. PostgreSQL still owns all durable player value.
 
 B18A introduced realm, node, map, and world-instance identities plus local
 placement. B18B now provides the local runtime directory, exact session
@@ -25,12 +22,20 @@ and world authority remains in the one combined worker. Its second process
 exercises no shared coordination contract and therefore does not activate
 B17.
 
-Redis activation begins only after B18C2 supplies a semantic
-gateway/session-authority backhaul, gateway connection identity,
-`WorldInstanceId` routing, and explicit admission/source identity, or a
-multiple-authoritative-worker slice otherwise exercises real shared
-coordination. It must not be added merely to replace the working local
-implementation before that boundary and its operational budgets exist.
+B18C2 has now satisfied the semantic-boundary prerequisite. The
+loopback-only unchanged-client edge authenticates locally and creates one
+single-use login admission; an mTLS private backhaul carries authenticated
+metadata and untouched legacy ciphertext to the exact
+`RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` worker. The authority is
+still bounded in memory. There is no Redis, secure-UDP gateway path,
+distributed discovery, remote production placement, high availability, or
+live cross-worker transfer. Directly connected open-world map groups must
+remain co-located until transfer exists.
+
+B17 may now begin, but Redis must not be enabled until its operational
+budgets and outage policy below are approved. It replaces only disposable
+login/admission, routing, presence, and lease coordination; it does not
+replace the PostgreSQL ownership fence or any durable player value.
 
 Before enabling the Redis-backed path, B17 must:
 

@@ -38,6 +38,8 @@ internal sealed partial class ServerOptions
 
     public ServerOperationsOptions Operations { get; set; } = new();
 
+    public BackhaulWorkerRuntimeOptions Backhaul { get; set; } = new();
+
     public static ServerOptions Load(string path)
     {
         if (!File.Exists(path))
@@ -71,8 +73,10 @@ internal sealed partial class ServerOptions
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
         Operations ??= new ServerOperationsOptions();
+        Backhaul ??= new BackhaulWorkerRuntimeOptions();
         Secure.ApplyEnvironment();
         Operations.ApplyEnvironment();
+        ApplyBackhaulEnvironment();
         Authentication.Iterations = ReadInt(
             "GODSWAR_AUTH_ITERATIONS",
             Authentication.Iterations);
@@ -250,6 +254,7 @@ internal sealed partial class ServerOptions
         Secure ??= new SecureNetworkOptions();
         Authentication ??= new AuthenticationOptions();
         Operations ??= new ServerOperationsOptions();
+        Backhaul ??= new BackhaulWorkerRuntimeOptions();
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
@@ -262,16 +267,27 @@ internal sealed partial class ServerOptions
         Game.Players.Validate();
         Game.NormalizeAndValidatePublicPort();
         Game.WorldInstances.Validate();
+        Backhaul.NormalizeAndValidate(
+            optionsPath,
+            Game.WorldInstances,
+            Secure);
         Network.Validate();
         Authentication.Validate();
         Storage.Outbox.Validate();
         Storage.Checkpoints.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
-        Operations.Validate(
-            Login.Port,
-            Game.Port,
-            Secure.Login.Port,
-            Secure.Game.Port);
+        if (Backhaul.Enabled)
+        {
+            Operations.Validate(Backhaul.Port);
+        }
+        else
+        {
+            Operations.Validate(
+                Login.Port,
+                Game.Port,
+                Secure.Login.Port,
+                Secure.Game.Port);
+        }
         if (Secure.Enabled)
         {
             SecureNetworkOptions.ValidateSecureRuntime(Network);
