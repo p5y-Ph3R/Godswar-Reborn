@@ -9,7 +9,7 @@ using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server;
 
-internal sealed class ServerOptions
+internal sealed partial class ServerOptions
 {
     public string RuntimeProfile { get; set; } = string.Empty;
 
@@ -111,36 +111,16 @@ internal sealed class ServerOptions
         Game.BindHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_BIND_HOST") ?? Game.BindHost;
         Game.Port = ReadInt("GODSWAR_GAME_PORT", Game.Port);
         Game.PublicHost = Environment.GetEnvironmentVariable("GODSWAR_GAME_PUBLIC_HOST") ?? Game.PublicHost;
+        Game.PublicPort = ReadInt(
+            "GODSWAR_GAME_PUBLIC_PORT",
+            Game.PublicPort);
         Game.Monsters.Runtime = ReadMonsterRuntime(
             "GODSWAR_MONSTER_RUNTIME",
             Game.Monsters.Runtime);
         Game.Players.Runtime = ReadPlayerRuntime(
             "GODSWAR_PLAYER_RUNTIME",
             Game.Players.Runtime);
-        Game.WorldInstances.MaximumRuntimes = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_MAXIMUM_RUNTIMES",
-            Game.WorldInstances.MaximumRuntimes);
-        Game.WorldInstances.MaximumPlayerAssignments = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_MAXIMUM_PLAYER_ASSIGNMENTS",
-            Game.WorldInstances.MaximumPlayerAssignments);
-        Game.WorldInstances.MaximumRetiredInstanceIds = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_MAXIMUM_RETIRED_INSTANCE_IDS",
-            Game.WorldInstances.MaximumRetiredInstanceIds);
-        Game.WorldInstances.DefaultOpenWorldPlayerCapacity = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_DEFAULT_OPEN_WORLD_PLAYER_CAPACITY",
-            Game.WorldInstances.DefaultOpenWorldPlayerCapacity);
-        Game.WorldInstances.MailboxCapacity = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_MAILBOX_CAPACITY",
-            Game.WorldInstances.MailboxCapacity);
-        Game.WorldInstances.OwnerInvocationTimeoutMilliseconds = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_OWNER_INVOCATION_TIMEOUT_MILLISECONDS",
-            Game.WorldInstances.OwnerInvocationTimeoutMilliseconds);
-        Game.WorldInstances.ShutdownDrainTimeoutMilliseconds = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
-            Game.WorldInstances.ShutdownDrainTimeoutMilliseconds);
-        Game.WorldInstances.MaximumFanoutConcurrency = ReadInt(
-            "GODSWAR_WORLD_INSTANCE_MAXIMUM_FANOUT_CONCURRENCY",
-            Game.WorldInstances.MaximumFanoutConcurrency);
+        ApplyWorldInstanceEnvironment();
         Game.DeveloperCommands.Enabled = ReadBool(
             "GODSWAR_DEVELOPER_COMMANDS_ENABLED",
             Game.DeveloperCommands.Enabled);
@@ -280,6 +260,7 @@ internal sealed class ServerOptions
         Game.ZodiacEnergy.Normalize();
         Game.Monsters.Validate();
         Game.Players.Validate();
+        Game.NormalizeAndValidatePublicPort();
         Game.WorldInstances.Validate();
         Network.Validate();
         Authentication.Validate();
@@ -385,7 +366,18 @@ internal class EndpointOptions
 
 internal sealed class GameEndpointOptions : EndpointOptions
 {
+    public GameEndpointOptions()
+    {
+        Port = 7_000;
+    }
+
     public string PublicHost { get; set; } = "127.1.1.110";
+
+    /// <summary>
+    /// Client-advertised raw game port. Zero follows the listener
+    /// <see cref="EndpointOptions.Port"/>.
+    /// </summary>
+    public int PublicPort { get; set; }
 
     public DeveloperCommandOptions DeveloperCommands { get; set; } = new();
 
@@ -396,6 +388,22 @@ internal sealed class GameEndpointOptions : EndpointOptions
     public PlayerRuntimeOptions Players { get; set; } = new();
 
     public WorldInstanceRuntimeOptions WorldInstances { get; set; } = new();
+
+    public int ResolvePublicPort() =>
+        PublicPort == 0 ? Port : PublicPort;
+
+    public void NormalizeAndValidatePublicPort()
+    {
+        var effectivePort = ResolvePublicPort();
+        if (effectivePort is < 1 or > 65_535)
+        {
+            throw new InvalidDataException(
+                "Game.PublicPort must be zero or resolve to a port " +
+                "between 1 and 65535.");
+        }
+
+        PublicPort = effectivePort;
+    }
 }
 
 internal sealed class ZodiacEnergyOptions

@@ -14,7 +14,8 @@ internal static class WorldInstanceRuntimeOptionsChecks
         "GODSWAR_WORLD_INSTANCE_MAILBOX_CAPACITY",
         "GODSWAR_WORLD_INSTANCE_OWNER_INVOCATION_TIMEOUT_MILLISECONDS",
         "GODSWAR_WORLD_INSTANCE_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
-        "GODSWAR_WORLD_INSTANCE_MAXIMUM_FANOUT_CONCURRENCY"
+        "GODSWAR_WORLD_INSTANCE_MAXIMUM_FANOUT_CONCURRENCY",
+        "GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID"
     ];
 
     public static Task RunAsync()
@@ -30,6 +31,14 @@ internal static class WorldInstanceRuntimeOptionsChecks
         var options = new WorldInstanceRuntimeOptions();
         options.Validate();
 
+        Check.Equal(
+            "local-node",
+            options.ServerNodeId,
+            "default server node ID");
+        Check.Equal(
+            "local-node",
+            options.ProcessServerNodeId.ToString(),
+            "parsed default server node ID");
         Check.Equal(256, options.MaximumRuntimes, "maximum runtimes");
         Check.Equal(
             4_096,
@@ -60,6 +69,12 @@ internal static class WorldInstanceRuntimeOptionsChecks
 
     private static void CheckValidation()
     {
+        CheckInvalid(
+            options => options.ServerNodeId = "",
+            "empty server node ID");
+        CheckInvalid(
+            options => options.ServerNodeId = "worker/node",
+            "server node ID with unsupported punctuation");
         CheckInvalid(
             options => options.MaximumRuntimes = 0,
             "zero maximum runtimes");
@@ -110,12 +125,14 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 500,
                 2_000,
                 4,
+                "json-worker-01",
                 "JSON");
 
             var environmentValues = new[]
             {
                 "64", "2000", "4096", "256",
-                "512", "750", "3000", "6"
+                "512", "750", "3000", "6",
+                "env-worker-02"
             };
             for (var index = 0; index < EnvironmentKeys.Length; index++)
             {
@@ -136,6 +153,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 750,
                 3_000,
                 6,
+                "env-worker-02",
                 "environment");
 
             Environment.SetEnvironmentVariable(
@@ -177,8 +195,17 @@ internal static class WorldInstanceRuntimeOptionsChecks
         int ownerInvocationTimeoutMilliseconds,
         int shutdownDrainTimeoutMilliseconds,
         int maximumFanoutConcurrency,
+        string serverNodeId,
         string source)
     {
+        Check.Equal(
+            serverNodeId,
+            options.ServerNodeId,
+            $"{source} server node ID");
+        Check.Equal(
+            serverNodeId,
+            options.ProcessServerNodeId.ToString(),
+            $"{source} parsed server node ID");
         Check.Equal(
             maximumRuntimes,
             options.MaximumRuntimes,
@@ -237,6 +264,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
               },
               "game": {
                 "worldInstances": {
+                  "serverNodeId": "json-worker-01",
                   "maximumRuntimes": 32,
                   "maximumPlayerAssignments": 1000,
                   "maximumRetiredInstanceIds": 2048,

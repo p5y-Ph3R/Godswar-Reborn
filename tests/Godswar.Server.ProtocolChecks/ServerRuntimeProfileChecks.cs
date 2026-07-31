@@ -22,6 +22,7 @@ internal static partial class ServerRuntimeProfileChecks
         CheckPolicyMatrix();
         CheckMissingFileDoesNotCreateDefaults();
         CheckStrictEnvironmentOverrides();
+        CheckGamePublicEndpointConfiguration();
         CheckCheckpointConfiguration();
         CheckCheckedInProfiles();
         CheckMetrics();

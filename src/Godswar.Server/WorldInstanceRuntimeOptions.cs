@@ -1,3 +1,6 @@
+using WorldServerNodeId =
+    Godswar.Server.Domain.World.Instances.ServerNodeId;
+
 namespace Godswar.Server;
 
 /// <summary>
@@ -6,6 +9,9 @@ namespace Godswar.Server;
 /// </summary>
 internal sealed class WorldInstanceRuntimeOptions
 {
+    public string ServerNodeId { get; set; } =
+        WorldServerNodeId.Local.ToString();
+
     public int MaximumRuntimes { get; set; } = 256;
 
     public int MaximumPlayerAssignments { get; set; } = 4_096;
@@ -28,8 +34,23 @@ internal sealed class WorldInstanceRuntimeOptions
     public TimeSpan ShutdownDrainTimeout =>
         TimeSpan.FromMilliseconds(ShutdownDrainTimeoutMilliseconds);
 
+    public WorldServerNodeId ProcessServerNodeId =>
+        new(ServerNodeId);
+
     public void Validate()
     {
+        try
+        {
+            _ = ProcessServerNodeId;
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException(
+                "ServerNodeId must contain at most 64 ASCII letters, " +
+                "digits, periods, underscores, or hyphens.",
+                exception);
+        }
+
         RequireRange(
             MaximumRuntimes,
             1,

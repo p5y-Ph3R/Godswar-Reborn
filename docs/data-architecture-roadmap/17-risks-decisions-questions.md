@@ -9,7 +9,9 @@ These are repository-supported facts, not assumed approval of every target recom
 3. The custom ECS has no automatic component serialization or durable whole-world snapshot.
 4. Runtime ECS IDs, sessions, AOI, monster state, tickets, replay windows, and keys currently exist only in process memory.
 5. TLS plus authenticated UDP movement is implemented/tested as an opt-in profile; raw TCP remains the checked-in default.
-6. The runtime is one modular-monolith server process plus PostgreSQL in Docker; no Redis/Mongo/distributed placement process exists.
+6. The authoritative runtime remains one combined modular-monolith worker
+   plus PostgreSQL. B18C1 can add a separate opt-in opaque TCP relay process,
+   but no Redis/Mongo or distributed placement authority exists.
 7. Applied migration IDs/checksums are immutable under the documented policy, and the current runner enforces exact-prefix compatibility.
 8. Several valuable PG operations already use transactions/row locks, but there is no general durable inbox/outbox or stable client operation ID.
 9. Content reads are split across generated package catalogs, PG catalogs, and captured fallbacks.
@@ -23,6 +25,11 @@ These are repository-supported facts, not assumed approval of every target recom
     transfers, and one bounded map-owner mailbox per local runtime. The
     legacy byte-map bridge resolves only Tempest's default open world unless
     a routed session supplies an exact instance.
+12. B18C1 provides a bounded local/raw-development login/game TCP relay to
+    one fixed private combined worker. It does not terminate TLS/authenticate,
+    interpret packets, route instances, share tickets/sessions, relay secure
+    UDP, preserve source IP, coordinate workers, or use Redis. Its managed
+    checks and real two-process smoke are complete.
 
 ## Roadmap recommendations pending approval
 
@@ -33,12 +40,15 @@ These are repository-supported facts, not assumed approval of every target recom
 5. Do not introduce MongoDB during the initial migration.
 6. Make raw account-creating/username-only authentication impossible outside an explicit local-development profile, then retire it when client compatibility permits.
 7. Keep modular-monolith code boundaries while introducing local
-   realm/node/world-instance placement first; split gateway/workers only at
-   those explicit composition boundaries.
+   realm/node/world-instance placement first. Follow B18C1's reversible
+   transport proof with B18C2 semantic gateway/session authority and backhaul
+   before Redis or separate authoritative-worker hosts.
 
 ## Assumptions
 
-1. The immediate deployment remains one server process plus one PostgreSQL service.
+1. The immediate authoritative deployment remains one combined worker plus
+   one PostgreSQL service. A B18C1 relay and worker may run as separate
+   co-located processes for measurement, without implying failure isolation.
 2. Position/vitals may lose a small, documented checkpoint tail on crash; inventory/currency/progression value may not.
 3. PostgreSQL 17 remains the target database version.
 4. The original client can use the in-process networking shim for the secure profile.
@@ -64,9 +74,10 @@ Priority 1:
 7. What are target concurrent players per process/realm/map/instance, peak
    login and instance-admission rates, regions, tick/snapshot rates, and
    acceptable loss/latency?
-8. What release introduces the first runnable gateway/worker split and
-   activates B17's Redis implementation?
-9. Which gateway/placement component owns node selection, sticky routing,
+8. What exact acceptance gate promotes B18C2's semantic gateway/session
+   authority and backhaul beyond B18C1's opaque local relay?
+9. Which B18C2 gateway/placement component owns gateway connection identity,
+   `WorldInstanceId` selection, source/admission identity, sticky routing,
    draining, transfer, and recovery?
 10. What reconnect/resume guarantee and maximum window are required?
 11. What Redis latency, outage, staleness, eviction, provider, region, and

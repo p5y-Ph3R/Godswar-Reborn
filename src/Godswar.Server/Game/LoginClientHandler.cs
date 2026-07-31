@@ -259,7 +259,7 @@ internal sealed class LoginClientHandler : IClientHandler
             await _session.SendAsync(
                 PacketBuilder.GameServerRedirect(
                     _options.Game.PublicHost,
-                    _options.Game.Port),
+                    _options.Game.ResolvePublicPort()),
                 cancellationToken,
                 "GameServerRedirect");
             return;

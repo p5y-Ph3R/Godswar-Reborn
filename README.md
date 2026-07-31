@@ -57,6 +57,31 @@ stock client. Checked-in secure settings deliberately remain default-off after
 rollback; viewer parity was `Unavailable`. See the
 [protocol/runtime record](docs/network-infrastructure-phase4-authoritative-movement.md).
 
+## Local relay/worker proof
+
+B18C1 can run the original raw login/game ports in a bounded relay process
+while a separate authoritative worker listens on private ports. The
+Docker-free smoke starts both real processes with temporary JSON state,
+exercises encrypted login and game bootstrap, restarts only the worker, and
+checks that the relay PID remains stable:
+
+```powershell
+.\tools\InvokeB18CTwoProcessSmoke.ps1
+```
+
+The checked-in local relay route is
+[`appsettings.relay-gateway.json`](appsettings.relay-gateway.json). Its direct
+process command is:
+
+```powershell
+dotnet .\src\Godswar.Server\bin\Release\net10.0\Godswar.Server.dll `
+  --relay-gateway .\appsettings.relay-gateway.json
+```
+
+This is a local process-boundary proof, not the final semantic gateway. The
+worker still owns TLS/authentication, sessions, UDP, gameplay, and all world
+instances; remote placement and Redis coordination remain later milestones.
+
 ## Docker
 
 ```powershell

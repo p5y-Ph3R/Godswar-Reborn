@@ -144,6 +144,8 @@ internal static class LegacyByteTransportChecks
         options.RuntimeProfile = "LocalDevelopment";
         options.Storage.Provider = "Json";
         options.Authentication.AllowLegacyRawAuthentication = true;
+        options.Game.Port = 7_100;
+        options.Game.PublicPort = 7_000;
         var legacyAuthenticationAccess =
             LegacyAuthenticationAccess.Create(
                 ServerRuntimeProfilePolicy.Validate(options));
@@ -163,7 +165,7 @@ internal static class LegacyByteTransportChecks
             .Concat(PacketBuilder.SendServer())
             .Concat(PacketBuilder.GameServerRedirect(
                 options.Game.PublicHost,
-                options.Game.Port))
+                options.Game.PublicPort))
             .ToArray();
         Check.True(
             transport.WrittenBytes.SequenceEqual(Encrypt(expectedClear)),

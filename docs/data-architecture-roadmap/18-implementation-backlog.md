@@ -21,8 +21,10 @@
 | B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
 | B16 - Redis decision ADR **(completed 2026-07-31: historical defer)** | Avoid premature infrastructure | evidence and ADR 0003 | B13-B15 | Defer correctly reflected the then-known one-process target | Evidence review | candidate capacity gaps | Documentation revert | Small | Low |
-| B17 - Redis coordination **(approved; not deployed)** | Coordinate future processes | Async tickets, routes, presence, and PG-fenced leases | B15, B18, second process, budgets | Two processes route/fence correctly; Redis loss cannot lose value | restart/slow/expiry, reconnect, PG fence | Redis/lease/route signals | Drain to local mode | Large | High |
+| B17 - Redis coordination **(approved; not deployed)** | Coordinate authoritative processes | Async tickets, routes, presence, and PG-fenced leases | B15, B18C2 shared coordination, budgets | Semantic processes route/fence correctly; Redis loss cannot lose value | restart/slow/expiry, reconnect, PG fence | Redis/lease/route signals | Drain to local authority | Large | High |
 | B18A/B - Realm/instance identity and fair mailboxes **(completed 2026-07-31)** | Local scale-out foundation | typed IDs, placement/runtime directory, instance sessions, owner mailboxes, bounded fanout | ADR 0004, B02, B10 | Isolated single-owned instances; I/O outside owner commands | lifecycle/isolation/transfer/overload | instance/queue/fanout | Tempest default-map bridge | Large | High |
+| B18C1 - Local opaque TCP relay **(completed 2026-07-31)** | Prove a process boundary | `Networking/RelayGateway`, worker node/public port, Docker-free smoke | B18A/B | One bounded relay reaches one private combined worker; no semantic claims | in-process plus real two-process smoke | finite snapshot/meter | Omit relay mode | Medium | Medium |
+| B18C2 - Semantic gateway/backhaul **(next)** | Move session/routing authority to the gateway boundary | connection identity, backhaul, `WorldInstanceId` route, admission/source identity | verified B18C1, B15 | Explicit worker admission/routing/reconnect and failure policy | multi-worker route/drain/failure tests | gateway/backhaul/route signals | Drain to one worker | Large | High |
 | B19 - Reconciliation service and restore drills | Detect/repair drift | operations worker/tools/runbooks/CI staging | B08-B12 | Bounded report/repair, zero unexplained mismatch, verified RPO/RTO | interruption, duplicate repair, restored backup | mismatch/repair/restore time | Report-only mode | Medium | Medium |
 | B20 - Remove JSON/broad store/legacy capture dependency | Finish migration | `JsonGameStore*`, `IGameStore`, config, content/capture adapters | All callers migrated and observation window | One production authority; no legacy reads | clean/upgraded install, archive parity | legacy-call counter zero | Restore compatibility release/archive | Large | Medium |
 | B21 - MongoDB reconsideration ADR, conditional | Enforce evidence threshold | Documentation/prototype only if real document feature exists | Scheduled feature with measured JSONB limitation | Section 8 evidence and operational plan approved | workload/index/backup prototype | workload/cost/SLO | Reject/remove prototype | Small decision / Large adoption | High |
@@ -110,45 +112,28 @@ validation for valuable writes, post-commit/session/ECS revalidation, and
 bounded metrics. Its final gate passed **263 managed checks** and **42
 PostgreSQL checks across 4 scenarios**.
 
-**B16/B17 decision history:** the
-[original evidence](../data-architecture-b16-b17-redis-decision-20260731.md)
-and ADR 0003 preserve the one-process defer. ADR 0004 now confirms
-multi-realm instances and reopens B17. Redis remains absent until a second
-process and operational budgets exist.
+**B16-B18C rollout:** [B16/B17](../data-architecture-b16-b17-redis-decision-20260731.md)
+preserves the historic defer. [B18A](../data-architecture-b18a-realm-instance-foundation-20260731.md)
+and [B18B](../data-architecture-b18b-instance-routing-mailboxes-20260731.md)
+completed local identity, routing, and owners.
+[B18C1](../data-architecture-b18c1-local-relay-gateway-20260731.md) is
+completed and verified. B18C2 is next; B17 follows its shared coordination
+and recorded budgets.
 
-**B18A completed and verified 2026-07-31:** the
-[implementation evidence](../data-architecture-b18a-realm-instance-foundation-20260731.md)
-records Tempest realm authority, typed realm/node/instance/map identities,
-bounded local placement/lifecycle, and the legacy `MapInstance` bridge. It
-does not claim Redis or a second process.
-
-**B18B completed 2026-07-31:** the
-[implementation evidence](../data-architecture-b18b-instance-routing-mailboxes-20260731.md)
-records the local runtime directory, exact sessions/transfers, isolated
-same-map instances, Tempest byte-map bridge, one bounded owner per map,
-owner-routed membership/NPC/monster mutations, bounded fanout, shutdown, and
-checks. It does not claim Redis, multiple processes, remote/client admission,
-scheduled battlefields, or cross-realm settlement.
-
-## 18.2 First three low-risk implementation tasks
-
-1. **B01A:** inventory the applied migration/build/backup state read-only and publish the exact mismatch manifest.
-2. **B02:** add a ratcheting dependency/ownership architecture check and application contract skeleton without changing behavior.
-3. **B03:** add mandatory disposable PostgreSQL CI scaffolding and fail-on-skip reporting; B01B then repairs the already-discovered empty-bootstrap defect so the gate can become green.
-
-## 18.3 Dependency and parallelization notes
+## 18.2 Dependency and parallelization notes
 
 - **Blocks most PG/application work:** B01B, B02, B03, B07, and B08.
 - **Completed prerequisite for scale-out/Redis and multi-owner writes:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
-- **Requires operational inputs before activation:** B17 Redis provider/SLO/cost and two-process routing/failure policy.
-- **Next scale-out proof:** a local gateway/worker split using B18 before
-  Redis.
+- **Requires operational inputs before activation:** B17 Redis
+  provider/SLO/cost plus B18C2 shared-routing/failure policy.
+- **Next scale-out increment:** B18C2 semantic gateway/session authority and
+  backhaul; B18C1's opaque relay alone does not activate Redis.
 - **Requires a new architectural decision first:** B21 for MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 
-## 18.4 Architectural mistakes to avoid
+## 18.3 Architectural mistakes to avoid
 
 - Persisting every ECS component or a complete ECS world snapshot.
 - Treating mutable `GameCharacter`, an ECS projection, JSON file, and PG row as simultaneous authorities.

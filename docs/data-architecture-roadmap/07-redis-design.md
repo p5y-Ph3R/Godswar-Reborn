@@ -12,16 +12,25 @@ battlefields and on-demand dungeons also require independently routed
 
 B17 is therefore **reopened and Redis is approved for future cross-process
 coordination**. No Redis implementation or deployment is claimed. The
-current process still composes a bounded `InMemoryGameTicketStore`,
-process-local registry/presence, and all world-instance runtimes in one
-server; Compose still contains only the server and PostgreSQL.
+combined authoritative worker still composes a bounded
+`InMemoryGameTicketStore`, process-local registry/presence, and all
+world-instance runtimes; Compose still contains only that server and
+PostgreSQL.
 
 B18A introduced realm, node, map, and world-instance identities plus local
 placement. B18B now provides the local runtime directory, exact session
-routing, and bounded instance-owner mailboxes. Redis activation begins only
-when a second gateway/worker or worker process becomes runnable and
-exercises a shared coordination contract. It must not be added merely to
-replace the working local implementation before that boundary exists.
+routing, and bounded instance-owner mailboxes. B18C1 adds a separate,
+opt-in, fixed-upstream opaque TCP relay, but all ticket, session, placement,
+and world authority remains in the one combined worker. Its second process
+exercises no shared coordination contract and therefore does not activate
+B17.
+
+Redis activation begins only after B18C2 supplies a semantic
+gateway/session-authority backhaul, gateway connection identity,
+`WorldInstanceId` routing, and explicit admission/source identity, or a
+multiple-authoritative-worker slice otherwise exercises real shared
+coordination. It must not be added merely to replace the working local
+implementation before that boundary and its operational budgets exist.
 
 Before enabling the Redis-backed path, B17 must:
 
@@ -32,7 +41,8 @@ Before enabling the Redis-backed path, B17 must:
 - record peak demand, p95/p99 latency, timeout, availability, maximum
   staleness, recovery, eviction, memory, provider/region, and cost budgets;
 - prove at least two processes against Redis slow/restart/loss cases while
-  PostgreSQL fencing rejects stale owners.
+  the semantic gateway/worker contract is active and PostgreSQL fencing
+  rejects stale owners.
 
 Synchronous Redis I/O in network handlers or ECS/map loops is forbidden.
 PostgreSQL remains the only durable player-value and monotonic-fence

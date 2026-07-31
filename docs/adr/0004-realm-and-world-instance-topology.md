@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-31
 - Decision owner: Godswar server maintainers
-- Roadmap tickets: B17, B18A, and B18B
+- Roadmap tickets: B17, B18A, B18B, B18C1, and B18C2
 - Supersedes: the target-topology and B17-activation conclusions of
   [ADR 0003](0003-defer-redis-coordination.md)
 
@@ -118,10 +118,20 @@ association, and routing. It does not own combat, inventory, rewards, or
 world simulation. A worker owns the fixed-step ECS state for each assigned
 `WorldInstanceId`.
 
-The first implementation remains local-first: the gateway, placement
-registry, and all instances may still run in one process. The same
-application contracts must later admit a remote worker without changing ECS
-or durable economy semantics.
+The first process-separation proof remains local-first:
+
+```text
+original client -> B18C1 opaque raw-TCP relay
+                -> one private combined authoritative worker
+```
+
+B18C1 is not the stable semantic gateway pictured above. It has no
+authentication, session authority, packet interpretation, placement, or
+`WorldInstanceId` route decision. The combined worker still owns networking
+sessions, game handlers, placement, every map/instance and B18B mailbox, and
+all PostgreSQL/JSON access. B18C2 must introduce the semantic
+gateway/session-authority backhaul without changing ECS or durable economy
+semantics.
 
 ## Durable and temporary ownership
 
@@ -178,11 +188,16 @@ forbidden.
    processes.
 4. Reopen B17 and approve Redis as the target coordination store for the
    confirmed multi-process topology.
-5. Do **not** add or deploy Redis merely for the current one-process runtime.
-   B17 implementation begins with the first runnable two-process
-   gateway/worker or worker/worker slice.
+5. Do **not** add or deploy Redis merely for the current
+   single-authoritative-worker runtime, whether clients connect directly or
+   through B18C1. A protocol-opaque relay process does not activate B17.
+   Redis begins only after B18C2 provides a semantic gateway/worker or
+   worker/worker boundary that exercises shared coordination and the
+   operational budgets are recorded.
 6. Keep the server a modular monolith in code and split deployable processes
    only at explicit composition boundaries.
+7. Treat B18C1 as a reversible local/raw-development topology proof, not as
+   the production gateway or a distributed authority.
 
 ADR 0003 remains the historical evidence for why no Redis package or service
 was added during B16. This ADR supersedes only its assumption that there was
@@ -250,6 +265,33 @@ settlement. Existing per-player durable fencing and feature-level
 coordination also remain distinct from the map mailbox. See the
 [B18B implementation evidence](../data-architecture-b18b-instance-routing-mailboxes-20260731.md).
 
+## B18C1 implementation boundary
+
+B18C1 adds the separate opt-in
+`Godswar.Server --relay-gateway <configPath>` process mode. Its login and
+game listeners copy opaque bytes to exactly one configured private or
+loopback combined worker. One global connection cap, fixed pooled buffers,
+connect/idle/write deadlines, TCP half-close, tracked finite drain, and
+finite-label in-memory snapshot/`.NET Meter` signals bound the relay. Relay
+mode does not compose a management endpoint or metrics exporter.
+
+The worker now has a configurable `ServerNodeId` and a raw advertised game
+`PublicPort`, so its private game listener can redirect the original client
+back to the relay. These values do not give the relay placement or session
+authority.
+
+B18C1 does not terminate TLS/authentication, interpret packets, route by
+`WorldInstanceId`, share tickets or sessions, relay secure UDP, preserve
+source IP, coordinate workers, transfer/reconnect across workers, schedule
+battlefields/dungeons, settle cross-realm results, or use Redis. Secure UDP,
+if experimented with, remains direct-to-worker and is not B18C1 acceptance.
+See the
+[B18C1 implementation evidence](../data-architecture-b18c1-local-relay-gateway-20260731.md).
+
+Completion requires both automated in-process coverage and the Docker-free
+real two-process smoke. Both passed in the carrying tree, alongside the
+275-check managed catalog and the 43-check, five-scenario PostgreSQL gate.
+
 ## B17 activation and rollout
 
 B17 is now **approved for future implementation, not implemented or
@@ -267,15 +309,22 @@ The rollout order is:
 
 1. B18A local identities and placement. **Completed.**
 2. B18B owner mailboxes and transport-independent local instance routing.
-   **Implemented.**
-3. A runnable gateway/worker split in local development.
-4. B17 Redis adapter, two-process tests, observability, and failure policy.
-5. Controlled instance transfer, scheduled battlefield, then cross-realm
+   **Completed.**
+3. B18C1 bounded opaque login/game TCP relay to one combined worker.
+   **Completed and verified.**
+4. B18C2 semantic gateway/session authority and backhaul, gateway connection
+   identity, `WorldInstanceId` routing, and admission/source identity.
+   **Next.**
+5. B17 Redis adapter, shared-coordination tests, observability, budgets, and
+   failure policy.
+6. Controlled instance transfer, scheduled battlefield, then cross-realm
    settlement slices.
 
-Rollback drains remote workers to one process and selects the local
-placement/coordination implementation. PostgreSQL identities, ownership
-generations, and durable results are retained.
+B18C1 rollback omits relay mode and restores the directly advertised worker
+port. Future distributed rollback drains remote workers to one authoritative
+worker and selects the local placement/coordination implementation.
+PostgreSQL identities, ownership generations, and durable results are
+retained.
 
 ## Consequences
 
@@ -286,5 +335,5 @@ stable destination.
 
 The cost is additional identity, placement, lifecycle, transfer, and
 operations work before scale-out is safe. Redis becomes an approved future
-dependency, but it is deliberately absent until a second process exercises
-the coordination boundary.
+dependency, but it is deliberately absent until a semantic process boundary
+exercises real shared coordination; B18C1's opaque relay alone does not.

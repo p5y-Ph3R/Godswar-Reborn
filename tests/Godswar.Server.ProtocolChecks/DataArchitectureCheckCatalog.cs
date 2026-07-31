@@ -65,6 +65,9 @@ internal static class DataArchitectureCheckCatalog
             WorldInstanceEgressRevalidationChecks.CheckName,
             WorldInstanceEgressRevalidationChecks.RunAsync),
         (
+            RelayGatewayChecks.CheckName,
+            RelayGatewayChecks.RunAsync),
+        (
             "Game-handler checkpoint lifecycle",
             GameHandlerCheckpointLifecycleChecks.RunAsync),
         (

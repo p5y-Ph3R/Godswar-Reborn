@@ -6,8 +6,9 @@
 - **Scope/tasks:** ADR 0003 recorded the original defer; ADR 0004 later
   approved Redis's future cross-process use case. Measure
   concurrency/instances/routing/reconnect load and finish the operational
-  SLO/cost gate before activation. Complete a Mongo ADR only if section 8
-  evidence appears.
+  SLO/cost gate before activation. B18C1's opaque relay is a second process
+  but owns no shared coordination, so it does not activate Redis. Complete a
+  Mongo ADR only if section 8 evidence appears.
 - **Likely files/modules:** architecture/operations docs, load tools, deployment design.
 - **Dependencies:** stable command ownership and production capacity inputs.
 - **Data migrations:** none.
@@ -26,8 +27,8 @@
 - **Scope/tasks:** typed key library; ticket consume; server registry; player ownership lease/fence; presence/routing/reconnect; local and Redis implementations; circuit breakers; reconciliation.
 - **Likely files/modules:** `Networking/Secure/IGameTicketStore`, session ownership application contracts, `GameSessionRegistry` boundary, new Redis infrastructure/config/tests.
 - **Dependencies:** ADR 0004, PG ownership fence, B18 local placement and
-  sticky-routing design, plus a runnable second process and approved
-  operational budgets.
+  sticky-routing design, B18C2 semantic gateway/session authority or another
+  real shared-coordination boundary, and approved operational budgets.
 - **Data migrations:** PG server/ownership audit metadata if needed; no player value in Redis.
 - **Acceptance criteria:** two instances cannot commit for one character; established sessions behave as documented during Redis loss; cache loss is reconstructable.
 - **Tests:** Testcontainers Redis, expiry/eviction/restart, split ownership, Lua atomicity, shared NAT rate limits, reconnect to another process.
@@ -38,20 +39,30 @@
 
 ## Phase 11 - TCP/UDP application integration
 
-- **Current increment:** B18B completes process-local `WorldInstanceId`
+- **Current increments:** B18B completes process-local `WorldInstanceId`
   session routing, one bounded owner mailbox per map runtime, and bounded
-  socket fanout outside owner commands. It does not yet claim that every
-  transport command uses that mailbox, a second process exists, or Redis
-  routing is active.
+  socket fanout outside owner commands. B18C1 adds a bounded opaque login/game
+  TCP relay process to one private combined worker plus configurable worker
+  `ServerNodeId` and raw advertised game `PublicPort`. It does not terminate
+  TLS/auth, interpret packets, relay secure UDP, own sessions, select
+  workers, route instances, or activate Redis. Its managed and real
+  two-process smoke evidence is complete.
 - **Goal:** route all network inputs through typed command envelopes and single-owner mailboxes with explicit reliability.
 - **Scope/tasks:** classify every opcode; require secure principal in production; add bounded map/player ingress; remove DB/socket fanout from tick; preserve UDP movement semantics and TLS fallback; make viewer replication fairness-aware.
-- **Likely files/modules:** `LoginClientHandler`, partial `GameClientHandler` files, `ClientSession`, secure realtime classes, `GameSessionRegistry`, `MapInstance`, ECS boundaries.
+- **Likely files/modules:** `LoginClientHandler`, partial `GameClientHandler`
+  files, `ClientSession`, secure realtime classes, `GameSessionRegistry`,
+  `MapInstance`, ECS boundaries,
+  `src/Godswar.Server/Networking/RelayGateway`, and
+  `tools/Godswar.Server.B18CSmoke`.
 - **Dependencies:** application contracts, checkpoint/ownership, valuable command idempotency.
 - **Data migrations:** none beyond earlier inbox/fence.
 - **Acceptance criteria:** no networking type calls Npgsql/store; no fixed-step system awaits DB or sequential client fanout; secure profile passes end-to-end and raw path is dev-only/removed.
-- **Tests:** loss/dup/reorder/replay, TCP partial/coalesced/slow client, fallback, reconnect, map transfer, queue overload, deterministic replay.
+- **Tests:** loss/dup/reorder/replay, TCP partial/coalesced/slow client,
+  fallback, reconnect, map transfer, queue overload, deterministic replay,
+  and the Docker-free B18C1 real relay/worker process smoke.
 - **Metrics:** command queue depth/age/reject, tick drift, fanout latency, transport fallback, stale/replayed packet rejects.
-- **Rollback:** per-command adapter flags and mutually exclusive listener profile; retain protocol compatibility.
+- **Rollback:** omit `--relay-gateway`, restore the directly advertised
+  worker port, and retain per-command adapter flags/protocol compatibility.
 - **Risks:** original client compatibility and packet-order assumptions.
 - **Complexity:** Large.
 
@@ -87,7 +98,9 @@
 
 - **Goal:** establish reproducible capacity baselines, not production guarantees.
 - **Scope/tasks:** extend Phase 5A with loopback live clients, PG workloads, AOI fanout, command mixes, persistence workers, and optional Redis; use latency/jitter/loss/reorder/MTU emulation; run authorized staging soak.
-- **Likely files/modules:** `tools/Godswar.Server.Phase5A`, secure smoke tool, test harness, benchmark docs.
+- **Likely files/modules:** `tools/Godswar.Server.Phase5A`,
+  `tools/Godswar.Server.B18CSmoke`, secure smoke tool, test harness, and
+  benchmark docs.
 - **Dependencies:** phases under measurement complete; capacity assumptions provided.
 - **Data migrations:** test fixtures only.
 - **Acceptance criteria:** report environment, workload, CPU/memory/allocations/FDs/queues/ticks/bandwidth/DB/Redis; demonstrate overload recovery within budgets.

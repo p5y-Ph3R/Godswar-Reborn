@@ -112,7 +112,7 @@ internal sealed partial class GameSessionRegistry
                 return _worldInstanceDirectory ??=
                     new LocalWorldInstanceRuntimeDirectory(
                         new LocalWorldInstancePlacementRegistry(
-                            ServerNodeId.Local,
+                            _worldInstanceOptions.ProcessServerNodeId,
                             _worldInstanceOptions.MaximumRuntimes,
                             _worldInstanceOptions
                                 .MaximumPlayerAssignments,
@@ -291,6 +291,7 @@ internal sealed partial class GameSessionRegistry
         options.Validate();
         return new WorldInstanceRuntimeOptions
         {
+            ServerNodeId = options.ServerNodeId,
             MaximumRuntimes = options.MaximumRuntimes,
             MaximumPlayerAssignments =
                 options.MaximumPlayerAssignments,

@@ -6,6 +6,7 @@ using Godswar.Server.Infrastructure;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
+using Godswar.Server.Networking.RelayGateway;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Operations;
@@ -22,6 +23,11 @@ if (await ManagementProbeCommand.TryRunAsync(args))
 }
 
 if (await ControlledHostValidationCommand.TryRunAsync(args))
+{
+    return;
+}
+
+if (await RelayGatewayCommand.TryRunAsync(args))
 {
     return;
 }
