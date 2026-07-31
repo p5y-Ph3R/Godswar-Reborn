@@ -94,7 +94,10 @@ internal sealed class LoginClientHandler : IClientHandler
                 _loginGeneration is not null &&
                 _ticketStore is not null)
             {
-                _ticketStore.RevokeGeneration(_loginGeneration);
+                await _ticketStore.RevokeGenerationAsync(
+                    _loginGeneration,
+                    SecureTicketOperationDeadline.Default,
+                    CancellationToken.None);
             }
         }
     }
@@ -216,9 +219,11 @@ internal sealed class LoginClientHandler : IClientHandler
                     return;
                 }
 
-                var generation = _ticketStore.BeginLogin(
+                var generation = await _ticketStore.BeginLoginAsync(
                     result.Account!.Id,
-                    result.Account.Username);
+                    result.Account.Username,
+                    SecureTicketOperationDeadline.Default,
+                    cancellationToken);
                 if (!generation.IsStarted)
                 {
                     await SendGenericFailureAsync(cancellationToken);
@@ -275,37 +280,35 @@ internal sealed class LoginClientHandler : IClientHandler
             return;
         }
 
-        var issued = _ticketStore.Issue(
+        var issued = await _ticketStore.IssueAsync(
             _loginGeneration,
             context,
-            _gameTarget);
+            _gameTarget,
+            SecureTicketOperationDeadline.Default,
+            cancellationToken);
         if (!issued.IsIssued)
         {
             _session.Disconnect();
             return;
         }
 
-        using var lease = issued.Lease!;
+        await using var lease = issued.Lease!;
         await _session.SendGameGrantAsync(
             lease.Grant,
             cancellationToken);
-        if (!lease.Activate())
-        {
-            _session.Disconnect();
-            throw new SecureTransportException(
-                "The game grant expired or was invalidated before activation.");
-        }
         await _session.SendAsync(
             PacketBuilder.GameServerRedirect(
                 _gameTarget.RouteHost,
                 _gameTarget.RoutePort),
             cancellationToken,
             "GameServerRedirect");
-        if (!lease.Commit())
+        if (!await lease.CommitAsync(
+                SecureTicketOperationDeadline.Default,
+                cancellationToken))
         {
             _session.Disconnect();
             throw new SecureTransportException(
-                "The activated game grant could not be preserved after redirect.");
+                "The game grant expired or was invalidated after redirect.");
         }
 
         _grantCommitted = true;

@@ -3,14 +3,11 @@
 ## Phase 9 - Redis and Mongo decision gates
 
 - **Goal:** approve only demonstrated stores.
-- **Scope/tasks:** ADR 0003 recorded the original defer; ADR 0004 later
-  approved Redis's future cross-process use case. Measure
-  concurrency/instances/routing/reconnect load and finish the operational
-  SLO/cost gate before activation. B18C1's opaque relay is a second process
-  but owns no shared coordination. B18C2 now completes the local-first
-  semantic gateway/worker prerequisite; B17 is next, but Redis still waits
-  for its SLO/cost/outage gate. Complete a Mongo ADR only if section 8
-  evidence appears.
+- **Scope/tasks:** ADR 0003 records the historical defer; ADR 0004 confirmed
+  the use case; ADR 0005 approved and bounds the now-implemented opt-in B17
+  provider. Production activation still waits for measured SLO/cost/outage,
+  provider, and remote failure-isolation evidence. Complete a Mongo ADR only
+  if section 8 evidence appears.
 - **Likely files/modules:** architecture/operations docs, load tools, deployment design.
 - **Dependencies:** stable command ownership and production capacity inputs.
 - **Data migrations:** none.
@@ -23,16 +20,20 @@
 - **Risks:** adopting infrastructure for hypothetical scale.
 - **Complexity:** Small for decision; Medium for evidence.
 
-## Phase 10 - Redis sessions, presence, and routing, approved but not active
+## Phase 10 - Redis tickets, admissions, presence, and routing, opt-in
 
 - **Goal:** support multiple processes without moving player value from PG.
-- **Scope/tasks:** typed key library; ticket consume; server registry; player ownership lease/fence; presence/routing/reconnect; local and Redis implementations; circuit breakers; reconciliation.
-- **Likely files/modules:** `Networking/Secure/IGameTicketStore`, session ownership application contracts, `GameSessionRegistry` boundary, new Redis infrastructure/config/tests.
+- **Scope/tasks:** implemented typed keys, consume-once tickets/admissions,
+  worker registry/routes, PG-fenced player presence, Local/Redis adapters,
+  deadlines, circuit breaker, readiness, metrics, CI, and runbooks.
+- **Likely files/modules:** `Application/Sessions/IGameTicketStore`, session ownership application contracts, `GameSessionRegistry` boundary, Redis infrastructure/config/tests.
 - **Dependencies:** ADR 0004, PG ownership fence, B18 local placement and
   sticky-routing design, B18C2 semantic gateway/session authority or another
   real shared-coordination boundary, and approved operational budgets.
 - **Data migrations:** PG server/ownership audit metadata if needed; no player value in Redis.
-- **Acceptance criteria:** two instances cannot commit for one character; established sessions behave as documented during Redis loss; cache loss is reconstructable.
+- **Acceptance criteria:** atomic cross-process coordination is bounded;
+  Redis loss cannot authorize durable value; public deployment remains gated
+  until the two-process staging and provider controls pass.
 - **Tests:** Testcontainers Redis, expiry/eviction/restart, split ownership, Lua atomicity, shared NAT rate limits, reconnect to another process.
 - **Metrics:** Redis latency/errors, lease renew/conflict, active ownership, ticket outcomes, stale presence.
 - **Rollback:** single-instance mode using local implementation; drain to one owner before disabling Redis.

@@ -80,7 +80,7 @@ dotnet .\src\Godswar.Server\bin\Release\net10.0\Godswar.Server.dll `
 
 This is a local process-boundary proof, not the final semantic gateway. The
 worker still owns TLS/authentication, sessions, UDP, gameplay, and all world
-instances; remote placement and Redis coordination remain later milestones.
+instances; remote placement remains a later milestone.
 
 ## Local semantic gateway/worker
 
@@ -141,6 +141,8 @@ joined by direct portals until transfer exists. This adds no Redis, UDP
 gateway, live transfer, production placement, HA, or capacity guarantee. See
 the
 [B18C2 evidence](docs/data-architecture-b18c2-semantic-gateway-backhaul-20260731.md).
+B17 Redis coordination is now opt-in; `Local` remains the default. See the
+[B17 evidence](docs/data-architecture-b17-redis-coordination-20260731.md).
 
 ## Docker
 

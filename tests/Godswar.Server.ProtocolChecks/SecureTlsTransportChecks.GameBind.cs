@@ -33,19 +33,20 @@ internal static partial class SecureTlsTransportChecks
             clientInstanceId,
             clientInstanceId,
             buildHash);
-        var generation = ticketStore.BeginLogin(7, "test2");
+        var generation = await ticketStore.BeginLoginAsync(
+            7,
+            "test2",
+            SecureTicketOperationDeadline.Default);
         Check.True(
             generation.IsStarted,
             "test secure login generation starts");
-        var issued = ticketStore.Issue(
+        var issued = await ticketStore.IssueAsync(
             generation.Generation!,
             loginContext,
-            target);
+            target,
+            SecureTicketOperationDeadline.Default);
         Check.True(issued.IsIssued, "test secure game ticket issues");
-        using var grantLease = issued.Lease!;
-        Check.True(
-            grantLease.Commit(),
-            "physically ordered test grant becomes redeemable");
+        await using var grantLease = issued.Lease!;
 
         var factory = new TlsMuxLegacyTransportFactory(
             new SecureNetworkOptions(),
@@ -107,6 +108,11 @@ internal static partial class SecureTlsTransportChecks
             CryptographicOperations.ZeroMemory(ticket);
         }
 
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        Check.True(
+            await grantLease.CommitAsync(
+                SecureTicketOperationDeadline.Default),
+            "post-redirect activation wins the bounded bind race");
         var resultFrame = await ReadFrameAsync(
             pair.ClientStream,
             SecureEndpointRole.Game,

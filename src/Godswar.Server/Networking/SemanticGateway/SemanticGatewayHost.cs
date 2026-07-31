@@ -1,4 +1,5 @@
 using System.Net;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Networking.Backhaul;
 
@@ -10,11 +11,13 @@ internal readonly record struct SemanticGatewayStartedEndpoints(
 
 /// <summary>
 /// Composes the local legacy edge and authenticated private worker backhaul.
-/// The host owns no ECS or durable player state.
+/// The host owns no ECS or durable player state. It owns and disposes the
+/// supplied coordination implementation for its full listener lifetime.
 /// </summary>
 internal sealed class SemanticGatewayHost : IAsyncDisposable
 {
-    private readonly SemanticGatewayAdmissionAuthority _authority;
+    private readonly ISemanticGatewayCoordination _coordination;
+    private readonly TimeSpan _coordinationTimeout;
     private readonly SemanticGatewayRuntimeConfiguration _configuration;
     private readonly SemanticGatewayGameServer _gameServer;
     private readonly BackhaulHandshakeGate _handshakeGate;
@@ -22,6 +25,7 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
         _connections;
     private readonly TcpEndpointServer _loginServer;
     private readonly IConnectionAdmission _admission;
+    private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _disposeStop = new();
     private readonly TaskCompletionSource<SemanticGatewayStartedEndpoints>
         _started =
@@ -34,17 +38,24 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
     public SemanticGatewayHost(
         SemanticGatewayRuntimeConfiguration configuration,
         ISemanticGatewayDataSession data,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ISemanticGatewayCoordination? coordination = null)
     {
         _configuration = configuration ??
             throw new ArgumentNullException(nameof(configuration));
         ArgumentNullException.ThrowIfNull(data);
         var clock = timeProvider ?? TimeProvider.System;
+        _timeProvider = clock;
 
-        _authority = new SemanticGatewayAdmissionAuthority(
-            configuration.RouteDirectory,
-            configuration.AuthorityLimits,
-            clock);
+        _coordination = coordination ??
+            new InMemorySemanticGatewayCoordination(
+                new SemanticGatewayAdmissionAuthority(
+                    configuration.RouteDirectory,
+                    configuration.AuthorityLimits,
+                    clock),
+                clock);
+        _coordinationTimeout = CoordinationTimeout(
+            configuration.ClientLimits.FirstPacketTimeout);
         _connections = new SemanticGatewayConnectionCoordinator(
             configuration.AuthorityLimits.MaximumAdmissions,
             configuration.ClientLimits.GracefulDrainTimeout,
@@ -61,17 +72,19 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
             session => new SemanticGatewayLoginHandler(
                 session,
                 data,
-                _authority,
+                _coordination,
                 _connections,
                 configuration.GamePublicHost,
-                configuration.GamePublicPort),
+                configuration.GamePublicPort,
+                _coordinationTimeout,
+                clock),
             clock);
         _handshakeGate =
             configuration.CreateBackhaulHandshakeGate();
         var dependencies =
             new SemanticGatewayGameConnectionDependencies(
                 data,
-                _authority,
+                _coordination,
                 _connections,
                 map => configuration.TryResolveMap(
                         map,
@@ -92,6 +105,7 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
                 RefreshInterval(
                     configuration.AuthorityLimits
                         .CommittedAdmissionTtl),
+                _coordinationTimeout,
                 configuration.ClientLimits.BufferSizeBytes,
                 clock);
         _gameServer = new SemanticGatewayGameServer(
@@ -102,7 +116,7 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
     }
 
     public SemanticGatewayAuthoritySnapshot AuthoritySnapshot =>
-        _authority.GetSnapshot();
+        _coordination.GetSnapshot();
 
     public SemanticGatewayGameSnapshot GameSnapshot =>
         _gameServer.GetSnapshot();
@@ -143,17 +157,22 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
                     lifetime.Token));
             _started.TrySetResult(endpoints);
 
-            var first = await Task.WhenAny(login, game);
+            var first = await Task.WhenAny(login, game, sweep);
             if (!lifetime.IsCancellationRequested)
             {
                 lifetime.Cancel();
                 await IgnoreAsync(login);
                 await IgnoreAsync(game);
+                await IgnoreAsync(sweep);
                 throw new InvalidOperationException(
-                    "A semantic gateway listener stopped before shutdown.");
+                    first == sweep
+                        ? "The semantic gateway coordination sweeper " +
+                            "stopped before shutdown."
+                        : "A semantic gateway listener stopped before " +
+                            "shutdown.");
             }
 
-            await Task.WhenAll(login, game);
+            await Task.WhenAll(login, game, sweep);
         }
         catch (OperationCanceledException)
             when (lifetime.IsCancellationRequested)
@@ -212,9 +231,16 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
         }
         finally
         {
-            _connections.Dispose();
-            _handshakeGate.Dispose();
-            _disposeStop.Dispose();
+            try
+            {
+                await _coordination.DisposeAsync();
+            }
+            finally
+            {
+                _connections.Dispose();
+                _handshakeGate.Dispose();
+                _disposeStop.Dispose();
+            }
         }
     }
 
@@ -228,7 +254,13 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
                 cancellationToken);
             for (var pass = 0; pass < 16; pass++)
             {
-                if (_authority.SweepExpired() == 0)
+                var swept =
+                    await _coordination.SweepExpiredAsync(
+                        CoordinationDeadline.FromNow(
+                            _coordinationTimeout,
+                            _timeProvider),
+                        cancellationToken);
+                if (swept == 0)
                 {
                     break;
                 }
@@ -253,5 +285,14 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
             250,
             ttl.TotalMilliseconds / 2);
         return TimeSpan.FromMilliseconds(milliseconds);
+    }
+
+    private static TimeSpan CoordinationTimeout(
+        TimeSpan firstPacketTimeout)
+    {
+        var milliseconds = Math.Min(
+            TimeSpan.FromSeconds(2).TotalMilliseconds,
+            firstPacketTimeout.TotalMilliseconds);
+        return TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));
     }
 }

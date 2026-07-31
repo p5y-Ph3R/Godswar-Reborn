@@ -1,16 +1,18 @@
 # ADR 0003: Defer Redis coordination
 
 - Status: Superseded in part by
-  [ADR 0004](0004-realm-and-world-instance-topology.md)
+  [ADR 0004](0004-realm-and-world-instance-topology.md) and
+  [ADR 0005](0005-b17-redis-coordination-activation.md)
 - Date: 2026-07-31
 - Decision owner: Godswar server maintainers
 - Roadmap tickets: B16 and conditional B17
 
 > Historical note: this ADR accurately records the repository evidence and
 > B16 decision at the time it was accepted. ADR 0004 later confirmed a
-> multi-realm, cross-process target and reopened B17. The present facts that
-> Redis is not implemented/deployed and PostgreSQL owns durable player value
-> remain unchanged.
+> multi-realm, cross-process target and reopened B17. ADR 0005 then approved
+> and implemented an opt-in Redis coordination provider. Redis is still not
+> deployed as production infrastructure, and PostgreSQL remains the durable
+> owner of player value.
 
 ## Context
 

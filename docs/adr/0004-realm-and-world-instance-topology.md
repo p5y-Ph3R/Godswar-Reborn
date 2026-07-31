@@ -6,6 +6,8 @@
 - Roadmap tickets: B17, B18A, B18B, B18C1, and B18C2
 - Supersedes: the target-topology and B17-activation conclusions of
   [ADR 0003](0003-defer-redis-coordination.md)
+- B17 implementation status is superseded by
+  [ADR 0005](0005-b17-redis-coordination-activation.md)
 
 ## Context
 
@@ -31,9 +33,9 @@ The product topology is now confirmed:
   dungeon-instance content. A worker process may host many isolated
   instances; an instance does not require its own process.
 
-These requirements establish a real cross-process routing and coordination
-use case. They do not mean Redis is already implemented or that every map
-must immediately move to a separate process.
+These requirements established a real cross-process routing and coordination
+use case. At this ADR's acceptance they did not mean Redis was implemented,
+and they still do not mean every map must move to a separate process.
 
 ## Identity model
 
@@ -339,8 +341,10 @@ remain on the same worker until a controlled transfer protocol exists.
 
 ## B17 activation and rollout
 
-B17 is now **approved for future implementation, not implemented or
-deployed**. Before its runtime slice is enabled, the team must still record:
+B17 is now **completed and verified behind an opt-in provider, but not
+deployed as production infrastructure** under ADR 0005. Before public
+scale-out, the team
+must still record:
 
 - node and instance capacity targets;
 - placement, sticky-routing, transfer, drain, and split-brain rules;
@@ -361,7 +365,7 @@ The rollout order is:
    identity, `WorldInstanceId` routing, and admission/source identity.
    **Completed and verified.**
 5. B17 Redis adapter, shared-coordination tests, observability, budgets, and
-   failure policy. **Next.**
+   failure policy. **Implemented opt-in; production deployment gated.**
 6. Controlled instance transfer, scheduled battlefield, then cross-realm
    settlement slices.
 
@@ -378,7 +382,6 @@ server. It keeps current gameplay runnable while giving process separation a
 stable destination.
 
 The cost is additional identity, placement, lifecycle, transfer, and
-operations work before scale-out is safe. The semantic process boundary is
-now verified locally. Redis remains absent and B17 is next; its activation
-still requires explicit operational budgets and PostgreSQL-fenced failure
-tests.
+operations work before scale-out is safe. The semantic boundary and opt-in
+B17 coordination are implemented locally. Public Redis activation still
+requires provider, staging, remote-failure, and PostgreSQL-fence evidence.

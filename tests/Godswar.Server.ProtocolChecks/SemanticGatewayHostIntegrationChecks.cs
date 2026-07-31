@@ -72,15 +72,17 @@ internal static partial class BackhaulProtocolChecks
         {
             var endpoints = await host.WaitUntilStartedAsync(
                 stop.Token);
-            var authority = HostAuthority(host);
-            var generationA = BeginHostLogin(
-                authority,
+            var coordination = HostCoordination(host);
+            var generationA = await BeginHostLoginAsync(
+                coordination,
                 7,
-                "test2");
-            _ = BeginHostLogin(
-                authority,
+                "test2",
+                stop.Token);
+            _ = await BeginHostLoginAsync(
+                coordination,
                 13,
-                "test13");
+                "test13",
+                stop.Token);
             var encryptedA = EncryptedGameLogin("test2");
             var encryptedB = EncryptedGameLogin("test13");
 
@@ -151,7 +153,7 @@ internal static partial class BackhaulProtocolChecks
 
             await CheckRouteLifecycleIsolationAsync(
                 configuration,
-                authority,
+                coordination,
                 endpoints.Game,
                 workerA,
                 clientA,
@@ -173,10 +175,11 @@ internal static partial class BackhaulProtocolChecks
                 workerA.SessionCount,
                 "stale generation does not reopen worker A");
 
-            var freshGeneration = BeginHostLogin(
-                authority,
+            var freshGeneration = await BeginHostLoginAsync(
+                coordination,
                 7,
-                "test2");
+                "test2",
+                stop.Token);
             Check.True(
                 freshGeneration.GenerationId !=
                     generationA.GenerationId,
@@ -227,10 +230,11 @@ internal static partial class BackhaulProtocolChecks
                 workerA.SessionCount,
                 "worker loss does not reopen from the consumed generation");
 
-            var finalGeneration = BeginHostLogin(
-                authority,
+            var finalGeneration = await BeginHostLoginAsync(
+                coordination,
                 7,
-                "test2");
+                "test2",
+                stop.Token);
             Check.True(
                 finalGeneration.GenerationId !=
                     freshGeneration.GenerationId,
@@ -252,10 +256,11 @@ internal static partial class BackhaulProtocolChecks
 
             workerA.DelayNextRelease(
                 TimeSpan.FromMilliseconds(250));
-            var replacementGeneration = BeginHostLogin(
-                authority,
+            var replacementGeneration = await BeginHostLoginAsync(
+                coordination,
                 7,
-                "test2");
+                "test2",
+                stop.Token);
             Check.True(
                 replacementGeneration.GenerationId !=
                     finalGeneration.GenerationId,
@@ -292,7 +297,7 @@ internal static partial class BackhaulProtocolChecks
 
     private static async Task CheckRouteLifecycleIsolationAsync(
         SemanticGatewayRuntimeConfiguration configuration,
-        SemanticGatewayAdmissionAuthority authority,
+        ISemanticGatewayCoordination coordination,
         IPEndPoint gameEndpoint,
         LoopbackBackhaulWorker workerA,
         TcpClient clientA,
@@ -307,7 +312,11 @@ internal static partial class BackhaulProtocolChecks
             draining.Status ==
                 SemanticGatewayWorkerUpdateStatus.Updated,
             "worker A enters drain at its exact revision");
-        _ = BeginHostLogin(authority, 8, "DRAINED");
+        _ = await BeginHostLoginAsync(
+            coordination,
+            8,
+            "DRAINED",
+            cancellationToken);
         using (var rejected = await OpenGameAsync(
                    gameEndpoint,
                    EncryptedGameLogin("DRAINED"),
@@ -343,7 +352,11 @@ internal static partial class BackhaulProtocolChecks
             unavailable.Status ==
                 SemanticGatewayWorkerUpdateStatus.Updated,
             "worker A transitions from draining to unavailable");
-        _ = BeginHostLogin(authority, 9, "OFFLINE");
+        _ = await BeginHostLoginAsync(
+            coordination,
+            9,
+            "OFFLINE",
+            cancellationToken);
         using (var rejected = await OpenGameAsync(
                    gameEndpoint,
                    EncryptedGameLogin("OFFLINE"),
@@ -363,7 +376,7 @@ internal static partial class BackhaulProtocolChecks
             cancellationToken,
             "worker B survives worker A unavailable state");
         Check.True(
-            authority.GetSnapshot().RouteRejections >= 2,
+            coordination.GetSnapshot().RouteRejections >= 2,
             "gateway records both exact route lifecycle rejections");
 
         var restored =

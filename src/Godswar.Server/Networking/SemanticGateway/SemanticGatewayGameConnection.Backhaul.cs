@@ -32,6 +32,9 @@ internal static partial class SemanticGatewayGameConnection
             CancellationToken cancellationToken)
     {
         var delay = InitialAccountReleaseDelay;
+        var retryStartedAt = timeProvider.GetTimestamp();
+        var admissionLifetime =
+            admission.ExpiresAtUtc - admission.IssuedAtUtc;
         for (var attempt = 1;
              attempt <= MaximumAccountReleaseAttempts;
              attempt++)
@@ -53,8 +56,11 @@ internal static partial class SemanticGatewayGameConnection
                 when (error.Status ==
                         BackhaulAdmissionStatus.AccountAlreadyActive &&
                     attempt < MaximumAccountReleaseAttempts &&
-                    timeProvider.GetUtcNow() + delay <
-                        admission.ExpiresAtUtc)
+                    RetryFitsAdmissionLifetime(
+                        timeProvider,
+                        retryStartedAt,
+                        admissionLifetime,
+                        delay))
             {
                 await Task.Delay(
                     delay,
@@ -69,5 +75,17 @@ internal static partial class SemanticGatewayGameConnection
 
         throw new InvalidOperationException(
             "The bounded worker connection retry did not terminate.");
+    }
+
+    private static bool RetryFitsAdmissionLifetime(
+        TimeProvider timeProvider,
+        long startedAtTimestamp,
+        TimeSpan admissionLifetime,
+        TimeSpan delay)
+    {
+        var elapsed =
+            timeProvider.GetElapsedTime(startedAtTimestamp);
+        return elapsed >= TimeSpan.Zero &&
+            elapsed + delay < admissionLifetime;
     }
 }

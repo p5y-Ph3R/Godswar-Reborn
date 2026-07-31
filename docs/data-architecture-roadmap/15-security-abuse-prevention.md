@@ -39,7 +39,7 @@ The client remains untrusted after TLS. It may request an action; it may not pro
 | Trade/auction abuse | Features missing | Before implementation require escrow, deterministic locks, inbox/outbox, server prices/fees, audit, rate limits |
 | Authorization | Handler-specific checks | Central session principal and command policy; scope every query/mutation to authenticated account/character |
 | SQL injection | Current Npgsql paths generally parameterized | Keep parameterized SQL; no dynamic identifiers from clients; code review/analyzers |
-| Redis key manipulation | Redis absent | Typed opaque key builder; no raw username/IP; Lua validates versions/tokens |
+| Redis key manipulation | B17 is opt-in; production endpoint absent | Versioned opaque key builder; no raw identity keys; ACL/TLS; Lua validates exact versions/tokens |
 | Sensitive data exposure | Hundreds of `Console.WriteLine` sites; packet hex/endpoint/name logging | Structured redacted sampled logs; disable raw payload diagnostics in production; never log credentials/tickets/cookies/keys |
 | Administrative abuse | Developer commands and grants exist | Disabled by default, strong operator authentication/authorization, allowlist not sufficient alone, same-transaction durable GM audit |
 | Resource exhaustion | Good bounded network/KDF/UDP structures; DB/background work less bounded | Bound application/persistence queues, timeouts, pool budgets, log sampling, authenticated priority, readiness/load shedding |

@@ -1,6 +1,12 @@
 using System.Security.Cryptography;
 
-namespace Godswar.Server.Networking.Secure;
+namespace Godswar.Server.Application.Sessions;
+
+internal enum SecureEndpointRole : byte
+{
+    Login = 1,
+    Game = 2
+}
 
 [Flags]
 internal enum SecureGamePermissions : uint
@@ -27,7 +33,8 @@ internal enum SecureTicketConsumeStatus : byte
     Accepted = 1,
     Rejected = 2,
     Expired = 3,
-    ScopeRejected = 4
+    ScopeRejected = 4,
+    NotReady = 5
 }
 
 internal sealed class SecureConnectionContext
@@ -44,7 +51,7 @@ internal sealed class SecureConnectionContext
         ReadOnlySpan<byte> clientInstanceId,
         ReadOnlySpan<byte> originSha256)
     {
-        if (!SecureProtocolValidation.IsEndpointRole(role))
+        if (!SecureTicketModelValidation.IsEndpointRole(role))
         {
             throw new ArgumentOutOfRangeException(nameof(role));
         }
@@ -53,23 +60,24 @@ internal sealed class SecureConnectionContext
             throw new ArgumentOutOfRangeException(nameof(protocolMajor));
         }
         if (connectionId.Length !=
-                SecureProtocolConstants.ConnectionIdBytes ||
-            SecureProtocolValidation.IsAllZero(connectionId))
+                SecureTicketModelValidation.ConnectionIdBytes ||
+            SecureTicketModelValidation.IsAllZero(connectionId))
         {
             throw new ArgumentException(
                 "TLS connection ID must be exactly 16 nonzero bytes.",
                 nameof(connectionId));
         }
         if (clientInstanceId.Length !=
-                SecureProtocolConstants.ClientInstanceIdBytes ||
-            SecureProtocolValidation.IsAllZero(clientInstanceId))
+                SecureTicketModelValidation.ClientInstanceIdBytes ||
+            SecureTicketModelValidation.IsAllZero(clientInstanceId))
         {
             throw new ArgumentException(
                 "Client-instance ID must be exactly 16 nonzero bytes.",
                 nameof(clientInstanceId));
         }
-        if (originSha256.Length != SecureProtocolConstants.BuildHashBytes ||
-            SecureProtocolValidation.IsAllZero(originSha256))
+        if (originSha256.Length !=
+                SecureTicketModelValidation.BuildHashBytes ||
+            SecureTicketModelValidation.IsAllZero(originSha256))
         {
             throw new ArgumentException(
                 "Origin SHA-256 must be exactly 32 nonzero bytes.",
@@ -109,19 +117,19 @@ internal sealed record SecureGameTarget
         SecureGamePermissions permissions =
             SecureGamePermissions.EnterWorld)
     {
-        if (!SecureProtocolValidation.IsDnsName(routeHost, 23))
+        if (!SecureTicketModelValidation.IsDnsName(routeHost, 23))
         {
             throw new ArgumentException(
                 "Route host must be a strict ASCII DNS name of at most 23 bytes.",
                 nameof(routeHost));
         }
-        if (!SecureProtocolValidation.IsDnsName(tlsHost, 253))
+        if (!SecureTicketModelValidation.IsDnsName(tlsHost, 253))
         {
             throw new ArgumentException(
                 "TLS host must be a strict ASCII DNS name.",
                 nameof(tlsHost));
         }
-        if (!SecureProtocolValidation.IsAudience(audience))
+        if (!SecureTicketModelValidation.IsAudience(audience))
         {
             throw new ArgumentException(
                 "Audience must be a bounded ASCII token.",
@@ -265,6 +273,113 @@ internal readonly record struct SecureGameTicketStoreSnapshot(
 
 internal static class SecureTicketModelValidation
 {
+    public const int ConnectionIdBytes = 16;
+    public const int ClientInstanceIdBytes = 16;
+    public const int BuildHashBytes = 32;
+    public const int GrantIdBytes = 16;
+    public const int TicketBytes = 32;
+
+    public static bool IsEndpointRole(SecureEndpointRole role) =>
+        role is SecureEndpointRole.Login or SecureEndpointRole.Game;
+
+    public static bool IsAllZero(ReadOnlySpan<byte> value)
+    {
+        foreach (var item in value)
+        {
+            if (item != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public static bool IsDnsName(string? value, int maximumBytes)
+    {
+        if (string.IsNullOrEmpty(value) ||
+            value.Length > maximumBytes)
+        {
+            return false;
+        }
+
+        Span<byte> bytes = value.Length <= 253
+            ? stackalloc byte[value.Length]
+            : new byte[value.Length];
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character > 0x7F)
+            {
+                return false;
+            }
+            bytes[index] = (byte)character;
+        }
+
+        var labelLength = 0;
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            var character = bytes[index];
+            if (character == (byte)'.')
+            {
+                if (labelLength == 0 ||
+                    bytes[index - 1] == (byte)'-')
+                {
+                    return false;
+                }
+                labelLength = 0;
+                continue;
+            }
+
+            var isLowerLetter =
+                character is >= (byte)'a' and <= (byte)'z';
+            var isDigit =
+                character is >= (byte)'0' and <= (byte)'9';
+            if (!isLowerLetter &&
+                !isDigit &&
+                character != (byte)'-')
+            {
+                return false;
+            }
+            if (labelLength == 0 && character == (byte)'-')
+            {
+                return false;
+            }
+
+            labelLength++;
+            if (labelLength > 63)
+            {
+                return false;
+            }
+        }
+
+        return labelLength > 0 && bytes[^1] != (byte)'-';
+    }
+
+    public static bool IsAudience(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 64)
+        {
+            return false;
+        }
+
+        foreach (var character in value)
+        {
+            var isLetter =
+                character is >= 'A' and <= 'Z' or
+                >= 'a' and <= 'z';
+            var isDigit = character is >= '0' and <= '9';
+            if (!isLetter &&
+                !isDigit &&
+                character is not ('.' or '_' or '-'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static void ValidateAccount(int accountId, string username)
     {
         if (accountId <= 0)
@@ -305,7 +420,7 @@ internal static class SecureTicketModelValidation
             for (var attempt = 0; attempt < 4; attempt++)
             {
                 RandomNumberGenerator.Fill(bytes);
-                if (!SecureProtocolValidation.IsAllZero(bytes))
+                if (!IsAllZero(bytes))
                 {
                     return new Guid(bytes);
                 }

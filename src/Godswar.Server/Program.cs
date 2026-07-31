@@ -4,7 +4,6 @@ using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
 using Godswar.Server.Infrastructure.Characters;
-using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.RelayGateway;
 using Godswar.Server.Networking.SemanticGateway;
@@ -18,24 +17,7 @@ using Godswar.Server.State;
 using var controlledHostEvidence =
     ControlledHostPrivacyEvidence.TryInstallFromEnvironment();
 
-if (await ManagementProbeCommand.TryRunAsync(args))
-{
-    return;
-}
-
-if (await ControlledHostValidationCommand.TryRunAsync(args))
-{
-    return;
-}
-
-if (await RelayGatewayCommand.TryRunAsync(args))
-{
-    return;
-}
-
-if (await SemanticGatewayCommand.TryRunAsync(
-        args,
-        LegacySemanticGatewayDataSession.OpenAsync))
+if (await ServerStartupCommandDispatcher.TryRunAsync(args))
 {
     return;
 }
@@ -101,26 +83,12 @@ try
             runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
                 ? CharacterSnapshotProvider.PostgreSql
                 : CharacterSnapshotProvider.Json);
-    IWorldContentReader worldContent;
-    try
+    var worldContent =
+        await ServerWorldContentComposition.TryLoadAsync(
+            runtimeProfile,
+            options);
+    if (worldContent is null)
     {
-        worldContent = runtimeProfile.StorageProvider switch
-        {
-            GameStorageProviderKind.Postgres =>
-                await PostgresWorldContentBootstrapper.LoadAsync(
-                    options.Storage.PostgresConnectionString),
-            GameStorageProviderKind.Json =>
-                await GeneratedWorldContentReaderLoader.LoadAsync(),
-            _ => throw new InvalidOperationException(
-                "Validated storage provider has no world-content reader.")
-        };
-    }
-    catch (WorldContentUnavailableException ex)
-    {
-        Console.Error.WriteLine(
-            "[world-content] startup rejected " +
-            $"family={ex.Family} reason={ex.Reason}");
-        Environment.ExitCode = 3;
         return;
     }
 
@@ -130,6 +98,11 @@ try
             options,
             controlledHostEvidence is not null,
             shutdown);
+    await using var coordination =
+        await ServerCoordinationComposition.CreateAsync(
+            options,
+            worldContent.Manifest.Revision,
+            shutdown.Token);
 
     ICharacterCheckpointStore characterCheckpointStore =
         postgresApplicationDataRuntime?.CharacterCheckpoints ??
@@ -157,7 +130,8 @@ try
         worldContent,
         options.Game.DeveloperCommands,
         characterCheckpoints,
-        postgresApplicationDataRuntime);
+        postgresApplicationDataRuntime,
+        coordination.Worker);
     var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
         options.Network.MaxActiveConnections,
         options.Network.MaxUnauthenticatedConnections,
@@ -171,35 +145,21 @@ try
     var listenerProfile = workerBackhaulRuntime is null
         ? ServerListenerProfile.Build(options)
         : null;
-    var loginServer =
-        listenerProfile?.Transport == ServerListenerTransport.RawTcp
-        ? new TcpEndpointServer(
-            NetworkEndpointRole.Login,
-            listenerProfile!.Login.Host,
-            listenerProfile.Login.Port,
-            options.Network,
+    var (loginServer, gameServer) =
+        ServerRuntimeListenerFactory.CreateRawPair(
+            listenerProfile,
+            options,
             admission,
             session => new LoginClientHandler(
                 session,
                 store,
                 options,
                 legacyAuthenticationAccess:
-                    legacyAuthenticationAccess))
-        : null;
-
-    var gameServer =
-        listenerProfile?.Transport == ServerListenerTransport.RawTcp
-        ? new TcpEndpointServer(
-            NetworkEndpointRole.Game,
-            listenerProfile!.Game.Host,
-            listenerProfile.Game.Port,
-            options.Network,
-            admission,
+                    legacyAuthenticationAccess),
             session => gameHandlerFactory.Create(
                 session,
                 legacyAuthenticationAccess:
-                    legacyAuthenticationAccess))
-        : null;
+                    legacyAuthenticationAccess));
 
     using SecureServerCertificate? secureCertificate =
         options.Secure.Enabled
@@ -217,16 +177,16 @@ try
                 phase4AcceptanceFaults:
                     phase4AcceptanceFaults)
             : null;
-    using InMemoryGameTicketStore? secureGameTickets =
+    IGameTicketStore? secureGameTickets =
         options.Secure.Enabled
-            ? new InMemoryGameTicketStore(
-                options.Secure.Tickets.Capacity,
-                options.Secure.Tickets.Ttl)
+            ? coordination.CreateGameTicketStore(
+                options.Secure.Tickets)
             : null;
     using var operationalStateMetrics = new OperationalStateMetrics(
         admission,
-        secureGameTickets,
-        secureUdpRuntime);
+        secureGameTickets as IGameTicketStoreSnapshotSource,
+        secureUdpRuntime,
+        coordination.Worker);
     var serverOperationalState = new ServerOperationalState(
         ServerReadinessDependency.All);
     serverOperationalState.SetDependency(
@@ -240,6 +200,7 @@ try
     ManagementDrainResult BeginRuntimeDrain()
     {
         workerBackhaulRuntime?.BeginDrain();
+        coordination.Worker?.BeginDrain();
         return drainCoordinator.BeginDrain();
     }
 
@@ -300,6 +261,7 @@ try
         postgresApplicationDataRuntime?.OutboxEnabled == true,
         options.Game.ZodiacEnergy.Enabled,
         secureUdpRuntime,
+        coordination.Worker,
         observability.RecordOperationalState);
     using var progressionRetryMetrics =
         new DurableProgressionRetryMetrics(
@@ -372,6 +334,16 @@ try
             shutdown.Token).WaitAsync(
                 TimeSpan.FromSeconds(10),
                 shutdown.Token);
+        if (coordination.Worker is not null)
+        {
+            criticalTasks.Start(
+                CriticalTaskKind.RedisCoordination,
+                coordination.Worker.RunAsync);
+            await coordination.Worker.WaitUntilRegisteredAsync(
+                shutdown.Token).WaitAsync(
+                    TimeSpan.FromSeconds(10),
+                    shutdown.Token);
+        }
 
         criticalTasks.Start(
             CriticalTaskKind.MonsterWorld,
@@ -474,10 +446,19 @@ try
             shutdown.Token).WaitAsync(
                 TimeSpan.FromSeconds(10),
                 shutdown.Token);
-        await readinessMonitor.RefreshAsync(shutdown.Token);
         serverOperationalState.SetDependency(
             ServerReadinessDependency.ListenerProfile,
             ready: true);
+        if (coordination.Worker is not null)
+        {
+            await coordination.Worker.PublishAvailableAsync(
+                shutdown.Token);
+            await coordination.Worker.WaitUntilReadyAsync(
+                shutdown.Token).WaitAsync(
+                    TimeSpan.FromSeconds(10),
+                    shutdown.Token);
+        }
+        await readinessMonitor.RefreshAsync(shutdown.Token);
         serverOperationalState.TryMarkRunning();
         ControlledHostPrivacyEvidence.RecordIfActive(
             ControlledHostEvidenceEvent.SecureListenersReady);
@@ -517,6 +498,7 @@ try
     finally
     {
         workerBackhaulRuntime?.BeginDrain();
+        coordination.Worker?.BeginDrain();
         admission.BeginDrain();
         serverOperationalState.TryMarkStopping();
         var shutdownTasks = criticalTasks.Items

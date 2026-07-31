@@ -1,8 +1,7 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 
-namespace Godswar.Server.Networking.SemanticGateway;
+namespace Godswar.Server.Application.Gateway;
 
 /// <summary>
 /// Stable identity assigned by the gateway to one accepted client connection.
@@ -180,14 +179,15 @@ internal readonly record struct SemanticGatewayConnectionSource
             return new IPAddress(address.MapToIPv4().GetAddressBytes());
         }
 
-        return address.AddressFamily switch
+        var bytes = address.GetAddressBytes();
+        if (bytes.Length is not (4 or 16))
         {
-            AddressFamily.InterNetwork or AddressFamily.InterNetworkV6 =>
-                new IPAddress(address.GetAddressBytes()),
-            _ => throw new ArgumentException(
+            throw new ArgumentException(
                 "Only IPv4 and IPv6 source addresses are supported.",
-                nameof(address))
-        };
+                nameof(address));
+        }
+
+        return new IPAddress(bytes);
     }
 
     public override string ToString() =>

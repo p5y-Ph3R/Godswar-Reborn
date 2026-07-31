@@ -6,6 +6,7 @@ internal static class ServerOperationalStateChecks
 {
     public static Task RunAsync()
     {
+        CheckRedisCoordinationReadinessReason();
         const ServerReadinessDependency required =
             ServerReadinessDependency.ListenerProfile |
             ServerReadinessDependency.Database |
@@ -93,6 +94,44 @@ internal static class ServerOperationalStateChecks
                 ready: true),
             "one setter cannot ambiguously publish multiple dependencies");
         return Task.CompletedTask;
+    }
+
+    private static void CheckRedisCoordinationReadinessReason()
+    {
+        const ServerReadinessDependency required =
+            ServerReadinessDependency.Database |
+            ServerReadinessDependency.RedisCoordination;
+        var state = new ServerOperationalState(required);
+        Check.True(
+            state.TryMarkRunning(),
+            "coordination readiness fixture enters running");
+        state.SetDependency(
+            ServerReadinessDependency.Database,
+            ready: true);
+        AssertSnapshot(
+            state.GetSnapshot(),
+            live: true,
+            ready: false,
+            ServerReadinessReason.RedisCoordinationNotReady,
+            "unavailable required Redis removes readiness");
+        state.SetDependency(
+            ServerReadinessDependency.RedisCoordination,
+            ready: true);
+        AssertSnapshot(
+            state.GetSnapshot(),
+            live: true,
+            ready: true,
+            ServerReadinessReason.None,
+            "cached healthy Redis coordination restores readiness");
+        state.SetDependency(
+            ServerReadinessDependency.RedisCoordination,
+            ready: false);
+        AssertSnapshot(
+            state.GetSnapshot(),
+            live: true,
+            ready: false,
+            ServerReadinessReason.RedisCoordinationNotReady,
+            "lost coordination readiness fails closed");
     }
 
     private static void AssertSnapshot(

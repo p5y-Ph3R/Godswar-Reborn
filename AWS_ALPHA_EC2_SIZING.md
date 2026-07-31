@@ -150,10 +150,12 @@ and it does not prevent disconnects during replacement. B18C2's local
 semantic backhaul exists, but remote worker placement, cross-worker
 reconnect/transfer, and live map migration do not.
 
-PostgreSQL remains the authoritative owner of player value. Redis is still
-absent; B18C2's bounded login/admission and route authority is in memory.
-B17 is next, but Redis activation waits for approved latency, outage,
-eviction, region, provider, and cost budgets. Never store the only copy of
+PostgreSQL remains the authoritative owner of player value. B17 now provides
+opt-in Redis adapters for disposable tickets/admissions, routes, presence,
+and PostgreSQL-fenced player leases. The checked-in default is still local
+coordination, and no managed Redis service, HA tier, provider SLA, or
+production cost is approved. Public activation waits for measured latency,
+outage, region, provider, and cost approval. Never store the only copy of
 inventory, currency, equipment, progression, pets, or mounts in Redis.
 
 ## Host configuration
@@ -264,9 +266,8 @@ Use this order:
 1. Profile and remove the measured code or allocation bottleneck.
 2. Add per-instance observability and isolate the heavy map in the planned
    worker-process architecture.
-3. Add a second game-worker host only after B17 shared coordination and a
-   remote-production ingress, reconnect/transfer, and failure-isolation gate
-   are implemented and verified.
+3. Add a second game-worker host only after B17 is staging-qualified with a
+   remote-production ingress, reconnect/transfer, and failure-isolation gate.
 4. Vertically resize only when the workload cannot yet be partitioned or the
    measurement proves that more host capacity helps.
 

@@ -149,15 +149,15 @@ internal static class SecureLoginTicketFlowChecks
             loginContext,
             clearInput);
         var pendingAtGrantBoundary = false;
-        var activeAtRedirectBoundary = false;
+        var pendingAtRedirectBoundary = false;
         transport.AfterGameGrantWrite = () =>
             pendingAtGrantBoundary = !GetOnlyTicketCommitted(ticketStore);
         transport.BeforeLegacyWrite = () =>
         {
             if (transport.Events.LastOrDefault() == "grant")
             {
-                activeAtRedirectBoundary =
-                    GetOnlyTicketCommitted(ticketStore);
+                pendingAtRedirectBoundary =
+                    !GetOnlyTicketCommitted(ticketStore);
             }
         };
         await using var session = new ClientSession(
@@ -184,8 +184,11 @@ internal static class SecureLoginTicketFlowChecks
             pendingAtGrantBoundary,
             "ticket remains non-redeemable until the physical grant write returns");
         Check.True(
-            activeAtRedirectBoundary,
-            "ticket is redeemable before the redirect write begins");
+            pendingAtRedirectBoundary,
+            "ticket remains non-redeemable while the redirect write begins");
+        Check.True(
+            GetOnlyTicketCommitted(ticketStore),
+            "ticket becomes redeemable only after redirect completion");
         var clearWrites = transport.LegacyWrites;
         EncryptInPlace(clearWrites);
         var expectedWrites = PacketBuilder.ServerList()
@@ -225,10 +228,11 @@ internal static class SecureLoginTicketFlowChecks
                 clientInstanceId,
                 clientInstanceId,
                 originHash);
-            var consumed = ticketStore.Consume(
+            var consumed = await ticketStore.ConsumeAsync(
                 bind,
                 gameContext,
-                target);
+                target,
+                SecureTicketOperationDeadline.Default);
             Check.True(
                 consumed.IsAccepted,
                 "redirect completion preserves the activated grant");

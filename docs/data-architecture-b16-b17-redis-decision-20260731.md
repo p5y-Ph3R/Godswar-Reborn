@@ -1,7 +1,7 @@
 # B16 Redis decision and B17 conditional evaluation
 
-Status: B16 completed; B17 evaluated and closed as conditional-not-activated
-on 2026-07-31.
+Status: historical B16 evidence; its B17 defer is superseded by
+[ADR 0005](adr/0005-b17-redis-coordination-activation.md)
 
 ## Outcome
 
@@ -22,7 +22,7 @@ coordination exists.
 | Exactly one coherent login/game listener pair is required | `Program.cs` | No independent login/game deployment exists |
 | Compose has only one server and PostgreSQL | `docker-compose.yml` | No Redis, gateway, zone, placement, or coordinator service exists |
 | Account-session replacement and acquisition gates are process-local | `Game/GameSessionRegistry.AccountSessions.cs` | They do not provide cross-process routing |
-| Secure tickets are bounded in memory | `Networking/Secure/IGameTicketStore.cs`; `InMemoryGameTicketStore.cs` | 60-second TTL and 1,024 capacity already cover the configured one-process boundary |
+| Secure tickets are bounded in memory | `Application/Sessions/IGameTicketStore.cs`; `Networking/Secure/InMemoryGameTicketStore.cs` | 60-second TTL and 1,024 capacity already cover the configured one-process boundary |
 | Process admission is bounded | `Networking/NetworkRuntimeOptions.cs`; `appsettings.json` | Current maximum is 512 active connections |
 | Metrics expose outstanding tickets and capacity | `Operations/OperationalStateMetrics.cs` | No checked-in saturation or latency evidence justifies another store |
 | Reconnect is a fresh local login/game bind | `docs/data-architecture-roadmap/02-current-state-architecture.md` | No different-process resume contract exists |

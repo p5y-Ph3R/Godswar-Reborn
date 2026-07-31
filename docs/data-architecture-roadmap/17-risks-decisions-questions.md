@@ -10,17 +10,16 @@ These are repository-supported facts, not assumed approval of every target recom
 4. Runtime ECS IDs, sessions, AOI, monster state, tickets, replay windows, and keys currently exist only in process memory.
 5. TLS plus authenticated UDP movement is implemented/tested as an opt-in profile; raw TCP remains the checked-in default.
 6. The authoritative gameplay runtime remains a modular-monolith worker
-   plus PostgreSQL. B18C2 can place a separate local-first semantic gateway
-   in front of one or more statically routed private workers, but no
-   Redis/Mongo or distributed placement authority exists.
+   plus PostgreSQL. B18C2 supplies the semantic edge, and B17 can opt into
+   Redis for disposable cross-process tickets/admissions, routes, presence,
+   and PG-fenced leases. MongoDB and production placement remain absent.
 7. Applied migration IDs/checksums are immutable under the documented policy, and the current runner enforces exact-prefix compatibility.
 8. Several valuable PG operations already use transactions/row locks, but there is no general durable inbox/outbox or stable client operation ID.
 9. Content reads are split across generated package catalogs, PG catalogs, and captured fallbacks.
-10. ADR 0003 records B16's evidence-based defer for the current process.
-    ADR 0004 confirms Tempest as the first realm, future multiple realms,
-    cross-realm Pindus, and ephemeral battlefield/dungeon instances; B17 is
-    reopened and approved for future coordination but is not implemented or
-    deployed.
+10. ADR 0003 records the historical defer. ADR 0004 confirms the future
+    topology; ADR 0005 governs B17's implemented opt-in coordination.
+    Production Redis deployment, HA, capacity, and cross-realm Pindus remain
+    unproven.
 11. B18A/B provide process-local realm/instance placement, a live runtime
     directory keyed by `WorldInstanceId`, instance-aware sessions and
     transfers, and one bounded map-owner mailbox per local runtime. The

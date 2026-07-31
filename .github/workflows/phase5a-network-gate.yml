@@ -158,3 +158,54 @@ jobs:
           path: artifacts/b03/postgres-ci-result.json
           if-no-files-found: error
           retention-days: 14
+
+  redis-7-4-coordination-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore GodswarServer.sln
+
+      - name: Mandatory isolated Redis 7.4 coordination gate
+        shell: pwsh
+        run: |
+          ./tools/InvokeB17RedisCiGate.ps1 `
+            -RedisImage 'redis:7.4.10-alpine' `
+            -ReportPath 'artifacts/b17/redis-ci-result.json'
+
+      - name: Redis coordination gate summary
+        if: always()
+        shell: pwsh
+        run: |
+          $report = 'artifacts/b17/redis-ci-result.json'
+          if (Test-Path -LiteralPath $report -PathType Leaf) {
+            $result = Get-Content -LiteralPath $report -Raw |
+              ConvertFrom-Json
+            @(
+              '## Redis 7.4 coordination gate'
+              ''
+              "- Status: ``$($result.status)``"
+              "- Duration: ``$($result.durationMs) ms``"
+              "- Machine result: ``$report``"
+            ) | Out-File `
+              -FilePath $env:GITHUB_STEP_SUMMARY `
+              -Encoding utf8 `
+              -Append
+          }
+
+      - name: Upload Redis coordination gate result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b17-redis-ci-result
+          path: artifacts/b17/redis-ci-result.json
+          if-no-files-found: error
+          retention-days: 14

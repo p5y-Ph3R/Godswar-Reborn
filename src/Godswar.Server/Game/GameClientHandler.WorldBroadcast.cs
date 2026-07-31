@@ -253,6 +253,12 @@ internal sealed partial class GameClientHandler
                 "VisiblePlayerStatus");
         }
 
+        if (!await PublishPlayerCoordinationOnlineAsync(
+                _character.CurrentMap,
+                cancellationToken))
+        {
+            return;
+        }
         _worldPresenceAnnounced = true;
         Console.WriteLine(
             $"[world] player presence map={_character.CurrentMap} character={_character.Name} object={objectId} receivedExisting={currentObjectIds.Count} announcedTo={spawnRecipients}");

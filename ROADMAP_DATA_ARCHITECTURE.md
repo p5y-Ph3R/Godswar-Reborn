@@ -2,18 +2,13 @@
 
 Status: implementation roadmap; backlog B01A through B15 completed and
 verified as of 2026-07-31. B16's original Redis defer remains historical
-evidence. ADR 0004 has reopened B17 for the confirmed future multi-process
-topology, without claiming a Redis implementation. B18A and B18B are
-implemented: live local runtimes now route by `WorldInstanceId` through
-bounded single-owner map mailboxes while retaining the original client's
-Tempest byte-map bridge. B18C1 adds an opt-in, separate opaque TCP relay to
-one private combined worker; it is completed and verified as a
-local/raw-development topology proof, not a semantic gateway, distributed
-routing, or Redis. B18C2 is also completed and verified: the unchanged
-client reaches a loopback-only semantic edge, which authenticates locally
-and routes one single-use admission over mutually authenticated TLS to an
-exact `RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` worker. B17 Redis
-coordination is the next milestone.
+evidence. B18A/B and B18C1/C2 established bounded local world owners and an
+unchanged-client semantic edge with exact authenticated worker routing. B17
+Redis coordination is completed and verified behind an explicit opt-in provider:
+atomic tickets/admissions, worker routes, presence, and PostgreSQL-fenced
+player leases can cross processes without moving durable player value out of
+PostgreSQL. `Local` remains the default. No managed Redis deployment, HA,
+production capacity, provider SLA, or cross-realm failover is claimed.
 
 Repository originally assessed: `C:\Reborn` at Git HEAD `54f2d4b`, including
 the preserved working tree on 2026-07-29.
@@ -58,6 +53,9 @@ document organization; the assessment and recommendations remain intact.
 - [B14 raw authentication retirement](docs/data-architecture-b14-raw-auth-retirement-20260731.md)
 - [B15 PostgreSQL player ownership fence](docs/data-architecture-b15-player-ownership-fence-20260731.md)
 - [B16 Redis decision and B17 conditional evaluation](docs/data-architecture-b16-b17-redis-decision-20260731.md)
+- [B17 Redis coordination evidence](docs/data-architecture-b17-redis-coordination-20260731.md)
+- [ADR 0005: staged Redis coordination activation](docs/adr/0005-b17-redis-coordination-activation.md)
+- [B17 Redis outage and rollback runbooks](docs/operations/b17-redis-coordination-runbooks.md)
 - [ADR 0004: realm, node, and world-instance topology](docs/adr/0004-realm-and-world-instance-topology.md)
 - [B18A realm and world-instance identity foundation](docs/data-architecture-b18a-realm-instance-foundation-20260731.md)
 - [B18B local instance routing and single-owner mailboxes](docs/data-architecture-b18b-instance-routing-mailboxes-20260731.md)

@@ -2,7 +2,11 @@ using System.Security.Cryptography;
 
 namespace Godswar.Server.Networking.Secure;
 
-internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
+internal sealed partial class InMemoryGameTicketStore :
+    IGameTicketStore,
+    IGameTicketStoreSnapshotSource,
+    ISecureGameGrantLeaseAuthority,
+    IDisposable
 {
     public const int DefaultCapacity = 1_024;
     public static readonly TimeSpan DefaultTicketTtl =
@@ -50,10 +54,13 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public SecureLoginGenerationResult BeginLogin(
+    public ValueTask<SecureLoginGenerationResult> BeginLoginAsync(
         int accountId,
-        string username)
+        string username,
+        SecureTicketOperationDeadline deadline,
+        CancellationToken cancellationToken = default)
     {
+        ValidateOperation(deadline, cancellationToken);
         SecureTicketModelValidation.ValidateAccount(accountId, username);
         lock (_gate)
         {
@@ -62,9 +69,10 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
             RemoveGeneration(accountId);
             if (_generations.Count >= _capacity)
             {
-                return new SecureLoginGenerationResult(
+                return ValueTask.FromResult(
+                    new SecureLoginGenerationResult(
                     SecureLoginGenerationStatus.CapacityExceeded,
-                    null);
+                    null));
             }
 
             var generationId =
@@ -72,21 +80,25 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
             _generations.Add(
                 accountId,
                 new GenerationRecord(generationId, username));
-            return new SecureLoginGenerationResult(
-                SecureLoginGenerationStatus.Started,
-                new SecureLoginGeneration(
-                    _authorityId,
-                    generationId,
-                    accountId,
-                    username));
+            return ValueTask.FromResult(
+                new SecureLoginGenerationResult(
+                    SecureLoginGenerationStatus.Started,
+                    new SecureLoginGeneration(
+                        _authorityId,
+                        generationId,
+                        accountId,
+                        username)));
         }
     }
 
-    public SecureTicketIssueResult Issue(
+    public ValueTask<SecureTicketIssueResult> IssueAsync(
         SecureLoginGeneration generation,
         SecureConnectionContext loginConnection,
-        SecureGameTarget target)
+        SecureGameTarget target,
+        SecureTicketOperationDeadline deadline,
+        CancellationToken cancellationToken = default)
     {
+        ValidateOperation(deadline, cancellationToken);
         ArgumentNullException.ThrowIfNull(generation);
         ArgumentNullException.ThrowIfNull(loginConnection);
         ArgumentNullException.ThrowIfNull(target);
@@ -104,9 +116,10 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
             CleanupExpired(nowTimestamp);
             if (!TryValidateGeneration(generation, out var current))
             {
-                return new SecureTicketIssueResult(
-                    SecureTicketIssueStatus.GenerationRejected,
-                    null);
+                return ValueTask.FromResult(
+                    new SecureTicketIssueResult(
+                        SecureTicketIssueStatus.GenerationRejected,
+                        null));
             }
 
             RemoveOutstandingTicket(
@@ -114,25 +127,30 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
                 removeGeneration: false);
             if (_tickets.Count >= _capacity)
             {
-                return new SecureTicketIssueResult(
-                    SecureTicketIssueStatus.CapacityExceeded,
-                    null);
+                return ValueTask.FromResult(
+                    new SecureTicketIssueResult(
+                        SecureTicketIssueStatus.CapacityExceeded,
+                        null));
             }
 
-            return IssueCore(
-                generation,
-                current,
-                loginConnection,
-                target,
-                nowTimestamp);
+            return ValueTask.FromResult(
+                IssueCore(
+                    generation,
+                    current,
+                    loginConnection,
+                    target,
+                    nowTimestamp));
         }
     }
 
-    public SecureTicketConsumeResult Consume(
+    public ValueTask<SecureTicketConsumeResult> ConsumeAsync(
         SecureGameBind bind,
         SecureConnectionContext gameConnection,
-        SecureGameTarget expectedTarget)
+        SecureGameTarget expectedTarget,
+        SecureTicketOperationDeadline deadline,
+        CancellationToken cancellationToken = default)
     {
+        ValidateOperation(deadline, cancellationToken);
         ArgumentNullException.ThrowIfNull(bind);
         ArgumentNullException.ThrowIfNull(gameConnection);
         ArgumentNullException.ThrowIfNull(expectedTarget);
@@ -152,7 +170,8 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
         {
             if (!bind.TryCopySecrets(grantIdBytes, ticketBytes))
             {
-                return Rejected(SecureTicketConsumeStatus.Rejected);
+                return ValueTask.FromResult(
+                    Rejected(SecureTicketConsumeStatus.Rejected));
             }
             SHA256.HashData(ticketBytes, suppliedHash);
             var grantId = new Guid(grantIdBytes);
@@ -161,23 +180,18 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
             {
                 ThrowIfDisposed();
                 var nowTimestamp = _timeProvider.GetTimestamp();
-                if (!_tickets.Remove(grantId, out var record))
+                if (!_tickets.TryGetValue(grantId, out var record))
                 {
-                    return Rejected(SecureTicketConsumeStatus.Rejected);
+                    return ValueTask.FromResult(
+                        Rejected(SecureTicketConsumeStatus.Rejected));
                 }
 
-                RemoveGrantIndex(record.AccountId, grantId);
                 var expired = IsExpired(record, nowTimestamp);
                 var generationCurrent =
                     _generations.TryGetValue(
                         record.AccountId,
                         out var generation) &&
                     generation.GenerationId == record.GenerationId;
-                if (generationCurrent)
-                {
-                    _generations.Remove(record.AccountId);
-                }
-
                 var ticketMatches =
                     CryptographicOperations.FixedTimeEquals(
                         suppliedHash,
@@ -187,6 +201,22 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
                         record,
                         gameConnection,
                         expectedTarget);
+                if (!record.Committed &&
+                    !expired &&
+                    generationCurrent &&
+                    ticketMatches &&
+                    scopeMatches)
+                {
+                    return ValueTask.FromResult(
+                        Rejected(SecureTicketConsumeStatus.NotReady));
+                }
+
+                _tickets.Remove(grantId);
+                RemoveGrantIndex(record.AccountId, grantId);
+                if (generationCurrent)
+                {
+                    _generations.Remove(record.AccountId);
+                }
                 var accepted =
                     record.Committed &&
                     !expired &&
@@ -204,17 +234,19 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
 
                 if (accepted)
                 {
-                    return new SecureTicketConsumeResult(
-                        SecureTicketConsumeStatus.Accepted,
-                        principal);
+                    return ValueTask.FromResult(
+                        new SecureTicketConsumeResult(
+                            SecureTicketConsumeStatus.Accepted,
+                            principal));
                 }
 
-                return Rejected(
-                    expired
-                        ? SecureTicketConsumeStatus.Expired
-                        : !scopeMatches
-                            ? SecureTicketConsumeStatus.ScopeRejected
-                            : SecureTicketConsumeStatus.Rejected);
+                return ValueTask.FromResult(
+                    Rejected(
+                        expired
+                            ? SecureTicketConsumeStatus.Expired
+                            : !scopeMatches
+                                ? SecureTicketConsumeStatus.ScopeRejected
+                                : SecureTicketConsumeStatus.Rejected));
             }
         }
         finally
@@ -225,22 +257,27 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
         }
     }
 
-    public void RevokeGeneration(SecureLoginGeneration generation)
+    public ValueTask RevokeGenerationAsync(
+        SecureLoginGeneration generation,
+        SecureTicketOperationDeadline deadline,
+        CancellationToken cancellationToken = default)
     {
+        ValidateOperation(deadline, cancellationToken);
         ArgumentNullException.ThrowIfNull(generation);
         lock (_gate)
         {
             if (_disposed ||
                 !TryValidateGeneration(generation, out _))
             {
-                return;
+                return ValueTask.CompletedTask;
             }
 
             RemoveGeneration(generation.AccountId);
+            return ValueTask.CompletedTask;
         }
     }
 
-    public SecureGameTicketStoreSnapshot GetSnapshot()
+    public SecureGameTicketStoreSnapshot GetCachedSnapshot()
     {
         lock (_gate)
         {
@@ -271,42 +308,6 @@ internal sealed partial class InMemoryGameTicketStore : IGameTicketStore
             _grantByAccount.Clear();
             _generations.Clear();
             _disposed = true;
-        }
-    }
-
-    internal bool TryCommit(Guid generationId, Guid grantId)
-    {
-        lock (_gate)
-        {
-            if (_disposed ||
-                !_tickets.TryGetValue(grantId, out var record) ||
-                record.GenerationId != generationId)
-            {
-                return false;
-            }
-            if (IsExpired(record, _timeProvider.GetTimestamp()))
-            {
-                RemoveTicket(grantId, record, removeGeneration: true);
-                return false;
-            }
-
-            record.Committed = true;
-            return true;
-        }
-    }
-
-    internal void RevokeGrant(Guid generationId, Guid grantId)
-    {
-        lock (_gate)
-        {
-            if (_disposed ||
-                !_tickets.TryGetValue(grantId, out var record) ||
-                record.GenerationId != generationId)
-            {
-                return;
-            }
-
-            RemoveTicket(grantId, record, removeGeneration: false);
         }
     }
 

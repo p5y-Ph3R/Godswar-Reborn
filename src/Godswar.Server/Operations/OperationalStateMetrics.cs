@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
@@ -16,46 +17,60 @@ internal sealed class OperationalStateMetrics : IDisposable
         "godswar.server.operational.tickets";
     public const string UdpInstrumentName =
         "godswar.server.operational.udp";
+    public const string CoordinationInstrumentName =
+        "godswar.server.operational.coordination";
 
     private readonly IConnectionAdmission _admission;
     private readonly List<Instrument> _instruments = [];
     private readonly Meter _meter = new(MeterName);
-    private readonly IGameTicketStore? _ticketStore;
+    private readonly IGameTicketStoreSnapshotSource? _ticketSnapshots;
     private readonly Func<SecureUdpRuntimeSnapshot>? _udpSnapshot;
+    private readonly IWorkerCoordinationReadinessSource?
+        _coordinationSnapshots;
     private int _disposed;
 
     public OperationalStateMetrics(
         IConnectionAdmission admission,
-        IGameTicketStore? ticketStore = null,
-        SecureUdpRuntime? secureUdpRuntime = null)
+        IGameTicketStoreSnapshotSource? ticketSnapshots = null,
+        SecureUdpRuntime? secureUdpRuntime = null,
+        IWorkerCoordinationReadinessSource?
+            coordinationSnapshots = null)
         : this(
             admission,
-            ticketStore,
+            ticketSnapshots,
             secureUdpRuntime is null
                 ? null
-                : secureUdpRuntime.GetSnapshot)
+                : secureUdpRuntime.GetSnapshot,
+            coordinationSnapshots)
     {
     }
 
     internal OperationalStateMetrics(
         IConnectionAdmission admission,
-        IGameTicketStore? ticketStore,
-        Func<SecureUdpRuntimeSnapshot>? udpSnapshot)
+        IGameTicketStoreSnapshotSource? ticketSnapshots,
+        Func<SecureUdpRuntimeSnapshot>? udpSnapshot,
+        IWorkerCoordinationReadinessSource?
+            coordinationSnapshots = null)
     {
         ArgumentNullException.ThrowIfNull(admission);
 
         _admission = admission;
-        _ticketStore = ticketStore;
+        _ticketSnapshots = ticketSnapshots;
         _udpSnapshot = udpSnapshot;
+        _coordinationSnapshots = coordinationSnapshots;
 
         AddAdmissionGauges();
-        if (_ticketStore is not null)
+        if (_ticketSnapshots is not null)
         {
             AddTicketGauges();
         }
         if (_udpSnapshot is not null)
         {
             AddUdpGauges();
+        }
+        if (_coordinationSnapshots is not null)
+        {
+            AddCoordinationGauges();
         }
     }
 
@@ -100,6 +115,16 @@ internal sealed class OperationalStateMetrics : IDisposable
                 "Authoritative secure-UDP state by finite state kind."));
     }
 
+    private void AddCoordinationGauges()
+    {
+        _instruments.Add(
+            _meter.CreateObservableGauge(
+                CoordinationInstrumentName,
+                ObserveCoordination,
+                "{entry}",
+                "Cached, bounded cross-process coordination state."));
+    }
+
     private IEnumerable<Measurement<long>> ObserveAdmission()
     {
         var snapshot = _admission.GetSnapshot();
@@ -120,7 +145,7 @@ internal sealed class OperationalStateMetrics : IDisposable
 
     private IEnumerable<Measurement<long>> ObserveTickets()
     {
-        var snapshot = _ticketStore!.GetSnapshot();
+        var snapshot = _ticketSnapshots!.GetCachedSnapshot();
         return
         [
             Measure(snapshot.OutstandingTickets, "outstanding"),
@@ -164,6 +189,28 @@ internal sealed class OperationalStateMetrics : IDisposable
             Measure(
                 snapshot.Admission.ActiveAuthenticatedSessions,
                 "limiter_sessions_authenticated")
+        ];
+    }
+
+    private IEnumerable<Measurement<long>> ObserveCoordination()
+    {
+        var snapshot = _coordinationSnapshots!.GetSnapshot();
+        return
+        [
+            Measure(snapshot.IsReady ? 1 : 0, "ready"),
+            Measure(snapshot.InFlightOperations, "operations_in_flight"),
+            Measure(snapshot.MaximumConcurrentOperations, "operations_limit"),
+            Measure(snapshot.RegisteredRoutes, "routes"),
+            Measure(snapshot.ActivePlayerLeases, "player_leases"),
+            Measure(snapshot.Capacity, "capacity"),
+            Measure(snapshot.AcceptedOperations, "operations_accepted"),
+            Measure(snapshot.ConflictOperations, "operations_conflict"),
+            Measure(snapshot.TimeoutOperations, "operations_timeout"),
+            Measure(snapshot.UnavailableOperations, "operations_unavailable"),
+            Measure(snapshot.OverloadRejections, "operations_overloaded"),
+            Measure(
+                snapshot.CircuitOpenRejections,
+                "operations_circuit_open")
         ];
     }
 

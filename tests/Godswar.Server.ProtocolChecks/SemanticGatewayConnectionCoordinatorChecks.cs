@@ -152,10 +152,11 @@ internal static partial class SemanticGatewayChecks
         var handler = new SemanticGatewayLoginHandler(
             session,
             data,
-            authority,
+            CreateLoginCoordination(authority),
             connections,
             "127.0.0.1",
-            41006);
+            41006,
+            TimeSpan.FromSeconds(1));
         var failed = false;
         try
         {

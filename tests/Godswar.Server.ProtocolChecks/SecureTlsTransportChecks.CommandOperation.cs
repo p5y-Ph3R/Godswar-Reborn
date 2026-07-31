@@ -241,14 +241,19 @@ internal static partial class SecureTlsTransportChecks
                 clientInstanceId,
                 clientInstanceId,
                 buildHash);
-            var generation = ticketStore.BeginLogin(7, "test2");
-            var issued = ticketStore.Issue(
+            var generation = await ticketStore.BeginLoginAsync(
+                7,
+                "test2",
+                SecureTicketOperationDeadline.Default);
+            var issued = await ticketStore.IssueAsync(
                 generation.Generation!,
                 loginContext,
-                target);
-            using var grantLease = issued.Lease!;
+                target,
+                SecureTicketOperationDeadline.Default);
+            await using var grantLease = issued.Lease!;
             Check.True(
-                grantLease.Commit(),
+                await grantLease.CommitAsync(
+                    SecureTicketOperationDeadline.Default),
                 "command-operation game grant commits");
 
             var factory = new TlsMuxLegacyTransportFactory(

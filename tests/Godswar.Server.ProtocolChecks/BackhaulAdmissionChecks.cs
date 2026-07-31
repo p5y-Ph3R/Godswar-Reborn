@@ -112,22 +112,47 @@ internal static partial class BackhaulProtocolChecks
                 out _) ==
                 BackhaulAdmissionStatus.RouteRejected,
             "unowned world instance is rejected without fallback");
+        var aheadAdmission = Admission(
+            connectionId: Guid.NewGuid(),
+            accountId: 81,
+            username: "CLOCK_AHEAD",
+            issued: now.AddDays(365),
+            expires: now.AddDays(365).AddSeconds(30));
         Check.True(
             policy.TryReserve(
-                Admission(
-                    issued: now.AddSeconds(6),
-                    expires: now.AddSeconds(36)),
-                out _) ==
-                BackhaulAdmissionStatus.Expired,
-            "admission issued beyond allowed skew is rejected");
+                aheadAdmission,
+                out var aheadLease) ==
+                BackhaulAdmissionStatus.Accepted,
+            "worker admission lifetime is neutral to +365d wall skew");
+        aheadLease!.Dispose();
+        var behindAdmission = Admission(
+            connectionId: Guid.NewGuid(),
+            accountId: 82,
+            username: "CLOCK_BEHIND",
+            issued: now.AddDays(-365),
+            expires: now.AddDays(-365).AddSeconds(30));
         Check.True(
             policy.TryReserve(
-                Admission(
-                    issued: now.AddSeconds(-30),
-                    expires: now),
-                out _) ==
-                BackhaulAdmissionStatus.Expired,
-            "expired admission is rejected");
+                behindAdmission,
+                out var behindLease) ==
+                BackhaulAdmissionStatus.Accepted,
+            "worker admission lifetime is neutral to -365d wall skew");
+        behindLease!.Dispose();
+        var minimumLifetime = Admission(
+            connectionId: Guid.NewGuid(),
+            accountId: 83,
+            username: "MIN_LIFETIME",
+            issued: now,
+            expires: now.AddSeconds(1));
+        Check.True(
+            policy.TryReserve(
+                minimumLifetime,
+                out var minimumLease) ==
+                BackhaulAdmissionStatus.Accepted &&
+            minimumLease!.Activate(),
+            "minimum admission lifetime survives its conservative local " +
+            "safety margin through activation");
+        minimumLease!.Dispose();
 
         using var bounded = Registry(clock, capacity: 1);
         var first = Admission(
@@ -177,7 +202,7 @@ internal static partial class BackhaulProtocolChecks
             capacity,
             replayCapacity,
             replayRetention: TimeSpan.FromSeconds(5),
-            futureClockSkew: TimeSpan.FromSeconds(5),
+            admissionLifetimeSafetyMargin: TimeSpan.FromSeconds(5),
             cleanupBatchSize: 64,
             timeProvider: clock);
 }

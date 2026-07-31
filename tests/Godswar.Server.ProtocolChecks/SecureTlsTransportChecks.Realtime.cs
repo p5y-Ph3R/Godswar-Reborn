@@ -39,7 +39,7 @@ internal static partial class SecureTlsTransportChecks
             clientInstanceId,
             Convert.FromHexString(
                 SecureNetworkOptions.PredecessorOriginSha256));
-        using var gameGrant = IssueCommittedGrant(
+        await using var gameGrant = await IssueCommittedGrantAsync(
             ticketStore,
             target,
             loginContext);

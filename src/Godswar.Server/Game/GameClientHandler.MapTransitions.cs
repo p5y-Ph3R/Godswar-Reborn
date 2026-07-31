@@ -182,6 +182,13 @@ internal sealed partial class GameClientHandler
                 "The successful map transfer has no captured source " +
                 "world-instance identity.");
         }
+        if (!await PublishPlayerCoordinationEnteringAsync(
+                targetMapId,
+                cancellationToken))
+        {
+            _session.Disconnect();
+            return false;
+        }
 
         _positionDirty = false;
         _lastPositionPersistUtc = DateTime.UtcNow;

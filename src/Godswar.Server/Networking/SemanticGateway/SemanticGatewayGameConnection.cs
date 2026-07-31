@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking.Backhaul;
@@ -13,7 +14,7 @@ namespace Godswar.Server.Networking.SemanticGateway;
 
 internal sealed record SemanticGatewayGameConnectionDependencies(
     ISemanticGatewayDataSession Data,
-    SemanticGatewayAdmissionAuthority Authority,
+    ISemanticGatewayCoordination Coordination,
     SemanticGatewayConnectionCoordinator Connections,
     Func<MapId, SemanticGatewayRouteTarget?> ResolveMapRoute,
     SemanticGatewayRouteTarget BootstrapRoute,
@@ -24,6 +25,7 @@ internal sealed record SemanticGatewayGameConnectionDependencies(
     TimeSpan FirstPacketTimeout,
     TimeSpan IdleTimeout,
     TimeSpan AdmissionRefreshInterval,
+    TimeSpan CoordinationTimeout,
     int BufferSizeBytes,
     TimeProvider TimeProvider);
 
@@ -68,9 +70,12 @@ internal static partial class SemanticGatewayGameConnection
 
         try
         {
-            var login = dependencies.Authority.TryFindLogin(
-                probe.Username,
-                remote.Address);
+            var login =
+                await dependencies.Coordination.FindActivatedLoginAsync(
+                    probe.Username,
+                    remote.Address,
+                    NewCoordinationDeadline(dependencies),
+                    cancellationToken);
             if (!login.IsFound || login.Generation is null)
             {
                 return SemanticGatewayGameOutcome.LoginNotFound;
@@ -114,11 +119,14 @@ internal static partial class SemanticGatewayGameConnection
                 return SemanticGatewayGameOutcome.ProtocolRejected;
             }
 
-            var reserved = dependencies.Authority.Reserve(
-                login.Generation.GenerationId,
-                principal,
-                source,
-                target.Value);
+            var reserved =
+                await dependencies.Coordination.ReserveAdmissionAsync(
+                    login.Generation.GenerationId,
+                    principal,
+                    source,
+                    target.Value,
+                    NewCoordinationDeadline(dependencies),
+                    cancellationToken);
             if (reserved.Status !=
                     SemanticGatewayAdmissionStatus.Reserved ||
                 reserved.Admission is null)
@@ -174,7 +182,11 @@ internal static partial class SemanticGatewayGameConnection
                         dependencies.TimeProvider,
                         relayLifetime.Token);
 
-                var commit = dependencies.Authority.Commit(claim);
+                var commit =
+                    await dependencies.Coordination.CommitAdmissionAsync(
+                        claim,
+                        NewCoordinationDeadline(dependencies),
+                        relayLifetime.Token);
                 if (commit.Status !=
                     SemanticGatewayAdmissionStatus.Committed)
                 {
@@ -225,14 +237,10 @@ internal static partial class SemanticGatewayGameConnection
             finally
             {
                 connectionLease?.Dispose();
-                if (committed)
-                {
-                    dependencies.Authority.Release(claim);
-                }
-                else
-                {
-                    dependencies.Authority.Rollback(claim);
-                }
+                await SettleAdmissionAsync(
+                    dependencies,
+                    claim,
+                    committed);
             }
         }
         finally
@@ -278,9 +286,10 @@ internal static partial class SemanticGatewayGameConnection
             dependencies.TimeProvider,
             stop.Token);
         var refresh = RefreshAdmissionAsync(
-            dependencies.Authority,
+            dependencies.Coordination,
             claim,
             dependencies.AdmissionRefreshInterval,
+            dependencies.CoordinationTimeout,
             dependencies.TimeProvider,
             stop.Token);
 
@@ -411,9 +420,10 @@ internal static partial class SemanticGatewayGameConnection
     }
 
     private static async Task RefreshAdmissionAsync(
-        SemanticGatewayAdmissionAuthority authority,
+        ISemanticGatewayCoordination coordination,
         SemanticGatewayAdmissionClaim claim,
         TimeSpan interval,
+        TimeSpan coordinationTimeout,
         TimeProvider timeProvider,
         CancellationToken cancellationToken)
     {
@@ -423,7 +433,12 @@ internal static partial class SemanticGatewayGameConnection
                 interval,
                 timeProvider,
                 cancellationToken);
-            var refreshed = authority.RefreshCommitted(claim);
+            var refreshed = await coordination.RefreshAdmissionAsync(
+                claim,
+                CoordinationDeadline.FromNow(
+                    coordinationTimeout,
+                    timeProvider),
+                cancellationToken);
             if (refreshed.Status !=
                 SemanticGatewayAdmissionStatus.Refreshed)
             {
@@ -443,6 +458,43 @@ internal static partial class SemanticGatewayGameConnection
         {
         }
     }
+
+    private static async Task SettleAdmissionAsync(
+        SemanticGatewayGameConnectionDependencies dependencies,
+        SemanticGatewayAdmissionClaim claim,
+        bool committed)
+    {
+        try
+        {
+            var deadline = NewCoordinationDeadline(dependencies);
+            if (committed)
+            {
+                await dependencies.Coordination.ReleaseAdmissionAsync(
+                    claim,
+                    deadline,
+                    CancellationToken.None);
+            }
+            else
+            {
+                await dependencies.Coordination.RollbackAdmissionAsync(
+                    claim,
+                    deadline,
+                    CancellationToken.None);
+            }
+        }
+        catch
+        {
+            // Remote cleanup is finite and best-effort. Admission TTLs remain
+            // the final fail-closed reclamation boundary.
+        }
+    }
+
+    private static CoordinationDeadline
+        NewCoordinationDeadline(
+            SemanticGatewayGameConnectionDependencies dependencies) =>
+        CoordinationDeadline.FromNow(
+            dependencies.CoordinationTimeout,
+            dependencies.TimeProvider);
 
     private static SemanticGatewayAdmissionClaim CreateClaim(
         SemanticGatewayAdmissionLease admission) =>

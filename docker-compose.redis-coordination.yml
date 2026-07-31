@@ -1,0 +1,83 @@
+# Disposable B17 Redis dependency for local development and CI.
+#
+# Generate untracked credentials first:
+#   ./tools/NewB17RedisLocalConfiguration.ps1
+#
+# Start only this dependency:
+#   docker compose `
+#     --env-file artifacts/b17-redis-local/redis.local.env `
+#     -f docker-compose.redis-coordination.yml up -d --wait
+#
+# This file does not activate Redis in Godswar.Server and is not a production
+# Redis topology.
+name: reborn-b17-redis
+
+services:
+  redis-coordination:
+    image: "${GODSWAR_REDIS_IMAGE:-redis:7.4.10-alpine}"
+    container_name: godswar-redis-coordination
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+    user: redis
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    volumes:
+      - ./ops/redis/redis-coordination.local.conf:/usr/local/etc/redis/redis.conf:ro
+    secrets:
+      - source: redis-coordination-acl
+        target: redis_acl
+        mode: 0444
+      - source: redis-coordination-password
+        target: redis_password
+        mode: 0444
+    ports:
+      - target: 6379
+        published: "${GODSWAR_REDIS_HOST_PORT:-6380}"
+        host_ip: "${GODSWAR_REDIS_HOST_BIND_ADDRESS:-127.0.0.1}"
+        protocol: tcp
+    networks:
+      - redis-coordination
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          REDISCLI_AUTH="$$(cat /run/secrets/redis_password)"
+          redis-cli --user godswar_b17 ping | grep -qx PONG
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 3s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 384m
+    cpus: 1.0
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
+    stop_grace_period: 10s
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    labels:
+      com.reborn.data.role: disposable-coordination
+      com.reborn.environment.scope: local-ci-only
+
+secrets:
+  redis-coordination-acl:
+    file: "${GODSWAR_REDIS_ACL_FILE:?Run tools/NewB17RedisLocalConfiguration.ps1 first}"
+  redis-coordination-password:
+    file: "${GODSWAR_REDIS_PASSWORD_FILE:?Run tools/NewB17RedisLocalConfiguration.ps1 first}"
+
+networks:
+  redis-coordination:
+    name: reborn_b17_redis_coordination
+    driver: bridge

@@ -49,10 +49,11 @@ internal static partial class SemanticGatewayChecks
         var handler = new SemanticGatewayLoginHandler(
             session,
             data,
-            authority,
+            CreateLoginCoordination(authority),
             connections,
             "127.0.0.1",
-            41002);
+            41002,
+            TimeSpan.FromSeconds(1));
 
         await handler.RunAsync(CancellationToken.None);
 
@@ -98,10 +99,11 @@ internal static partial class SemanticGatewayChecks
         var handler = new SemanticGatewayLoginHandler(
             session,
             data,
-            authority,
+            CreateLoginCoordination(authority),
             connections,
             "127.0.0.1",
-            41004);
+            41004,
+            TimeSpan.FromSeconds(1));
 
         await handler.RunAsync(CancellationToken.None);
 
@@ -161,6 +163,11 @@ internal static partial class SemanticGatewayChecks
                 maximumLoginGenerations: 4,
                 maximumAdmissions: 4,
                 maximumAdmissionsPerGeneration: 1));
+
+    private static ISemanticGatewayCoordination
+        CreateLoginCoordination(
+            SemanticGatewayAdmissionAuthority authority) =>
+        new InMemorySemanticGatewayCoordination(authority);
 
     private static byte[] EncryptLoginStream(
         string rawUsername,

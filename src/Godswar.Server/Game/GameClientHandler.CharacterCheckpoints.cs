@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -9,6 +10,9 @@ internal sealed partial class GameClientHandler
         TimeSpan.FromSeconds(10);
     private readonly ICharacterCheckpointCoordinator?
         _characterCheckpoints;
+    private readonly IPlayerCoordinationLeaseIssuer?
+        _playerCoordination;
+    private IPlayerCoordinationLease? _playerCoordinationLease;
     private bool _checkpointOwnershipAcquired;
 
     private async Task<bool> EnsureCheckpointOwnershipAsync(
@@ -123,11 +127,47 @@ internal sealed partial class GameClientHandler
             var playerOwnership = new PlayerOwnershipFence(
                 ownership.Value.Owner.OwnerId,
                 ownership.Value.Owner.Generation);
+            if (_playerCoordination?.IsEnabled == true)
+            {
+                if (!TryResolveCoordinatedRoute(
+                        _character.CurrentMap,
+                        out var route,
+                        requireInitialGatewayRoute: true))
+                {
+                    await ReleaseCheckpointOwnershipAsync(
+                        accountId,
+                        characterId,
+                        ownership.Value.Owner,
+                        CancellationToken.None);
+                    _session.Disconnect();
+                    return false;
+                }
+
+                _playerCoordinationLease =
+                    await _playerCoordination.AcquireAsync(
+                        accountId,
+                        characterId,
+                        playerOwnership,
+                        route,
+                        _session.Disconnect,
+                        cancellationToken);
+                if (_playerCoordinationLease is null)
+                {
+                    await ReleaseCheckpointOwnershipAsync(
+                        accountId,
+                        characterId,
+                        ownership.Value.Owner,
+                        CancellationToken.None);
+                    _session.Disconnect();
+                    return false;
+                }
+            }
             if (!_registry.TryBindAccountSessionOwnership(
                     accountId,
                     _session,
                     playerOwnership))
             {
+                await ReleasePlayerCoordinationLeaseAsync();
                 await ReleaseCheckpointOwnershipAsync(
                     accountId,
                     characterId,
@@ -142,6 +182,7 @@ internal sealed partial class GameClientHandler
         }
         catch
         {
+            await ReleasePlayerCoordinationLeaseAsync();
             await ReleaseCheckpointOwnershipAsync(
                 accountId,
                 characterId,
@@ -314,6 +355,8 @@ internal sealed partial class GameClientHandler
             FlushFinalVitalsAsync(
                 character,
                 flushDeadline.Token));
+
+        await ReleasePlayerCoordinationLeaseAsync();
 
         if (_checkpointOwnershipAcquired &&
             TryGetCheckpointOwner(character, out var owner))

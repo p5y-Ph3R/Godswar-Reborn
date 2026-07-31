@@ -82,7 +82,7 @@ internal sealed class LoopbackBackhaulWorker : IAsyncDisposable
                 capacity: 16,
                 replayCapacity: 64,
                 replayRetention: TimeSpan.FromMinutes(1),
-                futureClockSkew: TimeSpan.FromSeconds(5));
+                admissionLifetimeSafetyMargin: TimeSpan.FromSeconds(5));
             var factory = new WorkerBackhaulTransportFactory(
                 workerCertificate,
                 new BackhaulCertificatePins(

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -16,11 +17,13 @@ namespace Godswar.Server.Networking.SemanticGateway;
 internal sealed class SemanticGatewayLoginHandler : IClientHandler
 {
     private readonly ISemanticGatewayDataSession _data;
-    private readonly SemanticGatewayAdmissionAuthority _authority;
+    private readonly ISemanticGatewayCoordination _coordination;
+    private readonly TimeSpan _coordinationTimeout;
     private readonly SemanticGatewayConnectionCoordinator _connections;
     private readonly string _gamePublicHost;
     private readonly int _gamePublicPort;
     private readonly ClientSession _session;
+    private readonly TimeProvider _timeProvider;
     private bool _loginAttempted;
     private bool _redirectSent;
     private SemanticGatewayLoginGenerationLease? _generation;
@@ -29,17 +32,19 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
     public SemanticGatewayLoginHandler(
         ClientSession session,
         ISemanticGatewayDataSession data,
-        SemanticGatewayAdmissionAuthority authority,
+        ISemanticGatewayCoordination coordination,
         SemanticGatewayConnectionCoordinator connections,
         string gamePublicHost,
-        int gamePublicPort)
+        int gamePublicPort,
+        TimeSpan coordinationTimeout,
+        TimeProvider? timeProvider = null)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
         _data = data ??
             throw new ArgumentNullException(nameof(data));
-        _authority = authority ??
-            throw new ArgumentNullException(nameof(authority));
+        _coordination = coordination ??
+            throw new ArgumentNullException(nameof(coordination));
         _connections = connections ??
             throw new ArgumentNullException(nameof(connections));
         if (string.IsNullOrWhiteSpace(gamePublicHost) ||
@@ -53,9 +58,17 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
         {
             throw new ArgumentOutOfRangeException(nameof(gamePublicPort));
         }
+        if (coordinationTimeout <= TimeSpan.Zero ||
+            coordinationTimeout > TimeSpan.FromMinutes(10))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(coordinationTimeout));
+        }
 
         _gamePublicHost = gamePublicHost;
         _gamePublicPort = gamePublicPort;
+        _coordinationTimeout = coordinationTimeout;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -93,7 +106,10 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                         if (_principal is null ||
                             _generation is null ||
                             _redirectSent ||
-                            !_authority.ActivateLogin(_generation))
+                            !await _coordination.ActivateLoginAsync(
+                                _generation,
+                                NewCoordinationDeadline(),
+                                cancellationToken))
                         {
                             _session.Disconnect();
                             return;
@@ -121,10 +137,24 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
             if (!_redirectSent &&
                 _generation is not null)
             {
-                _authority.CancelLogin(_generation);
-                _connections.RequestStop(
-                    _generation.Principal.AccountId,
-                    _generation.GenerationId);
+                try
+                {
+                    await _coordination.CancelLoginAsync(
+                        _generation,
+                        NewCoordinationDeadline(),
+                        CancellationToken.None);
+                }
+                catch
+                {
+                    // Cleanup is finite and best-effort. The generation has
+                    // its own bounded TTL if a remote coordinator is down.
+                }
+                finally
+                {
+                    _connections.RequestStop(
+                        _generation.Principal.AccountId,
+                        _generation.GenerationId);
+                }
             }
         }
     }
@@ -185,9 +215,11 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                     return;
                 }
 
-                var started = _authority.BeginLogin(
+                var started = await _coordination.StartLoginAsync(
                     principal,
-                    source);
+                    source,
+                    NewCoordinationDeadline(),
+                    cancellationToken);
                 if (!started.IsStarted)
                 {
                     await RejectAsync(cancellationToken);
@@ -235,6 +267,12 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
             cancellationToken,
             "SemanticGatewayLoginFailed");
     }
+
+    private CoordinationDeadline
+        NewCoordinationDeadline() =>
+        CoordinationDeadline.FromNow(
+            _coordinationTimeout,
+            _timeProvider);
 
     private static byte[] CopyPassword(byte[] packet)
     {

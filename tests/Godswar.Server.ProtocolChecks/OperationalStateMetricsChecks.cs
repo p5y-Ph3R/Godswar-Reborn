@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Net;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Networking.Secure.Udp;
@@ -42,6 +43,22 @@ internal static class OperationalStateMetricsChecks
         "limiter_sessions_authenticated"
     ];
 
+    private static readonly HashSet<string> CoordinationStates =
+    [
+        "ready",
+        "operations_in_flight",
+        "operations_limit",
+        "routes",
+        "player_leases",
+        "capacity",
+        "operations_accepted",
+        "operations_conflict",
+        "operations_timeout",
+        "operations_unavailable",
+        "operations_overloaded",
+        "operations_circuit_open"
+    ];
+
     public static Task RunAsync()
     {
         CheckAuthoritativeSnapshotsAndDimensionContract();
@@ -62,7 +79,7 @@ internal static class OperationalStateMetricsChecks
                 GameUnauthenticatedConnections: 4,
                 TrackedUnauthenticatedIpAddresses: 5,
                 TrackedUnauthenticatedPrefixes: 3));
-        using var tickets = new StubGameTicketStore(
+        using var tickets = new StubGameTicketSnapshotSource(
             new SecureGameTicketStoreSnapshot(
                 Capacity: 128,
                 ActiveGenerations: 9,
@@ -75,10 +92,26 @@ internal static class OperationalStateMetricsChecks
             udpSnapshotCalls++;
             return udpSnapshot;
         }
+        var coordination = new StubCoordinationSnapshots(
+            new WorkerCoordinationSnapshot(
+                IsReady: true,
+                Capacity: 4_096,
+                MaximumConcurrentOperations: 128,
+                InFlightOperations: 3,
+                RegisteredRoutes: 21,
+                ActivePlayerLeases: 17,
+                AcceptedOperations: 401,
+                ConflictOperations: 7,
+                TimeoutOperations: 5,
+                UnavailableOperations: 3,
+                OverloadRejections: 2,
+                CircuitOpenRejections: 1,
+                LastSuccessAtUtc: DateTimeOffset.UtcNow));
         using var metrics = new OperationalStateMetrics(
             admission,
             tickets,
-            ReadUdpSnapshot);
+            ReadUdpSnapshot,
+            coordination);
         using var capture = new MetricCapture();
 
         capture.RecordObservableInstruments();
@@ -87,7 +120,8 @@ internal static class OperationalStateMetricsChecks
         [
             OperationalStateMetrics.AdmissionInstrumentName,
             OperationalStateMetrics.TicketInstrumentName,
-            OperationalStateMetrics.UdpInstrumentName
+            OperationalStateMetrics.UdpInstrumentName,
+            OperationalStateMetrics.CoordinationInstrumentName
         ]);
 
         Check.True(
@@ -122,6 +156,10 @@ internal static class OperationalStateMetricsChecks
             1,
             udpSnapshotCalls,
             "one UDP snapshot serves one metric collection");
+        Check.Equal(
+            1,
+            coordination.SnapshotCalls,
+            "one cached coordination snapshot serves one collection");
         CheckMeasurement(
             captured,
             OperationalStateMetrics.AdmissionInstrumentName,
@@ -197,6 +235,29 @@ internal static class OperationalStateMetricsChecks
                 expected.Key,
                 expected.Value);
         }
+        var coordinationValues = new Dictionary<string, long>
+        {
+            ["ready"] = 1,
+            ["operations_in_flight"] = 3,
+            ["operations_limit"] = 128,
+            ["routes"] = 21,
+            ["player_leases"] = 17,
+            ["capacity"] = 4_096,
+            ["operations_accepted"] = 401,
+            ["operations_conflict"] = 7,
+            ["operations_timeout"] = 5,
+            ["operations_unavailable"] = 3,
+            ["operations_overloaded"] = 2,
+            ["operations_circuit_open"] = 1
+        };
+        foreach (var expected in coordinationValues)
+        {
+            CheckMeasurement(
+                captured,
+                OperationalStateMetrics.CoordinationInstrumentName,
+                expected.Key,
+                expected.Value);
+        }
 
         capture.Clear();
         udpSnapshot = CreateUdpSnapshot(
@@ -224,6 +285,10 @@ internal static class OperationalStateMetricsChecks
             2,
             udpSnapshotCalls,
             "each collection takes one fresh UDP snapshot");
+        Check.Equal(
+            2,
+            coordination.SnapshotCalls,
+            "each collection takes one cached coordination snapshot");
     }
 
     private static void CheckOptionalFamiliesAreAbsent()
@@ -334,6 +399,8 @@ internal static class OperationalStateMetricsChecks
                 TicketStates.Contains(state),
             OperationalStateMetrics.UdpInstrumentName =>
                 UdpStates.Contains(state),
+            OperationalStateMetrics.CoordinationInstrumentName =>
+                CoordinationStates.Contains(state),
             _ => false
         };
 
@@ -411,31 +478,13 @@ internal static class OperationalStateMetricsChecks
         }
     }
 
-    private sealed class StubGameTicketStore(
+    private sealed class StubGameTicketSnapshotSource(
         SecureGameTicketStoreSnapshot snapshot)
-        : IGameTicketStore
+        : IGameTicketStoreSnapshotSource, IDisposable
     {
         public int SnapshotCalls { get; private set; }
 
-        public SecureLoginGenerationResult BeginLogin(
-            int accountId,
-            string username) => default;
-
-        public SecureTicketIssueResult Issue(
-            SecureLoginGeneration generation,
-            SecureConnectionContext loginConnection,
-            SecureGameTarget target) => default;
-
-        public SecureTicketConsumeResult Consume(
-            SecureGameBind bind,
-            SecureConnectionContext gameConnection,
-            SecureGameTarget expectedTarget) => default;
-
-        public void RevokeGeneration(SecureLoginGeneration generation)
-        {
-        }
-
-        public SecureGameTicketStoreSnapshot GetSnapshot()
+        public SecureGameTicketStoreSnapshot GetCachedSnapshot()
         {
             SnapshotCalls++;
             return snapshot;
@@ -443,6 +492,21 @@ internal static class OperationalStateMetricsChecks
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class StubCoordinationSnapshots(
+        WorkerCoordinationSnapshot snapshot)
+        : IWorkerCoordinationReadinessSource
+    {
+        public int SnapshotCalls { get; private set; }
+
+        public bool IsReady => snapshot.IsReady;
+
+        public WorkerCoordinationSnapshot GetSnapshot()
+        {
+            SnapshotCalls++;
+            return snapshot;
         }
     }
 

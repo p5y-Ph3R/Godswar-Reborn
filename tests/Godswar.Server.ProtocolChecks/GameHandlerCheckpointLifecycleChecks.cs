@@ -1,12 +1,14 @@
 using System.Reflection;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class GameHandlerCheckpointLifecycleChecks
+internal static partial class GameHandlerCheckpointLifecycleChecks
 {
     private static readonly BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic;
@@ -26,12 +28,84 @@ internal static class GameHandlerCheckpointLifecycleChecks
         RequiredMethod("FinalizeCheckpointOwnershipAsync");
     private static readonly MethodInfo InstallCharacterMethod =
         RequiredMethod("InstallUpdatedCharacter");
+    private static readonly MethodInfo TryResolveCoordinatedRouteMethod =
+        RequiredMethod("TryResolveCoordinatedRoute");
 
     public static async Task RunAsync()
     {
         await CheckFailedRefreshReleasesCapturedIdentityAsync();
         await CheckFinalFlushesAreIndependentAsync();
         await CheckVitalsClampAdvancesRevisionAsync();
+        await CheckCoordinationFailureReleasesPostgresFenceAsync();
+        await CheckCoordinationReleasePrecedesPostgresReleaseAsync();
+        await CheckGatewayLocalMapTransitionRouteAsync();
+    }
+
+    private static async Task
+        CheckCoordinationFailureReleasesPostgresFenceAsync()
+    {
+        var snapshot =
+            CharacterSnapshotContractChecks.CreateValidSnapshot();
+        var character =
+            CharacterLoadSnapshotHydrator.Hydrate(snapshot)!.Character!;
+        var coordinator = new RecordingCoordinator(
+            character.PositionRevision,
+            character.VitalsRevision);
+        await using var session = new ClientSession(
+            new ScriptedLegacyByteTransport(),
+            endpointRole: NetworkEndpointRole.Game);
+        var handler = CreateHandler(
+            session,
+            new FixedSnapshotReader(snapshot),
+            coordinator,
+            new RecordingLeaseIssuer(acquire: false, []));
+        InstallIdentity(handler, snapshot.AccountId, character);
+
+        Check.True(
+            !await InvokeAsync<bool>(
+                EnsureOwnershipMethod,
+                handler,
+                CancellationToken.None),
+            "missing disposable coordination rejects world entry");
+        Check.Equal(
+            1,
+            coordinator.Releases.Count,
+            "coordination failure releases the PostgreSQL fence");
+    }
+
+    private static async Task
+        CheckCoordinationReleasePrecedesPostgresReleaseAsync()
+    {
+        var snapshot =
+            CharacterSnapshotContractChecks.CreateValidSnapshot();
+        var character =
+            CharacterLoadSnapshotHydrator.Hydrate(snapshot)!.Character!;
+        var operations = new List<string>();
+        var coordinator = new RecordingCoordinator(
+            character.PositionRevision,
+            character.VitalsRevision,
+            operations);
+        await using var session = new ClientSession(
+            new ScriptedLegacyByteTransport(),
+            endpointRole: NetworkEndpointRole.Game);
+        var handler = CreateHandler(
+            session,
+            new FixedSnapshotReader(snapshot),
+            coordinator,
+            new RecordingLeaseIssuer(acquire: true, operations));
+        InstallIdentity(handler, snapshot.AccountId, character);
+
+        Check.True(
+            await InvokeAsync<bool>(
+                EnsureOwnershipMethod,
+                handler,
+                CancellationToken.None),
+            "valid PG fence installs disposable coordination lease");
+        await InvokeAsync(FinalizeOwnershipMethod, handler);
+        Check.True(
+            operations.IndexOf("redis-release") <
+                operations.IndexOf("release"),
+            "Redis lease is released before PostgreSQL durable ownership");
     }
 
     private static async Task
@@ -200,14 +274,16 @@ internal static class GameHandlerCheckpointLifecycleChecks
     private static GameClientHandler CreateHandler(
         ClientSession session,
         ICharacterSnapshotReader snapshotReader,
-        ICharacterCheckpointCoordinator? characterCheckpoints) =>
+        ICharacterCheckpointCoordinator? characterCheckpoints,
+        IPlayerCoordinationLeaseIssuer? playerCoordination = null) =>
         new(
             session,
             new EmptyStore(),
             new GameSessionRegistry(store: null),
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
-            characterCheckpoints: characterCheckpoints);
+            characterCheckpoints: characterCheckpoints,
+            playerCoordination: playerCoordination);
 
     private static void InstallIdentity(
         GameClientHandler handler,
@@ -310,14 +386,26 @@ internal static class GameHandlerCheckpointLifecycleChecks
                     "Synthetic post-acquire snapshot failure."));
     }
 
+    private sealed class FixedSnapshotReader(
+        CharacterAccountSnapshot snapshot) : ICharacterSnapshotReader
+    {
+        public Task<CharacterAccountSnapshot> ReadAsync(
+            int accountId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(snapshot);
+    }
+
     private sealed class RecordingCoordinator(
         long positionRevision,
-        long vitalsRevision) : ICharacterCheckpointCoordinator
+        long vitalsRevision,
+        List<string>? sharedOperations = null)
+        : ICharacterCheckpointCoordinator
     {
         public PlayerOwnershipFence Owner { get; } =
             new(Guid.NewGuid(), 1);
 
-        public List<string> Operations { get; } = [];
+        public List<string> Operations { get; } =
+            sharedOperations ?? [];
 
         public List<ReleaseCall> Releases { get; } = [];
 

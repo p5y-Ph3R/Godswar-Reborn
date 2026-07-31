@@ -72,13 +72,13 @@ This is not automatic component serialization. Mappings are explicit application
 
 ## 12.5 Redis conventions
 
-If/when Redis is approved:
+For implemented B17 keys and every future Redis family:
 
 - central typed key builders and value versioning;
 - documented TTL, refresh, invalidation, reconstruction, owner, outage behavior, and maximum cardinality for every key;
 - no raw user strings in keys;
 - Lua scripts versioned/tested beside the owning module;
-- local fallback semantics tested;
+- fail-closed outage and coordinated single-authority rollback tested;
 - health distinguishes cache degradation from ownership-coordination failure.
 
 ## 12.6 MongoDB conventions

@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Rewards;
@@ -65,6 +66,8 @@ internal sealed partial class GameClientHandler
             monsterDeathRewardCommands = null,
         IPetDurableCommandExecutor?
             petDurableCommands = null,
+        IPlayerCoordinationLeaseIssuer?
+            playerCoordination = null,
         bool requiresDurableMonsterRewardCommands = false,
         bool requiresDurablePlayerCommands = false)
     {
@@ -113,6 +116,7 @@ internal sealed partial class GameClientHandler
         _requiresDurablePlayerCommands =
             requiresDurablePlayerCommands;
         _petDurableCommands = petDurableCommands;
+        _playerCoordination = playerCoordination;
         if (_requiresDurablePlayerCommands &&
             new object?[]
             {

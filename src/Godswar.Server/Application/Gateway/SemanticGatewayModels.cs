@@ -1,6 +1,6 @@
 using Godswar.Server.Domain.World.Instances;
 
-namespace Godswar.Server.Networking.SemanticGateway;
+namespace Godswar.Server.Application.Gateway;
 
 internal enum SemanticGatewayWorkerState : byte
 {

@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
@@ -16,7 +17,8 @@ internal sealed class GameClientHandlerFactory(
     IWorldContentReader worldContent,
     DeveloperCommandOptions developerCommands,
     ICharacterCheckpointCoordinator characterCheckpoints,
-    PostgresApplicationDataRuntime? postgresRuntime)
+    PostgresApplicationDataRuntime? postgresRuntime,
+    IPlayerCoordinationLeaseIssuer? playerCoordination = null)
 {
     public GameClientHandler Create(
         ClientSession session,
@@ -70,6 +72,8 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.MonsterDeathRewardCommands,
             petDurableCommands:
                 postgresRuntime?.PetDurableCommands,
+            playerCoordination:
+                playerCoordination,
             requiresDurableMonsterRewardCommands:
                 postgresRuntime is not null,
             requiresDurablePlayerCommands:

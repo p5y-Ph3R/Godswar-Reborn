@@ -41,6 +41,24 @@ internal static class DataArchitectureCheckCatalog
             DeferredRedisArchitectureChecks.CheckName,
             DeferredRedisArchitectureChecks.RunAsync),
         (
+            B17WorkerCoordinationRuntimeChecks.CheckName,
+            B17WorkerCoordinationRuntimeChecks.RunAsync),
+        (
+            B17CoordinationConfigurationChecks.CheckName,
+            B17CoordinationConfigurationChecks.RunAsync),
+        (
+            RedisCoordinationMetricsChecks.CheckName,
+            RedisCoordinationMetricsChecks.RunAsync),
+        (
+            RedisGameTicketStoreIntegrationChecks.CheckName,
+            RedisGameTicketStoreIntegrationChecks.RunAsync),
+        (
+            RedisWorkerCoordinationIntegrationChecks.CheckName,
+            RedisWorkerCoordinationIntegrationChecks.RunAsync),
+        (
+            RedisSemanticGatewayCoordinationIntegrationChecks.CheckName,
+            RedisSemanticGatewayCoordinationIntegrationChecks.RunAsync),
+        (
             WorldInstancePlacementChecks.CheckName,
             WorldInstancePlacementChecks.RunAsync),
         (

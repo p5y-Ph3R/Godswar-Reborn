@@ -26,7 +26,7 @@ internal sealed class BackhaulWorkerRuntimeOptions
 
     public int ReplayRetentionSeconds { get; set; } = 300;
 
-    public int FutureClockSkewSeconds { get; set; } = 15;
+    public int AdmissionLifetimeSafetyMarginSeconds { get; set; } = 15;
 
     public int CleanupBatchSize { get; set; } = 64;
 
@@ -106,7 +106,8 @@ internal sealed class BackhaulWorkerRuntimeOptions
             AdmissionCapacity,
             ReplayCapacity,
             TimeSpan.FromSeconds(ReplayRetentionSeconds),
-            TimeSpan.FromSeconds(FutureClockSkewSeconds),
+            TimeSpan.FromSeconds(
+                AdmissionLifetimeSafetyMarginSeconds),
             CleanupBatchSize);
     }
 
@@ -149,7 +150,7 @@ internal sealed class BackhaulWorkerRuntimeOptions
             ReplayCapacity is < 1 or >
                 WorkerBackhaulAdmissionRegistry.MaximumReplayCapacity ||
             ReplayRetentionSeconds is < 0 or > 600 ||
-            FutureClockSkewSeconds is < 0 or > 60 ||
+            AdmissionLifetimeSafetyMarginSeconds is < 0 or > 60 ||
             CleanupBatchSize is < 1 or > 1_024 ||
             MaximumConcurrentTlsHandshakes is < 1 or >
                 BackhaulHandshakeGate.MaximumConcurrency)

@@ -1,13 +1,13 @@
 using Godswar.Server.Domain.World.Instances;
 
-namespace Godswar.Server.Networking.SemanticGateway;
+namespace Godswar.Server.Application.Gateway;
 
 /// <summary>
 /// Bounded in-memory route directory for the pre-Redis B18C2 topology.
 /// Routes are immutable after construction. Worker availability and
 /// admission counts are mutable under one lock.
 /// </summary>
-internal sealed class StaticSemanticGatewayRouteDirectory
+internal sealed partial class StaticSemanticGatewayRouteDirectory
 {
     private readonly object _gate = new();
     private readonly Dictionary<GatewayAdmissionId, RouteEntry> _reservations =

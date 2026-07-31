@@ -34,7 +34,7 @@ internal static partial class SecureTlsTransportChecks
             clientInstanceId,
             Convert.FromHexString(
                 SecureNetworkOptions.PredecessorOriginSha256));
-        using var grantLease = IssueCommittedGrant(
+        await using var grantLease = await IssueCommittedGrantAsync(
             ticketStore,
             target,
             loginContext);
@@ -166,7 +166,7 @@ internal static partial class SecureTlsTransportChecks
                 .ToArray(),
             Convert.FromHexString(
                 SecureNetworkOptions.PredecessorOriginSha256));
-        using var grantLease = IssueCommittedGrant(
+        await using var grantLease = await IssueCommittedGrantAsync(
             ticketStore,
             target,
             loginContext);
@@ -226,24 +226,30 @@ internal static partial class SecureTlsTransportChecks
         await transport.DisposeAsync();
     }
 
-    private static SecureGameGrantLease IssueCommittedGrant(
+    private static async ValueTask<SecureGameGrantLease>
+        IssueCommittedGrantAsync(
         InMemoryGameTicketStore ticketStore,
         SecureGameTarget target,
         SecureConnectionContext loginContext)
     {
-        var generation = ticketStore.BeginLogin(7, "test2");
+        var generation = await ticketStore.BeginLoginAsync(
+            7,
+            "test2",
+            SecureTicketOperationDeadline.Default);
         Check.True(
             generation.IsStarted,
             "UDP association login generation starts");
-        var issued = ticketStore.Issue(
+        var issued = await ticketStore.IssueAsync(
             generation.Generation!,
             loginContext,
-            target);
+            target,
+            SecureTicketOperationDeadline.Default);
         Check.True(
             issued.IsIssued,
             "UDP association game ticket issues");
         Check.True(
-            issued.Lease!.Commit(),
+            await issued.Lease!.CommitAsync(
+                SecureTicketOperationDeadline.Default),
             "UDP association game ticket commits");
         return issued.Lease!;
     }

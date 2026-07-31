@@ -21,7 +21,7 @@
 | B14 - Raw authentication retirement **(completed 2026-07-31)** | Close current account-binding risk | login/game handlers, listener profile/config, client secure acceptance | Secure client profile accepted and rollback ready | Production rejects raw; TLS auth/game bind passes | credential/ticket forgery/replay/expiry/client smoke | auth outcomes/raw attempts | Controlled dev-only profile | Medium | High |
 | B15 - PostgreSQL player ownership fence **(completed and verified 2026-07-31)** | Prepare safe scale-out | authoritative PG ownership row, monotonic `owner_generation`, conflicting transaction locks/CAS, session service, registry boundary | B06, B10 | Every valuable transaction locks/validates the owner row for its full mutation; transfer takes the conflicting lock; two owners cannot both commit; versioned async results revalidate owner generation | check-then-mutate race, child-row mutation, split-brain, stale higher token after cache loss, pause/reconnect/transfer | conflicts/fence generations | Coordinated B14 application rollback; retain the additive B10 owner columns and generations | Large | High |
 | B16 - Redis decision ADR **(completed 2026-07-31: historical defer)** | Avoid premature infrastructure | evidence and ADR 0003 | B13-B15 | Defer correctly reflected the then-known one-process target | Evidence review | candidate capacity gaps | Documentation revert | Small | Low |
-| B17 - Redis coordination **(next; approved, not deployed)** | Coordinate authoritative processes | Async tickets, routes, presence, and PG-fenced leases | B15, completed B18C2, approved budgets | Semantic processes route/fence correctly; Redis loss cannot lose value | restart/slow/expiry, reconnect, PG fence | Redis/lease/route signals | Drain to local authority | Large | High |
+| B17 - Redis coordination **(completed and verified 2026-07-31; opt-in, deployment gated)** | Coordinate authoritative processes | Async tickets/admissions, routes, presence, PG-fenced leases | B15, B18C2, ADR 0005 | State is atomic/bounded; Redis loss cannot lose value | restart/slow/expiry, replay, PG fence | finite Redis/lease/route signals | Drain to one local authority | Large | High |
 | B18A/B - Realm/instance identity and fair mailboxes **(completed 2026-07-31)** | Local scale-out foundation | typed IDs, placement/runtime directory, instance sessions, owner mailboxes, bounded fanout | ADR 0004, B02, B10 | Isolated single-owned instances; I/O outside owner commands | lifecycle/isolation/transfer/overload | instance/queue/fanout | Tempest default-map bridge | Large | High |
 | B18C1 - Local opaque TCP relay **(completed 2026-07-31)** | Prove a process boundary | `Networking/RelayGateway`, worker node/public port, Docker-free smoke | B18A/B | One bounded relay reaches one private combined worker; no semantic claims | in-process plus real two-process smoke | finite snapshot/meter | Omit relay mode | Medium | Medium |
 | B18C2 - Semantic gateway/backhaul **(completed and verified 2026-07-31)** | Move session/routing authority to the gateway | loopback auth edge, mTLS worker hop, exact realm/map/instance/node route and admission identity | B18C1, B15 | Single-use login; exact route/drain/replay/capacity policy | focused and real mTLS multi-worker checks | bounded gateway/route signals | Drain to B18C1/direct worker | Large | High |
@@ -120,7 +120,11 @@ completed local identity, routing, and owners.
 completed and verified.
 [B18C2](../data-architecture-b18c2-semantic-gateway-backhaul-20260731.md)
 is completed and verified as a local-first semantic gateway/private-worker
-boundary. B17 is next after its operational budgets are recorded.
+boundary. [B17](../data-architecture-b17-redis-coordination-20260731.md) is
+completed and verified behind an opt-in provider; public deployment remains
+gated. Closeout passed the 286-check managed protocol catalog, the mandatory
+43-check/5-scenario PostgreSQL gate, and the mandatory
+26-check/5-scenario Redis gate.
 
 ## 18.2 Dependency and parallelization notes
 
@@ -128,10 +132,9 @@ boundary. B17 is next after its operational budgets are recorded.
 - **Completed prerequisite for scale-out/Redis and multi-owner writes:** B15.
 - **Can run in parallel after B01A:** B02 boundary rules, B04 configuration/security hardening, and initial B13 logging/readiness. B03 CI scaffolding can start, but its empty-bootstrap gate cannot pass until B01B repairs the baseline.
 - **Can run in parallel after B08:** B09 economy, B11 lifecycle, and portions of B12 progression/pets, provided migrations are ordered and aggregate ownership does not overlap.
-- **Requires operational inputs before activation:** B17 Redis
-  provider/SLO/cost and outage/eviction policy.
-- **Next scale-out increment:** B17 disposable Redis coordination behind the
-  completed B18C2 semantic boundary; PostgreSQL remains the durable owner.
+- **Completed opt-in scale-out boundary:** B17 disposable Redis coordination;
+  PostgreSQL remains durable. Public activation still needs provider,
+  SLO/cost, region, and measured staging approval.
 - **Requires a new architectural decision first:** B21 for MongoDB; character deletion retention; reward failure semantics.
 - **Wait until gameplay exists:** quest schema/progress, real guilds, party, trade, mail, auction, friends, achievements, housing, player-generated content, seasonal systems. Their illustrative placement in section 11 is not an implementation request.
 

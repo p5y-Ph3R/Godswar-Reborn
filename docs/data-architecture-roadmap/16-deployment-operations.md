@@ -21,7 +21,9 @@
 - One shared `NpgsqlDataSource`; pool maximum based on DB capacity and instance count, not defaults multiplied blindly.
 - Explicit connect/command/lock/idle lifetime and cancellation.
 - Separate bounded worker concurrency for checkpoints, valuable commands, outbox, and reconciliation.
-- If Redis is introduced, one shared multiplexer/client per process, strict async timeouts, circuit breakers, key cardinality budgets, and separate coordination/cache eviction policy.
+- Opt-in B17 Redis uses one shared multiplexer per process, strict async
+  deadlines, bounded concurrency, circuit breaking, opaque keys, and
+  `noeviction`; production provider/capacity approval remains outstanding.
 - MongoDB connection management is not applicable until an approved ADR.
 - Run containers as non-root with read-only filesystem where practical, dropped capabilities, `no-new-privileges`, CPU/memory/PID/file limits, bounded logging, and pinned images.
 

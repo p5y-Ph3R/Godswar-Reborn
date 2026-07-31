@@ -2,52 +2,35 @@
 
 ## 7.1 Decision and introduction gate
 
-[ADR 0003](../adr/0003-defer-redis-coordination.md) deferred Redis based on
-the then-confirmed single-process topology.
-[ADR 0004](../adr/0004-realm-and-world-instance-topology.md) now supersedes
-that target assumption: Tempest is the first realm, future realms and worker
-processes are planned, and Pindus will eventually be cross-realm. Scheduled
-battlefields and on-demand dungeons also require independently routed
-`WorldInstanceId` values.
+[ADR 0003](../adr/0003-defer-redis-coordination.md) is the historical
+single-process defer. ADR 0004 confirmed the later multi-process topology,
+and [ADR 0005](../adr/0005-b17-redis-coordination-activation.md) now governs
+the implemented B17 boundary.
 
-B17 is therefore **reopened and Redis is approved for future cross-process
-coordination**. It is the next roadmap milestone, but no Redis implementation
-or deployment is claimed. PostgreSQL still owns all durable player value.
+B17 is **completed and verified behind an explicit opt-in provider, but not
+deployed as production infrastructure**. It provides async, deadline-bearing Redis
+adapters for consume-once tickets, semantic login/admission, worker routes,
+presence, and player leases carrying the PostgreSQL-issued ownership fence.
+`Local` remains the default and constructs no Redis client. PostgreSQL still
+owns all durable player value and the monotonic ownership generation.
 
-B18A introduced realm, node, map, and world-instance identities plus local
-placement. B18B now provides the local runtime directory, exact session
-routing, and bounded instance-owner mailboxes. B18C1 adds a separate,
-opt-in, fixed-upstream opaque TCP relay, but all ticket, session, placement,
-and world authority remains in the one combined worker. Its second process
-exercises no shared coordination contract and therefore does not activate
-B17.
+The implementation includes finite concurrency/deadlines, circuit breaking,
+opaque versioned keys, atomic scripts, readiness, metrics, a disposable
+local/CI profile, and coordinated outage/rollback runbooks. Shared ticket,
+admission, worker, route, and player-lease expiries come from Redis `TIME`;
+local proof validity uses monotonic elapsed time rather than comparing
+process wall clocks. The Lua scripts touch multiple dynamically selected
+keys, so B17 supports one Redis primary
+keyspace. Redis Cluster hash-slot sharding is not supported, and the current
+protocol must not automatically promote an asynchronous replica: promotion
+could resurrect a consumed ticket or superseded lease. Public HA requires an
+approved zero-loss policy or a failover epoch that invalidates all
+pre-promotion coordination state.
 
-B18C2 has now satisfied the semantic-boundary prerequisite. The
-loopback-only unchanged-client edge authenticates locally and creates one
-single-use login admission; an mTLS private backhaul carries authenticated
-metadata and untouched legacy ciphertext to the exact
-`RealmId`/`MapId`/`WorldInstanceId`/`ServerNodeId` worker. The authority is
-still bounded in memory. There is no Redis, secure-UDP gateway path,
-distributed discovery, remote production placement, high availability, or
-live cross-worker transfer. Directly connected open-world map groups must
-remain co-located until transfer exists.
-
-B17 may now begin, but Redis must not be enabled until its operational
-budgets and outage policy below are approved. It replaces only disposable
-login/admission, routing, presence, and lease coordination; it does not
-replace the PostgreSQL ownership fence or any durable player value.
-
-Before enabling the Redis-backed path, B17 must:
-
-- replace synchronous `IGameTicketStore` network operations with
-  asynchronous, deadline-bearing application contracts;
-- define placement, sticky routing, transfer, drain, split-brain, reconnect,
-  and rollback behavior;
-- record peak demand, p95/p99 latency, timeout, availability, maximum
-  staleness, recovery, eviction, memory, provider/region, and cost budgets;
-- prove at least two processes against Redis slow/restart/loss cases while
-  the semantic gateway/worker contract is active and PostgreSQL fencing
-  rejects stale owners.
+Before public activation, staging must still record peak demand, p95/p99
+latency, availability, recovery, memory, provider/region, cost, remote
+failure isolation, and rollback evidence. Directly connected map groups must
+remain co-located until cross-worker transfer exists.
 
 Synchronous Redis I/O in network handlers or ECS/map loops is forbidden.
 PostgreSQL remains the only durable player-value and monotonic-fence
@@ -55,33 +38,33 @@ authority.
 
 ## 7.2 Key and value conventions after the gate
 
-Use a single builder library; never concatenate raw usernames, IP strings, or attacker-controlled text. Suggested prefix:
+`RedisCoordinationKeyBuilder` owns the implemented prefix:
 
 ```text
 godswar:<environment>:v1:<purpose>:<opaque-id>
 ```
 
-Angle brackets above denote placeholders; they are not literal Redis Cluster hash tags. If hash tags are later used, they must be chosen narrowly per aggregate rather than pinning an entire environment to one slot. Hash IDs when exposing them to shared operational tooling. Every key family must declare owner, TTL, maximum cardinality, value version, and outage behavior.
+Angle brackets denote placeholders, not Redis Cluster hash tags. Raw
+usernames, IPs, tokens, account/character IDs, node IDs, and world-instance
+IDs are not key names.
 
 | Use case | Key/type/value | TTL | Owner and lifecycle | Invalidation/reconstruction | Outage behavior | Maximum staleness |
 | --- | --- | --- | --- | --- | --- | --- |
-| One-time secure game ticket | `ticket:<hash>` string or hash containing version, account, audience, server, generation, expiry; never raw ticket | Current 60 s | Authentication/session service creates; game bind atomically consumes with `GETDEL` or Lua | Expiry; client re-authenticates. Reconstructed only by issuing a new ticket | Deny new cross-process game binds; established sessions continue | None after consumption |
-| Active player ownership | `owner:character:<id>` hash: server ID, session generation, **PG-issued** fencing token, lease expiry | 30 s, refresh about 10 s | PG atomically allocates/stores the monotonic fence; session service places that fence in a compare-and-renew Redis lease | Expiry permits PG allocation of a higher fence; every PG write verifies it | Stop new ownership; retain established session only while its lease/fence is proven valid, otherwise drain | Under 10 s target; correctness comes from PG fence |
-| Account duplicate-login generation | `owner:account:<id>` hash/string carrying a durable/session-authority generation | 30-60 s | Session service; durable high-water mark follows the approved ownership design | Replace via atomic generation update that cannot reset after Redis loss | Fail closed for new duplicate-prone logins | Under refresh interval |
-| Presence | `presence:character:<id>` hash: server/map/status/version | 30-60 s | Owning server refreshes; logout deletes | Rebuild from active ownership/server heartbeats | Hide presence or mark unknown; never modify PG account value | 30 s |
-| Player-to-server/map routing | `route:character:<id>` hash: server/zone/PG owner generation | Lease-aligned | Placement/session service | Derive from ownership and active server registry | Reject new handoff; existing local play continues where safe | One lease interval |
-| Server registry/readiness | `server:<id>` hash with endpoint capability, build/content versions, drain state | 15-30 s | Each server heartbeat | Re-register on restart | Placement excludes unknown servers | 15 s |
-| Reconnect window | `reconnect:<opaque-token-hash>` hash with account, target, generation, expiry; no keys/secrets | 60-120 s | Session service creates on unexpected disconnect; consumes once | Expiry means full login | Fall back to full TLS login | None after consume |
-| Coarse distributed rate limit | prefix/account cost buckets in hashes or strings | Seconds/minutes | Edge/session service | Natural TTL; reset is acceptable | Use stricter local limits; never open admission | One bucket interval |
-| Valuable-command idempotency prefilter | `seen:<scope>:<operation>` short result marker | 5-30 min | Application adapter writes only after PG commit/outbox | PG inbox is authoritative; repopulate on demand | Query PG inbox directly | Cache TTL only |
-| Character summary cache | `character-summary:<id>:v<version>` string/message-pack/JSON | 1-5 min | Query adapter fills cache-aside after PG read | Outbox invalidates; version mismatch misses | Read PG | Product-specific, normally under 1 min |
-| Configuration cache | `content:<revision>:<type>:<id>` | Hours, immutable by revision | Content query service | New revision uses new keys; old expires | Read PG/packaged content | Revision-pinned, not time based |
-| Leaderboard projection | sorted set plus metadata revision | Hours with rebuild marker; or retained projection | Projection worker consumes PG outbox | Rebuild from PG ledger/snapshot; swap complete version | Hide/stale-board indicator; gameplay unaffected | Product decision |
-| Party/guild invitations | hash/set containing opaque IDs and state | 2-10 min | Future social service | TTL/delete on accept; authoritative membership commits in PG | Invitations unavailable; membership unaffected | TTL |
-| Matchmaking queue | sorted set/stream plus lease | Seconds/minutes | Future matchmaking service | Players requeue after outage | Queue temporarily unavailable | A few seconds |
-| Distributed lease/short lock | compare-and-renew token value | Operation-specific, short | Owning application service | Expiry + fencing; no correctness without PG constraint/version | Abort operation on uncertainty | None |
+| Secure ticket authority | `ticket`, `ticket-grant`, `ticket-generations`, `outstanding-tickets` | 60 s logical ticket; bounded cleanup retention | TLS authentication issues; game bind consumes once; Lua replaces/revokes atomically | Lost state requires fresh authenticated login | Deny new bind; no local fallback | None after consumption |
+| Semantic login/admission | `login-account`, `login-name`, `login-connection`, `admission`, `gateway-counters`, `gateway-expiry` | Validated gateway limits/TTLs | Semantic gateway starts/activates one generation and reserves/commits an exact route | Re-authenticate and re-reserve | Reject uncertain admission | None for single-use transitions |
+| Worker and route | `server`, `route` | 20 s default worker TTL; 5 s heartbeat | Worker process registers one boot incarnation and exact routes | Same live process re-registers the same boot ID; a restarted process uses a new ID | Exclude unknown/draining worker | One heartbeat/lease proof |
+| PG-fenced player presence | `player` | 30 s default; renew 10 s | Worker installs the committed PG UUID/generation plus presence and exact route | Reacquire through PG fence; missing key is not free ownership | Stop uncertain valuable work and disconnect/drain | One proven lease |
 
-Redis persistence is not required for these disposable states; configure replication/backup only for faster operational recovery, not as the source of truth. For ownership/routing Redis, use `noeviction` and explicit capacity planning. Caches can use a separate eviction-capable instance if necessary so cache pressure cannot evict ownership keys.
+Future caches, leaderboards, invitations, matchmaking, reconnect windows,
+and distributed rate limits remain illustrative only. They require their own
+owner, TTL, bound, reconstruction, outage, and acceptance record before use.
+
+Redis persistence is not required for these disposable states. A replica or
+backup may assist operational recovery only after the ticket/lease
+invalidation policy is designed and approved; it is never the source of
+truth. For ownership/routing Redis, use `noeviction` and explicit capacity
+planning. Caches can use a separate eviction-capable instance if necessary
+so cache pressure cannot evict ownership keys.
 
 ## 7.3 Durable fencing authority
 

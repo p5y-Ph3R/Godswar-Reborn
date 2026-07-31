@@ -74,9 +74,11 @@ internal sealed partial class ServerOptions
         Authentication ??= new AuthenticationOptions();
         Operations ??= new ServerOperationsOptions();
         Backhaul ??= new BackhaulWorkerRuntimeOptions();
+        Coordination ??= new CoordinationRuntimeOptions();
         Secure.ApplyEnvironment();
         Operations.ApplyEnvironment();
         ApplyBackhaulEnvironment();
+        Coordination.ApplyEnvironment();
         Authentication.Iterations = ReadInt(
             "GODSWAR_AUTH_ITERATIONS",
             Authentication.Iterations);
@@ -255,6 +257,7 @@ internal sealed partial class ServerOptions
         Authentication ??= new AuthenticationOptions();
         Operations ??= new ServerOperationsOptions();
         Backhaul ??= new BackhaulWorkerRuntimeOptions();
+        Coordination ??= new CoordinationRuntimeOptions();
         Storage ??= new StorageOptions();
         Storage.Outbox ??= new PostgresOutboxDispatcherOptions();
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
@@ -271,11 +274,13 @@ internal sealed partial class ServerOptions
             optionsPath,
             Game.WorldInstances,
             Secure);
+        Coordination.NormalizeAndValidate();
         Network.Validate();
         Authentication.Validate();
         Storage.Outbox.Validate();
         Storage.Checkpoints.Validate();
         Secure.NormalizeAndValidate(optionsPath, Login.Port, Game.Port);
+        ValidateCoordinationTopology();
         if (Backhaul.Enabled)
         {
             Operations.Validate(Backhaul.Port);

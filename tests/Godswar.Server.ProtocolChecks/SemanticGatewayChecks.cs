@@ -27,6 +27,7 @@ internal static partial class SemanticGatewayChecks
         CheckAuthorityLifecycle();
         CheckAuthorityExpiryAndBounds();
         CheckConcurrentDuplicateLogin();
+        await CheckAsyncCoordinationBoundaryAsync();
         await CheckLegacyGameLoginProbeAsync();
     }
 

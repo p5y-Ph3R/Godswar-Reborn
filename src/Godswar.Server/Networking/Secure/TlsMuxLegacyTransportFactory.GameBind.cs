@@ -5,6 +5,11 @@ namespace Godswar.Server.Networking.Secure;
 
 internal sealed partial class TlsMuxLegacyTransportFactory
 {
+    private static readonly TimeSpan TicketActivationRetryWindow =
+        TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan TicketActivationRetryDelay =
+        TimeSpan.FromMilliseconds(10);
+
     private async Task<SecureBoundGamePrincipal> BindGameAsync(
         SslStream sslStream,
         SecureConnectionContext connectionContext,
@@ -75,10 +80,28 @@ internal sealed partial class TlsMuxLegacyTransportFactory
 
             using (bind)
             {
-                var consume = ticketStore.Consume(
-                    bind!,
-                    connectionContext,
-                    expectedTarget);
+                SecureTicketConsumeResult consume;
+                try
+                {
+                    consume = await ConsumeActivatedTicketAsync(
+                        ticketStore,
+                        bind!,
+                        connectionContext,
+                        expectedTarget,
+                        lifetime.Token);
+                }
+                catch (OperationCanceledException)
+                    when (!cancellationToken.IsCancellationRequested)
+                {
+                    SecureNetworkMetrics.FrameCompleted(
+                        NetworkEndpointRole.Game,
+                        SecureFrameOutcome.DeadlineExceeded);
+                    NetworkRuntimeMetrics.RecordTimeout(
+                        NetworkEndpointRole.Game,
+                        NetworkTimeoutStage.GameBind);
+                    throw new NetworkDeadlineException(
+                        NetworkTimeoutStage.GameBind);
+                }
                 var bindStatus = consume.IsAccepted
                     ? SecureBindStatus.Accepted
                     : SecureBindStatus.Rejected;
@@ -104,6 +127,36 @@ internal sealed partial class TlsMuxLegacyTransportFactory
         {
             CryptographicOperations.ZeroMemory(headerBytes);
             CryptographicOperations.ZeroMemory(bindBytes);
+        }
+    }
+
+    private async ValueTask<SecureTicketConsumeResult>
+        ConsumeActivatedTicketAsync(
+            IGameTicketStore ticketStore,
+            SecureGameBind bind,
+            SecureConnectionContext connectionContext,
+            SecureGameTarget expectedTarget,
+            CancellationToken cancellationToken)
+    {
+        var retryUntil =
+            _timeProvider.GetUtcNow() + TicketActivationRetryWindow;
+        while (true)
+        {
+            var result = await ticketStore.ConsumeAsync(
+                bind,
+                connectionContext,
+                expectedTarget,
+                SecureTicketOperationDeadline.Default,
+                cancellationToken);
+            if (result.Status != SecureTicketConsumeStatus.NotReady ||
+                _timeProvider.GetUtcNow() >= retryUntil)
+            {
+                return result;
+            }
+
+            await Task.Delay(
+                TicketActivationRetryDelay,
+                cancellationToken);
         }
     }
 

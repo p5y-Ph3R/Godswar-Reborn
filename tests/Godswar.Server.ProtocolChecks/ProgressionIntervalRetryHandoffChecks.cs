@@ -68,9 +68,11 @@ internal static class ProgressionIntervalRetryHandoffChecks
             executor.Envelopes[1].OperationId,
             "unknown final outcome retries the same operation identity");
 
+        // Retry scheduling uses the process clock, independently from the
+        // historical authoritative interval exercised by this fixture.
         var retried =
             await registry.RetryDurableProgressionIntervalsOnceAsync(
-                DisconnectedAt.AddHours(3),
+                DateTimeOffset.MaxValue,
                 CancellationToken.None);
         Check.Equal(
             1,

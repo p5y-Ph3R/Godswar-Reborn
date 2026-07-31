@@ -78,7 +78,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
     public const int MaximumCleanupBatchSize = 1_024;
     public static readonly TimeSpan MaximumReplayRetention =
         TimeSpan.FromMinutes(10);
-    public static readonly TimeSpan MaximumFutureClockSkew =
+    public static readonly TimeSpan MaximumAdmissionLifetimeSafetyMargin =
         TimeSpan.FromMinutes(1);
 
     private readonly Dictionary<int, Guid> _accountAdmissions = [];
@@ -94,8 +94,8 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
     private readonly object _gate = new();
     private readonly ServerNodeId _localNodeId;
     private readonly HashSet<BackhaulOwnedWorldRoute> _ownedRoutes;
+    private readonly TimeSpan _admissionLifetimeSafetyMargin;
     private readonly TimeSpan _replayRetention;
-    private readonly TimeSpan _futureClockSkew;
     private readonly TimeProvider _timeProvider;
     private bool _disposed;
     private bool _draining;
@@ -108,7 +108,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
         int capacity,
         int replayCapacity,
         TimeSpan replayRetention,
-        TimeSpan futureClockSkew,
+        TimeSpan admissionLifetimeSafetyMargin,
         int cleanupBatchSize = 64,
         TimeProvider? timeProvider = null)
     {
@@ -140,12 +140,14 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
                 nameof(replayRetention),
                 "Replay retention must be between zero and ten minutes.");
         }
-        if (futureClockSkew < TimeSpan.Zero ||
-            futureClockSkew > MaximumFutureClockSkew)
+        if (admissionLifetimeSafetyMargin < TimeSpan.Zero ||
+            admissionLifetimeSafetyMargin >
+                MaximumAdmissionLifetimeSafetyMargin)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(futureClockSkew),
-                "Future clock skew must be between zero and one minute.");
+                nameof(admissionLifetimeSafetyMargin),
+                "Admission lifetime safety margin must be between zero " +
+                "and one minute.");
         }
         if (cleanupBatchSize is < 1 or > MaximumCleanupBatchSize)
         {
@@ -169,8 +171,9 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
         _capacity = capacity;
         _replayCapacity = replayCapacity;
         _cleanupBatchSize = cleanupBatchSize;
+        _admissionLifetimeSafetyMargin =
+            admissionLifetimeSafetyMargin;
         _replayRetention = replayRetention;
-        _futureClockSkew = futureClockSkew;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -183,8 +186,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
         lock (_gate)
         {
             ThrowIfDisposed();
-            var now = _timeProvider.GetUtcNow();
-            CleanupExpired(now);
+            CleanupExpired();
             if (_draining)
             {
                 return BackhaulAdmissionStatus.Draining;
@@ -194,12 +196,6 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
                     BackhaulOwnedWorldRoute.From(admission)))
             {
                 return BackhaulAdmissionStatus.RouteRejected;
-            }
-            if (admission.ExpiresAtUtc <= now ||
-                admission.IssuedAtUtc >
-                    now + _futureClockSkew)
-            {
-                return BackhaulAdmissionStatus.Expired;
             }
             if (_live.ContainsKey(admission.ConnectionId) ||
                 _replays.ContainsKey(admission.ConnectionId))
@@ -217,7 +213,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
             var expiry = NewExpiry(
                 admission.ConnectionId,
-                admission.ExpiresAtUtc);
+                LocalReservationLifetime(admission));
             var entry = new AdmissionEntry(
                 admission,
                 AdmissionState.Reserved,
@@ -255,7 +251,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
         lock (_gate)
         {
             ThrowIfDisposed();
-            CleanupExpired(_timeProvider.GetUtcNow());
+            CleanupExpired();
             return new WorkerBackhaulAdmissionRegistrySnapshot(
                 _capacity,
                 _replayCapacity,
@@ -354,13 +350,13 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
             AddReplay(
                 admission.ConnectionId,
-                ReplayExpiry(admission, _timeProvider.GetUtcNow()));
+                _replayRetention);
         }
     }
 
-    private void CleanupExpired(DateTimeOffset now)
+    private void CleanupExpired()
     {
-        var nowUnixMilliseconds = now.ToUnixTimeMilliseconds();
+        var nowTimestamp = _timeProvider.GetTimestamp();
         for (var processed = 0;
              processed < _cleanupBatchSize;
              processed++)
@@ -372,11 +368,9 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
                 ? (ExpiryMarker?)null
                 : _replayExpiries.Min;
             var liveDue = live is { } liveMarker &&
-                liveMarker.DueUnixMilliseconds <=
-                    nowUnixMilliseconds;
+                liveMarker.DueTimestamp <= nowTimestamp;
             var replayDue = replay is { } replayMarker &&
-                replayMarker.DueUnixMilliseconds <=
-                    nowUnixMilliseconds;
+                replayMarker.DueTimestamp <= nowTimestamp;
             if (!liveDue && !replayDue)
             {
                 break;
@@ -413,7 +407,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
                 AddReplay(
                     marker.ConnectionId,
-                    ReplayExpiry(entry.Admission, now));
+                    _replayRetention);
                 continue;
             }
 
@@ -434,14 +428,14 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
     private void AddReplay(
         Guid connectionId,
-        DateTimeOffset dueAtUtc)
+        TimeSpan retention)
     {
         while (_replays.Count >= _replayCapacity)
         {
             EvictEarliestReplay();
         }
 
-        var marker = NewExpiry(connectionId, dueAtUtc);
+        var marker = NewExpiry(connectionId, retention);
         if (!_replays.TryAdd(connectionId, marker) ||
             !_replayExpiries.Add(marker))
         {
@@ -472,22 +466,43 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
     private ExpiryMarker NewExpiry(
         Guid connectionId,
-        DateTimeOffset dueAtUtc) =>
+        TimeSpan lifetime) =>
         new(
             connectionId,
-            dueAtUtc.ToUnixTimeMilliseconds(),
+            TimestampAfter(lifetime),
             checked(++_expirySequence));
 
-    private DateTimeOffset ReplayExpiry(
-        GatewayWorldAdmission admission,
-        DateTimeOffset now)
+    private long TimestampAfter(TimeSpan lifetime)
     {
-        var ticketRetention =
-            admission.ExpiresAtUtc + _replayRetention;
-        var closedRetention = now + _replayRetention;
-        return ticketRetention >= closedRetention
-            ? ticketRetention
-            : closedRetention;
+        if (lifetime < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lifetime));
+        }
+
+        var timestampDelta = checked((long)decimal.Ceiling(
+            ((decimal)lifetime.Ticks /
+                TimeSpan.TicksPerSecond) *
+            _timeProvider.TimestampFrequency));
+        return checked(
+            _timeProvider.GetTimestamp() + timestampDelta);
+    }
+
+    private TimeSpan LocalReservationLifetime(
+        GatewayWorldAdmission admission)
+    {
+        var declared =
+            admission.ExpiresAtUtc - admission.IssuedAtUtc;
+        var conservative =
+            declared - _admissionLifetimeSafetyMargin;
+        var halfLifetime =
+            TimeSpan.FromTicks(declared.Ticks / 2);
+        var floor = halfLifetime >= TimeSpan.FromMilliseconds(250)
+            ? halfLifetime
+            : TimeSpan.FromMilliseconds(250);
+        var bounded = conservative >= floor
+            ? conservative
+            : floor;
+        return bounded <= declared ? bounded : declared;
     }
 
     private void ThrowIfDisposed()
@@ -515,7 +530,7 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
 
     private readonly record struct ExpiryMarker(
         Guid ConnectionId,
-        long DueUnixMilliseconds,
+        long DueTimestamp,
         long Sequence);
 
     private sealed class ExpiryMarkerComparer :
@@ -527,8 +542,8 @@ internal sealed class WorkerBackhaulAdmissionRegistry :
             ExpiryMarker left,
             ExpiryMarker right)
         {
-            var due = left.DueUnixMilliseconds.CompareTo(
-                right.DueUnixMilliseconds);
+            var due = left.DueTimestamp.CompareTo(
+                right.DueTimestamp);
             if (due != 0)
             {
                 return due;

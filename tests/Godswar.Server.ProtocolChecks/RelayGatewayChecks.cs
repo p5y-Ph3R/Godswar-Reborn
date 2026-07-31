@@ -156,7 +156,7 @@ internal static partial class RelayGatewayChecks
             "Godswar.Server",
             "Program.cs"));
         var relayIndex = program.IndexOf(
-            "RelayGatewayCommand.TryRunAsync(args)",
+            "ServerStartupCommandDispatcher.TryRunAsync(args)",
             StringComparison.Ordinal);
         var optionsIndex = program.IndexOf(
             "ServerRuntimeBootstrap.TryLoadOptions(",
@@ -164,6 +164,16 @@ internal static partial class RelayGatewayChecks
         Check.True(
             relayIndex >= 0 && relayIndex < optionsIndex,
             "relay mode runs before game, database, and ECS composition");
+        var dispatcher = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "Godswar.Server",
+            "ServerStartupCommandDispatcher.cs"));
+        Check.True(
+            dispatcher.Contains(
+                "RelayGatewayCommand.TryRunAsync(args)",
+                StringComparison.Ordinal),
+            "startup dispatcher retains relay command composition");
 
         var checkedInOptions = Path.Combine(
             root,

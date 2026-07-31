@@ -17,10 +17,17 @@ internal static class SemanticGatewayCommand
             ServerOptions,
             CancellationToken,
             ValueTask<ISemanticGatewayDataSession>> openDataSession,
+        Func<
+            ServerOptions,
+            SemanticGatewayRuntimeConfiguration,
+            CancellationToken,
+            ValueTask<ISemanticGatewayCoordination?>>
+            createCoordination,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(args);
         ArgumentNullException.ThrowIfNull(openDataSession);
+        ArgumentNullException.ThrowIfNull(createCoordination);
         if (args.Length == 0 ||
             !string.Equals(args[0], Mode, StringComparison.Ordinal))
         {
@@ -70,12 +77,30 @@ internal static class SemanticGatewayCommand
                 await SemanticGatewayRuntimeOptions.LoadAsync(
                     args[2],
                     shutdown.Token);
+            ValidateCoordinationCapacity(options, configuration);
             await using var data = await openDataSession(
                 options,
                 shutdown.Token);
-            host = new SemanticGatewayHost(
-                configuration,
-                data);
+            var coordination =
+                await createCoordination(
+                    options,
+                    configuration,
+                    shutdown.Token);
+            try
+            {
+                host = new SemanticGatewayHost(
+                    configuration,
+                    data,
+                    coordination: coordination);
+            }
+            catch
+            {
+                if (coordination is not null)
+                {
+                    await coordination.DisposeAsync();
+                }
+                throw;
+            }
             await using (host)
             {
                 var run = host.RunAsync(shutdown.Token);
@@ -134,6 +159,22 @@ internal static class SemanticGatewayCommand
             throw new InvalidDataException(
                 "Gateway server options cannot also enable a worker " +
                 "backhaul or secure public listener.");
+        }
+    }
+
+    private static void ValidateCoordinationCapacity(
+        ServerOptions options,
+        SemanticGatewayRuntimeConfiguration configuration)
+    {
+        if (options.Coordination.ProviderKind ==
+                CoordinationProviderKind.Redis &&
+            options.Coordination.Capacity < Math.Max(
+                configuration.AuthorityLimits.MaximumAdmissions,
+                configuration.AuthorityLimits.MaximumLoginGenerations))
+        {
+            throw new InvalidDataException(
+                "Redis coordination capacity must cover the semantic " +
+                "gateway generation and admission limits.");
         }
     }
 }

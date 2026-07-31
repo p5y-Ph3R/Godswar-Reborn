@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking.Backhaul;
@@ -120,35 +121,48 @@ internal static partial class BackhaulProtocolChecks
             IntegrationMapB,
             IntegrationWorldB);
 
-    private static SemanticGatewayLoginGenerationLease BeginHostLogin(
-        SemanticGatewayAdmissionAuthority authority,
+    private static async Task<SemanticGatewayLoginGenerationLease>
+        BeginHostLoginAsync(
+        ISemanticGatewayCoordination coordination,
         int accountId,
-        string username)
+        string username,
+        CancellationToken cancellationToken)
     {
-        var result = authority.BeginLogin(
+        var deadline =
+            CoordinationDeadline.FromNow(
+                TimeSpan.FromSeconds(5),
+                TimeProvider.System);
+        var result = await coordination.StartLoginAsync(
             new SemanticGatewayPrincipal(
                 accountId,
                 username),
             new SemanticGatewayConnectionSource(
                 GatewayConnectionId.New(),
-                IPAddress.Loopback));
+                IPAddress.Loopback),
+            deadline,
+            cancellationToken);
         Check.True(
             result.IsStarted && result.Generation is not null,
             $"direct authenticated login hook starts {username}");
         Check.True(
-            authority.ActivateLogin(result.Generation!),
+            await coordination.ActivateLoginAsync(
+                result.Generation!,
+                CoordinationDeadline.FromNow(
+                    TimeSpan.FromSeconds(5),
+                    TimeProvider.System),
+                cancellationToken),
             $"direct authenticated login hook activates {username}");
         return result.Generation!;
     }
 
-    private static SemanticGatewayAdmissionAuthority HostAuthority(
+    private static ISemanticGatewayCoordination HostCoordination(
         SemanticGatewayHost host) =>
         typeof(SemanticGatewayHost).GetField(
-            "_authority",
+            "_coordination",
             BindingFlags.Instance | BindingFlags.NonPublic)?
-        .GetValue(host) as SemanticGatewayAdmissionAuthority
+        .GetValue(host) as ISemanticGatewayCoordination
         ?? throw new InvalidOperationException(
-            "Semantic gateway host authority field was not found.");
+            "Semantic gateway host coordination field was not found.");
 
     private static byte[] EncryptedGameLogin(string username)
     {

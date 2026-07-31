@@ -13,6 +13,7 @@ internal enum ServerReadinessDependency : ushort
     BoundedQueues = 1 << 6,
     SecureUdp = 1 << 7,
     SimulationLoops = 1 << 8,
+    RedisCoordination = 1 << 9,
     All = ListenerProfile |
         SchemaAndContent |
         Database |
@@ -21,7 +22,8 @@ internal enum ServerReadinessDependency : ushort
         CriticalTasks |
         BoundedQueues |
         SecureUdp |
-        SimulationLoops
+        SimulationLoops |
+        RedisCoordination
 }
 
 internal enum ServerOperationalPhase : byte
@@ -50,7 +52,8 @@ internal enum ServerReadinessReason : byte
     Stopping = 11,
     CriticalTaskFaulted = 12,
     Stopped = 13,
-    SimulationLoopNotReady = 14
+    SimulationLoopNotReady = 14,
+    RedisCoordinationNotReady = 15
 }
 
 internal readonly record struct ServerOperationalSnapshot(
@@ -268,6 +271,10 @@ internal sealed class ServerOperationalState
         {
             return ServerReadinessReason.SimulationLoopNotReady;
         }
+        if ((missing & ServerReadinessDependency.RedisCoordination) != 0)
+        {
+            return ServerReadinessReason.RedisCoordinationNotReady;
+        }
 
         return ServerReadinessReason.None;
     }
@@ -329,6 +336,8 @@ internal static class ServerOperationalProtocolValues
             ServerReadinessReason.Stopped => "stopped",
             ServerReadinessReason.SimulationLoopNotReady =>
                 "simulation_loop_not_ready",
+            ServerReadinessReason.RedisCoordinationNotReady =>
+                "redis_coordination_not_ready",
             _ => throw new ArgumentOutOfRangeException(nameof(reason))
         };
 }

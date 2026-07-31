@@ -323,4 +323,5 @@ internal static partial class SemanticGatewayChecks
             snapshot.LoginGenerationsSuperseded,
             "every prior concurrent generation is invalidated exactly once");
     }
+
 }

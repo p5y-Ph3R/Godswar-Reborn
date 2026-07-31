@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
 using Godswar.Server.Infrastructure.Messaging;
@@ -81,6 +82,8 @@ internal sealed class ServerReadinessMonitor
     private readonly bool _requireZodiac;
     private readonly Action<ServerOperationalSnapshot>? _stateObserver;
     private readonly SecureUdpRuntime? _secureUdp;
+    private readonly IWorkerCoordinationReadinessSource?
+        _workerCoordination;
     private readonly ServerOperationalState _state;
     private readonly TaskCompletionSource _firstRefresh =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,6 +98,7 @@ internal sealed class ServerReadinessMonitor
         bool requireOutbox,
         bool requireZodiac,
         SecureUdpRuntime? secureUdp,
+        IWorkerCoordinationReadinessSource? workerCoordination = null,
         Action<ServerOperationalSnapshot>? stateObserver = null)
     {
         _state = state ?? throw new ArgumentNullException(nameof(state));
@@ -108,6 +112,7 @@ internal sealed class ServerReadinessMonitor
         _requireOutbox = requireOutbox;
         _requireZodiac = requireZodiac;
         _secureUdp = secureUdp;
+        _workerCoordination = workerCoordination;
         _stateObserver = stateObserver;
     }
 
@@ -182,6 +187,9 @@ internal sealed class ServerReadinessMonitor
         _state.SetDependency(
             ServerReadinessDependency.SecureUdp,
             _secureUdp?.GetSnapshot().IsReady ?? true);
+        _state.SetDependency(
+            ServerReadinessDependency.RedisCoordination,
+            _workerCoordination?.IsReady ?? true);
         _state.SetDependency(
             ServerReadinessDependency.SimulationLoops,
             AreRequiredSimulationLoopsReady());

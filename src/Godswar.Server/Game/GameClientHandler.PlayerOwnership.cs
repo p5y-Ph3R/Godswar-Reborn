@@ -31,6 +31,8 @@ internal sealed partial class GameClientHandler
         ownership = default;
         if (_account is null ||
             _character is null ||
+            (_playerCoordination?.IsEnabled == true &&
+             _playerCoordinationLease?.IsCurrent != true) ||
             !TryGetCharacterOwnership(_character, out var candidate) ||
             !_registry.IsCurrentAccountSession(
                 _account.Id,
@@ -68,7 +70,9 @@ internal sealed partial class GameClientHandler
             return true;
         }
 
-        if (!_registry.IsCurrentAccountSession(
+        if ((_playerCoordination?.IsEnabled == true &&
+             _playerCoordinationLease?.IsCurrent != true) ||
+            !_registry.IsCurrentAccountSession(
                 _account.Id,
                 _session,
                 ownership) ||
@@ -100,6 +104,8 @@ internal sealed partial class GameClientHandler
 
         if (_account is not null &&
             _character is not null &&
+            (_playerCoordination?.IsEnabled != true ||
+             _playerCoordinationLease?.IsCurrent == true) &&
             TryGetCharacterOwnership(
                 _character,
                 out var ownership) &&
@@ -125,6 +131,8 @@ internal sealed partial class GameClientHandler
         if (ownership.IsValid &&
             _account is not null &&
             _character is not null &&
+            (_playerCoordination?.IsEnabled != true ||
+             _playerCoordinationLease?.IsCurrent == true) &&
             _character.CheckpointOwnerId == ownership.OwnerId &&
             _character.CheckpointOwnerGeneration ==
                 ownership.Generation &&

@@ -224,7 +224,7 @@ credential is committed.
 | Area | Repository paths and symbols |
 | --- | --- |
 | Gateway application boundary | `Application/Gateway/ISemanticGatewayDataSession.cs`, `State/LegacySemanticGatewayDataSession.cs` |
-| Gateway identity and authority | `Networking/SemanticGateway/SemanticGatewayIdentifiers.cs`, `SemanticGatewayAdmissionAuthority*`, `SemanticGatewayConnectionCoordinator`, `StaticSemanticGatewayRouteDirectory` |
+| Gateway identity and authority | `Application/Gateway/SemanticGatewayIdentifiers.cs`, `Networking/SemanticGateway/SemanticGatewayAdmissionAuthority*`, `Networking/SemanticGateway/SemanticGatewayConnectionCoordinator`, `Application/Gateway/StaticSemanticGatewayRouteDirectory` |
 | Gateway configuration | `SemanticGatewayRuntimeOptions*`, `SemanticGatewayRuntimeConfiguration`, the semantic-gateway example |
 | Local login edge | `SemanticGatewayCommand`, `SemanticGatewayHost`, `SemanticGatewayLoginHandler` |
 | Game routing/tunnel | `LegacyGameLoginProbe`, `SemanticGatewayGameServer`, `SemanticGatewayGameConnection`, `SemanticGatewayGameModels` |
