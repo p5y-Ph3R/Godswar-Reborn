@@ -1,12 +1,12 @@
 # Opt-in Redis coordination for the main `reborn` Compose project.
 #
-# During an active B20H observation, start ONLY `redis-coordination`; do not
-# activate the `server` overlay because that would recreate the observed
-# server container. See docs/operations/redis-main-compose-activation.md.
+# Start the coordinated server and its B20H observer only through the reviewed
+# activation procedure. Once that observation starts, do not recreate either
+# container or fall back to the base Local-coordination profile.
 services:
   redis-coordination:
     profiles: ["redis-coordinated"]
-    image: "${GODSWAR_REDIS_IMAGE:-redis:7.4.10-alpine}"
+    image: "${GODSWAR_REDIS_IMAGE:-redis:7.4.10-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2}"
     container_name: godswar-main-redis-coordination
     command:
       - redis-server

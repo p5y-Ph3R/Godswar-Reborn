@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$EvidenceRoot
+    [string]$EvidenceRoot,
+    [string]$BaseEnvironmentFile,
+    [string]$RedisEnvironmentFile
 )
 
 Set-StrictMode -Version Latest
@@ -18,113 +20,23 @@ function Assert-B20Condition {
 Import-Module `
     (Join-Path $PSScriptRoot 'B20HDockerObservation.Integrity.psm1') `
     -Force
-
-function Read-B20JsonFile {
-    param(
-        [string]$LiteralPath,
-        [long]$MaximumBytes,
-        [string]$Context
-    )
-
-    Assert-B20Condition `
-        (Test-Path -LiteralPath $LiteralPath -PathType Leaf) `
-        "$Context does not exist."
-    $directory = Split-Path -Parent $LiteralPath
-    Assert-B20NoReparsePoints $directory $LiteralPath $Context
-    $item = Get-Item -LiteralPath $LiteralPath
-    Assert-B20Condition `
-        ($item.Length -le $MaximumBytes) `
-        "$Context exceeds its bounded size."
-    $raw = Get-Content -LiteralPath $LiteralPath -Raw
-    Assert-B20NoDuplicateJsonProperties $raw
-    return $raw | ConvertFrom-Json
-}
-
-function Get-B20PrometheusApi {
-    param([Parameter(Mandatory)][string]$Path)
-
-    $raw = Invoke-B20Command docker @(
-        'exec',
-        'godswar-b20h-prometheus',
-        'wget',
-        '-T', '10',
-        '-t', '1',
-        '-qO-',
-        "http://127.0.0.1:9091$Path")
-    Assert-B20Condition `
-        ($raw.Length -le 16MB) `
-        'Prometheus response exceeds the bounded export size.'
-    Assert-B20NoDuplicateJsonProperties $raw
-    $response = $raw | ConvertFrom-Json
-    Assert-B20Condition `
-        ($response.status -ceq 'success') `
-        "Prometheus rejected '$Path'."
-    return $response
-}
-
-function Get-B20RawSeries {
-    param(
-        [string]$Selector,
-        [double]$EndEpoch,
-        [long]$RangeSeconds,
-        [int]$MaximumSeries = 1
-    )
-
-    $culture = [Globalization.CultureInfo]::InvariantCulture
-    $query = "${Selector}[$($RangeSeconds)s]"
-    $encoded = [Uri]::EscapeDataString($query)
-    $end = $EndEpoch.ToString('0.###', $culture)
-    $path = '/api/v1/query?query={0}&time={1}' -f
-        $encoded,
-        $end
-    $response = Get-B20PrometheusApi $path
-    Assert-B20Condition `
-        ($response.data.resultType -ceq 'matrix') `
-        "Prometheus query '$query' returned the wrong result type."
-    $result = @($response.data.result)
-    if ($result.Count -eq 0) {
-        return @()
-    }
-    Assert-B20Condition `
-        ($result.Count -le $MaximumSeries) `
-        "Prometheus query '$query' exceeded the series bound."
-    return @(
-        $result | ForEach-Object {
-            $values = @($_.values)
-            Assert-B20Condition `
-                ($values.Count -le 100000) `
-                "Prometheus query '$query' exceeded the sample bound."
-            [pscustomobject]@{
-                Metric = $_.metric
-                Points = @(
-                    $values | ForEach-Object {
-                        Assert-B20Condition `
-                            (@($_).Count -eq 2) `
-                            "Prometheus query '$query' returned a malformed sample."
-                        $timestamp = [double]::Parse(
-                            [string]$_[0],
-                            $culture)
-                        $value = [double]::Parse(
-                            [string]$_[1],
-                            $culture)
-                        Assert-B20Condition `
-                            (-not [double]::IsNaN($timestamp) -and
-                                -not [double]::IsInfinity($timestamp) -and
-                                -not [double]::IsNaN($value) -and
-                                -not [double]::IsInfinity($value)) `
-                            "Prometheus query '$query' returned a non-finite sample."
-                        [pscustomobject]@{
-                            Timestamp = $timestamp
-                            Value = $value
-                        }
-                    }
-                )
-            }
-        }
-    )
-}
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Telemetry.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Topology.psm1') `
+    -Force
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if ([string]::IsNullOrWhiteSpace($BaseEnvironmentFile)) {
+    $BaseEnvironmentFile = Join-Path $repositoryRoot '.env'
+}
+if ([string]::IsNullOrWhiteSpace($RedisEnvironmentFile)) {
+    $RedisEnvironmentFile = Join-Path `
+        $repositoryRoot 'artifacts/redis-main-local/redis.local.env'
+}
+$baseEnvironmentPath = [IO.Path]::GetFullPath($BaseEnvironmentFile)
+$redisEnvironmentPath = [IO.Path]::GetFullPath($RedisEnvironmentFile)
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $repositoryRoot 'artifacts/b20h-observation'
 }
@@ -136,7 +48,12 @@ if ($resolvedRoot.Length -gt $pathRoot.Length) {
         [IO.Path]::AltDirectorySeparatorChar)
 }
 $activePath = Join-Path $resolvedRoot 'active-observation.json'
-$active = Read-B20JsonFile $activePath 64KB 'Active observation record'
+$active = Read-B20BoundedJsonFile `
+    $activePath 64KB 'Active observation record'
+Assert-B20Condition (
+    $active.schemaVersion -ceq 'reborn.b20h.active-observation.v2' -and
+    $active.topologyKind -ceq 'redis-coordinated-single-worker') (
+    'The active observation is not the Redis-coordinated v2 schema.')
 $evidenceDirectory = [IO.Path]::GetFullPath(
     (Join-Path $resolvedRoot ([string]$active.evidenceDirectory)))
 $comparison = if ($env:OS -eq 'Windows_NT') {
@@ -154,7 +71,7 @@ Assert-B20Condition `
     'The active observation path escapes its evidence root.'
 Assert-B20NoReparsePoints `
     $resolvedRoot $evidenceDirectory 'Observation directory'
-$record = Read-B20JsonFile `
+$record = Read-B20BoundedJsonFile `
     (Join-Path $evidenceDirectory 'observation-start.json') `
     256KB `
     'Observation start record'
@@ -180,6 +97,12 @@ $legacyQuery = 'godswar_legacy_persistence_invocations_total' +
 $processQuery =
     'godswar_server_operations_process_start_time_seconds' +
     '{job="godswar-b20h"}'
+$coordinationReadyQuery =
+    'godswar_server_operational_coordination' +
+    '{job="godswar-b20h",operational_state="ready"}'
+$coordinationRoutesQuery =
+    'godswar_server_operational_coordination' +
+    '{job="godswar-b20h",operational_state="routes"}'
 
 $upSeries = @(Get-B20RawSeries `
     $upQuery $queryEndEpoch $rangeSeconds)
@@ -189,14 +112,22 @@ $legacySeries = @(Get-B20RawSeries `
     $legacyQuery $queryEndEpoch $rangeSeconds 128)
 $processSeries = @(Get-B20RawSeries `
     $processQuery $queryEndEpoch $rangeSeconds)
+$coordinationReadySeries = @(Get-B20RawSeries `
+    $coordinationReadyQuery $queryEndEpoch $rangeSeconds)
+$coordinationRoutesSeries = @(Get-B20RawSeries `
+    $coordinationRoutesQuery $queryEndEpoch $rangeSeconds)
 Assert-B20Condition `
     ($upSeries.Count -eq 1 -and
         $readySeries.Count -eq 1 -and
-        $processSeries.Count -eq 1) `
+        $processSeries.Count -eq 1 -and
+        $coordinationReadySeries.Count -eq 1 -and
+        $coordinationRoutesSeries.Count -eq 1) `
     'One or more required B20H time series is missing.'
 $up = @($upSeries[0].Points)
 $ready = @($readySeries[0].Points)
 $process = @($processSeries[0].Points)
+$coordinationReady = @($coordinationReadySeries[0].Points)
+$coordinationRoutes = @($coordinationRoutesSeries[0].Points)
 $successfulUp = @(
     $up | Where-Object {
         Assert-B20Condition `
@@ -216,7 +147,7 @@ $coverageStartPoint = @(
 Assert-B20Condition `
     ($coverageStartPoint.Count -eq 1) `
     'No successful scrape proves coverage at observation start.'
-$coverageStartMilliseconds =
+$coverageStartMs =
     [long][Math]::Round($coverageStartPoint[0].Timestamp * 1000d)
 
 $postTargetPoints = @(
@@ -234,14 +165,14 @@ else {
 }
 $coverageEndMilliseconds =
     [long][Math]::Round($coverageEndPoint.Timestamp * 1000d)
-$confirmationEndMilliseconds = if ($windowCovered) {
+$confirmationMs = if ($windowCovered) {
     [long][Math]::Round($postTargetPoints[1].Timestamp * 1000d)
 }
 else {
     $coverageEndMilliseconds
 }
 $analysisBoundaryMilliseconds = if ($windowCovered) {
-    $coverageEndMilliseconds
+    $confirmationMs
 }
 else {
     $generatedAt.ToUnixTimeMilliseconds()
@@ -250,8 +181,8 @@ else {
 $successfulSamples = [Collections.Generic.HashSet[long]]::new()
 foreach ($point in $successfulUp) {
     $sample = [long][Math]::Round($point.Timestamp * 1000d)
-    if ($sample -ge $coverageStartMilliseconds -and
-        $sample -le $coverageEndMilliseconds) {
+    if ($sample -ge $coverageStartMs -and
+        $sample -le $confirmationMs) {
         $null = $successfulSamples.Add($sample)
     }
 }
@@ -269,17 +200,27 @@ $maximumGapMilliseconds = [Math]::Max(
     $maximumGapMilliseconds,
     $analysisBoundaryMilliseconds - $orderedSamples[-1])
 
-$requiredSeriesMissingSamples = 0
+$missingSamples = 0
 $readySampleSet = Get-B20TimestampSet `
     $ready `
-    $coverageStartMilliseconds $coverageEndMilliseconds
+    $coverageStartMs $confirmationMs
 $processSampleSet = Get-B20TimestampSet `
     $process `
-    $coverageStartMilliseconds $coverageEndMilliseconds
-$requiredSeriesMissingSamples += Get-B20MissingSampleCount `
+    $coverageStartMs $confirmationMs
+$coordinationReadySampleSet = Get-B20TimestampSet `
+    $coordinationReady `
+    $coverageStartMs $confirmationMs
+$coordinationRoutesSampleSet = Get-B20TimestampSet `
+    $coordinationRoutes `
+    $coverageStartMs $confirmationMs
+$missingSamples += Get-B20MissingSampleCount `
     $successfulSamples $readySampleSet
-$requiredSeriesMissingSamples += Get-B20MissingSampleCount `
+$missingSamples += Get-B20MissingSampleCount `
     $successfulSamples $processSampleSet
+$missingSamples += Get-B20MissingSampleCount `
+    $successfulSamples $coordinationReadySampleSet
+$missingSamples += Get-B20MissingSampleCount `
+    $successfulSamples $coordinationRoutesSampleSet
 
 $collectorStates = @(
     'dropped_instruments',
@@ -302,8 +243,8 @@ foreach ($state in $collectorStates) {
     $collectorValues = @(
         $collector | Where-Object {
             $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
-            $timestamp -ge $coverageStartMilliseconds -and
-                $timestamp -le $confirmationEndMilliseconds
+            $timestamp -ge $coverageStartMs -and
+                $timestamp -le $confirmationMs
         } | ForEach-Object { $_.Value }
     )
     Assert-B20Condition `
@@ -319,28 +260,48 @@ foreach ($state in $collectorStates) {
         ($collectorValues | Measure-Object -Maximum).Maximum)
     $collectorSampleSet = Get-B20TimestampSet `
         $collector `
-        $coverageStartMilliseconds $coverageEndMilliseconds
-    $requiredSeriesMissingSamples += Get-B20MissingSampleCount `
+        $coverageStartMs $confirmationMs
+    $missingSamples += Get-B20MissingSampleCount `
         $successfulSamples $collectorSampleSet
+    if ($windowCovered -and
+        -not $collectorSampleSet.Contains($confirmationMs)) {
+        $missingSamples++
+    }
 }
 
 $readyValues = [double[]]@(
     $ready | Where-Object {
         $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
-        $timestamp -ge $coverageStartMilliseconds -and
-            $timestamp -le $coverageEndMilliseconds
+        $timestamp -ge $coverageStartMs -and
+            $timestamp -le $confirmationMs
     } | ForEach-Object { $_.Value }
 )
 $processValues = [double[]]@(
     $process | Where-Object {
         $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
-        $timestamp -ge $coverageStartMilliseconds -and
-            $timestamp -le $coverageEndMilliseconds
+        $timestamp -ge $coverageStartMs -and
+            $timestamp -le $confirmationMs
+    } | ForEach-Object { $_.Value }
+)
+$coordinationReadyValues = [double[]]@(
+    $coordinationReady | Where-Object {
+        $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
+        $timestamp -ge $coverageStartMs -and
+            $timestamp -le $confirmationMs
+    } | ForEach-Object { $_.Value }
+)
+$coordinationRouteValues = [double[]]@(
+    $coordinationRoutes | Where-Object {
+        $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
+        $timestamp -ge $coverageStartMs -and
+            $timestamp -le $confirmationMs
     } | ForEach-Object { $_.Value }
 )
 Assert-B20Condition `
     ($readyValues.Count -gt 0 -and
-        $processValues.Count -gt 0) `
+        $processValues.Count -gt 0 -and
+        $coordinationReadyValues.Count -gt 0 -and
+        $coordinationRouteValues.Count -gt 0) `
     'The bounded analysis range contains no required samples.'
 Assert-B20Condition `
     (@($readyValues | Where-Object {
@@ -350,28 +311,26 @@ Assert-B20Condition `
 $observerReadyMinimum = [int](
     $readyValues | Measure-Object -Minimum
 ).Minimum
+Assert-B20Condition (
+    @($coordinationReadyValues | Where-Object {
+        $_ -ne 0 -and $_ -ne 1
+    }).Count -eq 0 -and
+    @($coordinationRouteValues | Where-Object {
+        $_ -lt 0 -or $_ -ne [Math]::Floor($_)
+    }).Count -eq 0) (
+    'Redis coordination returned an invalid measurement.')
+$coordinationReadyMinimum = [int](
+    $coordinationReadyValues | Measure-Object -Minimum).Minimum
+$coordinationRouteMinimum = [int](
+    $coordinationRouteValues | Measure-Object -Minimum).Minimum
+$coordinationRouteMaximum = [int](
+    $coordinationRouteValues | Measure-Object -Maximum).Maximum
 $processChanges = Get-B20ChangeCount $processValues
-$legacyMaximum = 0d
-$legacyResets = 0
-foreach ($series in $legacySeries) {
-    $values = [double[]]@(
-        $series.Points | Where-Object {
-            $timestamp = [long][Math]::Round($_.Timestamp * 1000d)
-            $timestamp -ge $coverageStartMilliseconds -and
-                $timestamp -le $coverageEndMilliseconds
-        } | ForEach-Object { $_.Value }
-    )
-    if ($values.Count -eq 0) {
-        continue
-    }
-    Assert-B20Condition `
-        (@($values | Where-Object {
-            $_ -lt 0 -or $_ -ne [Math]::Floor($_)
-        }).Count -eq 0) `
-        'A legacy invocation series is not an integer counter.'
-    $legacyMaximum += ($values | Measure-Object -Maximum).Maximum
-    $legacyResets += Get-B20DecreaseCount $values
-}
+$legacyEvidence = Get-B20LegacyEvidence $legacySeries `
+    $coverageStartMs $confirmationMs $windowCovered
+$legacyMaximum = $legacyEvidence.Maximum
+$legacyResets = $legacyEvidence.Resets
+$missingSamples += $legacyEvidence.MissingConfirmation
 $legacyInvocationDelta = [long][Math]::Round($legacyMaximum)
 
 $server = @(
@@ -382,6 +341,8 @@ $prometheus = @((Invoke-B20Command docker @(
     'inspect', 'godswar-b20h-prometheus') | ConvertFrom-Json))[0]
 $postgres = @((Invoke-B20Command docker @(
     'inspect', 'godswar-postgres') | ConvertFrom-Json))[0]
+$redis = @((Invoke-B20Command docker @(
+    'inspect', 'godswar-main-redis-coordination') | ConvertFrom-Json))[0]
 $postgresData = @($postgres.Mounts | Where-Object {
     $_.Destination -ceq '/var/lib/postgresql/data' -and $_.Type -ceq 'volume'
 })
@@ -404,8 +365,16 @@ $postgresVolumeMatches = $postgresData.Count -eq 1 -and
     [string]$postgresData[0].Name -ceq [string]$record.replica.postgresVolume
 $artifactHashesMatch = Test-B20ObservationArtifactHashes `
     $record.monitoring.artifactSha256 $repositoryRoot
+$inputHashesMatch = Test-B20ObservationInputHashes `
+    $record.coordination.inputSha256 `
+    $baseEnvironmentPath `
+    $redisEnvironmentPath
+$serverTopologyMatches = Test-B20ServerRedisTopology `
+    $server $record.coordination $repositoryRoot
+$redisIdentityMatches = Test-B20RedisIdentity `
+    $redis $record.coordination $repositoryRoot
 $identityReset = if ($serverIdentityMatches -and
-    $prometheusIdentityMatches) { 0 } else { 1 }
+    $prometheusIdentityMatches -and $redisIdentityMatches) { 0 } else { 1 }
 $counterResetCount = $processChanges + $legacyResets + $identityReset
 
 $alerts = (Get-B20PrometheusApi '/api/v1/alerts').data
@@ -420,21 +389,28 @@ $maximumGapSeconds = [long][Math]::Ceiling(
     $maximumGapMilliseconds / 1000d)
 $telemetryPasses =
     $windowCovered -and
-    $coverageStartMilliseconds -le $startMilliseconds -and
+    $coverageStartMs -le $startMilliseconds -and
     $coverageEndMilliseconds -ge $targetMilliseconds -and
     $observerReadyMinimum -eq 1 -and
+    $coordinationReadyMinimum -eq 1 -and
+    $coordinationRouteMinimum -eq 23 -and
+    $coordinationRouteMaximum -eq 23 -and
     $legacyInvocationDelta -eq 0 -and
     $counterResetCount -eq 0 -and
     $maximumGapMilliseconds -le 300000 -and
-    $requiredSeriesMissingSamples -eq 0 -and
+    $missingSamples -eq 0 -and
     $collectorMaximum -eq 0 -and
     $revisionMatches -and
     $artifactHashesMatch -and
+    $inputHashesMatch -and
+    $serverTopologyMatches -and
+    $redisIdentityMatches -and
     $postgresVolumeMatches -and
     $activeAlerts.Count -eq 0
 
 $summary = [ordered]@{
-    schemaVersion = 'reborn.b20h.docker-telemetry.v1'
+    schemaVersion = 'reborn.b20h.docker-telemetry.v2'
+    topologyKind = 'redis-coordinated-single-worker'
     evidenceKind = 'local-alpha-rehearsal'
     eligibleForRetirementAuthorization = $false
     status = if ($telemetryPasses) {
@@ -451,15 +427,26 @@ $summary = [ordered]@{
     replica = [ordered]@{
         name = [string]$record.replica.name
         coverageStartedAtUtc = Convert-B20EpochToUtc (
-            $coverageStartMilliseconds / 1000d)
+            $coverageStartMs / 1000d)
         coverageEndedAtUtc = Convert-B20EpochToUtc (
             $coverageEndMilliseconds / 1000d)
         confirmationScrapeAtUtc = Convert-B20EpochToUtc (
-            $confirmationEndMilliseconds / 1000d)
+            $confirmationMs / 1000d)
         observerReadyMinimum = $observerReadyMinimum
         legacyInvocationDelta = $legacyInvocationDelta
         counterResetCount = $counterResetCount
         maximumScrapeGapSeconds = $maximumGapSeconds
+    }
+    coordination = [ordered]@{
+        provider = 'Redis'
+        environment = 'tempest-local'
+        serverNodeId = 'tempest-openworld-01'
+        readyMinimum = $coordinationReadyMinimum
+        routeCountMinimum = $coordinationRouteMinimum
+        routeCountMaximum = $coordinationRouteMaximum
+        redisIdentityMatchesStart = $redisIdentityMatches
+        redisHealthyAtExport =
+            [string]$redis.State.Health.Status -ceq 'healthy'
     }
     window = [ordered]@{
         startedAtUtc = $startedAt.UtcDateTime.ToString('O')
@@ -470,13 +457,15 @@ $summary = [ordered]@{
     diagnostics = [ordered]@{
         processStartChanges = $processChanges
         legacyCounterDecreases = $legacyResets
-        requiredSeriesMissingSamples = $requiredSeriesMissingSamples
+        requiredSeriesMissingSamples = $missingSamples
         collectorMaximum = $collectorMaximum
         serverIdentityMatchesStart = $serverIdentityMatches
         prometheusIdentityMatchesStart = $prometheusIdentityMatches
         postgreSqlVolumeMatchesStart = $postgresVolumeMatches
         revisionMatchesApproval = $revisionMatches
         observationArtifactHashesMatch = $artifactHashesMatch
+        composeInputHashesMatch = $inputHashesMatch
+        serverRedisTopologyMatchesStart = $serverTopologyMatches
         activeAlerts = $activeAlerts
         finalRetirementAuthorized = $false
     }
@@ -507,19 +496,5 @@ try {
 finally {
     $immutableStream.Dispose()
 }
-$temporaryPath = "$latestPath.$([Guid]::NewGuid().ToString('N')).tmp"
-try {
-    [IO.File]::WriteAllText($temporaryPath, $json + "`n", $encoding)
-    if (Test-Path -LiteralPath $latestPath -PathType Leaf) {
-        [IO.File]::Replace($temporaryPath, $latestPath, $null)
-    }
-    else {
-        [IO.File]::Move($temporaryPath, $latestPath)
-    }
-}
-finally {
-    if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
-        Remove-Item -LiteralPath $temporaryPath -Force
-    }
-}
+Set-B20AtomicLatestText $latestPath ($json + "`n")
 $json

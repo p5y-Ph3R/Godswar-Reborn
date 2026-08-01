@@ -34,6 +34,40 @@ groups:
         annotations:
           summary: Legacy-persistence observation is not ready.
 
+      - alert: B20HOperationalCoordinationMissing
+        expr: absent_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="ready"}[1m])
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Redis operational-coordination readiness is no longer published.
+
+      - alert: B20HOperationalCoordinationNotReady
+        expr: min_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="ready"}[1m]) != 1 or max_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="ready"}[1m]) != 1
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Redis operational coordination is not exactly ready.
+
+      - alert: B20HOperationalRoutesMissing
+        expr: absent_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="routes"}[1m])
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Redis operational-coordination route count is no longer published.
+
+      - alert: B20HOperationalRouteCountInvalid
+        expr: min_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="routes"}[1m]) != 23 or max_over_time(godswar_server_operational_coordination{job="godswar-b20h",operational_state="routes"}[1m]) != 23
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Redis operational coordination does not publish exactly 23 routes.
+
+      # Invocation counters are created lazily; observer_ready=1 is the
+      # independent proof that an absent counter means no legacy invocation.
       - alert: B20HLegacyPersistenceInvoked
         expr: sum(godswar_legacy_persistence_invocations_total{job="godswar-b20h"}) > 0
         labels:

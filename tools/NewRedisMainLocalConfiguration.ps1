@@ -89,7 +89,10 @@ $portablePasswordPath = $passwordPath.Replace('\', '/')
 $portableConnectionStringPath = $connectionStringPath.Replace('\', '/')
 $environment = @(
     '# Generated paths for main local Redis coordination. Do not commit.'
-    'GODSWAR_REDIS_IMAGE=redis:7.4.10-alpine'
+    (
+        'GODSWAR_REDIS_IMAGE=redis:7.4.10-alpine@sha256:' +
+        'e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2'
+    )
     "GODSWAR_REDIS_ACL_FILE=$portableAclPath"
     "GODSWAR_REDIS_PASSWORD_FILE=$portablePasswordPath"
     (

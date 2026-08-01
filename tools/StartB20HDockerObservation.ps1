@@ -11,6 +11,10 @@ param(
 
     [string]$EvidenceRoot,
 
+    [string]$BaseEnvironmentFile,
+
+    [string]$RedisEnvironmentFile,
+
     [switch]$AllowMutation
 )
 
@@ -28,6 +32,12 @@ function Assert-B20Condition {
 . (Join-Path $PSScriptRoot 'B20RetirementEvidence.StrictJson.ps1')
 Import-Module `
     (Join-Path $PSScriptRoot 'B20HDockerObservation.Integrity.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Telemetry.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Topology.psm1') `
     -Force
 
 function Write-B20Json {
@@ -68,76 +78,24 @@ function Write-B20Json {
     [IO.File]::WriteAllText($LiteralPath, $text, $encoding)
 }
 
-function Get-B20PrometheusQuery {
-    param([Parameter(Mandatory)][string]$Query)
-
-    $encoded = [Uri]::EscapeDataString($Query)
-    $raw = Invoke-B20Command docker @(
-        'exec',
-        'godswar-b20h-prometheus',
-        'wget',
-        '-T', '10',
-        '-t', '1',
-        '-qO-',
-        "http://127.0.0.1:9091/api/v1/query?query=$encoded")
-    Assert-B20Condition `
-        ($raw.Length -le 1MB) `
-        'Prometheus response exceeds the bounded startup size.'
-    Assert-B20NoDuplicateJsonProperties $raw
-    $response = $raw | ConvertFrom-Json
-    Assert-B20Condition `
-        ($response.status -ceq 'success' -and
-            $response.data.resultType -ceq 'vector') `
-        "Prometheus rejected query '$Query'."
-    return @($response.data.result)
-}
-
-function Get-B20MetricValue {
-    param(
-        [Parameter(Mandatory)]
-        [object[]]$Result,
-
-        [Parameter(Mandatory)]
-        [string]$Description
-    )
-
-    if ($Result.Count -ne 1 -or @($Result[0].value).Count -ne 2) {
-        throw "$Description must have exactly one current series."
-    }
-    $value = [double]::Parse(
-        [string]$Result[0].value[1],
-        [Globalization.CultureInfo]::InvariantCulture)
-    Assert-B20Condition `
-        (-not [double]::IsNaN($value) -and
-            -not [double]::IsInfinity($value)) `
-        "$Description returned a non-finite value."
-    return $value
-}
-
-function Get-B20ActiveAlertCount {
-    $raw = Invoke-B20Command docker @(
-        'exec',
-        'godswar-b20h-prometheus',
-        'wget',
-        '-T', '10',
-        '-t', '1',
-        '-qO-',
-        'http://127.0.0.1:9091/api/v1/alerts')
-    Assert-B20Condition `
-        ($raw.Length -le 1MB) `
-        'Prometheus alert response exceeds the bounded startup size.'
-    Assert-B20NoDuplicateJsonProperties $raw
-    $response = $raw | ConvertFrom-Json
-    Assert-B20Condition `
-        ($response.status -ceq 'success') `
-        'Prometheus rejected the startup alert query.'
-    return @($response.data.alerts | Where-Object {
-        $_.state -in @('pending', 'firing')
-    }).Count
-}
-
 $repositoryRoot = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..'))
+if ([string]::IsNullOrWhiteSpace($BaseEnvironmentFile)) {
+    $BaseEnvironmentFile = Join-Path $repositoryRoot '.env'
+}
+if ([string]::IsNullOrWhiteSpace($RedisEnvironmentFile)) {
+    $RedisEnvironmentFile = Join-Path `
+        $repositoryRoot 'artifacts/redis-main-local/redis.local.env'
+}
+$baseEnvironmentPath = [IO.Path]::GetFullPath($BaseEnvironmentFile)
+$redisEnvironmentPath = [IO.Path]::GetFullPath($RedisEnvironmentFile)
+foreach ($environmentPath in @(
+    $baseEnvironmentPath,
+    $redisEnvironmentPath)) {
+    Assert-B20Condition `
+        (Test-Path -LiteralPath $environmentPath -PathType Leaf) `
+        "Required Compose environment file is missing: $environmentPath"
+}
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $repositoryRoot 'artifacts/b20h-observation'
 }
@@ -170,6 +128,30 @@ if ($ReplicaName -cne 'tempest-world-01') {
         'The checked-in single-replica Prometheus configuration is bound ' +
         "to tempest-world-01, not '$ReplicaName'.")
 }
+
+& (Join-Path $PSScriptRoot 'TestRedisMainComposeProfile.ps1') `
+    -EnvironmentFile $redisEnvironmentPath `
+    -BaseEnvironmentFile $baseEnvironmentPath `
+    -RequireLivePostgres | Out-Null
+$inputSha256 = Get-B20ObservationInputHashes `
+    $baseEnvironmentPath $redisEnvironmentPath
+$composeArguments = @(
+    'compose',
+    '--project-name', 'reborn',
+    '--env-file', $baseEnvironmentPath,
+    '--env-file', $redisEnvironmentPath,
+    '-f', (Join-Path $repositoryRoot 'docker-compose.yml'),
+    '-f', (Join-Path $repositoryRoot 'docker-compose.redis.yml'),
+    '--profile', 'redis-coordinated',
+    '--profile', 'b20h-observation'
+)
+$renderedCompose = Invoke-B20Command docker ($composeArguments + @(
+    'config', '--format', 'json')) | ConvertFrom-Json
+$renderedPostgres = $renderedCompose.services.postgres
+Assert-B20Condition (
+    Test-B20RenderedObservationTopology `
+        $renderedCompose $redisEnvironmentPath) (
+    'Rendered Compose does not select the exact Redis-coordinated topology.')
 
 $null = New-Item -ItemType Directory -Path $resolvedRoot -Force
 Assert-B20NoReparsePoints `
@@ -250,18 +232,37 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     $env:GODSWAR_SOURCE_COMMIT = $sourceCommit
     $env:GODSWAR_B20H_EVIDENCE_DIRECTORY = $evidenceDirectory
 
-    Invoke-B20Command docker @(
-        'compose',
-        '--project-directory', $repositoryRoot,
-        '--profile', 'legacy-raw',
-        '--profile', 'b20h-observation',
-        'up',
-        '--build',
-        '--detach',
-        '--wait',
-        '--wait-timeout', '300',
-        'server',
-        'b20h-prometheus') | Write-Host
+    $expectedPostgresVolume = 'reborn_godswar-postgres-data'
+    $null = Invoke-B20Command docker @(
+        'volume', 'inspect', $expectedPostgresVolume)
+    $preflightPostgres = @(
+        (Invoke-B20Command docker @('inspect', 'godswar-postgres') |
+            ConvertFrom-Json)
+    )[0]
+    Assert-B20Condition (
+        $preflightPostgres.State.Health.Status -ceq 'healthy' -and
+        (Test-B20PostgresEnvironment `
+            $preflightPostgres $renderedPostgres) -and
+        @($preflightPostgres.Mounts | Where-Object {
+            $_.Destination -ceq '/var/lib/postgresql/data' -and
+            $_.Type -ceq 'volume' -and
+            $_.Name -ceq $expectedPostgresVolume
+        }).Count -eq 1) (
+        'The authoritative reborn PostgreSQL volume is not healthy and mounted.')
+
+    Invoke-B20Command docker ($composeArguments + @(
+        'stop', 'b20h-prometheus')) | Out-Null
+    Invoke-B20Command docker ($composeArguments + @(
+        'rm', '--force', 'b20h-prometheus')) | Out-Null
+    Invoke-B20Command docker ($composeArguments + @(
+        'up', '--detach', '--wait', '--wait-timeout', '120',
+        '--force-recreate', 'redis-coordination')) | Write-Host
+    Invoke-B20Command docker ($composeArguments + @(
+        'up', '--detach', '--wait', '--wait-timeout', '300',
+        '--no-deps', '--build', '--force-recreate', 'server')) | Write-Host
+    Invoke-B20Command docker ($composeArguments + @(
+        'up', '--detach', '--wait', '--wait-timeout', '180',
+        '--no-deps', '--force-recreate', 'b20h-prometheus')) | Write-Host
 
     $serverInspect = @(
         (Invoke-B20Command docker @('inspect', 'godswar-server') |
@@ -274,6 +275,11 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     $prometheusInspect = @(
         (Invoke-B20Command docker @(
             'inspect', 'godswar-b20h-prometheus') | ConvertFrom-Json)
+    )[0]
+    $redisInspect = @(
+        (Invoke-B20Command docker @(
+            'inspect', 'godswar-main-redis-coordination') |
+            ConvertFrom-Json)
     )[0]
     $prometheusData = @($prometheusInspect.Mounts | Where-Object {
         $_.Destination -ceq '/prometheus' -and
@@ -302,7 +308,8 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     }
     if ($serverInspect.State.Health.Status -cne 'healthy' -or
         $postgresInspect.State.Health.Status -cne 'healthy' -or
-        $prometheusInspect.State.Health.Status -cne 'healthy') {
+        $prometheusInspect.State.Health.Status -cne 'healthy' -or
+        $redisInspect.State.Health.Status -cne 'healthy') {
         throw 'Every B20H Docker component must be healthy before T0.'
     }
 
@@ -312,21 +319,66 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
         }
     )
     if ($postgresVolume.Count -ne 1 -or
-        $postgresVolume[0].Type -cne 'volume') {
+        $postgresVolume[0].Type -cne 'volume' -or
+        $postgresVolume[0].Name -cne $expectedPostgresVolume) {
         throw 'PostgreSQL is not using exactly one durable named data volume.'
     }
+
+    $redisStartedAt = [DateTimeOffset]::Parse(
+        [string]$redisInspect.State.StartedAt).UtcDateTime.ToString('O')
+    $serverNetwork = Get-B20ComposeNetworkIdentity $serverInspect
+    $redisNetwork = Get-B20ComposeNetworkIdentity $redisInspect
+    Assert-B20Condition ($serverNetwork.Id -ceq $redisNetwork.Id) (
+        'The server and Redis do not share the exact approved network.')
+    $coordinationReceipt = [ordered]@{
+        provider = 'Redis'
+        environment = 'tempest-local'
+        runtimeProfile = 'LocalDevelopment'
+        serverNodeId = 'tempest-openworld-01'
+        expectedRouteCount = 23
+        composeProject = 'reborn'
+        redisComposeService = 'redis-coordination'
+        networkName = $redisNetwork.Name
+        networkId = $redisNetwork.Id
+        serverComposeConfigHash = [string](
+            $serverInspect.Config.Labels.'com.docker.compose.config-hash')
+        redisContainerId = [string]$redisInspect.Id
+        redisImageId = [string]$redisInspect.Image
+        redisImageReference = [string]$redisInspect.Config.Image
+        redisStartedAtUtc = $redisStartedAt
+        redisRestartCount = [long]$redisInspect.RestartCount
+        redisComposeConfigHash = [string](
+            $redisInspect.Config.Labels.'com.docker.compose.config-hash')
+        redisHealthAtStart = [string]$redisInspect.State.Health.Status
+        inputSha256 = $inputSha256
+    }
+    Assert-B20Condition (
+        Test-B20ServerRedisTopology `
+            $serverInspect $coordinationReceipt $repositoryRoot) (
+        'The game server is not running the exact Redis-coordinated topology.')
+    Assert-B20Condition (
+        Test-B20RedisIdentity `
+            $redisInspect $coordinationReceipt $repositoryRoot) (
+        'Redis identity does not match the exact coordinated topology.')
 
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(2)
     do {
         try {
-            $upResult = Get-B20PrometheusQuery 'up{job="godswar-b20h"}'
-            $readyResult = Get-B20PrometheusQuery (
+            $upValue = Get-B20PrometheusCurrentValue `
+                'up{job="godswar-b20h"}'
+            $readyValue = Get-B20PrometheusCurrentValue (
                 'godswar_legacy_persistence_observer_ready' +
                 '{job="godswar-b20h"}')
-            $processResult = Get-B20PrometheusQuery (
+            $processValue = Get-B20PrometheusCurrentValue (
                 'godswar_server_operations_process_start_time_seconds' +
                 '{job="godswar-b20h"}')
-            $legacyResult = Get-B20PrometheusQuery (
+            $coordinationReadyValue = Get-B20PrometheusCurrentValue (
+                'godswar_server_operational_coordination' +
+                '{job="godswar-b20h",operational_state="ready"}')
+            $coordinationRoutesValue = Get-B20PrometheusCurrentValue (
+                'godswar_server_operational_coordination' +
+                '{job="godswar-b20h",operational_state="routes"}')
+            $legacyValue = Get-B20PrometheusCurrentValue (
                 'sum(godswar_legacy_persistence_invocations_total' +
                 '{job="godswar-b20h"}) or vector(0)')
             $collectorBaselineClean = $true
@@ -336,19 +388,23 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
                 'dropped_tags',
                 'dropped_measurements',
                 'truncated_snapshots')) {
-                $collectorResult = Get-B20PrometheusQuery (
+                $collectorValue = Get-B20PrometheusCurrentValue (
                     'godswar_server_metrics_collector' +
                     "{job=`"godswar-b20h`",state=`"$state`"}")
-                if ((Get-B20MetricValue `
-                        $collectorResult "Collector $state") -ne 0) {
+                if ($collectorValue -ne 0) {
                     $collectorBaselineClean = $false
                 }
             }
-            if ((Get-B20MetricValue $upResult 'Target health') -eq 1 -and
-                (Get-B20MetricValue $readyResult 'Observer readiness') -eq 1 -and
-                (Get-B20MetricValue $processResult 'Process start') -gt 0 -and
-                (Get-B20MetricValue $legacyResult 'Legacy invocation') -eq 0 -and
-                (Get-B20ActiveAlertCount) -eq 0 -and
+            $alerts = (Get-B20PrometheusApi '/api/v1/alerts' 1MB).data.alerts
+            if ($upValue -eq 1 -and
+                $readyValue -eq 1 -and
+                $processValue -gt 0 -and
+                $coordinationReadyValue -eq 1 -and
+                $coordinationRoutesValue -eq 23 -and
+                $legacyValue -eq 0 -and
+                @($alerts | Where-Object {
+                    $_.state -in @('pending', 'firing')
+                }).Count -eq 0 -and
                 $collectorBaselineClean) {
                 break
             }
@@ -368,7 +424,8 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     $startedAt = [DateTimeOffset]::UtcNow
     $targetEnd = $startedAt.AddHours(168)
     $startRecord = [ordered]@{
-        schemaVersion = 'reborn.b20h.docker-observation.v1'
+        schemaVersion = 'reborn.b20h.docker-observation.v2'
+        topologyKind = 'redis-coordinated-single-worker'
         status = 'running'
         approval = $approval
         window = [ordered]@{
@@ -387,6 +444,7 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
             prometheusDataSource = [string]$prometheusData[0].Source
             postgresVolume = [string]$postgresVolume[0].Name
         }
+        coordination = $coordinationReceipt
         monitoring = [ordered]@{
             scrapeIntervalSeconds = 30
             maximumScrapeGapSeconds = 300
@@ -405,7 +463,8 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     Write-B20Json `
         -LiteralPath $activePath `
         -Value ([ordered]@{
-            schemaVersion = 'reborn.b20h.active-observation.v1'
+            schemaVersion = 'reborn.b20h.active-observation.v2'
+            topologyKind = 'redis-coordinated-single-worker'
             evidenceKind = 'local-alpha-rehearsal'
             eligibleForRetirementAuthorization = $false
             runId = $runId
@@ -422,7 +481,9 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
         SourceCommit = $sourceCommit
         EvidenceDirectory = $evidenceDirectory
         PostgreSqlVolume = [string]$postgresVolume[0].Name
-        RedisRequired = $false
+        RedisRequired = $true
+        RedisContainerId = [string]$redisInspect.Id
+        RedisCoordinationRoutes = 23
         EvidenceKind = 'local-alpha-rehearsal'
         EligibleForRetirementAuthorization = $false
     } | ConvertTo-Json

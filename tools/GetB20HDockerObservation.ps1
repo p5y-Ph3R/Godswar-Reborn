@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$EvidenceRoot
+    [string]$EvidenceRoot,
+    [string]$BaseEnvironmentFile,
+    [string]$RedisEnvironmentFile
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +19,12 @@ function Assert-B20Condition {
 . (Join-Path $PSScriptRoot 'B20RetirementEvidence.StrictJson.ps1')
 Import-Module `
     (Join-Path $PSScriptRoot 'B20HDockerObservation.Integrity.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Telemetry.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Topology.psm1') `
     -Force
 
 function Get-B20PrometheusApi {
@@ -81,6 +89,15 @@ function Read-B20JsonFile {
 
 $repositoryRoot = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..'))
+if ([string]::IsNullOrWhiteSpace($BaseEnvironmentFile)) {
+    $BaseEnvironmentFile = Join-Path $repositoryRoot '.env'
+}
+if ([string]::IsNullOrWhiteSpace($RedisEnvironmentFile)) {
+    $RedisEnvironmentFile = Join-Path `
+        $repositoryRoot 'artifacts/redis-main-local/redis.local.env'
+}
+$baseEnvironmentPath = [IO.Path]::GetFullPath($BaseEnvironmentFile)
+$redisEnvironmentPath = [IO.Path]::GetFullPath($RedisEnvironmentFile)
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $repositoryRoot 'artifacts/b20h-observation'
 }
@@ -96,6 +113,10 @@ if (-not (Test-Path -LiteralPath $activePath -PathType Leaf)) {
     throw 'No active B20H Docker observation is recorded.'
 }
 $active = Read-B20JsonFile $activePath 64KB 'Active observation record'
+Assert-B20Condition (
+    $active.schemaVersion -ceq 'reborn.b20h.active-observation.v2' -and
+    $active.topologyKind -ceq 'redis-coordinated-single-worker') (
+    'The active observation is not the Redis-coordinated v2 schema.')
 $evidenceDirectory = [IO.Path]::GetFullPath(
     (Join-Path $resolvedRoot ([string]$active.evidenceDirectory)))
 $rootPrefix = $resolvedRoot.TrimEnd(
@@ -129,6 +150,12 @@ $legacy = Get-B20CurrentValue (
 $processStart = Get-B20CurrentValue (
     'godswar_server_operations_process_start_time_seconds' +
     '{job="godswar-b20h"}')
+$coordinationReady = Get-B20CurrentValue (
+    'godswar_server_operational_coordination' +
+    '{job="godswar-b20h",operational_state="ready"}')
+$coordinationRoutes = Get-B20CurrentValue (
+    'godswar_server_operational_coordination' +
+    '{job="godswar-b20h",operational_state="routes"}')
 $alerts = Get-B20PrometheusApi '/api/v1/alerts'
 $activeAlerts = @(
     $alerts.alerts | Where-Object {
@@ -149,6 +176,10 @@ $prometheus = @(
 $postgres = @(
     (Invoke-B20Command docker @('inspect', 'godswar-postgres') |
         ConvertFrom-Json)
+)[0]
+$redis = @(
+    (Invoke-B20Command docker @(
+        'inspect', 'godswar-main-redis-coordination') | ConvertFrom-Json)
 )[0]
 $postgresData = @($postgres.Mounts | Where-Object {
     $_.Destination -ceq '/var/lib/postgresql/data' -and $_.Type -ceq 'volume'
@@ -178,9 +209,19 @@ $postgresVolumeMatches =
         [string]$record.replica.postgresVolume
 $artifactHashesMatch = Test-B20ObservationArtifactHashes `
     $record.monitoring.artifactSha256 $repositoryRoot
+$inputHashesMatch = Test-B20ObservationInputHashes `
+    $record.coordination.inputSha256 `
+    $baseEnvironmentPath `
+    $redisEnvironmentPath
+$serverTopologyMatches = Test-B20ServerRedisTopology `
+    $server $record.coordination $repositoryRoot
+$redisIdentityMatches = Test-B20RedisIdentity `
+    $redis $record.coordination $repositoryRoot
 $healthy =
     $up -eq 1 -and
     $ready -eq 1 -and
+    $coordinationReady -eq 1 -and
+    $coordinationRoutes -eq 23 -and
     $legacy -eq 0 -and
     $activeAlerts.Count -eq 0 -and
     $revisionMatches -and
@@ -188,6 +229,9 @@ $healthy =
     $prometheusIdentityMatches -and
     $postgresVolumeMatches -and
     $artifactHashesMatch -and
+    $inputHashesMatch -and
+    $serverTopologyMatches -and
+    $redisIdentityMatches -and
     $server.State.Health.Status -ceq 'healthy' -and
     $prometheus.State.Health.Status -ceq 'healthy' -and
     $postgres.State.Health.Status -ceq 'healthy'
@@ -209,15 +253,23 @@ $healthy =
     ObserverReady = [int]$ready
     LegacyInvocationTotal = [long]$legacy
     ProcessStartUnixSeconds = $processStart
+    RedisCoordinationReady = [int]$coordinationReady
+    RedisCoordinationRoutes = [int]$coordinationRoutes
     RevisionMatchesApproval = $revisionMatches
     ServerIdentityMatchesStart = $serverIdentityMatches
     PrometheusIdentityMatchesStart = $prometheusIdentityMatches
     PostgreSqlVolumeMatchesStart = $postgresVolumeMatches
     ObservationArtifactHashesMatch = $artifactHashesMatch
+    ComposeInputHashesMatch = $inputHashesMatch
+    ServerRedisTopologyMatchesStart = $serverTopologyMatches
+    RedisIdentityMatchesStart = $redisIdentityMatches
+    RedisHealth = [string]$redis.State.Health.Status
     ActiveAlerts = $activeAlerts
     FullWindowValidity = 'not_evaluated_use_export_command'
     EvidenceDirectory = $evidenceDirectory
     EvidenceKind = 'local-alpha-rehearsal'
+    TopologyKind = 'redis-coordinated-single-worker'
+    CoordinationProvider = 'Redis'
     EligibleForRetirementAuthorization = $false
     FinalRetirementAuthorized = $false
 } | ConvertTo-Json -Depth 5

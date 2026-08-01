@@ -17,6 +17,8 @@ function Assert-Condition {
 $repositoryRoot = [IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot '..'))
 $composePath = Join-Path $repositoryRoot 'docker-compose.yml'
+$redisComposePath = Join-Path $repositoryRoot 'docker-compose.redis.yml'
+$baseEnvironmentPath = Join-Path $repositoryRoot '.env.example'
 $prometheusPath =
     Join-Path $repositoryRoot 'tools/docker/b20h/prometheus.yml'
 $rulesPath = Join-Path $repositoryRoot 'tools/docker/b20h/rules.yml'
@@ -26,11 +28,41 @@ $dockerIgnorePath = Join-Path $repositoryRoot '.dockerignore'
 $expectedCommit = '0123456789abcdef0123456789abcdef01234567'
 $savedCommit = $env:GODSWAR_SOURCE_COMMIT
 $savedEvidence = $env:GODSWAR_B20H_EVIDENCE_DIRECTORY
+$savedRedisAcl = $env:GODSWAR_REDIS_ACL_FILE
+$temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) (
+    'reborn-b20h-' + [Guid]::NewGuid().ToString('N'))
 Import-Module `
     (Join-Path $PSScriptRoot 'B20HDockerObservation.Integrity.psm1') `
     -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Telemetry.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.Topology.psm1') `
+    -Force
+Import-Module `
+    (Join-Path $PSScriptRoot 'B20HDockerObservation.SelfTest.psm1') `
+    -Force
 
 try {
+    $null = [IO.Directory]::CreateDirectory($temporaryRoot)
+    $password = 'a' * 64
+    $aclPath = Join-Path $temporaryRoot 'redis.acl'
+    $passwordPath = Join-Path $temporaryRoot 'redis.password'
+    $connectionPath = Join-Path $temporaryRoot 'redis.connection-string'
+    $redisEnvironmentPath = Join-Path $temporaryRoot 'redis.local.env'
+    $encoding = [Text.UTF8Encoding]::new($false)
+    [IO.File]::WriteAllText($aclPath,
+        "user default off`nuser godswar_runtime reset on >$password ~godswar:tempest-local:v1:* +@all`n", $encoding)
+    [IO.File]::WriteAllText($passwordPath, $password, $encoding)
+    [IO.File]::WriteAllText($connectionPath,
+        "redis-coordination:6379,user=godswar_runtime,password=$password,ssl=false", $encoding)
+    [IO.File]::WriteAllText($redisEnvironmentPath, (@(
+        'GODSWAR_REDIS_IMAGE=redis:7.4.10-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2'
+        "GODSWAR_REDIS_ACL_FILE=$($aclPath.Replace('\', '/'))"
+        "GODSWAR_REDIS_PASSWORD_FILE=$($passwordPath.Replace('\', '/'))"
+        "GODSWAR_REDIS_CONNECTION_STRING_FILE_HOST=$($connectionPath.Replace('\', '/'))"
+    ) -join "`n") + "`n", $encoding)
     $hostExecutable = (Get-Process -Id $PID).Path
     $stderrProbe = Invoke-B20Command $hostExecutable @(
         '-NoProfile',
@@ -43,22 +75,33 @@ try {
     $env:GODSWAR_SOURCE_COMMIT = $expectedCommit
     $env:GODSWAR_B20H_EVIDENCE_DIRECTORY =
         Join-Path $repositoryRoot 'artifacts/b20h-compose-test'
-    $rendered = @(
-        & docker compose `
-            -f $composePath `
-            --profile legacy-raw `
-            --profile b20h-observation `
-            config `
-            --format json 2>&1
+    $env:GODSWAR_REDIS_ACL_FILE = $null
+    $composeArguments = @(
+        'compose', '--project-name', 'reborn',
+        '--env-file', $baseEnvironmentPath,
+        '--env-file', $redisEnvironmentPath,
+        '-f', $composePath, '-f', $redisComposePath,
+        '--profile', 'redis-coordinated',
+        '--profile', 'b20h-observation',
+        'config', '--format', 'json'
     )
-    if ($LASTEXITCODE -ne 0) {
-        throw "B20H Compose render failed: $($rendered -join "`n")"
-    }
-    $compose = ($rendered -join [Environment]::NewLine) |
-        ConvertFrom-Json
+    $compose = Invoke-B20Command docker $composeArguments | ConvertFrom-Json
     $server = $compose.services.server
     $postgres = $compose.services.postgres
     $observer = $compose.services.'b20h-prometheus'
+    $redis = $compose.services.'redis-coordination'
+    Assert-Condition `
+        (Test-B20RenderedObservationTopology `
+            $compose $redisEnvironmentPath) `
+        'Rendered observation topology must match its reviewed inputs.'
+    $env:GODSWAR_REDIS_ACL_FILE = $passwordPath
+    $overridden = Invoke-B20Command docker $composeArguments |
+        ConvertFrom-Json
+    Assert-Condition `
+        (-not (Test-B20RenderedRedisSecrets `
+            $overridden $redisEnvironmentPath)) `
+        'A process environment secret-source override must be rejected.'
+    $env:GODSWAR_REDIS_ACL_FILE = $null
 
     Assert-Condition `
         ($server.build.args.GODSWAR_SOURCE_COMMIT -ceq $expectedCommit) `
@@ -66,6 +109,37 @@ try {
     Assert-Condition `
         ($server.labels.'com.reborn.source.commit' -ceq $expectedCommit) `
         'The server container must carry the approved source commit.'
+    Assert-Condition `
+        ($compose.name -ceq 'reborn' -and
+            $server.environment.GODSWAR_RUNTIME_PROFILE -ceq
+                'LocalDevelopment' -and
+            $server.environment.GODSWAR_COORDINATION_PROVIDER -ceq 'Redis' -and
+            $server.environment.GODSWAR_COORDINATION_ENVIRONMENT -ceq
+                'tempest-local' -and
+            $server.environment.GODSWAR_REDIS_CONNECTION_STRING_FILE -ceq
+                '/run/secrets/redis_connection_string' -and
+            $null -eq $server.environment.PSObject.Properties[
+                'GODSWAR_REDIS_CONNECTION_STRING']) `
+        'The server must use Redis coordination without a Local fallback.'
+    Assert-Condition `
+        ((@($server.entrypoint) -join "`n") -ceq
+            ("dotnet`nGodswar.Server.dll`n" +
+                '/app/config/redis-coordinated-worker.json') -and
+            $server.depends_on.'redis-coordination'.condition -ceq
+                'service_healthy' -and
+            $server.labels.'com.reborn.coordination.provider' -ceq 'redis' -and
+            $server.labels.'com.reborn.world.owner' -ceq
+                'tempest-openworld-01') `
+        'The rendered server must retain its exact coordinated worker topology.'
+    $workerMount = @($server.volumes | Where-Object {
+        $_.target -ceq '/app/config/redis-coordinated-worker.json' -and
+        $_.type -ceq 'bind' -and $_.read_only
+    })
+    Assert-Condition ($workerMount.Count -eq 1) (
+        'The coordinated worker configuration must be mounted read-only.')
+    Assert-Condition `
+        (@($server.secrets).target -contains 'redis_connection_string') `
+        'The server must consume Redis credentials only through its secret.'
     $serverPorts = @($server.ports)
     Assert-Condition `
         (@($serverPorts | Where-Object {
@@ -84,6 +158,26 @@ try {
     Assert-Condition `
         ($postgresData.Count -eq 1) `
         'PostgreSQL must use exactly one durable named data volume.'
+
+    $redisPorts = @()
+    if ($null -ne $redis.PSObject.Properties['ports']) {
+        $redisPorts = @($redis.ports)
+    }
+    Assert-Condition `
+        ($redis.image -ceq (
+            'redis:7.4.10-alpine@sha256:' +
+            'e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2') -and
+            $redis.container_name -ceq 'godswar-main-redis-coordination' -and
+            $redisPorts.Count -eq 0 -and
+            $redis.read_only -eq $true -and
+            @($redis.cap_drop) -ccontains 'ALL' -and
+            @($redis.security_opt) -ccontains 'no-new-privileges:true' -and
+            @($redis.tmpfs) -match '^/data:') `
+        'Redis must remain pinned, private, disposable, and least privilege.'
+    Assert-Condition `
+        ((@($redis.healthcheck.test) -join ' ') -cmatch
+            'godswar_runtime ping.*PONG') `
+        'Redis health must authenticate and require an exact PONG.'
 
     Assert-Condition `
         (@($observer.profiles).Count -eq 1 -and
@@ -195,7 +289,11 @@ try {
         'B20HProcessMetricMissing',
         'B20HLegacyCounterReset',
         'B20HMetricsCollectorPressure',
-        'B20HMetricsCollectorMissing')) {
+        'B20HMetricsCollectorMissing',
+        'B20HOperationalCoordinationMissing',
+        'B20HOperationalCoordinationNotReady',
+        'B20HOperationalRoutesMissing',
+        'B20HOperationalRouteCountInvalid')) {
         Assert-Condition `
             ($rules -cmatch "alert:\s+$requiredAlert(?:\r?\n)") `
             "Required fail-closed alert '$requiredAlert' is missing."
@@ -205,7 +303,12 @@ try {
         'StartB20HDockerObservation.ps1',
         'GetB20HDockerObservation.ps1',
         'ExportB20HDockerObservationTelemetry.ps1',
-        'B20HDockerObservation.Integrity.psm1')) {
+        'InvalidateB20HDockerObservation.ps1',
+        'B20HDockerObservation.Integrity.psm1',
+        'B20HDockerObservation.Telemetry.psm1',
+        'B20HDockerObservation.Topology.psm1',
+        'B20HDockerObservation.SelfTest.psm1',
+        'RedisMainComposeValidation.psm1')) {
         $tokens = $null
         $errors = $null
         $null = [Management.Automation.Language.Parser]::ParseFile(
@@ -216,6 +319,24 @@ try {
             ($errors.Count -eq 0) `
             "$scriptName has a PowerShell parser error."
     }
+
+    $artifactHashes = Get-B20ObservationArtifactHashes $repositoryRoot
+    $artifactHashReceipt = $artifactHashes | ConvertTo-Json -Depth 4 |
+        ConvertFrom-Json
+    Assert-Condition `
+        (Test-B20ObservationArtifactHashes `
+            $artifactHashReceipt $repositoryRoot) `
+        'Observation artifact hashes must round-trip exactly.'
+    $inputHashes = Get-B20ObservationInputHashes `
+        $baseEnvironmentPath $redisEnvironmentPath
+    $inputHashReceipt = $inputHashes | ConvertTo-Json -Depth 4 |
+        ConvertFrom-Json
+    Assert-Condition `
+        (Test-B20ObservationInputHashes `
+            $inputHashReceipt $baseEnvironmentPath $redisEnvironmentPath) `
+        'Compose and Redis credential input hashes must round-trip exactly.'
+
+    Invoke-B20InvalidationSelfTest $temporaryRoot $PSScriptRoot
 
     if (-not $SkipPromtool) {
         $image = [string]$observer.image
@@ -277,4 +398,8 @@ try {
 finally {
     $env:GODSWAR_SOURCE_COMMIT = $savedCommit
     $env:GODSWAR_B20H_EVIDENCE_DIRECTORY = $savedEvidence
+    $env:GODSWAR_REDIS_ACL_FILE = $savedRedisAcl
+    if (Test-Path -LiteralPath $temporaryRoot -PathType Container) {
+        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+    }
 }

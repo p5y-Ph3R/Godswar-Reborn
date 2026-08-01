@@ -1,13 +1,20 @@
 # Redis main-Compose activation
 
-Status: staged local-alpha procedure; Stage 1 is safe during B20H, while
-Stage 2 must wait until the active B20H observation is complete
+Status: staged local-alpha procedure. Stage 2 may follow either a completed
+B20H window or an explicitly authorized invalidation, but activation must
+start a new full Redis-aware B20H window.
 
 ## Scope and authority
 
 This runbook moves the disposable Redis coordination dependency into the
 main Docker Compose project named `reborn`. It does not move player value out
 of PostgreSQL and does not claim that multi-worker gameplay is complete.
+
+Redis remains its own private container by design. It is one shared
+coordination authority that present and future map, dungeon, and battlefield
+workers can reach; embedding one Redis inside each worker would split that
+authority. "Main Compose" means one visible deployment lifecycle, not one
+operating-system process.
 
 PostgreSQL remains authoritative for accounts, characters, ownership fences,
 inventory, equipment, currency, progression, rewards, pets, mounts, command
@@ -25,12 +32,13 @@ Stage 1, during B20H
     |- godswar-b20h-prometheus    unchanged
     `- godswar-main-redis-coordination private, unused, nonpersistent
 
-Stage 2, after B20H
+Stage 2, after completion or authorized invalidation of the old B20H window
   reborn
     |- godswar-postgres
     |- godswar-main-redis-coordination private, nonpersistent coordination
-    `- godswar-server             one combined Redis-coordinated worker
-                                  owning legacy maps 0 through 22
+    |- godswar-server             one combined Redis-coordinated worker
+    |                             owning legacy maps 0 through 22
+    `- godswar-b20h-prometheus    new Redis-aware 168-hour observation
 ```
 
 All directly connected open-world maps remain on that one combined worker.
@@ -39,9 +47,12 @@ cross-worker handoff protocol exists.
 
 ## Safety rules
 
-- While B20H is active, start only `redis-coordination`. Do not recreate,
-  restart, rebuild, or change the environment of `server`, `postgres`, or
-  `b20h-prometheus`.
+- If the current B20H evidence must remain valid, start only
+  `redis-coordination`; do not alter `server`, `postgres`, or the observer.
+- An early cutover requires explicit owner authorization. Export and retain
+  the partial result as invalidated evidence, remove only the observer
+  sidecar, activate Redis, and start a new full 168-hour window. Never count
+  the partial Local-provider window toward the Redis-aware window.
 - Never use `docker compose down`, `down -v`, `FLUSHDB`, `FLUSHALL`, or
   wildcard key deletion in this procedure.
 - Never print, commit, paste into a command line, or include in logs the
@@ -97,12 +108,18 @@ If the directory already exists, do not use `-Force` casually. `-Force`
 rotates the credential and requires a controlled Redis/server restart plus
 fresh authentication.
 
-Define the common Compose arguments once per PowerShell session:
+Define the common Compose arguments once per PowerShell session. The base
+environment must be first and the generated Redis environment second. An
+explicit Compose `--env-file` disables automatic `.env` loading; omitting the
+first file can silently change the launcher login port and developer-command
+setting.
 
 ```powershell
-$redisEnv = $redisConfig.EnvironmentFile
+$baseEnv = (Resolve-Path .\.env).Path
+$redisEnv = (Resolve-Path $redisConfig.EnvironmentFile).Path
 $compose = @(
   '--project-name', 'reborn',
+  '--env-file', $baseEnv,
   '--env-file', $redisEnv,
   '-f', '.\docker-compose.yml',
   '-f', '.\docker-compose.redis.yml'
@@ -113,25 +130,35 @@ Inspect and validate the rendered model:
 
 ```powershell
 docker compose @compose config --quiet
-.\tools\TestRedisMainComposeProfile.ps1
+.\tools\TestRedisMainComposeProfile.ps1 `
+  -BaseEnvironmentFile $baseEnv `
+  -EnvironmentFile $redisEnv
 ```
 
-The connection string is mounted as a Compose secret rather than inserted
-into the server environment. The validator proves the rendered model
-contains only the secret-file target, not the secret content.
+The validator proves the login/game host ports and developer-command setting
+still equal the base env, the connection string is secret-file mounted, and
+the Redis image equals the reviewed digest pin. It also binds all three
+rendered Compose secret sources to the exact absolute paths in the Redis env
+file and runs bounded conflict probes. Duplicate env keys, differing ambient
+values, and ambient Compose substitutions absent from both env files are
+rejected; only the controlled source-commit and B20H-evidence variables are
+exempt. Rendered runtime/PostgreSQL continuity is mandatory, and errors never
+echo values. Create and review `.env` from `.env.example` if it is absent.
 
-## Stage 1: add private Redis during active B20H
+## Historical Stage 1: private Redis beside the Local observation
 
 Stage 1 proves only that Redis belongs to the main `reborn` Compose project
 and can start securely. It intentionally leaves the game server on its
 current local coordination provider.
 
-Record the current server identity and B20H status first:
+Record the current server identity and B20H status first. Use the observation
+tools from the commit that created an older v1 Local-provider campaign; the
+current tools intentionally accept only the Redis-aware v2 active schema.
 
 ```powershell
 $serverBefore = docker inspect godswar-server `
   --format '{{.Id}} {{.State.StartedAt}}'
-.\tools\GetB20HDockerObservation.ps1
+# Run GetB20HDockerObservation.ps1 from the active campaign's pinned commit.
 ```
 
 Start exactly the new dependency:
@@ -163,7 +190,7 @@ $serverAfter = docker inspect godswar-server `
 if ($serverAfter -ne $serverBefore) {
   throw 'Stage 1 changed the B20H server process.'
 }
-.\tools\GetB20HDockerObservation.ps1
+# Re-run the status tool from the active campaign's pinned commit.
 ```
 
 The Redis inspection may show the private container port but must show no
@@ -171,18 +198,19 @@ published host binding. The B20H status must
 remain healthy with the same server process start time and observation
 window. Do not run Redis outage drills during B20H.
 
-## Stage 2: activate the combined worker after B20H
+## Stage 2: activate Redis and restart B20H
 
 ### Preconditions
 
 Do not begin Stage 2 until:
 
-1. the B20H target time has elapsed;
-2. its immutable telemetry export and recovery gates have completed;
-3. the result and any remaining retirement blocker have been recorded;
-4. all players have been told about the bounded restart;
-5. PostgreSQL readiness, checkpoint queues, outbox, and reconciliation are
-   healthy; and
+1. either the current B20H window completed and was exported, or the owner
+   explicitly authorized invalidating it and restarting the full window;
+2. a final or partial telemetry export was attempted and its outcome retained;
+3. every client is closed and new admissions are stopped;
+4. PostgreSQL readiness, checkpoint queues, outbox, and reconciliation are
+   healthy;
+5. no active PostgreSQL player-ownership checkpoint remains; and
 6. the combined-worker configuration declares stable, unique routes for
    every legacy map ID from `0` through `22`.
 
@@ -197,61 +225,75 @@ duplicate world-instance ID, and no route assigned to another node. The
 combined server may still run all dynamic ECS runtimes in one process, but
 only declared routes participate in Redis route and player-lease proofs.
 
+### Authorized invalidation, when the old window has not completed
+
+Skip this subsection only when the prior pointer was already retired through
+the approved completed-window path. While the old observer is still running,
+inspect it and attempt a final partial export with the observation tools from
+the commit that created that campaign. The current status/export tools
+intentionally reject old v1 Local campaigns rather than treating them as
+Redis-aware evidence.
+
+```powershell
+# Run these two commands before moving away from the campaign's pinned tools.
+.\tools\GetB20HDockerObservation.ps1
+try {
+  .\tools\ExportB20HDockerObservationTelemetry.ps1
+} catch {
+  Write-Warning 'Partial export unavailable; record this failed attempt.'
+}
+
+# After updating to the Redis-aware v2 tooling:
+.\tools\InvalidateB20HDockerObservation.ps1 `
+  -Reason topology-correction-local-to-redis `
+  -AllowMutation
+```
+
+The export may report `in_progress` or fail if the old observer is already
+unavailable; record that outcome, but do not mislabel it as qualifying
+evidence. The invalidation command is evidence-only: it writes an immutable
+authorization receipt, atomically retires the active pointer, and preserves
+the TSDB and exports. It does not change Docker.
+
 ### Drain and activation
 
-Record durable baselines using approved read-only operations, stop new
-admissions, drain the current local authority, and close the legacy client.
-After the final B20H export is validated and copied to its retained evidence
-location, close the observer sidecar that shares the server network namespace:
+Record durable baselines, drain the old local authority, and close the legacy
+client. Never remove PostgreSQL or its volume.
+
+Activate only from an exact clean commit and preserve the revision in the
+container metadata:
 
 ```powershell
-docker compose --project-name reborn -f .\docker-compose.yml `
-  --profile b20h-observation stop b20h-prometheus
-docker compose --project-name reborn -f .\docker-compose.yml `
-  --profile b20h-observation rm -f b20h-prometheus
+if (git status --porcelain) {
+  throw 'Commit or intentionally remove all changes before activation.'
+}
+$env:GODSWAR_SOURCE_COMMIT = (git rev-parse HEAD).Trim()
+.\tools\TestRedisMainComposeProfile.ps1 `
+  -BaseEnvironmentFile $baseEnv `
+  -EnvironmentFile $redisEnv `
+  -RequireLivePostgres
 ```
 
-Record that exact observer-container removal in the B20H evidence. It removes
-only the stopped observer container; it must not remove the retained bind-mounted
-telemetry, PostgreSQL, its volume, or the game server. The observer must be
-removed because `network_mode: service:server` otherwise keeps a Docker
-dependency on the old server container and can block its replacement.
-
-Then activate the Redis-coordinated server through both Compose files:
+Start the new observation with a unique change ID. This is the single
+controlled topology restart: the tool removes only the old observer,
+recreates disposable Redis, rebuilds/recreates the server with `--no-deps`,
+then creates the observer and records Redis-aware T0 evidence.
 
 ```powershell
-docker compose @compose --profile redis-coordinated `
-  up -d --wait redis-coordination
-docker compose @compose --profile redis-coordinated up -d --wait `
-  --no-deps --build --force-recreate server
-docker compose @compose --profile redis-coordinated `
-  ps postgres redis-coordination server
+.\tools\StartB20HDockerObservation.ps1 `
+  -ChangeId 'alpha-b20h-redis-20260801' `
+  -ApprovedByRole 'project-owner' `
+  -BaseEnvironmentFile $baseEnv `
+  -RedisEnvironmentFile $redisEnv `
+  -AllowMutation
+.\tools\GetB20HDockerObservation.ps1
 ```
 
-The override must inject at least:
-
-```text
-GODSWAR_COORDINATION_PROVIDER=Redis
-GODSWAR_COORDINATION_ENVIRONMENT=tempest-local
-GODSWAR_REDIS_CONNECTION_STRING_FILE=/run/secrets/redis_connection_string
-GODSWAR_REDIS_REQUIRE_TLS=false
-GODSWAR_REDIS_DATABASE=0
-GODSWAR_COORDINATION_CAPACITY=4096
-GODSWAR_REDIS_MAXIMUM_CONCURRENT_OPERATIONS=128
-GODSWAR_REDIS_QUEUE_ADMISSION_TIMEOUT_MILLISECONDS=25
-GODSWAR_REDIS_OPERATION_TIMEOUT_MILLISECONDS=250
-GODSWAR_REDIS_CONNECT_TIMEOUT_MILLISECONDS=1000
-GODSWAR_REDIS_CIRCUIT_FAILURE_THRESHOLD=5
-GODSWAR_REDIS_CIRCUIT_OPEN_MILLISECONDS=5000
-GODSWAR_COORDINATION_SERVER_HEARTBEAT_SECONDS=5
-GODSWAR_COORDINATION_SERVER_TTL_SECONDS=20
-GODSWAR_COORDINATION_PLAYER_LEASE_RENEWAL_SECONDS=10
-GODSWAR_COORDINATION_PLAYER_LEASE_TTL_SECONDS=30
-GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID=tempest-openworld-01
-```
-
-Local plaintext is permitted only because this dependency is private and the
-server runtime profile is `LocalDevelopment`. Production must use TLS.
+The start must fail rather than fall back to base-only/Local coordination.
+Its schema-v2 record must bind the server, private Redis container, both env
+files, both Compose files, provider `Redis`, environment `tempest-local`, and
+all 23 routes. Local plaintext is allowed only on this private
+`LocalDevelopment` network; production must use TLS.
 
 ### Readiness and functional checks
 
@@ -280,10 +322,14 @@ Expected results:
 - portal travel among maps `0..22`, reconnect, inventory, equipment,
   progression, pet, mount, and checkpoint operations remain authoritative.
 
-Observe the existing metrics:
+The new B20H gate requires these exact low-cardinality series at T0 and
+throughout the window:
 
-- `godswar.server.operational.coordination` with `ready=1`, `routes=23`, and
-  bounded in-flight work;
+- `godswar_server_operational_coordination{operational_state="ready"} = 1`;
+- `godswar_server_operational_coordination{operational_state="routes"} = 23`.
+
+Also observe:
+
 - `godswar.coordination.operations`;
 - `godswar.coordination.duration`; and
 - `godswar.coordination.logical_results`.
@@ -293,8 +339,9 @@ error text as metric labels.
 
 ## Local outage and restart validation
 
-Run these drills only after Stage 2 activation, during an announced local
-test window. Keep PostgreSQL running throughout.
+Do not run these drills during the new qualifying B20H window. Run them only
+after that window is exported/retired, or in a separate explicitly
+non-qualifying test campaign. Keep PostgreSQL running throughout.
 
 ### Dependency unavailable
 
@@ -388,55 +435,20 @@ PostgreSQL reconciliation and fresh-login validation pass.
 
 ## Production provider requirements
 
-The local container is not a production Redis architecture. Before public
-activation, the selected provider must supply:
-
-- one private, non-Internet-reachable primary keyspace;
-- TLS with validated server identity and an approved certificate trust path;
-- secret-manager injection and a tested credential-rotation procedure;
-- a least-privilege application ACL scoped to the exact environment prefix;
-- `noeviction` and an explicit memory/headroom alert policy;
-- no automatic asynchronous replica promotion under the current protocol;
-- either zero-data-loss failover or a reviewed failover epoch that
-  invalidates all pre-promotion tickets, admissions, routes, and leases;
-- same-region p95 at or below 10 ms and p99 at or below 50 ms under the
-  measured alpha operation mix;
-- declared availability, recovery, maintenance, capacity, connection, PPS,
-  and cost limits;
-- private security-group/firewall rules allowing only approved gateway and
-  worker identities;
-- provider telemetry for connection count, command latency, CPU, memory,
-  rejected connections, ACL denials, failover, and eviction; and
-- an authorized outage/failover exercise and rollback drill.
-
-Redis is an internal coordination dependency, not a public DDoS edge. Only
-the protected game gateway addresses should be exposed to clients. Origin
-workers, PostgreSQL, Redis, management, metrics, profiling, and
-administration must remain private. Upstream L3/L4 TCP and UDP protection is
-still required at the provider edge.
-
-Redis Cluster hash-slot sharding is not supported because the reviewed Lua
-workflows touch multiple dynamic keys. Do not enable Cluster or widen the
-application ACL to make an incompatible provider topology appear healthy.
+The local container is not production HA. Apply the provider criteria and
+latency budgets in `docs/adr/0005-b17-redis-coordination-activation.md` and
+`docs/data-architecture-roadmap/16-deployment-operations.md`: private TLS,
+secret-manager rotation, scoped ACL, `noeviction`, capacity telemetry, and a
+reviewed failover epoch or zero-data-loss failover. Redis Cluster is
+incompatible with the current multi-key Lua workflows. Redis is internal
+coordination, not a public DDoS edge; workers and stores remain private while
+an upstream L3/L4 provider protects the published TCP/UDP edge.
 
 ## Explicitly unimplemented capabilities
 
-Adding Redis to the main Compose project does not implement:
-
-- authoritative live handoff between two gameplay workers;
-- transparent reconnect to a different worker;
-- splitting connected open-world maps across workers;
-- dynamic dungeon creation, placement, lifecycle, or recovery;
-- multiple simultaneous dungeon instances sharing one map ID;
-- scheduled battlefield admission, placement, lifecycle, or settlement;
-- cross-realm or cross-server Pindus admission and settlement;
-- automatic worker replacement, map migration, or state reconstruction;
-- containerized semantic-gateway edge binding for the unchanged client;
-- secure-UDP routing or NAT rebinding through the semantic gateway; or
-- a production managed Redis deployment, HA guarantee, capacity proof, or
-  regional failover policy.
-
-Those require separate accepted milestones. Until cross-worker transfer is
-implemented, one combined worker owns maps `0..22`; dungeon and battlefield
-runtime work remains process-local and must not be advertised as distributed
-placement.
+This step does not implement cross-worker handoff/reconnect, map splitting,
+dynamic dungeon or battlefield placement/recovery, cross-server Pindus,
+automatic worker replacement, gateway UDP routing/NAT rebinding, or managed
+Redis HA. Those need separate milestones. Until handoff exists, one combined
+worker owns maps `0..22`; dungeon and battlefield runtime remains local to
+that process.

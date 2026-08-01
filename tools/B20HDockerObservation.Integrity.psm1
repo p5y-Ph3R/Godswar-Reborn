@@ -5,14 +5,24 @@ $script:ArtifactPaths = @(
     '.dockerignore',
     'Dockerfile',
     'docker-compose.yml',
+    'docker-compose.redis.yml',
+    'deploy/local/redis-coordinated-worker.json',
+    'ops/redis/redis-coordination.local.conf',
     'tools/docker/b20h/prometheus.yml',
     'tools/docker/b20h/rules.yml',
     'tools/docker/b20h/rules.test.yml',
+    'tools/NewRedisMainLocalConfiguration.ps1',
+    'tools/TestRedisMainComposeProfile.ps1',
     'tools/StartB20HDockerObservation.ps1',
     'tools/GetB20HDockerObservation.ps1',
     'tools/ExportB20HDockerObservationTelemetry.ps1',
+    'tools/InvalidateB20HDockerObservation.ps1',
     'tools/TestB20HDockerObservation.ps1',
-    'tools/B20HDockerObservation.Integrity.psm1'
+    'tools/B20HDockerObservation.Integrity.psm1',
+    'tools/B20HDockerObservation.Telemetry.psm1',
+    'tools/B20HDockerObservation.Topology.psm1',
+    'tools/B20HDockerObservation.SelfTest.psm1',
+    'tools/RedisMainComposeValidation.psm1'
 )
 
 function Invoke-B20Command {
@@ -169,7 +179,7 @@ function Get-B20ObservationArtifactHashes {
         $result[$relativePath] = (
             Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     }
-    return $result
+    return ,$result
 }
 
 function Test-B20ObservationArtifactHashes {
@@ -217,7 +227,11 @@ function Assert-B20AlphaObservationRecord {
 
     Assert-B20IntegrityCondition (
         (Get-B20IntegrityProperty $Record schemaVersion record) -ceq
-            'reborn.b20h.docker-observation.v1') 'Unexpected record schema.'
+            'reborn.b20h.docker-observation.v2') 'Unexpected record schema.'
+    Assert-B20IntegrityCondition (
+        (Get-B20IntegrityProperty $Record topologyKind record) -ceq
+            'redis-coordinated-single-worker') (
+        'The observation topology is not Redis coordinated.')
     Assert-B20IntegrityCondition (
         (Get-B20IntegrityProperty $Record status record) -ceq 'running') (
         'The alpha observation is not running.')
@@ -266,6 +280,124 @@ function Assert-B20AlphaObservationRecord {
     Assert-B20IntegrityCondition (
         (Get-B20IntegrityProperty $replica name replica) -ceq
             'tempest-world-01') 'The alpha replica identity is invalid.'
+    foreach ($identity in @(
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $replica serverContainerId replica
+            Pattern = '^[0-9a-f]{64}$'
+            Context = 'replica.serverContainerId'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $replica prometheusContainerId replica
+            Pattern = '^[0-9a-f]{64}$'
+            Context = 'replica.prometheusContainerId'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty $replica serverImageId replica
+            Pattern = '^sha256:[0-9a-f]{64}$'
+            Context = 'replica.serverImageId'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $replica prometheusImageId replica
+            Pattern = '^sha256:[0-9a-f]{64}$'
+            Context = 'replica.prometheusImageId'
+        })) {
+        Assert-B20IntegrityCondition (
+            $identity.Value -is [string] -and
+            $identity.Value -cmatch $identity.Pattern) (
+            "$($identity.Context) is invalid.")
+    }
+    $coordination = Get-B20IntegrityProperty $Record coordination record
+    Assert-B20IntegrityCondition (
+        (Get-B20IntegrityProperty $coordination provider coordination) -ceq
+            'Redis' -and
+        (Get-B20IntegrityProperty `
+            $coordination environment coordination) -ceq 'tempest-local' -and
+        (Get-B20IntegrityProperty `
+            $coordination serverNodeId coordination) -ceq
+                'tempest-openworld-01' -and
+        (Get-B20IntegrityProperty `
+            $coordination runtimeProfile coordination) -ceq
+                'LocalDevelopment' -and
+        (Get-B20IntegrityProperty `
+            $coordination composeProject coordination) -ceq 'reborn' -and
+        (Get-B20IntegrityProperty `
+            $coordination redisComposeService coordination) -ceq
+                'redis-coordination' -and
+        (Get-B20IntegrityProperty `
+            $coordination networkName coordination) -ceq
+                'reborn_default') (
+        'The Redis coordination topology contract is invalid.')
+    Assert-B20IntegrityCondition (
+        (Get-B20IntegrityProperty `
+            $coordination networkId coordination) -cmatch
+                '^[0-9a-f]{64}$') (
+        'The Redis coordination network identity is invalid.')
+    Assert-B20IntegrityCondition (
+        (ConvertTo-B20IntegrityInteger (
+            Get-B20IntegrityProperty `
+                $coordination expectedRouteCount coordination) `
+            'coordination.expectedRouteCount') -eq 23) (
+        'The Redis coordination route contract is invalid.')
+    foreach ($identity in @(
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $coordination redisContainerId coordination
+            Pattern = '^[0-9a-f]{64}$'
+            Context = 'coordination.redisContainerId'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $coordination redisImageId coordination
+            Pattern = '^sha256:[0-9a-f]{64}$'
+            Context = 'coordination.redisImageId'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $coordination redisComposeConfigHash coordination
+            Pattern = '^[0-9a-f]{64}$'
+            Context = 'coordination.redisComposeConfigHash'
+        },
+        [pscustomobject]@{
+            Value = Get-B20IntegrityProperty `
+                $coordination serverComposeConfigHash coordination
+            Pattern = '^[0-9a-f]{64}$'
+            Context = 'coordination.serverComposeConfigHash'
+        })) {
+        Assert-B20IntegrityCondition (
+            $identity.Value -is [string] -and
+            $identity.Value -cmatch $identity.Pattern) (
+            "$($identity.Context) is invalid.")
+    }
+    Assert-B20IntegrityCondition (
+        (Get-B20IntegrityProperty `
+            $coordination redisImageReference coordination) -ceq
+            ('redis:7.4.10-alpine@sha256:' +
+                'e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2') -and
+        (Get-B20IntegrityProperty `
+            $coordination redisHealthAtStart coordination) -ceq 'healthy') (
+        'The Redis image or start health receipt is invalid.')
+    $redisStartedAt = ConvertFrom-B20IntegrityUtc (
+        Get-B20IntegrityProperty `
+            $coordination redisStartedAtUtc coordination) (
+        'coordination.redisStartedAtUtc')
+    Assert-B20IntegrityCondition ($redisStartedAt -le $startedAt) (
+        'Redis must be started before observation T0.')
+    $redisRestartCount = ConvertTo-B20IntegrityInteger (
+        Get-B20IntegrityProperty `
+            $coordination redisRestartCount coordination) (
+        'coordination.redisRestartCount')
+    Assert-B20IntegrityCondition ($redisRestartCount -ge 0) (
+        'coordination.redisRestartCount is invalid.')
+    $inputHashes = Get-B20IntegrityProperty `
+        $coordination inputSha256 coordination
+    Assert-B20IntegrityCondition (
+        @($inputHashes.PSObject.Properties).Count -eq 5 -and
+        @($inputHashes.PSObject.Properties | Where-Object {
+            [string]$_.Value -cnotmatch '^[0-9A-F]{64}$'
+        }).Count -eq 0) 'The Compose input hash receipt is invalid.'
     $monitoring = Get-B20IntegrityProperty $Record monitoring record
     Assert-B20IntegrityCondition (
         (ConvertTo-B20IntegrityInteger (
