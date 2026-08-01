@@ -6,11 +6,12 @@ B16's original
 Redis defer remains historical evidence. B18A/B and B18C1/C2 established
 bounded local world owners and an unchanged-client semantic edge with exact
 authenticated worker routing. B17 Redis coordination is completed behind an
-explicit opt-in provider. Its private dependency is staged in the main
-`reborn` Compose project, while the observed server remains on `Local`
-coordination until B20H completes. B19 adds bounded report-only PostgreSQL
-reconciliation and an isolated logical-restore drill. `Local` coordination
-remains the default. B20A freezes the exact legacy persistence inventory;
+explicit opt-in provider. Its private dependency and the Redis-coordinated
+worker are active in the main `reborn` Compose project for the local B20H
+rehearsal. `Local` coordination remains the default outside that explicit
+profile. B19 adds bounded report-only PostgreSQL reconciliation and an
+isolated logical-restore drill. B20A freezes the exact legacy persistence
+inventory;
 B20B cuts account/auth/session and semantic-gateway persistence over to
 focused contracts and instruments every remaining legacy call. B20C moves
 live character/pet projections, boost reads, world-boss state, and Zodiac
@@ -91,6 +92,7 @@ document organization; the assessment and recommendations remain intact.
 - [B20G item-template content cutover](docs/data-architecture-b20g-item-template-content-cutover-20260801.md)
 - [B20G pet-content cutover](docs/data-architecture-b20g-pet-content-cutover-20260801.md)
 - [B20H observation and final-removal gate](docs/data-architecture-b20h-observation-gate-20260801.md)
+- [B20H Redis-coordinated local observation status](docs/data-architecture-b20h-redis-observation-20260801.md)
 - [B20H legacy-retirement runbook](docs/operations/b20h-legacy-retirement-runbook.md)
 
 ## Roadmap sections

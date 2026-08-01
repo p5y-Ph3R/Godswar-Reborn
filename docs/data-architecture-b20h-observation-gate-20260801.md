@@ -1,7 +1,8 @@
 # B20H observation and final-removal gate
 
-Status: local gate completed on 2026-08-01; deployment observation and final
-compatibility deletion are pending external evidence
+Status: local gate completed and Redis-coordinated local-alpha observation
+started on 2026-08-01; deployment evidence and final compatibility deletion
+remain pending
 
 ## Outcome
 
@@ -51,6 +52,19 @@ remove broad compatibility call sites and facades, end the prior-binary schema
 compatibility window, add forward-only drop migrations where approved, set
 the ratchet to complete/empty, and repeat the complete PostgreSQL and recovery
 gate set.
+
+## Active local rehearsal
+
+The current local campaign runs the observed server with the `Redis`
+coordination provider and 23 required routes. Its pinned source commit is
+`db6565382693f84b25b94c8790afbb91c9c39697`, T0 is
+`2026-08-01T07:08:36.9520131Z`, and its target end is
+`2026-08-08T07:08:36.9520131Z`. The detailed status and invalidated predecessor
+runs are recorded in
+`docs/data-architecture-b20h-redis-observation-20260801.md`.
+
+This campaign is intentionally classified as `local-alpha-rehearsal` and is
+not eligible to authorize final retirement by itself.
 
 ## Local verification
 

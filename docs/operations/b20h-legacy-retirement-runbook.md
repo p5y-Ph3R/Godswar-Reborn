@@ -103,10 +103,11 @@ signature.
 ## Local Docker alpha observation
 
 The main `reborn` Compose project runs the authoritative PostgreSQL database
-in the durable `godswar-postgres-data` named volume. Redis is deliberately not
-part of this single-process observation: the separate B17 Redis Compose stack
-is disposable coordination test infrastructure and is not an authoritative
-player-data store.
+in the durable `godswar-postgres-data` named volume. The current observation
+also runs the private Redis coordination container from
+`docker-compose.redis.yml` and starts the game server with the explicit
+Redis-coordinated worker profile. Redis remains disposable coordination state
+and is not an authoritative player-data store.
 
 For an alpha rehearsal, the opt-in `b20h-observation` profile runs a pinned
 Prometheus sidecar in the server's network namespace. It can reach the private
@@ -124,7 +125,7 @@ then records T0:
 ```powershell
 ./tools/TestB20HDockerObservation.ps1
 ./tools/StartB20HDockerObservation.ps1 `
-  -ChangeId alpha-b20h-20260801 `
+  -ChangeId alpha-b20h-redis-20260801 `
   -ApprovedByRole project-owner `
   -AllowMutation
 ```
