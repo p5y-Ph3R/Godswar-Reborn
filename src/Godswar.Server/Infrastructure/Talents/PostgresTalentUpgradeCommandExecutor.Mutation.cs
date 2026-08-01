@@ -1,6 +1,7 @@
 using System.Text;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Talents;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -55,9 +56,17 @@ internal sealed partial class PostgresTalentUpgradeCommandExecutor
             """
             SELECT EXISTS (
                 SELECT 1
-                FROM public.talent_templates
+                FROM public.gameplay_talent_definitions
                 WHERE id = @talentId
                   AND class_id = @profession
+                  AND revision = COALESCE(
+                      @gameplayContentRevision,
+                      (
+                          SELECT publication.revision
+                          FROM public.gameplay_content_publication publication
+                          WHERE publication.family = 'gameplay'
+                      )
+                  )
             );
             """,
             connection,
@@ -66,6 +75,9 @@ internal sealed partial class PostgresTalentUpgradeCommandExecutor
         command.Parameters.AddWithValue(
             "profession",
             checked((short)profession));
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         return await command.ExecuteScalarAsync(cancellationToken)
             is true;
     }

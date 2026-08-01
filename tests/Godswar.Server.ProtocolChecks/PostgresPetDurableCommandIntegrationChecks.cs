@@ -47,16 +47,20 @@ internal static partial class
             return;
         }
 
+        GameplayItemContent itemContent;
         await using (var store =
-                     new PostgresGameStore(connectionString))
+                      new PostgresGameStore(connectionString))
         {
             await store.EnsureSeedDataAsync();
+            itemContent = store.ItemContent;
         }
         var fixture = await CreateFixtureAsync(connectionString);
         var options = new PostgresOutboxDispatcherOptions();
         var executor = new PostgresPetDurableCommandExecutor(
             dataSource,
-            options);
+            options,
+            itemContent,
+            PetContentBaseline.Create());
         var correlation = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
@@ -106,7 +110,9 @@ internal static partial class
 
         var restarted = new PostgresPetDurableCommandExecutor(
             dataSource,
-            options);
+            options,
+            itemContent,
+            PetContentBaseline.Create());
         var restartHatch = await restarted.ExecuteAsync(hatchEnvelope);
         Check.True(
             restartHatch.Disposition ==
@@ -317,7 +323,9 @@ internal static partial class
             },
             "pet bag inventory events advance the strict checkpoint");
 
-        await AssertAuthoritativeEquipmentEligibilityAsync(dataSource);
+        await AssertAuthoritativeEquipmentEligibilityAsync(
+            dataSource,
+            itemContent);
         await AssertRawPostgresMutationsFailClosedAsync(
             connectionString,
             fixture,

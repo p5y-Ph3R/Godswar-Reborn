@@ -190,7 +190,8 @@ internal static class Program
                 workspace.WorkerOptionsPath
             ],
             workspace.DirectoryPath,
-            workspace.CreateWorkerEnvironment());
+            workspace.CreateWorkerEnvironment(
+                options.PostgresConnectionString));
 
     private static async Task AssertRelayAliveWithoutWorkerAsync(
         ManagedChildProcess relay,
@@ -404,8 +405,12 @@ internal static class Program
 
     private sealed record SmokeArguments(
         string ServerDllPath,
-        string DotnetHostPath)
+        string DotnetHostPath,
+        string PostgresConnectionString)
     {
+        private const string PostgresConnectionVariable =
+            "GODSWAR_B18C_POSTGRES_CONNECTION_STRING";
+
         public static SmokeArguments Parse(string[] args)
         {
             string? serverDll = null;
@@ -461,7 +466,20 @@ internal static class Program
                     "The dotnet host executable was not found.");
             }
 
-            return new SmokeArguments(serverDll, dotnetHost);
+            var postgresConnectionString =
+                Environment.GetEnvironmentVariable(
+                    PostgresConnectionVariable);
+            if (string.IsNullOrWhiteSpace(postgresConnectionString))
+            {
+                throw new ArgumentException(
+                    $"{PostgresConnectionVariable} is required and must " +
+                    "target an isolated PostgreSQL smoke database.");
+            }
+
+            return new SmokeArguments(
+                serverDll,
+                dotnetHost,
+                postgresConnectionString);
         }
     }
 }

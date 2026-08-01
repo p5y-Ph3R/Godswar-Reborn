@@ -11,29 +11,28 @@ internal sealed partial class PostgresGameStore
                 aptitude,
                 minimum_initial_savvy,
                 maximum_initial_savvy,
-                maximum_initial_savvy_stat_deviation,
-                initial_savvy_policy_version
-            FROM pet_aptitude_templates
+                maximum_initial_savvy_stat_deviation
+            FROM pet_content_aptitude_definitions
+            WHERE revision = @petContentRevision
             ORDER BY aptitude;
             """);
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
 
-        foreach (var expected in PetInitialSavvyPolicy.All)
+        foreach (var expected in PetContent.Aptitudes)
         {
             if (!await reader.ReadAsync(cancellationToken) ||
-                reader.GetInt16(0) != expected.AptitudeValue ||
-                reader.GetInt32(1) != expected.MinimumTotalSavvy ||
-                reader.GetInt32(2) != expected.MaximumTotalSavvy ||
+                reader.GetInt16(0) != expected.Aptitude ||
+                reader.GetInt32(1) != expected.MinimumInitialSavvy ||
+                reader.GetInt32(2) != expected.MaximumInitialSavvy ||
                 reader.GetDecimal(3) !=
-                    expected.MaximumStatDeviationFraction ||
-                !string.Equals(
-                    reader.GetString(4),
-                    PetInitialSavvyPolicy.Version,
-                    StringComparison.Ordinal))
+                    expected.MaximumInitialSavvyStatDeviation)
             {
                 throw new InvalidDataException(
-                    $"Persisted pet initial-savvy policy does not match runtime aptitude {expected.AptitudeValue}.");
+                    $"Published pet initial-savvy policy does not match aptitude {expected.Aptitude}.");
             }
         }
 
@@ -51,8 +50,9 @@ internal sealed partial class PostgresGameStore
             """
             SELECT pet.id
             FROM character_pets pet
-            INNER JOIN pet_aptitude_templates aptitude
-                ON aptitude.aptitude = pet.aptitude
+            INNER JOIN pet_content_aptitude_definitions aptitude
+                ON aptitude.revision = @petContentRevision
+               AND aptitude.aptitude = pet.aptitude
             LEFT JOIN character_pet_stat_values stat
                 ON stat.pet_id = pet.id
             GROUP BY
@@ -88,7 +88,10 @@ internal sealed partial class PostgresGameStore
             """);
         command.Parameters.AddWithValue(
             "policyVersion",
-            PetInitialSavvyPolicy.Version);
+            PetContent.Settings.InitialSavvyPolicyVersion);
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         var invalidPetId =
             await command.ExecuteScalarAsync(cancellationToken);
         if (invalidPetId is not null && invalidPetId is not DBNull)

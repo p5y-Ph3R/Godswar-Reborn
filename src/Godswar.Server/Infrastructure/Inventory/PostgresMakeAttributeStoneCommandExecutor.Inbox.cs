@@ -385,7 +385,7 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
             stored.AuditId);
     }
 
-    private static void ResolveReceiptItems(
+    private void ResolveReceiptItems(
         MakeAttributeStoneResultStatus status,
         CompactItemEntry expected,
         out uint sourceItemId,
@@ -404,7 +404,7 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
         sourceItemId = expected.Id;
         isBound = expected.Bound != 0;
         outputItemId =
-            GearMentorMaterialCatalog.TryGetDust(
+            _itemContent.Templates.Materials.TryGetDust(
                 expected.Id,
                 out var dust)
                 ? dust.AttributeStoneItemId

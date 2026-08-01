@@ -1,8 +1,11 @@
+using Godswar.Server.Application.Items;
+
 namespace Godswar.Server.State;
 
 internal static partial class GearMentorPlanner
 {
     private static bool PlanDecomposition(
+        IItemTemplateCatalog templates,
         CompactItemEntry[] working,
         int playerLevel,
         IReadOnlyList<GearMentorSlotSelection> selections,
@@ -24,7 +27,9 @@ internal static partial class GearMentorPlanner
         {
             var equipment = working[selection.KitBagSlot];
             if (equipment.Stack != 1 ||
-                !EquipmentTemplates.TryGetValue(equipment.Id, out var template))
+                !templates.TryGet(equipment.Id, out var template) ||
+                !EquipmentSlots.IsEquipmentKind(template.Kind) ||
+                !EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot))
             {
                 return Fail(
                     GearMentorStatus.InvalidEquipment,
@@ -61,13 +66,13 @@ internal static partial class GearMentorPlanner
                     out reason);
             }
 
-            var candidates = GetAttributeMatchedDusts(equipment);
+            var candidates = GetAttributeMatchedDusts(templates.Materials, equipment);
             if (candidates.Count == 0)
             {
                 // Some eligible native drops have no appended attribute. The
                 // client establishes that decomposition still returns random
                 // Dust, but it does not ship the original server's drop table.
-                candidates = GearMentorMaterialCatalog.AttributeDusts;
+                candidates = templates.Materials.AttributeDusts;
             }
 
             var selectedIndex = randomIndex(candidates.Count);
@@ -84,7 +89,7 @@ internal static partial class GearMentorPlanner
             var quantity = Math.Clamp(
                 Math.Max(1, (int)equipment.Quality) + Math.Max(1, (int)equipment.Grade) - 1,
                 1,
-                GearMentorMaterialCatalog.StackCap);
+                dust.StackCap);
             outputs.Add(new GearMentorOutput(dust.ItemId, quantity, equipment.Bound));
             working[selection.KitBagSlot] = CompactItemEntry.Empty;
         }
@@ -95,6 +100,7 @@ internal static partial class GearMentorPlanner
     }
 
     private static bool PlanAttributeStone(
+        IItemTemplateCatalog templates,
         CompactItemEntry[] working,
         GearMentorSlotSelection selection,
         List<GearMentorOutput> outputs,
@@ -102,7 +108,7 @@ internal static partial class GearMentorPlanner
         out string reason)
     {
         var dustItem = working[selection.KitBagSlot];
-        if (!GearMentorMaterialCatalog.TryGetDust(dustItem.Id, out var dust))
+        if (!templates.Materials.TryGetDust(dustItem.Id, out var dust))
         {
             return Fail(
                 GearMentorStatus.InvalidDust,
@@ -111,7 +117,7 @@ internal static partial class GearMentorPlanner
                 out reason);
         }
 
-        if (dustItem.Stack < GearMentorMaterialCatalog.StoneRecipeDustQuantity)
+        if (dustItem.Stack < dust.RecipeQuantity)
         {
             return Fail(
                 GearMentorStatus.InsufficientDust,
@@ -122,7 +128,7 @@ internal static partial class GearMentorPlanner
 
         working[selection.KitBagSlot] = Consume(
             dustItem,
-            GearMentorMaterialCatalog.StoneRecipeDustQuantity);
+            dust.RecipeQuantity);
         outputs.Add(new GearMentorOutput(dust.AttributeStoneItemId, 1, dustItem.Bound));
         status = GearMentorStatus.Succeeded;
         reason = string.Empty;
@@ -130,6 +136,7 @@ internal static partial class GearMentorPlanner
     }
 
     private static bool PlanCrystalTransform(
+        IItemMaterialCatalog materials,
         CompactItemEntry[] working,
         GearMentorSlotSelection selection,
         List<GearMentorOutput> outputs,
@@ -137,8 +144,10 @@ internal static partial class GearMentorPlanner
         out string reason)
     {
         var crystal = working[selection.KitBagSlot];
-        if (!TryResolveCrystalTransform(crystal.Id, out var recipe) ||
-            crystal.Stack < 1)
+        if (!materials.TryResolveCrystalTransform(
+                crystal.Id,
+                out var recipe) ||
+            crystal.Stack < recipe.SourceQuantity)
         {
             return Fail(
                 GearMentorStatus.InvalidCrystal,
@@ -147,23 +156,30 @@ internal static partial class GearMentorPlanner
                 out reason);
         }
 
-        working[selection.KitBagSlot] = Consume(crystal, 1);
-        outputs.Add(recipe with { Bound = crystal.Bound });
+        working[selection.KitBagSlot] = Consume(
+            crystal,
+            recipe.SourceQuantity);
+        outputs.Add(new GearMentorOutput(
+            recipe.TargetItemId,
+            recipe.TargetQuantity,
+            crystal.Bound));
         status = GearMentorStatus.Succeeded;
         reason = string.Empty;
         return true;
     }
 
     private static bool PlanGemPieceCombination(
+        IItemMaterialCatalog materials,
         CompactItemEntry[] working,
         GearMentorSlotSelection selection,
         List<GearMentorOutput> outputs,
         out GearMentorStatus status,
         out string reason)
     {
-        const int requiredPieces = 99;
         var pieces = working[selection.KitBagSlot];
-        if (!TryResolveGemPieceCombination(pieces.Id, out var recipe))
+        if (!materials.TryResolveGemPieceCombination(
+                pieces.Id,
+                out var recipe))
         {
             return Fail(
                 GearMentorStatus.InvalidGemPieces,
@@ -172,23 +188,29 @@ internal static partial class GearMentorPlanner
                 out reason);
         }
 
-        if (pieces.Stack < requiredPieces)
+        if (pieces.Stack < recipe.SourceQuantity)
         {
             return Fail(
                 GearMentorStatus.InsufficientGemPieces,
-                "99 matching gem pieces are required.",
+                $"{recipe.SourceQuantity} matching gem pieces are required.",
                 out status,
                 out reason);
         }
 
-        working[selection.KitBagSlot] = Consume(pieces, requiredPieces);
-        outputs.Add(recipe with { Bound = pieces.Bound });
+        working[selection.KitBagSlot] = Consume(
+            pieces,
+            recipe.SourceQuantity);
+        outputs.Add(new GearMentorOutput(
+            recipe.TargetItemId,
+            recipe.TargetQuantity,
+            pieces.Bound));
         status = GearMentorStatus.Succeeded;
         reason = string.Empty;
         return true;
     }
 
     private static IReadOnlyList<AttributeDustDefinition> GetAttributeMatchedDusts(
+        IItemMaterialCatalog materials,
         CompactItemEntry equipment)
     {
         var attributeIds = new[]
@@ -204,7 +226,7 @@ internal static partial class GearMentorPlanner
         foreach (var attributeId in attributeIds)
         {
             if (attributeId.HasValue &&
-                GearMentorMaterialCatalog.TryGetDustForAttribute(attributeId.Value, out var dust) &&
+                materials.TryGetDustForAttribute(attributeId.Value, out var dust) &&
                 seen.Add(dust.ItemId))
             {
                 dusts.Add(dust);
@@ -215,10 +237,11 @@ internal static partial class GearMentorPlanner
     }
 
     private static bool TryAddOutput(
+        IItemMaterialCatalog materials,
         CompactItemEntry[] working,
         GearMentorOutput output)
     {
-        var stackCap = ResolveStackCap(output.ItemId);
+        var stackCap = materials.ResolveStackCap(output.ItemId);
         var remaining = output.Quantity;
         for (var slot = 0; slot < working.Length && remaining > 0; slot++)
         {
@@ -256,27 +279,6 @@ internal static partial class GearMentorPlanner
         }
 
         return remaining == 0;
-    }
-
-    private static int ResolveStackCap(uint itemId)
-    {
-        if (GearMentorMaterialCatalog.TryGetDust(itemId, out var dust))
-        {
-            return dust.StackCap;
-        }
-
-        if (GearEnhancementMaterialCatalog.TryGet(itemId, out var enhancementMaterial))
-        {
-            return enhancementMaterial.StackCap;
-        }
-
-        if (ForgingMaterialCatalog.TryResolve(itemId, out var forgingMaterial))
-        {
-            return forgingMaterial.StackCap;
-        }
-
-        throw new InvalidOperationException(
-            $"Gear Mentor output item {itemId} has no authoritative material definition.");
     }
 
     private static CompactItemEntry Consume(CompactItemEntry item, int quantity)

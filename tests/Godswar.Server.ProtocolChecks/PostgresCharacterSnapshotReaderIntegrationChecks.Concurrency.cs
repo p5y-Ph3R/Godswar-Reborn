@@ -22,7 +22,10 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
         fixtures.Add(fixture);
         var probe = new BlockingSnapshotProbe();
         await using var reader =
-            new PostgresCharacterSnapshotReader(connectionString, probe);
+            new PostgresCharacterSnapshotReader(
+                connectionString,
+                store.ItemContent.Templates,
+                probe);
 
         var oldRead = reader.ReadAsync(fixture.AccountId);
         await probe.WaitUntilReachedAsync()

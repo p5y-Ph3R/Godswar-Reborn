@@ -168,7 +168,7 @@ internal static class PetSystemFoundationChecks
             EnergyAfterMerge: 80);
 
         Check.True(
-            PetManagerPlanner.TryToggleOwnerMerge(
+            PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
                 pet,
                 pet.OwnerCharacterId,
                 outcome,
@@ -180,7 +180,7 @@ internal static class PetSystemFoundationChecks
         Check.Equal(80, mergePlan.PetAfter.CurrentEnergy, "server outcome controls post-merge energy");
 
         Check.True(
-            PetManagerPlanner.TryToggleOwnerMerge(
+            PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
                 mergePlan.PetAfter,
                 pet.OwnerCharacterId,
                 outcome: null,
@@ -192,7 +192,7 @@ internal static class PetSystemFoundationChecks
 
         var lowAmity = pet with { Amity = 39 };
         Check.True(
-            !PetManagerPlanner.TryToggleOwnerMerge(
+            !PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
                 lowAmity,
                 pet.OwnerCharacterId,
                 outcome,
@@ -205,7 +205,7 @@ internal static class PetSystemFoundationChecks
 
         var tooManySkills = outcome with { GrantedSkillIds = [1, 2, 3, 4, 5, 6, 7] };
         Check.True(
-            !PetManagerPlanner.TryToggleOwnerMerge(
+            !PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
                 pet,
                 pet.OwnerCharacterId,
                 tooManySkills,
@@ -221,7 +221,7 @@ internal static class PetSystemFoundationChecks
     {
         var ladder = new[] { 50, 80, 100, 110, 120, 120, 120 };
         Check.True(
-            ladder.Select((_, index) => PetManagerPlanner.RequiredLevelForRebirth(index))
+            ladder.Select((_, index) => PetManagerPlanner.RequiredLevelForRebirth(PetContentTestCatalog.Instance, index))
                 .SequenceEqual(ladder),
             "rebirth level ladder follows Pet_Alter.xml");
 
@@ -248,7 +248,7 @@ internal static class PetSystemFoundationChecks
             acceleration);
 
         Check.True(
-            PetManagerPlanner.TryPlanRebirth(
+            PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet,
                 pet.OwnerCharacterId,
                 new PetRebirthMaterials(
@@ -271,7 +271,7 @@ internal static class PetSystemFoundationChecks
         Check.Equal(2, plan.PetAfter.RebirthsRemaining, "one rebirth chance is consumed");
 
         Check.True(
-            !PetManagerPlanner.TryPlanRebirth(
+            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet with { HasSoulContract = false },
                 pet.OwnerCharacterId,
                 new PetRebirthMaterials(5, 0),
@@ -284,7 +284,7 @@ internal static class PetSystemFoundationChecks
             "missing Soul Contract has a specific rejection");
 
         Check.True(
-            !PetManagerPlanner.TryPlanRebirth(
+            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet,
                 pet.OwnerCharacterId,
                 new PetRebirthMaterials(0, 1),
@@ -297,7 +297,7 @@ internal static class PetSystemFoundationChecks
             "restricted rebirth material has a specific rejection");
 
         Check.True(
-            PetManagerPlanner.TryPlanRebirth(
+            PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet with { IsBound = true },
                 pet.OwnerCharacterId,
                 new PetRebirthMaterials(0, 5),
@@ -333,7 +333,7 @@ internal static class PetSystemFoundationChecks
         var outcome = new AuthoritativePetMergeOutcome(16m, improvedSavvy);
 
         Check.True(
-            PetManagerPlanner.TryPlanPetMerge(
+            PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
                 primary,
                 deputy,
                 primary.OwnerCharacterId,
@@ -351,7 +351,7 @@ internal static class PetSystemFoundationChecks
 
         var contractedDeputy = deputy with { HasSoulContract = true };
         Check.True(
-            PetManagerPlanner.TryPlanPetMerge(
+            PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
                 primary,
                 contractedDeputy,
                 primary.OwnerCharacterId,
@@ -368,7 +368,7 @@ internal static class PetSystemFoundationChecks
             14m,
             new PetSavvy(9m, 19m, 29m, 39m, 49m, 59m));
         Check.True(
-            !PetManagerPlanner.TryPlanPetMerge(
+            !PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
                 primary,
                 deputy,
                 primary.OwnerCharacterId,
@@ -382,7 +382,7 @@ internal static class PetSystemFoundationChecks
             "pet merge outcome rejection");
 
         Check.True(
-            !PetManagerPlanner.TryPlanPetMerge(
+            !PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
                 primary,
                 deputy,
                 primary.OwnerCharacterId,
@@ -396,7 +396,7 @@ internal static class PetSystemFoundationChecks
             "restricted pet-merge material has a specific rejection");
 
         Check.True(
-            PetManagerPlanner.TryPlanPetMerge(
+            PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
                 primary with { IsBound = true },
                 deputy,
                 primary.OwnerCharacterId,

@@ -23,7 +23,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
     private static void CheckOptionalOperationToken()
     {
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 $"/item add crystal1 17 op={OperationId:D}",
                 out var explicitQuantity,
                 out _) &&
@@ -38,7 +38,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "developer grant accepts a final operation ID after quantity");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 $"/gmitem add crystal1 OP={OperationId:D}",
                 out var defaultQuantity,
                 out _) &&
@@ -51,7 +51,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "developer grant accepts operation ID with default quantity");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add crystal1 2",
                 out var legacy,
                 out _) &&
@@ -59,7 +59,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "legacy developer grant remains compatible without a token");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 $"/gmitem add crystal 2 9 op={OperationId:D}",
                 out var splitAlias,
                 out _) &&
@@ -75,7 +75,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
     private static void CheckClearBagOperationToken()
     {
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag confirm",
                 out var legacy,
                 out _) &&
@@ -87,7 +87,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "legacy clear-bag remains compatible without an operation ID");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 $"/item clearbag confirm op={OperationId:D}",
                 out var identified,
                 out _) &&
@@ -102,7 +102,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "clear-bag accepts a final D-format operation ID");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag",
                 out var incomplete,
                 out var usageError) &&
@@ -132,7 +132,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
             "/item clearbag confirm op=",
             "empty clear-bag operation ID");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag confirm op=",
                 out var emptyClearBagOperation,
                 out var emptyClearBagOperationError) &&
@@ -353,7 +353,7 @@ internal static class DeveloperItemGrantCommandEnvelopeChecks
     private static void CheckRejected(string text, string description)
     {
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 text,
                 out var request,
                 out var error) &&

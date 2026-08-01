@@ -14,6 +14,8 @@ internal sealed partial class InMemoryWorkerCoordination :
     private readonly Dictionary<int, int> _playerByAccount = [];
     private readonly Dictionary<WorldInstanceId, RouteEntry> _routes = [];
     private readonly Dictionary<ServerNodeId, WorkerEntry> _workers = [];
+    private readonly Dictionary<RealmId, RealmContentEntry>
+        _realmContent = [];
     private readonly int _capacity;
     private readonly int _maximumConcurrentOperations;
     private readonly object _gate = new();
@@ -86,6 +88,20 @@ internal sealed partial class InMemoryWorkerCoordination :
                         null));
             }
 
+            if (_realmContent.TryGetValue(
+                    request.RealmId,
+                    out var realmContent) &&
+                !string.Equals(
+                    realmContent.ContentRevision,
+                    request.ContentRevision,
+                    StringComparison.Ordinal))
+            {
+                return ValueTask.FromResult(
+                    new WorkerRegistrationResult(
+                        Conflict(),
+                        null));
+            }
+
             foreach (var route in request.Routes)
             {
                 if (_routes.TryGetValue(
@@ -117,6 +133,11 @@ internal sealed partial class InMemoryWorkerCoordination :
                 request.BuildRevision,
                 request.ContentRevision,
                 request.Capabilities.ToArray());
+            _realmContent[request.RealmId] = new RealmContentEntry(
+                request.ContentRevision,
+                Later(
+                    realmContent?.ProvenUntilUtc,
+                    now + ttl));
             foreach (var route in request.Routes)
             {
                 _routes[route.WorldInstanceId] = new RouteEntry(
@@ -186,6 +207,25 @@ internal sealed partial class InMemoryWorkerCoordination :
                 State = state,
                 ProvenUntilUtc = now + ttl
             };
+            var realmId = WorkerRealm(entry.Lease.NodeId);
+            if (_realmContent.TryGetValue(
+                    realmId,
+                    out var realmContent) &&
+                !string.Equals(
+                    realmContent.ContentRevision,
+                    entry.ContentRevision,
+                    StringComparison.Ordinal))
+            {
+                return ValueTask.FromResult(
+                    new WorkerRegistrationResult(
+                        Conflict(),
+                        null));
+            }
+            _realmContent[realmId] = new RealmContentEntry(
+                entry.ContentRevision,
+                Later(
+                    realmContent?.ProvenUntilUtc,
+                    now + ttl));
             entry.Lease = updated;
             return ValueTask.FromResult(
                 new WorkerRegistrationResult(
@@ -329,6 +369,7 @@ internal sealed partial class InMemoryWorkerCoordination :
                 _playerByAccount.Clear();
                 _routes.Clear();
                 _workers.Clear();
+                _realmContent.Clear();
                 _disposed = true;
             }
         }
@@ -370,7 +411,32 @@ internal sealed partial class InMemoryWorkerCoordination :
         {
             RemovePlayer(entry);
         }
+        foreach (var realmId in _realmContent
+                     .Where(entry => entry.Value.ProvenUntilUtc <= now)
+                     .Select(static entry => entry.Key)
+                     .ToArray())
+        {
+            _realmContent.Remove(realmId);
+        }
     }
+
+    private RealmId WorkerRealm(ServerNodeId nodeId)
+    {
+        var realms = _routes.Values
+            .Where(entry => entry.NodeId == nodeId)
+            .Select(static entry => entry.Route.RealmId)
+            .Distinct()
+            .ToArray();
+        return realms.Length == 1
+            ? realms[0]
+            : throw new InvalidDataException(
+                "A registered worker must own routes in exactly one realm.");
+    }
+
+    private static DateTimeOffset Later(
+        DateTimeOffset? left,
+        DateTimeOffset right) =>
+        left.HasValue && left.Value > right ? left.Value : right;
 
     private void RemoveWorkerRoutes(ServerNodeId nodeId)
     {
@@ -453,5 +519,9 @@ internal sealed partial class InMemoryWorkerCoordination :
         ServerNodeId NodeId,
         Guid BootId,
         long WorkerRevision);
+
+    private sealed record RealmContentEntry(
+        string ContentRevision,
+        DateTimeOffset ProvenUntilUtc);
 
 }

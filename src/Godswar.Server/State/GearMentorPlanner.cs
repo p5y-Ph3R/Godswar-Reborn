@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
@@ -81,46 +82,17 @@ internal static partial class GearMentorPlanner
     private const int MinimumDecomposePlayerLevel = 30;
     private const int MinimumDecomposeEquipmentLevel = 50;
 
-    private static readonly IReadOnlyDictionary<uint, ItemTemplateSeed> EquipmentTemplates =
-        ItemTemplateSeeds.All
-            .Where(static template =>
-                template.Id > 0 && EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot))
-            .GroupBy(static template => checked((uint)template.Id))
-            .ToDictionary(static group => group.Key, static group => group.First());
-
-    private static readonly IReadOnlyDictionary<uint, (uint ResultItemId, int Quantity)> CrystalTransforms =
-        new Dictionary<uint, (uint ResultItemId, int Quantity)>
-        {
-            // Level 5 is a local material tier. Two Level 4 Crystals preserve
-            // almost exactly the same forge contribution (25 versus 24).
-            [4234] = (4233, 2),
-            // Level 4 was the stock ceiling and had no downgrade recipe.
-            // Extending the ceiling makes its matching upper-tier conversion
-            // one Level 4 Crystal into two Level 3 Crystals.
-            [4233] = (4232, 2),
-            [4232] = (4231, 4),
-            [4231] = (4230, 8)
-        };
-
-    private static readonly IReadOnlyDictionary<uint, uint> GemPieceRecipes =
-        new Dictionary<uint, uint>
-        {
-            [4214] = 4213,
-            [4224] = 4223,
-            [4216] = 4215,
-            [4226] = 4225,
-            [4235] = 4234
-        };
-
     public static bool TryResolveCrystalTransform(
+        IItemMaterialCatalog materials,
         uint sourceItemId,
         out GearMentorOutput output)
     {
-        if (CrystalTransforms.TryGetValue(sourceItemId, out var recipe))
+        ArgumentNullException.ThrowIfNull(materials);
+        if (materials.TryResolveCrystalTransform(sourceItemId, out var recipe))
         {
             output = new GearMentorOutput(
-                recipe.ResultItemId,
-                recipe.Quantity,
+                recipe.TargetItemId,
+                recipe.TargetQuantity,
                 Bound: 0);
             return true;
         }
@@ -130,14 +102,18 @@ internal static partial class GearMentorPlanner
     }
 
     public static bool TryResolveGemPieceCombination(
+        IItemMaterialCatalog materials,
         uint sourceItemId,
         out GearMentorOutput output)
     {
-        if (GemPieceRecipes.TryGetValue(sourceItemId, out var resultItemId))
+        ArgumentNullException.ThrowIfNull(materials);
+        if (materials.TryResolveGemPieceCombination(
+                sourceItemId,
+                out var recipe))
         {
             output = new GearMentorOutput(
-                resultItemId,
-                Quantity: 1,
+                recipe.TargetItemId,
+                recipe.TargetQuantity,
                 Bound: 0);
             return true;
         }
@@ -147,11 +123,13 @@ internal static partial class GearMentorPlanner
     }
 
     public static GearMentorResult Create(
+        IItemTemplateCatalog templates,
         string kitBag,
         int playerLevel,
         GearMentorRequest? request,
         Func<int, int>? randomIndex = null)
     {
+        ArgumentNullException.ThrowIfNull(templates);
         var originalKitBag = kitBag ?? string.Empty;
         var normalizedKitBag = string.IsNullOrWhiteSpace(kitBag)
             ? GameDefaults.EmptyKitBag
@@ -246,6 +224,7 @@ internal static partial class GearMentorPlanner
         {
             case GearMentorOperation.Decompose:
                 if (PlanDecomposition(
+                        templates,
                         working,
                         playerLevel,
                         request.Selections,
@@ -259,6 +238,7 @@ internal static partial class GearMentorPlanner
                 break;
             case GearMentorOperation.MakeAttributeStone:
                 if (PlanAttributeStone(
+                        templates,
                         working,
                         request.Selections[0],
                         outputs,
@@ -270,6 +250,7 @@ internal static partial class GearMentorPlanner
                 break;
             case GearMentorOperation.TransformCrystal:
                 if (PlanCrystalTransform(
+                        templates.Materials,
                         working,
                         request.Selections[0],
                         outputs,
@@ -281,6 +262,7 @@ internal static partial class GearMentorPlanner
                 break;
             case GearMentorOperation.CombineGemPieces:
                 if (PlanGemPieceCombination(
+                        templates.Materials,
                         working,
                         request.Selections[0],
                         outputs,
@@ -302,7 +284,7 @@ internal static partial class GearMentorPlanner
 
         foreach (var output in outputs)
         {
-            if (!TryAddOutput(working, output))
+            if (!TryAddOutput(templates.Materials, working, output))
             {
                 return Reject(
                     GearMentorStatus.InsufficientCapacity,

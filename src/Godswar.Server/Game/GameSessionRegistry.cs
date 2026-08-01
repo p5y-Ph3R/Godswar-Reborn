@@ -29,6 +29,8 @@ internal sealed partial class GameSessionRegistry
     private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
     private readonly TimeSpan _zodiacPersistenceInterval;
     private readonly MonsterRuntimeMode _monsterRuntimeMode;
+    private readonly GameplayRuntimeCatalogs _gameplayCatalogs;
+    private readonly GameplayItemContent? _itemContent;
 
     public GameSessionRegistry(
         IGameStore? store = null,
@@ -40,7 +42,9 @@ internal sealed partial class GameSessionRegistry
         IZodiacLevelStore? zodiacLevelStore = null,
         IExperienceBoostStateReader? experienceBoosts = null,
         bool requiresDurablePlayerPersistence = false,
-        WorldInstanceRuntimeOptions? worldInstanceOptions = null)
+        WorldInstanceRuntimeOptions? worldInstanceOptions = null,
+        GameplayRuntimeCatalogs? gameplayCatalogs = null,
+        GameplayItemContent? itemContent = null)
     {
         _worldInstanceOptions = SnapshotWorldInstanceOptions(
             worldInstanceOptions);
@@ -66,12 +70,22 @@ internal sealed partial class GameSessionRegistry
         }
 
         _monsterRuntimeMode = monsterRuntimeMode;
+        _gameplayCatalogs = gameplayCatalogs ??
+            GameplayRuntimeCatalogs.Empty;
+        _itemContent = itemContent;
         zodiacEnergyOptions ??= new ZodiacEnergyOptions();
         zodiacEnergyOptions.Normalize();
         _zodiacEnergyPolicy = zodiacEnergyOptions.Snapshot();
         _zodiacPersistenceInterval = TimeSpan.FromSeconds(
             zodiacEnergyOptions.PersistenceIntervalSeconds);
     }
+
+    internal GameplayRuntimeCatalogs GameplayCatalogs =>
+        _gameplayCatalogs;
+
+    private GameplayItemContent RequireItemContent() =>
+        _itemContent ?? throw new InvalidOperationException(
+            "Mount gameplay requires a pinned item-content revision.");
 
     private static (
         T? LegacyStore,

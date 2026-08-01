@@ -1,5 +1,10 @@
 using System.Security.Cryptography;
 using Godswar.Server.Application.Accounts;
+using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Commands;
+using Godswar.Server.Infrastructure.Accounts;
+using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Packets;
 using Godswar.Server.Security.Authentication;
 using Godswar.Server.State;
@@ -14,21 +19,23 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
     private static readonly TimeSpan CleanupTimeout =
         TimeSpan.FromSeconds(5);
 
-    private readonly string _connectionString;
-    private readonly PostgresGameStore _store;
+    private readonly NpgsqlDataSource _dataSource;
+    private readonly PostgresAccountStore _accounts;
+    private readonly ICharacterLifecycleCommandExecutor _characters;
     private readonly byte[] _password;
     private AccountIdentity? _account;
-    private GameCharacter? _character;
 
     private TransientAccountFixture(
-        string connectionString,
-        PostgresGameStore store,
+        NpgsqlDataSource dataSource,
+        PostgresAccountStore accounts,
+        ICharacterLifecycleCommandExecutor characters,
         string loginName,
         string username,
         byte[] password)
     {
-        _connectionString = connectionString;
-        _store = store;
+        _dataSource = dataSource;
+        _accounts = accounts;
+        _characters = characters;
         LoginName = loginName;
         Username = username;
         _password = password;
@@ -44,7 +51,11 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
         string connectionString,
         CancellationToken cancellationToken)
     {
-        var store = new PostgresGameStore(connectionString);
+        var dataSource = NpgsqlDataSource.Create(connectionString);
+        var accounts = new PostgresAccountStore(dataSource);
+        var characters = new PostgresCharacterLifecycleCommandExecutor(
+            dataSource,
+            new PostgresOutboxDispatcherOptions());
         var password = CreateAsciiSecret();
         TransientAccountFixture? fixture = null;
         try
@@ -54,7 +65,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
                 var loginName = $"smoke_{Convert.ToHexString(
                     RandomNumberGenerator.GetBytes(10))}".ToLowerInvariant();
                 var username = PacketText.DecodeLoginName(loginName);
-                if (await store.FindAccountByUsernameAsync(
+                if (await accounts.FindAccountByUsernameAsync(
                         username,
                         cancellationToken) is not null)
                 {
@@ -62,8 +73,9 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
                 }
 
                 fixture = new TransientAccountFixture(
-                    connectionString,
-                    store,
+                    dataSource,
+                    accounts,
+                    characters,
                     loginName,
                     username,
                     password);
@@ -83,7 +95,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
             else
             {
                 CryptographicOperations.ZeroMemory(password);
-                await store.DisposeAsync();
+                await dataSource.DisposeAsync();
             }
             throw;
         }
@@ -109,7 +121,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
         };
         await using (var authentication =
             new AccountAuthenticationService(
-                _store,
+                _accounts,
                 authenticationOptions))
         {
             var created = await authentication.AuthenticateAsync(
@@ -126,21 +138,35 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
             _account = created.Account;
         }
 
-        _character = await _store.CreateCharacterAsync(
+        var characterName = $"Probe{Convert.ToHexString(
+            RandomNumberGenerator.GetBytes(6))}";
+        var create = CharacterCreateCommandEnvelope.Create(
             _account.Id,
-            new GameCharacter
-            {
-                Name = $"Probe{Convert.ToHexString(
-                    RandomNumberGenerator.GetBytes(6))}",
-                Camp = GameDefaults.SpartaCamp,
-                Profession = 1,
-                Level = 80,
-                CurrentHp = 8_000,
-                MaxHp = 8_000,
-                CurrentMp = 4_000,
-                MaxMp = 4_000
-            },
+            new CommandConnectionCorrelation(
+                Guid.NewGuid(),
+                CommandTransportKind.SecureTlsLegacy),
+            DateTimeOffset.UtcNow,
+            new CharacterCreateCommand(
+                Guid.NewGuid(),
+                CharacterLifecycleCommandContract.SingleCharacterSlot,
+                characterName,
+                Gender: 1,
+                Camp: GameDefaults.SpartaCamp,
+                Profession: 1,
+                ZodiacType: 1,
+                Hair: 0,
+                Face: 0,
+                Faith: 1));
+        var result = await _characters.ExecuteAsync(
+            create,
             cancellationToken);
+        if (!result.IsSuccess ||
+            result.Receipt?.Status !=
+                CharacterLifecycleReceiptStatus.Created)
+        {
+            throw new InvalidOperationException(
+                "Could not create the durable transient character.");
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -166,22 +192,6 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
                     // incomplete server session must not prevent removal.
                 }
             }
-            if (_account is not null && _character is not null)
-            {
-                try
-                {
-                    using var cleanup =
-                        new CancellationTokenSource(CleanupTimeout);
-                    await _store.DeleteCharacterAsync(
-                        _account.Id,
-                        _character.Name,
-                        cleanup.Token);
-                }
-                catch (Exception error)
-                {
-                    cleanupError = error;
-                }
-            }
             if (_account is not null)
             {
                 try
@@ -201,7 +211,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
         }
         finally
         {
-            await _store.DisposeAsync();
+            await _dataSource.DisposeAsync();
         }
         if (cleanupError is not null)
         {
@@ -216,9 +226,7 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
         string username,
         CancellationToken cancellationToken)
     {
-        await using var dataSource =
-            NpgsqlDataSource.Create(_connectionString);
-        await using var command = dataSource.CreateCommand("""
+        await using var command = _dataSource.CreateCommand("""
             DELETE FROM accounts
             WHERE id = @accountId
               AND username = @username;
@@ -238,11 +246,9 @@ internal sealed class TransientAccountFixture : IAsyncDisposable
         int accountId,
         CancellationToken cancellationToken)
     {
-        await using var dataSource =
-            NpgsqlDataSource.Create(_connectionString);
         for (var attempt = 0; attempt < 40; attempt++)
         {
-            await using var command = dataSource.CreateCommand("""
+            await using var command = _dataSource.CreateCommand("""
                 SELECT login_status
                 FROM accounts
                 WHERE id = @accountId;

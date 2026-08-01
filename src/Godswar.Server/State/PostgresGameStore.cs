@@ -3,7 +3,13 @@ using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.World;
 using Godswar.Server.Infrastructure.Zodiac;
+using Godswar.Server.Infrastructure.Items;
+using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.Pets;
 using Godswar.Server.Game;
+using Godswar.Server.Application.Pets;
+using System.Data;
+using System.Data.Common;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -14,7 +20,8 @@ internal sealed partial class PostgresGameStore :
     IAccountCredentialStore,
     IAccountDirectory,
     IAccountPresenceWriter,
-    ILegacyAccountLoginStore
+    ILegacyAccountLoginStore,
+    IGameplayItemContentProvider
 {
     private const short ItemLocationEquipment = 0;
     private const short ItemLocationKitBag = 1;
@@ -24,12 +31,14 @@ internal sealed partial class PostgresGameStore :
         cb.id, cb.account_id, cb.name, cb.gender, cb.camp, cb.profession, cb.hair_style,
         COALESCE(cb.face_shap, 0), cb.belief, cb."Map", cb.fighter_job_lv, cb."MaxHP",
         cb."MaxMP", cb."curHP", cb."curMP", cb."Pos_X", cb."Pos_Z", cb."Register_time",
-        COALESCE(ck.equip, ''), COALESCE(ck.kitbag_1, ''), cb."SkillPoint", cb."SkillExp",
+        COALESCE(equipment_projection.equip, ''),
+        COALESCE(kitbag_projection.kitbag_1, ''),
+        cb."SkillPoint", cb."SkillExp",
         COALESCE(cb.holy_suit_points, 0),
-        COALESCE((SELECT cr.weapon_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
-        COALESCE((SELECT cr.weapon_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
-        COALESCE((SELECT cr.armor_rank FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0::smallint),
-        COALESCE((SELECT cr.armor_aura_effect FROM character_rank_summary cr WHERE cr.user_id = cb.id), 0),
+        item_rank_projection.weapon_rank,
+        item_rank_projection.weapon_aura_effect,
+        item_rank_projection.armor_rank,
+        item_rank_projection.armor_aura_effect,
         cb.fighter_job_exp, cb.vitals_revision,
         cb.zodiac_type, cb.zodiac_lucky_status, cb.zodiac_lucky_expires_at,
         cb.zodiac_level, cb.zodiac_energy, cb.zodiac_accumulated_exp_x100,
@@ -64,8 +73,15 @@ internal sealed partial class PostgresGameStore :
     private readonly PostgresWorldBossAreaControlStore
         _worldBossAreaControlStore;
     private readonly PostgresZodiacLevelStore _zodiacLevelStore;
-    private readonly PostgresSchemaMigrationRunner _schemaMigrationRunner;
-    public PostgresGameStore(string connectionString)
+    private GameplayItemContent? _itemContent;
+    private IPetContentCatalog? _petContent;
+    private readonly string? _gameplayContentRevision;
+
+    public PostgresGameStore(
+        string connectionString,
+        GameplayItemContent? itemContent = null,
+        string? gameplayContentRevision = null,
+        IPetContentCatalog? petContent = null)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -73,13 +89,53 @@ internal sealed partial class PostgresGameStore :
         }
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
         _accountStore = new PostgresAccountStore(_dataSource);
         _experienceBoostStateReader =
-            new PostgresExperienceBoostStateReader(_dataSource);
+            new PostgresExperienceBoostStateReader(
+                _dataSource,
+                _gameplayContentRevision);
         _worldBossAreaControlStore =
-            new PostgresWorldBossAreaControlStore(_dataSource);
+            new PostgresWorldBossAreaControlStore(
+                _dataSource,
+                _gameplayContentRevision);
         _zodiacLevelStore = new PostgresZodiacLevelStore(_dataSource);
-        _schemaMigrationRunner = new PostgresSchemaMigrationRunner(_dataSource);
+        _itemContent = itemContent;
+        _petContent = petContent;
+    }
+
+    public GameplayItemContent ItemContent =>
+        _itemContent ?? throw new InvalidOperationException(
+            "Item content must be pinned before gameplay operations run.");
+
+    public IPetContentCatalog PetContent =>
+        _petContent ?? throw new InvalidOperationException(
+            "Pet content must be pinned before gameplay operations run.");
+
+    private void AddItemContentRevisionParameter(DbCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "itemContentRevision";
+        parameter.DbType = DbType.String;
+        parameter.Value = ItemContent.Templates.Revision.Sha256;
+        command.Parameters.Add(parameter);
+    }
+
+    private void AddGameplayContentRevisionParameter(
+        DbCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var parameter = command.CreateParameter();
+        parameter.ParameterName =
+            PostgresGameplayContentBinding.ParameterName;
+        parameter.DbType = DbType.String;
+        parameter.Value = _gameplayContentRevision is null
+            ? DBNull.Value
+            : _gameplayContentRevision;
+        command.Parameters.Add(parameter);
     }
 
     public async Task EnsureSeedDataAsync(CancellationToken cancellationToken = default)
@@ -90,22 +146,21 @@ internal sealed partial class PostgresGameStore :
         {
             try
             {
-                await _schemaMigrationRunner
-                    .InitializeGodswarSchemaAsync(cancellationToken);
+                _itemContent ??= new GameplayItemContent(
+                    await PostgresItemTemplateContentBootstrapper.LoadAsync(
+                        _dataSource,
+                        cancellationToken));
+                _petContent ??=
+                    await PostgresPetContentBootstrapper.LoadAsync(
+                        _dataSource,
+                        ItemContent.Templates,
+                        cancellationToken);
                 await ValidatePetGrowthPolicyAsync(cancellationToken);
                 await ValidatePetGrowthStateAsync(cancellationToken);
                 await ValidatePetInitialSavvyPolicyAsync(cancellationToken);
                 await ValidatePetInitialSavvyStateAsync(cancellationToken);
                 await ValidatePetAddedSavvyPolicyAsync(cancellationToken);
                 await ValidatePetSavvyBaselineStateAsync(cancellationToken);
-                await SeedItemTemplatesAsync(cancellationToken);
-                await ApplyServerCompatibilityTemplateOverridesAsync(cancellationToken);
-                await SeedItemAttributeTemplatesAsync(cancellationToken);
-                await SeedSkillTalentTemplatesAsync(cancellationToken);
-                await SeedNpcTemplatesAsync(cancellationToken);
-                await SeedMapTemplatesAsync(cancellationToken);
-                await SeedMonsterTemplatesAsync(cancellationToken);
-                await SeedWorldBossAreasAsync(cancellationToken);
                 await SyncCharacterEquipAsync(cancellationToken);
                 await SyncCharacterStarterSkillsAsync(cancellationToken);
                 return;

@@ -15,12 +15,11 @@ Use schemas to clarify ownership without an immediate physical split:
 
 Changing schema names is not the first task; ownership and contracts come first.
 
-For content, separate authoring authority from runtime-serving authority:
+Content authoring is separated from runtime-serving authority:
 
-- **Requires clarification:** choose one source-controlled authoring input per content family (generated source/resources or an approved authoring database/tool). Captured packets are evidence, not silently authoritative content.
-- A build/publish step validates that input and produces one immutable `content_release` manifest.
-- PostgreSQL is the runtime-serving projection for the selected release where relational querying is needed; packaged immutable resources may serve a content family only if that family does not also read mutable PG copies.
-- Every server pins one release ID. Exactly one representation owns a given runtime field for that release; all other copies are generated projections with checksums.
+- B20G publishers validate reviewed source/resource or relational authoring inputs and produce immutable PostgreSQL world, gameplay, item, and pet revisions. Captures remain research evidence.
+- PostgreSQL is the sole runtime-serving owner. Every server pins compatible release IDs, validates counts and hashes, and never reads mutable authoring copies for gameplay.
+- The future editor/review workflow remains a product/tooling question; it must publish a new revision rather than mutate an active one.
 
 ## 6.2 Existing and proposed aggregates
 
@@ -34,7 +33,7 @@ For content, separate authoring authority from runtime-serving authority:
 | Skills/talents - Existing | composite character/skill or character/talent PK | Current composite PK/FKs to content; no general database rank checks; target bounded rank/level checks | Target upgrade plus points/currency/inbox in one transaction | Load all by character; cascade only with controlled character purge |
 | Pets - Partially implemented in dirty tree | `pet_templates`, `character_pets`, stat/bonus/skill children, `pet_operation_audit` | owner FKs; pet revision; unique carried/summoned partial indexes; level 1-120 checks | Hatch/presence/level transaction. Propagate client operation ID rather than generate it inside store | Load owned pets; command by pet/owner. Controlled delete/audit; template RESTRICT |
 | Boosts/world control - Existing | character modifiers, world-boss areas, faction-area control | Current keys/indexes/death-token behavior as defined by existing tables; target prove/enforce one logical modifier source/control interval and query-driven expiry/map indexes | Existing idempotent kill token where implemented; target monotonic online watermark and complete audit | Active-by-character/map/time query; archive expired audit as policy requires |
-| Content - Existing | item, attribute, skill, talent, NPC, map, link, monster, pet templates; JSONB metadata where appropriate | Current stable PKs/FKs vary by catalog; target add a content revision and only demonstrated JSONB expression/GIN indexes | Target publish one immutable content revision; do not let rolling versions race startup upserts | Lookup by ID/map; preload immutable revision. Retain at least previous compatible release |
+| Content - Existing, versioned | revision-owned item, attribute, skill, talent, NPC, map, link, monster, and pet definitions; JSONB metadata where appropriate | Stable IDs plus revision-scoped PK/FKs, bounded counts, immutable-row/pointer guards; add JSONB indexes only for demonstrated predicates | Publish complete immutable revisions and move pointers atomically; workers pin compatible hashes for their lifetime | Lookup by ID/map from pinned projections; retain compatible rollback revisions |
 | Audit/inbox/outbox - Missing/generalize | `command_inbox(id, principal_id, aggregate_type/id, command_family, operation_id, request_hash, result, token_expires_at, committed_at)`, `outbox(id, aggregate_type/id, version, event_type, payload, attempts, available_at)`, feature audits | Unique `(principal_id, aggregate_type, aggregate_id, command_family, operation_id)`; ledgers reference inbox `id`; outbox ready/aggregate indexes; payload size checks | Written in same transaction as authoritative change | Inbox lookup on retry; version-aware outbox polling; token validity and inbox retention aligned |
 | Quests - Missing | Do not create until gameplay contract exists; likely character quest header/objectives/reward claims | Future unique character/quest/version and objective FKs | Reward claim atomically with progression/inventory and inbox | Future only |
 | Guilds/trades/mail/auctions/entitlements - Missing | Do not create speculative schemas. Use separate PG aggregates when feature semantics are approved | Relational constraints and query-driven indexes | Trade/auction/purchase value commits atomically with ledger/audit/outbox | Future only; no repository code currently supports them |

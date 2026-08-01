@@ -10,7 +10,6 @@ internal enum ServerRuntimeProfileKind
 
 internal enum GameStorageProviderKind
 {
-    Json = 1,
     Postgres = 2
 }
 
@@ -21,7 +20,6 @@ internal enum ServerStartupRejectionReason
     RuntimeProfileUnknown = 3,
     StorageProviderMissing = 4,
     StorageProviderUnknown = 5,
-    JsonStorageForbidden = 6,
     PostgresConnectionMissing = 7,
     RawTransportForbidden = 8,
     LegacyRawAuthenticationDisabled = 9,
@@ -85,15 +83,6 @@ internal static class ServerRuntimeProfilePolicy
             throw Reject(
                 ServerStartupRejectionReason.PostgresConnectionMissing,
                 "PostgreSQL storage requires an explicit connection string.");
-        }
-
-        if (storageProvider == GameStorageProviderKind.Json &&
-            runtimeProfile !=
-                ServerRuntimeProfileKind.LocalDevelopment)
-        {
-            throw Reject(
-                ServerStartupRejectionReason.JsonStorageForbidden,
-                "JSON storage is restricted to LocalDevelopment.");
         }
 
         var secure = options.Secure;
@@ -166,8 +155,6 @@ internal static class ServerRuntimeProfilePolicy
                 "storage_provider_missing",
             ServerStartupRejectionReason.StorageProviderUnknown =>
                 "storage_provider_unknown",
-            ServerStartupRejectionReason.JsonStorageForbidden =>
-                "json_storage_forbidden",
             ServerStartupRejectionReason.PostgresConnectionMissing =>
                 "postgres_connection_missing",
             ServerStartupRejectionReason.RawTransportForbidden =>
@@ -221,13 +208,6 @@ internal static class ServerRuntimeProfilePolicy
             throw Reject(
                 ServerStartupRejectionReason.StorageProviderMissing,
                 "A storage provider is required.");
-        }
-
-        if (value.Trim().Equals(
-                nameof(GameStorageProviderKind.Json),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return GameStorageProviderKind.Json;
         }
 
         if (value.Trim().Equals(

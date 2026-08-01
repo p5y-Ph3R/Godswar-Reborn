@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
 using Npgsql;
 
@@ -18,11 +19,29 @@ internal sealed partial class PostgresTalentUpgradeCommandExecutor :
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresTalentUpgradeCommandProbe? _probe;
+    private readonly string? _gameplayContentRevision;
 
     public PostgresTalentUpgradeCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
         IPostgresTalentUpgradeCommandProbe? probe = null)
+        : this(dataSource, options, null, probe)
+    {
+    }
+
+    public PostgresTalentUpgradeCommandExecutor(
+        NpgsqlDataSource dataSource,
+        PostgresOutboxDispatcherOptions options,
+        string gameplayContentRevision)
+        : this(dataSource, options, gameplayContentRevision, null)
+    {
+    }
+
+    internal PostgresTalentUpgradeCommandExecutor(
+        NpgsqlDataSource dataSource,
+        PostgresOutboxDispatcherOptions options,
+        string? gameplayContentRevision,
+        IPostgresTalentUpgradeCommandProbe? probe)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -35,6 +54,9 @@ internal sealed partial class PostgresTalentUpgradeCommandExecutor :
         _maximumOutboxAttempts =
             checked((short)options.MaximumDeliveryAttempts);
         _probe = probe;
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
     }
 
     public async Task<TalentUpgradeExecutionResult> ExecuteAsync(

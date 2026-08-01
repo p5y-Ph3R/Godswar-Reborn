@@ -154,11 +154,7 @@ internal sealed partial class
         var item = slots.KitBag ??
             throw new InvalidDataException(
                 "Validated transfer has no source item.");
-        var template = await ReadItemTemplateAsync(
-            connection,
-            transaction,
-            item.Item.Id,
-            cancellationToken);
+        var template = ReadItemTemplate(item.Item.Id);
         if (template is null ||
             !EquipmentSlots.IsEquipmentKind(template.Kind))
         {
@@ -191,7 +187,9 @@ internal sealed partial class
                 "mount",
                 StringComparison.OrdinalIgnoreCase))
         {
-            if (!MountCatalog.TryGetRideDefinition(item.Item.Id, out _))
+            if (!_itemContent.Mounts.TryGetRideDefinition(
+                    item.Item.Id,
+                    out _))
             {
                 return EquipmentBagTransferResultStatus
                     .MountUnsupported;
@@ -223,40 +221,19 @@ internal sealed partial class
         return EquipmentBagTransferResultStatus.Equipped;
     }
 
-    private async Task<ItemTemplate?> ReadItemTemplateAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        uint itemId,
-        CancellationToken cancellationToken)
+    private ItemTemplate? ReadItemTemplate(uint itemId)
     {
-        await using var command = CreateCommand(
-            """
-            SELECT
-                kind,
-                equipment_slot,
-                class_ids,
-                min_level,
-                max_level
-            FROM public.item_templates
-            WHERE id = @itemId;
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue(
-            "itemId",
-            checked((int)itemId));
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        if (!_itemContent.Templates.TryGet(itemId, out var definition))
         {
             return null;
         }
+
         return new ItemTemplate(
-            reader.GetString(0),
-            reader.GetInt16(1),
-            reader.GetFieldValue<short[]>(2),
-            reader.IsDBNull(3) ? null : reader.GetInt32(3),
-            reader.IsDBNull(4) ? null : reader.GetInt32(4));
+            definition.Kind,
+            definition.EquipmentSlot,
+            definition.ClassIds.ToArray(),
+            definition.MinLevel,
+            definition.MaxLevel);
     }
 
     private async Task<bool> HasEquippedMountGearAsync(
@@ -297,9 +274,8 @@ internal sealed partial class
     {
         await using var command = CreateCommand(
             """
-            SELECT it.kind, it.min_level
+            SELECT ci.prop_id
             FROM public.character_items ci
-            LEFT JOIN public.item_templates it ON it.id = ci.prop_id
             WHERE ci.user_id = @characterId
               AND ci.item_location = 0
               AND ci.slot_index = 20
@@ -311,16 +287,16 @@ internal sealed partial class
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken) ||
-            reader.IsDBNull(0) ||
-            !reader.GetString(0).Equals(
+            !_itemContent.Templates.TryGet(
+                checked((uint)reader.GetInt32(0)),
+                out var mountTemplate) ||
+            !mountTemplate.Kind.Equals(
                 "mount",
                 StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
-        var mountLevel = reader.IsDBNull(1)
-            ? 1
-            : reader.GetInt32(1);
+        var mountLevel = mountTemplate.MinLevel ?? 1;
         return mountLevel >= requiredLevel;
     }
 
@@ -333,9 +309,8 @@ internal sealed partial class
     {
         await using var command = CreateCommand(
             """
-            SELECT it.kind, it.min_level
+            SELECT ci.prop_id
             FROM public.character_items ci
-            LEFT JOIN public.item_templates it ON it.id = ci.prop_id
             WHERE ci.user_id = @characterId
               AND ci.item_location = 0
               AND ci.slot_index BETWEEN 15 AND 19
@@ -349,11 +324,13 @@ internal sealed partial class
             await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            if (reader.IsDBNull(0) ||
+            if (!_itemContent.Templates.TryGet(
+                    checked((uint)reader.GetInt32(0)),
+                    out var gearTemplate) ||
                 !EquipmentEligibility.IsMountGearKind(
-                    reader.GetString(0)) ||
-                (!reader.IsDBNull(1) &&
-                 reader.GetInt32(1) > mountLevel))
+                    gearTemplate.Kind) ||
+                (gearTemplate.MinLevel is { } minimumLevel &&
+                 minimumLevel > mountLevel))
             {
                 return false;
             }

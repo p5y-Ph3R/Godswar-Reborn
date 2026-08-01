@@ -108,7 +108,9 @@ internal sealed partial class GameClientHandler
         }
 
         if (cast.SkillId > int.MaxValue ||
-            !SkillCombatCatalog.TryGet((int)cast.SkillId, out var combat) ||
+            !_gameplayCatalogs.SkillCombat.TryGet(
+                (int)cast.SkillId,
+                out var combat) ||
             !SkillCombatResolver.IsHostileMonsterSkill(combat))
         {
             Console.WriteLine(

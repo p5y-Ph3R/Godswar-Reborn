@@ -4,7 +4,7 @@ using Godswar.Server.Application.World;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class WorldContentReaderChecks
+internal static partial class WorldContentReaderChecks
 {
     private static readonly DateTimeOffset FixedLoadTime =
         new(2026, 7, 29, 0, 0, 0, TimeSpan.Zero);
@@ -15,7 +15,9 @@ internal static class WorldContentReaderChecks
         await CheckPinnedDefensiveCopiesAsync();
         await CheckKnownEmptyAndUnknownMapsAsync();
         CheckMalformedContentRejections();
+        CheckMonsterSpawnGameplayCompatibility();
         CheckExpectedRevisionGuard();
+        CheckGameplayHashDomainSeparation();
         await CheckSafeBootstrapParityAsync();
         await CheckMetricsAsync();
         await WorldContentReaderDialogueChecks.RunAsync();
@@ -91,7 +93,7 @@ internal static class WorldContentReaderChecks
             first.Manifest.EnterBootstrap.Sha256,
             "bootstrap-family canonical revision golden vector");
         Check.Equal(
-            "975FA14BCC4AC2989656FC357A62E398FC5002E000950BE2CDC5E9F938847E3F",
+            "A7338B37CE560E2D276248A646A72CA71D8116DE5F08DEC7C75320A725C862DF",
             first.Manifest.Revision,
             "combined content-manifest canonical revision golden vector");
         Check.Equal(2, first.Manifest.Maps.EntryCount, "duplicate map IDs are canonicalized");

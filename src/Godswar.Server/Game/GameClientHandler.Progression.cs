@@ -331,7 +331,7 @@ internal sealed partial class GameClientHandler
         Guid deathEventId)
     {
         if (_character is null ||
-            !WorldBossCatalog.Default.IsWorldBoss(
+            !_gameplayCatalogs.WorldBosses.IsWorldBoss(
                 _character.CurrentMap,
                 damageResult.Monster.Definition.TemplateKey))
         {

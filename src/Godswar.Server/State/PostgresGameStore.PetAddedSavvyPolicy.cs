@@ -6,8 +6,9 @@ internal sealed partial class PostgresGameStore
         """
         SELECT pet.id
         FROM character_pets pet
-        INNER JOIN pet_aptitude_templates aptitude
-            ON aptitude.aptitude = pet.aptitude
+        INNER JOIN pet_content_aptitude_definitions aptitude
+            ON aptitude.revision = @petContentRevision
+           AND aptitude.aptitude = pet.aptitude
         LEFT JOIN character_pet_stat_values stat
             ON stat.pet_id = pet.id
         WHERE pet.rarity_added_savvy_baseline_total IS NOT NULL
@@ -57,26 +58,27 @@ internal sealed partial class PostgresGameStore
                 aptitude,
                 minimum_added_savvy,
                 maximum_added_savvy,
-                added_savvy_policy_version
-            FROM pet_aptitude_templates
+                aptitude
+            FROM pet_content_aptitude_definitions
+            WHERE revision = @petContentRevision
             ORDER BY aptitude;
             """);
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
 
-        foreach (var expected in PetAddedSavvyPolicy.All)
+        foreach (var expected in PetContent.Aptitudes)
         {
             if (!await reader.ReadAsync(cancellationToken) ||
-                reader.GetInt16(0) != expected.AptitudeValue ||
-                reader.GetInt32(1) != expected.MinimumTotalSavvy ||
-                reader.GetInt32(2) != expected.MaximumTotalSavvy ||
-                !string.Equals(
-                    reader.GetString(3),
-                    PetAddedSavvyPolicy.Version,
-                    StringComparison.Ordinal))
+                reader.GetInt16(0) != expected.Aptitude ||
+                reader.GetInt32(1) != expected.MinimumAddedSavvy ||
+                reader.GetInt32(2) != expected.MaximumAddedSavvy ||
+                reader.GetInt16(3) != expected.Aptitude)
             {
                 throw new InvalidDataException(
-                    $"Persisted pet added-savvy policy does not match runtime aptitude {expected.AptitudeValue}.");
+                    $"Published pet added-savvy policy does not match aptitude {expected.Aptitude}.");
             }
         }
 
@@ -94,10 +96,13 @@ internal sealed partial class PostgresGameStore
             PetSavvyBaselineValidationSql);
         command.Parameters.AddWithValue(
             "addedPolicyVersion",
-            PetAddedSavvyPolicy.Version);
+            PetContent.Settings.AddedSavvyPolicyVersion);
         command.Parameters.AddWithValue(
             "initialSourceVersion",
             "growth-x1-v1");
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         var invalidPetId =
             await command.ExecuteScalarAsync(cancellationToken);
         if (invalidPetId is not null && invalidPetId is not DBNull)

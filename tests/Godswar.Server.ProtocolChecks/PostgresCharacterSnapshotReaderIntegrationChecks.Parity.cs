@@ -44,7 +44,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             fixture.CharacterId);
 
         await using var reader =
-            new PostgresCharacterSnapshotReader(connectionString);
+            new PostgresCharacterSnapshotReader(
+                connectionString,
+                store.ItemContent.Templates);
         ICharacterRuntimeProjectionReader runtimeProjectionReader = reader;
         IOwnedPetSnapshotReader ownedPetSnapshotReader = reader;
         var focusedStats =
@@ -184,7 +186,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             "Host=127.0.0.1;Port=1;Database=unused;" +
             "Username=unused;Password=unused;Timeout=1";
         await using var reader =
-            new PostgresCharacterSnapshotReader(unusedConnectionString);
+            new PostgresCharacterSnapshotReader(
+                unusedConnectionString,
+                TestItemContent.Catalog);
         await AssertFocusedProjectionContractsAsync(reader, reader);
     }
 

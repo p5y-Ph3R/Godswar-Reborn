@@ -1,8 +1,10 @@
 using Godswar.Server;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.RelayGateway;
 using Godswar.Server.Networking.SemanticGateway;
@@ -43,45 +45,48 @@ try
     var phase4AcceptanceFaults =
         SecurePhase4AcceptanceFaults.Create(
             options.Secure.Phase4AcceptanceFaults);
-    JsonGameStore? jsonGameStore = null;
-    await using IGameStore store = runtimeProfile.StorageProvider switch
-    {
-        GameStorageProviderKind.Postgres =>
-            new PostgresGameStore(
-                options.Storage.PostgresConnectionString),
-        GameStorageProviderKind.Json =>
-            jsonGameStore = new JsonGameStore(options.DataPath),
-        _ => throw new InvalidOperationException(
-            "Validated storage provider is not exhaustive.")
-    };
-    LegacyPersistenceMetrics.Record(
-        LegacyPersistenceOperation.EnsureSeedData);
-    await store.EnsureSeedDataAsync();
-    await using PostgresApplicationDataRuntime?
-        postgresApplicationDataRuntime =
-            runtimeProfile.StorageProvider == GameStorageProviderKind.Postgres
-                ? new PostgresApplicationDataRuntime(
-                    options.Storage.PostgresConnectionString,
-                    options.Storage.Outbox,
-                    options.Game.ZodiacEnergy.Snapshot(),
-                    options.Storage.Reconciliation)
-                : null;
-    var accountPersistence = ServerAccountPersistenceComposition.Create(
-        postgresApplicationDataRuntime,
-        jsonGameStore);
-    var gameplayPersistence =
-        ServerGameplayPersistenceComposition.Create(
-            postgresApplicationDataRuntime,
-            jsonGameStore);
+    await PostgresSchemaStartup.InitializeAsync(
+        options.Storage.PostgresConnectionString);
+    await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+        options.Storage.PostgresConnectionString);
+    var itemContent =
+        await ServerItemContentComposition.LoadAsync(options);
+    var petContent = await ServerPetContentComposition.LoadAsync(
+        options,
+        itemContent.Templates);
     var worldContent =
         await ServerWorldContentComposition.TryLoadAsync(
-            runtimeProfile,
             options);
     if (worldContent is null)
     {
         return;
     }
-
+    RuntimeContentCompatibilityValidator.Validate(
+        itemContent.Templates,
+        worldContent.Gameplay);
+    var gameplayCatalogs = GameplayRuntimeCatalogs.Create(
+        worldContent.Gameplay);
+    var gameplayContentRevision =
+        worldContent.Manifest.Gameplay.Sha256;
+    await using IGameStore store = new PostgresGameStore(
+        options.Storage.PostgresConnectionString,
+        itemContent,
+        gameplayContentRevision,
+        petContent);
+    await using var postgresApplicationDataRuntime =
+        new PostgresApplicationDataRuntime(
+            options.Storage.PostgresConnectionString,
+            options.Storage.Outbox,
+            options.Game.ZodiacEnergy.Snapshot(),
+            itemContent,
+            gameplayContentRevision,
+            petContent,
+            options.Storage.Reconciliation);
+    var accountPersistence = ServerAccountPersistenceComposition.Create(
+        postgresApplicationDataRuntime);
+    var gameplayPersistence =
+        ServerGameplayPersistenceComposition.Create(
+            postgresApplicationDataRuntime);
     using var shutdown = new CancellationTokenSource();
     var controlledHostShutdown =
         ControlledHostShutdownControl.TryCreateFromEnvironment(
@@ -91,7 +96,10 @@ try
     await using var coordination =
         await ServerCoordinationComposition.CreateAsync(
             options,
-            worldContent.Manifest.Revision,
+            RuntimeContentFingerprint.Create(
+                worldContent.Manifest.Revision,
+                itemContent.Templates.Revision.Sha256,
+                petContent.Revision.Sha256),
             shutdown.Token);
 
     await using var characterCheckpoints =
@@ -104,16 +112,19 @@ try
         options.Game.Monsters.Runtime,
         options.Game.Players.Runtime,
         characterCheckpoints,
-        postgresApplicationDataRuntime?
+        postgresApplicationDataRuntime
             .ProgressionIntervalSettlementCommands,
         zodiacLevelStore:
             gameplayPersistence.ZodiacLevels,
         experienceBoosts:
             gameplayPersistence.ExperienceBoosts,
-        requiresDurablePlayerPersistence:
-            postgresApplicationDataRuntime is not null,
+        requiresDurablePlayerPersistence: true,
         worldInstanceOptions:
-            options.Game.WorldInstances);
+            options.Game.WorldInstances,
+        gameplayCatalogs:
+            gameplayCatalogs,
+        itemContent:
+            itemContent);
     var gameHandlerFactory = new GameClientHandlerFactory(
         store,
         accountPersistence.Directory,
@@ -125,7 +136,10 @@ try
         characterCheckpoints,
         gameplayPersistence,
         postgresApplicationDataRuntime,
-        coordination.Worker);
+        coordination.Worker,
+        gameplayCatalogs,
+        itemContent,
+        petContent);
     var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
         options.Network.MaxActiveConnections,
         options.Network.MaxUnauthenticatedConnections,
@@ -252,7 +266,7 @@ try
         characterCheckpoints,
         registry,
         postgresApplicationDataRuntime,
-        postgresApplicationDataRuntime?.OutboxEnabled == true,
+        postgresApplicationDataRuntime.OutboxEnabled,
         options.Game.ZodiacEnergy.Enabled,
         secureUdpRuntime,
         coordination.Worker,
@@ -355,13 +369,10 @@ try
                 CriticalTaskKind.ZodiacEnergyAccrual,
                 registry.RunZodiacEnergyAccrualAsync);
         }
-        if (postgresApplicationDataRuntime is not null)
-        {
-            criticalTasks.Start(
-                CriticalTaskKind.DurableProgressionRetry,
-                registry.RunDurableProgressionRetryAsync);
-        }
-        if (postgresApplicationDataRuntime?.OutboxEnabled == true)
+        criticalTasks.Start(
+            CriticalTaskKind.DurableProgressionRetry,
+            registry.RunDurableProgressionRetryAsync);
+        if (postgresApplicationDataRuntime.OutboxEnabled)
         {
             criticalTasks.Start(
                 CriticalTaskKind.OutboxDispatcher,

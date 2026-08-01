@@ -322,8 +322,9 @@ internal sealed partial class PostgresReconciliationSnapshot
             EXISTS (
                 SELECT 1
                 FROM public.character_items orphan_item
-                LEFT JOIN public.item_templates template
-                    ON template.id = orphan_item.prop_id
+                LEFT JOIN public.item_template_content_definitions template
+                    ON template.revision = @itemContentRevision
+                   AND template.id = orphan_item.prop_id
                 WHERE orphan_item.user_id = keys.character_id
                   AND template.id IS NULL
             ),

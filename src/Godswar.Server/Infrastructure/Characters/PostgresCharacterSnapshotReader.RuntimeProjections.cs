@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Data;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -63,6 +64,12 @@ internal sealed partial class PostgresCharacterSnapshotReader
             CalculatedStatsQuery);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue(
+            "itemContentRevision",
+            _itemContentRevision);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         return await ReadOptionalCalculatedStatsAsync(
@@ -81,6 +88,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("skillId", skillId);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is bool learned
             ? learned
@@ -177,12 +187,20 @@ internal sealed partial class PostgresCharacterSnapshotReader
             FROM character_base character
             JOIN character_skills skill
               ON skill.user_id = character.id
-            JOIN skill_templates template
+            JOIN gameplay_skill_combat_definitions template
               ON template.skill_id = skill.skill_id
             WHERE character.account_id = @accountId
               AND character.id = @characterId
               AND character.lifecycle_state = 'active'
               AND skill.skill_id = @skillId
+              AND template.revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
               AND character.profession = ANY(template.class_ids)
         );
         """;

@@ -64,10 +64,7 @@ internal static class BackhaulSkillCatalog
 
         foreach (var definition in definitions)
         {
-            if (!MapTraversalCatalog.Default.TryGetMap(
-                    definition.TargetMapId,
-                    out _) ||
-                !MapTraversalLimits.IsFiniteAndBounded(
+            if (!MapTraversalLimits.IsFiniteAndBounded(
                     new MapTraversalPosition(
                         definition.TargetX,
                         definition.TargetZ)) ||

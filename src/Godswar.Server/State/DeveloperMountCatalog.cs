@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
@@ -27,50 +28,60 @@ internal sealed record DeveloperMountFamilyDefinition(
 /// templates. Numeric IDs remain canonical because the client deliberately
 /// reuses display names and even NameKey values for several distinct mounts.
 /// </summary>
-internal static class DeveloperMountCatalog
+internal sealed class DeveloperMountCatalog
 {
     public const int FamiliesPerPage = 4;
     public const uint OrphanedMountItemId = 14429;
 
-    private static readonly FrozenDictionary<uint, ItemTemplateSeed> ClientMountTemplates =
-        ItemTemplateSeeds.All
+    private readonly FrozenDictionary<uint, ItemTemplateDefinition>
+        _clientMountTemplates;
+
+    private readonly FrozenDictionary<uint, DeveloperMountDefinition>
+        _byItemId;
+
+    private readonly FrozenDictionary<uint, DeveloperMountDefinition>
+        _grantableByItemId;
+
+    private readonly FrozenDictionary<string, DeveloperMountFamilyDefinition>
+        _byFamilyAlias;
+
+    public DeveloperMountCatalog(IItemTemplateCatalog templates)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        _clientMountTemplates = templates.All
             .Where(static template =>
                 template.Kind.Equals("mount", StringComparison.OrdinalIgnoreCase))
-            .ToFrozenDictionary(static template => checked((uint)template.Id));
+            .ToFrozenDictionary(static template => template.Id);
+        Families = CreateFamilies();
+        All = Families.SelectMany(static family => family.Mounts).ToArray();
+        Grantable = All.Where(static mount => mount.CanGrant).ToArray();
+        _byItemId = All.ToFrozenDictionary(static mount => mount.ItemId);
+        _grantableByItemId = Grantable.ToFrozenDictionary(
+            static mount => mount.ItemId);
+        _byFamilyAlias = CreateFamilyAliasMap();
+    }
 
-    public static IReadOnlyList<DeveloperMountFamilyDefinition> Families { get; } =
-        CreateFamilies();
+    public IReadOnlyList<DeveloperMountFamilyDefinition> Families { get; }
 
-    public static IReadOnlyList<DeveloperMountDefinition> All { get; } =
-        Families.SelectMany(static family => family.Mounts).ToArray();
+    public IReadOnlyList<DeveloperMountDefinition> All { get; }
 
-    public static IReadOnlyList<DeveloperMountDefinition> Grantable { get; } =
-        All.Where(static mount => mount.CanGrant).ToArray();
+    public IReadOnlyList<DeveloperMountDefinition> Grantable { get; }
 
-    public static int PageCount =>
+    public int PageCount =>
         (Families.Count + FamiliesPerPage - 1) / FamiliesPerPage;
 
-    private static readonly FrozenDictionary<uint, DeveloperMountDefinition> ByItemId =
-        All.ToFrozenDictionary(static mount => mount.ItemId);
+    public bool TryGet(uint itemId, out DeveloperMountDefinition mount) =>
+        _byItemId.TryGetValue(itemId, out mount!);
 
-    private static readonly FrozenDictionary<uint, DeveloperMountDefinition> GrantableByItemId =
-        Grantable.ToFrozenDictionary(static mount => mount.ItemId);
+    public bool TryResolveGrantable(uint itemId, out DeveloperMountDefinition mount) =>
+        _grantableByItemId.TryGetValue(itemId, out mount!);
 
-    private static readonly FrozenDictionary<string, DeveloperMountFamilyDefinition> ByFamilyAlias =
-        CreateFamilyAliasMap();
-
-    public static bool TryGet(uint itemId, out DeveloperMountDefinition mount) =>
-        ByItemId.TryGetValue(itemId, out mount!);
-
-    public static bool TryResolveGrantable(uint itemId, out DeveloperMountDefinition mount) =>
-        GrantableByItemId.TryGetValue(itemId, out mount!);
-
-    public static bool TryGetFamily(
+    public bool TryGetFamily(
         string alias,
         out DeveloperMountFamilyDefinition family) =>
-        ByFamilyAlias.TryGetValue(Normalize(alias), out family!);
+        _byFamilyAlias.TryGetValue(Normalize(alias), out family!);
 
-    public static bool TryResolveGrantable(
+    public bool TryResolveGrantable(
         string familyAlias,
         string tier,
         out DeveloperMountDefinition mount)
@@ -93,7 +104,7 @@ internal static class DeveloperMountCatalog
         return true;
     }
 
-    public static IReadOnlyList<DeveloperMountFamilyDefinition> GetPage(int page)
+    public IReadOnlyList<DeveloperMountFamilyDefinition> GetPage(int page)
     {
         if (page is < 1 || page > PageCount)
         {
@@ -106,7 +117,7 @@ internal static class DeveloperMountCatalog
             .ToArray();
     }
 
-    private static IReadOnlyList<DeveloperMountFamilyDefinition> CreateFamilies()
+    private IReadOnlyList<DeveloperMountFamilyDefinition> CreateFamilies()
     {
         var families = new List<DeveloperMountFamilyDefinition>();
         var assignedIds = new HashSet<uint>();
@@ -221,7 +232,7 @@ internal static class DeveloperMountCatalog
         AddFamily(families, assignedIds, "timedatlanticleatherback", "Timed Atlantic Leatherback", ["timedturtle"], [14425], ["3d"]);
         AddFamily(families, assignedIds, "orphanride14428", "Orphaned Ride14428", [], [14429], ["7d"]);
 
-        foreach (var unassigned in ClientMountTemplates.Values
+        foreach (var unassigned in _clientMountTemplates.Values
                      .Where(template => !assignedIds.Contains(checked((uint)template.Id)))
                      .OrderBy(static template => template.Id))
         {
@@ -236,16 +247,16 @@ internal static class DeveloperMountCatalog
                 [(unassigned.MinLevel ?? 1).ToString(CultureInfo.InvariantCulture)]);
         }
 
-        if (assignedIds.Count != ClientMountTemplates.Count)
+        if (assignedIds.Count != _clientMountTemplates.Count)
         {
             throw new InvalidOperationException(
-                $"Developer mount catalog assigned {assignedIds.Count} of {ClientMountTemplates.Count} client templates.");
+                $"Developer mount catalog assigned {assignedIds.Count} of {_clientMountTemplates.Count} client templates.");
         }
 
         return families;
     }
 
-    private static void AddTieredFamily(
+    private void AddTieredFamily(
         List<DeveloperMountFamilyDefinition> families,
         HashSet<uint> assignedIds,
         uint baseItemId,
@@ -263,7 +274,7 @@ internal static class DeveloperMountCatalog
             ["40", "50", "60", "70", "80", "90", "100", "110", "max", "special"]);
     }
 
-    private static void AddFamily(
+    private void AddFamily(
         List<DeveloperMountFamilyDefinition> families,
         HashSet<uint> assignedIds,
         string alias,
@@ -282,7 +293,7 @@ internal static class DeveloperMountCatalog
         for (var index = 0; index < itemIds.Count; index++)
         {
             var itemId = itemIds[index];
-            if (!ClientMountTemplates.TryGetValue(itemId, out var template))
+            if (!_clientMountTemplates.TryGetValue(itemId, out var template))
             {
                 throw new InvalidOperationException(
                     $"Mount family '{alias}' references missing client item {itemId}.");
@@ -314,7 +325,7 @@ internal static class DeveloperMountCatalog
             mounts));
     }
 
-    private static FrozenDictionary<string, DeveloperMountFamilyDefinition> CreateFamilyAliasMap()
+    private FrozenDictionary<string, DeveloperMountFamilyDefinition> CreateFamilyAliasMap()
     {
         var aliases = new Dictionary<string, DeveloperMountFamilyDefinition>(
             StringComparer.OrdinalIgnoreCase);

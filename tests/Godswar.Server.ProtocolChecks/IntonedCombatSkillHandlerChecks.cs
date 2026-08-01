@@ -35,7 +35,7 @@ internal static partial class IntonedCombatSkillHandlerChecks
     public static async Task RunAsync()
     {
         Check.True(
-            SkillCombatCatalog.TryGet(
+            GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(
                 checked((int)ThunderSkillId),
                 out var combat),
             "Thunder 1 combat definition exists");

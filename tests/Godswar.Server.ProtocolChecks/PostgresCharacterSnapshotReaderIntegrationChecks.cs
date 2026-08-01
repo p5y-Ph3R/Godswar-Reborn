@@ -1,5 +1,7 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -28,6 +30,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             return;
         }
 
+        await PostgresSchemaStartup.InitializeAsync(connectionString);
+        _ = await PostgresWorldContentBootstrapper.LoadAsync(
+            connectionString);
         await using var store = new PostgresGameStore(connectionString);
         await store.EnsureSeedDataAsync();
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
@@ -38,7 +43,8 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
         {
             await AssertMissingAccountFailsAsync(
                 connectionString,
-                dataSource);
+                dataSource,
+                store.ItemContent.Templates);
             await AssertExistingEmptySlotAsync(
                 connectionString,
                 store,
@@ -68,6 +74,12 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 dataSource,
                 fixtures,
                 token);
+            await AssertPinnedItemRevisionSurvivesPointerAdvanceAsync(
+                connectionString,
+                store,
+                dataSource,
+                fixtures,
+                token);
         }
         finally
         {
@@ -80,11 +92,14 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
 
     private static async Task AssertMissingAccountFailsAsync(
         string connectionString,
-        NpgsqlDataSource dataSource)
+        NpgsqlDataSource dataSource,
+        Godswar.Server.Application.Items.IItemTemplateCatalog itemTemplates)
     {
         var missingAccountId = await ReadUnusedAccountIdAsync(dataSource);
         await using var reader =
-            new PostgresCharacterSnapshotReader(connectionString);
+            new PostgresCharacterSnapshotReader(
+                connectionString,
+                itemTemplates);
         var exception = await CaptureFailureAsync(
             () => reader.ReadAsync(missingAccountId));
         Check.Equal(
@@ -105,7 +120,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             $"snap_empty_{token}");
         fixtures.Add(fixture);
         await using var reader =
-            new PostgresCharacterSnapshotReader(connectionString);
+            new PostgresCharacterSnapshotReader(
+                connectionString,
+                store.ItemContent.Templates);
         var snapshot = await reader.ReadAsync(fixture.AccountId);
 
         Check.Equal(
@@ -157,7 +174,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             await CountCharactersAsync(dataSource, fixture.AccountId),
             "active-slot constraint preserves exactly one character");
         await using var reader =
-            new PostgresCharacterSnapshotReader(connectionString);
+            new PostgresCharacterSnapshotReader(
+                connectionString,
+                store.ItemContent.Templates);
         var snapshot = await reader.ReadAsync(fixture.AccountId);
         Check.True(
             snapshot.Character?.Identity.CharacterId == first.Id,

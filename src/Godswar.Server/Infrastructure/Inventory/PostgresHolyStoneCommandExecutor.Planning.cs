@@ -76,13 +76,11 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target.Item,
                 stone?.Item ?? CompactItemEntry.Empty);
         }
-        var kind = await ReadItemTemplateKindAsync(
-            connection,
-            transaction,
-            target.Item.Id,
-            cancellationToken);
-        if (!string.Equals(
-                kind,
+        if (!_itemContent.Templates.TryGet(
+                target.Item.Id,
+                out var targetTemplate) ||
+            !string.Equals(
+                targetTemplate.Kind,
                 "weapon",
                 StringComparison.OrdinalIgnoreCase))
         {

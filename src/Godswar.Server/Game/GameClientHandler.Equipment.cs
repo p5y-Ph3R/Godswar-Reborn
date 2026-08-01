@@ -61,6 +61,7 @@ internal sealed partial class GameClientHandler
 
         var effectiveItemIdHint = kitBagItemId;
         if (!EquipmentSlots.TryGetAuthoritativeSlot(
+                RequireItemContent().Templates,
                 effectiveItemIdHint,
                 out var authoritativeEquipmentSlot))
         {
@@ -81,6 +82,7 @@ internal sealed partial class GameClientHandler
             _character.Profession,
             authoritativeEquipmentSlot);
         var equipEligibility = EquipmentEligibility.ValidateEquip(
+            RequireItemContent(),
             _character.Profession,
             _character.Level,
             _character.Equipment,

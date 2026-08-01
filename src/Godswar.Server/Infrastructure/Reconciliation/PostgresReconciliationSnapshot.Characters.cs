@@ -23,6 +23,9 @@ internal sealed partial class PostgresReconciliationSnapshot
         {
             command.Parameters.AddWithValue("after_key", afterCharacterKey);
             command.Parameters.AddWithValue("limit", limit);
+            command.Parameters.AddWithValue(
+                "itemContentRevision",
+                _itemContentRevision);
             await using var reader =
                 await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))

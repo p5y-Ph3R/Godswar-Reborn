@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -12,6 +13,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
         int accountId,
         int characterId,
         DateTimeOffset readAtUtc,
+        string itemContentRevision,
+        string? gameplayContentRevision,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -21,6 +24,12 @@ internal sealed partial class PostgresCharacterSnapshotReader
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("readAt", readAtUtc);
+        command.Parameters.AddWithValue(
+            "itemContentRevision",
+            itemContentRevision);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            gameplayContentRevision);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -77,7 +86,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         ImmutableArray<CharacterPetSnapshot> Pets,
         ImmutableArray<CharacterProgressionBoostSnapshot> PersonalBoosts);
 
-    private const string RelatedQuery =
+    private static readonly string RelatedQuery =
         CalculatedStatsQuery +
         SkillsQuery +
         TalentsQuery +

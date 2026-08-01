@@ -150,27 +150,6 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         return new LockedCommandItems(target, stone, kitBag);
     }
 
-    private async Task<string?> ReadItemTemplateKindAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        uint itemId,
-        CancellationToken cancellationToken)
-    {
-        await using var command = CreateCommand(
-            """
-            SELECT kind
-            FROM public.item_templates
-            WHERE id = @itemId;
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue(
-            "itemId",
-            checked((int)itemId));
-        return await command.ExecuteScalarAsync(cancellationToken)
-            as string;
-    }
-
     private static void ValidatePhysicalItem(LockedItem item)
     {
         if (item.ItemInstanceId <= 0 ||

@@ -46,13 +46,11 @@ internal static class CharacterSnapshotMetricsChecks
 
         var loaded = CharacterSnapshotContractChecks.CreateValidSnapshot();
         var successful = new MeasuredCharacterSnapshotReader(
-            new FixedReader(loaded),
-            CharacterSnapshotProvider.PostgreSql);
+            new FixedReader(loaded));
         _ = await successful.ReadAsync(loaded.AccountId);
 
         var failing = new MeasuredCharacterSnapshotReader(
-            new FailingReader(),
-            CharacterSnapshotProvider.Json);
+            new FailingReader());
         try
         {
             _ = await failing.ReadAsync(loaded.AccountId);
@@ -74,9 +72,9 @@ internal static class CharacterSnapshotMetricsChecks
             "snapshot metrics expose a bounded PostgreSQL loaded outcome");
         Check.True(
             counters.Any(measurement =>
-                measurement.Provider == "json" &&
+                measurement.Provider == "postgresql" &&
                 measurement.Outcome == "provider_unavailable"),
-            "snapshot metrics expose a bounded JSON failure outcome");
+            "snapshot metrics expose a bounded PostgreSQL failure outcome");
         Check.True(
             durations.Count >= 2 &&
             durations.All(static measurement =>

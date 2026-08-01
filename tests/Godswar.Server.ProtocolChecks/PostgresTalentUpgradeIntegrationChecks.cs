@@ -1,3 +1,5 @@
+using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -26,11 +28,21 @@ internal static class PostgresTalentUpgradeIntegrationChecks
 
         try
         {
+            await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+                connectionString);
+            var gameplayPublication =
+                await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+                    connectionString);
             await using var storeA =
-                new PostgresGameStore(connectionString);
+                new PostgresGameStore(
+                    connectionString,
+                    gameplayContentRevision: gameplayPublication.Revision);
             await using var storeB =
-                new PostgresGameStore(connectionString);
+                new PostgresGameStore(
+                    connectionString,
+                    gameplayContentRevision: gameplayPublication.Revision);
             await storeA.EnsureSeedDataAsync();
+            await storeB.EnsureSeedDataAsync();
 
             var account = await storeA.LoginOrCreateAccountAsync(
                 username,
@@ -117,7 +129,9 @@ internal static class PostgresTalentUpgradeIntegrationChecks
                 "two committed ranks spend one plus two points");
 
             await using var reopened =
-                new PostgresGameStore(connectionString);
+                new PostgresGameStore(
+                    connectionString,
+                    gameplayContentRevision: gameplayPublication.Revision);
             await reopened.EnsureSeedDataAsync();
             var persisted = (await reopened.GetCharactersAsync(account.Id))
                 .Single(candidate => candidate.Id == character.Id);

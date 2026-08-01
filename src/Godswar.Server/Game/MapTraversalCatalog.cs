@@ -1,4 +1,4 @@
-using Godswar.Server.State;
+using Godswar.Server.Application.World;
 
 namespace Godswar.Server.Game;
 
@@ -24,9 +24,10 @@ internal sealed class MapTraversalCatalog
     private MapTraversalCatalog(
         IReadOnlyList<MapTraversalMap> maps,
         IReadOnlyList<MapTraversalLinkEvidence> evidenceLinks,
-        IReadOnlyList<MapTraversalArrivalEvidence> arrivalEvidence)
+        IReadOnlyList<MapTraversalArrivalEvidence> arrivalEvidence,
+        bool requireCompleteMapSet = true)
     {
-        ValidateMapSet(maps);
+        ValidateMapSet(maps, requireCompleteMapSet);
 
         _mapsById = maps.ToDictionary(static map => map.MapId);
         Maps = maps.OrderBy(static map => map.MapId).ToArray();
@@ -68,7 +69,11 @@ internal sealed class MapTraversalCatalog
         ValidateArrivals();
     }
 
-    public static MapTraversalCatalog Default { get; } = CreateDefault();
+    public static MapTraversalCatalog Empty { get; } = new(
+        [],
+        [],
+        [],
+        requireCompleteMapSet: false);
 
     public IReadOnlyList<MapTraversalMap> Maps { get; }
 
@@ -184,9 +189,24 @@ internal sealed class MapTraversalCatalog
         return true;
     }
 
-    private static MapTraversalCatalog CreateDefault()
+    public static MapTraversalCatalog Create(
+        GameplayContentCatalog gameplay)
     {
-        var maps = MapTemplateSeeds.Maps
+        ArgumentNullException.ThrowIfNull(gameplay);
+        if (gameplay.Maps.Count == 0)
+        {
+            if (gameplay.AddressPoints.Count != 0 ||
+                gameplay.Links.Count != 0)
+            {
+                throw new InvalidDataException(
+                    "Map gameplay content cannot contain links or address " +
+                    "points without map definitions.");
+            }
+
+            return Empty;
+        }
+
+        var maps = gameplay.Maps
             .Select(static seed => new MapTraversalMap(
                 seed.MapId,
                 seed.SceneKey,
@@ -195,24 +215,28 @@ internal sealed class MapTraversalCatalog
                 Classify(seed.MapId),
                 Origin))
             .ToArray();
-
-        var evidence = BuildCapturedLinks();
-        evidence.AddRange(CreateNorthernAddressLinks());
         return new MapTraversalCatalog(
             maps,
-            evidence,
-            BuildCapturedArrivals());
+            BuildPublishedLinks(gameplay),
+            BuildPublishedArrivals(gameplay));
     }
 
     private static IReadOnlyList<MapTraversalArrivalEvidence>
-        BuildCapturedArrivals()
+        BuildPublishedArrivals(GameplayContentCatalog gameplay)
     {
-        var spartaGate = MapTemplateSeeds.AddressPoints.Single(
+        var spartaGate = gameplay.AddressPoints.SingleOrDefault(
             static point =>
                 point.MapId == 0 &&
                 point.GroupIndex == 0 &&
                 point.PointIndex == 1 &&
                 point.Name == "Suburb of Sparta");
+        if (spartaGate is null)
+        {
+            throw new InvalidDataException(
+                "Published gameplay content is missing the reviewed Sparta " +
+                "suburb arrival anchor.");
+        }
+
         return
         [
             new MapTraversalArrivalEvidence(
@@ -229,78 +253,41 @@ internal sealed class MapTraversalCatalog
         ];
     }
 
-    private static List<MapTraversalLinkEvidence> BuildCapturedLinks()
+    private static IReadOnlyList<MapTraversalLinkEvidence>
+        BuildPublishedLinks(GameplayContentCatalog gameplay)
     {
-        var evidence = new List<MapTraversalLinkEvidence>();
-        var seen = new HashSet<PortalIdentity>();
-        foreach (var seed in MapTemplateSeeds.Links)
-        {
-            var identity = new PortalIdentity(
-                seed.MapId,
-                seed.TargetMapId,
-                seed.X,
-                seed.Z);
-            if (!seen.Add(identity))
-            {
-                continue;
-            }
-
-            var disabled = seed.MapId == 6 &&
-                           seed.TargetMapId is 9 or 15;
-            evidence.Add(new MapTraversalLinkEvidence(
-                seed.MapId,
-                seed.TargetMapId,
-                new MapTraversalPosition(seed.X, seed.Z),
-                seed.Source,
-                disabled
-                    ? MapTraversalEvidenceConfidence
-                        .ExcludedByObservedTopology
-                    : MapTraversalEvidenceConfidence.CapturedSpanMap,
-                disabled
-                    ? MapTraversalActivation.DisabledByWorldTopology
-                    : MapTraversalActivation.Automatic,
-                disabled
-                    ? "Disabled walking edge: observed world topology " +
-                      "permits Mycenae access only through Olympia."
-                    : "Captured SpanMap boundary with a matching reciprocal."));
-        }
-
-        return evidence;
+        return gameplay.Links
+            .Select(static link => new MapTraversalLinkEvidence(
+                link.SourceMapId,
+                link.TargetMapId,
+                new MapTraversalPosition(link.X, link.Z),
+                link.Source,
+                link.Confidence switch
+                {
+                    GameplayMapLinkConfidence.CapturedSpanMap =>
+                        MapTraversalEvidenceConfidence.CapturedSpanMap,
+                    GameplayMapLinkConfidence.ReciprocalAddressPoint =>
+                        MapTraversalEvidenceConfidence.ReciprocalAddressPoint,
+                    GameplayMapLinkConfidence.ExcludedByObservedTopology =>
+                        MapTraversalEvidenceConfidence
+                            .ExcludedByObservedTopology,
+                    _ => throw new InvalidDataException(
+                        $"Unsupported published map-link confidence " +
+                        $"{link.Confidence}.")
+                },
+                link.Activation switch
+                {
+                    GameplayMapLinkActivation.Automatic =>
+                        MapTraversalActivation.Automatic,
+                    GameplayMapLinkActivation.DisabledByWorldTopology =>
+                        MapTraversalActivation.DisabledByWorldTopology,
+                    _ => throw new InvalidDataException(
+                        $"Unsupported published map-link activation " +
+                        $"{link.Activation}.")
+                },
+                link.Note))
+            .ToArray();
     }
-
-    private static IEnumerable<MapTraversalLinkEvidence>
-        CreateNorthernAddressLinks()
-    {
-        return
-        [
-            AddressLink(6, 7, -198f, 0f, "Mycenae_All", "Olympia"),
-            AddressLink(7, 6, 212f, -104f, "Olympia_All", "Mycenae"),
-            AddressLink(7, 20, -181f, 226f, "Olympia_All", "Delphi Forest"),
-            AddressLink(20, 7, 132f, -224f, "Oracle_of_Delphi_All", "Olympia"),
-            AddressLink(20, 10, -200f, -4f, "Oracle_of_Delphi_All", "Larissa"),
-            AddressLink(10, 20, 216f, -68f, "Larissa_All", "Delphi Forest"),
-            AddressLink(10, 22, -195f, 150f, "Larissa_All", "Elasson"),
-            AddressLink(22, 10, 208f, -16f, "Elasson_All", "Larissa"),
-            AddressLink(22, 21, -208f, 124f, "Elasson_All", "Olympus"),
-            AddressLink(21, 22, 212f, 80f, "Olympus_All", "Elasson")
-        ];
-    }
-
-    private static MapTraversalLinkEvidence AddressLink(
-        short sourceMapId,
-        short targetMapId,
-        float x,
-        float z,
-        string sceneKey,
-        string label) =>
-        new(
-            sourceMapId,
-            targetMapId,
-            new MapTraversalPosition(x, z),
-            $"./Localization/en_us/Monster/{sceneKey}/Address.ini",
-            MapTraversalEvidenceConfidence.ReciprocalAddressPoint,
-            MapTraversalActivation.Automatic,
-            $"Exact '{label}' address point paired with its reciprocal map label.");
 
     private static MapTraversalClassification Classify(short mapId) =>
         mapId switch
@@ -310,7 +297,9 @@ internal sealed class MapTraversalCatalog
             _ => MapTraversalClassification.SpecialInstance
         };
 
-    private static void ValidateMapSet(IReadOnlyList<MapTraversalMap> maps)
+    private static void ValidateMapSet(
+        IReadOnlyList<MapTraversalMap> maps,
+        bool requireCompleteMapSet)
     {
         var expected = Enumerable.Range(0, 70)
             .Concat(Enumerable.Range(200, 11))
@@ -329,7 +318,7 @@ internal sealed class MapTraversalCatalog
             }
         }
 
-        if (!actual.SetEquals(expected))
+        if (requireCompleteMapSet && !actual.SetEquals(expected))
         {
             throw new InvalidDataException(
                 "Map traversal catalog must contain IDs 0-69 and 200-210 exactly.");

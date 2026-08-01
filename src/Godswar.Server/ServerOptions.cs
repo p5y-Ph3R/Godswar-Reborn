@@ -27,8 +27,6 @@ internal sealed partial class ServerOptions
         Port = 7000
     };
 
-    public string DataPath { get; set; } = "data";
-
     public StorageOptions Storage { get; set; } = new();
 
     public NetworkRuntimeOptions Network { get; set; } = new();
@@ -170,7 +168,6 @@ internal sealed partial class ServerOptions
                 .ToArray();
         }
 
-        DataPath = Environment.GetEnvironmentVariable("GODSWAR_DATA_PATH") ?? DataPath;
         RuntimeProfile =
             Environment.GetEnvironmentVariable(
                 "GODSWAR_RUNTIME_PROFILE") ??
@@ -239,17 +236,6 @@ internal sealed partial class ServerOptions
 
     private ServerOptions Normalize(string optionsPath)
     {
-        if (string.IsNullOrWhiteSpace(DataPath))
-        {
-            DataPath = "data";
-        }
-
-        if (!Path.IsPathRooted(DataPath))
-        {
-            var root = Path.GetDirectoryName(Path.GetFullPath(optionsPath)) ?? Environment.CurrentDirectory;
-            DataPath = Path.GetFullPath(Path.Combine(root, DataPath));
-        }
-
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();

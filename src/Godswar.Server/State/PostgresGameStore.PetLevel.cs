@@ -117,7 +117,7 @@ internal sealed partial class PostgresGameStore
         }
 
         var experienceSpent =
-            PetExperienceCatalog.RequiredForNextLevel(row.Level);
+            PetContent.RequiredExperienceForNextLevel(row.Level);
         var nextLevel = checked((short)(row.Level + 1));
         var nextExperience = row.Experience - experienceSpent;
         var nextRevision = await PersistPetLevelUpgradeAsync(
@@ -204,7 +204,7 @@ internal sealed partial class PostgresGameStore
             : null;
     }
 
-    private static PetLevelUpgradeStatus? ValidatePetLevelUpgrade(
+    private PetLevelUpgradeStatus? ValidatePetLevelUpgrade(
         PetLevelRow row)
     {
         if (!string.Equals(
@@ -215,13 +215,13 @@ internal sealed partial class PostgresGameStore
             return PetLevelUpgradeStatus.PetUnavailable;
         }
 
-        if (row.Level >= PetExperienceCatalog.MaximumLevel)
+        if (row.Level >= PetContent.Settings.MaximumLevel)
         {
             return PetLevelUpgradeStatus.MaximumLevel;
         }
 
         var required =
-            PetExperienceCatalog.RequiredForNextLevel(row.Level);
+            PetContent.RequiredExperienceForNextLevel(row.Level);
         return row.Experience < required
             ? PetLevelUpgradeStatus.InsufficientExperience
             : null;

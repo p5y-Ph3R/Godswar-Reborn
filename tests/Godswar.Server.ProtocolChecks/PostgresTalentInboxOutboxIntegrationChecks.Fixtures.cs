@@ -27,14 +27,18 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
         await using (var template = new NpgsqlCommand(
             """
             SELECT true
-            FROM public.talent_templates
+            FROM public.gameplay_talent_definitions
             WHERE id = @talentId
-              AND class_id = 0;
+              AND class_id = 0
+              AND revision = @gameplayContentRevision;
             """,
             connection,
             transaction))
         {
             template.Parameters.AddWithValue("talentId", TalentId);
+            template.Parameters.AddWithValue(
+                "gameplayContentRevision",
+                GameplayContentRevision);
             templateExists =
                 await template.ExecuteScalarAsync() is true;
         }

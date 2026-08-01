@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Packets;
@@ -42,13 +43,15 @@ internal static partial class PacketBuilder
     /// 0x006A6340 record-copy routine.
     /// </summary>
     public static byte[] OwnedPetList(
+        IPetContentCatalog petContent,
         IReadOnlyList<PetBootstrapSnapshot> pets)
     {
+        ArgumentNullException.ThrowIfNull(petContent);
         ArgumentNullException.ThrowIfNull(pets);
-        if (pets.Count > PetManagerPlanner.MaximumOwnedPetCount)
+        if (pets.Count > petContent.Settings.MaximumOwnedPetCount)
         {
             throw new InvalidDataException(
-                $"The native client supports at most {PetManagerPlanner.MaximumOwnedPetCount} owned pets.");
+                $"The native client supports at most {petContent.Settings.MaximumOwnedPetCount} owned pets.");
         }
 
         if (pets.Count(static pet => pet.IsCarried) > 1)
@@ -85,6 +88,7 @@ internal static partial class PacketBuilder
             }
 
             WriteOwnedPetRecord(
+                petContent,
                 packet.AsSpan(
                     OwnedPetListHeaderLength + (index * OwnedPetRecordLength),
                     OwnedPetRecordLength),
@@ -95,6 +99,7 @@ internal static partial class PacketBuilder
     }
 
     private static void WriteOwnedPetRecord(
+        IPetContentCatalog petContent,
         Span<byte> record,
         PetBootstrapSnapshot pet)
     {
@@ -104,16 +109,17 @@ internal static partial class PacketBuilder
                 $"Pet ID {pet.PetId} cannot be represented by the native client.");
         }
 
-        if (!PetSpeciesCatalog.TryGet(pet.SpeciesId, out var species))
+        if (!petContent.TryGetSpecies(pet.SpeciesId, out var species))
         {
             throw new InvalidDataException(
                 $"Pet {pet.PetId} has unknown species {pet.SpeciesId}.");
         }
 
         var aptitude = checked((int)pet.Aptitude);
-        if (!PetAptitudeCatalog.TryGet(pet.Aptitude, out _) ||
+        if (!petContent.TryGetAptitude(checked((short)pet.Aptitude), out _) ||
             pet.Sex > 1 ||
-            pet.Level is < 1 or > PetManagerPlanner.MaximumPetLevel)
+            pet.Level < petContent.Settings.MinimumLevel ||
+            pet.Level > petContent.Settings.MaximumLevel)
         {
             throw new InvalidDataException(
                 $"Pet {pet.PetId} has a native-incompatible aptitude, sex, or level.");
@@ -138,6 +144,12 @@ internal static partial class PacketBuilder
             .Where(static skill => skill.IsActive)
             .OrderBy(static skill => skill.SlotIndex)
             .ToArray();
+        if (activeSkills.Length > petContent.Settings.MaximumSkillCount)
+        {
+            throw new InvalidDataException(
+                $"Pet {pet.PetId} exceeds the published " +
+                $"{petContent.Settings.MaximumSkillCount}-skill limit.");
+        }
         WritePetSkills(record, pet.PetId, activeSkills);
 
         // Native iteration requires learned <= open <= available cells. Until
@@ -175,7 +187,7 @@ internal static partial class PacketBuilder
             ToUInt32(pet.Experience));
         BinaryPrimitives.WriteUInt32LittleEndian(
             record.Slice(0x64, 4),
-            ResolveCapturedPetNextLevelExperience(pet.Level));
+            ResolveCapturedPetNextLevelExperience(petContent, pet.Level));
 
         // The six-bit genius/talent mask at 0x68 is deliberately zero until
         // individual talent-bit assignments are captured.
@@ -248,10 +260,10 @@ internal static partial class PacketBuilder
         (byte)8;
 
     private static ushort ResolveMaximumPetLifetime(
-        PetSpeciesDefinition species,
+        PetSpeciesContentDefinition species,
         ushort currentLifetime)
     {
-        var candidate = species.ClientLifetimeValues
+        var candidate = species.LifetimeValues
             .Where(value => value >= currentLifetime)
             .Order()
             .FirstOrDefault();
@@ -260,8 +272,10 @@ internal static partial class PacketBuilder
             : currentLifetime;
     }
 
-    private static uint ResolveCapturedPetNextLevelExperience(short level) =>
-        checked((uint)PetExperienceCatalog.RequiredForNextLevel(level));
+    private static uint ResolveCapturedPetNextLevelExperience(
+        IPetContentCatalog petContent,
+        short level) =>
+        checked((uint)petContent.RequiredExperienceForNextLevel(level));
 
     private static byte ToPercentageByte(int value) =>
         checked((byte)Math.Clamp(value, 0, 100));

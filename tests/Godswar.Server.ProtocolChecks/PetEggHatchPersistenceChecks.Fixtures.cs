@@ -1,48 +1,39 @@
+using Godswar.Server.Application.Items;
+using System.Text.Json;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class PetEggHatchPersistenceChecks
 {
-    private static async Task CheckEggTemplatesAsync(
-        string connectionString)
+    private static void CheckEggTemplates(
+        IItemTemplateCatalog templates)
     {
-        await using var connection =
-            new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT
-                count(*),
-                max(
-                    CASE WHEN id = 10187
-                        THEN (stats ->> 'Values')::integer
-                    END
-                ),
-                max(
-                    CASE WHEN id = 10187
-                        THEN (stats ->> 'ClientDeclaredValues')::integer
-                    END
-                )
-            FROM item_templates
-            WHERE id BETWEEN 10150 AND 10193;
-            """,
-            connection);
-        await using var reader = await command.ExecuteReaderAsync();
-        Check.True(
-            await reader.ReadAsync(),
-            "pet egg template aggregate exists");
+        var eggs = templates.All
+            .Where(static template =>
+                template.Id is >= 10150 and <= 10193)
+            .ToArray();
         Check.Equal(
-            44L,
-            reader.GetInt64(0),
+            44,
+            eggs.Length,
             "all client pet eggs are authoritative item templates");
+        var thunderPixie = eggs.Single(static template =>
+            template.Id == EggItemId);
+        using var stats = JsonDocument.Parse(thunderPixie.StatsJson);
+        var values = stats.RootElement.GetProperty("Values");
+        var clientDeclaredValues = stats.RootElement.GetProperty(
+            "ClientDeclaredValues");
         Check.Equal(
             ExpectedSpeciesType,
-            reader.GetInt32(1),
+            int.Parse(
+                values.GetString()!,
+                System.Globalization.CultureInfo.InvariantCulture),
             "Thunder Pixie egg authoritative species metadata");
         Check.Equal(
             36,
-            reader.GetInt32(2),
+            int.Parse(
+                clientDeclaredValues.GetString()!,
+                System.Globalization.CultureInfo.InvariantCulture),
             "Thunder Pixie stock mismatch remains documented");
     }
 

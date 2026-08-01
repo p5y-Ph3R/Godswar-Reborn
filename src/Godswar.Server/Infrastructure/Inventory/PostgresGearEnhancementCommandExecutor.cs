@@ -19,15 +19,19 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresGearEnhancementCommandProbe? _probe;
+    private readonly GameplayItemContent _itemContent;
 
     public PostgresGearEnhancementCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
+        GameplayItemContent itemContent,
         IPostgresGearEnhancementCommandProbe? probe = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
+        _itemContent = itemContent ?? throw new ArgumentNullException(
+            nameof(itemContent));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -198,6 +202,7 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor :
             context.Subject.CharacterId,
             cancellationToken);
         var plan = GearEnhancementPlanner.Create(
+            _itemContent.Templates,
             lockedBag.CompactProjection,
             CreatePlannerRequest(context.Command));
         var status = MapStatus(plan.Status);

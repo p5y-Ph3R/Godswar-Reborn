@@ -46,6 +46,7 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
         var cleanup = new HashSet<string>(StringComparer.Ordinal)
         {
             keys.Worker(nodeId),
+            keys.RealmContent(route.RealmId),
             keys.Route(route.WorldInstanceId),
             keys.Player(700_017),
             keys.Player(700_018)
@@ -73,6 +74,11 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             var workerLease = registration.Lease!.Value;
 
             await CheckExactRouteAsync(first, route, nodeId, bootId);
+            await CheckRealmContentAdmissionAsync(
+                second,
+                keys,
+                route,
+                cleanup);
             await CheckDuplicateIncarnationAsync(
                 second,
                 nodeId,
@@ -154,6 +160,73 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             (int)CoordinationOperationStatus.Conflict,
             (int)duplicate.Status,
             "second live boot for one node is rejected");
+    }
+
+    private static async Task CheckRealmContentAdmissionAsync(
+        IWorkerCoordination coordination,
+        RedisCoordinationKeyBuilder keys,
+        CoordinatedWorldRoute existingRoute,
+        ISet<string> cleanup)
+    {
+        var shortRoute = new CoordinatedWorldRoute(
+            existingRoute.RealmId,
+            MapId.FromLegacy(2),
+            new WorldInstanceId(Guid.NewGuid()));
+        var shortNode = new ServerNodeId("b17-worker-short-ttl");
+        cleanup.Add(keys.Worker(shortNode));
+        cleanup.Add(keys.Route(shortRoute.WorldInstanceId));
+        var same = await coordination.RegisterWorkerAsync(
+            Registration(
+                shortNode,
+                Guid.NewGuid(),
+                shortRoute,
+                "content-test"),
+            TimeSpan.FromSeconds(1),
+            Deadline);
+        Check.True(
+            same.Succeeded,
+            "same Redis realm content admits a disjoint-map worker");
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1_200));
+        var mismatchRoute = new CoordinatedWorldRoute(
+            existingRoute.RealmId,
+            MapId.FromLegacy(3),
+            new WorldInstanceId(Guid.NewGuid()));
+        var mismatchNode = new ServerNodeId("b17-worker-mismatch");
+        cleanup.Add(keys.Worker(mismatchNode));
+        cleanup.Add(keys.Route(mismatchRoute.WorldInstanceId));
+        var mismatch = await coordination.RegisterWorkerAsync(
+            Registration(
+                mismatchNode,
+                Guid.NewGuid(),
+                mismatchRoute,
+                "content-new"),
+            TimeSpan.FromSeconds(5),
+            Deadline);
+        Check.Equal(
+            (int)CoordinationOperationStatus.Conflict,
+            (int)mismatch.Status,
+            "short Redis worker TTL cannot shorten live realm admission");
+
+        var otherRealmRoute = new CoordinatedWorldRoute(
+            new RealmId(existingRoute.RealmId.Value + 1),
+            MapId.FromLegacy(3),
+            new WorldInstanceId(Guid.NewGuid()));
+        var otherNode = new ServerNodeId("b17-worker-other-realm");
+        cleanup.Add(keys.Worker(otherNode));
+        cleanup.Add(keys.Route(otherRealmRoute.WorldInstanceId));
+        cleanup.Add(keys.RealmContent(otherRealmRoute.RealmId));
+        var other = await coordination.RegisterWorkerAsync(
+            Registration(
+                otherNode,
+                Guid.NewGuid(),
+                otherRealmRoute,
+                "content-new"),
+            TimeSpan.FromSeconds(5),
+            Deadline);
+        Check.True(
+            other.Succeeded,
+            "different Redis realms may pin different content");
     }
 
     private static async Task<CoordinatedPlayerLease>
@@ -305,13 +378,14 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
     private static WorkerRegistrationRequest Registration(
         ServerNodeId nodeId,
         Guid bootId,
-        CoordinatedWorldRoute route) =>
+        CoordinatedWorldRoute route,
+        string contentRevision = "content-test") =>
         new()
         {
             NodeId = nodeId,
             BootId = bootId,
             BuildRevision = "b17-test",
-            ContentRevision = "content-test",
+            ContentRevision = contentRevision,
             State = CoordinatedWorkerState.Available,
             Capabilities = ["open-world-v1"],
             Routes = [route]

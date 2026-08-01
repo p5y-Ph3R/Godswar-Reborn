@@ -73,6 +73,7 @@ internal static partial class
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            TestItemContent.Content,
             probe);
 
     private static async Task<

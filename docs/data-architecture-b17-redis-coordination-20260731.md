@@ -261,9 +261,10 @@ read-only, ACL-protected, non-persistent, `noeviction`, memory/PID/CPU
 bounded, and has no restart policy or durable volume.
 
 The application identity is restricted to the exact environment key prefix
-and an explicit command allowlist. It can execute the reviewed Lua workflows
-and Redis `TIME`, but it cannot run administrative, arbitrary string,
-key-discovery, publish, or destructive script commands. The single-primary
+and an explicit command allowlist. It can execute the reviewed Lua workflows,
+Redis `TIME`, and scoped `GET`/`SET` operations for realm-content admission,
+but it cannot run administrative, unapproved bulk-string, key-discovery,
+publish, or destructive script commands. The single-primary
 client configuration disables automatic `CONFIG` and `CLUSTER` probes and
 the tie-breaker key rather than widening that ACL. The CI harness creates a
 different disposable administrative identity only for configuration

@@ -6,18 +6,18 @@
 | --- | --- | --- | --- |
 | Existing | `GodswarServer.sln` | Main solution containing the server, protocol checks, secure smoke tooling, and Phase 5A tooling | `GodswarServer.sln`; `src`, `tests`, `tools` |
 | Existing | `src/Godswar.Server/Godswar.Server.csproj` | .NET 10 executable modular monolith; Npgsql 10.0.2 is its only database package | `Godswar.Server.csproj` |
-| Existing | `src/Godswar.Server/Program.cs` | Manual composition root; creates one store, registry, login/game listeners, optional TLS/UDP runtime, and gameplay loops | `Program.cs` |
+| Existing | `src/Godswar.Server/Program.cs` | Manual composition root; creates focused PostgreSQL persistence/content adapters, the retained compatibility facade, registry, listeners, optional TLS/UDP runtime, and gameplay loops | `Program.cs` |
 | Existing | `src/Godswar.Server/Ecs` | Custom entity registry, component pools, system scheduler, command buffer, and event buffer | `EcsWorld`, `EntityRegistry`, `ComponentPool<T>`, `EcsSystemScheduler`, `EcsCommandBuffer`, `EcsEventBuffer` |
 | Existing | `src/Godswar.Server/World` | ECS components, systems, map projections, monster runtime, player movement/combat boundaries | `World/Components`, `World/Systems`, `World/Boundaries`, `World/Maps` |
 | Existing | `src/Godswar.Server/Game` | Packet dispatch, session/map registry, gameplay orchestration, persistence calls, replication | `LoginClientHandler`, `GameClientHandler`, `GameSessionRegistry`, `MapInstance` |
 | Existing | `src/Godswar.Server/Networking` | Raw TCP, TLS mux, UDP binding/protection, admission, queues, timeouts, metrics | `ClientSession`, `TcpEndpointServer`, `Networking/Secure` |
-| Existing | `src/Godswar.Server/State` | Broad storage contract, PostgreSQL/JSON implementations, SQL migrations, content seeds, DTOs | `IGameStore`, `PostgresGameStore`, `JsonGameStore`, `DatabaseMigrations` |
+| Existing | `src/Godswar.Server/State` | Retained broad PostgreSQL compatibility contract/facade, SQL migrations, publisher inputs, and DTOs; JSON authority is test-only | `IGameStore`, `PostgresGameStore`, `DatabaseMigrations`; protocol-test compatibility fixtures |
 | Partially implemented, separate solution | `client/network-shim/Godswar.NetShim.sln` | The x86 `Net.dll` compatibility artifact/solution exists outside `GodswarServer.sln`; secure end-to-end adoption remains opt-in/partial | `client/network-shim`; `docs/network-infrastructure-goal.md` |
 | Existing | `tests/Godswar.Server.ProtocolChecks` | Custom executable test/check harness rather than a standard unit-test framework | `Program.cs`, 227 C# check files, no external test package |
 | Existing | `tools/Godswar.Server.Phase5A` | Bounded in-process replay/load/soak baseline with no external target | `docs/network-infrastructure-phase5a-replay-load-observability.md` |
 | Existing for local development | Docker | One server container and PostgreSQL 17; secure Compose overlay replaces the raw profile | `Dockerfile`, `docker-compose.yml`, `docker-compose.secure.yml` |
-| Missing | Distributed server processes | No separate login, gateway, zone, persistence-worker, or coordinator deployment exists | `Program.cs`, Compose files |
-| Missing | Redis and MongoDB | No client package, configuration, adapter, migration, or test exists | Project files and repository search |
+| Partially implemented, deployment gated | Distributed server processes | B18C2 provides separate semantic-gateway and authoritative-worker modes with exact routed mTLS admissions; remote production placement remains unproven | `Program.cs`; gateway/worker configuration and smoke tools |
+| Existing opt-in / Missing | Redis / MongoDB | B17 implements disposable Redis coordination behind an explicit provider; MongoDB has no justified client or runtime role | Redis infrastructure/configuration/tests; project package graph |
 
 ## 2.2 ECS organization and authority
 
@@ -35,13 +35,16 @@ Relevant component classifications include:
 - Runtime-only: movement intents and sequence state, cooldowns, MP reservations, aggro, monster lifecycle timers, deterministic random state, online timers, recovery clocks, status-source timers, AOI membership, queues, sockets, and connection state.
 - Derived: `PlayerCalculatedStatsComponent`, equipment scores/ranks, composed status snapshots, maximum/stat projections calculated from durable equipment/content.
 - Replicated only: `PlayerEcsSnapshotAdapter` output, monster/NPC/player packet snapshots, transport sequence/ack state.
-- Configuration/content: NPC, map, monster, item, skill, talent, forge, pet, and world-boss definitions hydrated from catalogs/generated seeds.
+- Configuration/content: NPC, map, monster, item, skill, talent, forge, pet, and world-boss definitions loaded from process-pinned immutable PostgreSQL publications. Generated/captured data remains publisher or research input only.
 
 ## 2.3 Persistence and current save/load behavior
 
-`Program.cs` selects `PostgresGameStore` only when `storage.provider` equals `postgres`; every other value falls back to `JsonGameStore`. `appsettings.json` defaults to JSON, while `appsettings.docker.json` and Compose select PostgreSQL.
-
-`PostgresGameStore` owns one `NpgsqlDataSource` and uses handwritten parameterized SQL. Its partial files separate some features physically, but all implement the single `IGameStore`. Important mutations such as character creation, inventory moves, forging, gear enhancement, holy stones, pet operations, talents, and zodiac use explicit transactions and, where needed, `FOR UPDATE`. `SaveCharacterVitalsAsync` uses a monotonic `vitals_revision` plus a process-local per-character semaphore. Character position uses a session-local `CharacterPositionPersistenceCoordinator` and a capacity-one coalescing channel.
+Every runtime profile now validates and composes PostgreSQL only; missing,
+unknown, or JSON provider values fail before runtime state exists. Focused
+application adapters own migrated feature boundaries. `PostgresGameStore`
+remains as a finite, instrumented compatibility facade until B20H authorizes
+its removal. Migrated valuable-command families use explicit transactions,
+ownership fences, durable operation identities, and `FOR UPDATE` where required.
 
 `PostgresSchemaMigrationRunner` is a strong **Existing** foundation:
 
@@ -51,13 +54,15 @@ Relevant component classifications include:
 - an ahead-of-binary, reordered, gapped, checksum-drifted, or partial legacy schema fails closed;
 - each forward migration and its history row commit in one transaction.
 
-However, migrations and content seeding run in application startup. `docker-compose.yml` also mounts `database/postgres` into PostgreSQL's init directory even though `docs/database-migrations.md` declares those files historical bootstrap sources and the embedded runner the sole runtime path. These two bootstrap stories must be reconciled.
+B20F made schema startup self-contained through all registered migrations,
+removed the historical Docker init mount, and separated schema readiness from
+gameplay bootstrap. Historical SQL remains research/compatibility input only.
 
-The embedded fresh-database path is not currently self-contained. `LegacySchemaBootstrap.001.sql` through `.005.sql` do not create `packet_opcodes` or `packet_transactions`, while registered forward migrations including `20260728_009_skill_cast_interrupt_opcode`, `_013_owned_pet_bootstrap_opcode`, and `_022_pet_level_progression` reference those relations. Those tables currently come from historical filesystem SQL. Therefore a genuinely empty database using only `PostgresSchemaMigrationRunner` can fail before completing the registered plan. Repair the reviewed bootstrap foundation without changing checksums of already-applied forward migrations, then remove the Compose init mount only after both empty and restored paths pass.
-
-`JsonGameStore` uses a path-scoped `SemaphoreSlim`, reads the complete `GameDatabase`, and rewrites the complete file through a temporary file. It has no cross-process lock, durable flush guarantee, versioned migration chain, checksum, or production recovery process. Pet operations, online status, and captured world synchronization already differ from PostgreSQL. It must be treated as a disposable development fixture, not an alternative production authority.
-
-Content authority is also currently split. `EnsureSeedDataAsync` upserts many generated catalogs into PostgreSQL, while `MapTraversalCatalog.Default.CreateDefault()` reads generated `MapTemplateSeeds` directly at runtime and forge/material/stat/pet policies also execute from code catalogs. Other world-sync paths read PostgreSQL and captured packets. A rolling server can therefore calculate from package values while another reader exposes PG values. Each content family needs one pinned release owner.
+B20E moved `JsonGameStore` and `GameDatabase` under protocol-test
+compatibility fixtures; no server profile can select them. B20G publishes
+world, gameplay, item, and pet definitions into immutable revision-owned
+PostgreSQL tables and pins one compatible revision set per process. Compiled
+declarations and captures cannot act as recurrent runtime authority.
 
 The legacy `server` table (`id`, name/identifier, IP, server limit) and `character_base.server_id` exist, and character creation currently uses `server_id = 1`; no runtime placement/routing implementation consumes that as a distributed ownership record. It is legacy configuration, not evidence of multi-server support. Likewise, `server_data_migrations` is a legacy one-off repair/import marker distinct from the checksum-enforced `schema_migrations` history and must be inventoried and retired or clearly namespaced.
 

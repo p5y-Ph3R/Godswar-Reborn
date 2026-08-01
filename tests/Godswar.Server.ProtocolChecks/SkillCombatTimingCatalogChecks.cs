@@ -21,7 +21,9 @@ internal static class SkillCombatTimingCatalogChecks
         string label)
     {
         Check.True(
-            SkillCombatCatalog.TryGet(skillId, out var definition),
+            GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(
+                skillId,
+                out var definition),
             $"{label} combat definition exists");
         Check.Equal(expectedCastTime, definition.CastTime, $"{label} cast time");
         Check.Equal(expectedCooldown, definition.Cooldown, $"{label} cooldown");

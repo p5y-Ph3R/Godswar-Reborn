@@ -13,7 +13,7 @@ internal sealed partial class PostgresGameStore
         int quantity,
         CancellationToken cancellationToken = default)
     {
-        if (!DeveloperGrantMaterialCatalog.TryResolve(itemId, out var material))
+        if (!ItemContent.Templates.Materials.TryResolveDeveloper(itemId, out var material))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(itemId),
@@ -182,7 +182,7 @@ internal sealed partial class PostgresGameStore
         uint itemId,
         CancellationToken cancellationToken = default)
     {
-        if (!DeveloperMountCatalog.TryResolveGrantable(itemId, out _))
+        if (!ItemContent.DeveloperMounts.TryResolveGrantable(itemId, out _))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(itemId),

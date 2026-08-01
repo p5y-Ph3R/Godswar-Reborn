@@ -50,7 +50,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (!MountCatalog.TryGetEquippedRideDefinition(character, out var mount))
+        if (!RequireItemContent().Mounts.TryGetEquippedRideDefinition(
+                character,
+                out var mount))
         {
             Console.WriteLine(
                 $"[mount] rejected Ride without a supported equipped mount character={character.Name} slot={EquipmentSlots.Mount} item={EquipmentSlots.GetItemId(character.Equipment, character.Profession, EquipmentSlots.Mount)}");
@@ -262,7 +264,7 @@ internal sealed partial class GameClientHandler
                 _session,
                 MountCatalog.RuntimeStatusKind,
                 DateTimeOffset.UtcNow) ||
-            !MountCatalog.TryGetEquippedRideDefinition(
+            !RequireItemContent().Mounts.TryGetEquippedRideDefinition(
                 character,
                 out var equippedMount) ||
             equippedMount.ItemId != expectedMount.ItemId)

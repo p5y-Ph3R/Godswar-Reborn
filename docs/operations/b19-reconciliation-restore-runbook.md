@@ -94,8 +94,8 @@ category requires code and metric review.
 
 Before investigating a mismatch:
 
-1. Confirm the database has exactly 36 migrations through
-   `20260731_035_tempest_realm_authority`.
+1. Confirm the database has exactly 46 migrations through
+   `20260801_045_item_material_recipe_content_release`.
 2. Confirm PostgreSQL readiness and outbox/checkpoint worker health.
 3. Drain the affected character or realm before considering a mutation.
 4. Record a bounded report receipt and the finite mismatch category. Do not
@@ -312,7 +312,7 @@ Acceptance requires:
 
 - `status` is `passed`;
 - both required checks and both scenarios passed;
-- source and restored migration state are 36 through the expected head;
+- source and restored migration state are 46 through the expected head;
 - `walletUnexplainedMismatches` and
   `inventoryUnexplainedMismatches` are `0`, while both proven-purge counts
   are `1` for this fixture;

@@ -60,7 +60,7 @@ $acl = @(
         '+ping +echo +time +info +select ' +
         '+client|id +client|setinfo ' +
         '+client|setname ' +
-        '+eval +evalsha +script|load +hget +hgetall +hset +hdel ' +
+        '+eval +evalsha +script|load +get +set +hget +hgetall +hset +hdel ' +
         '+hincrby +del +unlink +exists ' +
         '+pexpire ' +
         '+zadd +zcard +zrem +zrangebyscore +zremrangebyscore +zscore'

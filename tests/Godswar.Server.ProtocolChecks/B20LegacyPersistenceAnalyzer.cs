@@ -24,6 +24,39 @@ internal sealed record B20LegacyPersistenceAnalysis(
 
 internal static class B20LegacyPersistenceAnalyzer
 {
+    private const string ApprovedMonsterBaselineExporter =
+        "tools/ExportMonsterContentBaseline.ps1";
+
+    private static readonly HashSet<string> GeneratedSeedDeclarationPaths =
+        new(StringComparer.Ordinal)
+        {
+            "src/Godswar.Server/State/ItemAttributeTemplateSeed.Generated.cs",
+            "src/Godswar.Server/State/ItemTemplateSeed.Generated.cs",
+            "src/Godswar.Server/State/MapTemplateSeed.Generated.cs",
+            "src/Godswar.Server/State/MonsterTemplateSeed.Generated.cs",
+            "src/Godswar.Server/State/NpcTemplateSeed.Generated.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Classes.Chunk000.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk000.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk001.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk002.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk003.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk004.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk005.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.SkillBooks.Chunk006.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk000.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk001.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk002.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk003.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk004.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk005.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk006.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Skills.Chunk007.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.TalentEffects.Chunk000.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Talents.Chunk000.cs",
+            "src/Godswar.Server/State/SkillTalentSeed.Generated.Talents.Chunk001.cs"
+        };
+
     private static readonly Regex BroadStorePattern = Token("IGameStore");
     private static readonly Regex PostgresBroadStorePattern =
         Token("PostgresGameStore");
@@ -76,8 +109,10 @@ internal static class B20LegacyPersistenceAnalyzer
         RegexOptions.CultureInvariant |
         RegexOptions.IgnoreCase);
     private static readonly Regex CaptureCorpusPathPattern = new(
-        @"[""'][^""'\r\n]*(?:captures|_reference|origin_disasm)" +
-        @"[^""'\r\n]*[""']",
+        @"[""'](?=[^""'\r\n]*[\\/])(?:" +
+        @"(?:captures|[a-z0-9_.-]+_reference|origin_disasm)(?=[\\/])|" +
+        @"[^""'\r\n]*[\\/](?:captures|[a-z0-9_.-]+_reference|" +
+        @"origin_disasm)(?=[\\/""']))[^""'\r\n]*[""']",
         RegexOptions.CultureInvariant |
         RegexOptions.IgnoreCase);
 
@@ -145,7 +180,18 @@ internal static class B20LegacyPersistenceAnalyzer
                     continue;
                 }
 
-                var count = Pattern(kind).Matches(source).Count;
+                var matches = Pattern(kind).Matches(source);
+                var count = matches.Count;
+                if (kind ==
+                        B20LegacyDependencyKind.CaptureBackedContentTable &&
+                    IsApprovedMonsterBaselineExport(
+                        path,
+                        source,
+                        matches))
+                {
+                    count--;
+                }
+
                 if (count > 0)
                 {
                     result.Add(new B20LegacyDependencyKey(kind, path), count);
@@ -303,7 +349,29 @@ internal static class B20LegacyPersistenceAnalyzer
         RegexOptions.CultureInvariant);
 
     private static bool IsGeneratedDeclaration(string path) =>
-        Path.GetFileName(path).Contains(
-            ".Generated",
-            StringComparison.Ordinal);
+        GeneratedSeedDeclarationPaths.Contains(path);
+
+    private static bool IsApprovedMonsterBaselineExport(
+        string path,
+        string source,
+        MatchCollection matches) =>
+        string.Equals(
+            path,
+            ApprovedMonsterBaselineExporter,
+            StringComparison.Ordinal) &&
+        matches.Count == 1 &&
+        matches[0].Value.EndsWith(
+            "monster_spawn_packets",
+            StringComparison.OrdinalIgnoreCase) &&
+        Regex.IsMatch(
+            source,
+            @"\bFROM\s+monster_spawn_packets\b",
+            RegexOptions.CultureInvariant |
+            RegexOptions.IgnoreCase) &&
+        !Regex.IsMatch(
+            source,
+            @"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE)\s+" +
+            @"monster_spawn_packets\b",
+            RegexOptions.CultureInvariant |
+            RegexOptions.IgnoreCase);
 }

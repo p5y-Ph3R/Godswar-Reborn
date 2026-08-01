@@ -229,6 +229,10 @@ jobs:
         shell: pwsh
         run: dotnet build GodswarServer.sln --configuration Release --no-restore --nologo
 
+      - name: B20H retirement-evidence validator self-test
+        shell: pwsh
+        run: ./tools/TestB20RetirementEvidence.ps1 -SelfTest
+
       - name: Mandatory isolated B19 reconciliation recovery gate
         shell: pwsh
         run: |

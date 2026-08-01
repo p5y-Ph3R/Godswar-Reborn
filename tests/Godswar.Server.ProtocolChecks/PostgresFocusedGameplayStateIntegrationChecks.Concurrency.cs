@@ -9,12 +9,9 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
     private static async Task AssertWorldBossActivationRacesAsync(
         string connectionString,
         NpgsqlDataSource verificationDataSource,
-        Fixture fixture)
+        Fixture fixture,
+        string gameplayContentRevision)
     {
-        await ConfigureSecondWorldBossAreaAsync(
-            verificationDataSource,
-            fixture);
-
         // Separate providers guarantee separate pools and physical database
         // sessions. The release gate makes both calls contend in PostgreSQL.
         await using var firstProvider =
@@ -25,9 +22,13 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         await WarmProviderAsync(secondProvider);
 
         var firstStore =
-            new PostgresWorldBossAreaControlStore(firstProvider);
+            new PostgresWorldBossAreaControlStore(
+                firstProvider,
+                gameplayContentRevision);
         var secondStore =
-            new PostgresWorldBossAreaControlStore(secondProvider);
+            new PostgresWorldBossAreaControlStore(
+                secondProvider,
+                gameplayContentRevision);
 
         await AssertNewerEventWinsAsync(
             verificationDataSource,
@@ -115,7 +116,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             sharedDeathToken);
         var secondActivation = firstActivation with
         {
-            MapId = fixture.UnconfiguredMapId,
+            MapId = fixture.SecondConfiguredMapId,
+            BossTemplateKey = fixture.SecondBossTemplateKey,
             ControllingCamp = 1
         };
 
@@ -191,22 +193,6 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             "SELECT 1;",
             connection);
         await command.ExecuteScalarAsync();
-    }
-
-    private static async Task ConfigureSecondWorldBossAreaAsync(
-        NpgsqlDataSource dataSource,
-        Fixture fixture)
-    {
-        await using var connection =
-            await dataSource.OpenConnectionAsync();
-        await using var transaction =
-            await connection.BeginTransactionAsync();
-        await InsertWorldBossPolicyAsync(
-            connection,
-            transaction,
-            fixture.UnconfiguredMapId,
-            fixture.BossTemplateKey);
-        await transaction.CommitAsync();
     }
 
     private static async Task<DurableWorldBossControl>

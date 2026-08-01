@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -137,11 +138,19 @@ internal sealed partial class
             SELECT EXISTS (
                 SELECT 1
                 FROM public.character_skills AS cs
-                JOIN public.skill_templates AS st
+                JOIN public.gameplay_skill_combat_definitions AS st
                   ON st.skill_id = cs.skill_id
                 WHERE cs.user_id = @characterId
                   AND cs.skill_id >= @firstSkillId
                   AND cs.skill_id <= @lastSkillId
+                  AND st.revision = COALESCE(
+                      @gameplayContentRevision,
+                      (
+                          SELECT publication.revision
+                          FROM public.gameplay_content_publication publication
+                          WHERE publication.family = 'gameplay'
+                      )
+                  )
                   AND @profession = ANY(st.class_ids)
             );
             """,
@@ -153,6 +162,9 @@ internal sealed partial class
         command.Parameters.AddWithValue(
             "profession",
             checked((short)profession));
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         return Convert.ToBoolean(
             await command.ExecuteScalarAsync(cancellationToken));
     }

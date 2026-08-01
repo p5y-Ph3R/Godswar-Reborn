@@ -1,10 +1,10 @@
-using Godswar.Server.State;
+using Godswar.Server.Application.World;
 
 namespace Godswar.Server.Game;
 
 /// <summary>
 /// Selects the single world boss that can award faction control for each
-/// eligible outdoor area. A captured monster template having rank "boss" is
+/// eligible outdoor area. A published monster template having rank "boss" is
 /// not sufficient by itself: elites and secondary bosses remain ordinary
 /// encounters unless they are explicitly selected here.
 /// </summary>
@@ -19,9 +19,10 @@ internal sealed class WorldBossCatalog
         IReadOnlyList<WorldBossDefinition> definitions,
         IReadOnlyList<PendingWorldBossArea> pendingAreas,
         TimeSpan respawnInterval,
-        bool validateCapturedTemplates)
+        IReadOnlyList<GameplayMonsterTemplateDefinition>? monsterTemplates,
+        bool allowEmpty = false)
     {
-        if (definitions.Count == 0)
+        if (definitions.Count == 0 && !allowEmpty)
         {
             throw new InvalidDataException("At least one world-boss area must be configured.");
         }
@@ -68,17 +69,18 @@ internal sealed class WorldBossCatalog
         _byMap = byMap;
         _eligibleMaps = eligibleMaps;
 
-        if (validateCapturedTemplates)
+        if (definitions.Count > 0 && monsterTemplates is not null)
         {
-            ValidateCapturedTemplates();
+            ValidatePublishedTemplates(monsterTemplates);
         }
     }
 
-    public static WorldBossCatalog Default { get; } = new(
-        CreateDefaultDefinitions(),
-        CreateDefaultPendingAreas(),
+    public static WorldBossCatalog Empty { get; } = new(
+        [],
+        [],
         DefaultRespawnInterval,
-        validateCapturedTemplates: true);
+        [],
+        allowEmpty: true);
 
     public IReadOnlyList<WorldBossDefinition> Definitions { get; }
 
@@ -104,55 +106,82 @@ internal sealed class WorldBossCatalog
         _byMap.TryGetValue(mapId, out var definition) &&
         string.Equals(definition.TemplateKey, templateKey, StringComparison.Ordinal);
 
+    public TimeSpan ResolveRespawnInterval(
+        short mapId,
+        string templateKey,
+        TimeSpan ordinaryRespawnInterval) =>
+        _byMap.TryGetValue(mapId, out var definition) &&
+        string.Equals(
+            definition.TemplateKey,
+            templateKey,
+            StringComparison.Ordinal)
+            ? definition.RespawnInterval
+            : ordinaryRespawnInterval;
+
+    public static WorldBossCatalog Create(
+        GameplayContentCatalog gameplay)
+    {
+        ArgumentNullException.ThrowIfNull(gameplay);
+        if (gameplay.WorldBosses.Count == 0 &&
+            gameplay.PendingWorldBossAreas.Count == 0)
+        {
+            return Empty;
+        }
+
+        var definitions = gameplay.WorldBosses
+            .Select(static boss => new WorldBossDefinition(
+                boss.MapId,
+                boss.SceneKey,
+                boss.TemplateKey,
+                boss.DisplayName,
+                boss.BonusBasisPoints,
+                boss.RespawnInterval))
+            .ToArray();
+        var pendingAreas = gameplay.PendingWorldBossAreas
+            .Select(static area => new PendingWorldBossArea(
+                area.MapId,
+                area.SceneKey,
+                area.Reason))
+            .ToArray();
+        var defaultRespawnInterval = definitions.Length == 0
+            ? DefaultRespawnInterval
+            : definitions[0].RespawnInterval;
+        return new WorldBossCatalog(
+            definitions,
+            pendingAreas,
+            defaultRespawnInterval,
+            gameplay.MonsterTemplates,
+            allowEmpty: definitions.Length == 0);
+    }
+
     internal static WorldBossCatalog Create(
         IEnumerable<WorldBossDefinition> definitions,
         TimeSpan respawnInterval)
     {
         ArgumentNullException.ThrowIfNull(definitions);
+        var normalized = definitions
+            .Select(definition => definition.RespawnInterval > TimeSpan.Zero
+                ? definition
+                : definition with
+                {
+                    RespawnInterval = respawnInterval
+                })
+            .ToArray();
         return new WorldBossCatalog(
-            definitions.ToArray(),
+            normalized,
             [],
             respawnInterval,
-            validateCapturedTemplates: false);
+            monsterTemplates: null);
     }
-
-    private static IReadOnlyList<WorldBossDefinition> CreateDefaultDefinitions() =>
-    [
-        new(3, "Parnitha_1", "A_boss_boar_001", "Boar King Tomas"),
-        new(5, "Nemea_1", "A_boss_wolf_005", "Astrien"),
-        new(6, "Mycenae_All", "A_boss_kingofscorpion_001", "[BOSS]Darkmist"),
-        new(7, "Olympia_All", "C_boss_centaur_001", "Centaur Leader"),
-        new(8, "Thermopylae_All", "B_bossB_xerxes_001", "Mardonius"),
-        new(9, "Thebes_All", "A_boss_kingofscorpiondi_001", "[BOSS]Scorpion Lord Selket"),
-        new(10, "Larissa_All", "C_boss_dragon_014", "Little Demate"),
-        new(11, "Marathon_All", "A_boss_bull_001", "Minos the Bull King"),
-        new(12, "Parnitha_2", "B_bossB_octopus_001", "Naga Siren Eirsigel"),
-        new(13, "Peloponnese_All", "A_boss_spider_008", "Spider Queen Ala"),
-        new(14, "Nemea_2", "B_bossB_spriggan_001", "Evil Treant Falio"),
-        new(15, "Derveni_All", "B_boss_centaur_001", "Centaur Shaikh Hailer"),
-        new(16, "Argolis_All", "A_boss_amazon_004", "Leader Cassirer"),
-        new(17, "Isthmus_of_Corinth_All", "B_boss_dragon_001", "Red Dragon Puluo"),
-        new(18, "Megara_All", "A_boss_mage_018", "Lord Barryonyx"),
-        new(19, "Plataea_All", "B_boss_cyclops_001", "Giant Alcyoneus"),
-        new(20, "Oracle_of_Delphi_All", "A_boss_long_005", "Hydra Lord Xausa"),
-        new(21, "Olympus_All", "C_boss_dragon_013", "Bahamut"),
-        new(22, "Elasson_All", "C_boss_dragon_002", "Ice Dragon")
-    ];
-
-    private static IReadOnlyList<PendingWorldBossArea> CreateDefaultPendingAreas() =>
-    [
-        new(
-            68,
-            "Parnassus",
-            "Outdoor faction area; requires a new neutral boss because its Athenian and Spartan Generals are opposing-faction quest objectives.")
-    ];
 
     private static void ValidateDefinition(WorldBossDefinition definition)
     {
         if (definition.MapId < 0 ||
             string.IsNullOrWhiteSpace(definition.SceneKey) ||
             string.IsNullOrWhiteSpace(definition.TemplateKey) ||
-            string.IsNullOrWhiteSpace(definition.DisplayName))
+            string.IsNullOrWhiteSpace(definition.DisplayName) ||
+            definition.BonusBasisPoints < 0 ||
+            definition.RespawnInterval <= TimeSpan.Zero)
         {
             throw new InvalidDataException("World-boss definitions require a map, scene, template, and name.");
         }
@@ -164,11 +193,12 @@ internal sealed class WorldBossCatalog
         }
     }
 
-    private void ValidateCapturedTemplates()
+    private void ValidatePublishedTemplates(
+        IReadOnlyList<GameplayMonsterTemplateDefinition> monsterTemplates)
     {
         foreach (var definition in Definitions)
         {
-            var matches = MonsterTemplateSeeds.Monsters
+            var matches = monsterTemplates
                 .Where(template =>
                     template.SourceMapId == definition.MapId &&
                     string.Equals(template.TemplateKey, definition.TemplateKey, StringComparison.Ordinal))
@@ -202,7 +232,9 @@ internal sealed record WorldBossDefinition(
     short MapId,
     string SceneKey,
     string TemplateKey,
-    string DisplayName);
+    string DisplayName,
+    int BonusBasisPoints = 0,
+    TimeSpan RespawnInterval = default);
 
 internal sealed record PendingWorldBossArea(
     short MapId,

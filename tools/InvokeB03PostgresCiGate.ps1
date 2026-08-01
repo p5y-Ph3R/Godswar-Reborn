@@ -65,8 +65,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 36
-    expectedMigrationHead = '20260731_035_tempest_realm_authority'
+    expectedMigrationCount = 46
+    expectedMigrationHead =
+        '20260801_045_item_material_recipe_content_release'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -285,18 +286,35 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 36 `
+        -InitialMigrationCount 46 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
 
     $failureCategory = 'repository-smoke'
+    $databaseNames['SmokeTemplate'] =
+        "godswar_b03_${runToken}_smoke_template"
+    New-DisposableDatabase $databaseNames.SmokeTemplate
+    Invoke-RequiredProtocolCheck `
+        -Phase 'repository-smoke-template' `
+        -Name 'PostgreSQL migration-prefix fixture' `
+        -GeneralConnectionString (
+            New-TestConnectionString $databaseNames.SmokeTemplate) `
+        -MigrationPrefix '20260801_045_item_material_recipe_content_release'
+
+    # Repository integration checks own their content publication and fixture
+    # setup. Clone a schema-only database rather than the empty-install
+    # scenario above, whose production-like startup deliberately publishes
+    # the official content pointers.
     $smokeCheckNames = @(
         'PostgreSQL forward-only database cleanup',
         'PostgreSQL official NPC content publication',
         'PostgreSQL official NPC dialogue publication',
+        'PostgreSQL item-template publication',
+        'PostgreSQL immutable pet-content publication',
         'PostgreSQL pinned world-content baseline',
         'PostgreSQL consistent character snapshot reader',
+        'PostgreSQL B20F authoritative loadout projection',
         'PostgreSQL focused progression and world-boss persistence',
         'PostgreSQL focused account persistence adapter',
         'PostgreSQL talent command precondition',
@@ -338,7 +356,7 @@ try {
             $smokeDatabase
         New-DisposableDatabaseFromTemplate `
             -Database $smokeDatabase `
-            -Template $databaseNames.Empty
+            -Template $databaseNames.SmokeTemplate
         Invoke-RequiredProtocolCheck `
             -Phase 'repository-and-concurrency-smoke' `
             -Name $checkName `

@@ -1,5 +1,6 @@
 using Godswar.Server.Application.World;
 using Godswar.Server.Domain.World.Content;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
@@ -7,8 +8,8 @@ using Npgsql;
 namespace Godswar.Server.ProtocolChecks;
 
 /// <summary>
-/// Verifies the pinned world-content projection and official NPC release on
-/// the disposable B03 empty database.
+/// Verifies pinned world content and official immutable publications on the
+/// disposable B03 empty database.
 /// </summary>
 internal static partial class PostgresWorldContentReaderIntegrationChecks
 {
@@ -33,13 +34,21 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             return;
         }
 
-        await using (var store = new PostgresGameStore(connectionString))
-        {
-            await store.EnsureSeedDataAsync();
-        }
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        await AssertPartialRelationalBaselineRejectedAsync(
+            connectionString);
+        await AssertPoisonedGameplayReleaseRejectedAsync(
+            connectionString);
         _ = await PostgresNpcContentBaselinePublisher
             .EnsurePublishedAsync(connectionString);
         _ = await PostgresNpcDialogueBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresMonsterContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresEnterBootstrapBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresGameplayContentPublisher
             .EnsurePublishedAsync(connectionString);
 
         await using var dataSource =
@@ -70,10 +79,17 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
                     connectionString);
 
             AssertStableManifest(first.Manifest, second.Manifest);
+            await AssertPublishedGameplayPermitsMissingSourceAsync(
+                dataSource);
+            await AssertPublishedGameplayIgnoresSourceMutationAsync(
+                dataSource,
+                connectionString,
+                first);
             AssertGeneratedMapFamily(
                 generatedMaps.Manifest,
                 first.Manifest);
             await AssertOfficialNpcReleaseAsync(dataSource, first);
+            await AssertOfficialMonsterReleaseAsync(dataSource, first);
             await AssertPublishedCatalogShapeAsync(dataSource, first);
             await AssertMapAndNpcProjectionAsync(
                 first,
@@ -82,14 +98,14 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
                 dataSource,
                 first,
                 historicalPacket);
-            await AssertMonsterFixtureAsync(first, fixture, InitialDisplayName);
-            await AssertMonsterFixtureAsync(second, fixture, InitialDisplayName);
+            await AssertMonsterFixtureIsResearchOnlyAsync(first, fixture);
+            await AssertMonsterFixtureIsResearchOnlyAsync(second, fixture);
 
             var pinnedRevision = first.Manifest.Revision;
             var pinnedMonsterRevision = first.Manifest.Monsters.Sha256;
             await MutateFixtureDisplayNameAsync(dataSource);
 
-            await AssertMonsterFixtureAsync(first, fixture, InitialDisplayName);
+            await AssertMonsterFixtureIsResearchOnlyAsync(first, fixture);
             Check.Equal(
                 pinnedRevision,
                 first.Manifest.Revision,
@@ -102,18 +118,14 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             var refreshed =
                 await PostgresWorldContentReaderLoader.LoadAsync(
                     connectionString);
-            Check.True(
-                !string.Equals(
-                    pinnedRevision,
-                    refreshed.Manifest.Revision,
-                    StringComparison.Ordinal),
-                "a new catalog observes the backing-row revision change");
-            Check.True(
-                !string.Equals(
-                    pinnedMonsterRevision,
-                    refreshed.Manifest.Monsters.Sha256,
-                    StringComparison.Ordinal),
-                "a new catalog observes the monster-family revision change");
+            Check.Equal(
+                pinnedRevision,
+                refreshed.Manifest.Revision,
+                "capture-table mutation cannot change a new official catalog");
+            Check.Equal(
+                pinnedMonsterRevision,
+                refreshed.Manifest.Monsters.Sha256,
+                "capture-table mutation cannot change the official monster family");
             Check.Equal(
                 first.Manifest.Maps.Sha256,
                 refreshed.Manifest.Maps.Sha256,
@@ -122,10 +134,9 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
                 first.Manifest.Npcs.Sha256,
                 refreshed.Manifest.Npcs.Sha256,
                 "monster mutation does not change the NPC revision");
-            await AssertMonsterFixtureAsync(
+            await AssertMonsterFixtureIsResearchOnlyAsync(
                 refreshed,
-                fixture,
-                MutatedDisplayName);
+                fixture);
         }
         finally
         {
@@ -153,6 +164,7 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
         AssertSameFamily(first.Maps, second.Maps, "map");
         AssertSameFamily(first.Npcs, second.Npcs, "NPC");
         AssertSameFamily(first.Monsters, second.Monsters, "monster");
+        AssertSameFamily(first.Gameplay, second.Gameplay, "gameplay");
         AssertSameFamily(
             first.EnterBootstrap,
             second.EnterBootstrap,
@@ -167,6 +179,10 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             generated.Maps,
             postgres.Maps,
             "generated/PostgreSQL map");
+        Check.Equal(
+            0,
+            generated.Gameplay.EntryCount,
+            "archived generated fixture does not masquerade as gameplay authority");
     }
 
     private static void AssertSameFamily(
@@ -188,35 +204,54 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             $"{scope} canonical checksum");
     }
 
-    private static async Task AssertPublishedCatalogShapeAsync(
+    private static async Task AssertOfficialMonsterReleaseAsync(
         NpgsqlDataSource dataSource,
         IWorldContentReader postgres)
     {
         await using var connection = await dataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT
-                (SELECT COUNT(*) FROM map_templates),
-                (SELECT COUNT(*) FROM npc_spawn_packets),
-                (SELECT COUNT(*) FROM monster_spawn_packets);
+            SELECT publication.revision,
+                   release.entry_count,
+                   release.source,
+                   (
+                       SELECT COUNT(*)::integer
+                       FROM monster_spawn_definitions definitions
+                       WHERE definitions.revision = publication.revision
+                   )
+            FROM monster_content_publication publication
+            JOIN monster_content_revisions release
+              ON release.revision = publication.revision
+            WHERE publication.family = 'monsters';
             """,
             connection);
         await using var reader = await command.ExecuteReaderAsync();
         Check.True(
             await reader.ReadAsync(),
-            "published-catalog shape query returns one row");
+            "official monster release metadata exists");
         Check.Equal(
-            checked((int)reader.GetInt64(0)),
-            postgres.Manifest.Maps.EntryCount,
-            "PostgreSQL map rows match the pinned map count");
+            MonsterContentBaselineV1.ExpectedRevision,
+            reader.GetString(0),
+            "official monster publication revision");
         Check.Equal(
-            0L,
-            reader.GetInt64(1),
-            "disposable source-parity baseline has no captured NPC override");
+            MonsterContentBaselineV1.ExpectedEntryCount,
+            reader.GetInt32(1),
+            "official monster release entry count");
         Check.Equal(
-            1L,
-            reader.GetInt64(2),
-            "disposable baseline has only the tracked monster fixture");
+            MonsterContentBaselineV1.Source,
+            reader.GetString(2),
+            "official monster release source");
+        Check.Equal(
+            MonsterContentBaselineV1.ExpectedEntryCount,
+            reader.GetInt32(3),
+            "official monster stored definition count");
+        Check.True(
+            !await reader.ReadAsync(),
+            "official monster publication metadata is singular");
+        Check.Equal(
+            MonsterContentBaselineV1.ExpectedRevision,
+            postgres.Manifest.Monsters.Sha256,
+            "pinned reader uses the official monster release revision");
     }
 
     private static async Task AssertOfficialNpcReleaseAsync(
@@ -343,35 +378,44 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
         await using var connection = await dataSource.OpenConnectionAsync();
         await using var command = new NpgsqlCommand(
             """
-            SELECT clear_bytes
-            FROM server_packet_templates
-            WHERE template_key = 'enter_syn_game_data'
-              AND direction = 'S2C'
-              AND opcode = 10090
-            ORDER BY sequence;
+            SELECT publication.revision,
+                   release.packet_count,
+                   release.total_bytes,
+                   release.source
+            FROM enter_bootstrap_publication publication
+            JOIN enter_bootstrap_revisions release
+              ON release.revision = publication.revision
+            WHERE publication.family = 'enter-bootstrap';
             """,
             connection);
-        var published = new List<byte[]>();
         await using var result = await command.ExecuteReaderAsync();
-        while (await result.ReadAsync())
-        {
-            published.Add((byte[])result["clear_bytes"]);
-        }
-
+        Check.True(
+            await result.ReadAsync(),
+            "official enter-bootstrap release metadata exists");
         Check.Equal(
-            published.Count,
+            result.GetString(0),
+            bootstrap.Revision.Sha256,
+            "bootstrap uses the published revision");
+        Check.Equal(
+            0,
+            result.GetInt32(1),
+            "safe baseline explicitly publishes zero packets");
+        Check.Equal(
+            0,
+            result.GetInt32(2),
+            "safe baseline explicitly publishes zero bytes");
+        Check.Equal(
+            "explicit-safe-empty-v1",
+            result.GetString(3),
+            "safe baseline source is explicit");
+        Check.Equal(
+            0,
             bootstrap.Packets.Count,
-            "bootstrap contains only explicitly published templates");
+            "bootstrap contains no character-specific capture packet");
         Check.Equal(
-            published.Count,
+            0,
             bootstrap.Revision.EntryCount,
-            "bootstrap revision count matches published templates");
-        for (var index = 0; index < published.Count; index++)
-        {
-            Check.True(
-                published[index].SequenceEqual(bootstrap.Packets[index]),
-                $"published bootstrap packet {index} is byte-identical");
-        }
+            "bootstrap revision count matches the empty publication");
 
         Check.True(
             !bootstrap.Packets.Any(packet =>
@@ -379,33 +423,15 @@ internal static partial class PostgresWorldContentReaderIntegrationChecks
             "packet_transactions history is never a bootstrap fallback");
     }
 
-    private static async Task AssertMonsterFixtureAsync(
+    private static async Task AssertMonsterFixtureIsResearchOnlyAsync(
         IWorldContentReader reader,
-        CapturedMonsterSpawn fixture,
-        string expectedDisplayName)
+        CapturedMonsterSpawn fixture)
     {
         var map = await reader.ReadMapAsync(fixture.MapId);
-        var actual = map.Monsters.Single(monster =>
-            monster.ObjectId == fixture.ObjectId);
-        Check.Equal(
-            expectedDisplayName,
-            actual.DisplayName,
-            "tracked monster display name");
         Check.True(
-            actual.MapId == fixture.MapId &&
-            string.Equals(
-                actual.SceneKey,
-                fixture.SceneKey,
-                StringComparison.Ordinal) &&
-            string.Equals(
-                actual.TemplateKey,
-                fixture.TemplateKey,
-                StringComparison.Ordinal) &&
-            actual.ObjectId == fixture.ObjectId &&
-            actual.X.Equals(fixture.X) &&
-            actual.Z.Equals(fixture.Z) &&
-            actual.Packet.SequenceEqual(fixture.Packet),
-            "tracked captured monster reads byte-identically");
+            map.Monsters.All(monster =>
+                monster.ObjectId != fixture.ObjectId),
+            "capture-table monster remains research-only");
     }
 
 }

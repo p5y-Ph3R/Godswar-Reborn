@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -158,58 +159,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         }
     }
 
-    private const string CalculatedStatsQuery =
-        """
-        SELECT
-            user_id,
-            account_id,
-            name,
-            profession,
-            level,
-            max_hp,
-            max_mp,
-            current_hp,
-            current_mp,
-            physical_attack,
-            physical_defense,
-            magic_attack,
-            magic_defense,
-            hit,
-            dodge,
-            critical,
-            critical_resistance,
-            damage_absorb,
-            physical_damage_bonus,
-            magic_damage_bonus,
-            cure_bonus,
-            be_cure_bonus,
-            hp_recovery,
-            mp_recovery,
-            ignore_physical_defense,
-            ignore_magic_defense,
-            physical_append_damage,
-            magic_append_damage,
-            critical_damage_percent,
-            critical_damage_flat,
-            weapon_score,
-            weapon_rank,
-            weapon_aura_effect,
-            armor_score,
-            armor_rank,
-            armor_aura_effect,
-            learned_skill_count
-        FROM character_stat_summary summary
-        WHERE summary.account_id = @accountId
-          AND summary.user_id = @characterId
-          AND EXISTS (
-              SELECT 1
-              FROM character_base character
-              WHERE character.id = summary.user_id
-                AND character.account_id = summary.account_id
-                AND character.lifecycle_state = 'active'
-          );
-
-        """;
+    private static readonly string CalculatedStatsQuery =
+        PostgresCharacterRuntimeItemProjectionSql
+            .CalculatedStatsForCharacter;
 
     private const string SkillsQuery =
         """
@@ -219,11 +171,19 @@ internal sealed partial class PostgresCharacterSnapshotReader
         FROM character_base character
         JOIN character_skills skills
           ON skills.user_id = character.id
-        JOIN skill_templates template
+        JOIN gameplay_skill_combat_definitions template
           ON template.skill_id = skills.skill_id
         WHERE character.account_id = @accountId
           AND character.id = @characterId
           AND character.lifecycle_state = 'active'
+          AND template.revision = COALESCE(
+              @gameplayContentRevision,
+              (
+                  SELECT publication.revision
+                  FROM gameplay_content_publication publication
+                  WHERE publication.family = 'gameplay'
+              )
+          )
           AND character.profession = ANY(template.class_ids)
         ORDER BY skills.skill_id;
 
@@ -235,13 +195,21 @@ internal sealed partial class PostgresCharacterSnapshotReader
             template.id,
             COALESCE(talent.rank, 0)::integer
         FROM character_base character
-        JOIN talent_templates template
+        JOIN gameplay_talent_definitions template
           ON template.class_id = character.profession
         LEFT JOIN character_talents talent
           ON talent.user_id = character.id
          AND talent.talent_id = template.id
         WHERE character.account_id = @accountId
           AND character.id = @characterId
+          AND template.revision = COALESCE(
+              @gameplayContentRevision,
+              (
+                  SELECT publication.revision
+                  FROM gameplay_content_publication publication
+                  WHERE publication.family = 'gameplay'
+              )
+          )
           AND (
               character.profession <> 1
               OR template.id IN (

@@ -294,7 +294,7 @@ internal sealed partial class GameClientHandler
                     cancellationToken);
             }
             await _session.SendAsync(
-                PacketBuilder.OwnedPetList(pets),
+                PacketBuilder.OwnedPetList(RequirePetContent(), pets),
                 cancellationToken,
                 "DurablePetListRefresh");
         }
@@ -313,6 +313,7 @@ internal sealed partial class GameClientHandler
                 .ToArray();
             await _session.SendAsync(
                 PacketBuilder.PetLevelUpgrade(
+                    RequirePetContent(),
                     checked((uint)pet.PetId),
                     pet.Level,
                     pet.Experience,
@@ -326,7 +327,7 @@ internal sealed partial class GameClientHandler
                  CommandFamily.PetPresenceTransition)
         {
             await _session.SendAsync(
-                PacketBuilder.OwnedPetList(pets),
+                PacketBuilder.OwnedPetList(RequirePetContent(), pets),
                 cancellationToken,
                 "DurablePetPresenceListRefresh");
             var target = pets.SingleOrDefault(

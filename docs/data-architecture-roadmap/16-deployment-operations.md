@@ -2,7 +2,7 @@
 
 ## 16.1 Configuration and secrets
 
-- Replace "anything except exact `postgres` means JSON" with an allowlisted provider enum and fail-closed validation.
+- B20E enforces an allowlisted, PostgreSQL-only provider and fail-closed validation; preserve that startup matrix.
 - Production must explicitly select PostgreSQL; missing/malformed numeric/bool configuration must not silently fall back.
 - Keep secrets out of tracked files and command lines. Use provider secret manager/container secret files; the secure certificate password-file handling is a good local model.
 - Rotate database credentials, TLS certificates, UDP cookie/key roots, and operator credentials with documented overlap/recovery.

@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.ProtocolChecks.CompatibilityFixtures.JsonAuthority;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -8,23 +9,9 @@ internal static partial class JsonCharacterSnapshotReaderChecks
 {
     private static async Task AssertGameplayPersistenceCompositionAsync()
     {
-        var missingAll = CaptureCompositionFailure(
-            () => ServerGameplayPersistenceComposition.Create(null, null));
-        Check.True(
-            missingAll.Message.Contains(
-                "character snapshot reader",
-                StringComparison.Ordinal),
-            "gameplay composition fails closed when no local provider exists");
-
-        var missingPets = CaptureCompositionFailure(
-            () => ServerGameplayPersistenceComposition.Create(
-                null,
-                new CharacterRuntimeOnlyProvider()));
-        Check.True(
-            missingPets.Message.Contains(
-                "owned-pet snapshot reader",
-                StringComparison.Ordinal),
-            "gameplay composition fails closed when a local provider is incomplete");
+        Check.Throws<ArgumentNullException>(
+            () => ServerGameplayPersistenceComposition.Create(null!),
+            "production gameplay composition requires its PostgreSQL runtime");
 
         await WithStoreAsync(async (_, store) =>
         {
@@ -46,9 +33,9 @@ internal static partial class JsonCharacterSnapshotReaderChecks
                     CurrentHp = 1_900
                 });
 
-            var providers = ServerGameplayPersistenceComposition.Create(
-                null,
-                store);
+            var providers =
+                JsonCompatibilityGameplayPersistenceComposition.Create(
+                    store);
             Check.True(
                 ReferenceEquals(store, providers.CharacterRuntime) &&
                 ReferenceEquals(store, providers.OwnedPets) &&
@@ -179,44 +166,4 @@ internal static partial class JsonCharacterSnapshotReaderChecks
         throw new InvalidOperationException(description);
     }
 
-    private static InvalidOperationException CaptureCompositionFailure(
-        Func<ServerGameplayPersistenceProviders> action)
-    {
-        try
-        {
-            _ = action();
-        }
-        catch (InvalidOperationException exception)
-        {
-            return exception;
-        }
-
-        throw new InvalidOperationException(
-            "Expected gameplay persistence composition to fail closed.");
-    }
-
-    private sealed class CharacterRuntimeOnlyProvider :
-        ICharacterSnapshotReader,
-        ICharacterRuntimeProjectionReader
-    {
-        public Task<CharacterAccountSnapshot> ReadAsync(
-            int accountId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException(
-                "Composition checks do not read a character snapshot.");
-
-        public Task<CharacterCalculatedStatsSnapshot?>
-            ReadCalculatedStatsAsync(
-                int accountId,
-                int characterId,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult<CharacterCalculatedStatsSnapshot?>(null);
-
-        public Task<bool> IsSkillLearnedAsync(
-            int accountId,
-            int characterId,
-            int skillId,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
-    }
 }

@@ -31,10 +31,12 @@ internal static class CapturedMonsterSpawnHydrator
         TimeSpan corpseDespawnDelay,
         TimeSpan ordinaryRespawnDelay,
         WorldBossRespawnState? activeWorldBossRespawn,
-        Guid runtimeInstanceId)
+        Guid runtimeInstanceId,
+        WorldBossCatalog worldBossCatalog)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(worldBossCatalog);
         if (runtimeInstanceId == Guid.Empty)
         {
             throw new ArgumentOutOfRangeException(
@@ -67,9 +69,10 @@ internal static class CapturedMonsterSpawnHydrator
             spawnGeneration: 1);
         var lifecycle = new MonsterLifecycleComponent(
             corpseDespawnDelay,
-            WorldBossCatalog.Default.IsWorldBoss(mapId, definition.TemplateKey)
-                ? WorldBossCatalog.Default.RespawnInterval
-                : ordinaryRespawnDelay);
+            worldBossCatalog.ResolveRespawnInterval(
+                mapId,
+                definition.TemplateKey,
+                ordinaryRespawnDelay));
         var random = new MonsterRandomComponent(
             MonsterEcsRandom.CreateSeed(mapId, definition.ObjectId));
 

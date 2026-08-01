@@ -1,5 +1,5 @@
+using Godswar.Server.Application.World;
 using Godswar.Server.Game;
-using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -7,7 +7,8 @@ internal static class MapTraversalCatalogChecks
 {
     public static Task RunAsync()
     {
-        var catalog = MapTraversalCatalog.Default;
+        var catalog = MapTraversalCatalog.Create(
+            GameplayContentTestFixtures.Published);
 
         CheckMapSetAndClassification(catalog);
         CheckCapturedDeduplication(catalog);
@@ -18,8 +19,33 @@ internal static class MapTraversalCatalogChecks
         CheckSpecialMapsHaveNoWalkingLinks(catalog);
         CheckMalformedMovementIsRejected(catalog);
         CheckNonTriggerMovement(catalog);
+        CheckOrphanedPublishedRowsFailClosed();
 
         return Task.CompletedTask;
+    }
+
+    private static void CheckOrphanedPublishedRowsFailClosed()
+    {
+        var malformed = GameplayContentCatalog.Empty with
+        {
+            Links =
+            [
+                new GameplayMapLinkDefinition(
+                    SourceMapId: 0,
+                    LinkIndex: 0,
+                    TargetMapId: 4,
+                    X: 204f,
+                    Z: -120f,
+                    Source: "test",
+                    GameplayMapLinkConfidence.CapturedSpanMap,
+                    GameplayMapLinkActivation.Automatic,
+                    Note: "orphaned test link")
+            ]
+        };
+
+        Check.Throws<InvalidDataException>(
+            () => GameplayRuntimeCatalogs.Create(malformed),
+            "published links without map definitions fail closed");
     }
 
     private static void CheckCapturedArrivalEvidence(
@@ -84,14 +110,10 @@ internal static class MapTraversalCatalogChecks
     private static void CheckCapturedDeduplication(
         MapTraversalCatalog catalog)
     {
-        Check.Equal(44, MapTemplateSeeds.Links.Count, "raw SpanMap rows retained");
-
-        var distinctRawCount = MapTemplateSeeds.Links
-            .Select(static link =>
-                (link.MapId, link.TargetMapId, link.X, link.Z))
-            .Distinct()
-            .Count();
-        Check.Equal(40, distinctRawCount, "raw SpanMap identity count");
+        Check.Equal(
+            50,
+            GameplayContentTestFixtures.Published.Links.Count,
+            "published gameplay snapshot contains reviewed link evidence");
         Check.Equal(50, catalog.EvidenceLinks.Count, "deduped raw plus north evidence");
         Check.Equal(48, catalog.AutomaticLinks.Count, "automatic reciprocal links");
         Check.Equal(

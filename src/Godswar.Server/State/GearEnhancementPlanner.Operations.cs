@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
@@ -303,11 +304,9 @@ internal static partial class GearEnhancementPlanner
     {
         return operation switch
         {
-            GearEnhancementOperation.Add => catalyst.Kind == GearEnhancementMaterialKind.FlameSpark &&
-                                            catalyst.ItemId == GearEnhancementMaterialCatalog.FlameSparkItemId,
+            GearEnhancementOperation.Add => catalyst.Kind == GearEnhancementMaterialKind.FlameSpark,
             GearEnhancementOperation.Enhance => catalyst.Kind == GearEnhancementMaterialKind.QuartzPlate,
-            GearEnhancementOperation.Delete => catalyst.Kind == GearEnhancementMaterialKind.WaterGrain &&
-                                               catalyst.ItemId == GearEnhancementMaterialCatalog.WaterGrainItemId,
+            GearEnhancementOperation.Delete => catalyst.Kind == GearEnhancementMaterialKind.WaterGrain,
             _ => false
         };
     }
@@ -422,7 +421,8 @@ internal static partial class GearEnhancementPlanner
         return false;
     }
 
-    private static GearEnhancementEquipmentRule CreateEquipmentRule(ItemTemplateSeed template)
+    private static GearEnhancementEquipmentRule CreateEquipmentRule(
+        ItemTemplateDefinition template)
     {
         var allowed = new HashSet<int>();
         try

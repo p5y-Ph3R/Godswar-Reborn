@@ -12,12 +12,10 @@ internal sealed record ServerAccountPersistenceProviders(
 internal static class ServerAccountPersistenceComposition
 {
     public static ServerAccountPersistenceProviders Create(
-        PostgresApplicationDataRuntime? postgresRuntime,
-        IAccountCredentialStore? localProvider)
+        PostgresApplicationDataRuntime postgresRuntime)
     {
-        var provider = (IAccountCredentialStore?)postgresRuntime?.Accounts ??
-            localProvider ??
-            throw Missing("provider");
+        ArgumentNullException.ThrowIfNull(postgresRuntime);
+        IAccountCredentialStore provider = postgresRuntime.Accounts;
         IAccountDirectory directory =
             provider as IAccountDirectory ??
             throw Missing("directory");

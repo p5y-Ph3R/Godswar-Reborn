@@ -39,6 +39,9 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly IWorldBossAreaControlStore _worldBossAreaControl;
     private readonly IWorldBossRespawnReader _worldBossRespawns;
     private readonly IWorldContentReader _worldContent;
+    private readonly GameplayRuntimeCatalogs _gameplayCatalogs;
+    private readonly GameplayItemContent? _itemContent;
+    private readonly IPetContentCatalog? _petContent;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
     private readonly LegacyAuthenticationAccess?

@@ -2,7 +2,9 @@ using System.Text.RegularExpressions;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -44,6 +46,12 @@ internal static partial class
             return;
         }
 
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        var gameplayPublication =
+            await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+                connectionString);
+
         await using (var store =
                      new PostgresGameStore(connectionString))
         {
@@ -53,7 +61,8 @@ internal static partial class
         var account = await CreateAccountAsync(connectionString);
         var executor = new PostgresCharacterLifecycleCommandExecutor(
             dataSource,
-            new PostgresOutboxDispatcherOptions());
+            new PostgresOutboxDispatcherOptions(),
+            gameplayPublication.Revision);
         var correlation = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
@@ -107,6 +116,7 @@ internal static partial class
             starter.PositionX == GameDefaults.StartingPositionX &&
             starter.PositionZ == GameDefaults.StartingPositionZ &&
             starter.ItemCount > 0 &&
+            starter.SkillCount > 0 &&
             starter.EconomyBaselineSilver == 10_000 &&
             starter.EconomyBaselineGold == 10,
             "secure creation preserves legacy starter gameplay and economy defaults");

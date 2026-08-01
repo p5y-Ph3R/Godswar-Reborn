@@ -6,7 +6,8 @@ namespace Godswar.Server.ProtocolChecks;
 internal static partial class PostgresFocusedGameplayStateIntegrationChecks
 {
     private static async Task<Fixture> CreateFixtureAsync(
-        NpgsqlDataSource dataSource)
+        NpgsqlDataSource dataSource,
+        string gameplayContentRevision)
     {
         var token = Guid.NewGuid().ToString("N")[..10];
         var nowTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
@@ -15,28 +16,23 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             TimeSpan.Zero);
         var killedAtUtc = readAtUtc.AddMinutes(-5);
         var vipExpiresAtUtc = readAtUtc.AddHours(2);
-        var configuredSceneKey = $"B20C_Configured_{token}";
         var unconfiguredSceneKey = $"B20C_Unconfigured_{token}";
-        var bossTemplateKey = $"b20c-boss-{token}";
         var deathToken = $"b20c-death:{token}";
 
         await using var connection =
             await dataSource.OpenConnectionAsync();
         await using var transaction =
             await connection.BeginTransactionAsync();
-        var configuredMapId = await InsertAvailableMapAsync(
+        var configuredAreas = await ReadConfiguredWorldBossAreasAsync(
             connection,
             transaction,
-            configuredSceneKey);
+            gameplayContentRevision);
+        var configuredArea = configuredAreas[0];
+        var secondConfiguredArea = configuredAreas[1];
         var unconfiguredMapId = await InsertAvailableMapAsync(
             connection,
             transaction,
             unconfiguredSceneKey);
-        await InsertWorldBossPolicyAsync(
-            connection,
-            transaction,
-            configuredMapId,
-            bossTemplateKey);
         var primaryAccountId = await InsertAccountAsync(
             connection,
             transaction,
@@ -53,7 +49,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             connection,
             transaction,
             primaryAccountId,
-            configuredMapId,
+            configuredArea.MapId,
             $"B20C{token}");
         await InsertPersonalBoostsAsync(
             connection,
@@ -67,11 +63,13 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             primaryAccountId,
             otherAccountId,
             characterId,
-            configuredMapId,
+            configuredArea.MapId,
+            secondConfiguredArea.MapId,
             unconfiguredMapId,
-            configuredSceneKey,
-            unconfiguredSceneKey,
-            bossTemplateKey,
+            configuredArea.BossTemplateKey,
+            secondConfiguredArea.BossTemplateKey,
+            configuredArea.BonusBasisPoints,
+            configuredArea.RespawnIntervalSeconds,
             deathToken,
             readAtUtc,
             killedAtUtc,
@@ -114,38 +112,49 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
                 "No disposable PostgreSQL map ID was available.");
     }
 
-    private static async Task InsertWorldBossPolicyAsync(
+    private static async Task<ConfiguredWorldBossArea[]>
+        ReadConfiguredWorldBossAreasAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        short mapId,
-        string bossTemplateKey)
+        string gameplayContentRevision)
     {
         await using var command = new NpgsqlCommand(
             """
-            INSERT INTO public.world_boss_areas (
-                map_id,
-                boss_template_key,
-                boss_display_name,
-                bonus_basis_points,
-                respawn_interval_seconds,
-                enabled
+            SELECT
+                definition.map_id,
+                definition.template_key,
+                definition.bonus_basis_points,
+                definition.respawn_interval_seconds
+            FROM public.gameplay_world_boss_definitions definition
+            WHERE definition.revision = @gameplayContentRevision
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.faction_area_experience_control control
+                WHERE control.map_id = definition.map_id
             )
-            VALUES (
-                @mapId,
-                @bossTemplateKey,
-                'B20C Boss',
-                2500,
-                43200,
-                true
-            );
+            ORDER BY definition.map_id, definition.template_key
+            LIMIT 2;
             """,
             connection,
             transaction);
-        command.Parameters.AddWithValue("mapId", mapId);
         command.Parameters.AddWithValue(
-            "bossTemplateKey",
-            bossTemplateKey);
-        await command.ExecuteNonQueryAsync();
+            "gameplayContentRevision",
+            gameplayContentRevision);
+        var values = new List<ConfiguredWorldBossArea>(2);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            values.Add(new ConfiguredWorldBossArea(
+                reader.GetInt16(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetInt32(3)));
+        }
+
+        return values.Count == 2
+            ? values.ToArray()
+            : throw new InvalidDataException(
+                "Two unused published world-boss areas are required by the focused integration check.");
     }
 
     private static async Task<int> InsertAccountAsync(
@@ -335,6 +344,24 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         NpgsqlDataSource dataSource,
         Fixture fixture)
     {
+        await using (var controls = dataSource.CreateCommand(
+            """
+            DELETE FROM public.faction_area_experience_control
+            WHERE (map_id = @configuredMapId
+                   OR map_id = @secondConfiguredMapId)
+              AND right(death_token, length(@token)) = @token;
+            """))
+        {
+            controls.Parameters.AddWithValue(
+                "configuredMapId",
+                fixture.ConfiguredMapId);
+            controls.Parameters.AddWithValue(
+                "secondConfiguredMapId",
+                fixture.SecondConfiguredMapId);
+            controls.Parameters.AddWithValue("token", fixture.Token);
+            await controls.ExecuteNonQueryAsync();
+        }
+
         await using (var accounts = dataSource.CreateCommand(
             """
             DELETE FROM public.accounts
@@ -354,12 +381,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         await using var maps = dataSource.CreateCommand(
             """
             DELETE FROM public.map_templates
-            WHERE map_id = @configuredMapId
-               OR map_id = @unconfiguredMapId;
+            WHERE map_id = @unconfiguredMapId;
             """);
-        maps.Parameters.AddWithValue(
-            "configuredMapId",
-            fixture.ConfiguredMapId);
         maps.Parameters.AddWithValue(
             "unconfiguredMapId",
             fixture.UnconfiguredMapId);
@@ -372,12 +395,20 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         int OtherAccountId,
         int CharacterId,
         short ConfiguredMapId,
+        short SecondConfiguredMapId,
         short UnconfiguredMapId,
-        string ConfiguredSceneKey,
-        string UnconfiguredSceneKey,
         string BossTemplateKey,
+        string SecondBossTemplateKey,
+        int BonusBasisPoints,
+        int RespawnIntervalSeconds,
         string DeathToken,
         DateTimeOffset ReadAtUtc,
         DateTimeOffset KilledAtUtc,
         DateTimeOffset VipExpiresAtUtc);
+
+    private readonly record struct ConfiguredWorldBossArea(
+        short MapId,
+        string BossTemplateKey,
+        int BonusBasisPoints,
+        int RespawnIntervalSeconds);
 }

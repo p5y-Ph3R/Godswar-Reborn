@@ -107,6 +107,7 @@ function Assert-AuthenticationRequired {
 
 function Assert-ApplicationAclBoundary {
     $probeKey = 'godswar:b17-ci:v1:acl-probe'
+    $stringProbeKey = 'godswar:b17-ci:v1:acl-string-probe'
     $set = Invoke-RedisCli `
         -Username $applicationUsername `
         -Password $applicationPassword `
@@ -120,6 +121,20 @@ function Assert-ApplicationAclBoundary {
     if (($set.Output -join '').Trim() -ne '1' -or
         ($read.Output -join '').Trim() -ne 'allowed') {
         throw 'Application ACL rejected its in-scope keyspace.'
+    }
+    $stringSet = Invoke-RedisCli `
+        -Username $applicationUsername `
+        -Password $applicationPassword `
+        -Command @('SET', $stringProbeKey, 'allowed') `
+        -Operation 'in-scope realm-content write'
+    $stringRead = Invoke-RedisCli `
+        -Username $applicationUsername `
+        -Password $applicationPassword `
+        -Command @('GET', $stringProbeKey) `
+        -Operation 'in-scope realm-content read'
+    if (($stringSet.Output -join '').Trim() -ne 'OK' -or
+        ($stringRead.Output -join '').Trim() -ne 'allowed') {
+        throw 'Application ACL rejected realm-content coordination.'
     }
     $time = Invoke-RedisCli `
         -Username $applicationUsername `
@@ -139,7 +154,7 @@ function Assert-ApplicationAclBoundary {
     $null = Invoke-RedisCli `
         -Username $applicationUsername `
         -Password $applicationPassword `
-        -Command @('DEL', $probeKey) `
+        -Command @('DEL', $probeKey, $stringProbeKey) `
         -Operation 'application ACL probe cleanup'
     $checks.Add([ordered]@{
         scenario = 'acl'
@@ -174,8 +189,8 @@ function Assert-ApplicationAclBoundary {
         -Command @('KEYS', 'godswar:*') `
         -Description 'application KEYS'
     Assert-Noperm `
-        -Command @('SET', $probeKey, 'denied') `
-        -Description 'unapproved application SET'
+        -Command @('MSET', $probeKey, 'denied') `
+        -Description 'unapproved application MSET'
     Assert-Noperm `
         -Command @('SCRIPT', 'FLUSH') `
         -Description 'application SCRIPT FLUSH'

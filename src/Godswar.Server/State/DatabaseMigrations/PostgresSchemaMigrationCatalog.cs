@@ -218,6 +218,16 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateProgressionRewardFoundation(),
         CreateProgressionIntervalAuthority(),
         CreatePetDurabilityFoundation(),
-        CreateTempestRealmAuthority()
+        CreateTempestRealmAuthority(),
+        CreateMonsterContentRelease(),
+        CreateEnterBootstrapContentRelease(),
+        CreateItemTemplateContentRelease(),
+        CreateGameplayContentRelease(),
+        CreateItemRuntimeProjectionCutover(),
+        CreateItemPolicyContentRelease(),
+        CreatePetContentRelease(),
+        CreateItemContentHeaderSealGuard(),
+        CreateItemMaterialContentRelease(),
+        CreateItemMaterialRecipeContentRelease()
     ];
 }

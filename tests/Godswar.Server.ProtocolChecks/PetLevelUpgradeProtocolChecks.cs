@@ -231,7 +231,7 @@ internal static class PetLevelUpgradeProtocolChecks
             Wisdom: 5.05m,
             Luck: 6.06m);
 
-        var packet = PacketBuilder.PetLevelUpgrade(
+        var packet = PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
             petId,
             level,
             currentExperience,
@@ -282,28 +282,28 @@ internal static class PetLevelUpgradeProtocolChecks
         }
 
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PacketBuilder.PetLevelUpgrade(
+            () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId: 0,
                 level: 1,
                 currentExperience: 0,
                 basicSavvy),
             "zero pet ID cannot produce a native upgrade response");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PacketBuilder.PetLevelUpgrade(
+            () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 121,
                 currentExperience: 0,
                 basicSavvy),
             "out-of-range pet level cannot be serialized");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PacketBuilder.PetLevelUpgrade(
+            () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 1,
                 currentExperience: -1,
                 basicSavvy),
             "negative pet experience cannot be serialized");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PacketBuilder.PetLevelUpgrade(
+            () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 1,
                 currentExperience: 0,
@@ -355,7 +355,7 @@ internal static class PetLevelUpgradeProtocolChecks
 
         Check.True(
             response.SequenceEqual(
-                PacketBuilder.PetLevelUpgrade(
+                PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                     PetId,
                     level: 2,
                     currentExperience: 299_998_500,

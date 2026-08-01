@@ -29,7 +29,16 @@ internal sealed partial class PostgresGameStore
         await using (var command = new NpgsqlCommand("""
             SELECT cb."SkillPoint", cb.fighter_job_lv
             FROM character_base cb
-            JOIN talent_templates tt ON tt.id = @talentId
+            JOIN gameplay_talent_definitions tt
+              ON tt.id = @talentId
+             AND tt.revision = COALESCE(
+                 @gameplayContentRevision,
+                 (
+                     SELECT publication.revision
+                     FROM gameplay_content_publication publication
+                     WHERE publication.family = 'gameplay'
+                 )
+             )
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
               AND tt.class_id = cb.profession
@@ -39,6 +48,7 @@ internal sealed partial class PostgresGameStore
             command.Parameters.AddWithValue("accountId", accountId);
             command.Parameters.AddWithValue("characterId", characterId);
             command.Parameters.AddWithValue("talentId", talentId);
+            AddGameplayContentRevisionParameter(command);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
@@ -141,7 +151,16 @@ internal sealed partial class PostgresGameStore
         await using var command = new NpgsqlCommand("""
             SELECT tt.id, COALESCE(ct.rank, 0)::integer AS rank
             FROM character_base cb
-            JOIN talent_templates tt ON tt.class_id = cb.profession
+            JOIN gameplay_talent_definitions tt
+              ON tt.class_id = cb.profession
+             AND tt.revision = COALESCE(
+                 @gameplayContentRevision,
+                 (
+                     SELECT publication.revision
+                     FROM gameplay_content_publication publication
+                     WHERE publication.family = 'gameplay'
+                 )
+             )
             LEFT JOIN character_talents ct ON ct.user_id = cb.id AND ct.talent_id = tt.id
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
@@ -179,6 +198,7 @@ internal sealed partial class PostgresGameStore
 
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
+        AddGameplayContentRevisionParameter(command);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -207,7 +227,16 @@ internal sealed partial class PostgresGameStore
             SELECT cs.skill_id, GREATEST(1, cs.skill_level)::integer AS skill_level
             FROM character_base cb
             JOIN character_skills cs ON cs.user_id = cb.id
-            JOIN skill_templates st ON st.skill_id = cs.skill_id
+            JOIN gameplay_skill_combat_definitions st
+              ON st.skill_id = cs.skill_id
+             AND st.revision = COALESCE(
+                 @gameplayContentRevision,
+                 (
+                     SELECT publication.revision
+                     FROM gameplay_content_publication publication
+                     WHERE publication.family = 'gameplay'
+                 )
+             )
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
               AND cb.profession = ANY(st.class_ids)
@@ -216,6 +245,7 @@ internal sealed partial class PostgresGameStore
 
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("characterId", characterId);
+        AddGameplayContentRevisionParameter(command);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

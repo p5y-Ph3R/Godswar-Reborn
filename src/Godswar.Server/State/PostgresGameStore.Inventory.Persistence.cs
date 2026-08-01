@@ -225,14 +225,25 @@ internal sealed partial class PostgresGameStore
                 st.skill_level,
                 'starter'
             FROM character_base cb
-            JOIN skill_templates st ON cb.profession = ANY(st.class_ids)
+            JOIN gameplay_skill_combat_definitions st
+              ON cb.profession = ANY(st.class_ids)
+             AND st.revision = COALESCE(
+                 @gameplayContentRevision,
+                 (
+                     SELECT publication.revision
+                     FROM gameplay_content_publication publication
+                     WHERE publication.family = 'gameplay'
+                 )
+             )
             WHERE st.previous_skill_id IS NULL
               AND COALESCE(st.min_level, 1) <= cb.fighter_job_lv
               AND st.skill_level = 1
               AND NOT EXISTS (
                   SELECT 1
                   FROM character_skills existing
-                  JOIN skill_templates existing_template ON existing_template.skill_id = existing.skill_id
+                  JOIN gameplay_skill_combat_definitions existing_template
+                    ON existing_template.skill_id = existing.skill_id
+                   AND existing_template.revision = st.revision
                   WHERE existing.user_id = cb.id
                     AND existing_template.base_name = st.base_name
                     AND COALESCE(existing_template.skill_level, 0) > COALESCE(st.skill_level, 0)
@@ -246,11 +257,20 @@ internal sealed partial class PostgresGameStore
             INSERT INTO character_skills (user_id, skill_id, skill_level, source)
             SELECT cb.id, st.skill_id, 1, 'mount-compatibility'
             FROM character_base cb
-            JOIN skill_templates st
+            JOIN gameplay_skill_combat_definitions st
               ON st.skill_id = 4904
+             AND st.revision = COALESCE(
+                 @gameplayContentRevision,
+                 (
+                     SELECT publication.revision
+                     FROM gameplay_content_publication publication
+                     WHERE publication.family = 'gameplay'
+                 )
+             )
              AND cb.profession = ANY(st.class_ids)
             ON CONFLICT (user_id, skill_id) DO NOTHING;
             """);
+        AddGameplayContentRevisionParameter(command);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -319,43 +339,6 @@ internal sealed partial class PostgresGameStore
         {
             Value = value.HasValue ? value.Value : DBNull.Value
         });
-    }
-
-    private static async Task<int?> ResolveEquipmentSlotAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        uint itemId,
-        int requestedSlot,
-        CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand("""
-            SELECT kind, equipment_slot
-            FROM item_templates
-            WHERE id = @itemId;
-            """, connection, transaction);
-        command.Parameters.AddWithValue("itemId", (int)itemId);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (await reader.ReadAsync(cancellationToken))
-        {
-            var kind = reader.GetString(0);
-            var slot = reader.GetInt16(1);
-            if (!EquipmentSlots.IsEquipmentKind(kind) ||
-                !EquipmentSlots.IsEquipmentSlot(slot))
-            {
-                return null;
-            }
-
-            if (kind.Equals("ring", StringComparison.OrdinalIgnoreCase) &&
-                requestedSlot is EquipmentSlots.Ring1 or EquipmentSlots.Ring2)
-            {
-                return requestedSlot;
-            }
-
-            return slot;
-        }
-
-        return null;
     }
 
 }

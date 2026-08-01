@@ -4,6 +4,7 @@
 - Date: 2026-07-29
 - Roadmap ticket: B04
 - B14 amendment: 2026-07-31
+- B20E amendment: 2026-08-01
 
 ## Context
 
@@ -21,25 +22,26 @@ creation and username-only game binding.
 
 ## Decision
 
-Startup must name one of two runtime profiles and one of two storage
-providers. Matching is case-insensitive, but aliases, numeric values, blank
-values, and unknown values are rejected.
+Startup must name one of two runtime profiles and the single supported runtime
+storage provider, `Postgres`. Matching is case-insensitive, but aliases,
+numeric values, blank values, `Json`, and unknown values are rejected.
 
 | Runtime profile | Storage | Listener | Result |
 | --- | --- | --- | --- |
-| `LocalDevelopment` | `Json` or configured `Postgres` | Raw TCP, legacy option omitted/false | Rejected |
-| `LocalDevelopment` | `Json` or configured `Postgres` | Raw TCP, legacy option true | Allowed only as explicit local rollback |
-| `LocalDevelopment` | `Json` or configured `Postgres` | Secure TLS, legacy option false | Allowed |
+| `LocalDevelopment` | Configured `Postgres` | Raw TCP, legacy option omitted/false | Rejected |
+| `LocalDevelopment` | Configured `Postgres` | Raw TCP, legacy option true | Allowed only as explicit local rollback |
+| `LocalDevelopment` | Configured `Postgres` | Secure TLS, legacy option false | Allowed |
 | Any | Any | Secure TLS, legacy option true | Rejected |
 | `Production` | Configured `Postgres` | Secure TLS, legacy and plaintext-migration options false | Allowed |
-| `Production` | `Json` | Any | Rejected |
+| Any profile | `Json` or unknown storage | Any | Rejected |
 | `Production` | Configured `Postgres` | Raw TCP | Rejected |
 | Missing/unknown profile or provider | Any | Any | Rejected |
 | Any profile | `Postgres` without a connection string | Any | Rejected |
 
 `ServerOptions.Load` validates before the composition root creates or seeds a
-store. It no longer creates a missing options file. `Program.cs` uses the
-validated provider in an exhaustive switch.
+store. It no longer creates a missing options file. `Program.cs` constructs
+PostgreSQL storage directly after validation; there is no alternate provider
+switch.
 
 Raw compatibility is guarded at four points:
 
@@ -76,8 +78,10 @@ strings, credentials, tickets, or packet data.
 
 - The original client remains usable only through the explicitly activated
   `legacy-raw` local Docker profile.
-- A missing file, provider typo, or production secure-mode typo cannot
-  silently select JSON or raw authentication.
+- A missing file, provider typo, or secure-mode typo cannot silently select
+  JSON or raw authentication.
+- `LocalDevelopment` no longer makes JSON selectable. Historical JSON storage
+  exists only as a protocol-test compatibility fixture.
 - `Production` now means secure TLS plus PostgreSQL at server composition.
 - Production credential rows must already be verifier-backed; this decision
   does not provide a production migration tool.

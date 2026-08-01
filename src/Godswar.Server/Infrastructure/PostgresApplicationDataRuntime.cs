@@ -10,6 +10,7 @@ using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Application.World;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Pets;
@@ -41,23 +42,38 @@ internal sealed class PostgresApplicationDataRuntime :
         string connectionString,
         PostgresOutboxDispatcherOptions outboxOptions,
         ZodiacEnergyPolicy zodiacEnergyPolicy,
+        GameplayItemContent itemContent,
+        string gameplayContentRevision,
+        IPetContentCatalog petContent,
         ReconciliationOptions? reconciliationOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         ArgumentNullException.ThrowIfNull(outboxOptions);
+        ArgumentNullException.ThrowIfNull(itemContent);
+        ArgumentNullException.ThrowIfNull(petContent);
+        gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateRequired(
+                gameplayContentRevision);
         outboxOptions.Validate();
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
         Accounts = new PostgresAccountStore(_dataSource);
         var characterReader =
-            new PostgresCharacterSnapshotReader(_dataSource);
+            new PostgresCharacterSnapshotReader(
+                _dataSource,
+                itemContent.Templates,
+                gameplayContentRevision);
         CharacterSnapshots = characterReader;
         CharacterRuntimeProjections = characterReader;
         OwnedPetSnapshots = characterReader;
         ExperienceBoosts =
-            new PostgresExperienceBoostStateReader(_dataSource);
+            new PostgresExperienceBoostStateReader(
+                _dataSource,
+                gameplayContentRevision);
         var worldBossState =
-            new PostgresWorldBossAreaControlStore(_dataSource);
+            new PostgresWorldBossAreaControlStore(
+                _dataSource,
+                gameplayContentRevision);
         WorldBossAreaControl = worldBossState;
         WorldBossRespawns = worldBossState;
         ZodiacLevels = new PostgresZodiacLevelStore(_dataSource);
@@ -66,15 +82,18 @@ internal sealed class PostgresApplicationDataRuntime :
         CharacterLifecycleCommands =
             new PostgresCharacterLifecycleCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                gameplayContentRevision);
         TalentUpgradeCommands =
             new PostgresTalentUpgradeCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                gameplayContentRevision);
         DeveloperItemGrantCommands =
             new PostgresDeveloperItemGrantCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         DeveloperBagClearCommands =
             new PostgresDeveloperBagClearCommandExecutor(
                 _dataSource,
@@ -82,19 +101,23 @@ internal sealed class PostgresApplicationDataRuntime :
         MakeAttributeStoneCommands =
             new PostgresMakeAttributeStoneCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         MaterialConversionCommands =
             new PostgresGearMentorMaterialConversionCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         DecomposeGearCommands =
             new PostgresGearMentorDecomposeCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         GearEnhancementCommands =
             new PostgresGearEnhancementCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         EquipmentForgeCommands =
             new PostgresEquipmentForgeCommandExecutor(
                 _dataSource,
@@ -110,11 +133,13 @@ internal sealed class PostgresApplicationDataRuntime :
         EquipmentBagTransferCommands =
             new PostgresEquipmentBagTransferCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         HolyStoneCommands =
             new PostgresHolyStoneCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent);
         ZodiacSkillGridActivationCommands =
             new PostgresZodiacSkillGridActivationCommandExecutor(
                 _dataSource,
@@ -126,7 +151,8 @@ internal sealed class PostgresApplicationDataRuntime :
         ZodiacSkillGridSelectionCommands =
             new PostgresZodiacSkillGridSelectionCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                gameplayContentRevision);
         MonsterDeathRewardCommands =
             new PostgresMonsterDeathRewardCommandExecutor(
                 _dataSource,
@@ -139,7 +165,9 @@ internal sealed class PostgresApplicationDataRuntime :
         PetDurableCommands =
             new PostgresPetDurableCommandExecutor(
                 _dataSource,
-                outboxOptions);
+                outboxOptions,
+                itemContent,
+                petContent);
         var outboxConsumers =
             PostgresOutboxConsumerCatalog.Create();
         _outboxDispatcher = new PostgresOutboxDispatcher(
@@ -155,6 +183,7 @@ internal sealed class PostgresApplicationDataRuntime :
             new ReconciliationRunner(
                 new PostgresReconciliationReader(
                     _dataSource,
+                    itemContent.Templates.Revision.Sha256,
                     outboxConsumers),
                 effectiveReconciliationOptions,
                 reconciliationMetrics),

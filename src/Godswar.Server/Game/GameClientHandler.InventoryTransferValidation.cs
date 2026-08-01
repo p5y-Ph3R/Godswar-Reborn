@@ -86,6 +86,7 @@ internal sealed partial class GameClientHandler
 
     internal static EquipmentBagTransferAction
         ResolveEquipmentBagTransferAction(
+            Godswar.Server.Application.Items.IItemTemplateCatalog templates,
             GameCharacter character,
             int equipmentSlot,
             int bagSlot)
@@ -109,6 +110,7 @@ internal sealed partial class GameClientHandler
         if (equippedItem.IsEmpty &&
             !bagItem.IsEmpty &&
             EquipmentSlots.ResolveSlotForItem(
+                templates,
                 bagItem.Id,
                 equipmentSlot) == equipmentSlot)
         {

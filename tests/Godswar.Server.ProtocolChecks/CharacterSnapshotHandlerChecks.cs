@@ -49,7 +49,12 @@ internal static partial class CharacterSnapshotHandlerChecks
         var options = new ServerOptions
         {
             RuntimeProfile = "LocalDevelopment",
-            Storage = new StorageOptions { Provider = "Json" }
+            Storage = new StorageOptions
+            {
+                Provider = "Postgres",
+                PostgresConnectionString =
+                    "Host=127.0.0.1;Database=snapshot-handler-check"
+            }
         };
         options.Authentication.AllowLegacyRawAuthentication = true;
         var legacyAccess = LegacyAuthenticationAccess.Create(
@@ -66,7 +71,8 @@ internal static partial class CharacterSnapshotHandlerChecks
             characterCheckpoints:
                 new GameHandlerCheckpointCoordinatorStub(
                     source.Character!.Location.PositionRevision,
-                    source.Character.Vitals.Revision));
+                    source.Character.Vitals.Revision),
+            petContent: PetContentTestCatalog.Instance);
 
         await InvokePacketAsync(
             handler,
@@ -103,7 +109,7 @@ internal static partial class CharacterSnapshotHandlerChecks
         Check.True(
             Contains(
                 clearBytes,
-                PacketBuilder.OwnedPetList(hydrated.Pets)),
+                PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, hydrated.Pets)),
             "the client receives snapshot-backed owned pets");
         Check.True(
             Contains(
@@ -128,7 +134,12 @@ internal static partial class CharacterSnapshotHandlerChecks
         var options = new ServerOptions
         {
             RuntimeProfile = "LocalDevelopment",
-            Storage = new StorageOptions { Provider = "Json" }
+            Storage = new StorageOptions
+            {
+                Provider = "Postgres",
+                PostgresConnectionString =
+                    "Host=127.0.0.1;Database=snapshot-handler-check"
+            }
         };
         options.Authentication.AllowLegacyRawAuthentication = true;
         var legacyAccess = LegacyAuthenticationAccess.Create(

@@ -8,7 +8,9 @@ internal static class ServerListenerProfileChecks
     {
         var rawOptions = new ServerOptions();
         rawOptions.RuntimeProfile = "LocalDevelopment";
-        rawOptions.Storage.Provider = "Json";
+        rawOptions.Storage.Provider = "Postgres";
+        rawOptions.Storage.PostgresConnectionString =
+            "Host=127.0.0.1;Database=listener-check";
         rawOptions.Authentication.AllowLegacyRawAuthentication =
             true;
         rawOptions.Login.Port = 5999;

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
@@ -76,18 +77,12 @@ internal static partial class GearEnhancementPlanner
     private const int KitBagSlotCount = 96;
     private const int MaximumAttributeSlots = 5;
 
-    private static readonly IReadOnlyDictionary<uint, GearEnhancementEquipmentRule> EquipmentRules =
-        ItemTemplateSeeds.All
-            .Where(static template => template.Id > 0 && EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot))
-            .GroupBy(static template => template.Id)
-            .ToDictionary(
-                static group => checked((uint)group.Key),
-                static group => CreateEquipmentRule(group.First()));
-
     public static GearEnhancementResult Create(
+        IItemTemplateCatalog templates,
         string kitBag,
         GearEnhancementRequest? request)
     {
+        ArgumentNullException.ThrowIfNull(templates);
         var originalKitBag = kitBag ?? string.Empty;
         var workingKitBag = string.IsNullOrWhiteSpace(kitBag)
             ? GameDefaults.EmptyKitBag
@@ -187,7 +182,10 @@ internal static partial class GearEnhancementPlanner
                 "Gear must be a single non-stackable item.");
         }
 
-        if (!EquipmentRules.TryGetValue(equipment.Id, out var equipmentRule) ||
+        if (!templates.TryGet(equipment.Id, out var template) ||
+            !EquipmentSlots.IsEquipmentKind(template.Kind) ||
+            !EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot) ||
+            CreateEquipmentRule(template) is not { } equipmentRule ||
             equipmentRule.AllowedAttributeIds.Count == 0)
         {
             return Reject(
@@ -208,7 +206,7 @@ internal static partial class GearEnhancementPlanner
                 "The target gear contains an invalid appended-attribute record.");
         }
 
-        if (!GearEnhancementMaterialCatalog.TryGetAttributeStone(stoneItem.Id, out var stone))
+        if (!templates.Materials.TryGetAttributeStone(stoneItem.Id, out var stone))
         {
             return Reject(
                 GearEnhancementStatus.InvalidAttributeStone,
@@ -218,7 +216,7 @@ internal static partial class GearEnhancementPlanner
                 "The selected stone is not a supported Attribute Stone.");
         }
 
-        if (!GearEnhancementMaterialCatalog.TryGet(catalystItem.Id, out var catalyst) ||
+        if (!templates.Materials.TryGetGearEnhancement(catalystItem.Id, out var catalyst) ||
             !CatalystMatches(request.Operation, catalyst))
         {
             return Reject(

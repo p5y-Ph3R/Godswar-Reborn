@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Data;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -10,11 +11,17 @@ internal sealed class PostgresExperienceBoostStateReader :
     IExperienceBoostStateReader
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly string? _gameplayContentRevision;
 
-    public PostgresExperienceBoostStateReader(NpgsqlDataSource dataSource)
+    public PostgresExperienceBoostStateReader(
+        NpgsqlDataSource dataSource,
+        string? gameplayContentRevision = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
     }
 
     public async Task<ExperienceBoostSnapshot> ReadAsync(
@@ -60,7 +67,7 @@ internal sealed class PostgresExperienceBoostStateReader :
         return snapshot;
     }
 
-    private static async Task<List<ExperienceBoostEntry>>
+    private async Task<List<ExperienceBoostEntry>>
         ReadPersonalAndAreaBoostsAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
@@ -72,6 +79,9 @@ internal sealed class PostgresExperienceBoostStateReader :
             connection,
             transaction);
         AddReadParameters(command, request);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         var boosts = new List<ExperienceBoostEntry>();
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -281,10 +291,17 @@ internal sealed class PostgresExperienceBoostStateReader :
             'world-boss:' || control.boss_template_key
         FROM requested_character character
         CROSS JOIN public.faction_area_experience_control control
-        JOIN public.world_boss_areas area
+        JOIN public.gameplay_world_boss_definitions area
           ON area.map_id = control.map_id
-         AND area.boss_template_key = control.boss_template_key
-         AND area.enabled
+         AND area.template_key = control.boss_template_key
+         AND area.revision = COALESCE(
+             @gameplayContentRevision,
+             (
+                 SELECT publication.revision
+                 FROM public.gameplay_content_publication publication
+                 WHERE publication.family = 'gameplay'
+             )
+         )
         WHERE control.map_id = @mapId
           AND control.controlling_camp = @camp
           AND control.activated_at <= @readAt

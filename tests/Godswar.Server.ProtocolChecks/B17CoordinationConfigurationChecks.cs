@@ -69,7 +69,7 @@ internal static class B17CoordinationConfigurationChecks
             directory,
             "local.json",
             provider: "Local",
-            storageProvider: "Json",
+            storageProvider: "Postgres",
             requireTls: true,
             capacity: 4_096);
         var loaded = ServerOptions.Load(path);

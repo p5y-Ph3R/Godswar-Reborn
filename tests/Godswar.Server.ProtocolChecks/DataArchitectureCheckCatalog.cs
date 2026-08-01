@@ -17,6 +17,21 @@ internal static class DataArchitectureCheckCatalog
             LegacyPersistenceMetricsChecks.CheckName,
             LegacyPersistenceMetricsChecks.RunAsync),
         (
+            B20FStartupAndProjectionArchitectureChecks.CheckName,
+            B20FStartupAndProjectionArchitectureChecks.RunAsync),
+        (
+            ItemTemplateContentArchitectureChecks.CheckName,
+            ItemTemplateContentArchitectureChecks.RunAsync),
+        (
+            PetContentArchitectureChecks.CheckName,
+            PetContentArchitectureChecks.RunAsync),
+        (
+            PostgresPetContentPublicationIntegrationChecks.CheckName,
+            PostgresPetContentPublicationIntegrationChecks.RunAsync),
+        (
+            "PostgreSQL item-template publication",
+            PostgresItemTemplateContentIntegrationChecks.RunAsync),
+        (
             "Pinned immutable world-content reader",
             WorldContentReaderChecks.RunAsync),
         (
@@ -58,6 +73,15 @@ internal static class DataArchitectureCheckCatalog
         (
             B17CoordinationConfigurationChecks.CheckName,
             B17CoordinationConfigurationChecks.RunAsync),
+        (
+            RuntimeContentFingerprintChecks.CheckName,
+            RuntimeContentFingerprintChecks.RunAsync),
+        (
+            RuntimeContentCompatibilityChecks.CheckName,
+            RuntimeContentCompatibilityChecks.RunAsync),
+        (
+            RuntimeContentSourceIsolationChecks.CheckName,
+            RuntimeContentSourceIsolationChecks.RunAsync),
         (
             RedisCoordinationMetricsChecks.CheckName,
             RedisCoordinationMetricsChecks.RunAsync),

@@ -20,15 +20,19 @@ internal sealed partial class
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresEquipmentBagTransferCommandProbe? _probe;
+    private readonly GameplayItemContent _itemContent;
 
     public PostgresEquipmentBagTransferCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
+        GameplayItemContent itemContent,
         IPostgresEquipmentBagTransferCommandProbe? probe = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
+        _itemContent = itemContent ?? throw new ArgumentNullException(
+            nameof(itemContent));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(

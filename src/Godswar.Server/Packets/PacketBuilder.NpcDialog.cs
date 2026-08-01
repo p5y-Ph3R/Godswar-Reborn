@@ -192,7 +192,9 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.Slice(2, 2), 0x2724);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.Slice(4, 4),
-            spawn.AppearanceType == 0 ? NpcSpawnDefinitionFactory.DefaultAppearanceType : spawn.AppearanceType);
+            spawn.AppearanceType == 0
+                ? NpcAppearanceDefaults.AppearanceType
+                : spawn.AppearanceType);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(8, 4), spawn.ObjectId);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(12, 4), 1);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.Slice(24, 4), 1521);
@@ -201,7 +203,9 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteSingleLittleEndian(packet.Slice(36, 4), spawn.Z);
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.Slice(40, 4),
-            float.IsFinite(spawn.Facing) ? spawn.Facing : NpcSpawnDefinitionFactory.DefaultFacing);
+            float.IsFinite(spawn.Facing)
+                ? spawn.Facing
+                : NpcAppearanceDefaults.Facing);
         PacketText.WriteFixedAscii(
             packet.Slice(WorldObjectTemplateOffset, WorldObjectTemplateLength),
             spawn.TemplateKey);

@@ -1,63 +1,6 @@
-using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
-
-internal enum GearEnhancementMaterialKind
-{
-    AttributeStone,
-    QuartzPlate,
-    FlameSpark,
-    WaterGrain
-}
-
-internal sealed record GearEnhancementMaterialDefinition(
-    uint ItemId,
-    string NameKey,
-    string DisplayName,
-    GearEnhancementMaterialKind Kind,
-    string Texture,
-    string Icon,
-    short StackCap,
-    int Random,
-    string Distribution,
-    string? AttributeName = null,
-    IReadOnlyList<int>? AttributeChain = null,
-    bool CanEnhance = false,
-    short? SourceAttributeLevel = null,
-    short? TargetAttributeLevel = null)
-{
-    public IReadOnlyList<int> AllowedAttributeIds => AttributeChain ?? [];
-
-    public ItemTemplateSeed ToItemTemplateSeed()
-    {
-        var stats = new Dictionary<string, string>
-        {
-            ["ID"] = ItemId.ToString(),
-            ["Type"] = GearEnhancementMaterialCatalog.ConsumeItemType,
-            ["Texture"] = Texture,
-            ["Icon"] = Icon,
-            ["Random"] = Random.ToString(),
-            ["Distribution"] = Distribution,
-            ["Money"] = "0",
-            ["Overlap"] = StackCap.ToString()
-        };
-
-        return new ItemTemplateSeed(
-            checked((int)ItemId),
-            GearEnhancementMaterialCatalog.ConsumeItemType,
-            NameKey,
-            DisplayName,
-            EquipmentSlot: 0,
-            ClassIds: [],
-            MinLevel: null,
-            MaxLevel: null,
-            Hand: null,
-            SkillFlag: null,
-            Texture,
-            Icon,
-            JsonSerializer.Serialize(stats));
-    }
-}
 
 internal static class GearEnhancementMaterialCatalog
 {

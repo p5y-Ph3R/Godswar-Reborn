@@ -427,7 +427,8 @@ internal static class MapLiveTransferChecks
             store: null,
             zodiacEnergyOptions: null,
             monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-            playerRuntimeMode);
+            playerRuntimeMode,
+            gameplayCatalogs: GameplayContentTestFixtures.Runtime);
 
     private static GameCharacter CreateCharacter() =>
         new()

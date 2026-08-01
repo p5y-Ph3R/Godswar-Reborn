@@ -19,15 +19,19 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresDeveloperItemGrantCommandProbe? _probe;
+    private readonly GameplayItemContent _itemContent;
 
     public PostgresDeveloperItemGrantCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
+        GameplayItemContent itemContent,
         IPostgresDeveloperItemGrantCommandProbe? probe = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
+        _itemContent = itemContent ?? throw new ArgumentNullException(
+            nameof(itemContent));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -337,11 +341,11 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
         return stackCapacity + slotCapacity >= quantity;
     }
 
-    private static bool TryResolveGrantItem(
+    private bool TryResolveGrantItem(
         uint itemId,
         out DeveloperGrantItemDefinition grantItem)
     {
-        if (DeveloperGrantMaterialCatalog.TryResolve(
+        if (_itemContent.Templates.Materials.TryResolveDeveloper(
                 itemId,
                 out var material))
         {
@@ -353,7 +357,7 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
             return true;
         }
 
-        if (DeveloperMountCatalog.TryResolveGrantable(
+        if (_itemContent.DeveloperMounts.TryResolveGrantable(
                 itemId,
                 out _))
         {

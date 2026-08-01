@@ -1,5 +1,6 @@
 using Godswar.Server.Application.World;
 using Godswar.Server.Domain.World.Content;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
@@ -28,6 +29,10 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             await store.EnsureSeedDataAsync();
         }
 
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        _ = await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+            connectionString);
         _ = await PostgresNpcContentBaselinePublisher.EnsurePublishedAsync(
             connectionString);
         await AssertDialogueLoaderFailsClosedAsync(connectionString);
@@ -48,6 +53,11 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
         {
             AssertPublication(result);
         }
+
+        _ = await PostgresMonsterContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresEnterBootstrapBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
 
         var pinned =
             await PostgresWorldContentReaderLoader.LoadAsync(

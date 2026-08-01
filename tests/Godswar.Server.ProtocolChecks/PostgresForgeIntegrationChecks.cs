@@ -27,6 +27,7 @@ internal static class PostgresForgeIntegrationChecks
             await using var storeA = new PostgresGameStore(connectionString);
             await using var storeB = new PostgresGameStore(connectionString);
             await storeA.EnsureSeedDataAsync();
+            await storeB.EnsureSeedDataAsync();
 
             var account = await storeA.LoginOrCreateAccountAsync(username, string.Empty);
             accountId = account.Id;

@@ -34,6 +34,24 @@
     <EmbeddedResource
       Include="Infrastructure/WorldContent/Baselines/NpcContentBaseline.v1.br"
       LogicalName="Godswar.Server.Infrastructure.WorldContent.Baselines.NpcContentBaseline.v1.br" />
-  </ItemGroup>
+    <EmbeddedResource
+      Include="Infrastructure/WorldContent/Baselines/MonsterContentBaseline.v1.gz"
+      LogicalName="Godswar.Server.Infrastructure.WorldContent.Baselines.MonsterContentBaseline.v1.gz" />
+    <EmbeddedResource
+      Include="../../database/postgres/005_item_attributes.sql"
+      LogicalName="Godswar.Server.Infrastructure.DatabaseBaselines.005_item_attributes.sql" />
+    <EmbeddedResource
+      Include="../../database/postgres/006_skills_and_talents.sql"
+      LogicalName="Godswar.Server.Infrastructure.DatabaseBaselines.006_skills_and_talents.sql" />
+    <EmbeddedResource
+      Include="../../database/postgres/007_npcs.sql"
+      LogicalName="Godswar.Server.Infrastructure.DatabaseBaselines.007_npcs.sql" />
+    <EmbeddedResource
+      Include="../../database/postgres/008_maps.sql"
+      LogicalName="Godswar.Server.Infrastructure.DatabaseBaselines.008_maps.sql" />
+    <EmbeddedResource
+      Include="../../database/postgres/009_monsters.sql"
+      LogicalName="Godswar.Server.Infrastructure.DatabaseBaselines.009_monsters.sql" />
+    </ItemGroup>
 
 </Project>

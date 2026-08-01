@@ -1,5 +1,6 @@
 using System.Data;
 using Godswar.Server.Application.World;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -10,11 +11,17 @@ internal sealed class PostgresWorldBossAreaControlStore :
     IWorldBossRespawnReader
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly string? _gameplayContentRevision;
 
-    public PostgresWorldBossAreaControlStore(NpgsqlDataSource dataSource)
+    public PostgresWorldBossAreaControlStore(
+        NpgsqlDataSource dataSource,
+        string? gameplayContentRevision = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
     }
 
     public async Task<WorldBossAreaActivationResult> ActivateAsync(
@@ -129,6 +136,9 @@ internal sealed class PostgresWorldBossAreaControlStore :
             "readAt",
             NpgsqlDbType.TimestampTz).Value =
             request.ReadAtUtc.UtcDateTime;
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -150,7 +160,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
         return respawn;
     }
 
-    private static async Task<ConfiguredArea?> LockConfiguredAreaAsync(
+    private async Task<ConfiguredArea?> LockConfiguredAreaAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         WorldBossAreaActivation activation,
@@ -159,10 +169,17 @@ internal sealed class PostgresWorldBossAreaControlStore :
         await using var command = new NpgsqlCommand(
             """
             SELECT bonus_basis_points, respawn_interval_seconds
-            FROM public.world_boss_areas
+            FROM public.gameplay_world_boss_definitions
             WHERE map_id = @mapId
-              AND boss_template_key = @bossTemplateKey
-              AND enabled
+              AND template_key = @bossTemplateKey
+              AND revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM public.gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
             FOR UPDATE;
             """,
             connection,
@@ -171,6 +188,9 @@ internal sealed class PostgresWorldBossAreaControlStore :
         command.Parameters.AddWithValue(
             "bossTemplateKey",
             activation.BossTemplateKey);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -222,7 +242,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
             : null;
     }
 
-    private static async Task<WorldBossAreaControlSnapshot?> UpsertControlAsync(
+    private async Task<WorldBossAreaControlSnapshot?> UpsertControlAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         WorldBossAreaActivation activation,
@@ -246,6 +266,9 @@ internal sealed class PostgresWorldBossAreaControlStore :
         command.Parameters.AddWithValue(
             "deathToken",
             activation.DeathToken);
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
@@ -295,16 +318,23 @@ internal sealed class PostgresWorldBossAreaControlStore :
         SELECT
             area.map_id,
             @controllingCamp,
-            area.boss_template_key,
+            area.template_key,
             area.bonus_basis_points,
             @killedAt,
             @killedAt +
                 (area.respawn_interval_seconds * interval '1 second'),
             @deathToken
-        FROM public.world_boss_areas area
+        FROM public.gameplay_world_boss_definitions area
         WHERE area.map_id = @mapId
-          AND area.boss_template_key = @bossTemplateKey
-          AND area.enabled
+          AND area.template_key = @bossTemplateKey
+          AND area.revision = COALESCE(
+              @gameplayContentRevision,
+              (
+                  SELECT publication.revision
+                  FROM public.gameplay_content_publication publication
+                  WHERE publication.family = 'gameplay'
+              )
+          )
         ON CONFLICT (map_id) DO UPDATE
         SET controlling_camp = EXCLUDED.controlling_camp,
             boss_template_key = EXCLUDED.boss_template_key,
@@ -333,10 +363,17 @@ internal sealed class PostgresWorldBossAreaControlStore :
             control.boss_template_key,
             control.expires_at
         FROM public.faction_area_experience_control control
-        JOIN public.world_boss_areas area
+        JOIN public.gameplay_world_boss_definitions area
           ON area.map_id = control.map_id
-         AND area.boss_template_key = control.boss_template_key
-         AND area.enabled
+         AND area.template_key = control.boss_template_key
+         AND area.revision = COALESCE(
+             @gameplayContentRevision,
+             (
+                 SELECT publication.revision
+                 FROM public.gameplay_content_publication publication
+                 WHERE publication.family = 'gameplay'
+             )
+         )
         WHERE control.map_id = @mapId
           AND control.activated_at <= @readAt
           AND control.expires_at > @readAt;

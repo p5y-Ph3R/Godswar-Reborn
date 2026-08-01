@@ -27,7 +27,7 @@ internal static partial class GearMentorStateChecks
         var (eligibleBag, eligibleRequest) = StageDecomposition(
             (4, Gear(1004, quality: 2, grade: 1, attribute1: 0)));
         AssertRejected(
-            GearMentorPlanner.Create(eligibleBag, 29, eligibleRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, eligibleBag, 29, eligibleRequest, static _ => 0),
             eligibleBag,
             GearMentorStatus.PlayerLevelTooLow,
             "characters below Level 30 cannot decompose");
@@ -35,7 +35,7 @@ internal static partial class GearMentorStateChecks
         var (invalidBag, invalidRequest) = StageDecomposition(
             (4, Material(9900, stack: 1)));
         AssertRejected(
-            GearMentorPlanner.Create(invalidBag, 30, invalidRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, invalidBag, 30, invalidRequest, static _ => 0),
             invalidBag,
             GearMentorStatus.InvalidEquipment,
             "materials cannot be decomposed as gear");
@@ -43,7 +43,7 @@ internal static partial class GearMentorStateChecks
         var (stackedBag, stackedRequest) = StageDecomposition(
             (4, Gear(1004, quality: 2, grade: 1, stack: 2, attribute1: 0)));
         AssertRejected(
-            GearMentorPlanner.Create(stackedBag, 30, stackedRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, stackedBag, 30, stackedRequest, static _ => 0),
             stackedBag,
             GearMentorStatus.InvalidEquipment,
             "stacked equipment records cannot be decomposed");
@@ -51,7 +51,7 @@ internal static partial class GearMentorStateChecks
         var (lowGearBag, lowGearRequest) = StageDecomposition(
             (4, Gear(1003, quality: 2, grade: 1, attribute1: 0)));
         AssertRejected(
-            GearMentorPlanner.Create(lowGearBag, 30, lowGearRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, lowGearBag, 30, lowGearRequest, static _ => 0),
             lowGearBag,
             GearMentorStatus.EquipmentLevelTooLow,
             "Level 40 gear cannot be decomposed");
@@ -59,7 +59,7 @@ internal static partial class GearMentorStateChecks
         var (plainBag, plainRequest) = StageDecomposition(
             (4, Gear(1004, quality: 1, grade: 1, attribute1: 0)));
         AssertRejected(
-            GearMentorPlanner.Create(plainBag, 30, plainRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, plainBag, 30, plainRequest, static _ => 0),
             plainBag,
             GearMentorStatus.InsufficientEquipmentQuality,
             "common Grade 1 gear cannot be decomposed");
@@ -67,7 +67,7 @@ internal static partial class GearMentorStateChecks
         var (classSuitBag, classSuitRequest) = StageDecomposition(
             (4, Gear(1032, quality: 2, grade: 1, attribute1: 0)));
         AssertRejected(
-            GearMentorPlanner.Create(classSuitBag, 30, classSuitRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, classSuitBag, 30, classSuitRequest, static _ => 0),
             classSuitBag,
             GearMentorStatus.ClassSuit,
             "Class Suit I cannot be decomposed");
@@ -79,7 +79,7 @@ internal static partial class GearMentorStateChecks
                  })
         {
             var (kitBag, request) = StageDecomposition((4, qualifyingGear));
-            var result = GearMentorPlanner.Create(kitBag, 30, request, static _ => 0);
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 30, request, static _ => 0);
             Check.True(result.Committed, "Enhanced quality or Grade 2 independently qualifies");
         }
 
@@ -96,7 +96,7 @@ internal static partial class GearMentorStateChecks
                 .Select(index => (Slot: 10 + index, Item: expectedGears[index]))
                 .ToArray();
             var (kitBag, request) = StageDecomposition(staged);
-            var result = GearMentorPlanner.Create(
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog,
                 kitBag,
                 30,
                 request,
@@ -125,14 +125,14 @@ internal static partial class GearMentorStateChecks
         };
         var (fourBag, fourRequest) = StageDecomposition(fourSelections);
         AssertRejected(
-            GearMentorPlanner.Create(fourBag, 30, fourRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, fourBag, 30, fourRequest, static _ => 0),
             fourBag,
             GearMentorStatus.SelectionMissing,
             "decomposition rejects more than three selections");
 
         var noSelection = new GearMentorRequest(GearMentorOperation.Decompose, []);
         AssertRejected(
-            GearMentorPlanner.Create(GameDefaults.EmptyKitBag, 30, noSelection, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, GameDefaults.EmptyKitBag, 30, noSelection, static _ => 0),
             GameDefaults.EmptyKitBag,
             GearMentorStatus.SelectionMissing,
             "decomposition rejects an empty selection");
@@ -146,14 +146,14 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.Decompose,
             [duplicateSelection, duplicateSelection]);
         AssertRejected(
-            GearMentorPlanner.Create(duplicateBag, 30, duplicateRequest, static _ => 0),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, duplicateBag, 30, duplicateRequest, static _ => 0),
             duplicateBag,
             GearMentorStatus.DuplicateKitBagSlot,
             "decomposition rejects duplicate bag slots");
 
         var (matchedBag, matchedRequest) = StageDecomposition(
             (4, Gear(1004, quality: 2, grade: 2, attribute1: 0, attribute2: 50)));
-        var matchedResult = GearMentorPlanner.Create(
+        var matchedResult = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog,
             matchedBag,
             30,
             matchedRequest,
@@ -166,7 +166,7 @@ internal static partial class GearMentorStateChecks
 
         var (fallbackBag, fallbackRequest) = StageDecomposition(
             (4, Gear(1004, quality: 2, grade: 1)));
-        var fallbackResult = GearMentorPlanner.Create(
+        var fallbackResult = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog,
             fallbackBag,
             30,
             fallbackRequest,
@@ -191,7 +191,7 @@ internal static partial class GearMentorStateChecks
         {
             var (kitBag, request) = StageDecomposition(
                 (4, Gear(1004, quality, grade, attribute1: 0)));
-            var result = GearMentorPlanner.Create(kitBag, 30, request, static _ => 0);
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 30, request, static _ => 0);
             Check.True(result.Committed, $"quality {quality}/grade {grade} decomposition commits");
             quantities.Add(result.Outputs.Single().Quantity);
         }
@@ -238,7 +238,7 @@ internal static partial class GearMentorStateChecks
                 oneSlotSnapshot.Single().KitBagSlot,
                 oneSlotSnapshot.Single().ExpectedItem)]);
         AssertRejected(
-            GearMentorPlanner.Create(replacedDustBag, 200, staleDustRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, replacedDustBag, 200, staleDustRequest),
             replacedDustBag,
             GearMentorStatus.StaleSelection,
             "a replacement Dust stack in a staged native slot is rejected");

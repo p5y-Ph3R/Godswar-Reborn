@@ -32,20 +32,10 @@ internal static partial class OwnedPetListProtocolChecks
         await CheckLoginBootstrapOrderingAsync();
     }
 
-    private static void CheckCanonicalEmptyPacket()
-    {
-        var packet = PacketBuilder.OwnedPetList([]);
-
-        Check.True(
-            packet.SequenceEqual(
-                Convert.FromHexString("0800FD2702000000")),
-            "empty owned-pet list retains the captured canonical bytes");
-    }
-
     private static void CheckGodlyKingLionRecord()
     {
         var pet = CreateGodlyKingLion();
-        var packet = PacketBuilder.OwnedPetList([pet]);
+        var packet = PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet]);
         var record = packet.AsSpan(8, PetRecordLength);
 
         Check.Equal(176, packet.Length, "one-pet packet length");
@@ -69,7 +59,7 @@ internal static partial class OwnedPetListProtocolChecks
             "Godly King Lion",
             ReadFixedAscii(record.Slice(0x04, 32)),
             "pet name");
-        var longNamePacket = PacketBuilder.OwnedPetList(
+        var longNamePacket = PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
             [pet with { Name = new string('X', 32) }]);
         var longNameField = longNamePacket.AsSpan(12, 32);
         Check.True(
@@ -184,25 +174,45 @@ internal static partial class OwnedPetListProtocolChecks
         CheckCapacity(count: 8, expectedCapacity: 8);
 
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(CreatePets(9)),
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, CreatePets(9)),
             "native eight-pet limit is enforced");
 
         var duplicate = CreateGodlyKingLion();
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [duplicate, duplicate with { Name = "Duplicate" }]),
             "duplicate pet IDs are rejected");
 
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [duplicate with { SpeciesId = short.MaxValue }]),
             "unknown species are rejected");
+        var publishedSkillOverflow = duplicate with
+        {
+            Skills = Enumerable.Range(
+                    0,
+                    PetContentTestCatalog.Instance.Settings
+                        .MaximumSkillCount + 1)
+                .Select(static index => new PetSkillSnapshot(
+                    5_200 + index,
+                    checked((short)index),
+                    1,
+                    0,
+                    true,
+                    index + 1))
+                .ToArray()
+        };
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [publishedSkillOverflow]),
+            "published pet skill limit governs the runtime wire projection");
+        Check.Throws<InvalidDataException>(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [duplicate with { Sex = 2 }]),
             "native-incompatible pet sex is rejected");
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [
                     duplicate with
                     {
@@ -211,7 +221,7 @@ internal static partial class OwnedPetListProtocolChecks
                 ]),
             "undefined aptitude tiers are rejected");
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [
                     duplicate with
                     {
@@ -221,7 +231,7 @@ internal static partial class OwnedPetListProtocolChecks
                 ]),
             "summoned pet must be carried");
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
                 [
                     duplicate with { IsCarried = true },
                     duplicate with
@@ -242,7 +252,7 @@ internal static partial class OwnedPetListProtocolChecks
             ]
         };
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList([duplicateSkillSlots]),
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [duplicateSkillSlots]),
             "duplicate active pet-skill slots are rejected");
 
         var sparseSkillSlots = duplicate with
@@ -254,7 +264,7 @@ internal static partial class OwnedPetListProtocolChecks
             ]
         };
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList([sparseSkillSlots]),
+            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [sparseSkillSlots]),
             "learned pet skills must occupy contiguous native slots");
     }
 
@@ -274,7 +284,8 @@ internal static partial class OwnedPetListProtocolChecks
                 monsterRuntimeMode: MonsterRuntimeMode.Ecs,
                 playerRuntimeMode: PlayerRuntimeMode.Ecs),
             CharacterSnapshotReaderTestFixtures.Unused,
-            WorldContentReaderTestFixtures.Empty);
+            WorldContentReaderTestFixtures.Empty,
+            petContent: PetContentTestCatalog.Instance);
         SetField(
             handler,
             "_account",
@@ -335,7 +346,7 @@ internal static partial class OwnedPetListProtocolChecks
             "captured UI bootstrap precedes OwnedPetList");
         Check.True(
             packets[petPacketIndex].SequenceEqual(
-                PacketBuilder.OwnedPetList([pet])),
+                PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet])),
             "enter flow sends the persisted pet snapshot");
         Check.Equal(
             (ushort)10_196,
@@ -353,23 +364,6 @@ internal static partial class OwnedPetListProtocolChecks
             0,
             store.OwnedPetReadCount,
             "initial enter consumes pets from the single character snapshot");
-    }
-
-    private static void CheckCapacity(int count, byte expectedCapacity)
-    {
-        var packet = PacketBuilder.OwnedPetList(CreatePets(count));
-        Check.Equal(
-            8 + (count * PetRecordLength),
-            packet.Length,
-            $"owned-pet packet length for {count} pets");
-        Check.Equal(
-            expectedCapacity,
-            packet[4],
-            $"owned-pet capacity for {count} pets");
-        Check.Equal(
-            checked((byte)count),
-            packet[5],
-            $"owned-pet count for {count} pets");
     }
 
     private static PetBootstrapSnapshot[] CreatePets(int count) =>

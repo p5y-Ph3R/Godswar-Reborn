@@ -35,13 +35,13 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 PetDurableReceiptStatus.PetUnavailable,
                 pet);
         }
-        if (pet.Level >= PetExperienceCatalog.MaximumLevel)
+        if (pet.Level >= _petContent.Settings.MaximumLevel)
         {
             return FromPet(
                 PetDurableReceiptStatus.PetMaximumLevel,
                 pet);
         }
-        var cost = PetExperienceCatalog.RequiredForNextLevel(pet.Level);
+        var cost = _petContent.RequiredExperienceForNextLevel(pet.Level);
         if (pet.Experience < cost)
         {
             return FromPet(

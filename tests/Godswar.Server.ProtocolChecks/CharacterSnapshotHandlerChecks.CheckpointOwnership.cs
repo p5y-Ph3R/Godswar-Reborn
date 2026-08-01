@@ -40,7 +40,8 @@ internal static partial class CharacterSnapshotHandlerChecks
             new CountingSnapshotReader(source),
             WorldContentReaderTestFixtures.Empty,
             legacyAuthenticationAccess: CreateLocalAccess(),
-            characterCheckpoints: checkpoints);
+            characterCheckpoints: checkpoints,
+            petContent: PetContentTestCatalog.Instance);
         var replacementHandler = new GameClientHandler(
             replacementSession,
             store,
@@ -48,7 +49,8 @@ internal static partial class CharacterSnapshotHandlerChecks
             new CountingSnapshotReader(source),
             WorldContentReaderTestFixtures.Empty,
             legacyAuthenticationAccess: CreateLocalAccess(),
-            characterCheckpoints: checkpoints);
+            characterCheckpoints: checkpoints,
+            petContent: PetContentTestCatalog.Instance);
 
         await InvokePacketAsync(
             staleHandler,

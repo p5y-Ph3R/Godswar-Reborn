@@ -49,7 +49,8 @@ internal static partial class SecureRealtimeHandlerIntegrationChecks
         targetViewer.PositionZ = -220f;
 
         var store = new MapTransitionStore(actor);
-        var registry = new GameSessionRegistry();
+        var registry = new GameSessionRegistry(
+            gameplayCatalogs: GameplayContentTestFixtures.Runtime);
         registry.InitializeMapMonsters(
             MapTransitionSourceMapId,
             [],

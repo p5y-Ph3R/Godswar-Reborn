@@ -3,6 +3,9 @@
 Status: completed local architecture increment on 2026-08-01; no database
 schema, live player data, live container, or deployed environment was changed
 
+Follow-on status (2026-08-01): B20E-G are implemented locally. B20H's real
+seven-day deployed observation and final deletion remain pending.
+
 ## Outcome
 
 B20D removes the five remaining broad compatibility mutation paths for pet

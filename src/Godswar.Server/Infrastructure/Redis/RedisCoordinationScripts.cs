@@ -8,10 +8,18 @@ internal static class RedisCoordinationScripts
         local now =
             (tonumber(serverTime[1]) * 1000) +
             math.floor(tonumber(serverTime[2]) / 1000)
-        local leaseExpires = now + tonumber(ARGV[7])
+        local leaseExpires = now + tonumber(ARGV[8])
         local current = redis.call('HGET', KEYS[1], 'boot')
         if current and current ~= ARGV[1] then
             return {-1, 0, 0}
+        end
+        local workerContent = redis.call('HGET', KEYS[1], 'content')
+        if workerContent and workerContent ~= ARGV[4] then
+            return {-2, 0, 0}
+        end
+        local realmContent = redis.call('GET', KEYS[2])
+        if realmContent and realmContent ~= ARGV[4] then
+            return {-2, 0, 0}
         end
         local revision = tonumber(redis.call('HGET', KEYS[1], 'revision'))
         local status = 2
@@ -28,9 +36,18 @@ internal static class RedisCoordinationScripts
             'content', ARGV[4],
             'state', ARGV[5],
             'capabilities', ARGV[6],
+            'realm', ARGV[7],
             'revision', tostring(revision),
             'until', leaseExpires)
-        redis.call('PEXPIRE', KEYS[1], ARGV[7])
+        redis.call('PEXPIRE', KEYS[1], ARGV[8])
+        if not realmContent then
+            redis.call('SET', KEYS[2], ARGV[4], 'PX', ARGV[8])
+        else
+            local realmTtl = redis.call('PTTL', KEYS[2])
+            if realmTtl >= 0 and realmTtl < tonumber(ARGV[8]) then
+                redis.call('PEXPIRE', KEYS[2], ARGV[8])
+            end
+        end
         return {status, revision, leaseExpires}
         """;
 
@@ -70,7 +87,7 @@ internal static class RedisCoordinationScripts
         local now =
             (tonumber(serverTime[1]) * 1000) +
             math.floor(tonumber(serverTime[2]) / 1000)
-        local leaseExpires = now + tonumber(ARGV[4])
+        local leaseExpires = now + tonumber(ARGV[5])
         local boot = redis.call('HGET', KEYS[1], 'boot')
         local revision = redis.call('HGET', KEYS[1], 'revision')
         if not boot then
@@ -79,11 +96,28 @@ internal static class RedisCoordinationScripts
         if boot ~= ARGV[1] or revision ~= ARGV[2] then
             return {-1, 0}
         end
+        local workerContent = redis.call('HGET', KEYS[1], 'content')
+        local workerRealm = redis.call('HGET', KEYS[1], 'realm')
+        if workerContent ~= ARGV[4] or workerRealm ~= ARGV[6] then
+            return {-1, 0}
+        end
+        local realmContent = redis.call('GET', KEYS[2])
+        if realmContent and realmContent ~= ARGV[4] then
+            return {-1, 0}
+        end
         redis.call(
             'HSET', KEYS[1],
             'state', ARGV[3],
             'until', leaseExpires)
-        redis.call('PEXPIRE', KEYS[1], ARGV[4])
+        redis.call('PEXPIRE', KEYS[1], ARGV[5])
+        if not realmContent then
+            redis.call('SET', KEYS[2], ARGV[4], 'PX', ARGV[5])
+        else
+            local realmTtl = redis.call('PTTL', KEYS[2])
+            if realmTtl >= 0 and realmTtl < tonumber(ARGV[5]) then
+                redis.call('PEXPIRE', KEYS[2], ARGV[5])
+            end
+        end
         return {1, leaseExpires}
         """;
 

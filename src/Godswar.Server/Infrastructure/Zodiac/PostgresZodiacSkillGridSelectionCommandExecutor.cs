@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Infrastructure.Characters;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
 using Npgsql;
@@ -20,11 +21,29 @@ internal sealed partial class
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresZodiacSkillGridSelectionCommandProbe? _probe;
+    private readonly string? _gameplayContentRevision;
 
     public PostgresZodiacSkillGridSelectionCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
         IPostgresZodiacSkillGridSelectionCommandProbe? probe = null)
+        : this(dataSource, options, null, probe)
+    {
+    }
+
+    public PostgresZodiacSkillGridSelectionCommandExecutor(
+        NpgsqlDataSource dataSource,
+        PostgresOutboxDispatcherOptions options,
+        string gameplayContentRevision)
+        : this(dataSource, options, gameplayContentRevision, null)
+    {
+    }
+
+    internal PostgresZodiacSkillGridSelectionCommandExecutor(
+        NpgsqlDataSource dataSource,
+        PostgresOutboxDispatcherOptions options,
+        string? gameplayContentRevision,
+        IPostgresZodiacSkillGridSelectionCommandProbe? probe)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -37,6 +56,9 @@ internal sealed partial class
         _maximumOutboxAttempts =
             checked((short)options.MaximumDeliveryAttempts);
         _probe = probe;
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
     }
 
     public async Task<ZodiacSkillGridSelectionExecutionResult>

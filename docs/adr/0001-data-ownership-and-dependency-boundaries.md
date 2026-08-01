@@ -67,11 +67,21 @@ runtime adapter, or behavior change.
 | Online combat, movement, AI, AOI, transient status, and transport replay state | Single owning ECS/session runtime | Checkpoints are bounded durable records, not competing authorities |
 | Login tickets, reconnect windows, admission and UDP binding | In-process secure session services initially | Disposable; a future Redis copy requires a separate approved ADR |
 | World/content definitions | One versioned content revision per family | Runtime projections are immutable for that revision |
-| JSON store | Explicit local-development compatibility only | It is not equivalent production authority |
+| JSON store | Retired test-only compatibility fixture | It is not selectable runtime authority |
 | Audit/economy history | PostgreSQL | Derived operational projections may be rebuilt |
 
 Each future field must have exactly one authoritative owner. PostgreSQL and a
 cache/document store must not be independently dual-written.
+
+### B20E amendment (2026-08-01)
+
+The JSON authority is no longer composed by any server runtime profile.
+`JsonGameStore*`, `GameDatabase`, and their legacy loaders are quarantined
+under the protocol-check project's `CompatibilityFixtures/JsonAuthority`
+folder solely for deterministic historical tests. Production account,
+gameplay, snapshot, gateway, and world-content composition accepts PostgreSQL
+implementations only. This strengthens the original one-authority decision;
+it does not change the application-contract dependency direction.
 
 ## Enforced rules
 

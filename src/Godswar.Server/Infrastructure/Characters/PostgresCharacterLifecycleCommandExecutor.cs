@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -14,10 +15,12 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
+    private readonly string? _gameplayContentRevision;
 
     public PostgresCharacterLifecycleCommandExecutor(
         NpgsqlDataSource dataSource,
-        PostgresOutboxDispatcherOptions options)
+        PostgresOutboxDispatcherOptions options,
+        string? gameplayContentRevision = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -28,6 +31,9 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
             (int)Math.Ceiling(options.CommandTimeout.TotalSeconds));
         _maximumOutboxAttempts =
             checked((short)options.MaximumDeliveryAttempts);
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
     }
 
     public Task<CharacterLifecycleExecutionResult> ExecuteAsync(

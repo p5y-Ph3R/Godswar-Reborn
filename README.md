@@ -38,34 +38,24 @@ dotnet tests/Godswar.Server.ProtocolChecks/bin/Release/net10.0/Godswar.Server.Pr
 .\tools\TestPhase5ABaseline.ps1 -Bots 64 -SoakSeconds 10 -Seed 20260728
 ```
 
-The load runner is in-process only, opens no sockets, accepts no network
-target, and enforces a 5,000,000-operation cap. The accepted local baseline
-passed the full `149/149` managed suite against implementation commit
-`2986466cfbdb641fe849ce62c7cfd951f2715de8` and is recorded in
-[`docs/network-infrastructure-phase5a-replay-load-observability.md`](docs/network-infrastructure-phase5a-replay-load-observability.md).
-
-Slice 9 closeout passed the full managed protocol suite (`121/121`), a Win32
-Release native build with `/W4 /WX`, and five consecutive native offline
-passes. These are local/offline results: checked-in UDP remains disabled, no
-client shim was installed, and gameplay remains on TLS.
-
-Phase 4 source/offline closeout passes a zero-warning managed Release build,
-native `/W4 /WX`, and the protocol suites. Final PreviewReadyV6 campaign
-`0a73fd79-961b-42c7-82cc-9e4a6f9e3355` passed original-client Baseline,
-forced TLS Fallback, and a `661.5843391`-second Soak, then restored the exact
-stock client. Checked-in secure settings deliberately remain default-off after
-rollback; viewer parity was `Unavailable`. See the
-[protocol/runtime record](docs/network-infrastructure-phase4-authoritative-movement.md).
+The load runner is in-process and bounded; it opens no sockets or configurable
+network target. Phase 4, Slice 9, and Phase 5A results and limitations are in
+the [authoritative-movement record](docs/network-infrastructure-phase4-authoritative-movement.md)
+and [replay/load record](docs/network-infrastructure-phase5a-replay-load-observability.md).
+Checked-in secure activation remains default-off after acceptance rollback.
 
 ## Local relay/worker proof
 
 B18C1 can run the original raw login/game ports in a bounded relay process
 while a separate authoritative worker listens on private ports. The
-Docker-free smoke starts both real processes with temporary JSON state,
-exercises encrypted login and game bootstrap, restarts only the worker, and
-checks that the relay PID remains stable:
+Docker-free smoke starts both real processes against an explicitly supplied,
+isolated PostgreSQL smoke database, exercises encrypted login and game
+bootstrap, restarts only the worker, and checks that the relay PID remains
+stable:
 
 ```powershell
+$env:GODSWAR_B18C_POSTGRES_CONNECTION_STRING = `
+  'Host=127.0.0.1;Database=godswar_b18c_smoke;Username=godswar;Password=local-only'
 .\tools\InvokeB18CTwoProcessSmoke.ps1
 ```
 
@@ -166,7 +156,8 @@ and keeps certificate material in read-only Compose secrets.
 
 This explicit local rollback starts:
 
-- `godswar-postgres`: PostgreSQL with the schema from `database/postgres/001_init.sql`
+- `godswar-postgres`: PostgreSQL initialized only by the server's embedded,
+  checksum-verified migration path
 - `godswar-server`: .NET 10 server using PostgreSQL storage
 
 If Windows already has listeners on `5999` or `7000`, free those ports first or override the host ports in `.env`.
@@ -204,13 +195,19 @@ docker compose `
 Certificate/password setup is in the
 [secure Docker runbook](docs/network-infrastructure-secure-docker.md).
 
-`Production` is fail-closed: it requires PostgreSQL, a nonempty connection
-string, secure TLS listeners, and plaintext credential migration disabled.
-Missing or unknown runtime/storage values, JSON or raw TCP in `Production`,
-plaintext migration in `Production`, and malformed security environment
-values stop startup before storage initialization. Select the profile with
-`runtimeProfile` or `GODSWAR_RUNTIME_PROFILE`; never use `LocalDevelopment` as
-a production fallback.
+All runtime profiles are PostgreSQL-only; JSON is test-only. `Production`
+also requires a connection string, secure TLS, and disabled plaintext
+credential migration. Invalid runtime/storage values, runtime JSON, raw TCP
+or plaintext migration in `Production`, and malformed security settings stop
+startup before storage initialization. Select `runtimeProfile` or
+`GODSWAR_RUNTIME_PROFILE`; never use `LocalDevelopment` in production. Evidence:
+[B20E](docs/data-architecture-b20e-postgresql-only-runtime-20260801.md),
+[B20F](docs/data-architecture-b20f-bootstrap-projection-cutover-20260801.md),
+[B20G world](docs/data-architecture-b20g-content-publication-capture-separation-20260801.md),
+[items](docs/data-architecture-b20g-item-template-content-cutover-20260801.md), and
+[pets](docs/data-architecture-b20g-pet-content-cutover-20260801.md).
+[B20H](docs/data-architecture-b20h-observation-gate-20260801.md) remains local;
+deployed observation and deletion are pending.
 
 The ECS gameplay architecture, completed cutovers, parity gates, and
 reversible monster/player runtime selectors (both default to `Ecs`) are

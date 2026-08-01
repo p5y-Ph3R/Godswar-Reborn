@@ -19,6 +19,7 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
         await CheckDefinitivePlayerLeaseLossAsync(
             CoordinationOperationStatus.Unavailable);
         await CheckDuplicateWorkerIncarnationAsync();
+        await CheckRealmContentAdmissionAsync();
         CheckMonotonicLeaseBudgetIgnoresWallClockOffset();
         CheckLocalProviderHasNoRedisRequirement();
     }
@@ -255,6 +256,152 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
             "duplicate live node incarnation is rejected");
     }
 
+    private static async Task CheckRealmContentAdmissionAsync()
+    {
+        var clock = new ManualTimeProvider();
+        await using var adapter = new InMemoryWorkerCoordination(
+            512,
+            8,
+            clock);
+        var firstRoute = Route();
+        var sameRealmRoute = new CoordinatedWorldRoute(
+            firstRoute.RealmId,
+            MapId.FromLegacy(2),
+            new WorldInstanceId(Guid.NewGuid()));
+        var otherRealmRoute = new CoordinatedWorldRoute(
+            new RealmId(firstRoute.RealmId.Value + 1),
+            MapId.FromLegacy(2),
+            new WorldInstanceId(Guid.NewGuid()));
+        var ttl = TimeSpan.FromSeconds(5);
+        var deadline = CoordinationDeadline.FromNow(
+            TimeSpan.FromSeconds(1),
+            clock);
+
+        var first = await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-content-a",
+                Guid.NewGuid(),
+                firstRoute,
+                "CONTENT-A"),
+            ttl,
+            deadline);
+        var mismatch = await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-content-b",
+                Guid.NewGuid(),
+                sameRealmRoute,
+                "CONTENT-B"),
+            ttl,
+            deadline);
+        var otherRealm = await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-content-c",
+                Guid.NewGuid(),
+                otherRealmRoute,
+                "CONTENT-B"),
+            ttl,
+            deadline);
+        Check.True(first.Succeeded, "first realm revision is admitted");
+        Check.Equal(
+            (int)CoordinationOperationStatus.Conflict,
+            (int)mismatch.Status,
+            "disjoint maps in one realm cannot mix content revisions");
+        Check.True(
+            otherRealm.Succeeded,
+            "different realms may pin different content revisions");
+
+        clock.Advance(ttl);
+        var afterExpiry = await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-content-d",
+                Guid.NewGuid(),
+                sameRealmRoute,
+                "CONTENT-B"),
+            ttl,
+            CoordinationDeadline.FromNow(
+                TimeSpan.FromSeconds(1),
+                clock));
+        Check.True(
+            afterExpiry.Succeeded,
+            "expired last realm lease releases its content admission");
+
+        var concurrentRealm = new RealmId(firstRoute.RealmId.Value + 2);
+        var concurrent = new[] { "CONTENT-C", "CONTENT-D" }
+            .Select((content, index) => Task.Run(async () =>
+                await adapter.RegisterWorkerAsync(
+                    Registration(
+                        $"realm-race-{index}",
+                        Guid.NewGuid(),
+                        new CoordinatedWorldRoute(
+                            concurrentRealm,
+                            new MapId(checked((short)(index + 1))),
+                            new WorldInstanceId(Guid.NewGuid())),
+                        content),
+                    ttl,
+                    CoordinationDeadline.FromNow(
+                        TimeSpan.FromSeconds(1),
+                        clock))))
+            .ToArray();
+        var results = await Task.WhenAll(concurrent);
+        Check.Equal(
+            1,
+            results.Count(static result => result.Succeeded),
+            "concurrent incompatible realm registrations elect one revision");
+        Check.Equal(
+            1,
+            results.Count(static result =>
+                result.Status == CoordinationOperationStatus.Conflict),
+            "concurrent incompatible realm registration rejects the loser");
+
+        var mixedTtlRealm = new RealmId(firstRoute.RealmId.Value + 3);
+        var longRoute = new CoordinatedWorldRoute(
+            mixedTtlRealm,
+            MapId.FromLegacy(1),
+            new WorldInstanceId(Guid.NewGuid()));
+        var shortRoute = new CoordinatedWorldRoute(
+            mixedTtlRealm,
+            MapId.FromLegacy(2),
+            new WorldInstanceId(Guid.NewGuid()));
+        await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-long-ttl",
+                Guid.NewGuid(),
+                longRoute,
+                "CONTENT-LONG"),
+            TimeSpan.FromSeconds(10),
+            CoordinationDeadline.FromNow(
+                TimeSpan.FromSeconds(1),
+                clock));
+        await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-short-ttl",
+                Guid.NewGuid(),
+                shortRoute,
+                "CONTENT-LONG"),
+            TimeSpan.FromSeconds(2),
+            CoordinationDeadline.FromNow(
+                TimeSpan.FromSeconds(1),
+                clock));
+        clock.Advance(TimeSpan.FromSeconds(3));
+        var shortened = await adapter.RegisterWorkerAsync(
+            Registration(
+                "realm-mixed-ttl-mismatch",
+                Guid.NewGuid(),
+                new CoordinatedWorldRoute(
+                    mixedTtlRealm,
+                    MapId.FromLegacy(3),
+                    new WorldInstanceId(Guid.NewGuid())),
+                "CONTENT-NEW"),
+            ttl,
+            CoordinationDeadline.FromNow(
+                TimeSpan.FromSeconds(1),
+                clock));
+        Check.Equal(
+            (int)CoordinationOperationStatus.Conflict,
+            (int)shortened.Status,
+            "short worker TTL cannot shorten a longer realm admission");
+    }
+
     private static void CheckLocalProviderHasNoRedisRequirement()
     {
         var options = new CoordinationRuntimeOptions
@@ -276,13 +423,14 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
     private static WorkerRegistrationRequest Registration(
         string node,
         Guid boot,
-        CoordinatedWorldRoute route) =>
+        CoordinatedWorldRoute route,
+        string contentRevision = "content-test") =>
         new()
         {
             NodeId = new ServerNodeId(node),
             BootId = boot,
             BuildRevision = "build-test",
-            ContentRevision = "content-test",
+            ContentRevision = contentRevision,
             State = CoordinatedWorkerState.Available,
             Capabilities = ["open-world-v1"],
             Routes = [route]

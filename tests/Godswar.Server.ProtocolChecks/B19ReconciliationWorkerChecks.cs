@@ -178,22 +178,22 @@ internal static partial class B19ReconciliationWorkerChecks
             var disabledPath = WriteOptions(
                 directory,
                 "disabled.json",
-                provider: "Json",
+                provider: "Postgres",
                 enabled: false);
             Check.True(
                 !ServerOptions.Load(disabledPath)
                     .Storage.Reconciliation.Enabled,
-                "JSON storage keeps reconciliation disabled by default");
+                "PostgreSQL storage keeps reconciliation disabled by default");
 
-            var enabledJsonPath = WriteOptions(
+            var retiredJsonPath = WriteOptions(
                 directory,
-                "enabled-json.json",
+                "retired-json.json",
                 provider: "Json",
                 enabled: true);
             ExpectInvalidData(
-                () => ServerOptions.Load(enabledJsonPath),
+                () => ServerOptions.Load(retiredJsonPath),
                 "requires PostgreSQL",
-                "JSON plus enabled reconciliation fails closed");
+                "retired JSON authority fails closed at the reconciliation boundary");
 
             Environment.SetEnvironmentVariable(
                 "GODSWAR_RECONCILIATION_MODE",

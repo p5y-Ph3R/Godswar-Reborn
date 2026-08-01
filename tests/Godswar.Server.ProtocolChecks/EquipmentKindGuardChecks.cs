@@ -70,16 +70,16 @@ internal static partial class EquipmentKindGuardChecks
         foreach (var (itemId, expectedSlot, description) in mountSlotMappings)
         {
             Check.True(
-                EquipmentSlots.TryGetAuthoritativeSlot(itemId, out var actualSlot),
+                EquipmentSlots.TryGetAuthoritativeSlot(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, itemId, out var actualSlot),
                 $"{description} template has an authoritative equipment slot");
             Check.Equal(expectedSlot, actualSlot, $"{description} uses its native slot");
             Check.Equal(
                 expectedSlot,
-                EquipmentSlots.ResolveSlotForItem(itemId, expectedSlot),
+                EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, itemId, expectedSlot),
                 $"{description} accepts its native slot");
             Check.Equal(
                 -1,
-                EquipmentSlots.ResolveSlotForItem(itemId, EquipmentSlots.Weapon),
+                EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, itemId, EquipmentSlots.Weapon),
                 $"{description} rejects a normal gear slot");
         }
 
@@ -87,7 +87,7 @@ internal static partial class EquipmentKindGuardChecks
         Check.True(!EquipmentSlots.IsEquipmentSlot(EquipmentSlots.Mount + 1), "slot after mount is not equipment");
 
         var emptyEquipment = string.Join('#', Enumerable.Repeat("[]", EquipmentSlots.Mount + 1)) + "#";
-        var lowLevelMount = EquipmentEligibility.ValidateEquip(
+        var lowLevelMount = EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
             profession: 0,
             characterLevel: 39,
             equipment: emptyEquipment,
@@ -95,7 +95,7 @@ internal static partial class EquipmentKindGuardChecks
             equipmentSlot: EquipmentSlots.Mount);
         Check.True(!lowLevelMount.Allowed, "level-40 mount rejects a level-39 character");
 
-        var mountAllowed = EquipmentEligibility.ValidateEquip(
+        var mountAllowed = EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
             profession: 0,
             characterLevel: 40,
             equipment: emptyEquipment,
@@ -103,35 +103,35 @@ internal static partial class EquipmentKindGuardChecks
             equipmentSlot: EquipmentSlots.Mount);
         Check.True(mountAllowed.Allowed, "level-40 Greek Steed accepts a level-40 character");
 
-        foreach (var mount in DeveloperMountCatalog.Grantable)
+        foreach (var mount in TestItemContent.Content.DeveloperMounts.Grantable)
         {
             Check.True(
-                MountCatalog.TryGetRideDefinition(mount.ItemId, out _),
+                TestItemContent.Content.Mounts.TryGetRideDefinition(mount.ItemId, out _),
                 $"grantable client mount {mount.ItemId} has a Ride.ini status mapping");
         }
         Check.True(
-            !MountCatalog.TryGetRideDefinition(DeveloperMountCatalog.OrphanedMountItemId, out _),
+            !TestItemContent.Content.Mounts.TryGetRideDefinition(DeveloperMountCatalog.OrphanedMountItemId, out _),
             "orphaned client mount is not advertised as rideable");
         Check.True(
-            MountCatalog.TryGetRideDefinition(6000, out var legacyRide) &&
+            TestItemContent.Content.Mounts.TryGetRideDefinition(6000, out var legacyRide) &&
             legacyRide.StatusId == 1100,
             "legacy Greek Steed maps to Ride.ini status 1100");
         Check.True(
-            MountCatalog.TryGetRideDefinition(14425, out var timedLeatherback) &&
+            TestItemContent.Content.Mounts.TryGetRideDefinition(14425, out var timedLeatherback) &&
             timedLeatherback.StatusId == 1210,
             "three-day Atlantic Leatherback maps to Ride.ini status 1210");
         Check.True(
-            MountCatalog.TryGetRideDefinition(16199, out var specialOwl) &&
+            TestItemContent.Content.Mounts.TryGetRideDefinition(16199, out var specialOwl) &&
             specialOwl.StatusId == 1431,
             "special Owl maps to the upgraded Ride.ini visual");
         Check.True(
-            MountCatalog.TryGetRideDefinition(16204, out var erebusLion) &&
+            TestItemContent.Content.Mounts.TryGetRideDefinition(16204, out var erebusLion) &&
             erebusLion.StatusId == 1390 &&
             erebusLion.MountLevel == 80 &&
             erebusLion.SpeedBonus == 0.24f,
             "level-80 Erebus Lion maps to the custom animation-safe visual");
         Check.True(
-            EquipmentEligibility.ValidateEquip(
+            EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
                 profession: 0,
                 characterLevel: 80,
                 equipment: emptyEquipment,
@@ -139,7 +139,7 @@ internal static partial class EquipmentKindGuardChecks
                 equipmentSlot: EquipmentSlots.Mount).Allowed,
             "developer-catalog Asian Urus can be equipped at its authored level");
 
-        var gearWithoutMount = EquipmentEligibility.ValidateEquip(
+        var gearWithoutMount = EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
             profession: 0,
             characterLevel: 40,
             equipment: emptyEquipment,
@@ -153,7 +153,7 @@ internal static partial class EquipmentKindGuardChecks
             EquipmentSlots.Mount,
             "[14220,,,,,,1,1,0,1,0]");
         Check.True(
-            EquipmentEligibility.ValidateEquip(
+            EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
                 0,
                 40,
                 level40MountEquipment,
@@ -161,7 +161,7 @@ internal static partial class EquipmentKindGuardChecks
                 EquipmentSlots.MountHead).Allowed,
             "level-40 mount accepts level-40 mount gear");
         Check.True(
-            !EquipmentEligibility.ValidateEquip(
+            !EquipmentEligibility.ValidateEquip(Godswar.Server.ProtocolChecks.TestItemContent.Content,
                 0,
                 50,
                 level40MountEquipment,

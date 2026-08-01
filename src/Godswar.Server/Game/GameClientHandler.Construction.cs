@@ -80,7 +80,10 @@ internal sealed partial class GameClientHandler
         IAccountDirectory? accountDirectory = null,
         IAccountPresenceWriter? accountPresence = null,
         bool requiresDurableMonsterRewardCommands = false,
-        bool requiresDurablePlayerCommands = false)
+        bool requiresDurablePlayerCommands = false,
+        GameplayRuntimeCatalogs? gameplayCatalogs = null,
+        GameplayItemContent? itemContent = null,
+        IPetContentCatalog? petContent = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -107,6 +110,10 @@ internal sealed partial class GameClientHandler
         _worldContent =
             worldContent ?? throw new ArgumentNullException(
                 nameof(worldContent));
+        _gameplayCatalogs = gameplayCatalogs ??
+            GameplayRuntimeCatalogs.Create(worldContent.Gameplay);
+        _itemContent = itemContent;
+        _petContent = petContent;
         _talentUpgradeCommands = talentUpgradeCommands;
         _developerItemGrantCommands = developerItemGrantCommands;
         _developerBagClearCommands = developerBagClearCommands;
@@ -200,4 +207,13 @@ internal sealed partial class GameClientHandler
             DefaultMapTransitionReadyTimeout;
         _backhaulSkillCastTime = backhaulSkillCastTime;
     }
+
+    private GameplayItemContent RequireItemContent() =>
+        _itemContent ?? throw new InvalidOperationException(
+            "This gameplay operation requires a pinned item-content revision.");
+
+    private IPetContentCatalog RequirePetContent() =>
+        _petContent ?? throw new InvalidOperationException(
+            "This gameplay operation requires a pinned pet-content revision.");
+
 }

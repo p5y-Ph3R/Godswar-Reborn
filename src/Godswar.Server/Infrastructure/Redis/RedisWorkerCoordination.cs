@@ -15,6 +15,7 @@ internal sealed partial class RedisWorkerCoordination :
     private readonly bool _ownsExecutor;
     private readonly Dictionary<Guid, CoordinatedWorldRoute[]>
         _routesByBoot = [];
+    private readonly Dictionary<Guid, string> _contentByBoot = [];
     private readonly object _stateGate = new();
     private int _activePlayerLeases;
     private int _disposed;
@@ -63,7 +64,10 @@ internal sealed partial class RedisWorkerCoordination :
                 deadline,
                 database => database.ScriptEvaluateAsync(
                     RedisCoordinationScripts.RegisterWorker,
-                    [_keys.Worker(request.NodeId)],
+                    [
+                        _keys.Worker(request.NodeId),
+                        _keys.RealmContent(request.RealmId)
+                    ],
                     [
                         request.BootId.ToString("N"),
                         request.NodeId.ToString(),
@@ -72,11 +76,12 @@ internal sealed partial class RedisWorkerCoordination :
                         ((byte)request.State).ToString(
                             CultureInfo.InvariantCulture),
                         string.Join(',', request.Capabilities),
+                        request.RealmId.Value,
                         ttlMilliseconds
                     ]),
                 cancellationToken);
             var response = RedisResultReader.Triple(result);
-            if (response.Status == -1)
+            if (response.Status is -1 or -2)
             {
                 return WorkerFailure(
                     CoordinationOperationStatus.Conflict);
@@ -119,6 +124,8 @@ internal sealed partial class RedisWorkerCoordination :
             lock (_stateGate)
             {
                 _routesByBoot[request.BootId] = request.Routes.ToArray();
+                _contentByBoot[request.BootId] =
+                    request.ContentRevision;
                 _registeredRoutes = _routesByBoot.Values.Sum(
                     static routes => routes.Length);
             }
@@ -154,6 +161,24 @@ internal sealed partial class RedisWorkerCoordination :
         ValidateTtl(ttl);
         ThrowIfDisposed();
 
+        CoordinatedWorldRoute[] routes;
+        string? contentRevision;
+        lock (_stateGate)
+        {
+            routes = _routesByBoot.TryGetValue(
+                    lease.BootId,
+                    out var found)
+                ? found
+                : [];
+            contentRevision = _contentByBoot.GetValueOrDefault(
+                lease.BootId);
+        }
+        if (routes.Length == 0 || contentRevision is null)
+        {
+            return WorkerFailure(
+                CoordinationOperationStatus.Conflict);
+        }
+
         try
         {
             var result = await _executor.ExecuteAsync(
@@ -161,12 +186,17 @@ internal sealed partial class RedisWorkerCoordination :
                 deadline,
                 database => database.ScriptEvaluateAsync(
                     RedisCoordinationScripts.RenewWorker,
-                    [_keys.Worker(lease.NodeId)],
+                    [
+                        _keys.Worker(lease.NodeId),
+                        _keys.RealmContent(routes[0].RealmId)
+                    ],
                     [
                         lease.BootId.ToString("N"),
                         lease.Revision,
                         (int)state,
-                        TtlMilliseconds(ttl)
+                        contentRevision,
+                        TtlMilliseconds(ttl),
+                        routes[0].RealmId.Value
                     ]),
                 cancellationToken);
             var response = RedisResultReader.Pair(result);
@@ -180,20 +210,6 @@ internal sealed partial class RedisWorkerCoordination :
             }
             var until = RedisTimestamp(response.Value);
 
-            CoordinatedWorldRoute[] routes;
-            lock (_stateGate)
-            {
-                routes = _routesByBoot.TryGetValue(
-                        lease.BootId,
-                        out var found)
-                    ? found
-                    : [];
-            }
-            if (routes.Length == 0)
-            {
-                return WorkerFailure(
-                    CoordinationOperationStatus.Conflict);
-            }
             foreach (var route in routes)
             {
                 var routeStatus = await RenewRouteAsync(
@@ -276,6 +292,7 @@ internal sealed partial class RedisWorkerCoordination :
                 lock (_stateGate)
                 {
                     _routesByBoot.Remove(lease.BootId);
+                    _contentByBoot.Remove(lease.BootId);
                     _registeredRoutes = _routesByBoot.Values.Sum(
                         static values => values.Length);
                 }
@@ -430,6 +447,7 @@ internal sealed partial class RedisWorkerCoordination :
         lock (_stateGate)
         {
             _routesByBoot.Clear();
+            _contentByBoot.Clear();
             _registeredRoutes = 0;
             _activePlayerLeases = 0;
         }

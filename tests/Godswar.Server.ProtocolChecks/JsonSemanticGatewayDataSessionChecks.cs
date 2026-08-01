@@ -42,11 +42,11 @@ internal static class JsonSemanticGatewayDataSessionChecks
 
             var options = new ServerOptions
             {
-                DataPath = dataPath,
                 Authentication = FastAuthenticationOptions()
             };
             var session = await JsonSemanticGatewayDataSession.OpenAsync(
-                options);
+                options,
+                dataPath);
             try
             {
                 var authenticated = await session.AuthenticateAsync(

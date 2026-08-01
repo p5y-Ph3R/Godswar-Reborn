@@ -1,0 +1,379 @@
+using System.Data;
+using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Content;
+using Npgsql;
+using NpgsqlTypes;
+
+namespace Godswar.Server.Infrastructure.WorldContent;
+
+internal sealed record MonsterContentPublicationResult(
+    string Revision,
+    int EntryCount,
+    string Source,
+    bool Created);
+
+internal static class PostgresMonsterContentBaselinePublisher
+{
+    private const int PublicationLockNamespace = 1_193_657_936;
+    private const int PublicationLockKey = 1_448_298_803;
+    private const string Publisher = "server-baseline-v1";
+
+    public static async Task<MonsterContentPublicationResult>
+        EnsurePublishedAsync(
+            string connectionString,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        await using var dataSource =
+            NpgsqlDataSource.Create(connectionString);
+        await using var connection =
+            await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            await connection.BeginTransactionAsync(
+                IsolationLevel.ReadCommitted,
+                cancellationToken);
+
+        await AcquirePublicationLockAsync(
+            connection,
+            transaction,
+            cancellationToken);
+        var current = await ReadCurrentPublicationAsync(
+            connection,
+            transaction,
+            cancellationToken);
+        if (current is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return current with { Created = false };
+        }
+
+        var mapIds = await ReadMapIdsAsync(
+            connection,
+            transaction,
+            cancellationToken);
+        var canonical = await ValidateAndCanonicalizeAsync(
+            mapIds,
+            MonsterContentBaselineV1.LoadDefinitions(),
+            cancellationToken);
+        var revision = WorldContentRevisionHasher.HashMonsters(canonical);
+        if (revision.EntryCount !=
+                MonsterContentBaselineV1.ExpectedEntryCount ||
+            !string.Equals(
+                revision.Sha256,
+                MonsterContentBaselineV1.ExpectedRevision,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The reviewed monster baseline failed publication validation.");
+        }
+
+        if (await InsertReleaseAsync(
+                connection,
+                transaction,
+                revision,
+                cancellationToken))
+        {
+            await InsertDefinitionsAsync(
+                connection,
+                transaction,
+                revision.Sha256,
+                canonical,
+                cancellationToken);
+        }
+
+        await VerifyStoredReleaseAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        await using (var publish = new NpgsqlCommand(
+                         """
+                         INSERT INTO monster_content_publication (
+                             family,
+                             revision,
+                             published_at,
+                             publisher
+                         )
+                         VALUES (
+                             'monsters',
+                             @revision,
+                             now(),
+                             @publisher
+                         );
+                         """,
+                         connection,
+                         transaction))
+        {
+            publish.Parameters.AddWithValue(
+                "revision",
+                NpgsqlDbType.Varchar,
+                revision.Sha256);
+            publish.Parameters.AddWithValue(
+                "publisher",
+                NpgsqlDbType.Varchar,
+                Publisher);
+            if (await publish.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidDataException(
+                    "The monster baseline publication pointer was not created.");
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return new MonsterContentPublicationResult(
+            revision.Sha256,
+            revision.EntryCount,
+            MonsterContentBaselineV1.Source,
+            Created: true);
+    }
+
+    private static async Task AcquirePublicationLockAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(@namespace, @key);",
+            connection,
+            transaction);
+        command.Parameters.AddWithValue(
+            "namespace",
+            NpgsqlDbType.Integer,
+            PublicationLockNamespace);
+        command.Parameters.AddWithValue(
+            "key",
+            NpgsqlDbType.Integer,
+            PublicationLockKey);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<MonsterContentPublicationResult?>
+        ReadCurrentPublicationAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction transaction,
+            CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT publication.revision,
+                   release.entry_count,
+                   release.source
+            FROM monster_content_publication publication
+            JOIN monster_content_revisions release
+              ON release.revision = publication.revision
+            WHERE publication.family = 'monsters';
+            """,
+            connection,
+            transaction);
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new MonsterContentPublicationResult(
+            reader.GetString(0),
+            reader.GetInt32(1),
+            reader.GetString(2),
+            Created: false);
+    }
+
+    private static async Task<short[]> ReadMapIdsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var mapIds = new List<short>();
+        await using var command = new NpgsqlCommand(
+            "SELECT map_id FROM map_templates ORDER BY map_id;",
+            connection,
+            transaction);
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            mapIds.Add(reader.GetInt16(0));
+        }
+
+        return mapIds.ToArray();
+    }
+
+    private static async Task<CapturedMonsterSpawn[]>
+        ValidateAndCanonicalizeAsync(
+            IReadOnlyList<short> mapIds,
+            IReadOnlyList<CapturedMonsterSpawn> definitions,
+            CancellationToken cancellationToken)
+    {
+        var validationReader = PinnedWorldContentReader.Create(
+            "monster-baseline-validation-v1",
+            mapIds,
+            [],
+            definitions,
+            []);
+        var canonical = new List<CapturedMonsterSpawn>(
+            validationReader.Manifest.Monsters.EntryCount);
+        foreach (var mapId in mapIds.Order())
+        {
+            var map = await validationReader.ReadMapAsync(
+                mapId,
+                cancellationToken);
+            canonical.AddRange(map.Monsters);
+        }
+
+        return canonical.ToArray();
+    }
+
+    private static async Task<bool> InsertReleaseAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        WorldContentFamilyRevision revision,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO monster_content_revisions (
+                revision,
+                entry_count,
+                source
+            )
+            VALUES (@revision, @entry_count, @source)
+            ON CONFLICT (revision) DO NOTHING;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue(
+            "revision",
+            NpgsqlDbType.Varchar,
+            revision.Sha256);
+        command.Parameters.AddWithValue(
+            "entry_count",
+            NpgsqlDbType.Integer,
+            revision.EntryCount);
+        command.Parameters.AddWithValue(
+            "source",
+            NpgsqlDbType.Varchar,
+            MonsterContentBaselineV1.Source);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    private static async Task InsertDefinitionsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string revision,
+        IReadOnlyList<CapturedMonsterSpawn> definitions,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO monster_spawn_definitions (
+                revision,
+                map_id,
+                scene_key,
+                template_key,
+                display_name,
+                object_id,
+                pos_x,
+                pos_z,
+                clear_bytes
+            )
+            VALUES (
+                @revision,
+                @map_id,
+                @scene_key,
+                @template_key,
+                @display_name,
+                @object_id,
+                @pos_x,
+                @pos_z,
+                @clear_bytes
+            );
+            """,
+            connection,
+            transaction);
+        foreach (var definition in definitions)
+        {
+            command.Parameters.Clear();
+            command.Parameters.AddWithValue(
+                "revision",
+                NpgsqlDbType.Varchar,
+                revision);
+            command.Parameters.AddWithValue(
+                "map_id",
+                NpgsqlDbType.Smallint,
+                definition.MapId);
+            command.Parameters.AddWithValue(
+                "scene_key",
+                NpgsqlDbType.Varchar,
+                definition.SceneKey);
+            command.Parameters.AddWithValue(
+                "template_key",
+                NpgsqlDbType.Varchar,
+                definition.TemplateKey);
+            command.Parameters.AddWithValue(
+                "display_name",
+                NpgsqlDbType.Varchar,
+                definition.DisplayName);
+            command.Parameters.AddWithValue(
+                "object_id",
+                NpgsqlDbType.Bigint,
+                checked((long)definition.ObjectId));
+            command.Parameters.AddWithValue(
+                "pos_x",
+                NpgsqlDbType.Real,
+                definition.X);
+            command.Parameters.AddWithValue(
+                "pos_z",
+                NpgsqlDbType.Real,
+                definition.Z);
+            command.Parameters.AddWithValue(
+                "clear_bytes",
+                NpgsqlDbType.Bytea,
+                definition.Packet);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidDataException(
+                    "A monster baseline definition was not inserted.");
+            }
+        }
+    }
+
+    private static async Task VerifyStoredReleaseAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        WorldContentFamilyRevision expected,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT entry_count,
+                   source,
+                   (
+                       SELECT COUNT(*)::integer
+                       FROM monster_spawn_definitions definitions
+                       WHERE definitions.revision = release.revision
+                   )
+            FROM monster_content_revisions release
+            WHERE revision = @revision;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue(
+            "revision",
+            NpgsqlDbType.Varchar,
+            expected.Sha256);
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken) ||
+            reader.GetInt32(0) != expected.EntryCount ||
+            !string.Equals(
+                reader.GetString(1),
+                MonsterContentBaselineV1.Source,
+                StringComparison.Ordinal) ||
+            reader.GetInt32(2) != expected.EntryCount)
+        {
+            throw new InvalidDataException(
+                "The stored monster baseline release failed verification.");
+        }
+    }
+}

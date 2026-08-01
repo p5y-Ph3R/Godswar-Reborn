@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Items;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -39,7 +40,9 @@ internal static class DeveloperItemCommand
     public static bool TryParse(
         string text,
         out DeveloperItemRequest? request,
-        out string error)
+        out string error,
+        DeveloperMountCatalog? mounts = null,
+        IItemMaterialCatalog? materials = null)
     {
         request = null;
         error = string.Empty;
@@ -60,7 +63,17 @@ internal static class DeveloperItemCommand
 
         if (tokens[1].Equals("mount", StringComparison.OrdinalIgnoreCase))
         {
-            return TryParseMount(tokens, out request, out error);
+            if (mounts is null)
+            {
+                error = "Mount commands require the published item catalog.";
+                return true;
+            }
+
+            return TryParseMount(
+                tokens,
+                mounts,
+                out request,
+                out error);
         }
 
         if (tokens[1].Equals("clearbag", StringComparison.OrdinalIgnoreCase))
@@ -101,21 +114,26 @@ internal static class DeveloperItemCommand
         }
 
         DeveloperGrantMaterialDefinition material;
+        if (materials is null)
+        {
+            error = "Material commands require the published item catalog.";
+            return true;
+        }
         var quantityOffset = 3;
         if (uint.TryParse(tokens[2], out var itemId))
         {
-            if (!DeveloperGrantMaterialCatalog.TryResolve(itemId, out material))
+            if (!materials.TryResolveDeveloper(itemId, out material))
             {
                 error = $"Item ID {itemId} is not an allowlisted forging or gear-enhancement material.";
                 return true;
             }
         }
-        else if (DeveloperGrantMaterialCatalog.TryResolve(tokens[2], out material))
+        else if (materials.TryResolveDeveloper(tokens[2], out material))
         {
         }
         else if (tokens.Length >= 4 &&
                  int.TryParse(tokens[3], out var level) &&
-                 DeveloperGrantMaterialCatalog.TryResolve($"{tokens[2]}{level}", out material))
+                 materials.TryResolveDeveloper($"{tokens[2]}{level}", out material))
         {
             quantityOffset = 4;
         }
@@ -195,6 +213,7 @@ internal static class DeveloperItemCommand
 
     private static bool TryParseMount(
         string[] tokens,
+        DeveloperMountCatalog mounts,
         out DeveloperItemRequest? request,
         out string error)
     {
@@ -226,9 +245,9 @@ internal static class DeveloperItemCommand
 
             if (int.TryParse(tokens[3], out var page))
             {
-                if (page is < 1 || page > DeveloperMountCatalog.PageCount)
+                if (page is < 1 || page > mounts.PageCount)
                 {
-                    error = $"Mount-list page must be from 1 to {DeveloperMountCatalog.PageCount}.";
+                    error = $"Mount-list page must be from 1 to {mounts.PageCount}.";
                     return true;
                 }
 
@@ -240,7 +259,7 @@ internal static class DeveloperItemCommand
                 return true;
             }
 
-            if (!DeveloperMountCatalog.TryGetFamily(tokens[3], out var family))
+            if (!mounts.TryGetFamily(tokens[3], out var family))
             {
                 error = $"Unknown mount family alias '{tokens[3]}'.";
                 return true;
@@ -279,7 +298,7 @@ internal static class DeveloperItemCommand
 
         if (commandTokenCount == 4 && uint.TryParse(tokens[3], out var itemId))
         {
-            if (!DeveloperMountCatalog.TryResolveGrantable(itemId, out var numericMount))
+            if (!mounts.TryResolveGrantable(itemId, out var numericMount))
             {
                 error = itemId == DeveloperMountCatalog.OrphanedMountItemId
                     ? $"Mount item {itemId} is an orphaned client entry and cannot be generated."
@@ -302,13 +321,13 @@ internal static class DeveloperItemCommand
             return true;
         }
 
-        if (!DeveloperMountCatalog.TryGetFamily(tokens[3], out _))
+        if (!mounts.TryGetFamily(tokens[3], out _))
         {
             error = $"Unknown mount family alias '{tokens[3]}'.";
             return true;
         }
 
-        if (!DeveloperMountCatalog.TryResolveGrantable(tokens[3], tokens[4], out var aliasedMount))
+        if (!mounts.TryResolveGrantable(tokens[3], tokens[4], out var aliasedMount))
         {
             error = $"Mount family '{tokens[3]}' has no grantable tier '{tokens[4]}'.";
             return true;

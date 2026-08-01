@@ -22,7 +22,6 @@ internal static class DataBoundaryArchitectureBaseline
 {
     public static readonly LegacyStoreCallAllowance[] StoreCalls =
     [
-        new("Program.cs", "EnsureSeedDataAsync", 1),
         new(
             "Game/GameClientHandler.CharacterCheckpoints.cs",
             "SaveCharacterPositionAsync",
@@ -119,7 +118,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("GameClientHandlerFactory.cs", 2),
         new("Game/GameSessionRegistry.cs", 2),
         new("Game/GameSessionRegistry.PlayerRuntimeEcs.cs", 2),
-        new("Program.cs", 4),
+        new("Program.cs", 3),
         new("Security/Authentication/AccountAuthenticationService.cs", 1)
     ];
 
@@ -135,7 +134,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.Inventory.Grants.cs", 9),
         new("State/PostgresGameStore.Inventory.HolyStones.cs", 11),
         new("State/PostgresGameStore.Inventory.Movement.cs", 12),
-        new("State/PostgresGameStore.Inventory.Persistence.cs", 32),
+        new("State/PostgresGameStore.Inventory.Persistence.cs", 29),
         new("State/PostgresGameStore.Inventory.Projection.cs", 26),
         new("State/PostgresGameStore.PetEggs.Audit.cs", 4),
         new("State/PostgresGameStore.PetEggs.cs", 10),
@@ -145,16 +144,12 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.PetPresenceAudit.cs", 10),
         new("State/PostgresGameStore.Pets.cs", 6),
         new("State/PostgresGameStore.Progression.cs", 4),
-        new("State/PostgresGameStore.Seeding.Items.cs", 25),
-        new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 30),
-        new("State/PostgresGameStore.Seeding.World.cs", 18),
         new("State/PostgresGameStore.SkillsAndTalents.cs", 7),
         new("State/PostgresGameStore.ZodiacSkillGrids.cs", 20)
     ];
 
     public static readonly ReferenceAllowance[] StateToGameUsings =
     [
-        new("State/JsonGameStore.cs", 1),
         new("State/PostgresGameStore.Characters.cs", 1),
         new("State/PostgresGameStore.Characters.Persistence.cs", 1),
         new("State/PostgresGameStore.Crafting.cs", 1),
@@ -167,9 +162,6 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/PostgresGameStore.PetEggs.Audit.cs", 1),
         new("State/PostgresGameStore.PetEggs.cs", 1),
         new("State/PostgresGameStore.Progression.cs", 1),
-        new("State/PostgresGameStore.Seeding.Items.cs", 1),
-        new("State/PostgresGameStore.Seeding.SkillsAndNpcs.cs", 1),
-        new("State/PostgresGameStore.Seeding.World.cs", 1),
         new("State/PostgresGameStore.SkillsAndTalents.cs", 1),
     ];
 

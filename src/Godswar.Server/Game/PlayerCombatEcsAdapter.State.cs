@@ -152,7 +152,9 @@ internal sealed partial class PlayerCombatEcsAdapter
                     kind == PlayerCombatIntentKind.BasicAttack
                         ? MonsterCombatResolver
                             .ResolvePlayerBasicAttackRange(
-                                snapshot.Definition)
+                                snapshot.Definition,
+                                registry.GameplayCatalogs
+                                    .MonsterCombatRanges)
                         : PlayerCombatRules
                             .DefaultBasicAttackRange));
             _targetEntities.Add(entity);

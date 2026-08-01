@@ -3,6 +3,9 @@
 Status: implemented and locally verified on 2026-07-31; no live database,
 container, player data, or schema migration was changed
 
+Follow-on status (2026-08-01): B20E-G are implemented locally. B20H's real
+seven-day deployed observation and final deletion remain pending.
+
 ## Outcome
 
 B20C removes ten live calls across seven operations from `IGameStore`:

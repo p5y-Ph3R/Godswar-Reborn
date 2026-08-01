@@ -66,7 +66,8 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
             registry,
             new FixedSnapshotReader(snapshot),
             WorldContentReaderTestFixtures.Empty,
-            petDurableCommands: executor);
+            petDurableCommands: executor,
+            petContent: PetContentTestCatalog.Instance);
         SetField(
             handler,
             "_account",

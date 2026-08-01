@@ -9,68 +9,81 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static class DeveloperMountCommandChecks
 {
+    private static DeveloperMountCatalog Catalog =>
+        TestItemContent.Content.DeveloperMounts;
+
     private static readonly Guid OperationId =
         Guid.Parse("d2d76c5a-61e3-4fbe-b642-f33fc013a305");
 
+    private static bool TryParse(
+        string text,
+        out DeveloperItemRequest? request,
+        out string error) =>
+        TestDeveloperItemCommand.TryParse(
+            text,
+            out request,
+            out error,
+            Catalog);
+
     public static async Task RunAsync()
     {
-        Check.Equal(350, DeveloperMountCatalog.All.Count, "all client mount templates are catalogued");
-        Check.Equal(349, DeveloperMountCatalog.Grantable.Count, "only the orphaned client mount is excluded");
+        Check.Equal(350, Catalog.All.Count, "all client mount templates are catalogued");
+        Check.Equal(349, Catalog.Grantable.Count, "only the orphaned client mount is excluded");
         Check.Equal(
-            DeveloperMountCatalog.All.Count,
-            DeveloperMountCatalog.All.Select(static mount => mount.ItemId).Distinct().Count(),
+            Catalog.All.Count,
+            Catalog.All.Select(static mount => mount.ItemId).Distinct().Count(),
             "each client mount ID belongs to exactly one developer family");
         Check.True(
-            DeveloperMountCatalog.TryGet(DeveloperMountCatalog.OrphanedMountItemId, out var orphan) &&
+            Catalog.TryGet(DeveloperMountCatalog.OrphanedMountItemId, out var orphan) &&
             !orphan.CanGrant,
             "orphaned client mount remains visible but cannot be generated");
 
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("greeksteed", "80", out var greekEighty) &&
+            Catalog.TryResolveGrantable("greeksteed", "80", out var greekEighty) &&
             greekEighty.ItemId == 14224,
             "family and level resolve the level-80 Greek Steed");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("greeksteed", "max", out var greekMax) &&
+            Catalog.TryResolveGrantable("greeksteed", "max", out var greekMax) &&
             greekMax.ItemId == 14228,
             "max resolves the normal level-120 family endpoint");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("greeksteed", "120", out var greek120) &&
+            Catalog.TryResolveGrantable("greeksteed", "120", out var greek120) &&
             greek120.ItemId == 14228,
             "120 is an alias for the normal max endpoint");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("greeksteed", "special", out var greekSpecial) &&
+            Catalog.TryResolveGrantable("greeksteed", "special", out var greekSpecial) &&
             greekSpecial.ItemId == 14229,
             "special resolves the separate 50-percent-speed family variant");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("argentdragon-a", "40", out var dragonA) &&
+            Catalog.TryResolveGrantable("argentdragon-a", "40", out var dragonA) &&
             dragonA.ItemId == 14320 &&
-            DeveloperMountCatalog.TryResolveGrantable("argentdragon-b", "40", out var dragonB) &&
+            Catalog.TryResolveGrantable("argentdragon-b", "40", out var dragonB) &&
             dragonB.ItemId == 14400,
             "duplicate Argent Dragon display names remain unambiguous");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("timedreindeer", "7d", out var timedReindeer) &&
+            Catalog.TryResolveGrantable("timedreindeer", "7d", out var timedReindeer) &&
             timedReindeer.ItemId == 14426,
             "timed family aliases preserve the client duration variant");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("erebuslion", "80", out var erebusEighty) &&
+            Catalog.TryResolveGrantable("erebuslion", "80", out var erebusEighty) &&
             erebusEighty.ItemId == 16204 &&
             erebusEighty.DisplayName == "Erebus Lion" &&
             erebusEighty.SpeedBonus == 0.24f,
             "Erebus Lion resolves its level-80 family item and authored speed");
         Check.True(
-            DeveloperMountCatalog.TryResolveGrantable("blacklion", "special", out var erebusSpecial) &&
+            Catalog.TryResolveGrantable("blacklion", "special", out var erebusSpecial) &&
             erebusSpecial.ItemId == 16209,
             "Erebus Lion secondary alias resolves the special family endpoint");
         Check.Equal(
             DeveloperMountCatalog.FamiliesPerPage,
-            DeveloperMountCatalog.GetPage(1).Count,
+            Catalog.GetPage(1).Count,
             "mount list pages have a fixed bounded size");
         Check.True(
-            DeveloperMountCatalog.GetPage(DeveloperMountCatalog.PageCount + 1).Count == 0,
+            Catalog.GetPage(Catalog.PageCount + 1).Count == 0,
             "out-of-range mount catalog pages are empty");
 
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount list", out var defaultList, out _) &&
+            TryParse("/item mount list", out var defaultList, out _) &&
             defaultList is
             {
                 Operation: DeveloperItemOperation.MountList,
@@ -79,11 +92,11 @@ internal static class DeveloperMountCommandChecks
             },
             "mount list defaults to page one");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount list 2", out var pageList, out _) &&
+            TryParse("/item mount list 2", out var pageList, out _) &&
             pageList is { Operation: DeveloperItemOperation.MountList, MountList.Page: 2 },
             "mount list accepts a valid page");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount list greeksteed", out var familyList, out _) &&
+            TryParse("/item mount list greeksteed", out var familyList, out _) &&
             familyList is
             {
                 Operation: DeveloperItemOperation.MountList,
@@ -92,7 +105,7 @@ internal static class DeveloperMountCommandChecks
             },
             "mount list accepts a family alias");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add 14224", out var numericAdd, out _) &&
+            TryParse("/item mount add 14224", out var numericAdd, out _) &&
             numericAdd is
             {
                 Operation: DeveloperItemOperation.MountAdd,
@@ -102,7 +115,7 @@ internal static class DeveloperMountCommandChecks
             },
             "numeric mount add resolves only an allowlisted client mount");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add greeksteed 80", out var familyAdd, out _) &&
+            TryParse("/item mount add greeksteed 80", out var familyAdd, out _) &&
             familyAdd is
             {
                 Operation: DeveloperItemOperation.MountAdd,
@@ -111,7 +124,7 @@ internal static class DeveloperMountCommandChecks
             },
             "family mount add resolves its level tier");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add 14224 op={OperationId:D}",
                 out var identifiedNumericAdd,
                 out _) &&
@@ -125,7 +138,7 @@ internal static class DeveloperMountCommandChecks
             identifiedNumericAdd.ClientOperationId == OperationId,
             "numeric mount add accepts a final D-format operation ID");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add greeksteed 80 op={OperationId:D}",
                 out var identifiedFamilyAdd,
                 out _) &&
@@ -139,15 +152,15 @@ internal static class DeveloperMountCommandChecks
             identifiedFamilyAdd.ClientOperationId == OperationId,
             "family-tier mount add accepts a final D-format operation ID");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add greeksteed max", out var maxAdd, out _) &&
+            TryParse("/item mount add greeksteed max", out var maxAdd, out _) &&
             maxAdd is { Mount.ItemId: 14228 },
             "family max command resolves the normal endpoint");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add greeksteed special", out var specialAdd, out _) &&
+            TryParse("/item mount add greeksteed special", out var specialAdd, out _) &&
             specialAdd is { Mount.ItemId: 14229 },
             "family special command resolves the distinct speed variant");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add greeksteed special OP={OperationId:D}",
                 out var identifiedSpecialAdd,
                 out _) &&
@@ -159,11 +172,11 @@ internal static class DeveloperMountCommandChecks
             identifiedSpecialAdd.ClientOperationId == OperationId,
             "symbolic mount tier accepts the case-insensitive operation token");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add erebuslion 80", out var erebusAdd, out _) &&
+            TryParse("/item mount add erebuslion 80", out var erebusAdd, out _) &&
             erebusAdd is { Mount.ItemId: 16204 },
             "custom Erebus Lion family is available through the bounded mount command");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add {DeveloperMountCatalog.OrphanedMountItemId}",
                 out var orphanAdd,
                 out var orphanError) &&
@@ -171,11 +184,11 @@ internal static class DeveloperMountCommandChecks
             orphanError.Contains("orphaned", StringComparison.OrdinalIgnoreCase),
             "orphaned mount is consumed but explicitly rejected");
         Check.True(
-            DeveloperItemCommand.TryParse("/item mount add greeksteed 999", out var badTier, out _) &&
+            TryParse("/item mount add greeksteed 999", out var badTier, out _) &&
             badTier is null,
             "unknown family tiers are rejected");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 "/item mount add 14224 op=",
                 out var emptyOperationAdd,
                 out var emptyOperationError) &&
@@ -183,7 +196,7 @@ internal static class DeveloperMountCommandChecks
             emptyOperationError.Contains("D-format UUID", StringComparison.Ordinal),
             "mount add rejects an empty operation ID with bounded guidance");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 "/item mount add greeksteed 80 " +
                 "op=00000000-0000-0000-0000-000000000000",
                 out var emptyUuidAdd,
@@ -192,14 +205,14 @@ internal static class DeveloperMountCommandChecks
             emptyUuidError.Contains("non-empty", StringComparison.Ordinal),
             "mount add rejects the empty UUID value");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add 14224 op={{{OperationId:D}}}",
                 out var nonCanonicalAdd,
                 out _) &&
             nonCanonicalAdd is null,
             "mount add rejects non-D UUID forms");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 $"/item mount add 14224 op={OperationId:D} trailing",
                 out var trailingAdd,
                 out var trailingError) &&
@@ -207,7 +220,7 @@ internal static class DeveloperMountCommandChecks
             trailingError.Contains("[op=<UUID>]", StringComparison.Ordinal),
             "mount add rejects arguments after the final operation token");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TryParse(
                 "/item mount add",
                 out var incompleteAdd,
                 out var incompleteAddError) &&
@@ -215,7 +228,7 @@ internal static class DeveloperMountCommandChecks
             incompleteAddError.Contains("[op=<UUID>]", StringComparison.Ordinal),
             "mount-add usage advertises the optional operation token");
         Check.True(
-            DeveloperItemCommand.TryParse("/item add crystal1 2", out var materialRequest, out _) &&
+            TryParse("/item add crystal1 2", out var materialRequest, out _) &&
             materialRequest is
             {
                 Operation: DeveloperItemOperation.Add,

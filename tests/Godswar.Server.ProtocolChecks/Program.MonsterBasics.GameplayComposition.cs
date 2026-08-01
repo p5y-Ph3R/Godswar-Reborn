@@ -1,5 +1,6 @@
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
+using Godswar.Server.ProtocolChecks.CompatibilityFixtures.JsonAuthority;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -15,7 +16,8 @@ internal static partial class Program
 
         try
         {
-            var definition = WorldBossCatalog.Default.Definitions[0];
+            var definition =
+                GameplayContentTestFixtures.Runtime.WorldBosses.Definitions[0];
             var killedAt = new DateTimeOffset(
                 2026,
                 7,
@@ -25,14 +27,14 @@ internal static partial class Program
                 0,
                 TimeSpan.Zero);
             var expectedRespawnAt =
-                killedAt + WorldBossCatalog.Default.RespawnInterval;
+                killedAt + definition.RespawnInterval;
 
             await using (var store = new JsonGameStore(dataPath))
             {
                 await store.EnsureSeedDataAsync();
-                var providers = ServerGameplayPersistenceComposition.Create(
-                    null,
-                    store);
+                var providers =
+                    JsonCompatibilityGameplayPersistenceComposition.Create(
+                        store);
                 var activation = new WorldBossAreaActivation(
                     definition.MapId,
                     definition.TemplateKey,
@@ -56,7 +58,8 @@ internal static partial class Program
                     (int)duplicate.Disposition,
                     "focused JSON world-boss activation deduplicates one death token");
 
-                var otherDefinition = WorldBossCatalog.Default.Definitions
+                var otherDefinition = GameplayContentTestFixtures.Runtime
+                    .WorldBosses.Definitions
                     .First(candidate => candidate.MapId != definition.MapId);
                 var crossMapReplay = await providers.WorldBossAreaControl
                     .ActivateAsync(
@@ -96,8 +99,7 @@ internal static partial class Program
 
             await using var restartedStore = new JsonGameStore(dataPath);
             var restartedProviders =
-                ServerGameplayPersistenceComposition.Create(
-                    null,
+                JsonCompatibilityGameplayPersistenceComposition.Create(
                     restartedStore);
             var restored = await restartedProviders.WorldBossRespawns
                 .ReadActiveAsync(

@@ -22,7 +22,8 @@ internal sealed partial class MapInstance
                 MapId,
                 definitions,
                 initializedAt,
-                activeWorldBossRespawn: activeWorldBossRespawn);
+                activeWorldBossRespawn: activeWorldBossRespawn,
+                worldBossCatalog: _worldBossCatalog);
             _monsterRuntime = runtime;
             return runtime;
         }

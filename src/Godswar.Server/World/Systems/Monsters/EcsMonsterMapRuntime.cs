@@ -28,7 +28,8 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
         TimeSpan? corpseDespawnDelay = null,
         TimeSpan? respawnDelay = null,
         WorldBossRespawnState? activeWorldBossRespawn = null,
-        Guid? runtimeInstanceId = null)
+        Guid? runtimeInstanceId = null,
+        WorldBossCatalog? worldBossCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         MapId = mapId;
@@ -66,7 +67,8 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
                 corpseDelay,
                 ordinaryRespawnDelay,
                 activeWorldBossRespawn,
-                _runtimeInstanceId);
+                _runtimeInstanceId,
+                worldBossCatalog ?? WorldBossCatalog.Empty);
             _entities.Add(definition.ObjectId, entity);
         }
 

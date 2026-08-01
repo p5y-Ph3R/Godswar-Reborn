@@ -98,6 +98,9 @@ internal sealed record WorkerRegistrationRequest
 
     public required IReadOnlyList<CoordinatedWorldRoute> Routes { get; init; }
 
+    public RealmId RealmId =>
+        Routes.Count == 0 ? default : Routes[0].RealmId;
+
     public void Validate()
     {
         if (!NodeId.IsValid)
@@ -143,6 +146,11 @@ internal sealed record WorkerRegistrationRequest
         foreach (var route in Routes)
         {
             route.Validate();
+        }
+        if (Routes.Any(route => route.RealmId != RealmId))
+        {
+            throw new ArgumentException(
+                "One worker registration may own routes in only one realm.");
         }
     }
 

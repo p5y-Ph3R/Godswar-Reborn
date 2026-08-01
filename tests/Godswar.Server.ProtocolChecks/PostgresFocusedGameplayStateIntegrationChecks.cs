@@ -1,7 +1,9 @@
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Application.World;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.World;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
 using AppBoostKinds =
@@ -40,15 +42,26 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         var migrationRunner =
             new PostgresSchemaMigrationRunner(dataSource);
         await migrationRunner.InitializeGodswarSchemaAsync();
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        var gameplayPublication =
+            await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+                connectionString);
 
         Fixture? fixture = null;
         try
         {
-            fixture = await CreateFixtureAsync(dataSource);
+            fixture = await CreateFixtureAsync(
+                dataSource,
+                gameplayPublication.Revision);
             var boostReader =
-                new PostgresExperienceBoostStateReader(dataSource);
+                new PostgresExperienceBoostStateReader(
+                    dataSource,
+                    gameplayPublication.Revision);
             var worldBossStore =
-                new PostgresWorldBossAreaControlStore(dataSource);
+                new PostgresWorldBossAreaControlStore(
+                    dataSource,
+                    gameplayPublication.Revision);
 
             await AssertInvalidAndNotConfiguredAsync(
                 dataSource,
@@ -69,7 +82,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             await AssertWorldBossActivationRacesAsync(
                 connectionString,
                 dataSource,
-                fixture);
+                fixture,
+                gameplayPublication.Revision);
         }
         finally
         {
@@ -162,7 +176,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             control.DeathToken,
             "committed control preserves the death token");
         Check.Equal(
-            2_500,
+            fixture.BonusBasisPoints,
             control.BonusBasisPoints,
             "committed control uses the configured area bonus");
         Check.Equal(
@@ -170,7 +184,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             control.ActivatedAtUtc,
             "committed control records the authoritative kill time");
         Check.Equal(
-            fixture.KilledAtUtc.AddHours(12),
+            fixture.KilledAtUtc.AddSeconds(
+                fixture.RespawnIntervalSeconds),
             control.ExpiresAtUtc,
             "committed control applies the configured respawn interval");
 
@@ -288,7 +303,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             area.ExpiresAtUtc!.Value,
             "area boost shares the world-boss control expiry");
         Check.Equal(
-            5_000,
+            2_500 + fixture.BonusBasisPoints,
             snapshot.TotalBonusBasisPoints,
             "fighter EXP stacks personal, VIP, and area bonuses");
         Check.Equal(
@@ -296,7 +311,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             snapshot.TotalTalentBonusBasisPoints,
             "Talent EXP remains a separate bonus channel");
         Check.Equal(
-            150,
+            (100 * (12_500 + fixture.BonusBasisPoints)) / 10_000,
             snapshot.ApplyTo(100),
             "composed fighter EXP multiplier is deterministic");
         Check.Equal(

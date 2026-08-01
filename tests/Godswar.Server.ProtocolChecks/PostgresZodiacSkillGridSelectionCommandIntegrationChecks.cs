@@ -1,7 +1,9 @@
 using System.Text.RegularExpressions;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.Infrastructure.Zodiac;
 using Npgsql;
 
@@ -15,6 +17,7 @@ internal static class
 
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
+    private static string? _gameplayContentRevision;
     private static readonly Regex DisposableDatabasePattern = new(
         @"^godswar_(?:b03_[a-f0-9]{10}_smoke_[0-9]{2}|b09_[a-z0-9_]{1,40})$",
         RegexOptions.CultureInvariant);
@@ -47,6 +50,13 @@ internal static class
                 return;
             }
         }
+
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        var gameplayPublication =
+            await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+                connectionString);
+        _gameplayContentRevision = gameplayPublication.Revision;
 
         await using (var store =
                      new Godswar.Server.State.PostgresGameStore(
@@ -186,7 +196,12 @@ internal static class
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            GameplayContentRevision,
             probe);
+
+    private static string GameplayContentRevision =>
+        _gameplayContentRevision ?? throw new InvalidOperationException(
+            "The Zodiac selection check has not pinned gameplay content.");
 
     private static CommandEnvelope<ZodiacSkillGridSelectionCommand>
         Envelope(

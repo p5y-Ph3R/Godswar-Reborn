@@ -401,7 +401,7 @@ internal sealed partial class
                 family);
     }
 
-    private static void ResolveReceiptItems(
+    private void ResolveReceiptItems(
         MaterialCommandContext context,
         GearMentorMaterialConversionResultStatus status,
         out uint sourceItemId,
@@ -429,10 +429,12 @@ internal sealed partial class
         {
             GearMentorOperation.TransformCrystal =>
                 GearMentorPlanner.TryResolveCrystalTransform(
+                    _itemContent.Templates.Materials,
                     expected.Id,
                     out output),
             GearMentorOperation.CombineGemPieces =>
                 GearMentorPlanner.TryResolveGemPieceCombination(
+                    _itemContent.Templates.Materials,
                     expected.Id,
                     out output),
             _ => throw new InvalidDataException(

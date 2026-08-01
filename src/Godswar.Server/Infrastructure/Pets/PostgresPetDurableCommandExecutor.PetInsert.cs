@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Pets;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -9,8 +10,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
-        PetSpeciesDefinition species,
-        PetAptitude aptitude,
+        PetSpeciesContentDefinition species,
+        short aptitude,
         int addedSavvyTotal,
         short sex,
         int lifetime,
@@ -40,16 +41,16 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("characterId", characterId);
-        command.Parameters.AddWithValue("speciesId", (short)species.Type);
+        command.Parameters.AddWithValue("speciesId", species.SpeciesId);
         command.Parameters.AddWithValue("name", species.DisplayName);
         command.Parameters.AddWithValue("sex", sex);
-        command.Parameters.AddWithValue("aptitude", (short)aptitude);
+        command.Parameters.AddWithValue("aptitude", aptitude);
         command.Parameters.AddWithValue(
             "addedSavvyTotal",
             addedSavvyTotal);
         command.Parameters.AddWithValue(
             "addedSavvyPolicy",
-            PetAddedSavvyPolicy.Version);
+            _petContent.Settings.AddedSavvyPolicyVersion);
         command.Parameters.AddWithValue("lifetime", lifetime);
         command.Parameters.AddWithValue("bound", bound);
         return Convert.ToInt64(
@@ -125,4 +126,13 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         command.Parameters.AddWithValue("skillId", skillId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static PetSavvy ToPetSavvy(PetContentStatVector value) =>
+        new(
+            value.Agility,
+            value.Strength,
+            value.Accuracy,
+            value.Technique,
+            value.Wisdom,
+            value.Luck);
 }

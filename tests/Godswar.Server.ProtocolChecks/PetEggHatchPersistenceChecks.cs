@@ -36,7 +36,8 @@ internal static partial class PetEggHatchPersistenceChecks
             await using var storeB =
                 new PostgresGameStore(connectionString);
             await storeA.EnsureSeedDataAsync();
-            await CheckEggTemplatesAsync(connectionString);
+            await storeB.EnsureSeedDataAsync();
+            CheckEggTemplates(storeA.ItemContent.Templates);
 
             var account = await storeA.LoginOrCreateAccountAsync(
                 username,

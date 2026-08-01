@@ -47,7 +47,7 @@ internal sealed partial class GameSessionRegistry
                     if ((!castCompletionClaimed &&
                          character.CurrentHp <= 0) ||
                         character.Level < mount.MountLevel ||
-                        !MountCatalog.TryGetEquippedRideDefinition(character, out var currentMount) ||
+                        !RequireItemContent().Mounts.TryGetEquippedRideDefinition(character, out var currentMount) ||
                         currentMount != mount ||
                         character.CurrentMp < MountCatalog.RideManaCost ||
                         state.RuntimeStatuses.TryGetValue(

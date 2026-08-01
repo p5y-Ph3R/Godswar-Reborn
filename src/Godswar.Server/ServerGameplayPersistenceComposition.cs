@@ -20,43 +20,20 @@ internal sealed record ServerGameplayPersistenceProviders(
 internal static class ServerGameplayPersistenceComposition
 {
     public static ServerGameplayPersistenceProviders Create(
-        PostgresApplicationDataRuntime? postgresRuntime,
-        ICharacterRuntimeProjectionReader? localProvider)
+        PostgresApplicationDataRuntime postgresRuntime)
     {
-        var characterSnapshots =
-            postgresRuntime?.CharacterSnapshots ??
-            localProvider as ICharacterSnapshotReader ??
-            throw Missing("character snapshot reader");
+        ArgumentNullException.ThrowIfNull(postgresRuntime);
+        var characterSnapshots = postgresRuntime.CharacterSnapshots;
         var measuredCharacterSnapshots =
-            new MeasuredCharacterSnapshotReader(
-                characterSnapshots,
-                postgresRuntime is null
-                    ? CharacterSnapshotProvider.Json
-                    : CharacterSnapshotProvider.PostgreSql);
+            new MeasuredCharacterSnapshotReader(characterSnapshots);
         var characterRuntime =
-            postgresRuntime?.CharacterRuntimeProjections ??
-            localProvider ??
-            throw Missing("character runtime projection reader");
-        var ownedPets = postgresRuntime?.OwnedPetSnapshots ??
-            localProvider as IOwnedPetSnapshotReader ??
-            throw Missing("owned-pet snapshot reader");
-        var experienceBoosts = postgresRuntime?.ExperienceBoosts ??
-            localProvider as IExperienceBoostStateReader ??
-            throw Missing("experience-boost state reader");
-        var worldBossAreaControl =
-            postgresRuntime?.WorldBossAreaControl ??
-            localProvider as IWorldBossAreaControlStore ??
-            throw Missing("world-boss area-control store");
-        var worldBossRespawns = postgresRuntime?.WorldBossRespawns ??
-            localProvider as IWorldBossRespawnReader ??
-            throw Missing("world-boss respawn reader");
-        var zodiacLevels = postgresRuntime?.ZodiacLevels ??
-            localProvider as IZodiacLevelStore ??
-            throw Missing("Zodiac-level store");
-        var characterCheckpoints =
-            postgresRuntime?.CharacterCheckpoints ??
-            localProvider as ICharacterCheckpointStore ??
-            throw Missing("character checkpoint store");
+            postgresRuntime.CharacterRuntimeProjections;
+        var ownedPets = postgresRuntime.OwnedPetSnapshots;
+        var experienceBoosts = postgresRuntime.ExperienceBoosts;
+        var worldBossAreaControl = postgresRuntime.WorldBossAreaControl;
+        var worldBossRespawns = postgresRuntime.WorldBossRespawns;
+        var zodiacLevels = postgresRuntime.ZodiacLevels;
+        var characterCheckpoints = postgresRuntime.CharacterCheckpoints;
 
         return new ServerGameplayPersistenceProviders(
             measuredCharacterSnapshots,
@@ -68,7 +45,4 @@ internal static class ServerGameplayPersistenceComposition
             zodiacLevels,
             characterCheckpoints);
     }
-
-    private static InvalidOperationException Missing(string provider) =>
-        new($"The gameplay {provider} was not composed.");
 }

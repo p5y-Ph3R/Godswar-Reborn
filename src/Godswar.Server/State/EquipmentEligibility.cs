@@ -1,5 +1,3 @@
-using System.Collections.Frozen;
-
 namespace Godswar.Server.State;
 
 internal readonly record struct EquipmentEligibilityResult(bool Allowed, string Reason)
@@ -16,18 +14,15 @@ internal readonly record struct EquipmentEligibilityResult(bool Allowed, string 
 /// </summary>
 internal static class EquipmentEligibility
 {
-    private static readonly FrozenDictionary<uint, ItemTemplateSeed> Templates =
-        ItemTemplateSeeds.All
-            .Where(static template => template.Id > 0)
-            .ToFrozenDictionary(static template => checked((uint)template.Id));
-
     public static EquipmentEligibilityResult ValidateEquip(
+        GameplayItemContent content,
         byte profession,
         int characterLevel,
         string equipment,
         uint itemId,
         int equipmentSlot) =>
         ValidateEquip(
+            content,
             profession,
             characterLevel,
             itemId,
@@ -38,14 +33,16 @@ internal static class EquipmentEligibility
                 slot));
 
     public static EquipmentEligibilityResult ValidateEquip(
+        GameplayItemContent content,
         byte profession,
         int characterLevel,
         uint itemId,
         int equipmentSlot,
         Func<int, uint> equippedItemAtSlot)
     {
+        ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(equippedItemAtSlot);
-        if (!Templates.TryGetValue(itemId, out var template) ||
+        if (!content.Templates.TryGet(itemId, out var template) ||
             !EquipmentSlots.IsEquipmentKind(template.Kind))
         {
             return EquipmentEligibilityResult.Reject("The item is not equipment.");
@@ -58,7 +55,7 @@ internal static class EquipmentEligibility
             return EquipmentEligibilityResult.Reject("The item does not belong in that equipment slot.");
         }
 
-        if (template.ClassIds.Length > 0 &&
+        if (template.ClassIds.Count > 0 &&
             !template.ClassIds.Contains((short)profession))
         {
             return EquipmentEligibilityResult.Reject("The item is for a different class.");
@@ -78,7 +75,7 @@ internal static class EquipmentEligibility
 
         if (template.Kind.Equals("mount", StringComparison.OrdinalIgnoreCase))
         {
-            if (!MountCatalog.TryGetRideDefinition(itemId, out _))
+            if (!content.Mounts.TryGetRideDefinition(itemId, out _))
             {
                 return EquipmentEligibilityResult.Reject(
                     "This mount family is not enabled on the server yet.");
@@ -89,7 +86,7 @@ internal static class EquipmentEligibility
             {
                 var gearId = equippedItemAtSlot(mountGearSlot);
                 if (gearId != 0 &&
-                    Templates.TryGetValue(gearId, out var gearTemplate) &&
+                    content.Templates.TryGet(gearId, out var gearTemplate) &&
                     (gearTemplate.MinLevel ?? 1) > mountLevel)
                 {
                     return EquipmentEligibilityResult.Reject(
@@ -102,7 +99,7 @@ internal static class EquipmentEligibility
             var mountId =
                 equippedItemAtSlot(EquipmentSlots.Mount);
             if (mountId == 0 ||
-                !Templates.TryGetValue(mountId, out var mountTemplate) ||
+                !content.Templates.TryGet(mountId, out var mountTemplate) ||
                 !mountTemplate.Kind.Equals("mount", StringComparison.OrdinalIgnoreCase))
             {
                 return EquipmentEligibilityResult.Reject(

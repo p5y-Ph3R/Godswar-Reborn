@@ -251,7 +251,7 @@ try {
     $applicationCommands =
         '-@all +ping +echo +time +info +select ' +
         '+client|id +client|setinfo ' +
-        '+client|setname +eval +evalsha +script|load +hget +hmget ' +
+        '+client|setname +eval +evalsha +script|load +get +set +hget +hmget ' +
         '+hgetall +hset +hdel ' +
         '+hincrby +del +unlink +exists +pexpire +pttl +zadd +zcard +zrem ' +
         '+zrangebyscore +zremrangebyscore +zscore'

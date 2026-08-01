@@ -158,7 +158,10 @@ internal sealed partial class PostgresGameStore
             transaction,
             characterId,
             cancellationToken);
-        var enhancement = GearEnhancementPlanner.Create(kitBag, request);
+        var enhancement = GearEnhancementPlanner.Create(
+            ItemContent.Templates,
+            kitBag,
+            request);
         if (!enhancement.Committed)
         {
             // Rejected plans never write or commit inventory state.
@@ -221,7 +224,11 @@ internal sealed partial class PostgresGameStore
             transaction,
             characterId,
             cancellationToken);
-        var result = GearMentorPlanner.Create(kitBag, playerLevel, request);
+        var result = GearMentorPlanner.Create(
+            ItemContent.Templates,
+            kitBag,
+            playerLevel,
+            request);
         if (!result.Committed)
         {
             await transaction.RollbackAsync(cancellationToken);

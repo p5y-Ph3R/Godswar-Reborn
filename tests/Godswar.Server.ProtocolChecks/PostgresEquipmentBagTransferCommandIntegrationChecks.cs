@@ -3,6 +3,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -63,10 +64,12 @@ internal static partial class
     private static PostgresEquipmentBagTransferCommandExecutor
         CreateExecutor(
             NpgsqlDataSource dataSource,
-            IPostgresEquipmentBagTransferCommandProbe? probe = null) =>
+            IPostgresEquipmentBagTransferCommandProbe? probe = null,
+            GameplayItemContent? itemContent = null) =>
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            itemContent ?? TestItemContent.Content,
             probe);
 
     private static async Task<EquipmentBagTransferExecutionResult>

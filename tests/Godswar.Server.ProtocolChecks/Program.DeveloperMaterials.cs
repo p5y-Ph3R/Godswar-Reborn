@@ -121,17 +121,17 @@ internal static partial class Program
             ForgingMaterialCatalog.All.Count +
                 GearEnhancementMaterialCatalog.All.Count +
                 GearMentorMaterialCatalog.AttributeDusts.Count,
-            DeveloperGrantMaterialCatalog.All.Count,
+            TestItemContent.Catalog.Materials.DeveloperMaterials.Count,
             "developer grant catalog combines forging, enhancement, and Gear Mentor materials");
         Check.True(
-            DeveloperGrantMaterialCatalog.TryResolve(9930, out var strengthStoneDefinition) &&
+            TestItemContent.Catalog.Materials.TryResolveDeveloper(9930, out var strengthStoneDefinition) &&
             strengthStoneDefinition.DisplayName == "Strength Stone" &&
             strengthStoneDefinition.StackCap == 99 &&
             strengthStoneDefinition.GrantedBound == 0,
             "gear-enhancement material grant policy is resolved by the unified server catalog");
 
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/gmitem add 4233 17",
                 out var numericRequest,
                 out _) &&
@@ -143,7 +143,7 @@ internal static partial class Program
             },
             "developer item command retains the legacy alias for direct protocol clients");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag confirm",
                 out var clearBagRequest,
                 out _) &&
@@ -155,14 +155,14 @@ internal static partial class Program
             },
             "developer item command requires and accepts the explicit clear-bag confirmation");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "test2:/****** clearbag confirm",
                 out var maskedClearBagRequest,
                 out _) &&
             maskedClearBagRequest is { Operation: DeveloperItemOperation.ClearBag },
             "stock-client masking and sender prefixes preserve the guarded clear-bag command");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag",
                 out var unconfirmedClearBagRequest,
                 out var unconfirmedClearBagError) &&
@@ -170,117 +170,117 @@ internal static partial class Program
             unconfirmedClearBagError.Contains("clearbag confirm", StringComparison.Ordinal),
             "clear-bag command without confirmation is consumed but rejected");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag yes",
                 out var wronglyConfirmedClearBagRequest,
                 out _) &&
             wronglyConfirmedClearBagRequest is null,
             "clear-bag command rejects the wrong confirmation token");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item clearbag confirm now",
                 out var overlongClearBagRequest,
                 out _) &&
             overlongClearBagRequest is null,
             "clear-bag command rejects trailing arguments after confirmation");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "ProtocolHero:/item add crystal1 99",
                 out var clientSafeRequest,
                 out _) &&
             clientSafeRequest is { Material.ItemId: 4230, Quantity: 99 },
             "developer item command accepts the stock-client-safe alias after a sender prefix");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "test2:/****** add crystal1 99",
                 out var maskedLegacyRequest,
                 out _) &&
             maskedLegacyRequest is { Material.ItemId: 4230, Quantity: 99 },
             "developer item command recognizes the stock client's masked legacy prefix");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/gmitem add crystal 2 99",
                 out var splitAliasRequest,
                 out _) &&
             splitAliasRequest is { Material.ItemId: 4231, Quantity: 99 },
             "developer item command accepts an unambiguous material and level alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "ProtocolHero:/gmitem add emerald-l4",
                 out var prefixedRequest,
                 out _) &&
             prefixedRequest is { Material.ItemId: 4223, Quantity: 1 },
             "developer item command tolerates a captured sender prefix and defaults quantity to one");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/gmitem add sapphire4pieces 5",
                 out var pieceRequest,
                 out _) &&
             pieceRequest is { Material.ItemId: 4214, Quantity: 5 },
             "developer item command accepts the distinct native pieces alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/gmitem add emerald5 12",
                 out var levelFiveRequest,
                 out _) &&
             levelFiveRequest is { Material.ItemId: 4225, Quantity: 12 },
             "developer item command accepts locally authored level-5 material aliases");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add 9930 7",
                 out var numericEnhancementRequest,
                 out _) &&
             numericEnhancementRequest is { Material.ItemId: 9930, Quantity: 7 },
             "developer item command accepts an allowlisted gear-enhancement numeric ID");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add strengthstone 8",
                 out var strengthStoneRequest,
                 out _) &&
             strengthStoneRequest is { Material.ItemId: 9930, Quantity: 8 },
             "developer item command resolves the Strength Stone alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add quartzplate1 9",
                 out var quartzPlateRequest,
                 out _) &&
             quartzPlateRequest is { Material.ItemId: 9960, Quantity: 9 },
             "developer item command resolves the Quartz Plate 1 alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add flamespark 10",
                 out var flameSparkRequest,
                 out _) &&
             flameSparkRequest is { Material.ItemId: 9990, Quantity: 10 },
             "developer item command resolves the Flame Spark alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add watergrain 11",
                 out var waterGrainRequest,
                 out _) &&
             waterGrainRequest is { Material.ItemId: 9991, Quantity: 11 },
             "developer item command resolves the Water Grain alias");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/gmitem add 999999 1",
                 out var arbitraryRequest,
                 out var arbitraryError) &&
             arbitraryRequest is null && arbitraryError.Contains("not an allowlisted"),
             "arbitrary numeric item IDs are consumed but rejected");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 "/item add 9939 1",
                 out var catalogGapRequest,
                 out _) && catalogGapRequest is null,
             "the deliberately absent gear-enhancement material ID remains rejected");
         Check.True(
-            DeveloperItemCommand.TryParse(
+            TestDeveloperItemCommand.TryParse(
                 $"/gmitem add crystal1 {DeveloperItemCommand.MaximumQuantity + 1}",
                 out var oversizedRequest,
                 out _) && oversizedRequest is null,
             "developer item command enforces the strict quantity maximum");
         Check.True(
-            !DeveloperItemCommand.TryParse("ordinary map chat", out _, out _),
+            !TestDeveloperItemCommand.TryParse("ordinary map chat", out _, out _),
             "ordinary chat is not consumed as a developer command");
 
         var talkText = "/item add ruby1 3";
@@ -302,7 +302,7 @@ internal static partial class Program
         Check.True(
             GameClientHandler.TryReadTalkText(capturedMaskedTalkPayload, out var maskedTalkText) &&
             maskedTalkText == "test2:/****** add crystal1 99" &&
-            DeveloperItemCommand.TryParse(maskedTalkText, out var capturedMaskedRequest, out _) &&
+            TestDeveloperItemCommand.TryParse(maskedTalkText, out var capturedMaskedRequest, out _) &&
             capturedMaskedRequest is { Material.ItemId: 4230, Quantity: 99 },
             "live masked /gmitem Talk payload still reaches the guarded grant command");
 

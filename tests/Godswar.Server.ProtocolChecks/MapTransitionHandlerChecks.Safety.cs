@@ -62,7 +62,7 @@ internal static partial class MapTransitionHandlerChecks
             registry,
             actor);
         var outward = Resolve(
-            MapTraversalCatalog.Default,
+            GameplayContentTestFixtures.Runtime.MapTraversal,
             SpartaMapId,
             SpartaSuburbMapId);
 
@@ -165,7 +165,7 @@ internal static partial class MapTransitionHandlerChecks
             actor,
             readyTimeout);
         var outward = Resolve(
-            MapTraversalCatalog.Default,
+            GameplayContentTestFixtures.Runtime.MapTraversal,
             SpartaMapId,
             SpartaSuburbMapId);
 
@@ -248,7 +248,7 @@ internal static partial class MapTransitionHandlerChecks
             registry,
             actor);
         var outward = Resolve(
-            MapTraversalCatalog.Default,
+            GameplayContentTestFixtures.Runtime.MapTraversal,
             SpartaMapId,
             SpartaSuburbMapId);
 
@@ -289,7 +289,8 @@ internal static partial class MapTransitionHandlerChecks
             store: null,
             zodiacEnergyOptions: null,
             monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-            playerRuntimeMode: PlayerRuntimeMode.Ecs);
+            playerRuntimeMode: PlayerRuntimeMode.Ecs,
+            gameplayCatalogs: GameplayContentTestFixtures.Runtime);
 
     private static int GetSessionDisconnected(
         ClientSession session)

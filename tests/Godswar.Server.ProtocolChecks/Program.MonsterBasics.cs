@@ -281,6 +281,34 @@ internal static partial class Program
             "A_boss_boar_001",
             mapId: 3,
             sceneKey: "Parnitha_1");
+        foreach (var mode in new[]
+                 {
+                     MonsterRuntimeMode.Legacy,
+                     MonsterRuntimeMode.Ecs
+                 })
+        {
+            var configured = MonsterMapRuntimeFactory.Create(
+                mode,
+                mapId: 3,
+                [definition],
+                initializedAt,
+                worldBossCatalog:
+                    GameplayContentTestFixtures.Runtime.WorldBosses);
+            Check.True(
+                configured.TryApplyDamage(
+                    definition.ObjectId,
+                    uint.MaxValue,
+                    attackerCharacterId: null,
+                    expectedSpawnGeneration: null,
+                    now: initializedAt,
+                    result: out var killed) &&
+                killed.Killed,
+                $"{mode} published world boss can be killed");
+            Check.True(
+                killed.Monster.RespawnAt == initializedAt.AddHours(12),
+                $"{mode} uses published world-boss respawn interval");
+        }
+
         var persisted = new WorldBossRespawnState(3, definition.TemplateKey, respawnAt);
         var runtime = new MonsterMapRuntime(
             3,

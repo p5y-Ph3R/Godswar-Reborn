@@ -3,12 +3,6 @@ using System.Diagnostics.Metrics;
 
 namespace Godswar.Server.Application.Characters;
 
-internal enum CharacterSnapshotProvider : byte
-{
-    PostgreSql = 1,
-    Json = 2
-}
-
 /// <summary>
 /// Adds bounded, low-cardinality telemetry around the application query.
 /// No account, character, session, or provider-supplied value is used as a
@@ -21,11 +15,10 @@ internal sealed class MeasuredCharacterSnapshotReader :
     private readonly string _provider;
 
     public MeasuredCharacterSnapshotReader(
-        ICharacterSnapshotReader inner,
-        CharacterSnapshotProvider provider)
+        ICharacterSnapshotReader inner)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _provider = CharacterSnapshotMetrics.ProviderCode(provider);
+        _provider = CharacterSnapshotMetrics.PostgreSqlProvider;
     }
 
     public async Task<CharacterAccountSnapshot> ReadAsync(
@@ -66,6 +59,8 @@ internal sealed class MeasuredCharacterSnapshotReader :
 
 internal static class CharacterSnapshotMetrics
 {
+    internal const string PostgreSqlProvider = "postgresql";
+
     public const string MeterName =
         "Godswar.Server.Application.Characters";
 
@@ -97,15 +92,6 @@ internal static class CharacterSnapshotMetrics
             Math.Max(0, duration.TotalMilliseconds),
             tags);
     }
-
-    internal static string ProviderCode(
-        CharacterSnapshotProvider provider) =>
-        provider switch
-        {
-            CharacterSnapshotProvider.PostgreSql => "postgresql",
-            CharacterSnapshotProvider.Json => "json",
-            _ => throw new ArgumentOutOfRangeException(nameof(provider))
-        };
 
     internal static string ReasonCode(
         CharacterSnapshotFailureReason reason) =>

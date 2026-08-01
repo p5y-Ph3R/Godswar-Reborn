@@ -142,7 +142,9 @@ internal static class LegacyByteTransportChecks
             [1, int.MaxValue, 2]);
         var options = new ServerOptions();
         options.RuntimeProfile = "LocalDevelopment";
-        options.Storage.Provider = "Json";
+        options.Storage.Provider = "Postgres";
+        options.Storage.PostgresConnectionString =
+            "Host=127.0.0.1;Database=transport-check";
         options.Authentication.AllowLegacyRawAuthentication = true;
         options.Game.Port = 7_100;
         options.Game.PublicPort = 7_000;

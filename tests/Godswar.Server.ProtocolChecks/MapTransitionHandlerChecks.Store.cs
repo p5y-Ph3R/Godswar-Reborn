@@ -135,6 +135,9 @@ internal static partial class MapTransitionHandlerChecks
         public WorldContentManifest Manifest =>
             _inner.Manifest;
 
+        public GameplayContentCatalog Gameplay =>
+            _inner.Gameplay;
+
         public int EnterSyncRequests { get; private set; }
 
         public void BlockMapReads()

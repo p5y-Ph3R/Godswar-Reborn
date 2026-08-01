@@ -3,7 +3,6 @@ using Godswar.Server.Infrastructure.Gateway;
 using Godswar.Server.Networking.RelayGateway;
 using Godswar.Server.Networking.SemanticGateway;
 using Godswar.Server.Operations;
-using Godswar.Server.State;
 
 namespace Godswar.Server;
 
@@ -31,19 +30,9 @@ internal static class ServerStartupCommandDispatcher
             ServerOptions options,
             CancellationToken cancellationToken)
     {
-        var profile = ServerRuntimeProfilePolicy.Validate(options);
-        return profile.StorageProvider switch
-        {
-            GameStorageProviderKind.Postgres =>
-                PostgresSemanticGatewayDataSession.OpenAsync(
-                    options,
-                    cancellationToken),
-            GameStorageProviderKind.Json =>
-                JsonSemanticGatewayDataSession.OpenAsync(
-                    options,
-                    cancellationToken),
-            _ => throw new InvalidDataException(
-                "The gateway storage provider is unsupported.")
-        };
+        _ = ServerRuntimeProfilePolicy.Validate(options);
+        return PostgresSemanticGatewayDataSession.OpenAsync(
+            options,
+            cancellationToken);
     }
 }

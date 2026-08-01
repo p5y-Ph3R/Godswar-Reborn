@@ -44,9 +44,18 @@ BEGIN
         updated_at = now();
 END $$;
 
-SELECT cb.name, cb.profession, ck.equip
+SELECT
+    cb.name,
+    cb.profession,
+    ci.slot_index,
+    ci.prop_id,
+    ci.item_quality,
+    ci.item_grade
 FROM character_base cb
-JOIN character_item_loadout ck ON ck.user_id = cb.id
+JOIN character_items ci
+  ON ci.user_id = cb.id
+ AND ci.item_location = 0
+ AND ci.slot_index = 10
 WHERE cb.name = '__CHARACTER_NAME__';
 '@
 

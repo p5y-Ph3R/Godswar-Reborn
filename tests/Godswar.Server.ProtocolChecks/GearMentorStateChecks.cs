@@ -41,6 +41,7 @@ internal static partial class GearMentorStateChecks
         CheckAttributeStoneRecipes();
         CheckCrystalTransforms();
         CheckGemPieceRecipes();
+        CheckPublishedRecipeAuthority();
         CheckDecomposition();
         CheckGenericClearSnapshots();
         CheckResultSubIdMapping();
@@ -96,18 +97,18 @@ internal static partial class GearMentorStateChecks
                          .Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 Check.True(
-                    DeveloperGrantMaterialCatalog.TryResolve(alias, out var byAlias) &&
+                    TestItemContent.Catalog.Materials.TryResolveDeveloper(alias, out var byAlias) &&
                     byAlias.ItemId == expected.ItemId,
                     $"Dust alias '{alias}' resolves to {expected.ItemId}");
             }
 
             Check.True(
-                DeveloperGrantMaterialCatalog.TryResolve(expected.ItemId, out var grant) &&
+                TestItemContent.Catalog.Materials.TryResolveDeveloper(expected.ItemId, out var grant) &&
                 grant.StackCap == 99 &&
                 grant.GrantedBound == 0,
                 $"Dust {expected.ItemId} is grant-allowlisted with native policy");
             Check.True(
-                DeveloperItemCommand.TryParse(
+                TestDeveloperItemCommand.TryParse(
                     $"/item add {expected.NameKey} 99",
                     out var command,
                     out _) &&
@@ -162,7 +163,7 @@ internal static partial class GearMentorStateChecks
                 byCanonicalAlias.ItemId == expected.ItemId,
                 $"Level 5 piece alias {piece.CanonicalAlias} resolves");
             Check.True(
-                DeveloperGrantMaterialCatalog.TryResolve(expected.NameKey, out var byNameKey) &&
+                TestItemContent.Catalog.Materials.TryResolveDeveloper(expected.NameKey, out var byNameKey) &&
                 byNameKey.ItemId == expected.ItemId,
                 $"Level 5 piece key {expected.NameKey} is grant-allowlisted");
 
@@ -186,7 +187,7 @@ internal static partial class GearMentorStateChecks
             var (kitBag, request) = StageSingle(
                 GearMentorOperation.MakeAttributeStone,
                 Material(expected.ItemId, stack: 99, bound));
-            var result = GearMentorPlanner.Create(kitBag, playerLevel: 200, request);
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, playerLevel: 200, request);
 
             Check.True(result.Committed, $"99 {expected.DisplayName} make one stone ({result.RejectionReason})");
             Check.Equal(1, result.Outputs.Count, $"Dust {expected.ItemId} emits one output record");
@@ -202,7 +203,7 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.MakeAttributeStone,
             Material(9900, stack: 98));
         AssertRejected(
-            GearMentorPlanner.Create(insufficientBag, 200, insufficientRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, insufficientBag, 200, insufficientRequest),
             insufficientBag,
             GearMentorStatus.InsufficientDust,
             "98 Dust cannot make a stone");
@@ -211,7 +212,7 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.MakeAttributeStone,
             Material(4230, stack: 99));
         AssertRejected(
-            GearMentorPlanner.Create(invalidBag, 200, invalidRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, invalidBag, 200, invalidRequest),
             invalidBag,
             GearMentorStatus.InvalidDust,
             "a gem cannot enter the Dust recipe");
@@ -224,14 +225,12 @@ internal static partial class GearMentorStateChecks
             SingleSelectionSlot,
             Material(9900, stack: 98, bound: 1).ToCompactString());
         AssertRejected(
-            GearMentorPlanner.Create(changedBag, 200, stagedRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, changedBag, 200, stagedRequest),
             changedBag,
             GearMentorStatus.StaleSelection,
             "changed Dust stack invalidates the staged request");
 
-        // Legacy imports can contain an over-cap source stack. Consuming 99
-        // leaves the selected slot occupied, so a completely full bag must be
-        // rejected atomically rather than losing the resulting stone.
+        // A full legacy bag must reject an over-cap source atomically.
         var capacityBag = FillBag(Material(4234, stack: 99, bound: 1));
         capacityBag = KitBagSlots.SetSlot(
             capacityBag,
@@ -241,7 +240,7 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.MakeAttributeStone,
             [GearMentorSlotSelection.Capture(capacityBag, SingleSelectionSlot)]);
         AssertRejected(
-            GearMentorPlanner.Create(capacityBag, 200, capacityRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, capacityBag, 200, capacityRequest),
             capacityBag,
             GearMentorStatus.InsufficientCapacity,
             "Dust conversion rejects a full bag before committing");
@@ -264,7 +263,7 @@ internal static partial class GearMentorStateChecks
             var (kitBag, request) = StageSingle(
                 GearMentorOperation.TransformCrystal,
                 Material(recipe.SourceItemId, stack: 1, bound));
-            var result = GearMentorPlanner.Create(kitBag, 200, request);
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 200, request);
 
             Check.True(result.Committed, $"Crystal {recipe.SourceItemId} transform commits ({result.RejectionReason})");
             var output = result.Outputs.Single();
@@ -278,7 +277,7 @@ internal static partial class GearMentorStateChecks
         var (multiBag, multiRequest) = StageSingle(
             GearMentorOperation.TransformCrystal,
             Material(4232, stack: 2, bound: 1));
-        var multiResult = GearMentorPlanner.Create(multiBag, 200, multiRequest);
+        var multiResult = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, multiBag, 200, multiRequest);
         Check.True(multiResult.Committed, "Crystal transform consumes one source unit per action");
         Check.Equal((short)1, KitBagSlots.GetItem(multiResult.UpdatedKitBag, SingleSelectionSlot).Stack, "one Level 3 Crystal remains");
         Check.Equal(4, QuantityInBag(multiResult.UpdatedKitBag, 4231, bound: 1), "one action adds four Level 2 Crystals");
@@ -289,7 +288,7 @@ internal static partial class GearMentorStateChecks
                 GearMentorOperation.TransformCrystal,
                 Material(invalidItemId, stack: 1));
             AssertRejected(
-                GearMentorPlanner.Create(kitBag, 200, request),
+                GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 200, request),
                 kitBag,
                 GearMentorStatus.InvalidCrystal,
                 $"item {invalidItemId} is not a supported Crystal transform source");
@@ -304,7 +303,7 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.TransformCrystal,
             [GearMentorSlotSelection.Capture(fullBag, SingleSelectionSlot)]);
         AssertRejected(
-            GearMentorPlanner.Create(fullBag, 200, fullRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, fullBag, 200, fullRequest),
             fullBag,
             GearMentorStatus.InsufficientCapacity,
             "Crystal transform is atomic when its output cannot fit");
@@ -326,7 +325,7 @@ internal static partial class GearMentorStateChecks
             var (kitBag, request) = StageSingle(
                 GearMentorOperation.CombineGemPieces,
                 Material(recipe.PieceItemId, stack: 99, bound: 1));
-            var result = GearMentorPlanner.Create(kitBag, 200, request);
+            var result = GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 200, request);
 
             Check.True(result.Committed, $"99 pieces {recipe.PieceItemId} combine ({result.RejectionReason})");
             var output = result.Outputs.Single();
@@ -341,7 +340,7 @@ internal static partial class GearMentorStateChecks
             GearMentorOperation.CombineGemPieces,
             Material(4216, stack: 98, bound: 1));
         AssertRejected(
-            GearMentorPlanner.Create(insufficientBag, 200, insufficientRequest),
+            GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, insufficientBag, 200, insufficientRequest),
             insufficientBag,
             GearMentorStatus.InsufficientGemPieces,
             "98 Level 5 pieces cannot combine");
@@ -352,7 +351,7 @@ internal static partial class GearMentorStateChecks
                 GearMentorOperation.CombineGemPieces,
                 Material(invalidItemId, stack: 99, bound: 1));
             AssertRejected(
-                GearMentorPlanner.Create(kitBag, 200, request),
+                GearMentorPlanner.Create(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, kitBag, 200, request),
                 kitBag,
                 GearMentorStatus.InvalidGemPieces,
                 $"complete gem {invalidItemId} cannot enter a piece recipe");

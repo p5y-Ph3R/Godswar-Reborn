@@ -34,10 +34,13 @@ internal static partial class PostgresWorldContentReaderLoader
                 await readOnly.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            var mapIds = await LoadPublishedMapIdsAsync(
+            var gameplay = await LoadPublishedGameplayContentAsync(
                 connection,
                 transaction,
                 cancellationToken);
+            var mapIds = gameplay.Maps
+                .Select(static value => value.MapId)
+                .ToArray();
             var npcDefinitions = await LoadPublishedNpcDefinitionsAsync(
                 connection,
                 transaction,
@@ -49,11 +52,13 @@ internal static partial class PostgresWorldContentReaderLoader
                     transaction,
                     npcDefinitions,
                     cancellationToken);
-            var monsters = await LoadCapturedMonsterSpawnsAsync(
+            var monsters = await LoadPublishedMonsterSpawnsAsync(
                 connection,
                 transaction,
+                mapIds.ToHashSet(),
                 cancellationToken);
-            var enterBootstrap = await LoadEnterBootstrapPacketsAsync(
+            var enterBootstrap =
+                await LoadPublishedEnterBootstrapPacketsAsync(
                 connection,
                 transaction,
                 cancellationToken);
@@ -67,7 +72,8 @@ internal static partial class PostgresWorldContentReaderLoader
                 monsters,
                 enterBootstrap,
                 npcTexts: npcDialogues.Texts,
-                npcDialogueRoutes: npcDialogues.Routes);
+                npcDialogueRoutes: npcDialogues.Routes,
+                gameplay: gameplay);
             stopwatch.Stop();
             WorldContentMetrics.RecordLoad(
                 PostgresWorldContentSource,
@@ -94,94 +100,6 @@ internal static partial class PostgresWorldContentReaderLoader
                 stopwatch.Elapsed);
             throw;
         }
-    }
-
-    private static async Task<short[]> LoadPublishedMapIdsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var mapIds = new List<short>();
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT map_id
-            FROM map_templates
-            ORDER BY map_id;
-            """,
-            connection,
-            transaction);
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            mapIds.Add(reader.GetInt16(0));
-        }
-
-        return mapIds.ToArray();
-    }
-
-    private static async Task<CapturedMonsterSpawn[]>
-        LoadCapturedMonsterSpawnsAsync(
-            NpgsqlConnection connection,
-            NpgsqlTransaction transaction,
-            CancellationToken cancellationToken)
-    {
-        var spawns = new List<CapturedMonsterSpawn>();
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT map_id, scene_key, template_key, display_name, object_id,
-                   pos_x, pos_z, clear_bytes
-            FROM monster_spawn_packets
-            WHERE object_id BETWEEN 1 AND 4294967295
-            ORDER BY map_id, object_id;
-            """,
-            connection,
-            transaction);
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            spawns.Add(new CapturedMonsterSpawn(
-                reader.GetInt16(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                checked((uint)reader.GetInt64(4)),
-                reader.GetFloat(5),
-                reader.GetFloat(6),
-                (byte[])reader["clear_bytes"]));
-        }
-
-        return spawns.ToArray();
-    }
-
-    private static async Task<byte[][]> LoadEnterBootstrapPacketsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        var packets = new List<byte[]>();
-        await using var command = new NpgsqlCommand(
-            """
-            SELECT clear_bytes
-            FROM server_packet_templates
-            WHERE template_key = 'enter_syn_game_data'
-              AND direction = 'S2C'
-              AND opcode = 10090
-            ORDER BY sequence;
-            """,
-            connection,
-            transaction);
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            packets.Add((byte[])reader["clear_bytes"]);
-        }
-
-        // Empty is an explicitly published safe bootstrap. In particular, do
-        // not read capture-history tables: research data is not authority.
-        return packets.ToArray();
     }
 
 }

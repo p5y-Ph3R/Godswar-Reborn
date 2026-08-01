@@ -213,7 +213,9 @@ internal static class LegacyAuthenticationProfileChecks
             RuntimeProfile = "LocalDevelopment",
             Storage = new StorageOptions
             {
-                Provider = "Json"
+                Provider = "Postgres",
+                PostgresConnectionString =
+                    "Host=127.0.0.1;Database=legacy-auth-check"
             },
             Authentication = new AuthenticationOptions
             {

@@ -1,6 +1,8 @@
 using System.Data;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Items;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -26,39 +28,74 @@ internal sealed partial class PostgresCharacterSnapshotReader :
     private readonly NpgsqlDataSource _dataSource;
     private readonly IPostgresCharacterSnapshotReadProbe? _probe;
     private readonly bool _ownsDataSource;
+    private readonly string _itemContentRevision;
+    private readonly string? _gameplayContentRevision;
 
-    public PostgresCharacterSnapshotReader(string connectionString)
+    public PostgresCharacterSnapshotReader(
+        string connectionString,
+        IItemTemplateCatalog itemTemplates)
         : this(
             CreateDataSource(connectionString),
+            itemTemplates,
             probe: null,
+            gameplayContentRevision: null,
             ownsDataSource: true)
     {
     }
 
     internal PostgresCharacterSnapshotReader(
         string connectionString,
+        IItemTemplateCatalog itemTemplates,
         IPostgresCharacterSnapshotReadProbe? probe)
         : this(
             CreateDataSource(connectionString),
+            itemTemplates,
             probe,
+            gameplayContentRevision: null,
             ownsDataSource: true)
     {
     }
 
     internal PostgresCharacterSnapshotReader(
         NpgsqlDataSource dataSource,
+        IItemTemplateCatalog itemTemplates,
         IPostgresCharacterSnapshotReadProbe? probe = null)
-        : this(dataSource, probe, ownsDataSource: false)
+        : this(
+            dataSource,
+            itemTemplates,
+            probe,
+            gameplayContentRevision: null,
+            ownsDataSource: false)
+    {
+    }
+
+    internal PostgresCharacterSnapshotReader(
+        NpgsqlDataSource dataSource,
+        IItemTemplateCatalog itemTemplates,
+        string gameplayContentRevision)
+        : this(
+            dataSource,
+            itemTemplates,
+            probe: null,
+            gameplayContentRevision: gameplayContentRevision,
+            ownsDataSource: false)
     {
     }
 
     private PostgresCharacterSnapshotReader(
         NpgsqlDataSource dataSource,
+        IItemTemplateCatalog itemTemplates,
         IPostgresCharacterSnapshotReadProbe? probe,
+        string? gameplayContentRevision,
         bool ownsDataSource)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        ArgumentNullException.ThrowIfNull(itemTemplates);
+        _itemContentRevision = itemTemplates.Revision.Sha256;
+        _gameplayContentRevision =
+            PostgresGameplayContentBinding.ValidateOptional(
+                gameplayContentRevision);
         _probe = probe;
         _ownsDataSource = ownsDataSource;
     }
@@ -158,6 +195,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             connection,
             transaction,
             accountId,
+            _itemContentRevision,
             cancellationToken);
         if (characters.Count > 1)
         {
@@ -183,6 +221,8 @@ internal sealed partial class PostgresCharacterSnapshotReader :
                 accountId,
                 core.Identity.CharacterId,
                 metadata.ReadAtUtc,
+                _itemContentRevision,
+                _gameplayContentRevision,
                 cancellationToken);
             snapshot = core.ToSnapshot(related);
         }

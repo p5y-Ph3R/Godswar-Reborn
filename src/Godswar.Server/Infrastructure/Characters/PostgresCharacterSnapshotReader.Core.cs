@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -11,6 +12,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             int accountId,
+            string itemContentRevision,
             CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -18,6 +20,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue(
+            "itemContentRevision",
+            itemContentRevision);
         var rows = new List<CharacterCoreRow>(2);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -150,8 +155,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 related.PersonalBoosts);
     }
 
-    private const string CoreCharacterQuery =
-        """
+    private static readonly string CoreCharacterQuery =
+        $"""
         SELECT
             cb.id,
             cb.account_id,
@@ -171,31 +176,15 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cb."Pos_X",
             cb."Pos_Z",
             cb."Register_time",
-            COALESCE(ck.equip, ''),
-            COALESCE(ck.kitbag_1, ''),
+            COALESCE(equipment_projection.equip, ''),
+            COALESCE(kitbag_projection.kitbag_1, ''),
             cb."SkillPoint",
             cb."SkillExp",
             COALESCE(cb.holy_suit_points, 0),
-            COALESCE((
-                SELECT rank.weapon_rank
-                FROM character_rank_summary rank
-                WHERE rank.user_id = cb.id
-            ), 0::smallint),
-            COALESCE((
-                SELECT rank.weapon_aura_effect
-                FROM character_rank_summary rank
-                WHERE rank.user_id = cb.id
-            ), 0),
-            COALESCE((
-                SELECT rank.armor_rank
-                FROM character_rank_summary rank
-                WHERE rank.user_id = cb.id
-            ), 0::smallint),
-            COALESCE((
-                SELECT rank.armor_aura_effect
-                FROM character_rank_summary rank
-                WHERE rank.user_id = cb.id
-            ), 0),
+            item_rank_projection.weapon_rank,
+            item_rank_projection.weapon_aura_effect,
+            item_rank_projection.armor_rank,
+            item_rank_projection.armor_aura_effect,
             cb.fighter_job_exp,
             cb.vitals_revision,
             cb.zodiac_type,
@@ -232,7 +221,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cb.character_slot,
             cb.lifecycle_version
         FROM character_base cb
-        LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+        {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
         WHERE cb.account_id = @accountId
           AND cb.lifecycle_state = 'active'
         ORDER BY cb.id

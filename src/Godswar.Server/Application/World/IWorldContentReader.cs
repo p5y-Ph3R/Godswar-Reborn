@@ -10,6 +10,8 @@ internal interface IWorldContentReader
 {
     WorldContentManifest Manifest { get; }
 
+    GameplayContentCatalog Gameplay { get; }
+
     ValueTask<WorldMapContent> ReadMapAsync(
         short mapId,
         CancellationToken cancellationToken = default);
@@ -35,7 +37,8 @@ internal sealed record WorldContentManifest(
     WorldContentFamilyRevision Npcs,
     WorldContentFamilyRevision NpcDialogues,
     WorldContentFamilyRevision Monsters,
-    WorldContentFamilyRevision EnterBootstrap);
+    WorldContentFamilyRevision EnterBootstrap,
+    WorldContentFamilyRevision Gameplay);
 
 internal sealed record WorldMapContent(
     short MapId,

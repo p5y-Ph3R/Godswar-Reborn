@@ -5,7 +5,7 @@ namespace Godswar.Server.State;
 
 internal sealed partial class PostgresGameStore
 {
-    private static async Task WritePetEggHatchAuditAsync(
+    private async Task WritePetEggHatchAuditAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
@@ -190,10 +190,10 @@ internal sealed partial class PostgresGameStore
             "growth-x1-v1");
         command.Parameters.AddWithValue(
             "addedSavvyPolicy",
-            PetAddedSavvyPolicy.Version);
+            PetContent.Settings.AddedSavvyPolicyVersion);
         command.Parameters.AddWithValue(
             "growthPolicy",
-            PetGrowthPolicy.Version);
+            PetContent.Settings.GrowthPolicyVersion);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

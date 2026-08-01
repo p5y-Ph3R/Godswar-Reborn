@@ -29,19 +29,13 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             PostgresSchemaMigrationCatalog.All,
             before.AppliedMigrations);
 
-        await using (var store = new PostgresGameStore(connectionString))
-        {
-            await store.EnsureSeedDataAsync();
-        }
+        await InitializeReleaseAsync(connectionString);
 
         var after = await ReadSnapshotAsync(dataSource);
         AssertReleaseState(after);
         AssertDurableStatePreserved(before, after);
 
-        await using (var reopenedStore = new PostgresGameStore(connectionString))
-        {
-            await reopenedStore.EnsureSeedDataAsync();
-        }
+        await InitializeReleaseAsync(connectionString);
         var repeated = await ReadSnapshotAsync(dataSource);
         AssertReleaseState(repeated);
         Check.Equal(

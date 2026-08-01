@@ -125,8 +125,8 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 500,
                 2_000,
                 4,
-                "json-worker-01",
-                "JSON");
+                "postgres-worker-01",
+                "PostgreSQL configuration");
 
             var environmentValues = new[]
             {
@@ -257,14 +257,16 @@ internal static class WorldInstanceRuntimeOptionsChecks
             {
               "runtimeProfile": "LocalDevelopment",
               "storage": {
-                "provider": "Json"
+                "provider": "Postgres",
+                "postgresConnectionString":
+                  "Host=127.0.0.1;Database=world-instance-options-check"
               },
               "authentication": {
                 "allowLegacyRawAuthentication": true
               },
               "game": {
                 "worldInstances": {
-                  "serverNodeId": "json-worker-01",
+                  "serverNodeId": "postgres-worker-01",
                   "maximumRuntimes": 32,
                   "maximumPlayerAssignments": 1000,
                   "maximumRetiredInstanceIds": 2048,

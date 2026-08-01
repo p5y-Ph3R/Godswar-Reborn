@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+using Godswar.Server.Application.World;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -81,20 +83,89 @@ internal static class MonsterCombatResolver
         return true;
     }
 
-    public static float ResolvePlayerBasicAttackRange(CapturedMonsterSpawn target)
+    public static float ResolvePlayerBasicAttackRange(
+        CapturedMonsterSpawn target,
+        MonsterCombatRangeCatalog ranges)
     {
-        var exact = MonsterTemplateSeeds.Monsters.FirstOrDefault(template =>
-            template.SourceMapId == target.MapId &&
-            string.Equals(template.TemplateKey, target.TemplateKey, StringComparison.Ordinal));
-        if (exact.CollisionRange is > 0)
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(ranges);
+        return ranges.Resolve(target.MapId, target.TemplateKey);
+    }
+}
+
+/// <summary>
+/// Process-pinned collision lookup built once during composition. Combat never
+/// scans the full published monster-template catalog on the simulation path.
+/// </summary>
+internal sealed class MonsterCombatRangeCatalog
+{
+    private readonly FrozenDictionary<(short MapId, string TemplateKey), float>
+        _byMapAndTemplate;
+    private readonly FrozenDictionary<string, float> _byTemplate;
+
+    private MonsterCombatRangeCatalog(
+        FrozenDictionary<(short MapId, string TemplateKey), float>
+            byMapAndTemplate,
+        FrozenDictionary<string, float> byTemplate)
+    {
+        _byMapAndTemplate = byMapAndTemplate;
+        _byTemplate = byTemplate;
+    }
+
+    public static MonsterCombatRangeCatalog Empty { get; } = Create(
+        GameplayContentCatalog.Empty);
+
+    public static MonsterCombatRangeCatalog Create(
+        GameplayContentCatalog gameplay)
+    {
+        ArgumentNullException.ThrowIfNull(gameplay);
+        var ranged = gameplay.MonsterTemplates
+            .Where(static template => template.CollisionRange is > 0)
+            .ToArray();
+        var exactGroups = ranged
+            .Where(static template => template.SourceMapId.HasValue)
+            .GroupBy(static template =>
+                (template.SourceMapId!.Value, template.TemplateKey))
+            .ToArray();
+        if (exactGroups.Any(static group =>
+                group.Select(static template => template.CollisionRange)
+                    .Distinct()
+                    .Skip(1)
+                    .Any()))
         {
-            return exact.CollisionRange.Value;
+            throw new InvalidDataException(
+                "Published monster templates contain conflicting collision " +
+                "ranges for the same map and template.");
         }
 
-        var fallback = MonsterTemplateSeeds.Monsters.FirstOrDefault(template =>
-            string.Equals(template.TemplateKey, target.TemplateKey, StringComparison.Ordinal));
-        return fallback.CollisionRange is > 0
-            ? fallback.CollisionRange.Value
-            : DefaultPlayerBasicAttackRange;
+        var exact = exactGroups
+            .ToFrozenDictionary(
+                static group => group.Key,
+                static group => group.First().CollisionRange!.Value);
+        var fallback = ranged
+            .GroupBy(
+                static template => template.TemplateKey,
+                StringComparer.Ordinal)
+            .ToFrozenDictionary(
+                static group => group.Key,
+                static group => group.First().CollisionRange!.Value,
+                StringComparer.Ordinal);
+        return new MonsterCombatRangeCatalog(exact, fallback);
+    }
+
+    public float Resolve(short mapId, string templateKey)
+    {
+        if (string.IsNullOrWhiteSpace(templateKey))
+        {
+            return MonsterCombatResolver.DefaultPlayerBasicAttackRange;
+        }
+
+        return _byMapAndTemplate.TryGetValue(
+                (mapId, templateKey),
+                out var exact)
+            ? exact
+            : _byTemplate.TryGetValue(templateKey, out var fallback)
+                ? fallback
+                : MonsterCombatResolver.DefaultPlayerBasicAttackRange;
     }
 }

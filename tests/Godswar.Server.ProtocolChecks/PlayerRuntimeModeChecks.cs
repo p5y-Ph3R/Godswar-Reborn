@@ -85,7 +85,9 @@ internal static class PlayerRuntimeModeChecks
             {
               "runtimeProfile": "LocalDevelopment",
               "storage": {
-                "provider": "Json"
+                "provider": "Postgres",
+                "postgresConnectionString":
+                  "Host=127.0.0.1;Database=player-runtime-check"
               },
               "authentication": {
                 "allowLegacyRawAuthentication": true

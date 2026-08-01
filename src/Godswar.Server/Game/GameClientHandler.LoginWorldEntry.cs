@@ -285,7 +285,9 @@ internal sealed partial class GameClientHandler
             _characterLoadSnapshot?.Talents ?? [];
         IReadOnlyList<PetBootstrapSnapshot> ownedPets =
             _characterLoadSnapshot?.Pets ?? [];
-        var ownedPetList = PacketBuilder.OwnedPetList(ownedPets);
+        var ownedPetList = PacketBuilder.OwnedPetList(
+            RequirePetContent(),
+            ownedPets);
         Console.WriteLine(
             $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
 
@@ -429,7 +431,9 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[world-boss] failed loading persisted respawn map={_character.CurrentMap}: {ex.Message}");
-            if (WorldBossCatalog.Default.TryGet(_character.CurrentMap, out var worldBoss))
+            if (_gameplayCatalogs.WorldBosses.TryGet(
+                    _character.CurrentMap,
+                    out var worldBoss))
             {
                 // A database outage must never make a killed world boss reappear
                 // early. Suppress it for this runtime and recover on restart.

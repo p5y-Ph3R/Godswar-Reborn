@@ -137,7 +137,8 @@ internal sealed partial class GameSessionRegistry
                             _playerRuntimeMode,
                             _worldInstanceOptions.MailboxCapacity,
                             _worldInstanceOptions
-                                .ShutdownDrainTimeout),
+                                .ShutdownDrainTimeout,
+                            _gameplayCatalogs.WorldBosses),
                         _worldInstanceOptions.OwnerInvocationTimeout,
                         _worldInstanceOptions.ShutdownDrainTimeout);
             }

@@ -6,6 +6,7 @@ using Godswar.Server.Application.Pets;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Pets;
@@ -17,14 +18,22 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
+    private readonly GameplayItemContent _itemContent;
+    private readonly IPetContentCatalog _petContent;
 
     public PostgresPetDurableCommandExecutor(
         NpgsqlDataSource dataSource,
-        PostgresOutboxDispatcherOptions options)
+        PostgresOutboxDispatcherOptions options,
+        GameplayItemContent itemContent,
+        IPetContentCatalog petContent)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
+        _itemContent = itemContent ?? throw new ArgumentNullException(
+            nameof(itemContent));
+        _petContent = petContent ?? throw new ArgumentNullException(
+            nameof(petContent));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(

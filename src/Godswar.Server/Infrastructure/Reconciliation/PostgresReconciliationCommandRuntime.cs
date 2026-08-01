@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Reconciliation;
+using Godswar.Server.Infrastructure.Items;
 using Godswar.Server.Infrastructure.Messaging;
 using Npgsql;
 
@@ -93,6 +94,10 @@ internal static class PostgresReconciliationCommandRuntime
             NpgsqlDataSource.Create(options.ConnectionString);
         var metrics = new ReconciliationMetrics();
         var consumers = PostgresOutboxConsumerCatalog.Create();
+        var itemTemplates =
+            await PostgresItemTemplateCatalogLoader.LoadAsync(
+                dataSource,
+                cancellationToken);
         ExpiredOutboxLeaseRepairResult? repair = null;
         if (dispatcherOptions is not null)
         {
@@ -113,6 +118,7 @@ internal static class PostgresReconciliationCommandRuntime
         var report = await new ReconciliationRunner(
                 new PostgresReconciliationReader(
                     dataSource,
+                    itemTemplates.Revision.Sha256,
                     consumers),
                 options.Reconciliation,
                 metrics)

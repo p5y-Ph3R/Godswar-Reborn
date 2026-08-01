@@ -19,11 +19,12 @@ internal sealed partial class PostgresGameStore
         long? itemRowId = null;
         byte profession = 0;
         string equipment = string.Empty;
-        await using (var command = new NpgsqlCommand("""
-            SELECT ci.id, cb.profession, COALESCE(ck.equip, '')
+        await using (var command = new NpgsqlCommand($"""
+            SELECT ci.id, cb.profession,
+                   COALESCE(equipment_projection.equip, '')
             FROM character_base cb
             JOIN character_items ci ON ci.user_id = cb.id
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+            {PostgresCharacterItemProjectionSql.EquipmentJoinForCharacterAlias}
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
               AND ci.item_location = @equipmentLocation
@@ -35,6 +36,7 @@ internal sealed partial class PostgresGameStore
             command.Parameters.AddWithValue("characterId", characterId);
             command.Parameters.AddWithValue("equipmentLocation", ItemLocationEquipment);
             command.Parameters.AddWithValue("equipmentSlot", (short)equipmentSlot);
+            AddItemContentRevisionParameter(command);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
@@ -100,16 +102,18 @@ internal sealed partial class PostgresGameStore
         string equipment;
         byte profession;
         int characterLevel;
-        await using (var command = new NpgsqlCommand("""
-            SELECT cb.profession, cb.fighter_job_lv, COALESCE(ck.equip, '')
+        await using (var command = new NpgsqlCommand($"""
+            SELECT cb.profession, cb.fighter_job_lv,
+                   COALESCE(equipment_projection.equip, '')
             FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+            {PostgresCharacterItemProjectionSql.EquipmentJoinForCharacterAlias}
             WHERE cb.account_id = @accountId AND cb.id = @characterId
             FOR UPDATE OF cb;
             """, connection, transaction))
         {
             command.Parameters.AddWithValue("accountId", accountId);
             command.Parameters.AddWithValue("characterId", characterId);
+            AddItemContentRevisionParameter(command);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
@@ -161,24 +165,22 @@ internal sealed partial class PostgresGameStore
             return null;
         }
 
-        var defaultEquipmentSlot = await ResolveEquipmentSlotAsync(
-            connection,
-            transaction,
-            itemId,
-            requestedEquipmentSlot,
-            cancellationToken);
-        if (defaultEquipmentSlot is null)
+        if (!EquipmentSlots.TryGetAuthoritativeSlot(
+                ItemContent.Templates,
+                itemId,
+                out var defaultEquipmentSlot))
         {
             await transaction.CommitAsync(cancellationToken);
             return null;
         }
 
         var equipmentSlot = EquipmentSlots.ResolveSlotForItem(
+            ItemContent.Templates,
             itemId,
             requestedEquipmentSlot,
             equipment,
             profession,
-            defaultEquipmentSlot.Value);
+            defaultEquipmentSlot);
         if (!EquipmentSlots.IsEquipmentSlot(equipmentSlot))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -186,6 +188,7 @@ internal sealed partial class PostgresGameStore
         }
 
         var equipEligibility = EquipmentEligibility.ValidateEquip(
+            ItemContent,
             profession,
             characterLevel,
             equipment,

@@ -102,6 +102,7 @@ internal static partial class
 
         await using var reopened =
             new PostgresGameStore(connectionString);
+        await reopened.EnsureSeedDataAsync();
         var reloaded =
             (await reopened.GetCharactersAsync(fixture.AccountId))
             .Single(character =>

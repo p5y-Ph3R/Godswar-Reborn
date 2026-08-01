@@ -1,6 +1,7 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Domain.World.Instances;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.State;
 using Npgsql;
 using NpgsqlTypes;
@@ -259,8 +260,16 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 template.skill_id,
                 template.skill_level,
                 'starter'
-            FROM public.skill_templates template
+            FROM public.gameplay_skill_combat_definitions template
             WHERE @profession = ANY(template.class_ids)
+              AND template.revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM public.gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
               AND template.previous_skill_id IS NULL
               AND COALESCE(template.min_level, 1) <= 1
               AND template.skill_level = 1
@@ -273,8 +282,16 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 source
             )
             SELECT @characterId, template.skill_id, 1, 'mount-compatibility'
-            FROM public.skill_templates template
+            FROM public.gameplay_skill_combat_definitions template
             WHERE template.skill_id = 4904
+              AND template.revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM public.gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
               AND @profession = ANY(template.class_ids)
             ON CONFLICT (user_id, skill_id) DO NOTHING;
             """,
@@ -284,6 +301,9 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         command.Parameters.AddWithValue(
             "profession",
             checked((short)profession));
+        PostgresGameplayContentBinding.AddParameter(
+            command,
+            _gameplayContentRevision);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

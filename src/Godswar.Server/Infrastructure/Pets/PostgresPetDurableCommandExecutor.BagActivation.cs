@@ -29,7 +29,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 KitBagSlot: command.KitBagSlot);
         }
 
-        if (PetSpeciesCatalog.TryGetByEggItemId(
+        if (_petContent.TryGetSpeciesByEggItemId(
                 checked((uint)item.PropId),
                 out var species))
         {
@@ -66,6 +66,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         CancellationToken cancellationToken)
     {
         if (!EquipmentSlots.TryGetAuthoritativeSlot(
+                _itemContent.Templates,
                 checked((uint)item.PropId),
                 out var equipmentSlot))
         {
@@ -203,16 +204,16 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         int characterId,
         int bagSlot,
         LockedBagItem egg,
-        PetSpeciesDefinition species,
+        PetSpeciesContentDefinition species,
         LockedCharacter character,
         CancellationToken cancellationToken)
     {
         if (egg.Stack != 1 ||
-            !PetAptitudeCatalog.TryGet(
+            !_petContent.TryGetAptitude(
                 egg.Quality,
                 out var aptitudeDefinition) ||
-            !PetNativeAptitudeProfileCatalog.TryGet(
-                species.Type,
+            !_petContent.TryGetNativeProfile(
+                species.SpeciesId,
                 aptitudeDefinition.Aptitude,
                 out var nativeProfile))
         {
@@ -225,7 +226,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 transaction,
                 characterId,
                 cancellationToken) >=
-            PetManagerPlanner.MaximumOwnedPetCount)
+            _petContent.Settings.MaximumOwnedPetCount)
         {
             return new(
                 PetDurableReceiptStatus.PetCapacityReached,
@@ -233,10 +234,10 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         }
 
         var aptitude = aptitudeDefinition.Aptitude;
-        var growth = PetGrowthPolicy.Roll(
+        var growth = _petContent.RollGrowth(
             aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
-        var added = PetAddedSavvyPolicy.Roll(
+        var added = _petContent.RollAddedSavvy(
             aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
         var sex = (short)RandomNumberGenerator.GetInt32(2);
@@ -255,8 +256,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             connection,
             transaction,
             petId,
-            growth.BaseGrowthRates,
-            added.AddedSavvy,
+            ToPetSavvy(growth.Rates),
+            ToPetSavvy(added.Values),
             cancellationToken);
         await InsertPetSkillAsync(
             connection,

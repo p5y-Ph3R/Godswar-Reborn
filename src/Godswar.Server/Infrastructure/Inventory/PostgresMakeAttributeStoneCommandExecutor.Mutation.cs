@@ -102,7 +102,7 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
             cancellationToken);
         var expected = CompactItemEntry.Parse(
             envelope.Command.ExpectedCompactItemState);
-        if (!GearMentorMaterialCatalog.TryGetDust(
+        if (!_itemContent.Templates.Materials.TryGetDust(
                 expected.Id,
                 out var dust))
         {

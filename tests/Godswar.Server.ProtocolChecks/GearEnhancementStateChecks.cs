@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using Godswar.Server.Application.Items;
 using Godswar.Server.Game;
 using Godswar.Server.State;
 
@@ -96,7 +97,7 @@ internal static partial class GearEnhancementStateChecks
         var stone = Item(9930, stack: 2);
         var flame = Item(9990, bound: 1);
         var (kitBag, request) = Stage(GearEnhancementOperation.Add, gear, stone, flame);
-        var result = GearEnhancementPlanner.Create(kitBag, request);
+        var result = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, request);
 
         Check.True(result.Committed, $"valid Add commits ({result.RejectionReason})");
         Check.Equal(0, result.EquipmentAfter.Attribute1 ?? -1, "Add writes the physical-attack chain base");
@@ -111,7 +112,7 @@ internal static partial class GearEnhancementStateChecks
             duplicateGear,
             Item(9930),
             Item(9990));
-        var duplicate = GearEnhancementPlanner.Create(duplicateBag, duplicateRequest);
+        var duplicate = GearEnhancementPlanner.Create(TestItemContent.Catalog, duplicateBag, duplicateRequest);
         CheckRejectedUnchanged(
             duplicate,
             duplicateBag,
@@ -137,7 +138,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9935),
             Item(9990));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(fullBag, fullRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, fullBag, fullRequest),
             fullBag,
             GearEnhancementStatus.AttributeSlotsFull,
             "Add enforces the five-attribute cap");
@@ -151,7 +152,7 @@ internal static partial class GearEnhancementStateChecks
             legacyGear,
             Item(9930),
             Item(9960));
-        var legacyResult = GearEnhancementPlanner.Create(legacyBag, legacyRequest);
+        var legacyResult = GearEnhancementPlanner.Create(TestItemContent.Catalog, legacyBag, legacyRequest);
         Check.True(
             legacyResult.Committed,
             $"legacy gear infers level from its attribute template ({legacyResult.RejectionReason})");
@@ -164,7 +165,7 @@ internal static partial class GearEnhancementStateChecks
             gear,
             Item(9930),
             Item(9960, stack: 2, bound: 1));
-        var result = GearEnhancementPlanner.Create(kitBag, request);
+        var result = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, request);
         Check.True(result.Committed, $"valid Enhance commits ({result.RejectionReason})");
         Check.Equal(1, result.EquipmentAfter.Attribute1 ?? -1, "Enhance advances attribute template 0 to 1");
         Check.Equal((short)2, result.EquipmentAfter.AttributeLevel1 ?? 0, "Enhance synchronizes level 1 to 2");
@@ -183,7 +184,7 @@ internal static partial class GearEnhancementStateChecks
                 current,
                 Item(9930),
                 Item(checked((uint)(9959 + currentLevel))));
-            var step = GearEnhancementPlanner.Create(stepBag, stepRequest);
+            var step = GearEnhancementPlanner.Create(TestItemContent.Catalog, stepBag, stepRequest);
             Check.True(step.Committed, $"Strength chain level {currentLevel} enhancement commits");
             Check.Equal((int)currentLevel, step.EquipmentAfter.Attribute1 ?? -1, $"Strength chain template advances at level {currentLevel}");
             Check.Equal((short)(currentLevel + 1), step.EquipmentAfter.AttributeLevel1 ?? 0, $"Strength chain level advances from {currentLevel}");
@@ -195,7 +196,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9930),
             Item(9961));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(wrongBag, wrongRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, wrongBag, wrongRequest),
             wrongBag,
             GearEnhancementStatus.QuartzLevelMismatch,
             "Enhance rejects the wrong Quartz Plate");
@@ -207,7 +208,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9930),
             Item(9960));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(desynchronizedBag, desynchronizedRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, desynchronizedBag, desynchronizedRequest),
             desynchronizedBag,
             GearEnhancementStatus.AttributeLevelMismatch,
             "Enhance rejects desynchronized template and level fields");
@@ -219,7 +220,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9940),
             Item(9960));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(singleBag, singleRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, singleBag, singleRequest),
             singleBag,
             GearEnhancementStatus.AttributeNotEnhanceable,
             "single-template attributes cannot be raised with Quartz Plates");
@@ -241,7 +242,7 @@ internal static partial class GearEnhancementStateChecks
             gear,
             Item(9930, bound: 1),
             Item(9991));
-        var result = GearEnhancementPlanner.Create(kitBag, request);
+        var result = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, request);
 
         Check.True(result.Committed, $"valid Delete commits ({result.RejectionReason})");
         Check.Equal(40, result.EquipmentAfter.Attribute1 ?? -1, "Delete preserves the first unrelated attribute");
@@ -263,7 +264,7 @@ internal static partial class GearEnhancementStateChecks
             gear,
             Item(9970),
             Item(9990));
-        var added = GearEnhancementPlanner.Create(addBag, addRequest);
+        var added = GearEnhancementPlanner.Create(TestItemContent.Catalog, addBag, addRequest);
         Check.True(added.Committed, $"stylish legendary Add commits ({added.RejectionReason})");
         Check.Equal(305, added.EquipmentAfter.Attribute1 ?? -1, "Add selects the first chain member allowed by MainAttribute");
         Check.Equal((short)1, added.EquipmentAfter.AttributeLevel1 ?? 0, "legendary Add stores level 1");
@@ -273,7 +274,7 @@ internal static partial class GearEnhancementStateChecks
             added.EquipmentAfter,
             Item(9970),
             Item(9960));
-        var enhanced = GearEnhancementPlanner.Create(enhanceBag, enhanceRequest);
+        var enhanced = GearEnhancementPlanner.Create(TestItemContent.Catalog, enhanceBag, enhanceRequest);
         CheckRejectedUnchanged(
             enhanced,
             enhanceBag,
@@ -308,7 +309,7 @@ internal static partial class GearEnhancementStateChecks
             Item(16204),
             Item(9974),
             Item(9990));
-        var result = GearEnhancementPlanner.Create(kitBag, request);
+        var result = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, request);
         Check.True(result.Committed, $"level-80 Erebus accepts its copied pool ({result.RejectionReason})");
         Check.Equal(341, result.EquipmentAfter.Attribute1 ?? -1, "Erebus Add starts at its level-80 chain anchor");
     }
@@ -333,7 +334,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9931),
             Item(9990));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(wrongStoneBag, wrongStoneRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, wrongStoneBag, wrongStoneRequest),
             wrongStoneBag,
             GearEnhancementStatus.AttributeNotAllowed,
             "a physical-defense stone is invalid for the starter sword");
@@ -344,7 +345,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9930),
             Item(9991));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(wrongCatalystBag, wrongCatalystRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, wrongCatalystBag, wrongCatalystRequest),
             wrongCatalystBag,
             GearEnhancementStatus.InvalidCatalyst,
             "Add rejects Water Grain");
@@ -355,7 +356,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9930),
             Item(9990));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(nonEquipmentBag, nonEquipmentRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, nonEquipmentBag, nonEquipmentRequest),
             nonEquipmentBag,
             GearEnhancementStatus.UnsupportedEquipment,
             "non-equipment is rejected");
@@ -367,7 +368,7 @@ internal static partial class GearEnhancementStateChecks
             Item(9930),
             Item(9991));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(missingBag, missingRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, missingBag, missingRequest),
             missingBag,
             GearEnhancementStatus.AttributeMissing,
             "Delete requires the exact matching attribute family");
@@ -377,7 +378,7 @@ internal static partial class GearEnhancementStateChecks
             StoneSlot,
             Item(9930, stack: 2).ToCompactString());
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(staleBag, wrongCatalystRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, staleBag, wrongCatalystRequest),
             staleBag,
             GearEnhancementStatus.StaleSelection,
             "changed material stacks invalidate staged selections");

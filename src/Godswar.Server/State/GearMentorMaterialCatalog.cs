@@ -1,48 +1,6 @@
-using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
-
-internal sealed record AttributeDustDefinition(
-    uint ItemId,
-    string NameKey,
-    string DisplayName,
-    uint AttributeStoneItemId,
-    string Texture,
-    string Icon,
-    short StackCap = GearMentorMaterialCatalog.StackCap)
-{
-    public short GrantedBound => 0;
-
-    public ItemTemplateSeed ToItemTemplateSeed()
-    {
-        var stats = new Dictionary<string, string>
-        {
-            ["ID"] = ItemId.ToString(),
-            ["Type"] = GearMentorMaterialCatalog.ConsumeItemType,
-            ["Texture"] = Texture,
-            ["Icon"] = Icon,
-            ["Random"] = "0",
-            ["Distribution"] = "50,150",
-            ["Money"] = "0",
-            ["Overlap"] = StackCap.ToString()
-        };
-
-        return new ItemTemplateSeed(
-            checked((int)ItemId),
-            GearMentorMaterialCatalog.ConsumeItemType,
-            NameKey,
-            DisplayName,
-            EquipmentSlot: 0,
-            ClassIds: [],
-            MinLevel: null,
-            MaxLevel: null,
-            Hand: null,
-            SkillFlag: null,
-            Texture,
-            Icon,
-            JsonSerializer.Serialize(stats));
-    }
-}
 
 /// <summary>
 /// Native Gear Mentor dust definitions and their one-to-one Attribute Stone
@@ -149,6 +107,8 @@ internal static class GearMentorMaterialCatalog
             displayName,
             stoneItemId,
             Icon2,
-            icon);
+            icon,
+            StackCap,
+            StoneRecipeDustQuantity);
     }
 }

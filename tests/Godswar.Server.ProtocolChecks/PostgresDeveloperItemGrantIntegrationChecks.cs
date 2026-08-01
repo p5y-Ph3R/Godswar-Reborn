@@ -74,6 +74,7 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            TestItemContent.Content,
             probe);
 
     private static CommandEnvelope<DeveloperItemGrantCommand>

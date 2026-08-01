@@ -22,6 +22,7 @@ internal static partial class
         await using (var store =
                      new PostgresGameStore(connectionString))
         {
+            await store.EnsureSeedDataAsync();
             migratedAccount = await store.LoginOrCreateAccountAsync(
                 $"b11_migrated_{token}",
                 string.Empty);
@@ -48,6 +49,7 @@ internal static partial class
             await using (var store =
                          new PostgresGameStore(connectionString))
             {
+                await store.EnsureSeedDataAsync();
                 Check.True(
                     !await store.DeleteCharacterAsync(
                         migratedAccount.Id,
@@ -104,6 +106,7 @@ internal static partial class
             {
                 await using var store =
                     new PostgresGameStore(connectionString);
+                await store.EnsureSeedDataAsync();
                 _ = await store.CreateCharacterAsync(
                     migratedAccount.Id,
                     new GameCharacter
@@ -140,6 +143,7 @@ internal static partial class
             {
                 await using var store =
                     new PostgresGameStore(connectionString);
+                await store.EnsureSeedDataAsync();
                 _ = await store.DeleteCharacterAsync(
                     migratedAccount.Id,
                     replacementName);

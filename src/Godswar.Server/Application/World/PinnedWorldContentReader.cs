@@ -14,15 +14,19 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
         WorldContentManifest manifest,
         IReadOnlyDictionary<short, StoredMapContent> maps,
         IReadOnlyDictionary<string, StoredNpcDialogue> npcDialogues,
-        byte[][] enterBootstrapPackets)
+        byte[][] enterBootstrapPackets,
+        GameplayContentCatalog gameplay)
     {
         Manifest = manifest;
         _maps = maps;
         _npcDialogues = npcDialogues;
         _enterBootstrapPackets = enterBootstrapPackets;
+        Gameplay = gameplay;
     }
 
     public WorldContentManifest Manifest { get; }
+
+    public GameplayContentCatalog Gameplay { get; }
 
     public static PinnedWorldContentReader Create(
         string source,
@@ -32,7 +36,8 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
         IEnumerable<byte[]> enterBootstrapPackets,
         DateTimeOffset? loadedAtUtc = null,
         IEnumerable<NpcTextDefinition>? npcTexts = null,
-        IEnumerable<NpcDialogueRouteDefinition>? npcDialogueRoutes = null)
+        IEnumerable<NpcDialogueRouteDefinition>? npcDialogueRoutes = null,
+        GameplayContentCatalog? gameplay = null)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -87,6 +92,8 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
         var bootstrap = enterBootstrapPackets
             .Select(CloneAndValidateBootstrapPacket)
             .ToArray();
+        var pinnedGameplay = PinGameplay(gameplay ?? GameplayContentCatalog.Empty);
+        EnsureMonsterSpawnsHaveGameplayTemplates(monsters, pinnedGameplay);
         var mapRevision = WorldContentRevisionHasher.HashMaps(mapIds);
         var npcRevision = WorldContentRevisionHasher.HashNpcs(npcs);
         var npcDialogueRevision =
@@ -97,6 +104,8 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
             WorldContentRevisionHasher.HashMonsters(monsters);
         var enterRevision =
             WorldContentRevisionHasher.HashEnterBootstrap(bootstrap);
+        var gameplayRevision =
+            WorldContentRevisionHasher.HashGameplay(pinnedGameplay);
         var manifest = new WorldContentManifest(
             source.Trim(),
             WorldContentRevisionHasher.HashManifest(
@@ -104,13 +113,15 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
                 npcRevision,
                 npcDialogueRevision,
                 monsterRevision,
-                enterRevision),
+                enterRevision,
+                gameplayRevision),
             loadedAtUtc ?? DateTimeOffset.UtcNow,
             mapRevision,
             npcRevision,
             npcDialogueRevision,
             monsterRevision,
-            enterRevision);
+            enterRevision,
+            gameplayRevision);
 
         var maps = mapIds.ToDictionary(
             static mapId => mapId,
@@ -123,7 +134,8 @@ internal sealed partial class PinnedWorldContentReader : IWorldContentReader
             manifest,
             maps,
             dialogues.ByNpcKey,
-            bootstrap);
+            bootstrap,
+            pinnedGameplay);
     }
 
     public ValueTask<WorldMapContent> ReadMapAsync(

@@ -48,7 +48,7 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             adapter,
             runtimeOptions,
             WorldOptions(node, route),
-            contentRevision: "content-recovery",
+            contentRevision: "content-test",
             buildRevision: "build-recovery");
         using var stop = new CancellationTokenSource();
         var run = runtime.RunAsync(stop.Token);

@@ -245,15 +245,25 @@ internal sealed partial class PostgresGameStore
                 st.skill_id,
                 st.skill_level,
                 'starter'
-            FROM skill_templates st
+            FROM gameplay_skill_combat_definitions st
             WHERE @profession = ANY(st.class_ids)
+              AND st.revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
               AND st.previous_skill_id IS NULL
               AND COALESCE(st.min_level, 1) <= @level
               AND st.skill_level = 1
               AND NOT EXISTS (
                   SELECT 1
                   FROM character_skills existing
-                  JOIN skill_templates existing_template ON existing_template.skill_id = existing.skill_id
+                  JOIN gameplay_skill_combat_definitions existing_template
+                    ON existing_template.skill_id = existing.skill_id
+                   AND existing_template.revision = st.revision
                   WHERE existing.user_id = @characterId
                     AND existing_template.base_name = st.base_name
                     AND COALESCE(existing_template.skill_level, 0) > COALESCE(st.skill_level, 0)
@@ -262,8 +272,16 @@ internal sealed partial class PostgresGameStore
 
             INSERT INTO character_skills (user_id, skill_id, skill_level, source)
             SELECT @characterId, st.skill_id, 1, 'mount-compatibility'
-            FROM skill_templates st
+            FROM gameplay_skill_combat_definitions st
             WHERE st.skill_id = 4904
+              AND st.revision = COALESCE(
+                  @gameplayContentRevision,
+                  (
+                      SELECT publication.revision
+                      FROM gameplay_content_publication publication
+                      WHERE publication.family = 'gameplay'
+                  )
+              )
               AND @profession = ANY(st.class_ids)
             ON CONFLICT (user_id, skill_id) DO NOTHING;
             """, connection, transaction))
@@ -271,6 +289,7 @@ internal sealed partial class PostgresGameStore
             command.Parameters.AddWithValue("characterId", characterId);
             command.Parameters.AddWithValue("profession", (short)character.Profession);
             command.Parameters.AddWithValue("level", character.Level);
+            AddGameplayContentRevisionParameter(command);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 

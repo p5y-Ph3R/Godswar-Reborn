@@ -100,7 +100,7 @@ internal sealed partial class PostgresGearMentorDecomposeCommandExecutor
             var output = plan.Outputs[index];
             var expected = CompactItemEntry.Parse(
                 context.Selections[index].ExpectedCompactItemState);
-            if (!GearMentorMaterialCatalog.TryGetDust(
+            if (!_itemContent.Templates.Materials.TryGetDust(
                     output.ItemId,
                     out _) ||
                 output.Quantity is

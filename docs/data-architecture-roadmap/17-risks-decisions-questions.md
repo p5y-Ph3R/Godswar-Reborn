@@ -4,7 +4,7 @@
 
 These are repository-supported facts, not assumed approval of every target recommendation:
 
-1. The Docker runtime selects PostgreSQL; the normal checked-in application configuration still defaults to the incomplete JSON store.
+1. Every server runtime profile is PostgreSQL-only and fails closed on an unknown or JSON provider. Historical JSON persistence is a protocol-test fixture only.
 2. Current PostgreSQL access uses Npgsql, explicit SQL/transactions, row locks, and the custom migration runner.
 3. The custom ECS has no automatic component serialization or durable whole-world snapshot.
 4. Runtime ECS IDs, sessions, AOI, monster state, tickets, replay windows, and keys currently exist only in process memory.
@@ -14,8 +14,8 @@ These are repository-supported facts, not assumed approval of every target recom
    Redis for disposable cross-process tickets/admissions, routes, presence,
    and PG-fenced leases. MongoDB and production placement remain absent.
 7. Applied migration IDs/checksums are immutable under the documented policy, and the current runner enforces exact-prefix compatibility.
-8. Several valuable PG operations already use transactions/row locks, but there is no general durable inbox/outbox or stable client operation ID.
-9. Content reads are split across generated package catalogs, PG catalogs, and captured fallbacks.
+8. Implemented valuable PG command families use transactions, durable inbox/outbox/audit identities, and ownership fences; future families must adopt those boundaries explicitly.
+9. World, gameplay, item, and pet content reads use immutable process-pinned PostgreSQL publications. Generated declarations and captures are publisher/research inputs only.
 10. ADR 0003 records the historical defer. ADR 0004 confirms the future
     topology; ADR 0005 governs B17's implemented opt-in coordination.
     Production Redis deployment, HA, capacity, and cross-realm Pindus remain
@@ -44,10 +44,11 @@ These are repository-supported facts, not assumed approval of every target recom
 3. Persist selected durable facets, never the entire ECS world.
 4. Commit valuable commands before success acknowledgement and use PG inbox/audit/outbox instead of cross-store dual writes.
 5. Do not introduce MongoDB during the initial migration.
-6. Make raw account-creating/username-only authentication impossible outside an explicit local-development profile, then retire it when client compatibility permits.
+6. Preserve B14's fail-closed production rejection and explicit loopback-only raw-development profile; delete the compatibility path only when client and B20H rollback obligations permit.
 7. Keep modular-monolith code boundaries behind the completed B18C2
-   semantic gateway/backhaul. Implement B17 next for disposable Redis
-   coordination only; do not treat it as player-value authority.
+   semantic gateway/backhaul. B17 Redis coordination remains opt-in and
+   disposable; stage-qualify it before deployment and never give it player
+   value authority.
 
 ## Assumptions
 
@@ -97,7 +98,7 @@ Priority 1:
 
 Priority 2:
 
-15. Should content be authored in source/generated resources, in PostgreSQL, or via a future tool, and how are revisions approved?
+15. What future editor/review workflow should feed the implemented immutable PostgreSQL publications, and how are new revisions approved?
 16. Should packet captures remain in the gameplay database, move to a separate research database, or archive to object storage?
 17. Is durable chat/moderation history required?
 18. What exact schedules, admission rules, party sizes, reconnect windows,

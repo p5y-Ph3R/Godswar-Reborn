@@ -19,7 +19,8 @@ internal static class WorldContentReaderTestFixtures
                 0,
                 0,
                 0,
-                TimeSpan.Zero));
+                TimeSpan.Zero),
+            gameplay: GameplayContentTestFixtures.Published);
 
     public static IWorldContentReader Empty => EmptyReader;
 
@@ -41,5 +42,6 @@ internal static class WorldContentReaderTestFixtures
                 0,
                 0,
                 0,
-                TimeSpan.Zero));
+                TimeSpan.Zero),
+            gameplay: GameplayContentTestFixtures.Published);
 }

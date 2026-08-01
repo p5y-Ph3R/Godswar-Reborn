@@ -16,7 +16,7 @@ internal static partial class Program
 {
     private static Task CheckSkillCombatCatalogAsync()
     {
-        Check.True(SkillCombatCatalog.TryGet(0, out var lightChop), "Light Chop combat data exists");
+        Check.True(GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(0, out var lightChop), "Light Chop combat data exists");
         Check.Equal(44, lightChop.Target, "Light Chop target mode");
         Check.Equal(28, lightChop.AffectObj, "Light Chop affected-object mode");
         Check.Equal(3f, lightChop.Distance, "Light Chop distance");
@@ -37,7 +37,7 @@ internal static partial class Program
             !SkillCombatResolver.IsWithinRange(41.15f, 165.53f, 60f, 180f, lightChop),
             "distant monster cast is rejected");
 
-        Check.True(SkillCombatCatalog.TryGet(334, out var meteorBlast), "Meteor Blast 5 combat data exists");
+        Check.True(GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(334, out var meteorBlast), "Meteor Blast 5 combat data exists");
         Check.Equal(1, meteorBlast.Target, "Meteor Blast targets the caster");
         Check.Equal(28, meteorBlast.AffectObj, "Meteor Blast affected-object mode");
         Check.Equal(0f, meteorBlast.Distance, "Meteor Blast has no selected-target distance");
@@ -52,7 +52,7 @@ internal static partial class Program
         foreach (var championAreaSkillId in new[] { 304, 314, 324, 334 })
         {
             Check.True(
-                SkillCombatCatalog.TryGet(championAreaSkillId, out var championAreaSkill) &&
+                GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(championAreaSkillId, out var championAreaSkill) &&
                 SkillCombatResolver.IsHostileMonsterAreaSkill(championAreaSkill),
                 $"Champion area skill {championAreaSkillId} uses the shared AOE path");
         }
@@ -94,7 +94,7 @@ internal static partial class Program
             Check.Equal(item.Hit, definition.HitBonus, $"Sacred Zeal {item.SkillId} Hit bonus");
             Check.Equal(item.Critical, definition.CriticalAppendBonus, $"Sacred Zeal {item.SkillId} Critical bonus");
             Check.True(
-                SkillCombatCatalog.TryGet(item.SkillId, out var combat),
+                GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(item.SkillId, out var combat),
                 $"Sacred Zeal {item.SkillId} combat definition exists");
             Check.Equal(item.Mp, combat.Mp, $"Sacred Zeal {item.SkillId} MP cost");
             Check.Equal(1, combat.Target, $"Sacred Zeal {item.SkillId} targets self");
@@ -195,7 +195,7 @@ internal static partial class Program
             Check.Equal(item.Physical, definition.PhysicalDamageReduction, $"Holy Ward {item.SkillId} physical mitigation");
             Check.Equal(item.Magical, definition.MagicDamageReduction, $"Holy Ward {item.SkillId} magical mitigation");
             Check.True(
-                SkillCombatCatalog.TryGet(item.SkillId, out var combat),
+                GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(item.SkillId, out var combat),
                 $"Holy Ward {item.SkillId} combat definition exists");
             Check.Equal(item.Mp, combat.Mp, $"Holy Ward {item.SkillId} MP cost");
             Check.Equal(1, combat.Target, $"Holy Ward {item.SkillId} targets self");

@@ -19,10 +19,10 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentNullException.ThrowIfNull(session);
         if (targetMapId == expectedSourceMapId ||
-            !MapTraversalCatalog.Default.TryGetMap(
+            !_gameplayCatalogs.MapTraversal.TryGetMap(
                 expectedSourceMapId,
                 out _) ||
-            !MapTraversalCatalog.Default.TryGetMap(
+            !_gameplayCatalogs.MapTraversal.TryGetMap(
                 targetMapId,
                 out _) ||
             !MapTraversalLimits.IsFiniteAndBounded(

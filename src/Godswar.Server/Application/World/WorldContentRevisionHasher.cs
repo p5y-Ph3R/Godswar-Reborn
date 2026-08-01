@@ -5,7 +5,7 @@ using Godswar.Server.Domain.World.Content;
 
 namespace Godswar.Server.Application.World;
 
-internal static class WorldContentRevisionHasher
+internal static partial class WorldContentRevisionHasher
 {
     private const int CanonicalFormatVersion = 1;
 
@@ -161,6 +161,13 @@ internal static class WorldContentRevisionHasher
         {
             Span<byte> bytes = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
+            _hash.AppendData(bytes);
+        }
+
+        public void AppendInt64(long value)
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(long)];
+            BinaryPrimitives.WriteInt64LittleEndian(bytes, value);
             _hash.AppendData(bytes);
         }
 

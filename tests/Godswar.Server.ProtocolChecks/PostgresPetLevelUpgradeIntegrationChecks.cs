@@ -30,6 +30,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             await using var storeB =
                 new PostgresGameStore(connectionString);
             await storeA.EnsureSeedDataAsync();
+            await storeB.EnsureSeedDataAsync();
 
             fixture = await CreateFixtureAsync(
                 storeA,

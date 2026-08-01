@@ -69,6 +69,7 @@ internal static partial class PostgresGearMentorDecomposeIntegrationChecks
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            TestItemContent.Content,
             probe,
             randomSource);
 

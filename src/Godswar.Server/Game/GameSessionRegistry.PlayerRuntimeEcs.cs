@@ -28,7 +28,9 @@ internal sealed partial class GameSessionRegistry
         IZodiacLevelStore? zodiacLevelStore = null,
         IExperienceBoostStateReader? experienceBoosts = null,
         bool requiresDurablePlayerPersistence = false,
-        WorldInstanceRuntimeOptions? worldInstanceOptions = null)
+        WorldInstanceRuntimeOptions? worldInstanceOptions = null,
+        GameplayRuntimeCatalogs? gameplayCatalogs = null,
+        GameplayItemContent? itemContent = null)
         : this(
             store,
             zodiacEnergyOptions,
@@ -38,7 +40,9 @@ internal sealed partial class GameSessionRegistry
             zodiacLevelStore,
             experienceBoosts,
             requiresDurablePlayerPersistence,
-            worldInstanceOptions)
+            worldInstanceOptions,
+            gameplayCatalogs,
+            itemContent)
     {
         if (!Enum.IsDefined(playerRuntimeMode))
         {

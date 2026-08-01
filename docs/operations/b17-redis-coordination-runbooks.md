@@ -100,7 +100,7 @@ and no persistent volume. The default user must be disabled. It must:
 1. build once in Release;
 2. prove the application identity can use only the reviewed commands and
    expected test key patterns;
-3. prove out-of-prefix, administrative, key-discovery, arbitrary-string,
+3. prove out-of-prefix, administrative, key-discovery, unapproved bulk-string,
    publish, and destructive-script operations are denied;
 4. run live Redis ticket, worker, route, player-lease, and semantic-gateway
    checks without unexpected ACL denials;

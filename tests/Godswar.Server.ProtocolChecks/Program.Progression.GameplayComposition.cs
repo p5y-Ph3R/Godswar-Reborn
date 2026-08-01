@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.ProtocolChecks.CompatibilityFixtures.JsonAuthority;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -70,9 +71,9 @@ internal static partial class Program
                 state.ToJsonString(JsonDefaults.Indented));
 
             await using var restartedStore = new JsonGameStore(dataPath);
-            var providers = ServerGameplayPersistenceComposition.Create(
-                null,
-                restartedStore);
+            var providers =
+                JsonCompatibilityGameplayPersistenceComposition.Create(
+                    restartedStore);
             var snapshot = await providers.ExperienceBoosts.ReadAsync(
                 new ExperienceBoostReadRequest(
                     accountId,

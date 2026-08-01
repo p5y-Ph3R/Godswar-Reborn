@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -9,11 +10,13 @@ internal static partial class PacketBuilder
     private const int PetLevelUpgradePacketLength = 44;
 
     public static byte[] PetLevelUpgrade(
+        IPetContentCatalog petContent,
         uint petId,
         int level,
         long currentExperience,
         PetSavvy basicSavvy)
     {
+        ArgumentNullException.ThrowIfNull(petContent);
         if (petId == 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -22,8 +25,8 @@ internal static partial class PacketBuilder
                 "Pet ID zero is not valid.");
         }
 
-        if (level is < PetExperienceCatalog.MinimumLevel or
-            > PetExperienceCatalog.MaximumLevel)
+        if (level < petContent.Settings.MinimumLevel ||
+            level > petContent.Settings.MaximumLevel)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(level),
@@ -62,7 +65,7 @@ internal static partial class PacketBuilder
             ToUInt32(currentExperience));
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(16),
-            checked((uint)PetExperienceCatalog.RequiredForNextLevel(level)));
+            checked((uint)petContent.RequiredExperienceForNextLevel(level)));
         WritePetBasicSavvy(
             packet.AsSpan(20),
             basicSavvy);

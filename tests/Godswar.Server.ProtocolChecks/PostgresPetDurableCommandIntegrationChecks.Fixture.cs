@@ -11,6 +11,7 @@ internal static partial class
     {
         var token = Guid.NewGuid().ToString("N")[..10];
         await using var store = new PostgresGameStore(connectionString);
+        await store.EnsureSeedDataAsync();
         var account = await store.LoginOrCreateAccountAsync(
             $"b12_pet_{token}",
             string.Empty);
@@ -183,6 +184,7 @@ internal static partial class
         long petId)
     {
         await using var store = new PostgresGameStore(connectionString);
+        await store.EnsureSeedDataAsync();
         await AssertRawBlockedAsync(
             () => store.HatchPetEggAsync(
                 fixture.AccountId,

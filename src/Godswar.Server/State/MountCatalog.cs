@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
@@ -22,7 +23,7 @@ internal readonly record struct MountRideActivationCommit(
 /// matching Ride.ini visual status; item IDs remain authoritative because
 /// several client NameKey and display-name values are intentionally reused.
 /// </summary>
-internal static class MountCatalog
+internal sealed class MountCatalog
 {
     public const int RideSkillId = 4904;
 
@@ -34,8 +35,19 @@ internal static class MountCatalog
 
     public static readonly TimeSpan RideCooldown = TimeSpan.FromSeconds(6);
 
-    private static readonly FrozenDictionary<uint, MountRideDefinition> RideDefinitions =
-        DeveloperMountCatalog.Grantable
+    private readonly FrozenDictionary<uint, MountRideDefinition>
+        _rideDefinitions;
+
+    private readonly FrozenDictionary<uint, float[]>
+        _rideQualitySpeedBonuses;
+
+    public MountCatalog(
+        IItemTemplateCatalog templates,
+        DeveloperMountCatalog developerMounts)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        ArgumentNullException.ThrowIfNull(developerMounts);
+        _rideDefinitions = developerMounts.Grantable
             .Select(static mount => (Mount: mount, StatusId: ResolveStatusId(mount.ItemId)))
             .Where(static candidate => candidate.StatusId.HasValue)
             .Select(static candidate => new MountRideDefinition(
@@ -46,8 +58,7 @@ internal static class MountCatalog
                 Math.Max(0f, candidate.Mount.SpeedBonus)))
             .ToFrozenDictionary(static definition => definition.ItemId);
 
-    private static readonly FrozenDictionary<uint, float[]> RideQualitySpeedBonuses =
-        ItemTemplateSeeds.All
+        _rideQualitySpeedBonuses = templates.All
             .Where(static template =>
                 template.Id > 0 &&
                 string.Equals(template.Kind, "mount", StringComparison.OrdinalIgnoreCase))
@@ -58,11 +69,12 @@ internal static class MountCatalog
             .ToFrozenDictionary(
                 static candidate => candidate.ItemId,
                 static candidate => candidate.Values);
+    }
 
-    public static bool TryGetRideDefinition(uint itemId, out MountRideDefinition definition) =>
-        RideDefinitions.TryGetValue(itemId, out definition);
+    public bool TryGetRideDefinition(uint itemId, out MountRideDefinition definition) =>
+        _rideDefinitions.TryGetValue(itemId, out definition);
 
-    public static bool TryGetEquippedRideDefinition(
+    public bool TryGetEquippedRideDefinition(
         GameCharacter character,
         out MountRideDefinition definition)
     {
@@ -76,7 +88,7 @@ internal static class MountCatalog
             return false;
         }
 
-        if (RideQualitySpeedBonuses.TryGetValue(mount.Id, out var speedBonuses))
+        if (_rideQualitySpeedBonuses.TryGetValue(mount.Id, out var speedBonuses))
         {
             var qualityIndex = Math.Clamp(
                 Math.Max((int)mount.Quality, 1) - 1,

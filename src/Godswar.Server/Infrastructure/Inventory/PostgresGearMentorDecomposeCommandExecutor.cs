@@ -21,16 +21,20 @@ internal sealed partial class PostgresGearMentorDecomposeCommandExecutor :
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresGearMentorDecomposeCommandProbe? _probe;
     private readonly IGearMentorDecomposeRandomSource _randomSource;
+    private readonly GameplayItemContent _itemContent;
 
     public PostgresGearMentorDecomposeCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
+        GameplayItemContent itemContent,
         IPostgresGearMentorDecomposeCommandProbe? probe = null,
         IGearMentorDecomposeRandomSource? randomSource = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
+        _itemContent = itemContent ?? throw new ArgumentNullException(
+            nameof(itemContent));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -306,6 +310,7 @@ internal sealed partial class PostgresGearMentorDecomposeCommandExecutor :
             context.Subject.CharacterId,
             cancellationToken);
         var plan = GearMentorPlanner.Create(
+            _itemContent.Templates,
             lockedBag.CompactProjection,
             character.Value.PlayerLevel,
             CreatePlannerRequest(context),

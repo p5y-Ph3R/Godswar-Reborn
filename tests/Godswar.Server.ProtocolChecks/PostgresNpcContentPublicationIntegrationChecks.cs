@@ -1,4 +1,5 @@
 using Godswar.Server.Application.World;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
@@ -46,6 +47,10 @@ internal static partial class
 
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        _ = await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+            connectionString);
         await AssertUnpublishedDatabaseAsync(dataSource);
         await AssertLoaderFailsClosedAsync(connectionString);
 
@@ -69,6 +74,10 @@ internal static partial class
         // published content families. Supply the independently tested
         // dialogue family before using that reader to verify NPC isolation.
         _ = await PostgresNpcDialogueBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresMonsterContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresEnterBootstrapBaselinePublisher
             .EnsurePublishedAsync(connectionString);
         var pinned =
             await PostgresWorldContentReaderLoader.LoadAsync(

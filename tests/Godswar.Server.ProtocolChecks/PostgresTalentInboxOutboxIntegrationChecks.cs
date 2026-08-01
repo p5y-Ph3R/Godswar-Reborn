@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Talents;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Talents;
+using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -14,6 +16,7 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
     private const int TalentId = 0;
+    private static string? _gameplayContentRevision;
 
     private static readonly Regex DisposableDatabasePattern = new(
         @"^godswar_(?:b03_[a-f0-9]{10}_smoke_[0-9]{2}|b08_[a-z0-9_]{1,40})$",
@@ -46,6 +49,13 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
             }
         }
 
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
+        var gameplayPublication =
+            await PostgresGameplayContentPublisher.EnsurePublishedAsync(
+                connectionString);
+        _gameplayContentRevision = gameplayPublication.Revision;
+
         await using (var store =
                      new PostgresGameStore(connectionString))
         {
@@ -69,7 +79,12 @@ internal static partial class PostgresTalentInboxOutboxIntegrationChecks
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            GameplayContentRevision,
             probe);
+
+    private static string GameplayContentRevision =>
+        _gameplayContentRevision ?? throw new InvalidOperationException(
+            "The talent integration check has not pinned gameplay content.");
 
     private static CommandEnvelope<TalentUpgradeCommand> CreateEnvelope(
         TalentFixture fixture,

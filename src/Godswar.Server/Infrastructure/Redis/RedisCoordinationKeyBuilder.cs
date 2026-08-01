@@ -40,6 +40,20 @@ internal sealed class RedisCoordinationKeyBuilder
         return Build("server", HashUtf8("node", nodeId.ToString()));
     }
 
+    public string RealmContent(RealmId realmId)
+    {
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentException(
+                "A valid realm ID is required.",
+                nameof(realmId));
+        }
+
+        Span<byte> value = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(value, realmId.Value);
+        return Build("realm-content", HashBytes("realm", value));
+    }
+
     public string Route(WorldInstanceId instanceId)
     {
         if (!instanceId.IsValid)

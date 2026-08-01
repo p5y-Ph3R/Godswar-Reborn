@@ -13,6 +13,7 @@ internal sealed partial class MapInstance
     private readonly object _monsterRuntimeGate = new();
     private readonly MonsterRuntimeMode _monsterRuntimeMode;
     private readonly PlayerRuntimeMode _playerRuntimeMode;
+    private readonly WorldBossCatalog _worldBossCatalog;
     private IMonsterMapRuntime? _monsterRuntime;
 
     public int Population => _playerRuntimeMode == PlayerRuntimeMode.Ecs

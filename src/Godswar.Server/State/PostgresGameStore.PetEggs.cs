@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Npgsql;
 
@@ -65,7 +66,7 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        if (!PetSpeciesCatalog.TryGetByEggItemId(
+        if (!PetContent.TryGetSpeciesByEggItemId(
                 egg.Id,
                 out var species))
         {
@@ -93,7 +94,7 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        if (pets.Count >= PetManagerPlanner.MaximumOwnedPetCount)
+        if (pets.Count >= PetContent.Settings.MaximumOwnedPetCount)
         {
             var character = await GetCharacterByIdAsync(
                 connection,
@@ -106,7 +107,7 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        if (!PetAptitudeCatalog.TryGet(
+        if (!PetContent.TryGetAptitude(
                 egg.Quality,
                 out var eggAptitude))
         {
@@ -121,10 +122,10 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        var aptitude = eggAptitude.Aptitude;
-        if (!PetNativeAptitudeProfileCatalog.TryGet(
-                species.Type,
-                aptitude,
+        var aptitude = (PetAptitude)eggAptitude.Aptitude;
+        if (!PetContent.TryGetNativeProfile(
+                species.SpeciesId,
+                eggAptitude.Aptitude,
                 out var nativeProfile))
         {
             var character = await GetCharacterByIdAsync(
@@ -138,13 +139,19 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        var growth = PetGrowthPolicy.Roll(
-            aptitude,
+        var contentGrowth = PetContent.RollGrowth(
+            eggAptitude.Aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
+        var growth = new PetGrowthRoll(
+            contentGrowth.TotalGrowth,
+            ToPetSavvy(contentGrowth.Rates));
         var initialSavvy = growth.BaseGrowthRates;
-        var addedSavvy = PetAddedSavvyPolicy.Roll(
-            aptitude,
+        var contentAddedSavvy = PetContent.RollAddedSavvy(
+            eggAptitude.Aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
+        var addedSavvy = new PetAddedSavvyRoll(
+            contentAddedSavvy.TotalSavvy,
+            ToPetSavvy(contentAddedSavvy.Values));
         var sex = checked((short)RandomNumberGenerator.GetInt32(2));
         var remainingLifetime = nativeProfile.Lifetime;
 
@@ -206,7 +213,7 @@ internal sealed partial class PostgresGameStore
             egg.Stack,
             remainingStack,
             egg.Quality,
-            species.Type,
+            species.SpeciesId,
             aptitude,
             initialSavvy,
             addedSavvy,
@@ -221,18 +228,18 @@ internal sealed partial class PostgresGameStore
             PetEggHatchStatus.Succeeded,
             refreshedCharacter,
             petId,
-            species.Type,
+            species.SpeciesId,
             aptitude,
             initialSavvy,
             addedSavvy,
             growth);
     }
 
-    private static async Task<long> InsertHatchedPetAsync(
+    private async Task<long> InsertHatchedPetAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
-        PetSpeciesDefinition species,
+        PetSpeciesContentDefinition species,
         PetAptitude aptitude,
         int addedSavvyTotal,
         short sex,
@@ -291,7 +298,7 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue(
             "speciesId",
-            checked((short)species.Type));
+            species.SpeciesId);
         command.Parameters.AddWithValue("name", species.DisplayName);
         command.Parameters.AddWithValue("sex", sex);
         command.Parameters.AddWithValue(
@@ -302,7 +309,7 @@ internal sealed partial class PostgresGameStore
             addedSavvyTotal);
         command.Parameters.AddWithValue(
             "addedSavvyPolicy",
-            PetAddedSavvyPolicy.Version);
+            PetContent.Settings.AddedSavvyPolicyVersion);
         command.Parameters.AddWithValue(
             "remainingLifetime",
             remainingLifetime);
@@ -443,5 +450,14 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue("skillId", starterSkillId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static PetSavvy ToPetSavvy(PetContentStatVector value) =>
+        new(
+            value.Agility,
+            value.Strength,
+            value.Accuracy,
+            value.Technique,
+            value.Wisdom,
+            value.Luck);
 
 }

@@ -11,29 +11,28 @@ internal sealed partial class PostgresGameStore
                 aptitude,
                 minimum_total_growth,
                 maximum_total_growth,
-                maximum_stat_deviation,
-                growth_policy_version
-            FROM pet_aptitude_templates
+                maximum_growth_stat_deviation
+            FROM pet_content_aptitude_definitions
+            WHERE revision = @petContentRevision
             ORDER BY aptitude;
             """);
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
 
-        foreach (var expected in PetGrowthPolicy.All)
+        foreach (var expected in PetContent.Aptitudes)
         {
             if (!await reader.ReadAsync(cancellationToken) ||
-                reader.GetInt16(0) != expected.AptitudeValue ||
+                reader.GetInt16(0) != expected.Aptitude ||
                 reader.GetDecimal(1) != expected.MinimumTotalGrowth ||
                 reader.GetDecimal(2) != expected.MaximumTotalGrowth ||
                 reader.GetDecimal(3) !=
-                    expected.MaximumStatDeviationFraction ||
-                !string.Equals(
-                    reader.GetString(4),
-                    PetGrowthPolicy.Version,
-                    StringComparison.Ordinal))
+                    expected.MaximumGrowthStatDeviation)
             {
                 throw new InvalidDataException(
-                    $"Persisted pet growth policy does not match runtime aptitude {expected.AptitudeValue}.");
+                    $"Published pet growth policy does not match aptitude {expected.Aptitude}.");
             }
         }
 
@@ -51,8 +50,9 @@ internal sealed partial class PostgresGameStore
             """
             SELECT pet.id
             FROM character_pets pet
-            INNER JOIN pet_aptitude_templates aptitude
-                ON aptitude.aptitude = pet.aptitude
+            INNER JOIN pet_content_aptitude_definitions aptitude
+                ON aptitude.revision = @petContentRevision
+               AND aptitude.aptitude = pet.aptitude
             LEFT JOIN character_pet_stat_values stat
                 ON stat.pet_id = pet.id
             GROUP BY
@@ -71,6 +71,9 @@ internal sealed partial class PostgresGameStore
             ORDER BY pet.id
             LIMIT 1;
             """);
+        command.Parameters.AddWithValue(
+            "petContentRevision",
+            PetContent.Revision.Sha256);
         var invalidPetId =
             await command.ExecuteScalarAsync(cancellationToken);
         if (invalidPetId is not null && invalidPetId is not DBNull)

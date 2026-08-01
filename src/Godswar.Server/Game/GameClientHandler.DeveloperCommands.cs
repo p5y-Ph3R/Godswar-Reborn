@@ -21,7 +21,12 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         if (!TryReadTalkText(packet.Payload, out var text) ||
-            !DeveloperItemCommand.TryParse(text, out var request, out var error))
+            !DeveloperItemCommand.TryParse(
+                text,
+                out var request,
+                out var error,
+                _itemContent?.DeveloperMounts,
+                _itemContent?.Templates.Materials))
         {
             return false;
         }
@@ -273,11 +278,12 @@ internal sealed partial class GameClientHandler
         }
 
         var page = request.Page ?? 1;
+        var mounts = RequireItemContent().DeveloperMounts;
         await SendDeveloperItemFeedbackAsync(
             commandPacket,
-            $"[mount] Families {page}/{DeveloperMountCatalog.PageCount}. Use: /item mount list <page|family>",
+            $"[mount] Families {page}/{mounts.PageCount}. Use: /item mount list <page|family>",
             cancellationToken);
-        foreach (var family in DeveloperMountCatalog.GetPage(page))
+        foreach (var family in mounts.GetPage(page))
         {
             var firstId = family.Mounts.Min(static mount => mount.ItemId);
             var lastId = family.Mounts.Max(static mount => mount.ItemId);

@@ -3,6 +3,9 @@
 Status: completed and locally verified on 2026-07-31; no production database,
 live container, player data, or schema migration was changed
 
+Follow-on status (2026-08-01): B20E-G are implemented locally. B20H's real
+seven-day deployed observation and final deletion remain pending.
+
 ## Outcome
 
 B20B removes the broad `IGameStore` dependency from account authentication,

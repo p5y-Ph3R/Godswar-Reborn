@@ -78,6 +78,11 @@ internal static partial class
                     FROM public.character_items item_row
                     WHERE item_row.user_id = character_row.id
                 ),
+                (
+                    SELECT count(*)
+                    FROM public.character_skills skill_row
+                    WHERE skill_row.user_id = character_row.id
+                ),
                 baseline.silver,
                 baseline.gold
             FROM public.character_base character_row
@@ -110,7 +115,8 @@ internal static partial class
             reader.GetFloat(10),
             reader.GetInt64(11),
             reader.GetInt64(12),
-            reader.GetInt64(13));
+            reader.GetInt64(13),
+            reader.GetInt64(14));
     }
 
     private static async Task<Guid> SeedCheckpointLeaseAsync(
@@ -312,6 +318,7 @@ internal static partial class
         float PositionX,
         float PositionZ,
         long ItemCount,
+        long SkillCount,
         long EconomyBaselineSilver,
         long EconomyBaselineGold);
 }

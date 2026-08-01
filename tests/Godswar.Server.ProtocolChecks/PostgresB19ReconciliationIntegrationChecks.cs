@@ -1,6 +1,8 @@
 using Godswar.Server.Application.Reconciliation;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Reconciliation;
+using Godswar.Server.Infrastructure.Items;
 using Godswar.Server.Infrastructure.WorldContent;
 using Godswar.Server.State;
 using Npgsql;
@@ -30,6 +32,11 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
         await RequireDisposableDatabaseAsync(dataSource, "source");
+        var migrationRunner =
+            new PostgresSchemaMigrationRunner(dataSource);
+        await migrationRunner.InitializeGodswarSchemaAsync();
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
 
         await using (var store =
                      new PostgresGameStore(connectionString))
@@ -42,10 +49,14 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
             .EnsurePublishedAsync(connectionString);
         _ = await PostgresNpcDialogueBaselinePublisher
             .EnsurePublishedAsync(connectionString);
+        _ = await PostgresMonsterContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresEnterBootstrapBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
 
         await AssertCurrentMigrationManifestAsync(dataSource);
         var fixture = await ReadEconomyFixtureAsync(dataSource);
-        var runner = CreateRunner(dataSource);
+        var runner = await CreateRunnerAsync(dataSource);
         var clean = await runner.RunAsync();
         AssertCompleted(clean, "initial source reconciliation");
         AssertNoFindings(
@@ -171,7 +182,8 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
         await AssertAllEconomyViewsCleanAsync(dataSource);
 
         var before = await ReadDurableFingerprintAsync(dataSource);
-        var report = await CreateRunner(dataSource).RunAsync();
+        var report = await (
+            await CreateRunnerAsync(dataSource)).RunAsync();
         var after = await ReadDurableFingerprintAsync(dataSource);
 
         AssertCompleted(report, "restored database reconciliation");
@@ -191,10 +203,15 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
             "reconciliation, and read-only fingerprint verified.");
     }
 
-    private static ReconciliationRunner CreateRunner(
-        NpgsqlDataSource dataSource) =>
-        new(
-            new PostgresReconciliationReader(dataSource),
+    private static async Task<ReconciliationRunner> CreateRunnerAsync(
+        NpgsqlDataSource dataSource)
+    {
+        var itemTemplates =
+            await PostgresItemTemplateCatalogLoader.LoadAsync(dataSource);
+        return new ReconciliationRunner(
+            new PostgresReconciliationReader(
+                dataSource,
+                itemTemplates.Revision.Sha256),
             new ReconciliationOptions
             {
                 BatchSize = 2,
@@ -204,6 +221,7 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
                 CommandTimeoutMilliseconds = 5_000,
                 RunTimeoutMilliseconds = 30_000
             });
+    }
 
     private static void AssertCompleted(
         ReconciliationReport report,

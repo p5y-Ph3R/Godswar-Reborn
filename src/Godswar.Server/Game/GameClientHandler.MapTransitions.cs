@@ -36,7 +36,7 @@ internal sealed partial class GameClientHandler
         if (_character is null ||
             movement.MapId != _character.CurrentMap ||
             !MapTraversalDetector.TryDetectAndResolve(
-                MapTraversalCatalog.Default,
+                _gameplayCatalogs.MapTraversal,
                 movement,
                 MapPortalTriggerRadius,
                 out var resolution) ||
@@ -68,10 +68,10 @@ internal sealed partial class GameClientHandler
             !_registered ||
             !_worldPresenceAnnounced ||
             _character.CurrentMap == targetMapId ||
-            !MapTraversalCatalog.Default.TryGetMap(
+            !_gameplayCatalogs.MapTraversal.TryGetMap(
                 _character.CurrentMap,
                 out _) ||
-            !MapTraversalCatalog.Default.TryGetMap(targetMapId, out _) ||
+            !_gameplayCatalogs.MapTraversal.TryGetMap(targetMapId, out _) ||
             !MapTraversalLimits.IsFiniteAndBounded(
                 new MapTraversalPosition(targetX, targetZ)))
         {

@@ -1,4 +1,6 @@
+using Godswar.Server.Application.Items;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -284,7 +286,10 @@ internal static partial class
             NpgsqlDataSource.Create(connectionString);
         RequireReceipt(
             await ExecuteAsync(
-                CreateExecutor(dataSource),
+                CreateExecutor(
+                    dataSource,
+                    itemContent: CreateUnsupportedMountContent(
+                        unsupportedMountId)),
                 fixture,
                 Guid.NewGuid()),
             EquipmentBagTransferDisposition.TerminalRejected,
@@ -295,6 +300,40 @@ internal static partial class
             0,
             fixture.KitBagItemId!.Value,
             "unsupported mount");
+    }
+
+    private static GameplayItemContent CreateUnsupportedMountContent(
+        uint itemId)
+    {
+        var baseline = TestItemContent.Catalog;
+        var materials = baseline.Materials;
+        var definitions = baseline.All.Append(
+            new ItemTemplateDefinition(
+                itemId,
+                "mount",
+                "UnsupportedTestMount",
+                "Unsupported Test Mount",
+                20,
+                Array.AsReadOnly<short>([0, 1, 2, 3]),
+                1,
+                200,
+                null,
+                null,
+                string.Empty,
+                string.Empty,
+                "{}"))
+            .ToArray();
+        return new GameplayItemContent(
+            PinnedItemTemplateCatalog.Create(
+                "protocol-check-unsupported-mount",
+                definitions,
+                baseline.Attributes,
+                baseline.EquipmentRanks,
+                baseline.HolySuitEffects,
+                materials.ForgingMaterials,
+                materials.GearEnhancementMaterials,
+                materials.AttributeDusts,
+                materials.GearMentorRecipes));
     }
 
     private static async Task AssertReservedSlotReplayAsync(

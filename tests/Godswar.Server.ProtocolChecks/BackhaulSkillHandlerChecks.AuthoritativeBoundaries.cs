@@ -441,7 +441,8 @@ internal static partial class BackhaulSkillHandlerChecks
                 store: null,
                 zodiacEnergyOptions: null,
                 MonsterRuntimeMode.Ecs,
-                playerRuntimeMode);
+                playerRuntimeMode,
+                gameplayCatalogs: GameplayContentTestFixtures.Runtime);
             registry.InitializeMapMonsters(
                 PeloponneseMapId,
                 [CreateLethalAttackMonster()],

@@ -14,13 +14,24 @@ internal sealed class PostgresReconciliationReader :
 
     private readonly string[] _consumerKeys;
     private readonly string[] _orderingPolicies;
+    private readonly string _itemContentRevision;
 
     public PostgresReconciliationReader(
         NpgsqlDataSource dataSource,
+        string itemContentRevision,
         IEnumerable<IOutboxEventConsumer>? consumers = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        if (string.IsNullOrWhiteSpace(itemContentRevision) ||
+            itemContentRevision.Length != 64 ||
+            !itemContentRevision.All(Uri.IsHexDigit))
+        {
+            throw new ArgumentException(
+                "A canonical item-content SHA-256 is required.",
+                nameof(itemContentRevision));
+        }
+        _itemContentRevision = itemContentRevision.ToUpperInvariant();
         var registrations = (consumers ??
                 PostgresOutboxConsumerCatalog.Create())
             .Select(consumer => new
@@ -116,7 +127,8 @@ internal sealed class PostgresReconciliationReader :
                 Seconds(commandTimeout),
                 PostgresSchemaMigrationCatalog.All,
                 _consumerKeys,
-                _orderingPolicies);
+                _orderingPolicies,
+                _itemContentRevision);
         }
         catch
         {
@@ -144,6 +156,7 @@ internal sealed partial class PostgresReconciliationSnapshot :
         _expectedMigrations;
     private readonly string[] _consumerKeys;
     private readonly string[] _orderingPolicies;
+    private readonly string _itemContentRevision;
     private bool _disposed;
 
     public PostgresReconciliationSnapshot(
@@ -152,7 +165,8 @@ internal sealed partial class PostgresReconciliationSnapshot :
         int commandTimeoutSeconds,
         IReadOnlyList<PostgresSchemaMigration> expectedMigrations,
         string[] consumerKeys,
-        string[] orderingPolicies)
+        string[] orderingPolicies,
+        string itemContentRevision)
     {
         _connection = connection;
         _transaction = transaction;
@@ -160,6 +174,7 @@ internal sealed partial class PostgresReconciliationSnapshot :
         _expectedMigrations = expectedMigrations;
         _consumerKeys = consumerKeys;
         _orderingPolicies = orderingPolicies;
+        _itemContentRevision = itemContentRevision;
     }
 
     public async ValueTask DisposeAsync()

@@ -23,32 +23,32 @@ internal static partial class Program
     private static string CheckGuardedEquipmentMoveRules()
     {
         Check.True(
-            EquipmentSlots.TryGetAuthoritativeSlot(1000, out var weaponSlot),
+            EquipmentSlots.TryGetAuthoritativeSlot(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 1000, out var weaponSlot),
             "starter sword is present in the authoritative equipment catalog");
         Check.Equal(EquipmentSlots.Weapon, weaponSlot, "starter sword resolves to the weapon slot");
         Check.True(
-            !EquipmentSlots.TryGetAuthoritativeSlot(4030, out _),
+            !EquipmentSlots.TryGetAuthoritativeSlot(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 4030, out _),
             "MP potion is absent from the authoritative equipment catalog");
-        Check.Equal(-1, EquipmentSlots.ResolveSlotForItem(4030, -1), "unknown item has no weapon fallback");
+        Check.Equal(-1, EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 4030, -1), "unknown item has no weapon fallback");
         Check.Equal(
             EquipmentSlots.Weapon,
-            EquipmentSlots.ResolveSlotForItem(1000, requestedSlot: -1),
+            EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 1000, requestedSlot: -1),
             "right-click equip infers the authoritative weapon slot");
         Check.Equal(
             EquipmentSlots.Weapon,
-            EquipmentSlots.ResolveSlotForItem(1000, EquipmentSlots.Weapon),
+            EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 1000, EquipmentSlots.Weapon),
             "explicit drag accepts the authoritative weapon slot");
         Check.Equal(
             -1,
-            EquipmentSlots.ResolveSlotForItem(1000, EquipmentSlots.Armor),
+            EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 1000, EquipmentSlots.Armor),
             "explicit drag rejects an incompatible equipment slot");
         Check.Equal(
             EquipmentSlots.Ring2,
-            EquipmentSlots.ResolveSlotForItem(3200, EquipmentSlots.Ring2),
+            EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 3200, EquipmentSlots.Ring2),
             "explicit ring drag accepts either ring slot");
         Check.Equal(
             -1,
-            EquipmentSlots.ResolveSlotForItem(3200, EquipmentSlots.Weapon),
+            EquipmentSlots.ResolveSlotForItem(Godswar.Server.ProtocolChecks.TestItemContent.Catalog, 3200, EquipmentSlots.Weapon),
             "explicit ring drag rejects a non-ring slot");
 
         var rightClickEquipPayload = Enumerable.Repeat((byte)0xFF, 88).ToArray();
@@ -113,7 +113,7 @@ internal static partial class Program
             KitBag = GameDefaults.EmptyKitBag
         };
         Check.True(
-            GameClientHandler.ResolveEquipmentBagTransferAction(
+            GameClientHandler.ResolveEquipmentBagTransferAction(TestItemContent.Catalog,
                 emptyTargetCharacter,
                 EquipmentSlots.Shield,
                 bagSlot: 55) == EquipmentBagTransferAction.Unequip,
@@ -126,7 +126,7 @@ internal static partial class Program
             KitBag = KitBagSlots.SetSlot(GameDefaults.EmptyKitBag, 55, shieldEntry)
         };
         Check.True(
-            GameClientHandler.ResolveEquipmentBagTransferAction(
+            GameClientHandler.ResolveEquipmentBagTransferAction(TestItemContent.Catalog,
                 occupiedTargetCharacter,
                 EquipmentSlots.Shield,
                 bagSlot: 55) == EquipmentBagTransferAction.Reject,
@@ -142,7 +142,7 @@ internal static partial class Program
             KitBag = KitBagSlots.SetSlot(GameDefaults.EmptyKitBag, 55, shieldEntry)
         };
         Check.True(
-            GameClientHandler.ResolveEquipmentBagTransferAction(
+            GameClientHandler.ResolveEquipmentBagTransferAction(TestItemContent.Catalog,
                 emptyEquipmentCharacter,
                 EquipmentSlots.Shield,
                 bagSlot: 55) == EquipmentBagTransferAction.Equip,
@@ -157,7 +157,7 @@ internal static partial class Program
             KitBag = emptyEquipmentCharacter.KitBag
         };
         Check.True(
-            GameClientHandler.ResolveEquipmentBagTransferAction(
+            GameClientHandler.ResolveEquipmentBagTransferAction(TestItemContent.Catalog,
                 incompatibleEmptyEquipmentCharacter,
                 EquipmentSlots.Weapon,
                 bagSlot: 55) == EquipmentBagTransferAction.Reject,

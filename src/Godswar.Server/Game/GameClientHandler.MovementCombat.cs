@@ -236,7 +236,9 @@ internal sealed partial class GameClientHandler
                 attackZ,
                 target.X,
                 target.Z,
-                MonsterCombatResolver.ResolvePlayerBasicAttackRange(target.Definition)))
+                MonsterCombatResolver.ResolvePlayerBasicAttackRange(
+                    target.Definition,
+                    _gameplayCatalogs.MonsterCombatRanges)))
         {
             Console.WriteLine(
                 $"[attack] rejected out-of-range monster character={_character.Name} target={attack.TargetObjectId} player={attackX:F2},{attackZ:F2} monster={target.X:F2},{target.Z:F2}");

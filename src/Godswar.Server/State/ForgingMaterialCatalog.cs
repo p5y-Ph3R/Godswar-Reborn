@@ -1,65 +1,6 @@
-using System.Text.Json;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
-
-internal sealed record ForgingMaterialDefinition(
-    uint ItemId,
-    string NameKey,
-    string DisplayName,
-    string ItemType,
-    short StackCap,
-    string Material,
-    int? Level,
-    bool IsPiece,
-    string Texture,
-    string Icon,
-    short? BindType = null,
-    int Random = 0,
-    string Distribution = "0,0")
-{
-    public string CanonicalAlias => IsPiece
-        ? $"{Material}{Level}pieces"
-        : $"{Material}{Level}";
-
-    // The compact bag record stores the item's current bound state, not the
-    // client's BindType rule. Native materials without BindType begin unbound;
-    // the remaining shipped materials are granted bound for the local command.
-    public short GrantedBound => BindType.HasValue ? (short)1 : (short)0;
-
-    public ItemTemplateSeed ToItemTemplateSeed()
-    {
-        var stats = new Dictionary<string, string>
-        {
-            ["ID"] = ItemId.ToString(),
-            ["Type"] = ItemType,
-            ["Texture"] = Texture,
-            ["Icon"] = Icon,
-            ["Random"] = Random.ToString(),
-            ["Distribution"] = Distribution,
-            ["Money"] = "0",
-            ["Overlap"] = StackCap.ToString()
-        };
-        if (BindType.HasValue)
-        {
-            stats["BindType"] = BindType.Value.ToString();
-        }
-
-        return new ItemTemplateSeed(
-            checked((int)ItemId),
-            ItemType,
-            NameKey,
-            DisplayName,
-            EquipmentSlot: 0,
-            ClassIds: [],
-            MinLevel: null,
-            MaxLevel: null,
-            Hand: null,
-            SkillFlag: null,
-            Texture,
-            Icon,
-            JsonSerializer.Serialize(stats));
-    }
-}
 
 internal static class ForgingMaterialCatalog
 {

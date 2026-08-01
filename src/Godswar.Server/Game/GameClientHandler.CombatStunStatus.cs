@@ -234,7 +234,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (!SkillCombatCatalog.TryGet(definition.SkillId, out var combat))
+        if (!_gameplayCatalogs.SkillCombat.TryGet(
+                definition.SkillId,
+                out var combat))
         {
             Console.WriteLine(
                 $"[skill] rejected missing self-status combat data character={character.Name} skill={cast.SkillId}");

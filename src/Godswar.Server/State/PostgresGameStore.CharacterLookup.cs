@@ -10,11 +10,12 @@ internal sealed partial class PostgresGameStore
         await using var command = _dataSource.CreateCommand($"""
             SELECT {CharacterColumns}
             FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+            {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
             WHERE cb.id = @id
               AND cb.lifecycle_state = 'active';
             """);
         command.Parameters.AddWithValue("id", id);
+        AddItemContentRevisionParameter(command);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -23,21 +24,21 @@ internal sealed partial class PostgresGameStore
             : null;
     }
 
-    private static async Task<GameCharacter?>
-        GetCharacterByIdAsync(
-            Npgsql.NpgsqlConnection connection,
-            Npgsql.NpgsqlTransaction transaction,
-            int id,
-            CancellationToken cancellationToken)
+    private async Task<GameCharacter?> GetCharacterByIdAsync(
+        Npgsql.NpgsqlConnection connection,
+        Npgsql.NpgsqlTransaction transaction,
+        int id,
+        CancellationToken cancellationToken)
     {
         await using var command = new Npgsql.NpgsqlCommand($"""
             SELECT {CharacterColumns}
             FROM character_base cb
-            LEFT JOIN character_item_loadout ck ON ck.user_id = cb.id
+            {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
             WHERE cb.id = @id
               AND cb.lifecycle_state = 'active';
             """, connection, transaction);
         command.Parameters.AddWithValue("id", id);
+        AddItemContentRevisionParameter(command);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "reborn.b20h.retirement-evidence.v1",
+  "status": "draft",
+  "approval": {
+    "approved": false,
+    "changeId": "replace-with-approved-change-id",
+    "approvedByRole": "release-owner",
+    "approvedAtUtc": "2000-01-01T00:00:00.0000000Z"
+  },
+  "window": {
+    "startedAtUtc": "2000-01-01T01:00:00.0000000Z",
+    "endedAtUtc": "2000-01-08T01:00:00.0000000Z",
+    "approvedMinimumHours": 168
+  },
+  "expectedReplicaCount": 1,
+  "replicas": [
+    {
+      "name": "replace-with-deployment-replica",
+      "coverageStartedAtUtc": "2000-01-01T00:55:00.0000000Z",
+      "coverageEndedAtUtc": "2000-01-08T01:05:00.0000000Z",
+      "observerReadyMinimum": 1,
+      "legacyInvocationDelta": 0,
+      "counterResetCount": 0,
+      "maximumScrapeGapSeconds": 30
+    }
+  ],
+  "workloadCoverage": [
+    { "name": "authentication_and_character_load", "status": "passed" },
+    { "name": "open_world_gameplay", "status": "passed" },
+    { "name": "inventory_and_economy", "status": "passed" },
+    { "name": "progression", "status": "passed" },
+    { "name": "pets_and_mounts", "status": "passed" },
+    { "name": "map_and_zone_transfer", "status": "passed" },
+    { "name": "scheduled_world_events", "status": "passed" }
+  ],
+  "gates": [
+    {
+      "name": "b19_reconciliation",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    },
+    {
+      "name": "backup_restore",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    },
+    {
+      "name": "clean_install",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    },
+    {
+      "name": "upgrade_install",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    },
+    {
+      "name": "prior_binary_rollback",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    },
+    {
+      "name": "archive_parity",
+      "status": "passed",
+      "evidenceReference": "replace-with-evidence-reference",
+      "sha256": "REPLACE_WITH_UPPERCASE_SHA256"
+    }
+  ]
+}

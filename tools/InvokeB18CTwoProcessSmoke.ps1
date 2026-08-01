@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+
+    [string]$PostgresConnectionString =
+        $env:GODSWAR_B18C_POSTGRES_CONNECTION_STRING
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,8 +22,20 @@ $smokeDll = Join-Path $repositoryRoot (
     "$targetFramework\Godswar.Server.B18CSmoke.dll")
 $dotnetHost = (Get-Command dotnet -ErrorAction Stop).Source
 
+if ([string]::IsNullOrWhiteSpace($PostgresConnectionString)) {
+    throw (
+        'Set -PostgresConnectionString or ' +
+        'GODSWAR_B18C_POSTGRES_CONNECTION_STRING to an isolated ' +
+        'PostgreSQL smoke database.')
+}
+
+$previousPostgresConnection =
+    $env:GODSWAR_B18C_POSTGRES_CONNECTION_STRING
+
 Push-Location -LiteralPath $repositoryRoot
 try {
+    $env:GODSWAR_B18C_POSTGRES_CONNECTION_STRING =
+        $PostgresConnectionString
     & $dotnetHost build $projectPath `
         --configuration $Configuration `
         --nologo
@@ -42,5 +57,7 @@ try {
     }
 }
 finally {
+    $env:GODSWAR_B18C_POSTGRES_CONNECTION_STRING =
+        $previousPostgresConnection
     Pop-Location
 }

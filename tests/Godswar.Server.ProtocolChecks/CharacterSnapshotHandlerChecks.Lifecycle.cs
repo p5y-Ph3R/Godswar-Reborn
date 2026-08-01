@@ -152,7 +152,12 @@ internal static partial class CharacterSnapshotHandlerChecks
         var options = new ServerOptions
         {
             RuntimeProfile = "LocalDevelopment",
-            Storage = new StorageOptions { Provider = "Json" }
+            Storage = new StorageOptions
+            {
+                Provider = "Postgres",
+                PostgresConnectionString =
+                    "Host=127.0.0.1;Database=snapshot-handler-check"
+            }
         };
         options.Authentication.AllowLegacyRawAuthentication = true;
         return LegacyAuthenticationAccess.Create(

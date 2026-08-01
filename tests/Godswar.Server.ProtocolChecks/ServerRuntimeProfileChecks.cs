@@ -36,44 +36,43 @@ internal static partial class ServerRuntimeProfileChecks
             ServerStartupRejectionReason.RuntimeProfileMissing,
             "missing runtime profile");
 
-        var unknownRuntime = LocalJson();
+        var unknownRuntime = LocalPostgres();
         unknownRuntime.RuntimeProfile = "1";
         ExpectReason(
             unknownRuntime,
             ServerStartupRejectionReason.RuntimeProfileUnknown,
             "numeric runtime profile");
 
-        var missingStorage = LocalJson();
+        var missingStorage = LocalPostgres();
         missingStorage.Storage.Provider = "";
         ExpectReason(
             missingStorage,
             ServerStartupRejectionReason.StorageProviderMissing,
             "missing storage provider");
 
-        var nullStorage = LocalJson();
+        var nullStorage = LocalPostgres();
         nullStorage.Storage = null!;
         ExpectReason(
             nullStorage,
             ServerStartupRejectionReason.StorageProviderMissing,
             "null storage section");
 
-        var unknownStorage = LocalJson();
+        var unknownStorage = LocalPostgres();
         unknownStorage.Storage.Provider = "document";
         ExpectReason(
             unknownStorage,
             ServerStartupRejectionReason.StorageProviderUnknown,
             "unknown storage provider");
 
-        var productionJson = LocalJson();
-        productionJson.RuntimeProfile = "Production";
-        productionJson.Secure.Enabled = true;
+        var retiredJson = LocalPostgres();
+        retiredJson.Storage.Provider = "Json";
         ExpectReason(
-            productionJson,
-            ServerStartupRejectionReason.JsonStorageForbidden,
-            "production JSON");
+            retiredJson,
+            ServerStartupRejectionReason.StorageProviderUnknown,
+            "retired JSON provider");
 
-        var postgresWithoutConnection = LocalJson();
-        postgresWithoutConnection.Storage.Provider = "Postgres";
+        var postgresWithoutConnection = LocalPostgres();
+        postgresWithoutConnection.Storage.PostgresConnectionString = "";
         ExpectReason(
             postgresWithoutConnection,
             ServerStartupRejectionReason.PostgresConnectionMissing,
@@ -87,7 +86,7 @@ internal static partial class ServerRuntimeProfileChecks
             ServerStartupRejectionReason.RawTransportForbidden,
             "production raw transport");
 
-        var localRawDisabled = LocalJson();
+        var localRawDisabled = LocalPostgres();
         localRawDisabled.Authentication.
             AllowLegacyRawAuthentication = false;
         ExpectReason(
@@ -97,12 +96,12 @@ internal static partial class ServerRuntimeProfileChecks
             "local raw transport without rollback capability");
 
         AssertAccepted(
-            LocalJson(),
+            LocalPostgres(),
             ServerRuntimeProfileKind.LocalDevelopment,
-            GameStorageProviderKind.Json,
+            GameStorageProviderKind.Postgres,
             ServerListenerTransport.RawTcp,
             legacyAuthentication: true,
-            "local JSON raw");
+            "local PostgreSQL raw");
         AssertAccepted(
             Postgres("LocalDevelopment", secure: false),
             ServerRuntimeProfileKind.LocalDevelopment,
@@ -111,7 +110,7 @@ internal static partial class ServerRuntimeProfileChecks
             legacyAuthentication: true,
             "local PostgreSQL raw");
 
-        var localSecure = LocalJson();
+        var localSecure = LocalPostgres();
         localSecure.Secure.Enabled = true;
         localSecure.Authentication.
             AllowLegacyRawAuthentication = false;
@@ -119,10 +118,10 @@ internal static partial class ServerRuntimeProfileChecks
         AssertAccepted(
             localSecure,
             ServerRuntimeProfileKind.LocalDevelopment,
-            GameStorageProviderKind.Json,
+            GameStorageProviderKind.Postgres,
             ServerListenerTransport.SecureTls,
             legacyAuthentication: false,
-            "local secure JSON with plaintext migration");
+            "local secure PostgreSQL with plaintext migration");
 
         var productionPlaintextMigration = Postgres(
             "Production",
@@ -149,7 +148,7 @@ internal static partial class ServerRuntimeProfileChecks
             legacyAuthentication: false,
             "production secure PostgreSQL");
 
-        var localSecureWithRollback = LocalJson();
+        var localSecureWithRollback = LocalPostgres();
         localSecureWithRollback.Secure.Enabled = true;
         ExpectReason(
             localSecureWithRollback,
@@ -208,7 +207,9 @@ internal static partial class ServerRuntimeProfileChecks
             {
               "runtimeProfile": "LocalDevelopment",
               "storage": {
-                "provider": "Json"
+                "provider": "Postgres",
+                "postgresConnectionString":
+                  "Host=127.0.0.1;Database=profile-check"
               }
             }
             """);
@@ -244,7 +245,7 @@ internal static partial class ServerRuntimeProfileChecks
 
             Environment.SetEnvironmentVariable(
                 StorageEnvironment,
-                "Json");
+                "Postgres");
             Environment.SetEnvironmentVariable(
                 SecureEnvironment,
                 "tru");
@@ -415,13 +416,15 @@ internal static partial class ServerRuntimeProfileChecks
             "legacy authentication metric has bounded endpoint/outcome");
     }
 
-    private static ServerOptions LocalJson() =>
+    private static ServerOptions LocalPostgres() =>
         new()
         {
             RuntimeProfile = "LocalDevelopment",
             Storage = new StorageOptions
             {
-                Provider = "Json"
+                Provider = "Postgres",
+                PostgresConnectionString =
+                    "Host=127.0.0.1;Database=profile-check"
             },
             Authentication = new AuthenticationOptions
             {

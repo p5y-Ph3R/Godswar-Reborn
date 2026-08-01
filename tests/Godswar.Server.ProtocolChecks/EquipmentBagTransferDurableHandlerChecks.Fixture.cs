@@ -137,7 +137,9 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             equipmentBagTransferCommands: executor,
-            petDurableCommands: petDurableCommands);
+            petDurableCommands: petDurableCommands,
+            itemContent: TestItemContent.Content,
+            petContent: PetContentTestCatalog.Instance);
         SetField(
             handler,
             "_account",

@@ -86,7 +86,7 @@ internal static class PetSavvyRuntimeSafetyChecks
                     0.15m));
 
         Check.True(
-            !PetManagerPlanner.TryPlanRebirth(
+            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet,
                 pet.OwnerCharacterId,
                 new PetRebirthMaterials(5, 0),
@@ -102,7 +102,7 @@ internal static class PetSavvyRuntimeSafetyChecks
         var partialBaseline =
             new PetSavvy(0m, 50m, 50m, 50m, 50m, 50m);
         Check.True(
-            !PetManagerPlanner.TryPlanRebirth(
+            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet with
                 {
                     AddedSavvy = partialBaseline,
@@ -119,7 +119,7 @@ internal static class PetSavvyRuntimeSafetyChecks
         var allEqualBaseline =
             new PetSavvy(50m, 50m, 50m, 50m, 50m, 50m);
         Check.True(
-            !PetManagerPlanner.TryPlanRebirth(
+            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 pet with
                 {
                     AddedSavvy = allEqualBaseline,
@@ -138,7 +138,7 @@ internal static class PetSavvyRuntimeSafetyChecks
             RarityAddedSavvy = rarityBaseline
         };
         Check.True(
-            PetManagerPlanner.TryPlanRebirth(
+            PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
                 validPet,
                 validPet.OwnerCharacterId,
                 new PetRebirthMaterials(5, 0),

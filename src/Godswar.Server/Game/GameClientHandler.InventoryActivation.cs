@@ -42,9 +42,10 @@ internal sealed partial class GameClientHandler
             _character.KitBag,
             sourceSlot);
         var isPetEgg =
-            PetSpeciesCatalog.TryGetByEggItemId(itemId, out _);
+            RequirePetContent().TryGetSpeciesByEggItemId(itemId, out _);
         var isEquipment =
             EquipmentSlots.TryGetAuthoritativeSlot(
+                RequireItemContent().Templates,
                 itemId,
                 out var authoritativeEquipmentSlot);
 

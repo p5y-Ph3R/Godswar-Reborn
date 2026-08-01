@@ -3,6 +3,9 @@
 Status: completed local architecture foundation on 2026-07-31; no runtime
 persistence behavior, database schema, player data, or deployment was changed
 
+Follow-on status (2026-08-01): B20E-G are implemented locally. B20H's real
+seven-day deployed observation and final deletion remain pending.
+
 ## Outcome
 
 B20A establishes the exact starting line for retiring the remaining broad and

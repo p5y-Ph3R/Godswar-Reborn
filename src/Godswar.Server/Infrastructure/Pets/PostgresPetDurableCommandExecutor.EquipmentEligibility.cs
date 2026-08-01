@@ -46,6 +46,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         }
 
         return EquipmentEligibility.ValidateEquip(
+            _itemContent,
             checked((byte)character.Profession),
             character.Level,
             checked((uint)propId),

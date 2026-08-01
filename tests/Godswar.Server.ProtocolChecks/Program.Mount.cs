@@ -32,7 +32,7 @@ internal static partial class Program
         foreach (var entry in expected)
         {
             Check.True(
-                MountCatalog.TryGetRideDefinition(entry.ItemId, out var definition),
+                TestItemContent.Content.Mounts.TryGetRideDefinition(entry.ItemId, out var definition),
                 $"Greek mount {entry.ItemId} has a Ride definition");
             Check.Equal(entry.Level, definition.MountLevel, $"Greek mount {entry.ItemId} level");
             Check.Equal(entry.StatusId, definition.StatusId, $"Greek mount {entry.ItemId} status");
@@ -40,7 +40,7 @@ internal static partial class Program
         }
 
         Check.True(
-            MountCatalog.TryGetRideDefinition(6000, out var legacyDefinition) &&
+            TestItemContent.Content.Mounts.TryGetRideDefinition(6000, out var legacyDefinition) &&
             legacyDefinition.StatusId == 1100,
             "legacy Greek Steed 6000 uses its verified Ride.ini status");
         Check.Equal(50, MountCatalog.RideManaCost, "Ride MP cost");
@@ -80,7 +80,7 @@ internal static partial class Program
             EquipmentSlots.MountHead,
             "[14500,,,,,,1,1,0,1,0]");
         Check.True(
-            MountCatalog.TryGetEquippedRideDefinition(character, out var equipped) &&
+            TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var equipped) &&
             equipped.ItemId == 14220,
             "equipped slot-20 mount resolves the Ride appearance");
 
@@ -178,10 +178,11 @@ internal static partial class Program
                 EquipmentSlots.Mount,
                 "[14220,,,,,,1,1,0,1,0]");
             Check.True(
-                MountCatalog.TryGetEquippedRideDefinition(character, out var mount),
+                TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var mount),
                 "instant dismount fixture resolves its equipped mount");
 
-            var registry = new GameSessionRegistry();
+            var registry = new GameSessionRegistry(
+                itemContent: TestItemContent.Content);
             registry.JoinMap(
                 session,
                 character.AccountId,
@@ -330,10 +331,12 @@ internal static partial class Program
                 EquipmentSlots.Mount,
                 "[14220,,,,,,1,1,0,1,0]");
             Check.True(
-                MountCatalog.TryGetEquippedRideDefinition(character, out var mount),
+                TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var mount),
                 "atomic Ride fixture resolves its equipped mount");
 
-            var registry = new GameSessionRegistry(store);
+            var registry = new GameSessionRegistry(
+                store,
+                itemContent: TestItemContent.Content);
             registry.JoinMap(
                 session,
                 character.AccountId,

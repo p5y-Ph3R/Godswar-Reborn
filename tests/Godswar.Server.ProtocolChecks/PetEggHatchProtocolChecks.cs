@@ -102,7 +102,7 @@ internal static class PetEggHatchProtocolChecks
         var expected = PacketBuilder
             .KitBagDetailPages(updated)
             .Concat(PacketBuilder.KitBagSlotIndexes(updated))
-            .Append(PacketBuilder.OwnedPetList([pet]))
+            .Append(PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet]))
             .ToArray();
 
         Check.Equal(1, executor.ActivateCount, "egg hatch persists once");
@@ -179,7 +179,7 @@ internal static class PetEggHatchProtocolChecks
         var expected = PacketBuilder
             .KitBagDetailPages(character)
             .Concat(PacketBuilder.KitBagSlotIndexes(character))
-            .Append(PacketBuilder.OwnedPetList([]))
+            .Append(PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, []))
             .ToArray();
 
         Check.Equal(

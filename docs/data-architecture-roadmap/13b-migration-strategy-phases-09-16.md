@@ -158,21 +158,20 @@ rehearsal, and declared business RPO/RTO remain Phase 13/15 deployment work.
 
 ## Phase 16 - Remove legacy persistence and temporary compatibility
 
-**B20A local implementation status (2026-07-31):** the exact production and
-operations dependency baseline is now frozen. It records 60 legacy data
-invocations, JSON/broad-store composition, bootstrap/projection dependencies,
-compiled-seed consumers, and capture-backed content while enforcing zero
-runtime access to research capture authority. This is a source ratchet, not a
-runtime zero-use observation. Account/authentication/session extraction is
-the next slice; JSON removal, schema archival, and the observation window
-remain open.
+**B20 status (2026-08-01):** B20A-G are implemented as repository/local
+foundations. Runtime composition is PostgreSQL-only, JSON is test-only,
+bootstrap/projections are cut over, and world/gameplay/item/pet content is
+published and process-pinned. B20H has a fail-closed local validator and
+runbook only. The real all-replica seven-day deployed zero-use observation,
+remaining broad-facade retirement, and final compatibility-schema deletion
+remain pending and unauthorized.
 
 - **Goal:** leave one production authority and no permanent dual path.
-- **Scope/tasks:** remove production `JsonGameStore`; remove broad `IGameStore` after all callers migrate; archive/drop obsolete views/columns only after measured no-read period; remove raw insecure auth from production; separate capture corpus.
-- **Likely files/modules:** `JsonGameStore*`, `IGameStore`, old handlers/config, legacy schema/capture adapters.
-- **Dependencies:** complete rollout, retention window, telemetry proving no use.
+- **Scope/tasks:** completed work removed production JSON authority, isolated captures, and contained raw authentication. Remaining work removes the broad `IGameStore` facade after its finite callers migrate and archives/drops obsolete schema only after the approved observation.
+- **Likely files/modules:** remaining `IGameStore`/`PostgresGameStore` compatibility paths, retirement baseline/telemetry, and legacy schema adapters.
+- **Dependencies:** approved all-replica 168-hour observation, reconciliation/restore evidence, prior-binary rollback expiry, and foreign-key dependency audit.
 - **Data migrations:** forward archive/drop with parity and backup gates.
-- **Acceptance criteria:** repository production profile cannot select JSON/raw insecure auth; all data loads from feature contracts; zero legacy reads during observation window.
+- **Acceptance criteria:** already enforced production profile cannot select JSON/raw insecure auth; final change additionally proves zero legacy invocations across the deployed window and leaves no unowned schema dependency.
 - **Tests:** clean install, upgraded install, rollback-compatible prior release, archive parity.
 - **Metrics:** legacy path invocation must remain zero; schema/storage size.
 - **Rollback:** restore archived data and compatibility adapter within declared window.

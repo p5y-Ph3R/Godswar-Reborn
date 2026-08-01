@@ -97,7 +97,7 @@ internal static partial class GearEnhancementStateChecks
                 stagedSelections.Catalyst.KitBagSlot,
                 stagedSelections.Catalyst.ExpectedItem));
         CheckRejectedUnchanged(
-            GearEnhancementPlanner.Create(replacedGearBag, replacedGearRequest),
+            GearEnhancementPlanner.Create(TestItemContent.Catalog, replacedGearBag, replacedGearRequest),
             replacedGearBag,
             GearEnhancementStatus.StaleSelection,
             "a replacement item in a staged native slot is never silently enhanced");
@@ -220,7 +220,7 @@ internal static partial class GearEnhancementStateChecks
             GearEnhancementSlotSelection.Capture(kitBag, context.GearKitBagSlot),
             GearEnhancementSlotSelection.Capture(kitBag, context.AttributeStoneKitBagSlot),
             GearEnhancementSlotSelection.Capture(kitBag, context.CatalystKitBagSlot));
-        var exactAttempt = GearEnhancementPlanner.Create(kitBag, request);
+        var exactAttempt = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, request);
         Check.True(
             exactAttempt.Committed,
             $"the observed Short Sword + QP1 + Strength Stone attempt succeeds ({exactAttempt.RejectionReason})");
@@ -243,7 +243,7 @@ internal static partial class GearEnhancementStateChecks
             GearEnhancementSlotSelection.Capture(kitBag, wrongOrder.GearKitBagSlot),
             GearEnhancementSlotSelection.Capture(kitBag, wrongOrder.AttributeStoneKitBagSlot),
             GearEnhancementSlotSelection.Capture(kitBag, wrongOrder.CatalystKitBagSlot));
-        var wrongOrderResult = GearEnhancementPlanner.Create(kitBag, wrongOrderRequest);
+        var wrongOrderResult = GearEnhancementPlanner.Create(TestItemContent.Catalog, kitBag, wrongOrderRequest);
         CheckRejectedUnchanged(
             wrongOrderResult,
             kitBag,

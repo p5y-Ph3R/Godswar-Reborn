@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Items;
+
 namespace Godswar.Server.State;
 
 internal static class EquipmentSlots
@@ -46,13 +48,6 @@ internal static class EquipmentSlots
         "mountamulet",
         "mount"
     };
-
-    private static readonly IReadOnlyDictionary<uint, int> AuthoritativeSlots = ItemTemplateSeeds.All
-        .Where(static template =>
-            template.Id > 0 &&
-            IsEquipmentKind(template.Kind) &&
-            IsEquipmentSlot(template.EquipmentSlot))
-        .ToDictionary(static template => (uint)template.Id, static template => (int)template.EquipmentSlot);
 
     public static string ClearSlot(string equipment, byte profession, int slot)
     {
@@ -107,14 +102,30 @@ internal static class EquipmentSlots
         return kind is not null && EquipmentKinds.Contains(kind);
     }
 
-    public static bool TryGetAuthoritativeSlot(uint itemId, out int slot)
+    public static bool TryGetAuthoritativeSlot(
+        IItemTemplateCatalog templates,
+        uint itemId,
+        out int slot)
     {
-        return AuthoritativeSlots.TryGetValue(itemId, out slot);
+        ArgumentNullException.ThrowIfNull(templates);
+        if (templates.TryGet(itemId, out var template) &&
+            IsEquipmentKind(template.Kind) &&
+            IsEquipmentSlot(template.EquipmentSlot))
+        {
+            slot = template.EquipmentSlot;
+            return true;
+        }
+
+        slot = -1;
+        return false;
     }
 
-    public static int ResolveSlotForItem(uint itemId, int requestedSlot)
+    public static int ResolveSlotForItem(
+        IItemTemplateCatalog templates,
+        uint itemId,
+        int requestedSlot)
     {
-        if (!TryGetAuthoritativeSlot(itemId, out var slot))
+        if (!TryGetAuthoritativeSlot(templates, itemId, out var slot))
         {
             return -1;
         }
@@ -165,6 +176,34 @@ internal static class EquipmentSlots
         }
 
         return IsEquipmentSlot(defaultSlot) ? defaultSlot : -1;
+    }
+
+    public static int ResolveSlotForItem(
+        IItemTemplateCatalog templates,
+        uint itemId,
+        int requestedSlot,
+        string equipment,
+        byte profession,
+        int defaultSlot)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        if (!TryGetAuthoritativeSlot(
+                templates,
+                itemId,
+                out var authoritativeSlot) ||
+            (authoritativeSlot != defaultSlot &&
+             !(authoritativeSlot is Ring1 or Ring2 &&
+               defaultSlot is Ring1 or Ring2)))
+        {
+            return -1;
+        }
+
+        return ResolveSlotForItem(
+            itemId,
+            requestedSlot,
+            equipment,
+            profession,
+            authoritativeSlot);
     }
 
     private static List<string> Normalize(string equipment, byte profession)

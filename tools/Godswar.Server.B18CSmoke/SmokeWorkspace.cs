@@ -42,7 +42,6 @@ internal sealed class SmokeWorkspace
         WorkerOptionsPath = Path.Combine(
             directoryPath,
             "worker.json");
-        WorkerDataPath = Path.Combine(directoryPath, "data");
     }
 
     public string DirectoryPath { get; }
@@ -50,8 +49,6 @@ internal sealed class SmokeWorkspace
     public SmokeEndpoints Endpoints { get; }
 
     public string RelayOptionsPath { get; }
-
-    public string WorkerDataPath { get; }
 
     public string WorkerOptionsPath { get; }
 
@@ -100,15 +97,18 @@ internal sealed class SmokeWorkspace
     }
 
     public IReadOnlyDictionary<string, string>
-        CreateWorkerEnvironment()
+        CreateWorkerEnvironment(string postgresConnectionString)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            postgresConnectionString);
         var invariant = CultureInfo.InvariantCulture;
         return new Dictionary<string, string>(
             StringComparer.OrdinalIgnoreCase)
         {
             ["GODSWAR_RUNTIME_PROFILE"] = "LocalDevelopment",
-            ["GODSWAR_STORAGE_PROVIDER"] = "Json",
-            ["GODSWAR_DATA_PATH"] = WorkerDataPath,
+            ["GODSWAR_STORAGE_PROVIDER"] = "Postgres",
+            ["GODSWAR_POSTGRES_CONNECTION_STRING"] =
+                postgresConnectionString,
             ["GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION"] =
                 "true",
             ["GODSWAR_LOGIN_BIND_HOST"] = "127.0.0.1",
@@ -247,13 +247,16 @@ internal sealed class SmokeWorkspace
                 },
                 zodiacEnergy = new { enabled = false }
             },
-            dataPath = WorkerDataPath,
             secure = new { enabled = false },
             authentication = new
             {
                 allowLegacyRawAuthentication = true
             },
-            storage = new { provider = "Json" },
+            storage = new
+            {
+                provider = "Postgres",
+                postgresConnectionString = string.Empty
+            },
             operations = new
             {
                 management = new

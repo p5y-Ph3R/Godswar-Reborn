@@ -29,6 +29,7 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
     private readonly TimeSpan _corpseDespawnDelay;
     private readonly TimeSpan _respawnDelay;
     private readonly Guid _runtimeInstanceId;
+    private readonly WorldBossCatalog _worldBossCatalog;
 
     public MonsterMapRuntime(
         byte mapId,
@@ -37,12 +38,14 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
         TimeSpan? corpseDespawnDelay = null,
         TimeSpan? respawnDelay = null,
         WorldBossRespawnState? activeWorldBossRespawn = null,
-        Guid? runtimeInstanceId = null)
+        Guid? runtimeInstanceId = null,
+        WorldBossCatalog? worldBossCatalog = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         MapId = mapId;
         _runtimeInstanceId =
             MonsterRuntimeIdentity.Resolve(runtimeInstanceId);
+        _worldBossCatalog = worldBossCatalog ?? WorldBossCatalog.Empty;
         _corpseDespawnDelay = corpseDespawnDelay ?? DefaultCorpseDespawnDelay;
         _respawnDelay = respawnDelay ?? DefaultRespawnDelay;
         if (_corpseDespawnDelay <= TimeSpan.Zero)
@@ -177,11 +180,10 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                 monster.MovementTicks = 0;
                 monster.RemainingMovementTicks = 0;
                 monster.DespawnAt = now + _corpseDespawnDelay;
-                var respawnDelay = WorldBossCatalog.Default.IsWorldBoss(
+                var respawnDelay = _worldBossCatalog.ResolveRespawnInterval(
                     MapId,
-                    monster.Definition.TemplateKey)
-                    ? WorldBossCatalog.Default.RespawnInterval
-                    : _respawnDelay;
+                    monster.Definition.TemplateKey,
+                    _respawnDelay);
                 monster.RespawnAt = now + respawnDelay;
                 _pendingUpdates.Enqueue(new MonsterRuntimeUpdate(
                     MonsterRuntimeUpdateKind.Died,

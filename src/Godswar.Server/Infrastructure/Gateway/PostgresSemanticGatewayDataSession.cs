@@ -1,8 +1,8 @@
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Gateway;
 using Godswar.Server.Infrastructure.Accounts;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Security.Authentication;
-using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Gateway;
@@ -33,8 +33,9 @@ internal sealed class PostgresSemanticGatewayDataSession :
             options.Storage.PostgresConnectionString);
         try
         {
-            await new PostgresSchemaMigrationRunner(dataSource)
-                .InitializeGodswarSchemaAsync(cancellationToken);
+            await PostgresSchemaStartup.InitializeAsync(
+                dataSource,
+                cancellationToken);
             var accounts = new PostgresAccountStore(dataSource);
             return new PostgresSemanticGatewayDataSession(
                 dataSource,

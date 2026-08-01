@@ -66,6 +66,7 @@ internal static partial class PostgresGearEnhancementIntegrationChecks
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
+            TestItemContent.Content,
             probe);
 
     private static async Task<GearEnhancementExecutionResult>

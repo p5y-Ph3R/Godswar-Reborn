@@ -6,22 +6,12 @@ namespace Godswar.Server;
 internal static class ServerWorldContentComposition
 {
     public static async ValueTask<IWorldContentReader?> TryLoadAsync(
-        ValidatedServerRuntimeProfile runtimeProfile,
         ServerOptions options)
     {
         try
         {
-            return runtimeProfile.StorageProvider switch
-            {
-                GameStorageProviderKind.Postgres =>
-                    await PostgresWorldContentBootstrapper.LoadAsync(
-                        options.Storage.PostgresConnectionString),
-                GameStorageProviderKind.Json =>
-                    await GeneratedWorldContentReaderLoader.LoadAsync(),
-                _ => throw new InvalidOperationException(
-                    "Validated storage provider has no " +
-                    "world-content reader.")
-            };
+            return await PostgresWorldContentBootstrapper.LoadAsync(
+                options.Storage.PostgresConnectionString);
         }
         catch (WorldContentUnavailableException error)
         {

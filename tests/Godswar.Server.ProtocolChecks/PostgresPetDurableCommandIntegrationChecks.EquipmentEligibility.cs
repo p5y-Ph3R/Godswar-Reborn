@@ -12,11 +12,14 @@ internal static partial class
 {
     private static async Task
         AssertAuthoritativeEquipmentEligibilityAsync(
-            NpgsqlDataSource dataSource)
+            NpgsqlDataSource dataSource,
+            GameplayItemContent itemContent)
     {
         var executor = new PostgresPetDurableCommandExecutor(
             dataSource,
-            new PostgresOutboxDispatcherOptions());
+            new PostgresOutboxDispatcherOptions(),
+            itemContent,
+            PetContentBaseline.Create());
         await AssertEquipmentRejectedAsync(
             dataSource,
             executor,

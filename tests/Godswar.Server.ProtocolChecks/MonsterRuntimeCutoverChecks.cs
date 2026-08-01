@@ -103,7 +103,9 @@ internal static class MonsterRuntimeCutoverChecks
             {
               "runtimeProfile": "LocalDevelopment",
               "storage": {
-                "provider": "Json"
+                "provider": "Postgres",
+                "postgresConnectionString":
+                  "Host=127.0.0.1;Database=monster-runtime-check"
               },
               "authentication": {
                 "allowLegacyRawAuthentication": true

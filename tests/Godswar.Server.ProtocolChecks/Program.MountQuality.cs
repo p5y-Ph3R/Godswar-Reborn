@@ -17,7 +17,7 @@ internal static partial class Program
             EquipmentSlots.Mount,
             "[16204,,,,,,1,25,1,1,0]");
         Check.True(
-            MountCatalog.TryGetEquippedRideDefinition(character, out var commonErebus),
+            TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var commonErebus),
             "common level-80 Erebus resolves its quality-aware Ride definition");
         Check.Equal(0.24f, commonErebus.SpeedBonus, "common Erebus keeps its native speed");
 
@@ -27,7 +27,7 @@ internal static partial class Program
             EquipmentSlots.Mount,
             "[16204,,,,,,20,25,1,1,0]");
         Check.True(
-            MountCatalog.TryGetEquippedRideDefinition(character, out var boundlessErebus),
+            TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var boundlessErebus),
             "Boundless level-80 Erebus resolves its quality-aware Ride definition");
         Check.Equal(
             0.25f,

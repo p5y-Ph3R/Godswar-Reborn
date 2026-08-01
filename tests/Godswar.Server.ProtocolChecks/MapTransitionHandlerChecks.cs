@@ -58,7 +58,8 @@ internal static partial class MapTransitionHandlerChecks
             store: null,
             zodiacEnergyOptions: null,
             monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-            playerRuntimeMode: PlayerRuntimeMode.Ecs);
+            playerRuntimeMode: PlayerRuntimeMode.Ecs,
+            gameplayCatalogs: GameplayContentTestFixtures.Runtime);
         var viewer = CreateCharacter(
             ViewerCharacterId,
             ViewerAccountId,
@@ -91,7 +92,7 @@ internal static partial class MapTransitionHandlerChecks
             store,
             registry,
             character);
-        var catalog = MapTraversalCatalog.Default;
+        var catalog = GameplayContentTestFixtures.Runtime.MapTraversal;
         var outward = Resolve(
             catalog,
             SpartaMapId,
