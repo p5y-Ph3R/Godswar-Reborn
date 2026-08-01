@@ -96,8 +96,41 @@ internal static class PlayerOwnershipArchitectureChecks
         AssertLeaveBroadcastFence(repositoryRoot);
         AssertGameplayPacketFence(repositoryRoot);
         AssertGameplayEffectFences(repositoryRoot);
+        AssertLegacyMutationCompatibilityPolicy();
 
         return Task.CompletedTask;
+    }
+
+    private static void AssertLegacyMutationCompatibilityPolicy()
+    {
+        Check.True(
+            Godswar.Server.Game.GameClientHandler.
+                CanUseLegacyPlayerMutationFallback(
+                    requiresDurablePlayerCommands: true,
+                    isSecureSession: false,
+                    hasLocalLegacyAuthenticationAccess: true),
+            "explicit local raw-TCP access retains legacy mutations during migration");
+        Check.True(
+            Godswar.Server.Game.GameClientHandler.
+                CanUseLegacyPlayerMutationFallback(
+                    requiresDurablePlayerCommands: false,
+                    isSecureSession: true,
+                    hasLocalLegacyAuthenticationAccess: false),
+            "a runtime without durable command requirements retains its fallback");
+        Check.True(
+            !Godswar.Server.Game.GameClientHandler.
+                CanUseLegacyPlayerMutationFallback(
+                    requiresDurablePlayerCommands: true,
+                    isSecureSession: true,
+                    hasLocalLegacyAuthenticationAccess: true),
+            "secure sessions cannot downgrade to legacy player mutations");
+        Check.True(
+            !Godswar.Server.Game.GameClientHandler.
+                CanUseLegacyPlayerMutationFallback(
+                    requiresDurablePlayerCommands: true,
+                    isSecureSession: false,
+                    hasLocalLegacyAuthenticationAccess: false),
+            "raw sessions without the validated local capability fail closed");
     }
 
     private static void AssertZodiacLevelStoreFence(

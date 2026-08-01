@@ -158,7 +158,10 @@ internal sealed partial class GameClientHandler
     private bool AllowLegacyPlayerMutationFallback(
         string operation)
     {
-        if (!_requiresDurablePlayerCommands)
+        if (CanUseLegacyPlayerMutationFallback(
+                _requiresDurablePlayerCommands,
+                _session.IsSecure,
+                _legacyAuthenticationAccess is not null))
         {
             return true;
         }
@@ -169,6 +172,17 @@ internal sealed partial class GameClientHandler
         _session.Disconnect();
         return false;
     }
+
+    internal static bool CanUseLegacyPlayerMutationFallback(
+        bool requiresDurablePlayerCommands,
+        bool isSecureSession,
+        bool hasLocalLegacyAuthenticationAccess) =>
+        // The capability is issued only to the explicitly enabled
+        // LocalDevelopment raw-TCP rollback profile. Secure and production
+        // sessions never receive it and therefore cannot bypass the durable
+        // command boundary.
+        !requiresDurablePlayerCommands ||
+        (!isSecureSession && hasLocalLegacyAuthenticationAccess);
 
     private static bool TryGetCharacterOwnership(
         GameCharacter character,
