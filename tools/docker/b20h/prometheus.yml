@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 5s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/b20h-rules.yml
+
+scrape_configs:
+  - job_name: godswar-b20h
+    scheme: http
+    metrics_path: /metrics
+    sample_limit: 4096
+    label_limit: 16
+    label_name_length_limit: 128
+    label_value_length_limit: 128
+    body_size_limit: 2MB
+    static_configs:
+      - targets:
+          - 127.0.0.1:9090
+        labels:
+          realm: tempest
+          replica: tempest-world-01

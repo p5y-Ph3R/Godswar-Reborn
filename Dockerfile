@@ -16,6 +16,9 @@ RUN dotnet publish src/Godswar.Server/Godswar.Server.csproj \
 FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 WORKDIR /app
 
+ARG GODSWAR_SOURCE_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GODSWAR_SOURCE_COMMIT
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*

@@ -233,6 +233,10 @@ jobs:
         shell: pwsh
         run: ./tools/TestB20RetirementEvidence.ps1 -SelfTest
 
+      - name: B20H Docker observation configuration gate
+        shell: pwsh
+        run: ./tools/TestB20HDockerObservation.ps1
+
       - name: Mandatory isolated B19 reconciliation recovery gate
         shell: pwsh
         run: |

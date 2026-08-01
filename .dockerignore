@@ -19,3 +19,8 @@ origin_disasm.txt
 **/__pycache__/
 *.log
 *.tmp
+appsettings.Local.json
+appsettings.*.local.json
+*.pfx
+*.p12
+*.key

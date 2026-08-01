@@ -1,0 +1,88 @@
+groups:
+  - name: reborn-b20h-retirement-window
+    interval: 30s
+    rules:
+      - alert: B20HTelemetryGap
+        expr: max_over_time(up{job="godswar-b20h"}[4m30s]) < 1
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: B20H has no successful scrape inside the allowed gap.
+
+      - alert: B20HTargetMissing
+        expr: absent_over_time(up{job="godswar-b20h"}[4m30s])
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: The B20H game-server target disappeared.
+
+      - alert: B20HObserverMissing
+        expr: absent_over_time(godswar_legacy_persistence_observer_ready{job="godswar-b20h"}[1m])
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Legacy-persistence readiness is no longer published.
+
+      - alert: B20HObserverNotReady
+        expr: min_over_time(godswar_legacy_persistence_observer_ready{job="godswar-b20h"}[1m]) < 1 or max_over_time(godswar_legacy_persistence_observer_ready{job="godswar-b20h"}[1m]) > 1
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: Legacy-persistence observation is not ready.
+
+      - alert: B20HLegacyPersistenceInvoked
+        expr: sum(godswar_legacy_persistence_invocations_total{job="godswar-b20h"}) > 0
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: A retired legacy-persistence path was invoked.
+
+      - alert: B20HServerProcessRestarted
+        expr: changes(godswar_server_operations_process_start_time_seconds{job="godswar-b20h"}[15d]) > 0
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: The observed server process restarted during the window.
+
+      - alert: B20HProcessMetricMissing
+        expr: absent_over_time(godswar_server_operations_process_start_time_seconds{job="godswar-b20h"}[1m])
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: The process-incarnation metric is no longer published.
+
+      - alert: B20HLegacyCounterReset
+        expr: sum(resets(godswar_legacy_persistence_invocations_total{job="godswar-b20h"}[15d])) > 0
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: A legacy-persistence counter reset was observed.
+
+      - alert: B20HMetricsCollectorPressure
+        expr: sum(godswar_server_metrics_collector{job="godswar-b20h",state=~"dropped_.*|truncated_snapshots"}) > 0
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: The bounded server metrics collector dropped evidence.
+
+      - alert: B20HMetricsCollectorMissing
+        expr: >-
+          (count(godswar_server_metrics_collector{job="godswar-b20h",state="dropped_instruments"}) or vector(0)) != 1
+          or (count(godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series"}) or vector(0)) != 1
+          or (count(godswar_server_metrics_collector{job="godswar-b20h",state="dropped_tags"}) or vector(0)) != 1
+          or (count(godswar_server_metrics_collector{job="godswar-b20h",state="dropped_measurements"}) or vector(0)) != 1
+          or (count(godswar_server_metrics_collector{job="godswar-b20h",state="truncated_snapshots"}) or vector(0)) != 1
+        labels:
+          severity: critical
+          gate: b20h
+        annotations:
+          summary: One or more bounded collector evidence series disappeared.

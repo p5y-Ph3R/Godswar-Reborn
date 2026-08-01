@@ -1,0 +1,303 @@
+rule_files:
+  - b20h-rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: healthy-observation-does-not-alert
+    interval: 30s
+    input_series:
+      - series: 'up{job="godswar-b20h"}'
+        values: '1+0x10'
+      - series: 'godswar_legacy_persistence_observer_ready{job="godswar-b20h"}'
+        values: '1+0x10'
+      - series: 'godswar_legacy_persistence_invocations_total{job="godswar-b20h",operation="character_load"}'
+        values: '0+0x10'
+      - series: 'godswar_server_operations_process_start_time_seconds{job="godswar-b20h"}'
+        values: '1774000123.456+0x10'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_instruments"}'
+        values: '0+0x10'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series"}'
+        values: '0+0x10'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_tags"}'
+        values: '0+0x10'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_measurements"}'
+        values: '0+0x10'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="truncated_snapshots"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: B20HTelemetryGap
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HTargetMissing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HObserverMissing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HObserverNotReady
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HLegacyPersistenceInvoked
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HServerProcessRestarted
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HProcessMetricMissing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HLegacyCounterReset
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HMetricsCollectorPressure
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HMetricsCollectorMissing
+        exp_alerts: []
+
+  - name: failed-scrapes-alert-before-and-clear-at-300-second-recovery
+    interval: 30s
+    input_series:
+      - series: 'up{job="godswar-b20h"}'
+        values: '1 0 0 0 0 0 0 0 0 0 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: B20HTelemetryGap
+        exp_alerts: []
+      - eval_time: 4m30s
+        alertname: B20HTelemetryGap
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: B20H has no successful scrape inside the allowed gap.
+      - eval_time: 5m
+        alertname: B20HTelemetryGap
+        exp_alerts: []
+
+  - name: failed-scrapes-over-300-seconds-remain-alerting-at-next-tick
+    interval: 30s
+    input_series:
+      - series: 'up{job="godswar-b20h"}'
+        values: '1 0 0 0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 5m30s
+        alertname: B20HTelemetryGap
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: B20H has no successful scrape inside the allowed gap.
+
+  - name: entirely-missing-target-and-evidence-series-fail-closed
+    interval: 30s
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: B20HTelemetryGap
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: B20HTargetMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: The B20H game-server target disappeared.
+      - eval_time: 5m
+        alertname: B20HObserverMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: Legacy-persistence readiness is no longer published.
+      - eval_time: 5m
+        alertname: B20HProcessMetricMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: The process-incarnation metric is no longer published.
+      - eval_time: 5m
+        alertname: B20HMetricsCollectorMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: One or more bounded collector evidence series disappeared.
+
+  - name: readiness-zero-is-not-ready
+    interval: 30s
+    input_series:
+      - series: 'godswar_legacy_persistence_observer_ready{job="godswar-b20h"}'
+        values: '0+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HObserverNotReady
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: Legacy-persistence observation is not ready.
+
+  - name: readiness-two-is-not-ready
+    interval: 30s
+    input_series:
+      - series: 'godswar_legacy_persistence_observer_ready{job="godswar-b20h"}'
+        values: '2+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HObserverNotReady
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: Legacy-persistence observation is not ready.
+
+  - name: readiness-mixed-one-and-two-is-not-ready
+    interval: 30s
+    input_series:
+      - series: 'godswar_legacy_persistence_observer_ready{job="godswar-b20h"}'
+        values: '1 1 1 2 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HObserverNotReady
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: Legacy-persistence observation is not ready.
+
+  - name: legacy-invocation-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_legacy_persistence_invocations_total{job="godswar-b20h",operation="character_load"}'
+        values: '0 0 1 1 1'
+      - series: 'godswar_legacy_persistence_invocations_total{job="godswar-b20h",operation="inventory_save"}'
+        values: '0+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HLegacyPersistenceInvoked
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: A retired legacy-persistence path was invoked.
+
+  - name: legacy-counter-reset-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_legacy_persistence_invocations_total{job="godswar-b20h",operation="character_load"}'
+        values: '0 2 4 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HLegacyCounterReset
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: A legacy-persistence counter reset was observed.
+
+  - name: process-incarnation-change-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_server_operations_process_start_time_seconds{job="godswar-b20h"}'
+        values: '1774000123.456 1774000123.456 1774000123.456 1774000999.789 1774000999.789'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HServerProcessRestarted
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              job: godswar-b20h
+              severity: critical
+            exp_annotations:
+              summary: The observed server process restarted during the window.
+
+  - name: nonzero-collector-evidence-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_instruments"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_tags"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_measurements"}'
+        values: '0 0 0 1 1'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="truncated_snapshots"}'
+        values: '0+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HMetricsCollectorPressure
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: The bounded server metrics collector dropped evidence.
+
+  - name: one-missing-collector-series-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_instruments"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_tags"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_measurements"}'
+        values: '0+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HMetricsCollectorMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: One or more bounded collector evidence series disappeared.
+
+  - name: extra-collector-series-fails-closed
+    interval: 30s
+    input_series:
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_instruments"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_tags"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_measurements"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="truncated_snapshots"}'
+        values: '0+0x4'
+      - series: 'godswar_server_metrics_collector{job="godswar-b20h",state="dropped_series",replica="unexpected-duplicate"}'
+        values: '0+0x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: B20HMetricsCollectorMissing
+        exp_alerts:
+          - exp_labels:
+              gate: b20h
+              severity: critical
+            exp_annotations:
+              summary: One or more bounded collector evidence series disappeared.

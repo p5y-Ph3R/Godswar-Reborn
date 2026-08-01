@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Godswar.Server.Operations.Observability;
 
@@ -6,9 +8,12 @@ namespace Godswar.Server.Operations;
 internal sealed class ServerOperationsMetrics : IDisposable
 {
     public const string MeterName = "Godswar.Server.Operations";
+    public const string ProcessStartTimeInstrumentName =
+        "godswar.server.operations.process.start.time.seconds";
 
     private readonly Meter _meter = new(MeterName);
     private readonly ManagementRequestObserver? _managementObserver;
+    private readonly double _processStartUnixSeconds;
     private readonly ServerOperationalState _state;
     private readonly CriticalTaskSupervisor _tasks;
     private readonly Counter<long> _managementRequests;
@@ -17,14 +22,36 @@ internal sealed class ServerOperationsMetrics : IDisposable
         ServerOperationalState state,
         CriticalTaskSupervisor tasks,
         ManagementRequestObserver? managementObserver = null)
+        : this(
+            state,
+            tasks,
+            managementObserver,
+            CaptureProcessStartTimeUtc)
+    {
+    }
+
+    internal ServerOperationsMetrics(
+        ServerOperationalState state,
+        CriticalTaskSupervisor tasks,
+        ManagementRequestObserver? managementObserver,
+        Func<DateTimeOffset> processStartTimeProvider)
     {
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _tasks = tasks ?? throw new ArgumentNullException(nameof(tasks));
         _managementObserver = managementObserver;
+        ArgumentNullException.ThrowIfNull(processStartTimeProvider);
+        _processStartUnixSeconds =
+            processStartTimeProvider().ToUnixTimeMilliseconds() / 1000d;
         _managementRequests = _meter.CreateCounter<long>(
             "godswar.server.operations.management.requests",
             "{request}",
             "Management requests by finite route and outcome.");
+        _meter.CreateObservableGauge(
+            ProcessStartTimeInstrumentName,
+            () => _processStartUnixSeconds,
+            "s",
+            "Unix timestamp, with millisecond precision, when the " +
+            "game-server process started.");
         _meter.CreateObservableGauge(
             "godswar.server.operations.readiness",
             ObserveReadiness,
@@ -90,6 +117,22 @@ internal sealed class ServerOperationsMetrics : IDisposable
                 task.State == CriticalTaskState.Running ? 1 : 0,
                 new("task", task.Kind.ToProtocolValue()),
                 new("state", task.State.ToProtocolValue()));
+        }
+    }
+
+    private static DateTimeOffset CaptureProcessStartTimeUtc()
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            return new DateTimeOffset(process.StartTime.ToUniversalTime());
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            NotSupportedException or
+            Win32Exception)
+        {
+            return TimeProvider.System.GetUtcNow();
         }
     }
 

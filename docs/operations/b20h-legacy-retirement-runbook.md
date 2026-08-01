@@ -100,6 +100,55 @@ or mismatched checksums. Protecting the evidence directory and its approval
 record remains an operator responsibility; a checksum is not an identity or
 signature.
 
+## Local Docker alpha observation
+
+The main `reborn` Compose project runs the authoritative PostgreSQL database
+in the durable `godswar-postgres-data` named volume. Redis is deliberately not
+part of this single-process observation: the separate B17 Redis Compose stack
+is disposable coordination test infrastructure and is not an authoritative
+player-data store.
+
+For an alpha rehearsal, the opt-in `b20h-observation` profile runs a pinned
+Prometheus sidecar in the server's network namespace. It can reach the private
+`127.0.0.1:9090/metrics` endpoint without publishing either the management
+endpoint or Prometheus to the host. Samples are written beneath the untracked
+evidence directory for 15 days. Alerts fail closed on a telemetry gap, missing
+or non-ready observer, legacy invocation, process/counter reset, or bounded
+collector drop.
+
+Start only from a clean, committed tree. The start command records approval,
+builds the exact commit into the OCI image label, recreates the server while
+preserving the PostgreSQL named volume, verifies the first stored scrape, and
+then records T0:
+
+```powershell
+./tools/TestB20HDockerObservation.ps1
+./tools/StartB20HDockerObservation.ps1 `
+  -ChangeId alpha-b20h-20260801 `
+  -ApprovedByRole project-owner `
+  -AllowMutation
+```
+
+Check the live state without exposing a port, and export a provisional
+telemetry calculation at any time:
+
+```powershell
+./tools/GetB20HDockerObservation.ps1
+./tools/ExportB20HDockerObservationTelemetry.ps1
+```
+
+Keep Docker and the host awake. Do not rebuild, recreate, or restart the game
+server during the window. Source work may continue, but deploying it starts a
+new process and invalidates the current window. Never run `docker compose down
+-v`; that would delete PostgreSQL player data. Exercise every workload listed
+above, including at least two world-boss cycles.
+
+This local Docker window is useful alpha and operational-rehearsal evidence.
+It does not by itself prove every production replica or authorize final legacy
+deletion. Final authorization still requires a matching deployed release,
+release-owner approval, immutable external evidence, all six recovery gates,
+and acceptance by `TestB20RetirementEvidence.ps1`.
+
 ## Final deletion change
 
 Only after validation succeeds:
@@ -128,8 +177,9 @@ reverse DDL on player data.
 
 ## Current limitation
 
-This repository cannot truthfully complete the live observation itself. No
-production metrics backend, deployed replica inventory, approved change
-record, or seven-day workload window is available in source control. Until
-those external facts exist, B20H is ready to operate but final legacy deletion
-is intentionally not authorized.
+The repository can operate a durable single-replica Docker alpha observation,
+but it cannot manufacture the passage of seven days, workload coverage, or
+production facts in source control. A production metrics backend, complete
+deployed-replica inventory, approved external change record, and completed
+recovery gates are still external obligations. Until those facts exist, final
+legacy deletion is intentionally not authorized.

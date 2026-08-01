@@ -6,6 +6,7 @@ internal static class B13ObservabilityCoreChecks
     {
         await B13StructuredLoggingChecks.RunAsync();
         await B13PrometheusCollectorChecks.RunAsync();
+        await ServerOperationsMetricsChecks.RunAsync();
         await B13ServerActivityChecks.RunAsync();
     }
 }
