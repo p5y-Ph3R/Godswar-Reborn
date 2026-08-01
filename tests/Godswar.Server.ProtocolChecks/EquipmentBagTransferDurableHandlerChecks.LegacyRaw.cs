@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Protocol;
@@ -91,18 +92,105 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             "rejected raw transfer leaves the destination empty");
     }
 
+    private static async Task
+        CheckLocalRawTokenlessRightClickEquipRetainsCompatibilityAsync()
+    {
+        var petExecutor = new PetActivationExecutor();
+        await using var fixture = CreateLegacyRawFixture(
+            hasLocalLegacyAuthenticationAccess: true,
+            equipFromBag: true,
+            petDurableCommands: petExecutor);
+
+        await InvokePacketAsync(
+            fixture.Handler,
+            CreateBreakItemPacket());
+
+        Check.Equal(
+            1,
+            fixture.Store.EquipCount,
+            "validated local raw right-click invokes compatibility equip once");
+        Check.Equal(
+            0,
+            petExecutor.ExecuteCount,
+            "tokenless local raw gear is not misclassified as a pet command");
+        Check.True(
+            !fixture.Transport.Disconnected,
+            "validated local raw right-click keeps the session connected");
+
+        var projected = GetFieldValue(
+                fixture.Handler,
+                "_character") as GameCharacter
+            ?? throw new InvalidOperationException(
+                "Local raw right-click lost its character projection.");
+        Check.Equal(
+            EquipmentItem,
+            EquipmentSlots.GetItem(
+                projected.Equipment,
+                projected.Profession,
+                EquipmentSlot),
+            "validated local raw right-click equips the complete weapon item");
+        Check.True(
+            KitBagSlots.GetItem(projected.KitBag, KitBagSlot).IsEmpty,
+            "validated local raw right-click clears the source bag slot");
+    }
+
+    private static async Task
+        CheckRawTokenlessRightClickEquipWithoutLocalAccessFailsClosedAsync()
+    {
+        var petExecutor = new PetActivationExecutor();
+        await using var fixture = CreateLegacyRawFixture(
+            hasLocalLegacyAuthenticationAccess: false,
+            equipFromBag: true,
+            petDurableCommands: petExecutor);
+
+        await InvokePacketAsync(
+            fixture.Handler,
+            CreateBreakItemPacket());
+
+        Check.Equal(
+            0,
+            fixture.Store.EquipCount,
+            "raw right-click without local access never reaches compatibility equip");
+        Check.Equal(
+            0,
+            petExecutor.ExecuteCount,
+            "tokenless raw gear never enters the identified pet command path");
+        Check.True(
+            fixture.Transport.Disconnected,
+            "raw right-click without local access disconnects");
+
+        var projected = GetFieldValue(
+                fixture.Handler,
+                "_character") as GameCharacter
+            ?? throw new InvalidOperationException(
+                "Rejected raw right-click lost its character projection.");
+        Check.Equal(
+            0u,
+            EquipmentSlots.GetItemId(
+                projected.Equipment,
+                projected.Profession,
+                EquipmentSlot),
+            "rejected raw right-click leaves the equipment slot empty");
+        Check.Equal(
+            EquipmentItem,
+            KitBagSlots.GetItem(projected.KitBag, KitBagSlot),
+            "rejected raw right-click leaves the weapon in the bag");
+    }
+
     private static LegacyRawTransferFixture CreateLegacyRawFixture(
-        bool hasLocalLegacyAuthenticationAccess)
+        bool hasLocalLegacyAuthenticationAccess,
+        bool equipFromBag = false,
+        IPetDurableCommandExecutor? petDurableCommands = null)
     {
         var baseSnapshot =
             CharacterSnapshotContractChecks.CreateValidSnapshot();
         var liveSnapshot = WithTransferState(
             baseSnapshot,
-            UnequipBeforeState,
+            equipFromBag ? UnequipAfterState : UnequipBeforeState,
             physicalAttack: 400);
         var movedSnapshot = WithTransferState(
             baseSnapshot,
-            UnequipAfterState,
+            equipFromBag ? UnequipBeforeState : UnequipAfterState,
             PersistedPhysicalAttack);
         var live = CharacterLoadSnapshotHydrator
             .Hydrate(liveSnapshot)?.Character
@@ -126,7 +214,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             objectId: 0x0000_1448);
         var store = new TransferStore
         {
-            UnequipResult = moved
+            UnequipResult = moved,
+            EquipResult = moved
         };
         var snapshotReader = new TransferSnapshotReader(
             movedSnapshot,
@@ -146,7 +235,9 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             legacyAuthenticationAccess: localAccess,
-            itemContent: TestItemContent.Content);
+            itemContent: TestItemContent.Content,
+            petContent: PetContentTestCatalog.Instance,
+            petDurableCommands: petDurableCommands);
         SetField(
             handler,
             "_account",

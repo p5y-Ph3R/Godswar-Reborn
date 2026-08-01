@@ -22,6 +22,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         await CheckUnsupportedLengthCannotDowngradeAsync();
         await CheckSecureTokenlessTransferFailsClosedAsync();
         await CheckLocalRawTokenlessUnequipRetainsCompatibilityAsync();
+        await CheckLocalRawTokenlessRightClickEquipRetainsCompatibilityAsync();
+        await CheckRawTokenlessRightClickEquipWithoutLocalAccessFailsClosedAsync();
         await CheckRawTokenlessUnequipWithoutLocalAccessFailsClosedAsync();
         await CheckOpcode10051CompatibilityAndAmbiguityAsync();
         await CheckActiveRideBlocksDurableRightClickMountAsync();

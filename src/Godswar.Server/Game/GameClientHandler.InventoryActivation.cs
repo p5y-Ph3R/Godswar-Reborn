@@ -49,15 +49,15 @@ internal sealed partial class GameClientHandler
                 itemId,
                 out var authoritativeEquipmentSlot);
 
-        if (_session.IsSecure || _petDurableCommands is not null)
+        if (_session.IsSecure)
         {
             // Opcode 10051 is shared by right-click equipment activation and
-            // pet-egg hatching. Until the client supplies a truthful action
-            // discriminator, the secure request cannot be routed to either
-            // durable aggregate without guessing. Never downgrade secure or
-            // otherwise identified traffic into either compatibility
-            // mutation. Unidentified raw pet eggs fail closed below; only
-            // the separate equipment compatibility path remains available.
+            // pet-egg hatching. The secure shim identifies the operation as
+            // a generic bag-item activation; the server then classifies the
+            // locked authoritative item. A tokenless secure request is an
+            // identity downgrade and must never reach compatibility logic.
+            // Validated local raw traffic may still use the equipment-only
+            // compatibility path below while the legacy transport remains.
             Console.WriteLine(
                 "[equip-re] BreakItem ignored: operation identity is " +
                 "ambiguous between equipment activation and pet hatch");
