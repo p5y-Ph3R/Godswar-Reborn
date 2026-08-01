@@ -336,6 +336,17 @@ try {
             $inputHashReceipt $baseEnvironmentPath $redisEnvironmentPath) `
         'Compose and Redis credential input hashes must round-trip exactly.'
 
+    $emptyLegacyEvidence = Get-B20LegacyEvidence `
+        -Series @() `
+        -StartMilliseconds 0 `
+        -ConfirmationMilliseconds 1000 `
+        -WindowCovered $true
+    Assert-Condition `
+        ($emptyLegacyEvidence.Maximum -eq 0 -and
+            $emptyLegacyEvidence.Resets -eq 0 -and
+            $emptyLegacyEvidence.MissingConfirmation -eq 0) `
+        'An absent lazy legacy counter must produce zero evidence.'
+
     Invoke-B20InvalidationSelfTest $temporaryRoot $PSScriptRoot
 
     if (-not $SkipPromtool) {

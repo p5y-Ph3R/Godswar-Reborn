@@ -134,7 +134,9 @@ function Get-B20RawSeries {
 
 function Get-B20LegacyEvidence {
     param(
-        [Parameter(Mandatory)][object[]]$Series,
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Series,
         [Parameter(Mandatory)][long]$StartMilliseconds,
         [Parameter(Mandatory)][long]$ConfirmationMilliseconds,
         [Parameter(Mandatory)][bool]$WindowCovered
