@@ -18,6 +18,8 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
             CoordinationOperationStatus.NotFound);
         await CheckDefinitivePlayerLeaseLossAsync(
             CoordinationOperationStatus.Unavailable);
+        await CheckTransientMissingWorkerRouteAsync();
+        await CheckInCallWorkerRouteRecoveryAsync();
         await CheckDuplicateWorkerIncarnationAsync();
         await CheckRealmContentAdmissionAsync();
         CheckMonotonicLeaseBudgetIgnoresWallClockOffset();

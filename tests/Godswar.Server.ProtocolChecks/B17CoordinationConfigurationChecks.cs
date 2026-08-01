@@ -16,6 +16,8 @@ internal static class B17CoordinationConfigurationChecks
         "GODSWAR_COORDINATION_PROVIDER",
         "GODSWAR_COORDINATION_ENVIRONMENT",
         "GODSWAR_REDIS_CONNECTION_STRING_ENVIRONMENT_VARIABLE",
+        CoordinationRuntimeOptions.DefaultConnectionStringEnvironmentVariable,
+        CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
         "GODSWAR_COORDINATION_CAPACITY",
         "GODSWAR_REDIS_MAXIMUM_CONCURRENT_OPERATIONS",
         "GODSWAR_REDIS_QUEUE_ADMISSION_TIMEOUT_MILLISECONDS",
@@ -50,10 +52,14 @@ internal static class B17CoordinationConfigurationChecks
         {
             CheckLocalProviderNeedsNoRedis(directory);
             CheckRedisRequiresConnection(directory);
+            CheckRedisConnectionSecretFile(directory);
+            CheckRedisConnectionSourcesAreExclusive(directory);
+            CheckRedisConnectionSecretFileBounds(directory);
             CheckRedisRequiresPostgres(directory);
             CheckProductionRequiresTls(directory);
             CheckCapacityCoversRuntime(directory);
             CheckValidRedisTopology(directory);
+            CheckStagedMainWorkerTopology(directory);
             CheckFiniteLeaseAndHeartbeatBounds();
         }
         finally
@@ -112,6 +118,114 @@ internal static class B17CoordinationConfigurationChecks
             "Redis cannot replace the PostgreSQL durable ownership fence");
     }
 
+    private static void CheckRedisConnectionSecretFile(string directory)
+    {
+        var secretPath = Path.Combine(directory, "redis.connection-string");
+        File.WriteAllText(
+            secretPath,
+            "redis-coordination:6379,ssl=False");
+        Environment.SetEnvironmentVariable(
+            CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+            secretPath);
+        try
+        {
+            var loaded = ServerOptions.Load(WriteOptions(
+                directory,
+                "secret-file.json",
+                provider: "Redis",
+                storageProvider: "Postgres",
+                requireTls: false,
+                capacity: 4_096));
+            Check.Equal(
+                "redis-coordination:6379,ssl=False",
+                loaded.Coordination.ConnectionString,
+                "Redis connection material is loaded from a bounded secret file");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+                null);
+        }
+    }
+
+    private static void CheckRedisConnectionSourcesAreExclusive(
+        string directory)
+    {
+        var secretPath = Path.Combine(directory, "ambiguous.connection-string");
+        File.WriteAllText(secretPath, "redis-coordination:6379,ssl=False");
+        Environment.SetEnvironmentVariable(
+            TestConnectionVariable,
+            "127.0.0.1:6379,ssl=False");
+        Environment.SetEnvironmentVariable(
+            CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+            secretPath);
+        try
+        {
+            ExpectInvalidData(
+                () => ServerOptions.Load(WriteOptions(
+                    directory,
+                    "ambiguous-secret.json",
+                    provider: "Redis",
+                    storageProvider: "Postgres",
+                    requireTls: false,
+                    capacity: 4_096)),
+                "mutually exclusive",
+                "Redis rejects ambiguous direct and secret-file sources");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+                null);
+            Environment.SetEnvironmentVariable(TestConnectionVariable, null);
+        }
+    }
+
+    private static void CheckRedisConnectionSecretFileBounds(string directory)
+    {
+        Environment.SetEnvironmentVariable(TestConnectionVariable, null);
+        var missingPath = Path.Combine(directory, "missing.connection-string");
+        Environment.SetEnvironmentVariable(
+            CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+            missingPath);
+        ExpectInvalidData(
+            () => ServerOptions.Load(WriteOptions(
+                directory,
+                "missing-secret-file.json",
+                provider: "Redis",
+                storageProvider: "Postgres",
+                requireTls: false,
+                capacity: 4_096)),
+            "must exist",
+            "Redis rejects a missing connection-string secret file");
+
+        var oversizedPath = Path.Combine(directory, "oversized.connection-string");
+        File.WriteAllText(oversizedPath, new string('x', 4_097));
+        Environment.SetEnvironmentVariable(
+            CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+            oversizedPath);
+        try
+        {
+            ExpectInvalidData(
+                () => ServerOptions.Load(WriteOptions(
+                    directory,
+                    "oversized-secret-file.json",
+                    provider: "Redis",
+                    storageProvider: "Postgres",
+                    requireTls: false,
+                    capacity: 4_096)),
+                "between 1 and 4096 bytes",
+                "Redis rejects an oversized connection-string secret file");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+                null);
+        }
+    }
+
     private static void CheckProductionRequiresTls(string directory)
     {
         var path = WriteOptions(
@@ -162,6 +276,53 @@ internal static class B17CoordinationConfigurationChecks
             "127.0.0.1:6379,ssl=False",
             loaded.Coordination.ConnectionString,
             "connection material is resolved indirectly at startup");
+    }
+
+    private static void CheckStagedMainWorkerTopology(string directory)
+    {
+        Environment.SetEnvironmentVariable(TestConnectionVariable, null);
+        var secretPath = Path.Combine(directory, "staged.connection-string");
+        File.WriteAllText(
+            secretPath,
+            "redis-coordination:6379,ssl=False");
+        Environment.SetEnvironmentVariable(
+            CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+            secretPath);
+        try
+        {
+            var options = ServerOptions.Load(Path.Combine(
+                FindRepositoryRoot(),
+                "deploy",
+                "local",
+                "redis-coordinated-worker.json"));
+            Check.Equal(
+                "tempest-openworld-01",
+                options.Game.WorldInstances.ServerNodeId,
+                "staged worker has one stable node identity");
+            Check.Equal(
+                23,
+                options.Game.WorldInstances.StaticOpenWorldInstances.Length,
+                "staged worker owns all currently connected open-world maps");
+            Check.True(
+                options.Game.WorldInstances.StaticOpenWorldInstances
+                    .Select(static route => (int)route.MapId)
+                    .Order()
+                    .SequenceEqual(Enumerable.Range(0, 23)),
+                "staged worker owns exactly map IDs zero through twenty-two");
+            Check.Equal(
+                23,
+                options.Game.WorldInstances.StaticOpenWorldInstances
+                    .Select(static route => route.ProcessWorldInstanceId)
+                    .Distinct()
+                    .Count(),
+                "staged worker route instance identities are unique");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                CoordinationRuntimeOptions.ConnectionStringFileEnvironmentVariable,
+                null);
+        }
     }
 
     private static void CheckFiniteLeaseAndHeartbeatBounds()

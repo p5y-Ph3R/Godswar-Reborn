@@ -194,13 +194,14 @@ internal sealed partial class WorkerCoordinationRuntime
                 var budget = MonotonicLeaseBudget.Capture(
                     _timeProvider,
                     _options.PlayerLeaseTtl);
+                var deadline = _runtime.Deadline();
                 var result =
                     await _coordination.RenewPlayerLeaseAsync(
                         current,
                         route,
                         presence,
                         _options.PlayerLeaseTtl,
-                        _runtime.Deadline(),
+                        deadline,
                         cancellationToken);
                 if (result.Succeeded && result.Lease is { } renewed)
                 {
@@ -216,15 +217,11 @@ internal sealed partial class WorkerCoordinationRuntime
                     result.Status ==
                         CoordinationOperationStatus.NotFound)
                 {
-                    var restored = await RestoreAsync(
+                    return await RestoreAsync(
                         route,
                         presence,
+                        deadline,
                         cancellationToken);
-                    if (!restored)
-                    {
-                        Invalidate();
-                    }
-                    return restored;
                 }
                 if (result.Status ==
                     CoordinationOperationStatus.Conflict)
@@ -242,10 +239,12 @@ internal sealed partial class WorkerCoordinationRuntime
         private async ValueTask<bool> RestoreAsync(
             CoordinatedWorldRoute route,
             CoordinatedPresenceState presence,
+            CoordinationDeadline deadline,
             CancellationToken cancellationToken)
         {
             if (!_runtime.IsWorkerCurrent(_request.WorkerBootId))
             {
+                Invalidate();
                 return false;
             }
 
@@ -261,7 +260,7 @@ internal sealed partial class WorkerCoordinationRuntime
                 await _coordination.InstallPlayerLeaseAsync(
                     reinstall,
                     _options.PlayerLeaseTtl,
-                    _runtime.Deadline(),
+                    deadline,
                     cancellationToken);
             if (result.Succeeded && result.Lease is { } restored)
             {
@@ -276,7 +275,48 @@ internal sealed partial class WorkerCoordinationRuntime
                 CoordinationOperationStatus.Conflict)
             {
                 Invalidate();
+                return false;
             }
+
+            // A failed reinstall can race the worker heartbeat after an empty
+            // disposable keyspace. Prove the exact worker route before making
+            // one bounded retry. A missing/unavailable route remains
+            // fail-closed and retries only until the local lease budget ends.
+            var routeLookup = await _coordination.FindRouteAsync(
+                route,
+                deadline,
+                cancellationToken);
+            if (!routeLookup.IsFound)
+            {
+                return false;
+            }
+            var routeProjection = routeLookup.Route!;
+            if (routeProjection.NodeId != _request.NodeId ||
+                routeProjection.BootId != _request.WorkerBootId ||
+                routeProjection.Route != route ||
+                routeProjection.WorkerState !=
+                    CoordinatedWorkerState.Available)
+            {
+                Invalidate();
+                return false;
+            }
+
+            result = await _coordination.InstallPlayerLeaseAsync(
+                reinstall,
+                _options.PlayerLeaseTtl,
+                deadline,
+                cancellationToken);
+            if (result.Succeeded && result.Lease is { } retried)
+            {
+                lock (_stateGate)
+                {
+                    _lease = retried;
+                    _leaseBudget = budget;
+                }
+                return true;
+            }
+
+            Invalidate();
             return false;
         }
 

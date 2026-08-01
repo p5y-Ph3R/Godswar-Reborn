@@ -7,6 +7,112 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class B17WorkerCoordinationRuntimeChecks
 {
+    private static async Task CheckInCallWorkerRouteRecoveryAsync()
+    {
+        var clock = new ManualTimeProvider();
+        var adapter = new RestoreFailureCoordination(
+            new InMemoryWorkerCoordination(
+                capacity: 16,
+                maximumConcurrentOperations: 4,
+                clock),
+            CoordinationOperationStatus.NotFound,
+            recoverDuringRouteLookup: true);
+        await using var runtime = new WorkerCoordinationRuntime(
+            adapter,
+            CreateOptions(),
+            CreateWorldOptions("worker-in-call-recovery"),
+            contentRevision: "content-in-call-recovery",
+            buildRevision: "build-in-call-recovery",
+            clock);
+        using var stop = new CancellationTokenSource();
+        var run = runtime.RunAsync(stop.Token);
+        await runtime.WaitUntilRegisteredAsync().WaitAsync(
+            TimeSpan.FromSeconds(1));
+        await runtime.PublishAvailableAsync();
+        Check.True(
+            runtime.TryResolveRoute(1, out var route),
+            "in-call recovery fixture resolves its route");
+
+        var ownershipLost = 0;
+        await using var player = await runtime.AcquireAsync(
+            accountId: 74,
+            characterId: 174,
+            new PlayerOwnershipFence(Guid.NewGuid(), 1),
+            route,
+            () => Interlocked.Increment(ref ownershipLost));
+        Check.True(
+            player is not null && player.IsCurrent,
+            "in-call recovery fixture installs a current player lease");
+
+        adapter.Arm();
+        Check.True(
+            await player!.PublishOnlineAsync(route) &&
+            player.IsCurrent &&
+            Volatile.Read(ref ownershipLost) == 0,
+            "exact worker-route proof permits one bounded in-call reinstall");
+        Check.True(
+            adapter.UsedOneRecoveryDeadline,
+            "renew, route proof, and reinstall share one absolute deadline");
+
+        stop.Cancel();
+        await run.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    private static async Task CheckTransientMissingWorkerRouteAsync()
+    {
+        var clock = new ManualTimeProvider();
+        var adapter = new RestoreFailureCoordination(
+            new InMemoryWorkerCoordination(
+                capacity: 16,
+                maximumConcurrentOperations: 4,
+                clock),
+            CoordinationOperationStatus.NotFound,
+            hideRouteWhenArmed: true);
+        await using var runtime = new WorkerCoordinationRuntime(
+            adapter,
+            CreateOptions(),
+            CreateWorldOptions("worker-route-recovery"),
+            contentRevision: "content-route-recovery",
+            buildRevision: "build-route-recovery",
+            clock);
+        using var stop = new CancellationTokenSource();
+        var run = runtime.RunAsync(stop.Token);
+        await runtime.WaitUntilRegisteredAsync().WaitAsync(
+            TimeSpan.FromSeconds(1));
+        await runtime.PublishAvailableAsync();
+        Check.True(
+            runtime.TryResolveRoute(1, out var route),
+            "route-recovery fixture resolves its route");
+
+        var ownershipLost = 0;
+        await using var player = await runtime.AcquireAsync(
+            accountId: 73,
+            characterId: 173,
+            new PlayerOwnershipFence(Guid.NewGuid(), 1),
+            route,
+            () => Interlocked.Increment(ref ownershipLost));
+        Check.True(
+            player is not null && player.IsCurrent,
+            "route-recovery fixture installs a current player lease");
+
+        adapter.Arm();
+        Check.True(
+            !await player!.PublishOnlineAsync(route) &&
+            player.IsCurrent &&
+            Volatile.Read(ref ownershipLost) == 0,
+            "missing disposable worker route fails closed without " +
+            "inventing durable ownership loss");
+        adapter.Disarm();
+        Check.True(
+            await player.PublishOnlineAsync(route) &&
+            player.IsCurrent &&
+            Volatile.Read(ref ownershipLost) == 0,
+            "player lease resumes after worker-route reconstruction");
+
+        stop.Cancel();
+        await run.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
     private static async Task CheckDefinitivePlayerLeaseLossAsync(
         CoordinationOperationStatus restoreStatus)
     {
@@ -64,13 +170,39 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
 
     private sealed class RestoreFailureCoordination(
         IWorkerCoordination inner,
-        CoordinationOperationStatus restoreStatus) :
+        CoordinationOperationStatus restoreStatus,
+        bool hideRouteWhenArmed = false,
+        bool recoverDuringRouteLookup = false) :
         IWorkerCoordination
     {
+        private readonly List<CoordinationDeadline> _recoveryDeadlines = [];
+        private readonly object _deadlineGate = new();
         private int _armed;
+        private int _recordRecoveryDeadlines;
 
-        public void Arm() =>
+        public bool UsedOneRecoveryDeadline
+        {
+            get
+            {
+                lock (_deadlineGate)
+                {
+                    return _recoveryDeadlines.Count == 4 &&
+                        _recoveryDeadlines.Distinct().Count() == 1;
+                }
+            }
+        }
+
+        public void Arm()
+        {
+            if (recoverDuringRouteLookup)
+            {
+                Interlocked.Exchange(ref _recordRecoveryDeadlines, 1);
+            }
             Interlocked.Exchange(ref _armed, 1);
+        }
+
+        public void Disarm() =>
+            Interlocked.Exchange(ref _armed, 0);
 
         public ValueTask<WorkerRegistrationResult> RegisterWorkerAsync(
             WorkerRegistrationRequest request,
@@ -108,15 +240,31 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
         public ValueTask<CoordinatedRouteLookup> FindRouteAsync(
             CoordinatedWorldRoute route,
             CoordinationDeadline deadline,
-            CancellationToken cancellationToken = default) =>
-            inner.FindRouteAsync(route, deadline, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            RecordRecoveryDeadline(deadline);
+            if (Volatile.Read(ref _armed) != 0 && hideRouteWhenArmed)
+            {
+                return ValueTask.FromResult(new CoordinatedRouteLookup(
+                    CoordinationOperationStatus.NotFound,
+                    null));
+            }
+            if (Volatile.Read(ref _armed) != 0 &&
+                recoverDuringRouteLookup)
+            {
+                Disarm();
+            }
+            return inner.FindRouteAsync(route, deadline, cancellationToken);
+        }
 
         public ValueTask<PlayerLeaseResult> InstallPlayerLeaseAsync(
             PlayerLeaseInstallRequest request,
             TimeSpan ttl,
             CoordinationDeadline deadline,
-            CancellationToken cancellationToken = default) =>
-            Volatile.Read(ref _armed) == 0
+            CancellationToken cancellationToken = default)
+        {
+            RecordRecoveryDeadline(deadline);
+            return Volatile.Read(ref _armed) == 0
                 ? inner.InstallPlayerLeaseAsync(
                     request,
                     ttl,
@@ -124,6 +272,7 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
                     cancellationToken)
                 : ValueTask.FromResult(
                     new PlayerLeaseResult(restoreStatus, null));
+        }
 
         public ValueTask<PlayerLeaseResult> RenewPlayerLeaseAsync(
             CoordinatedPlayerLease lease,
@@ -131,8 +280,10 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
             CoordinatedPresenceState presence,
             TimeSpan ttl,
             CoordinationDeadline deadline,
-            CancellationToken cancellationToken = default) =>
-            Volatile.Read(ref _armed) == 0
+            CancellationToken cancellationToken = default)
+        {
+            RecordRecoveryDeadline(deadline);
+            return Volatile.Read(ref _armed) == 0
                 ? inner.RenewPlayerLeaseAsync(
                     lease,
                     route,
@@ -144,6 +295,7 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
                     new PlayerLeaseResult(
                         CoordinationOperationStatus.NotFound,
                         null));
+        }
 
         public ValueTask<CoordinationOperationStatus>
             ReleasePlayerLeaseAsync(
@@ -171,6 +323,19 @@ internal static partial class B17WorkerCoordinationRuntimeChecks
 
         public WorkerCoordinationSnapshot GetSnapshot() =>
             inner.GetSnapshot();
+
+        private void RecordRecoveryDeadline(
+            CoordinationDeadline deadline)
+        {
+            if (Volatile.Read(ref _recordRecoveryDeadlines) == 0)
+            {
+                return;
+            }
+            lock (_deadlineGate)
+            {
+                _recoveryDeadlines.Add(deadline);
+            }
+        }
 
         public ValueTask DisposeAsync() =>
             inner.DisposeAsync();

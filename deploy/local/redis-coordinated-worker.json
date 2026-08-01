@@ -1,0 +1,218 @@
+{
+  "runtimeProfile": "LocalDevelopment",
+  "login": {
+    "bindHost": "0.0.0.0",
+    "port": 5999
+  },
+  "game": {
+    "bindHost": "0.0.0.0",
+    "port": 7000,
+    "publicHost": "127.1.1.110",
+    "publicPort": 7000,
+    "monsters": {
+      "runtime": "Ecs"
+    },
+    "players": {
+      "runtime": "Ecs"
+    },
+    "worldInstances": {
+      "serverNodeId": "tempest-openworld-01",
+      "maximumRuntimes": 256,
+      "maximumPlayerAssignments": 4096,
+      "maximumRetiredInstanceIds": 65536,
+      "defaultOpenWorldPlayerCapacity": 512,
+      "mailboxCapacity": 1024,
+      "ownerInvocationTimeoutMilliseconds": 1000,
+      "shutdownDrainTimeoutMilliseconds": 5000,
+      "maximumFanoutConcurrency": 8,
+      "staticOpenWorldInstances": [
+        { "realmId": 1, "mapId": 0, "worldInstanceId": "e05bd412-3454-4b69-98c8-43b93bcc4e9d" },
+        { "realmId": 1, "mapId": 1, "worldInstanceId": "8bcb4180-f888-462d-ae2b-f4f75d199288" },
+        { "realmId": 1, "mapId": 2, "worldInstanceId": "ec037cae-b64c-4f28-87eb-5995de0c514f" },
+        { "realmId": 1, "mapId": 3, "worldInstanceId": "8e39e265-3413-4c04-92cc-f794b8aa31e4" },
+        { "realmId": 1, "mapId": 4, "worldInstanceId": "6d0314b6-85a4-48c7-a671-6a7643ef05c8" },
+        { "realmId": 1, "mapId": 5, "worldInstanceId": "2b476d16-1d62-4e7b-b234-dd2f52365079" },
+        { "realmId": 1, "mapId": 6, "worldInstanceId": "77cb72e5-bf87-4f98-a427-8adbf9727ae4" },
+        { "realmId": 1, "mapId": 7, "worldInstanceId": "62de2b36-d9dd-4701-b02a-a00224ed2e00" },
+        { "realmId": 1, "mapId": 8, "worldInstanceId": "2590f058-1262-4547-a471-e18ff025adcd" },
+        { "realmId": 1, "mapId": 9, "worldInstanceId": "81cd7205-e1b6-4bde-a64e-e9d2a58c92ce" },
+        { "realmId": 1, "mapId": 10, "worldInstanceId": "19dabbc8-4623-4ea3-ad25-09c6396a5569" },
+        { "realmId": 1, "mapId": 11, "worldInstanceId": "b5af0cb5-cb37-4f80-8b1e-f2f853ac5fe3" },
+        { "realmId": 1, "mapId": 12, "worldInstanceId": "8cdd5da7-b2f6-40ab-a2fa-5ea9451a4e75" },
+        { "realmId": 1, "mapId": 13, "worldInstanceId": "7f985fc4-7c2d-4186-9fec-86901ca3e0e2" },
+        { "realmId": 1, "mapId": 14, "worldInstanceId": "922dae1a-6f22-4d23-bb01-37aac30f1a77" },
+        { "realmId": 1, "mapId": 15, "worldInstanceId": "7db8febe-19e7-4b96-9ca5-831f92d844f5" },
+        { "realmId": 1, "mapId": 16, "worldInstanceId": "ea87660a-76e2-4764-a108-f1fdc480c1d2" },
+        { "realmId": 1, "mapId": 17, "worldInstanceId": "39000f48-6650-4b6c-8b44-d3c8e2a8eae5" },
+        { "realmId": 1, "mapId": 18, "worldInstanceId": "dbc552aa-774c-4208-bd13-19ed9ee21373" },
+        { "realmId": 1, "mapId": 19, "worldInstanceId": "dabf6287-534e-4450-b093-2ed798465eed" },
+        { "realmId": 1, "mapId": 20, "worldInstanceId": "657eea2c-aa34-4c56-a059-a236e4e0c56b" },
+        { "realmId": 1, "mapId": 21, "worldInstanceId": "daf3065c-f027-4462-91cf-aebe917783f6" },
+        { "realmId": 1, "mapId": 22, "worldInstanceId": "35ed12dc-0732-4075-84b9-5121fb41767c" }
+      ]
+    },
+    "developerCommands": {
+      "enabled": false,
+      "allowedAccountIds": [3, 7, 13, 347]
+    },
+    "zodiacEnergy": {
+      "enabled": true,
+      "tickSeconds": 300,
+      "boostedDailySeconds": 10800,
+      "emulatorBoostedEnergyPerTickX100": 2000,
+      "emulatorNormalEnergyPerTickX100": 1000,
+      "compensationOnlineThresholdSeconds": 3600,
+      "compensationSeconds": 3600,
+      "serverUtcOffsetMinutes": -480,
+      "persistenceIntervalSeconds": 30
+    }
+  },
+  "secure": {
+    "enabled": false,
+    "login": {
+      "bindHost": "127.0.0.1",
+      "port": 6599,
+      "dnsHost": "login.reborn.test"
+    },
+    "game": {
+      "bindHost": "127.0.0.1",
+      "port": 7443,
+      "dnsHost": "game.reborn.test"
+    },
+    "udp": {
+      "enabled": false,
+      "gameplayMovementEnabled": false,
+      "bindHost": "127.0.0.1",
+      "port": 7444,
+      "maximumDatagramBytes": 1200,
+      "cookieLifetimeSeconds": 10,
+      "cookieFutureSkewSeconds": 2,
+      "cookieKeyRotationSeconds": 60,
+      "sessionCapacity": 1024,
+      "bindingOfferTtlSeconds": 30,
+      "globalPacketsPerSecond": 4096,
+      "unvalidatedPacketsPerSecond": 3072,
+      "prefixPacketsPerSecond": 256,
+      "rateLimitPrefixCapacity": 1024,
+      "bindingProofPacketsPerSecond": 512,
+      "bindingProofPrefixPacketsPerSecond": 64,
+      "protectedCandidatePacketsPerSecond": 512,
+      "protectedCandidatePrefixPacketsPerSecond": 256,
+      "authenticatedSessionPacketsPerSecond": 256,
+      "keepAliveIntervalSeconds": 5,
+      "boundSessionIdleTimeoutSeconds": 30,
+      "sessionCleanupIntervalSeconds": 5,
+      "minimumRebindIntervalMilliseconds": 2000,
+      "previousKeyEpochOverlapSeconds": 10,
+      "keyRotationSeconds": 300,
+      "keyRotationPacketLimit": 1000000
+    },
+    "certificatePath": "",
+    "allowedOriginSha256": [
+      "753BE49FE94B6F4C0E3329BC8905945BD9B0F1A790B4B9038E69C2A5AD49ED79"
+    ]
+  },
+  "network": {
+    "listenBacklog": 512,
+    "maxActiveConnections": 512,
+    "maxConcurrentTlsHandshakes": 64,
+    "maxUnauthenticatedConnections": 128,
+    "maxUnauthenticatedConnectionsPerIp": 4,
+    "maxUnauthenticatedConnectionsPerPrefix": 32,
+    "ingressQueueItems": 128,
+    "ingressQueueBytes": 524288,
+    "reliableEgressQueueItems": 128,
+    "reliableEgressQueueBytes": 524288,
+    "reliableEgressPendingItems": 512,
+    "reliableEgressPendingBytes": 2097152,
+    "controlQueueItems": 32,
+    "controlQueueBytes": 65536,
+    "queueAdmissionTimeoutMilliseconds": 2000,
+    "tlsHandshakeTimeoutMilliseconds": 5000,
+    "securePrefaceTimeoutMilliseconds": 2000,
+    "gameBindTimeoutMilliseconds": 5000,
+    "firstPacketTimeoutMilliseconds": 10000,
+    "packetHeaderTimeoutMilliseconds": 5000,
+    "packetBodyTimeoutMilliseconds": 10000,
+    "reliableWriteTimeoutMilliseconds": 5000,
+    "idleTimeoutMilliseconds": 90000,
+    "gracefulDrainTimeoutMilliseconds": 5000
+  },
+  "operations": {
+    "management": {
+      "enabled": true,
+      "bindHost": "127.0.0.1",
+      "port": 9090,
+      "listenBacklog": 16,
+      "maximumConcurrentRequests": 8,
+      "maximumHeaderBytes": 4096,
+      "maximumResponseBytes": 65536,
+      "requestTimeoutMilliseconds": 1000,
+      "responseTimeoutMilliseconds": 1000
+    },
+    "readiness": {
+      "pollIntervalMilliseconds": 1000,
+      "databaseTimeoutMilliseconds": 750,
+      "maximumWorkerHeartbeatAgeMilliseconds": 15000,
+      "maximumCheckpointOldestAgeMilliseconds": 60000
+    },
+    "drainTokenFile": ""
+  },
+  "authentication": {
+    "allowLegacyRawAuthentication": true
+  },
+  "coordination": {
+    "provider": "Redis",
+    "environment": "tempest-local",
+    "connectionStringEnvironmentVariable": "GODSWAR_REDIS_CONNECTION_STRING",
+    "database": 0,
+    "capacity": 4096,
+    "maximumConcurrentOperations": 128,
+    "queueAdmissionTimeoutMilliseconds": 25,
+    "operationTimeoutMilliseconds": 250,
+    "connectTimeoutMilliseconds": 1000,
+    "circuitFailureThreshold": 5,
+    "circuitOpenMilliseconds": 5000,
+    "serverHeartbeatSeconds": 5,
+    "serverTtlSeconds": 20,
+    "playerLeaseRenewalSeconds": 10,
+    "playerLeaseTtlSeconds": 30,
+    "requireTls": false
+  },
+  "storage": {
+    "provider": "Postgres",
+    "postgresConnectionString": "Host=postgres;Port=5432;Database=godswar;Username=godswar;Password=godswar_dev_password;Pooling=true",
+    "checkpoints": {
+      "queueCapacity": 1024,
+      "workerCount": 4,
+      "directOperationConcurrency": 8,
+      "directAdmissionTimeoutMilliseconds": 1000,
+      "commandTimeoutMilliseconds": 5000,
+      "baseRetryDelayMilliseconds": 100,
+      "maximumRetryDelayMilliseconds": 2000,
+      "maximumRetryAgeMilliseconds": 30000,
+      "shutdownDrainTimeoutMilliseconds": 10000
+    },
+    "outbox": {
+      "enabled": true,
+      "batchSize": 32,
+      "pollIntervalMilliseconds": 250,
+      "leaseMilliseconds": 30000,
+      "maximumDeliveryAttempts": 8,
+      "baseRetryDelayMilliseconds": 500,
+      "maximumRetryDelayMilliseconds": 30000,
+      "gapRetryDelayMilliseconds": 1000,
+      "commandTimeoutMilliseconds": 5000
+    },
+    "reconciliation": {
+      "enabled": false,
+      "mode": "ReportOnly",
+      "batchSize": 100,
+      "maximumCharactersPerRun": 5000,
+      "maximumOutboxEventsPerRun": 5000,
+      "pollIntervalMilliseconds": 300000,
+      "commandTimeoutMilliseconds": 5000,
+      "runTimeoutMilliseconds": 30000
+    }
+  }
+}

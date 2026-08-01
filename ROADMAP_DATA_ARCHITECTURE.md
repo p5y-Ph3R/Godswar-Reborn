@@ -6,7 +6,9 @@ B16's original
 Redis defer remains historical evidence. B18A/B and B18C1/C2 established
 bounded local world owners and an unchanged-client semantic edge with exact
 authenticated worker routing. B17 Redis coordination is completed behind an
-explicit opt-in provider. B19 adds bounded report-only PostgreSQL
+explicit opt-in provider. Its private dependency is staged in the main
+`reborn` Compose project, while the observed server remains on `Local`
+coordination until B20H completes. B19 adds bounded report-only PostgreSQL
 reconciliation and an isolated logical-restore drill. `Local` coordination
 remains the default. B20A freezes the exact legacy persistence inventory;
 B20B cuts account/auth/session and semantic-gateway persistence over to
@@ -71,6 +73,7 @@ document organization; the assessment and recommendations remain intact.
 - [B17 Redis coordination evidence](docs/data-architecture-b17-redis-coordination-20260731.md)
 - [ADR 0005: staged Redis coordination activation](docs/adr/0005-b17-redis-coordination-activation.md)
 - [B17 Redis outage and rollback runbooks](docs/operations/b17-redis-coordination-runbooks.md)
+- [Main-project Redis activation runbook](docs/operations/redis-main-compose-activation.md)
 - [ADR 0004: realm, node, and world-instance topology](docs/adr/0004-realm-and-world-instance-topology.md)
 - [B18A realm and world-instance identity foundation](docs/data-architecture-b18a-realm-instance-foundation-20260731.md)
 - [B18B local instance routing and single-owner mailboxes](docs/data-architecture-b18b-instance-routing-mailboxes-20260731.md)

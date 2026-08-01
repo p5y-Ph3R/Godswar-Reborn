@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace Godswar.Server;
@@ -16,6 +17,11 @@ internal sealed class CoordinationRuntimeOptions
 {
     public const string DefaultConnectionStringEnvironmentVariable =
         "GODSWAR_REDIS_CONNECTION_STRING";
+
+    public const string ConnectionStringFileEnvironmentVariable =
+        "GODSWAR_REDIS_CONNECTION_STRING_FILE";
+
+    private const int MaximumConnectionStringFileBytes = 4_096;
 
     public string Provider { get; set; } = "Local";
 
@@ -213,17 +219,119 @@ internal sealed class CoordinationRuntimeOptions
                 "Player lease TTL must exceed twice its renewal interval.");
         }
 
-        ConnectionString = ProviderKind ==
-            CoordinationProviderKind.Redis
-                ? System.Environment.GetEnvironmentVariable(
-                    ConnectionStringEnvironmentVariable) ?? string.Empty
-                : string.Empty;
+        ConnectionString = ProviderKind == CoordinationProviderKind.Redis
+            ? ResolveRedisConnectionString()
+            : string.Empty;
         if (ProviderKind == CoordinationProviderKind.Redis &&
             string.IsNullOrWhiteSpace(ConnectionString))
         {
             throw new InvalidDataException(
                 "Redis coordination requires its connection string in " +
                 ConnectionStringEnvironmentVariable + ".");
+        }
+    }
+
+    private string ResolveRedisConnectionString()
+    {
+        var direct = System.Environment.GetEnvironmentVariable(
+            ConnectionStringEnvironmentVariable);
+        var filePath = System.Environment.GetEnvironmentVariable(
+            ConnectionStringFileEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(direct) &&
+            !string.IsNullOrWhiteSpace(filePath))
+        {
+            throw new InvalidDataException(
+                "Redis coordination connection-string environment and " +
+                "secret-file sources are mutually exclusive.");
+        }
+
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return direct ?? string.Empty;
+        }
+        if (!Path.IsPathFullyQualified(filePath))
+        {
+            throw new InvalidDataException(
+                $"{ConnectionStringFileEnvironmentVariable} must contain " +
+                "an absolute secret-file path.");
+        }
+
+        try
+        {
+            var bytes = new byte[MaximumConnectionStringFileBytes + 1];
+            var byteCount = 0;
+            try
+            {
+                using var stream = new FileStream(
+                    filePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    bufferSize: MaximumConnectionStringFileBytes,
+                    FileOptions.SequentialScan);
+                while (byteCount < bytes.Length)
+                {
+                    var read = stream.Read(
+                        bytes,
+                        byteCount,
+                        bytes.Length - byteCount);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+                    byteCount += read;
+                }
+                if (byteCount is < 1 or > MaximumConnectionStringFileBytes)
+                {
+                    throw new InvalidDataException(
+                        "Redis coordination secret file must exist and " +
+                        $"contain between 1 and " +
+                        $"{MaximumConnectionStringFileBytes} bytes.");
+                }
+
+                var value = new UTF8Encoding(
+                        encoderShouldEmitUTF8Identifier: false,
+                        throwOnInvalidBytes: true)
+                    .GetString(bytes, 0, byteCount)
+                    .Trim();
+                if (value.Length == 0 ||
+                    value.Any(character =>
+                        character is '\0' or '\r' or '\n'))
+                {
+                    throw new InvalidDataException(
+                        "Redis coordination secret file contains invalid " +
+                        "connection-string content.");
+                }
+
+                return value;
+            }
+            finally
+            {
+                Array.Clear(bytes, 0, bytes.Length);
+            }
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+            when (exception is FileNotFoundException or
+                DirectoryNotFoundException)
+        {
+            throw new InvalidDataException(
+                "Redis coordination secret file must exist and contain " +
+                $"between 1 and {MaximumConnectionStringFileBytes} bytes.",
+                exception);
+        }
+        catch (Exception exception)
+            when (exception is IOException or
+                UnauthorizedAccessException or
+                DecoderFallbackException or
+                NotSupportedException)
+        {
+            throw new InvalidDataException(
+                "Redis coordination secret file could not be read.",
+                exception);
         }
     }
 
