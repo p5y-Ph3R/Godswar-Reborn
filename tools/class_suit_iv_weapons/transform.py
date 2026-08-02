@@ -114,4 +114,3 @@ def recolor_texture(
         changed_visible_pixels=changed_visible,
         alpha_changes=alpha_changes,
     )
-

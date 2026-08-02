@@ -54,4 +54,3 @@ def main() -> int:
     except (InstallError, OSError, UnicodeError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
-
