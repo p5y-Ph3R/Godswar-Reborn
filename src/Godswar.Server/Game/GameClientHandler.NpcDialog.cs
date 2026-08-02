@@ -38,15 +38,31 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var routePackets = routes
+            .Select(route => PacketBuilder.NpcDialogOpenAck(
+                npc.InteractionId,
+                route.DialogIndex,
+                route.ClientScriptKey))
+            .ToArray();
+        var routeStream = new byte[
+            routePackets.Sum(static routePacket => routePacket.Length)];
+        var routeOffset = 0;
+        foreach (var routePacket in routePackets)
+        {
+            routePacket.CopyTo(routeStream, routeOffset);
+            routeOffset += routePacket.Length;
+        }
+
+        await _session.SendAsync(
+            routeStream,
+            cancellationToken,
+            routes.Count == 1
+                ? "NpcDialogOpenAck"
+                : "NpcDialogOpenRouteStream",
+            framed: routes.Count == 1);
+
         foreach (var route in routes)
         {
-            await _session.SendAsync(
-                PacketBuilder.NpcDialogOpenAck(
-                    npc.InteractionId,
-                    route.DialogIndex,
-                    route.ClientScriptKey),
-                cancellationToken,
-                "NpcDialogOpenAck");
             Console.WriteLine(
                 $"[npc] dialog open npc={npc.InteractionId} " +
                 $"script={route.ClientScriptKey} " +

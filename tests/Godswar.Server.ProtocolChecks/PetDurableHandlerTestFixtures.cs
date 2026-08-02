@@ -295,6 +295,7 @@ internal sealed class PetDurableCaptureTransport :
     ISecureCommandResultTransport
 {
     private readonly object _gate = new();
+    private readonly List<byte[]> _legacyWriteChunks = [];
     private readonly MemoryStream _legacyWrites = new();
     private readonly List<SecureLegacyCommandResult> _results = [];
 
@@ -348,6 +349,19 @@ internal sealed class PetDurableCaptureTransport :
         }
     }
 
+    public IReadOnlyList<byte[]> LegacyWriteChunks
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _legacyWriteChunks
+                    .Select(static chunk => chunk.ToArray())
+                    .ToArray();
+            }
+        }
+    }
+
     public ValueTask<int> ReadAsync(
         Memory<byte> destination,
         CancellationToken cancellationToken)
@@ -363,6 +377,7 @@ internal sealed class PetDurableCaptureTransport :
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            _legacyWriteChunks.Add(source.ToArray());
             _legacyWrites.Write(source.Span);
         }
         return ValueTask.CompletedTask;

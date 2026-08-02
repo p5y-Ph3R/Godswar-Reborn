@@ -34,6 +34,15 @@ internal static partial class ClassSuitHandlerChecks
             fixture.Handler,
             CreateDialogOpenPacket());
 
+        Check.Equal(
+            1,
+            fixture.Transport.LegacyWriteChunks.Count,
+            "multi-route advertisement uses one physical write");
+        Check.Equal(
+            96,
+            fixture.Transport.LegacyWriteChunks.Single().Length,
+            "multi-route physical write contains both 48-byte routes");
+
         var packets = fixture.Transport.ReadLegacyPackets();
         Check.Equal(
             2,
