@@ -135,6 +135,61 @@ internal static partial class PostgresEquipmentForgeCommandIntegrationChecks
             sameRoll.Calls == 1,
             "same UUID race commits and samples exactly once");
 
+        var mixedHash = await CreateFixtureAsync(
+            connectionString,
+            "mixedhash",
+            odds:
+            [
+                (2, 4232, 4, 1)
+            ]);
+        await using var mixedHashSource =
+            NpgsqlDataSource.Create(connectionString);
+        var mixedHashRoll = new CountingRollSource(0);
+        var mixedHashExecutor = CreateExecutor(
+            mixedHashSource,
+            mixedHashRoll.Next);
+        var mixedHashId = Guid.NewGuid();
+        EquipmentForgeCommandSelection[] alternateOdds =
+        [
+            mixedHash.Odds[0] with { Quantity = 2 }
+        ];
+        var mixedHashResults = await Task.WhenAll(
+            ExecuteAsync(
+                mixedHashExecutor,
+                mixedHash,
+                mixedHashId),
+            ExecuteAsync(
+                mixedHashExecutor,
+                mixedHash,
+                mixedHashId,
+                odds: alternateOdds));
+        Check.True(
+            mixedHashResults.Count(result =>
+                result.Disposition ==
+                    EquipmentForgeExecutionDisposition.Committed) == 1 &&
+            mixedHashResults.Count(result =>
+                result.Disposition ==
+                    EquipmentForgeExecutionDisposition
+                        .RequestHashConflict) == 1 &&
+            mixedHashRoll.Calls == 1,
+            "same UUID with racing request hashes commits one intent only");
+        var mixedHashState = await ReadStateAsync(
+            connectionString,
+            mixedHash);
+        var mixedHashOdds = await ReadSlotAsync(
+            connectionString,
+            mixedHash.CharacterId,
+            2);
+        Check.True(
+            mixedHashState.Silver == 999 &&
+            mixedHashState.WalletRevision == 1 &&
+            mixedHashState.InventoryRevision == 1 &&
+            mixedHashState.InboxCount == 1 &&
+            mixedHashState.ConflictCount == 1 &&
+            mixedHashOdds is { ItemId: 4232 } &&
+            mixedHashOdds.Stack is 2 or 3,
+            "mixed-hash race charges and consumes exactly one winning intent");
+
         var distinct = await CreateFixtureAsync(
             connectionString,
             "distinct");

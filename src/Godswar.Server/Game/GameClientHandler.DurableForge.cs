@@ -27,9 +27,10 @@ internal sealed partial class GameClientHandler
         }
 
         var hasSelections = TryCaptureForgeRequest(out var request);
-        // Clear before the first await. A repeated Start must resolve through
-        // the permanent command inbox instead of consuming this reservation
-        // again.
+        // Clear before the first await. A staged command is submitted through
+        // the executor so its canonical request hash is compared with any
+        // permanent inbox entry. A selectionless retry can only replay an
+        // already committed receipt and can never mutate inventory.
         ClearForgeSelection();
 
         if (_equipmentForgeCommands is null)
@@ -46,27 +47,18 @@ internal sealed partial class GameClientHandler
         EquipmentForgeExecutionResult execution;
         try
         {
-            execution = await _equipmentForgeCommands.TryReplayAsync(
-                subject,
-                ownership,
-                clientOperationId,
-                cancellationToken);
-            if (!RevalidateCurrentPlayerOwnership(ownership))
-            {
-                return;
-            }
-
-            if (hasSelections &&
-                execution.Disposition ==
-                    EquipmentForgeExecutionDisposition.ReplayNotFound)
-            {
-                execution = await ExecuteDurableForgeAsync(
+            execution = hasSelections
+                ? await ExecuteDurableForgeAsync(
                     subject,
                     clientOperationId,
                     request!,
                     ownership,
+                    cancellationToken)
+                : await _equipmentForgeCommands.TryReplayAsync(
+                    subject,
+                    ownership,
+                    clientOperationId,
                     cancellationToken);
-            }
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)

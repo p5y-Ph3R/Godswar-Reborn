@@ -14,6 +14,7 @@ internal static partial class EquipmentForgeDurableHandlerChecks
         await CheckLegacyRawProjectionPreservesLiveVitalsAsync();
         await CheckCommitOrderingAndProjectionIsolationAsync();
         await CheckFailedRollUsesCommittedAttemptResultAsync();
+        await CheckStagedDuplicateComparesAndReplaysAsync();
         await CheckSelectionlessDuplicateReplaysAsync();
         await CheckSelectionlessReplayMissLeavesPendingAsync();
         await CheckDurableTerminalRejectionAsync();
@@ -35,7 +36,10 @@ internal static partial class EquipmentForgeDurableHandlerChecks
 
         await InvokeForgeStartAsync(fixture.Handler, OperationId);
 
-        Check.Equal(1, fixture.Executor!.ReplayCount, "Forge checks inbox before execution");
+        Check.Equal(
+            0,
+            fixture.Executor!.ReplayCount,
+            "staged Forge compares its canonical request through execution");
         Check.Equal(1, fixture.Executor.ExecuteCount, "new Forge executes once");
         var command = fixture.Executor.ExecutedCommand ??
             throw new InvalidOperationException(
@@ -74,6 +78,34 @@ internal static partial class EquipmentForgeDurableHandlerChecks
             expectedSuccess: true,
             expectedResultKind: 1,
             "committed Forge");
+    }
+
+    private static async Task
+        CheckStagedDuplicateComparesAndReplaysAsync()
+    {
+        var receipt = CreateReceipt(
+            EquipmentForgeCommandResultStatus.Succeeded);
+        await using var fixture = CreateFixture(
+            EquipmentForgeExecutionResult.ReplayNotFound(),
+            EquipmentForgeExecutionResult.Duplicate(receipt));
+
+        await InvokeForgeStartAsync(fixture.Handler, OperationId);
+
+        Check.Equal(
+            0,
+            fixture.Executor!.ReplayCount,
+            "staged duplicate does not bypass canonical request comparison");
+        Check.Equal(
+            1,
+            fixture.Executor.ExecuteCount,
+            "staged duplicate compares its canonical request exactly once");
+        AssertDurableResponse(
+            fixture,
+            receipt,
+            SecureLegacyCommandDisposition.Replayed,
+            expectedSuccess: true,
+            expectedResultKind: 1,
+            "staged duplicate Forge");
     }
 
     private static async Task
@@ -221,10 +253,19 @@ internal static partial class EquipmentForgeDurableHandlerChecks
     private static async Task CheckRequestConflictIsTerminalAsync()
     {
         await using var fixture = CreateFixture(
-            EquipmentForgeExecutionResult.RequestHashConflict(),
-            stageSelections: false);
+            EquipmentForgeExecutionResult.ReplayNotFound(),
+            EquipmentForgeExecutionResult.RequestHashConflict());
 
         await InvokeForgeStartAsync(fixture.Handler, OperationId);
+
+        Check.Equal(
+            0,
+            fixture.Executor!.ReplayCount,
+            "staged Forge conflict is not hidden by receipt-only replay");
+        Check.Equal(
+            1,
+            fixture.Executor.ExecuteCount,
+            "staged Forge conflict compares the canonical request once");
 
         var packets = fixture.Transport.ReadClearLegacyPackets();
         Check.Equal(1, packets.Count, "Forge conflict sends one stock rejection");
