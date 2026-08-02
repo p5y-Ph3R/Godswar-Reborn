@@ -10,7 +10,7 @@ all four classes without changing item IDs, packets, or database rows.
 
 | Class | Tier III to IV | Geometry | Palette |
 |---|---:|---|---|
-| Warrior | `1034` to `1035` | Large three-dimensional Olympian Aegis blade with winged shoulders, a narrow point, and a subtly rotated upper face | Crimson, hot highlights, bright gold |
+| Warrior | `1034` to `1035` | Ares winged falcata with a swept asymmetric guard, concave spine notch, forward-curved cutting edge, and hooked point | Crimson, hot highlights, bright gold |
 | Champion | `1434` to `1435` | Long Celestial spear with a double-diamond head | Cyan, silver-white, bright gold |
 | Priest | `1734` to `1735` | Wide Divine sun-crown scepter | Emerald, ivory, bright gold |
 | Mage | `1834` to `1835` | Asymmetric Astral crescent wand | Violet, magenta energy, cold platinum |
@@ -20,10 +20,14 @@ are substantially different, but face indices, UVs, materials, frame matrices,
 and attachment data remain unchanged. Existing normals are recalculated after
 the sculpt. The protected grip portion is not reshaped.
 
-The second Warrior sculpt deliberately remains readable when the sword is seen
-edge-on in the third-person camera. Relative to Tier III, it is 18% longer and
-at least 55% wider in both render trees; its legacy-tree depth is more than
-doubled. The lower 32% grip is verified vertex-for-vertex as unchanged.
+The Warrior sculpt is not accepted merely because its bounding box is larger.
+Generation verifies the forward blade curve, the spine inset, the opposite
+sweep of the guard wings, and the asymmetric upper-blade span independently.
+It is only 8% longer than Tier III and keeps a restrained depth. The legacy
+tree's broad original guard makes the completed weapon slightly narrower
+overall, while the high-resolution tree gains width from the curved blade
+rather than uniform scaling. The lower 32% grip is verified vertex-for-vertex
+as unchanged.
 
 Warrior item `1035` is not redirected to Tier III. `ItemBaseAttribute.xml`
 defines it independently, while `Origin.exe` resolves one-handed models using

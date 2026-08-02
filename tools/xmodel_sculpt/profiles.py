@@ -34,12 +34,27 @@ class MeshBasis:
 PROFILES: dict[int, SculptProfile] = {
     1035: SculptProfile(
         1035,
-        "olympian_aegis_blade",
+        "ares_winged_falcata",
         0.32,
-        0.40,
-        ((0.40, 1.55), (0.50, 2.45), (0.62, 2.0), (0.75, 1.50), (0.88, 0.82), (1.0, 0.12)),
-        ((0.40, 1.45), (0.50, 2.10), (0.62, 1.90), (0.75, 1.60), (0.88, 1.20), (1.0, 0.70)),
-        0.18,
+        0.42,
+        (
+            (0.42, 1.10),
+            (0.50, 0.72),
+            (0.60, 0.88),
+            (0.68, 0.74),
+            (0.78, 1.12),
+            (0.88, 1.38),
+            (0.96, 0.80),
+            (1.0, 0.15),
+        ),
+        (
+            (0.42, 1.08),
+            (0.55, 1.12),
+            (0.72, 1.08),
+            (0.88, 1.12),
+            (1.0, 0.55),
+        ),
+        0.08,
     ),
     1435: SculptProfile(
         1435,
@@ -204,6 +219,82 @@ def _key_value(keys: tuple[tuple[float, float], ...], value: float) -> float:
     return keys[-1][1]
 
 
+_WARRIOR_CURVE_KEYS = (
+    (0.42, 0.0),
+    (0.52, 0.018),
+    (0.62, 0.055),
+    (0.72, 0.095),
+    (0.84, 0.130),
+    (0.93, 0.145),
+    (1.0, 0.120),
+)
+
+_WARRIOR_SPINE_KEYS = (
+    (0.42, 1.0),
+    (0.54, 0.92),
+    (0.62, 0.28),
+    (0.70, 0.72),
+    (0.80, 0.82),
+    (0.90, 0.70),
+    (0.97, 0.50),
+    (1.0, 0.15),
+)
+
+_WARRIOR_EDGE_KEYS = (
+    (0.42, 1.0),
+    (0.54, 1.05),
+    (0.62, 1.15),
+    (0.72, 1.35),
+    (0.84, 1.65),
+    (0.92, 1.35),
+    (1.0, 0.15),
+)
+
+
+def _warrior_falcata(
+    width_value: float,
+    longitudinal_value: float,
+    thickness_value: float,
+    t: float,
+    basis: MeshBasis,
+) -> tuple[float, float, float]:
+    """Curve one edge around a notched spine and sweep the guard wings."""
+
+    source_side = -1.0 if width_value < 0.0 else 1.0
+    if t >= 0.42:
+        side_scale = _key_value(
+            _WARRIOR_SPINE_KEYS if source_side < 0.0 else _WARRIOR_EDGE_KEYS,
+            t,
+        )
+        width_value *= side_scale
+        width_value += _key_value(_WARRIOR_CURVE_KEYS, t) * basis.span_l
+
+    # The two outer guard wings sweep in opposite longitudinal directions.
+    # This changes their silhouette without touching the attachment/grip below.
+    guard_window = _smoothstep(0.32, 0.37, t) * (
+        1.0 - _smoothstep(0.40, 0.44, t)
+    )
+    radius = max(basis.maximum_radius, 1e-8)
+    outer_weight = min(1.0, abs(width_value) / (radius * 0.55))
+    longitudinal_value += (
+        source_side
+        * guard_window
+        * outer_weight
+        * 0.055
+        * basis.span_l
+    )
+
+    # A slight face turn keeps the new outline readable from normal gameplay
+    # cameras; this is intentionally subtle rather than a thickness increase.
+    angle = math.radians(6.0) * _smoothstep(0.42, 0.72, t)
+    cosine, sine = math.cos(angle), math.sin(angle)
+    width_value, thickness_value = (
+        width_value * cosine - thickness_value * sine,
+        width_value * sine + thickness_value * cosine,
+    )
+    return width_value, longitudinal_value, thickness_value
+
+
 class ProfileTransform:
     """Callable position transform with one cached PCA basis per Mesh."""
 
@@ -246,13 +337,12 @@ class ProfileTransform:
         thickness_value *= thickness_scale
 
         if self.profile.item_id == 1035:
-            # Present the broader blade face from normal third-person camera
-            # angles while keeping the lower grip and attachment region exact.
-            angle = math.radians(10.0) * _smoothstep(0.40, 0.70, t)
-            cosine, sine = math.cos(angle), math.sin(angle)
-            width_value, thickness_value = (
-                width_value * cosine - thickness_value * sine,
-                width_value * sine + thickness_value * cosine,
+            width_value, l_value, thickness_value = _warrior_falcata(
+                width_value,
+                l_value,
+                thickness_value,
+                t,
+                basis,
             )
         elif self.profile.item_id == 1735:
             angle = math.radians(18.0) * _smoothstep(0.64, 1.0, t)

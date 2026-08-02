@@ -7,7 +7,7 @@ import struct
 from erebus_lion.model_codec import compress_xof_mszip, expand_xof_mszip
 from xmodel_sculpt.binary_x import XModelError, parse_tokens
 from xmodel_sculpt.mesh import discover_meshes
-from xmodel_sculpt.profiles import profile_transform
+from xmodel_sculpt.profiles import pca_basis, profile_transform
 from xmodel_sculpt.sculpt import sculpt_xof_mszip
 
 
@@ -144,6 +144,31 @@ def main() -> int:
         label="fixture.jcs",
     )
     assert profile.changed_vertices > 0
+    basis = pca_basis(profile.before[0])
+    for source, target in zip(
+        profile.before[0].vertices,
+        profile.after[0].vertices,
+    ):
+        centered = tuple(
+            source[index] - basis.origin[index]
+            for index in range(3)
+        )
+        longitudinal = sum(
+            centered[index] * basis.longitudinal[index]
+            for index in range(3)
+        )
+        position = (
+            longitudinal - basis.minimum_l
+        ) / basis.span_l
+        if position <= 0.32:
+            assert source == target
+    source_tip = profile.before[0].vertices[3]
+    target_tip = profile.after[0].vertices[3]
+    tip_curve = sum(
+        (target_tip[index] - source_tip[index]) * basis.width[index]
+        for index in range(3)
+    )
+    assert tip_curve / basis.span_l > 0.05
     checks += 1
 
     _expect_error(lambda: parse_tokens(expanded[:-1]), "truncated payload")

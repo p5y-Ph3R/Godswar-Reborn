@@ -92,16 +92,45 @@ def _span(vertices, origin, axis) -> float:
     return max(projections) - min(projections)
 
 
+def _average(values: list[float], label: str) -> float:
+    if not values:
+        raise XModelError(f"Warrior silhouette has no samples for {label}")
+    return sum(values) / len(values)
+
+
 def _validate_warrior_silhouette(tree: str, before, after) -> dict[str, object]:
     profile = PROFILES[1035]
     basis = pca_basis(before)
     preserved = 0
+    samples: list[tuple[float, float, float, float]] = []
     for source, target in zip(before.vertices, after.vertices):
-        longitudinal = sum(
+        source_longitudinal = sum(
             (source[index] - basis.origin[index]) * basis.longitudinal[index]
             for index in range(3)
         )
-        position = (longitudinal - basis.minimum_l) / basis.span_l
+        target_longitudinal = sum(
+            (target[index] - basis.origin[index]) * basis.longitudinal[index]
+            for index in range(3)
+        )
+        source_width = sum(
+            (source[index] - basis.origin[index]) * basis.width[index]
+            for index in range(3)
+        )
+        target_width = sum(
+            (target[index] - basis.origin[index]) * basis.width[index]
+            for index in range(3)
+        )
+        position = (
+            source_longitudinal - basis.minimum_l
+        ) / basis.span_l
+        samples.append(
+            (
+                position,
+                source_width,
+                target_width,
+                target_longitudinal - source_longitudinal,
+            )
+        )
         if position <= profile.preserve_until:
             preserved += 1
             if source != target:
@@ -120,17 +149,92 @@ def _validate_warrior_silhouette(tree: str, before, after) -> dict[str, object]:
         _span(after.vertices, basis.origin, basis.thickness),
     )
     ratios = tuple(target / source for source, target in zip(source_spans, target_spans))
-    minimum_width = 1.65 if tree == "Characters" else 1.55
-    minimum_thickness = 2.0 if tree == "Characters" else 1.25
-    if ratios[0] < minimum_width or ratios[1] < 1.17 or ratios[2] < minimum_thickness:
+
+    # Dimension bounds reject both the previous scale-up and an impractical
+    # replacement. The legacy source already has a broad guard, so its curved
+    # blade can be more distinctive while the total width becomes smaller.
+    if not (
+        0.85 <= ratios[0] <= 1.80
+        and 1.06 <= ratios[1] <= 1.10
+        and 0.95 <= ratios[2] <= 1.35
+    ):
         raise XModelError(
-            f"Warrior silhouette is not materially distinct in {tree}: {ratios}"
+            f"Warrior falcata dimensions are not sensible in {tree}: {ratios}"
+        )
+
+    curve_offset = _average(
+        [
+            target_width - source_width
+            for position, source_width, target_width, _ in samples
+            if 0.75 <= position <= 0.95
+        ],
+        "upper blade curve",
+    ) / basis.span_l
+    notch_offset = _average(
+        [
+            target_width - source_width
+            for position, source_width, target_width, _ in samples
+            if 0.58 <= position <= 0.66 and source_width < 0.0
+        ],
+        "spine notch",
+    )
+    shoulder_offset = _average(
+        [
+            target_width - source_width
+            for position, source_width, target_width, _ in samples
+            if 0.50 <= position <= 0.57 and source_width < 0.0
+        ],
+        "spine shoulder",
+    )
+    notch_inset = (notch_offset - shoulder_offset) / basis.span_l
+    positive_guard_sweep = _average(
+        [
+            longitudinal_delta
+            for position, source_width, _, longitudinal_delta in samples
+            if 0.32 < position < 0.44 and source_width > 0.0
+        ],
+        "positive guard wing",
+    )
+    negative_guard_sweep = _average(
+        [
+            longitudinal_delta
+            for position, source_width, _, longitudinal_delta in samples
+            if 0.32 < position < 0.44 and source_width < 0.0
+        ],
+        "negative guard wing",
+    )
+    guard_sweep = (
+        positive_guard_sweep - negative_guard_sweep
+    ) / basis.span_l
+    upper_widths = [
+        target_width / basis.span_l
+        for position, _, target_width, _ in samples
+        if 0.72 <= position <= 0.92
+    ]
+    if not upper_widths:
+        raise XModelError("Warrior silhouette has no upper blade samples")
+    upper_width_span = max(upper_widths) - min(upper_widths)
+    if (
+        curve_offset < 0.12
+        or notch_inset < 0.025
+        or guard_sweep < 0.015
+        or min(upper_widths) < 0.01
+        or upper_width_span < 0.20
+    ):
+        raise XModelError(
+            "Warrior silhouette lacks its reviewed curve/notch/wing features: "
+            f"curve={curve_offset}, notch={notch_inset}, "
+            f"guard={guard_sweep}, upper={upper_widths}"
         )
     return {
         "protected_grip_vertices": preserved,
         "width_ratio": round(ratios[0], 6),
         "length_ratio": round(ratios[1], 6),
         "thickness_ratio": round(ratios[2], 6),
+        "curve_offset_ratio": round(curve_offset, 6),
+        "notch_inset_ratio": round(notch_inset, 6),
+        "guard_sweep_ratio": round(guard_sweep, 6),
+        "upper_width_span_ratio": round(upper_width_span, 6),
     }
 
 
