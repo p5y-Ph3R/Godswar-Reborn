@@ -14,6 +14,7 @@ internal static partial class GearEnhancementStateChecks
     {
         CheckMaterialCatalog();
         CheckAdd();
+        CheckFifthAttributeReservation();
         CheckEnhance();
         CheckDeleteAndCompaction();
         CheckLegendaryChainAnchor();
@@ -141,7 +142,7 @@ internal static partial class GearEnhancementStateChecks
             GearEnhancementPlanner.Create(TestItemContent.Catalog, fullBag, fullRequest),
             fullBag,
             GearEnhancementStatus.AttributeSlotsFull,
-            "Add enforces the five-attribute cap");
+            "Add enforces the ordinary four-attribute cap");
     }
 
     private static void CheckEnhance()

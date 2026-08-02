@@ -51,10 +51,28 @@ supplies the result item, required quantity, profession, or level.
 | Convert into Class Suit III | Class Suit II | Promotional Insignia III (`14069`) | Class Suit III |
 | Convert into Class Suit IV | Class Suit III | Promotional Insignia IV (`14073`) | Class Suit IV |
 
-Insignia cost is determined by slot: weapon/head/chest `3`; ring/waist/wrist/
-legs `2`; amulet/gloves/boots/shield `1`. Target minimum level comes from the
-pinned item-template publication. The authoritative character profession and
-level are read under the same PostgreSQL transaction as the inventory update.
+Each conversion step consumes the insignia for its target tier. The exact
+per-slot cost and resulting equipment level are the stock-client values from
+`NF_L0_CY002`, `NF_L0_CY003`, `NF_L0_CY006`/`NF_L0_CY007`, and
+`NF_L0_CY008`:
+
+| Equipment slot | Insignias per conversion | Tier I level | Tier II level | Tier III level | Tier IV level |
+|---|---:|---:|---:|---:|---:|
+| Weapon | 3 | 120 | 125 | 135 | 150 |
+| Ring | 2 | 120 | 125 | 131 | 151 |
+| Waist | 2 | 120 | 125 | 139 | 159 |
+| Necklace | 1 | 120 | 125 | 134 | 154 |
+| Gloves / hand | 1 | 121 | 126 | 132 | 152 |
+| Boots / foot | 1 | 121 | 126 | 136 | 156 |
+| Chest | 3 | 122 | 127 | 133 | 153 |
+| Head | 3 | 123 | 128 | 140 | 160 |
+| Leggings | 2 | 124 | 129 | 137 | 157 |
+| Wrist | 2 | 124 | 129 | 138 | 158 |
+| Shield | 1 | 123 | 128 | 139 | 159 |
+
+The authoritative target template, character profession, and character level
+are read under the same PostgreSQL transaction as the inventory update. The
+client cannot choose or override the output level or insignia cost.
 
 Quality, grade, binding, item EXP, Holy Suit state, ordinary attributes, and
 Holy Stone sockets are preserved. The output becomes bound when either input
@@ -69,7 +87,10 @@ is rejected because the shipped client contains no complete safe recipe.
 
 Adding a class attribute requires a matching Class Suit weapon, one Flame
 Spark (`9990`), and one allowed class stone. Deleting it requires one Water
-Grain (`9991`). Only one class-specific attribute can exist on a weapon.
+Grain (`9991`). Only one class-specific attribute can exist on a weapon. Tier I
+and II weapons may place it only in the first four appended slots; Tier III and
+IV may also use slot five when the first four are occupied. Common weapons and
+Tier I/II weapons with only slot five empty fail closed.
 
 | Professions | Stone | Attribute |
 |---|---:|---:|
@@ -85,6 +106,11 @@ Grain (`9991`). Only one class-specific attribute can exist on a weapon.
 The stock “fifth attribute” page remains visible, but its final action is
 fail-closed until an exact original wire capture establishes the missing
 operation semantics.
+
+Specifically, wire operation `107` remains deliberately fail-closed and is not
+implemented. It must not be wired until an exact original-client capture
+establishes its request and response semantics. The slot rules above reserve
+the fifth slot now without guessing that unresolved protocol.
 
 ## Persistence and anti-duplication boundary
 

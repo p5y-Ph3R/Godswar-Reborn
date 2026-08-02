@@ -5,7 +5,7 @@ namespace Godswar.Server.ProtocolChecks;
 /// <summary>
 /// Focused checks for dialogue-37 class-specific weapon attributes.
 /// </summary>
-internal static class ClassSuitAttributePlannerChecks
+internal static partial class ClassSuitAttributePlannerChecks
 {
     private const int GearSlot = 20;
     private const int CatalystSlot = 21;
@@ -16,6 +16,7 @@ internal static class ClassSuitAttributePlannerChecks
         CheckProfessionStoneMap();
         CheckAddConsumesExactMaterialsAndPreservesGear();
         CheckAddAuthorityAndDuplicateRejections();
+        CheckTierBoundFifthSlotRules();
         CheckDeleteCompactsAttributesAndConsumesWater();
         CheckDeleteAndStaleRejectionsAreAtomic();
         return Task.CompletedTask;

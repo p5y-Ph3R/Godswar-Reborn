@@ -71,13 +71,17 @@ internal static partial class GearEnhancementPlanner
                 out reason);
         }
 
-        var emptyIndex = Array.FindIndex(attributes, static attribute => !attribute.HasValue);
+        var emptyIndex = Array.FindIndex(
+            attributes,
+            0,
+            OrdinaryAddAttributeSlots,
+            static attribute => !attribute.HasValue);
         if (emptyIndex < 0)
         {
             return Fail(
                 equipment,
                 GearEnhancementStatus.AttributeSlotsFull,
-                "Gear already has the maximum five appended attributes.",
+                "Gear already has four ordinary appended attributes; slot five is reserved.",
                 out updated,
                 out status,
                 out reason);

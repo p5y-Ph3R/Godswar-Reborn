@@ -294,11 +294,13 @@ chains. Other stones can be added or deleted but cannot be Quartz-enhanced.
 
 Add chooses the first attribute template in the stone family that is allowed
 by the equipment template's `MainAttribute` data. It rejects an incompatible
-stone, an existing attribute from the same family, or a gear item whose five
-attribute slots are full. Enhance requires the matching family, synchronized
-attribute template/level fields, and the Quartz Plate for the current level.
-Delete removes the matching family and compacts the remaining attribute and
-attribute-level pairs without separating them.
+stone, an existing attribute from the same family, or a gear item whose first
+four ordinary attribute slots are full. Slot five is reserved for the
+Class Suit workflow; existing slot-five data remains fully supported by
+Enhance, Delete, serialization, and persistence. Enhance requires the matching
+family, synchronized attribute template/level fields, and the Quartz Plate for
+the current level. Delete removes the matching family and compacts the
+remaining attribute and attribute-level pairs without separating them.
 
 If any consumed material is bound, the resulting gear is bound. A failed
 operation consumes nothing and does not change the gear.
