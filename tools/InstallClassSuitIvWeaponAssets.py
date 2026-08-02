@@ -293,7 +293,7 @@ def main() -> int:
         )
         if arguments.check:
             verify_installed(client_root, assets)
-            print("Verified 32 installed Class Suit IV client assets")
+            print(f"Verified {len(assets)} installed Class Suit IV client assets")
             return 0
         install(client_root, arguments.backup_root, assets)
         return 0
