@@ -3,7 +3,7 @@
 PINNED_MODEL_HASHES: dict[str, tuple[str, str]] = {
     "Characters/female_weapononehand_1034_right.jcs": (
         "f6da7cf3c5f79659140a73729f0d94d724103555a9876692a962db51a524c7c4",
-        "730b45ff429577a03aa4a56b48bb5580db01f7a8581a2966b8820eef50b556ce",
+        "d06a68c9f11635644e41e44ff59c9b6b2e744e222090aeeadac4972f9b6832ea",
     ),
     "Characters/female_weapontwohand_1434.jcs": (
         "3d9811cadad975b0dfe843292e746a37148ad21e22427be7bbbfffa1a7c244e4",
@@ -19,7 +19,7 @@ PINNED_MODEL_HASHES: dict[str, tuple[str, str]] = {
     ),
     "Characters/male_weapononehand_1034_right.jcs": (
         "044acf86b038d47fc649d119314cc5643a3014d9b32610ec44107e97b9470bf8",
-        "c28cbd95d4c783e3fb350cefcecaf07655b0dcc1add7a9e5ecd2b03f1137b120",
+        "ec15efb77f7936ca500091218dffa9ac7c656e40698493a091248b7b9efe278d",
     ),
     "Characters/male_weapontwohand_1434.jcs": (
         "c4075f640dd1c362e4366a4d46e1a44464968078991c5bcb6fd744b50e81840b",
@@ -35,7 +35,7 @@ PINNED_MODEL_HASHES: dict[str, tuple[str, str]] = {
     ),
     "Characters_New/female_weapononehand_1034_right.jcs": (
         "9231f91dbea4952d54fb42bda27e600ba77ef0173504c1e75d7f6994a82e71ec",
-        "23b41ae9ea720d03be9ffd7dfc7d331d1fb9607b87a420e4fdcc496e13473d9a",
+        "a3f828104c5b0e18864612771438e5cd8463b085aed846c0809249f13301a5ae",
     ),
     "Characters_New/female_weapontwohand_1434.jcs": (
         "1e20332634e57e9cd1a6c2ef56047157c75518fbbfccdbb33a4a6cff194e9665",
@@ -51,7 +51,7 @@ PINNED_MODEL_HASHES: dict[str, tuple[str, str]] = {
     ),
     "Characters_New/male_weapononehand_1034_right.jcs": (
         "0d45f83d5c6857a960e7866b64a03672a06a36f4861161f6efa46dd5c03fd619",
-        "db3615d5d4d1a652655304cdd10dfc8708133149feb30ea7dd9e5c11ed327c4e",
+        "95840bf722af8d4fff04042a6d2700f0724b5019cb0a54d2fe6527cab4725c79",
     ),
     "Characters_New/male_weapontwohand_1434.jcs": (
         "cbb7ae42d10fb8f03d6aeaef9db0fb8549853b7ebc4c6a0f7d3a4342719d30e4",

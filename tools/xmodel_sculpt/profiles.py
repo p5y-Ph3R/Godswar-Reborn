@@ -34,12 +34,12 @@ class MeshBasis:
 PROFILES: dict[int, SculptProfile] = {
     1035: SculptProfile(
         1035,
-        "olympian_blade",
+        "olympian_aegis_blade",
         0.32,
-        0.45,
-        ((0.45, 1.25), (0.58, 1.75), (0.76, 1.35), (0.90, 0.72), (1.0, 0.12)),
-        ((0.45, 1.0), (0.58, 1.18), (0.76, 1.08), (0.90, 0.82), (1.0, 0.45)),
-        0.08,
+        0.40,
+        ((0.40, 1.55), (0.50, 2.45), (0.62, 2.0), (0.75, 1.50), (0.88, 0.82), (1.0, 0.12)),
+        ((0.40, 1.45), (0.50, 2.10), (0.62, 1.90), (0.75, 1.60), (0.88, 1.20), (1.0, 0.70)),
+        0.18,
     ),
     1435: SculptProfile(
         1435,
@@ -245,7 +245,16 @@ class ProfileTransform:
         width_value *= width_scale
         thickness_value *= thickness_scale
 
-        if self.profile.item_id == 1735:
+        if self.profile.item_id == 1035:
+            # Present the broader blade face from normal third-person camera
+            # angles while keeping the lower grip and attachment region exact.
+            angle = math.radians(10.0) * _smoothstep(0.40, 0.70, t)
+            cosine, sine = math.cos(angle), math.sin(angle)
+            width_value, thickness_value = (
+                width_value * cosine - thickness_value * sine,
+                width_value * sine + thickness_value * cosine,
+            )
+        elif self.profile.item_id == 1735:
             angle = math.radians(18.0) * _smoothstep(0.64, 1.0, t)
             cosine, sine = math.cos(angle), math.sin(angle)
             width_value, thickness_value = (

@@ -10,7 +10,7 @@ all four classes without changing item IDs, packets, or database rows.
 
 | Class | Tier III to IV | Geometry | Palette |
 |---|---:|---|---|
-| Warrior | `1034` to `1035` | Broad Olympian leaf blade with strong shoulders and a narrow point | Crimson, hot highlights, bright gold |
+| Warrior | `1034` to `1035` | Large three-dimensional Olympian Aegis blade with winged shoulders, a narrow point, and a subtly rotated upper face | Crimson, hot highlights, bright gold |
 | Champion | `1434` to `1435` | Long Celestial spear with a double-diamond head | Cyan, silver-white, bright gold |
 | Priest | `1734` to `1735` | Wide Divine sun-crown scepter | Emerald, ivory, bright gold |
 | Mage | `1834` to `1835` | Asymmetric Astral crescent wand | Violet, magenta energy, cold platinum |
@@ -19,6 +19,24 @@ The models use topology-preserving sculpting. Vertex positions and silhouettes
 are substantially different, but face indices, UVs, materials, frame matrices,
 and attachment data remain unchanged. Existing normals are recalculated after
 the sculpt. The protected grip portion is not reshaped.
+
+The second Warrior sculpt deliberately remains readable when the sword is seen
+edge-on in the third-person camera. Relative to Tier III, it is 18% longer and
+at least 55% wider in both render trees; its legacy-tree depth is more than
+doubled. The lower 32% grip is verified vertex-for-vertex as unchanged.
+
+Warrior item `1035` is not redirected to Tier III. `ItemBaseAttribute.xml`
+defines it independently, while `Origin.exe` resolves one-handed models using
+`weapononehand_%04d_right`; therefore item `1035` loads the installed
+`weapononehand_1035_right.jcs` model.
+
+To deploy only this revised Warrior geometry without rewriting any Champion,
+Priest, Mage, or texture asset, use:
+
+```powershell
+python tools/InstallClassSuitIvWeaponAssets.py --install --model-item-id 1035
+python tools/InstallClassSuitIvWeaponAssets.py --check --model-item-id 1035
+```
 
 ## Generate and verify
 

@@ -82,7 +82,10 @@ def json_bytes(value: object) -> bytes:
     return json.dumps(value, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
 
-def load_model_assets(stage: Path) -> dict[Path, bytes]:
+def load_model_assets(
+    stage: Path,
+    item_id: int | None = None,
+) -> dict[Path, bytes]:
     manifest = read_json(stage / "manifest.json")
     if manifest.get("format") != "reborn-class-suit-iv-weapon-models-v1":
         raise AssetInstallError("Unexpected Class Suit IV model manifest format")
@@ -93,6 +96,11 @@ def load_model_assets(stage: Path) -> dict[Path, bytes]:
     for entry in models:
         if not isinstance(entry, dict):
             raise AssetInstallError("Model manifest contains an invalid entry")
+        entry_item_id = entry.get("item_id")
+        if not isinstance(entry_item_id, int):
+            raise AssetInstallError("Model manifest entry has no numeric item ID")
+        if item_id is not None and entry_item_id != item_id:
+            continue
         relative = safe_relative(entry.get("target"))
         expected_hash = entry.get("target_sha256")
         source = ensure_inside(stage / relative, stage)
@@ -104,6 +112,11 @@ def load_model_assets(stage: Path) -> dict[Path, bytes]:
         if relative in assets:
             raise AssetInstallError(f"Duplicate staged target: {relative}")
         assets[relative] = value
+    expected_count = 4 if item_id is not None else 16
+    if len(assets) != expected_count:
+        raise AssetInstallError(
+            f"Expected {expected_count} staged model targets, found {len(assets)}"
+        )
     return assets
 
 
@@ -205,8 +218,8 @@ def restore_backup(client_root: Path, backup: Path) -> None:
     if not isinstance(recorded_root, str) or Path(recorded_root).resolve() != client_root:
         raise AssetInstallError("Backup belongs to a different game-client root")
     entries = manifest.get("files")
-    if not isinstance(entries, list) or len(entries) != 32:
-        raise AssetInstallError("Backup manifest must contain exactly 32 files")
+    if not isinstance(entries, list) or len(entries) not in {4, 32}:
+        raise AssetInstallError("Backup manifest must contain 4 or 32 files")
     for entry in entries:
         if not isinstance(entry, dict):
             raise AssetInstallError("Backup manifest contains an invalid entry")
@@ -224,7 +237,7 @@ def restore_backup(client_root: Path, backup: Path) -> None:
             target.unlink(missing_ok=True)
         else:
             raise AssetInstallError(f"Backup entry has invalid state: {relative}")
-    print(f"Restored 32 Class Suit IV asset targets from {backup}")
+    print(f"Restored {len(entries)} Class Suit IV asset targets from {backup}")
 
 
 def install(
@@ -251,6 +264,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-stage", type=Path, default=DEFAULT_MODEL_STAGE)
     parser.add_argument("--texture-stage", type=Path, default=DEFAULT_TEXTURE_STAGE)
     parser.add_argument("--backup-root", type=Path, default=DEFAULT_BACKUP_ROOT)
+    parser.add_argument(
+        "--model-item-id",
+        type=int,
+        choices=(1035, 1435, 1735, 1835),
+        help="Install/check only the four model variants for one Tier IV item",
+    )
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--install", action="store_true")
     action.add_argument("--check", action="store_true")
@@ -267,7 +286,11 @@ def main() -> int:
         if arguments.restore is not None:
             restore_backup(client_root, arguments.restore.resolve())
             return 0
-        assets = load_all_assets(arguments.model_stage, arguments.texture_stage)
+        assets = (
+            load_model_assets(arguments.model_stage.resolve(), arguments.model_item_id)
+            if arguments.model_item_id is not None
+            else load_all_assets(arguments.model_stage, arguments.texture_stage)
+        )
         if arguments.check:
             verify_installed(client_root, assets)
             print("Verified 32 installed Class Suit IV client assets")

@@ -18,7 +18,7 @@ import sys
 from xmodel_sculpt.binary_x import XModelError
 from xmodel_sculpt.preview import comparison_svg
 from xmodel_sculpt.pinned_hashes import PINNED_MODEL_HASHES
-from xmodel_sculpt.profiles import PROFILES, profile_transform
+from xmodel_sculpt.profiles import PROFILES, pca_basis, profile_transform
 from xmodel_sculpt.sculpt import immutable_sha256, sculpt_xof_mszip
 
 
@@ -84,6 +84,56 @@ def _degenerate_triangle_count(meshes) -> int:
     return count
 
 
+def _span(vertices, origin, axis) -> float:
+    projections = [
+        sum((point[index] - origin[index]) * axis[index] for index in range(3))
+        for point in vertices
+    ]
+    return max(projections) - min(projections)
+
+
+def _validate_warrior_silhouette(tree: str, before, after) -> dict[str, object]:
+    profile = PROFILES[1035]
+    basis = pca_basis(before)
+    preserved = 0
+    for source, target in zip(before.vertices, after.vertices):
+        longitudinal = sum(
+            (source[index] - basis.origin[index]) * basis.longitudinal[index]
+            for index in range(3)
+        )
+        position = (longitudinal - basis.minimum_l) / basis.span_l
+        if position <= profile.preserve_until:
+            preserved += 1
+            if source != target:
+                raise XModelError("Warrior sculpt changed a protected grip vertex")
+    if preserved == 0:
+        raise XModelError("Warrior sculpt did not identify a protected grip region")
+
+    source_spans = (
+        _span(before.vertices, basis.origin, basis.width),
+        _span(before.vertices, basis.origin, basis.longitudinal),
+        _span(before.vertices, basis.origin, basis.thickness),
+    )
+    target_spans = (
+        _span(after.vertices, basis.origin, basis.width),
+        _span(after.vertices, basis.origin, basis.longitudinal),
+        _span(after.vertices, basis.origin, basis.thickness),
+    )
+    ratios = tuple(target / source for source, target in zip(source_spans, target_spans))
+    minimum_width = 1.65 if tree == "Characters" else 1.55
+    minimum_thickness = 2.0 if tree == "Characters" else 1.25
+    if ratios[0] < minimum_width or ratios[1] < 1.17 or ratios[2] < minimum_thickness:
+        raise XModelError(
+            f"Warrior silhouette is not materially distinct in {tree}: {ratios}"
+        )
+    return {
+        "protected_grip_vertices": preserved,
+        "width_ratio": round(ratios[0], 6),
+        "length_ratio": round(ratios[1], 6),
+        "thickness_ratio": round(ratios[2], 6),
+    }
+
+
 def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, object]]:
     files: list[tuple[Path, bytes]] = []
     entries: list[dict[str, object]] = []
@@ -142,6 +192,15 @@ def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, objec
                     result.after,
                 ) != immutable_sha256(repeated.expanded, repeated.after):
                     raise XModelError(f"Immutable model digest is unstable: {source_relative}")
+                silhouette = (
+                    _validate_warrior_silhouette(
+                        tree,
+                        result.before[0],
+                        result.after[0],
+                    )
+                    if spec.item_id == 1035
+                    else None
+                )
 
                 preview_relative = (
                     Path("previews")
@@ -170,6 +229,7 @@ def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, objec
                         "face_count": sum(len(mesh.faces) for mesh in result.before),
                         "source_degenerate_triangles": source_degenerate,
                         "target_degenerate_triangles": target_degenerate,
+                        "warrior_silhouette": silhouette,
                     }
                 )
     manifest: dict[str, object] = {

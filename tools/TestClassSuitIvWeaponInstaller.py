@@ -11,6 +11,7 @@ from InstallClassSuitIvWeaponAssets import (
     DEFAULT_TEXTURE_STAGE,
     install,
     load_all_assets,
+    load_model_assets,
     restore_backup,
     safe_relative,
     verify_installed,
@@ -31,6 +32,12 @@ def main() -> int:
     assert len(assets) == 32
     assert sum(path.suffix == ".jcs" for path in assets) == 16
     assert sum(path.suffix == ".gwo" for path in assets) == 16
+    checks += 1
+
+    warrior_models = load_model_assets(DEFAULT_MODEL_STAGE, 1035)
+    assert len(warrior_models) == 4
+    assert all("1035" in path.name and path.suffix == ".jcs" for path in warrior_models)
+    assert not any("1435" in path.name or "1735" in path.name for path in warrior_models)
     checks += 1
 
     expect_error(lambda: safe_relative("../Origin.exe"), "parent traversal")
@@ -75,6 +82,23 @@ def main() -> int:
         expect_error(
             lambda: restore_backup(other_client.resolve(), backup),
             "backup client-root mismatch",
+        )
+        checks += 1
+
+    with tempfile.TemporaryDirectory(prefix="reborn-tier4-warrior-install-") as folder:
+        root = Path(folder)
+        client = root / "client"
+        client.mkdir()
+        for relative in warrior_models:
+            target = client / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"old-warrior-model")
+        backup = install(client.resolve(), root / "backups", warrior_models)
+        verify_installed(client.resolve(), warrior_models)
+        restore_backup(client.resolve(), backup)
+        assert all(
+            (client / relative).read_bytes() == b"old-warrior-model"
+            for relative in warrior_models
         )
         checks += 1
 
