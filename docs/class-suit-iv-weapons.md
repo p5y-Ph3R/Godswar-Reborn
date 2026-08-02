@@ -28,6 +28,8 @@ From `C:\Reborn`:
 python tools/TestXModelSculpt.py
 python tools/GenerateClassSuitIvWeaponModels.py
 python tools/GenerateClassSuitIvWeaponModels.py --check
+# Run these two texture commands before the first installation. The stock
+# duplication audit is a historical pre-install snapshot.
 python tools/GenerateClassSuitIvWeaponTextures.py --audit-stock
 python tools/GenerateClassSuitIvWeaponTextures.py --check --audit-stock
 ```
@@ -49,6 +51,7 @@ Close `Origin.exe` and `Launch.exe`, then run:
 
 ```powershell
 python tools/InstallClassSuitIvWeaponAssets.py --install
+python tools/GenerateClassSuitIvWeaponTextures.py --check
 python tools/InstallClassSuitIvWeaponAssets.py --check
 ```
 
