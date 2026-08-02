@@ -20,11 +20,23 @@ internal static class HolyStoneProtocol
     public const int MountSubId = 101;
     public const int RemoveSubId = 201;
     public const int DrillSubId = 301;
+    public const int UpgradeSubId = 401;
+    public const int ImplementSpiritSubId = 501;
+    public const int CombineSubId = 601;
     public const int AdvancedDrillSubId = 701;
     public const int MountAliasOneSubId = 106;
     public const int MountAliasTwoSubId = 206;
     public const int MountAliasThreeSubId = 306;
     public const int MountAliasFourSubId = 406;
+    public const int UpgradeStoneSlotSubId = 506;
+    public const int UpgradeEclipseSlotSubId = 606;
+    public const int ImplementSpiritPageSubId = 706;
+    public const int ImplementStoneSlotSubId = 806;
+    public const int ImplementSpiritSlotSubId = 906;
+    public const int CombinePageSubId = 907;
+    public const int AdvancedDrillPageSubId = 107;
+    public const int AdvancedDrillEquipmentSlotSubId = 207;
+    public const int AdvancedDrillSpellSlotSubId = 307;
     public const int FunctionArgumentCount = 18;
     public const int MountScratchArgumentIndex = 0;
     public const int TargetArgumentIndex = 6;
@@ -48,12 +60,63 @@ internal static class HolyStoneProtocol
     public static bool IsExactMountNavigation(GamePacket packet) =>
         IsExactNavigation(packet, MountSubId);
 
+    public static bool IsExactPageNavigation(GamePacket packet) =>
+        IsExactNavigation(packet, MountSubId) ||
+        IsExactNavigation(packet, UpgradeSubId) ||
+        IsExactNavigation(packet, ImplementSpiritSubId) ||
+        IsExactNavigation(packet, CombineSubId) ||
+        IsExactNavigation(packet, AdvancedDrillSubId);
+
     public static bool IsExactAdvancedDrillNavigation(
         GamePacket packet) =>
         IsExactNavigation(packet, AdvancedDrillSubId);
 
     public static bool IsAdvancedDrillSubId(int subId) =>
         subId == AdvancedDrillSubId;
+
+    public static bool TryGetPageResponseSubIds(
+        int subId,
+        IReadOnlyList<int> args,
+        out int[] responseSubIds)
+    {
+        responseSubIds = [];
+        if (args.Count != FunctionArgumentCount ||
+            args.Any(static value => value != -1))
+        {
+            return false;
+        }
+
+        responseSubIds = subId switch
+        {
+            MountSubId =>
+            [
+                MountAliasOneSubId,
+                MountAliasTwoSubId,
+                MountAliasThreeSubId
+            ],
+            UpgradeSubId =>
+            [
+                MountAliasFourSubId,
+                UpgradeStoneSlotSubId,
+                UpgradeEclipseSlotSubId
+            ],
+            ImplementSpiritSubId =>
+            [
+                ImplementSpiritPageSubId,
+                ImplementStoneSlotSubId,
+                ImplementSpiritSlotSubId
+            ],
+            CombineSubId => [CombinePageSubId],
+            AdvancedDrillSubId =>
+            [
+                AdvancedDrillPageSubId,
+                AdvancedDrillEquipmentSlotSubId,
+                AdvancedDrillSpellSlotSubId
+            ],
+            _ => []
+        };
+        return responseSubIds.Length > 0;
+    }
 
     private static bool IsExactNavigation(
         GamePacket packet,

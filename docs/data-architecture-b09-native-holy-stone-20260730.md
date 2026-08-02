@@ -63,6 +63,23 @@ Every unused argument must be `-1`. Target references `100..195` mean kit-bag
 slots `0..95`; captured reference `205` means the equipped weapon. A Mount
 material must be a distinct kit-bag reference in `100..195`.
 
+The stock client's `NpcFunEment.lua` also proves the non-mutating Artisan
+page responses. An exact 92-byte request with all eighteen arguments set to
+`-1` opens the following native layouts:
+
+| Menu action | Original function | Response sub-IDs |
+|---:|---|---|
+| 101 | Mount Holy Stone | 106, 206, 306 |
+| 401 | Holy Stone upgrade | 406, 506, 606 |
+| 501 | Implement Holy Spirit | 706, 806, 906 |
+| 601 | Holy Stone Combination | 907 |
+| 701 | Equipment Advance Drilling | 107, 207, 307 |
+
+These are page transitions only. Recognizing them does not authorize an item
+or currency mutation. In particular, actions 401, 501, 601, and 701 remain
+fail-closed for value-bearing requests until their exact client-to-server
+commit shapes and item-state representation are captured.
+
 Literal clear-packet evidence is in
 `captures/capture-proxy-20260514-173331.log`:
 

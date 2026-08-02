@@ -65,9 +65,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         await AssertRawRejectedAsync(
                 HolyStoneCommandContractChecks.CreatePacket(
                     HolyStoneProtocol.SpartaNpcId,
-                    401,
-                    static _ => { }),
-            "unknown raw Holy Stone sub-ID");
+                    HolyStoneProtocol.UpgradeSubId,
+                    static args => args[6] = 205),
+            "unsupported raw Holy Stone Upgrade value shape");
 
         var navigation =
             HolyStoneCommandContractChecks.CreatePacket(

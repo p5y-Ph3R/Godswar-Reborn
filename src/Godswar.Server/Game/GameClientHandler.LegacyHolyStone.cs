@@ -18,21 +18,6 @@ internal sealed partial class GameClientHandler
             $"[holy-stone] action npc={npcId} dialog={dialogIndex} " +
             $"subId={subId} args={string.Join(',', args)}");
 
-        if (HolyStoneProtocol.IsMountNavigation(subId, args))
-        {
-            await _session.SendAsync(
-                PacketBuilder.NpcFunctionActionResponse(
-                    npcId,
-                    dialogIndex,
-                    HolyStoneProtocol.MountAliasOneSubId,
-                    HolyStoneProtocol.MountAliasTwoSubId,
-                    HolyStoneProtocol.MountAliasThreeSubId,
-                    HolyStoneProtocol.MountAliasFourSubId),
-                cancellationToken,
-                "NpcFunctionActionResponse");
-            return;
-        }
-
         if (exactIntent is not { } intent)
         {
             await _session.SendAsync(

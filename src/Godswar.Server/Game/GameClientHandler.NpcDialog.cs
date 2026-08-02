@@ -78,7 +78,7 @@ internal sealed partial class GameClientHandler
                  _session.IsSecure &&
                  HolyStoneProtocol.IsEndpoint(npcId, dialogIndex) &&
                  HolyStoneProtocol.IsMutationSubId(subId) &&
-                 !HolyStoneProtocol.IsExactMountNavigation(packet))
+                 !HolyStoneProtocol.IsExactPageNavigation(packet))
         {
             await RejectUnidentifiedSecureHolyStoneAsync(
                 npcId,
@@ -92,9 +92,7 @@ internal sealed partial class GameClientHandler
         {
             var exactNavigation =
                 !packet.ClientOperationId.HasValue &&
-                (HolyStoneProtocol.IsExactMountNavigation(packet) ||
-                 HolyStoneProtocol.IsExactAdvancedDrillNavigation(
-                     packet));
+                HolyStoneProtocol.IsExactPageNavigation(packet);
             var exactNpcId = 0u;
             var exactDialogIndex = 0;
             var exactIntent = default(HolyStoneWireIntent);
@@ -373,6 +371,21 @@ internal sealed partial class GameClientHandler
 
         if (route.Behavior == NpcDialogueBehavior.HolyStone)
         {
+            if (HolyStoneProtocol.TryGetPageResponseSubIds(
+                    subId,
+                    args,
+                    out var pageSubIds))
+            {
+                await _session.SendAsync(
+                    PacketBuilder.NpcFunctionActionResponse(
+                        npcId,
+                        dialogIndex,
+                        pageSubIds),
+                    cancellationToken,
+                    "NpcFunctionActionResponse");
+                return;
+            }
+
             if (HolyStoneProtocol.IsAdvancedDrillSubId(subId))
             {
                 await RejectUnsupportedAdvancedHolyStoneAsync(

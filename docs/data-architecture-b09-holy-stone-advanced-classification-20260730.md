@@ -7,7 +7,8 @@ Status: classified and fail-closed; value mutation not implemented
 ## Decision
 
 Holy Stone action `701` is now an explicit unsupported valuable-operation
-boundary. The stock page transition can reach the server, but every
+boundary. The stock page transition renders the original two-slot Advanced
+Drilling layout using response sub-IDs `107`, `207`, and `307`, but every
 value-bearing action-701 shape is rejected before operation identity,
 inventory, wallet, durable command, or legacy-store access.
 
@@ -72,7 +73,8 @@ families 16-18:
 
 The managed server also names action `701` without mapping it to
 `HolyStoneCommandOperation` or `CommandFamily`. On an authoritative Holy
-Stone dialogue route it sends the already-observed generic wrong-selection
+Stone dialogue route, the exact all-`-1` transition receives the native page
+response. Any value-bearing shape receives the generic wrong-selection
 response and records the low-cardinality reason
 `missing_c2s_wire_capture`. Raw and secure requests cannot reach
 `ApplyWeaponHolyStoneAsync` or `IHolyStoneCommandExecutor`. A forged
@@ -109,8 +111,8 @@ Automated checks cover:
 - native all-`-1` page-transition classification;
 - native populated, malformed-length, and malformed-dialog rejection;
 - absence of native command decoding for action `701`;
-- secure page, value-shaped, and UUID-bearing server rejection;
-- raw page and value-shaped server rejection; and
+- secure and raw page rendering plus value-shaped and UUID-bearing server
+  rejection; and
 - zero durable-executor, legacy-store, inventory, wallet, and fabricated
   command-result activity.
 

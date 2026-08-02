@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Domain.Inventory;
 using Godswar.Server.Game;
@@ -123,23 +124,60 @@ internal static partial class HolyStoneDurableHandlerChecks
 
     private static async Task CheckRawNavigationAsync()
     {
+        await CheckRawNavigationPageAsync(
+            HolyStoneProtocol.MountSubId,
+            [106, 206, 306],
+            "Mount");
+        await CheckRawNavigationPageAsync(
+            HolyStoneProtocol.UpgradeSubId,
+            [406, 506, 606],
+            "Upgrade");
+        await CheckRawNavigationPageAsync(
+            HolyStoneProtocol.ImplementSpiritSubId,
+            [706, 806, 906],
+            "Implement Spirit");
+        await CheckRawNavigationPageAsync(
+            HolyStoneProtocol.CombineSubId,
+            [907],
+            "Combination");
+        await CheckRawNavigationPageAsync(
+            HolyStoneProtocol.AdvancedDrillSubId,
+            [107, 207, 307],
+            "Advanced Drill");
+    }
+
+    private static async Task CheckRawNavigationPageAsync(
+        int requestSubId,
+        IReadOnlyList<int> expectedResponseSubIds,
+        string description)
+    {
         await using var fixture = await CreateRawFixtureAsync();
         await InvokeAsync(
             fixture.Handler,
             HolyStoneCommandContractChecks.CreatePacket(
                 HolyStoneProtocol.SpartaNpcId,
-                HolyStoneProtocol.MountSubId,
+                requestSubId,
                 static _ => { }));
 
         Check.Equal(
             0,
             fixture.Store.HolyStoneCount,
-            "raw Mount navigation does not mutate");
+            $"raw {description} navigation does not mutate");
         var response = fixture.Transport.ReadLegacyPackets().Single();
-        AssertNpcResult(
-            response,
-            HolyStoneProtocol.MountAliasOneSubId,
-            "raw Mount navigation");
+        Check.Equal(
+            12 + (expectedResponseSubIds.Count * sizeof(int)),
+            response.Length,
+            $"raw {description} page response length");
+        for (var index = 0;
+             index < expectedResponseSubIds.Count;
+             index++)
+        {
+            Check.Equal(
+                expectedResponseSubIds[index],
+                BinaryPrimitives.ReadInt32LittleEndian(
+                    response.AsSpan(12 + (index * sizeof(int)))),
+                $"raw {description} page sub-ID {index}");
+        }
     }
 
     private static void CheckExactDrillCostPolicy()
