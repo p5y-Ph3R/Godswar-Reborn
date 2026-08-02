@@ -1,0 +1,24 @@
+2026/08/02 12:09:01 === Patcher started at 2026-08-02T12:09:01+12:00 ===
+2026/08/02 12:09:02 Fetched 5 versions from CDN
+2026/08/02 12:09:02 Current version: 1.0.4
+2026/08/02 12:09:02 Available versions: [1.0.0 1.0.1 1.0.2 1.0.3 1.0.4]
+2026/08/02 12:09:02 WARNING: Skipping patch 1.0.0 (older than current 1.0.4)
+2026/08/02 12:09:02 WARNING: Skipping patch 1.0.1 (older than current 1.0.4)
+2026/08/02 12:09:02 WARNING: Skipping patch 1.0.2 (older than current 1.0.4)
+2026/08/02 12:09:02 WARNING: Skipping patch 1.0.3 (older than current 1.0.4)
+2026/08/02 12:09:02 Skipping patch 1.0.4 (already installed)
+2026/08/02 12:09:02 No patches applied - already up to date
+2026/08/02 12:09:02 All patches applied successfully. Launching game...
+2026/08/02 12:09:02 === Patcher finished ===
+2026/08/02 12:23:51 === Patcher started at 2026-08-02T12:23:51+12:00 ===
+2026/08/02 12:23:51 Fetched 5 versions from CDN
+2026/08/02 12:23:51 Current version: 1.0.4
+2026/08/02 12:23:51 Available versions: [1.0.0 1.0.1 1.0.2 1.0.3 1.0.4]
+2026/08/02 12:23:51 WARNING: Skipping patch 1.0.0 (older than current 1.0.4)
+2026/08/02 12:23:51 WARNING: Skipping patch 1.0.1 (older than current 1.0.4)
+2026/08/02 12:23:51 WARNING: Skipping patch 1.0.2 (older than current 1.0.4)
+2026/08/02 12:23:51 WARNING: Skipping patch 1.0.3 (older than current 1.0.4)
+2026/08/02 12:23:51 Skipping patch 1.0.4 (already installed)
+2026/08/02 12:23:51 No patches applied - already up to date
+2026/08/02 12:23:51 All patches applied successfully. Launching game...
+2026/08/02 12:23:51 === Patcher finished ===
