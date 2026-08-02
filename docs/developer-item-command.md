@@ -52,6 +52,28 @@ Use the local chat box with either a native ID or material alias:
 /item add emptyholybox5 1
 ```
 
+### Dedicated Ruby command
+
+Ruby has a short developer command that does not require `/item add` or
+`/gmitem`:
+
+```text
+/ruby 1
+/ruby 2 99
+/ruby 3 99 op=35b344af-7906-4e71-ac04-d2eaf501de63
+```
+
+Its syntax is `/ruby <level> [quantity] [op=<UUID>]`. Level `1`, `2`, or `3`
+resolves the existing Ruby item IDs `4200`, `4201`, or `4202`, respectively.
+Quantity defaults to `1` and uses the same `1..999` limit as the general
+developer-item command. Ruby levels `4` and `5` are rejected because neither
+exists in the original client data; the command does not synthesize them.
+
+The optional `op=` value must be a nonzero D-format UUID. On PostgreSQL it
+provides the same durable idempotency guarantee as `/item add`: retrying the
+same operation cannot grant a second copy. `/ruby` remains subject to the same
+disabled-by-default switch and exact account-ID allowlist documented above.
+
 `holybox1` through `holybox5` (and the explicit `emptyholybox1` through
 `emptyholybox5` aliases) create bound Holy Boxes with `item_exp = 0`. They do
 not create pre-filled experience. Their item IDs, names, stack caps, and bound

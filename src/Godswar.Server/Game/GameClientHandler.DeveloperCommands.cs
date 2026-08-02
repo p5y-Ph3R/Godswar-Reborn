@@ -235,6 +235,14 @@ internal sealed partial class GameClientHandler
                 CommandOutcome.PreconditionFailed);
             Console.WriteLine(
                 $"[developer-item] grant failed account={_account.Id} character={_character.Name} item={material.ItemId} quantity={request.Quantity} status={result.Status}");
+            var reason = result.Status ==
+                KitBagItemGrantStatus.InsufficientCapacity
+                    ? "Your kit bag has insufficient capacity."
+                    : "The character is no longer available.";
+            await SendDeveloperItemFeedbackAsync(
+                packet,
+                $"[item] Not added: {reason}",
+                cancellationToken);
             return true;
         }
 
@@ -245,6 +253,10 @@ internal sealed partial class GameClientHandler
         InstallUpdatedCharacter(result.Character);
         _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
         await SendKitBagRefreshAsync(cancellationToken);
+        await SendDeveloperItemFeedbackAsync(
+            packet,
+            $"[item] Added {request.Quantity} {material.DisplayName}.",
+            cancellationToken);
         Console.WriteLine(
             $"[developer-item] granted account={_account.Id} character={_character.Name} item={material.ItemId} name=\"{material.DisplayName}\" quantity={request.Quantity}");
         return true;

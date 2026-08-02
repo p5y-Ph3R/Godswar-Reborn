@@ -24,7 +24,7 @@ internal sealed record DeveloperMountListRequest(
     int? Page,
     DeveloperMountFamilyDefinition? Family);
 
-internal static class DeveloperItemCommand
+internal static partial class DeveloperItemCommand
 {
     // The stock client masks the word "gmitem" before sending map chat, so
     // /gmitem reaches the server as /******. Accept that exact wire spelling
@@ -32,10 +32,12 @@ internal static class DeveloperItemCommand
     public const string Prefix = "/item";
     public const string LegacyPrefix = "/gmitem";
     public const string MaskedLegacyPrefix = "/******";
+    public const string RubyPrefix = "/ruby";
     public const int MaximumQuantity =
         DeveloperItemGrantCommandEnvelope.MaximumQuantity;
 
-    private static readonly string[] Prefixes = [Prefix, LegacyPrefix, MaskedLegacyPrefix];
+    private static readonly string[] Prefixes =
+        [Prefix, LegacyPrefix, MaskedLegacyPrefix, RubyPrefix];
 
     public static bool TryParse(
         string text,
@@ -59,6 +61,17 @@ internal static class DeveloperItemCommand
         {
             error = Usage;
             return true;
+        }
+
+        if (matchedPrefix.Equals(
+                RubyPrefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseRuby(
+                tokens,
+                items,
+                out request,
+                out error);
         }
 
         if (tokens[1].Equals("mount", StringComparison.OrdinalIgnoreCase))
@@ -191,6 +204,7 @@ internal static class DeveloperItemCommand
 
     private const string Usage =
         "Usage: /item add <item-id|material-alias> [quantity] [op=<UUID>], " +
+        "/ruby <level 1-3> [quantity] [op=<UUID>], " +
         "/item mount list [page|family], " +
         "/item mount add <item-id> [op=<UUID>], " +
         "/item mount add <family> <tier|max|special> [op=<UUID>], " +

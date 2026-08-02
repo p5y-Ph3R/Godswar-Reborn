@@ -119,6 +119,9 @@ internal static partial class Program
             ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("Developer material item command", CheckDeveloperForgingMaterialCommandAsync),
             (
+                DeveloperRubyCommandChecks.CheckName,
+                DeveloperRubyCommandChecks.RunAsync),
+            (
                 DeveloperHolyBoxGrantChecks.CheckName,
                 DeveloperHolyBoxGrantChecks.RunAsync),
             ("Developer mount catalog, command, and JSON grant", DeveloperMountCommandChecks.RunAsync),
