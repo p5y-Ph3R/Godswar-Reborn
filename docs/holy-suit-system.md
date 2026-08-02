@@ -96,14 +96,16 @@ Orichalcum, and Adamantium upgrade transitions.
 
 ## Mutable inventory identity compatibility
 
-The sealed manifest-v5 publication is the only Holy Suit content authority.
+The sealed manifest-v6 publication is the only current Holy Suit content
+authority. Manifest v5 remains immutable history and a possible reviewed
+rollback target; it is not the authority while the v6 pointer is published.
 `item_templates` remains a legacy foreign-key identity table because
 `character_items.prop_id` still references it; gameplay does not read Holy
 Suit policy from that mutable table.
 
 At server startup only,
 `PostgresItemTemplateBaselinePublisher.EnsurePublishedAsync` validates the
-complete sealed v5 release and then checks the exact reviewed Holy Suit item
+complete sealed v6 release and then checks the exact reviewed Holy Suit item
 set (9010 through 9016 and 9020 through 9025). Within the same serializable
 publication transaction, it inserts only missing identity rows by copying the
 sealed definitions. It never updates an existing row. Any existing row that
@@ -126,7 +128,7 @@ a gameplay command or production GM/admin API.
 It defaults to account 13 and character `test2`. In one serializable
 PostgreSQL transaction it:
 
-- verifies the current `item_templates` rows and the sealed, published v5
+- verifies the current `item_templates` rows and the sealed, published v6
   item definitions for IDs 9010 through 9016 and 9020 through 9024;
 - requires every requested ID's published Holy Suit role, tier, capacity,
   stack cap, and grant-bound flag to match the fixture exactly;

@@ -13,7 +13,8 @@ internal sealed record NpcDialogueProfileBaseline(
 internal sealed record NpcDialogueBindingBaseline(
     string NpcKey,
     string ClientScriptKey,
-    string ProfileKey);
+    string ProfileKey,
+    int RouteOrder = 0);
 
 internal static class NpcDialogueBaselineV1
 {
@@ -91,7 +92,10 @@ internal static class NpcDialogueBaselineV1
                     binding.ClientScriptKey,
                     profile.DialogIndex,
                     profile.Behavior,
-                    profile.InitialMenuSubIds);
+                    profile.InitialMenuSubIds)
+                {
+                    RouteOrder = binding.RouteOrder
+                };
             })
             .ToArray();
     }

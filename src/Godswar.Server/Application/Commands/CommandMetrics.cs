@@ -136,6 +136,20 @@ internal static class CommandMetrics
                 "holy_suit_consume_ware",
             CommandFamily.HolySuitTransformExperience =>
                 "holy_suit_transform_experience",
+            CommandFamily.ClassSuitExchangeTierI =>
+                "class_suit_exchange_tier_i",
+            CommandFamily.ClassSuitConvertToCommon =>
+                "class_suit_convert_to_common",
+            CommandFamily.ClassSuitUpgradeTierII =>
+                "class_suit_upgrade_tier_ii",
+            CommandFamily.ClassSuitUpgradeTierIII =>
+                "class_suit_upgrade_tier_iii",
+            CommandFamily.ClassSuitUpgradeTierIV =>
+                "class_suit_upgrade_tier_iv",
+            CommandFamily.ClassSuitAddAttribute =>
+                "class_suit_add_attribute",
+            CommandFamily.ClassSuitDeleteAttribute =>
+                "class_suit_delete_attribute",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

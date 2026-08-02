@@ -59,6 +59,14 @@ internal sealed partial class GameClientHandler
                 CommandFamily.GearMentorCombineGemPieces =>
                 MaterialConversionInvalidResultSubId(
                     commandFamily.Value),
+            CommandFamily.ClassSuitExchangeTierI or
+                CommandFamily.ClassSuitConvertToCommon or
+                CommandFamily.ClassSuitUpgradeTierII or
+                CommandFamily.ClassSuitUpgradeTierIII or
+                CommandFamily.ClassSuitUpgradeTierIV or
+                CommandFamily.ClassSuitAddAttribute or
+                CommandFamily.ClassSuitDeleteAttribute =>
+                ClassSuitNativeResults.GenericWrongSelection,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(commandFamily))
         };

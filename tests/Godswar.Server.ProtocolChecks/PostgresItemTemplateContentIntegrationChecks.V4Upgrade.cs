@@ -92,33 +92,33 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             Check.Equal(
                 originalRevision,
                 upgraded.Revision,
-                "startup advances a valid v4 pointer to canonical v5");
+                "startup advances a valid v4 pointer to canonical v6");
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
                 dataSource);
             Check.True(
-                loaded.Revision.ManifestVersion == 5 &&
+                loaded.Revision.ManifestVersion == 6 &&
                 loaded.HolySuit.ItemTemplates.Count == 13 &&
                 loaded.HolySuit.Upgrades.Count == 70,
-                "v4-to-v5 upgrade publishes and pins all Holy Suit content");
+                "v4-to-v6 upgrade publishes and pins all Holy Suit content");
             await AssertMutableHolySuitTemplatesMatchPublishedAsync(
                 dataSource,
                 originalRevision,
-                "v4-to-v5 startup repairs missing mutable Holy Suit identities");
+                "v4-to-v6 startup repairs missing mutable Holy Suit identities");
             Check.Equal(
                 unrelatedBefore,
                 await ReadMutableTemplateFingerprintAsync(dataSource, 1000),
-                "v4-to-v5 compatibility repair leaves unrelated rows untouched");
+                "v4-to-v6 compatibility repair leaves unrelated rows untouched");
             Check.Equal(
                 before,
                 await ReadCompleteRevisionFingerprintAsync(
                     dataSource,
                     v4Revision),
-                "v4-to-v5 upgrade leaves sealed v4 content immutable");
+                "v4-to-v6 upgrade leaves sealed v4 content immutable");
             var repeated = await PostgresItemTemplateBaselinePublisher
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 repeated.Revision == originalRevision && !repeated.Created,
-                "v4-to-v5 publication upgrade is idempotent");
+                "v4-to-v6 publication upgrade is idempotent");
         }
         finally
         {

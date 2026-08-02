@@ -12,6 +12,7 @@ internal sealed partial class PinnedWorldContentReader
     private const int MaximumDescriptionLength = 16_384;
     private const int MaximumClientScriptKeyLength = 32;
     private const int MaximumInitialMenuItems = 64;
+    private const int MaximumRoutesPerNpc = 64;
     private const int MaximumSubId = 1_000_000;
 
     public ValueTask<NpcDialogueContent> ReadNpcDialogueAsync(
@@ -34,7 +35,7 @@ internal sealed partial class PinnedWorldContentReader
         return ValueTask.FromResult(new NpcDialogueContent(
             Manifest.NpcDialogues,
             CloneText(dialogue.Text),
-            dialogue.Route is null ? null : CloneRoute(dialogue.Route)));
+            dialogue.Routes.Select(CloneRoute).ToArray()));
     }
 
     private static PinnedNpcDialogues PinNpcDialogues(
@@ -61,10 +62,14 @@ internal sealed partial class PinnedWorldContentReader
             texts,
             static value => value.NpcKey,
             "NPC text");
-        var routesByKey = ToUniqueDictionary(
-            routes,
-            static value => value.NpcKey,
-            "NPC dialogue route");
+        var routesByKey = routes
+            .GroupBy(static value => value.NpcKey, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                group => group
+                    .OrderBy(static route => route.RouteOrder)
+                    .ToArray(),
+                StringComparer.Ordinal);
         var spawnedByKey = npcs
             .GroupBy(static value => value.NpcKey, StringComparer.Ordinal)
             .ToDictionary(
@@ -125,11 +130,28 @@ internal sealed partial class PinnedWorldContentReader
                 FormatKeys(unboundRoutes) + ".");
         }
 
+        foreach (var group in routesByKey)
+        {
+            var expectedOrder = 0;
+            var dialogIndices = new HashSet<int>();
+            foreach (var route in group.Value)
+            {
+                if (route.RouteOrder != expectedOrder++ ||
+                    !dialogIndices.Add(route.DialogIndex))
+                {
+                    throw Invalid(
+                        "npc-dialogues",
+                        $"NPC dialogue routes for '{group.Key}' are " +
+                        "non-contiguous or duplicate an endpoint.");
+                }
+            }
+        }
+
         var byNpcKey = texts.ToDictionary(
             static text => text.NpcKey,
             text => new StoredNpcDialogue(
                 text,
-                routesByKey.GetValueOrDefault(text.NpcKey)),
+                routesByKey.GetValueOrDefault(text.NpcKey) ?? []),
             StringComparer.Ordinal);
         return new PinnedNpcDialogues(texts, routes, byNpcKey);
     }
@@ -164,6 +186,7 @@ internal sealed partial class PinnedWorldContentReader
                 definition.ClientScriptKey,
                 MaximumClientScriptKeyLength) ||
             definition.DialogIndex is <= 0 or > short.MaxValue ||
+            definition.RouteOrder is < 0 or >= MaximumRoutesPerNpc ||
             !Enum.IsDefined(definition.Behavior) ||
             definition.InitialMenuSubIds.IsDefaultOrEmpty ||
             definition.InitialMenuSubIds.Length >
@@ -259,7 +282,7 @@ internal sealed partial class PinnedWorldContentReader
 
     private sealed record StoredNpcDialogue(
         NpcTextDefinition Text,
-        NpcDialogueRouteDefinition? Route);
+        NpcDialogueRouteDefinition[] Routes);
 
     private sealed record PinnedNpcDialogues(
         NpcTextDefinition[] Texts,

@@ -29,6 +29,13 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.HolySuitTransferExperience or
             CommandFamily.HolySuitConsumeWare or
             CommandFamily.HolySuitTransformExperience or
+            CommandFamily.ClassSuitExchangeTierI or
+            CommandFamily.ClassSuitConvertToCommon or
+            CommandFamily.ClassSuitUpgradeTierII or
+            CommandFamily.ClassSuitUpgradeTierIII or
+            CommandFamily.ClassSuitUpgradeTierIV or
+            CommandFamily.ClassSuitAddAttribute or
+            CommandFamily.ClassSuitDeleteAttribute or
             CommandFamily.ZodiacSkillGridUpgrade or
             CommandFamily.CharacterCreate or
             CommandFamily.CharacterDelete or

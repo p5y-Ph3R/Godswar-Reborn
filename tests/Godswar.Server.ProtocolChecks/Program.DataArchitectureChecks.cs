@@ -28,6 +28,9 @@ internal static partial class Program
                 PostgresGearMentorMaterialConversionIntegrationChecks
                     .RunAsync),
             (
+                PostgresClassSuitCommandIntegrationChecks.CheckName,
+                PostgresClassSuitCommandIntegrationChecks.RunAsync),
+            (
                 PostgresGearMentorDecomposeIntegrationChecks.CheckName,
                 PostgresGearMentorDecomposeIntegrationChecks.RunAsync),
             (
@@ -119,6 +122,9 @@ internal static partial class Program
             (
                 "PostgreSQL official NPC dialogue publication",
                 PostgresNpcDialoguePublicationIntegrationChecks.RunAsync),
+            (
+                PostgresNpcDialogueV2UpgradeIntegrationChecks.CheckName,
+                PostgresNpcDialogueV2UpgradeIntegrationChecks.RunAsync),
             (
                 "PostgreSQL captured-monster ECS parity",
                 PostgresMonsterEcsParityIntegrationChecks.RunAsync),

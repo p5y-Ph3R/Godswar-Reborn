@@ -55,7 +55,14 @@ internal sealed record EnterWorldBootstrapContent(
 internal sealed record NpcDialogueContent(
     WorldContentFamilyRevision Revision,
     NpcTextDefinition Text,
-    NpcDialogueRouteDefinition? Route);
+    IReadOnlyList<NpcDialogueRouteDefinition> Routes)
+{
+    // Compatibility accessor for callers that only understand the primary
+    // NPC function. New routing code must enumerate Routes in RouteOrder.
+    public NpcDialogueRouteDefinition? Route => Routes.Count == 0
+        ? null
+        : Routes[0];
+}
 
 internal enum WorldContentFailureReason
 {

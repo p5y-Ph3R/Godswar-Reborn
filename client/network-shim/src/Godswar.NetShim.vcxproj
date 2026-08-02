@@ -96,6 +96,7 @@
     <ClInclude Include="SecureClientSession.h" />
     <ClInclude Include="SecureClientProtocol.h" />
     <ClInclude Include="SecureCharacterLifecycleIdentity.h" />
+    <ClInclude Include="SecureClassSuitCommandIdentity.h" />
     <ClInclude Include="SecurePetCommandIdentity.h" />
     <ClInclude Include="SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
@@ -153,6 +154,7 @@
     <ClCompile Include="SecureClientSession.cpp" />
     <ClCompile Include="SecureClientProtocol.cpp" />
     <ClCompile Include="SecureCharacterLifecycleIdentity.cpp" />
+    <ClCompile Include="SecureClassSuitCommandIdentity.cpp" />
     <ClCompile Include="SecurePetCommandIdentity.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
@@ -169,6 +171,7 @@
     <ClCompile Include="SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.CharacterLifecycle.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.ClassSuit.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Pets.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />

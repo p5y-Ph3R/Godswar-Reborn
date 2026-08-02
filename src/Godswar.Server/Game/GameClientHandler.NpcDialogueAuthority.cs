@@ -6,8 +6,8 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private async ValueTask<NpcDialogueRouteDefinition?>
-        ResolveNpcDialogueRouteAsync(
+    private async ValueTask<IReadOnlyList<NpcDialogueRouteDefinition>>
+        ResolveNpcDialogueRoutesAsync(
             NpcSpawnDefinition npc,
             CancellationToken cancellationToken)
     {
@@ -25,27 +25,40 @@ internal sealed partial class GameClientHandler
             Console.WriteLine(
                 $"[npc] dialogue missing npc={npc.InteractionId} " +
                 $"key={npc.NpcKey}");
-            return null;
+            return [];
         }
 
-        if (dialogue.Route is null)
+        if (dialogue.Routes.Count == 0)
         {
             Console.WriteLine(
                 $"[npc] dialogue has no implemented behavior " +
                 $"npc={npc.InteractionId} key={npc.NpcKey}");
-            return null;
+            return [];
         }
 
-        if (!NpcDialogueBehaviorRegistry.IsAllowed(npc, dialogue.Route))
+        if (dialogue.Routes.Any(route =>
+                !NpcDialogueBehaviorRegistry.IsAllowed(npc, route)))
         {
             Console.Error.WriteLine(
                 "[npc] rejected dialogue capability mismatch " +
-                $"npc={npc.InteractionId} key={npc.NpcKey} " +
-                $"behavior={dialogue.Route.Behavior}");
-            return null;
+                $"npc={npc.InteractionId} key={npc.NpcKey}");
+            return [];
         }
 
-        return dialogue.Route;
+        return dialogue.Routes;
+    }
+
+    private async ValueTask<NpcDialogueRouteDefinition?>
+        ResolveNpcDialogueRouteAsync(
+            NpcSpawnDefinition npc,
+            int dialogIndex,
+            CancellationToken cancellationToken)
+    {
+        var routes = await ResolveNpcDialogueRoutesAsync(
+            npc,
+            cancellationToken);
+        return routes.FirstOrDefault(route =>
+            route.DialogIndex == dialogIndex);
     }
 
     private async Task SendNpcInitialMenuAsync(

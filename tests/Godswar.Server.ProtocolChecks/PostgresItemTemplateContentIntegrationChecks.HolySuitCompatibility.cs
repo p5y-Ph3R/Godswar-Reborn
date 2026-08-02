@@ -13,7 +13,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
     ];
 
     private static async Task
-        AssertPublishedV5RepairsMutableHolySuitTemplatesAsync(
+        AssertPublishedV6RepairsMutableHolySuitTemplatesAsync(
             NpgsqlDataSource dataSource,
             string publishedRevision)
     {
@@ -23,21 +23,21 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         Check.Equal(
             0,
             await CountMutableHolySuitTemplatesAsync(dataSource),
-            "already-v5 fixture removes every mutable Holy Suit identity");
+            "already-v6 fixture removes every mutable Holy Suit identity");
 
         var repaired = await PostgresItemTemplateBaselinePublisher
             .EnsurePublishedAsync(dataSource);
         Check.True(
             repaired.Revision == publishedRevision && !repaired.Created,
-            "already-published v5 startup repairs without republishing");
+            "already-published v6 startup repairs without republishing");
         await AssertMutableHolySuitTemplatesMatchPublishedAsync(
             dataSource,
             publishedRevision,
-            "already-published v5 startup repairs missing mutable identities");
+            "already-published v6 startup repairs missing mutable identities");
         Check.Equal(
             unrelatedBefore,
             await ReadMutableTemplateFingerprintAsync(dataSource, 1000),
-            "already-v5 compatibility repair leaves unrelated rows untouched");
+            "already-v6 compatibility repair leaves unrelated rows untouched");
 
         await using (var poison = dataSource.CreateCommand("""
             UPDATE item_templates
@@ -75,7 +75,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         }
         Check.True(
             rejected,
-            "already-v5 startup fails closed on a conflicting mutable identity");
+            "already-v6 startup fails closed on a conflicting mutable identity");
         Check.Equal(
             "Unsafe Holy Suit Conflict",
             await ReadMutableDisplayNameAsync(dataSource, 9010),

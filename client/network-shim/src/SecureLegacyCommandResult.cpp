@@ -77,7 +77,21 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::HolySuitConsumeWare ||
         family ==
-            SecureLegacyCommandFamily::HolySuitTransformExperience;
+            SecureLegacyCommandFamily::HolySuitTransformExperience ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitExchangeTierI ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitConvertToCommon ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitUpgradeTierII ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitUpgradeTierIII ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitUpgradeTierIV ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitAddAttribute ||
+        family ==
+            SecureLegacyCommandFamily::ClassSuitDeleteAttribute;
 }
 
 bool HasValidRevision(

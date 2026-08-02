@@ -78,7 +78,8 @@ internal static class TestItemContent
             .Concat(GearEnhancementMaterialCatalog.All.Select(
                 static value => value.ToItemTemplateSeed()))
             .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(
-                static value => value.ToItemTemplateSeed()));
+                static value => value.ToItemTemplateSeed()))
+            .Concat(ClassSuitItemContentBaseline.PromotionalInsignias);
         if (includeHolySuit)
         {
             seeds = seeds.Concat(HolySuitContentBaseline.ItemTemplates);

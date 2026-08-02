@@ -92,6 +92,7 @@
     <ClCompile Include="SecureEquipmentBagTransferParserTests.cpp" />
     <ClCompile Include="SecureEquipmentBagTransferRegistryTests.cpp" />
     <ClCompile Include="SecureCharacterLifecycleIdentityTests.cpp" />
+    <ClCompile Include="SecureClassSuitIdentityTests.cpp" />
     <ClCompile Include="SecurePetCommandIdentityTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
@@ -156,6 +157,7 @@
     <ClCompile Include="..\src\SecureClientSession.cpp" />
     <ClCompile Include="..\src\SecureClientProtocol.cpp" />
     <ClCompile Include="..\src\SecureCharacterLifecycleIdentity.cpp" />
+    <ClCompile Include="..\src\SecureClassSuitCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecurePetCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
@@ -171,6 +173,7 @@
     <ClCompile Include="..\src\SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.CharacterLifecycle.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.ClassSuit.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Pets.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
@@ -228,6 +231,7 @@
     <ClInclude Include="SecureClientSessionTests.h" />
     <ClInclude Include="SecureClientProtocolTests.h" />
     <ClInclude Include="SecureCharacterLifecycleIdentityTests.h" />
+    <ClInclude Include="SecureClassSuitIdentityTests.h" />
     <ClInclude Include="SecurePetCommandIdentityTests.h" />
     <ClInclude Include="SecurePendingOperationRegistryTests.h" />
     <ClInclude Include="SecureEconomyIdentityTests.h" />
@@ -298,6 +302,7 @@
     <ClInclude Include="..\src\SecureClientSession.h" />
     <ClInclude Include="..\src\SecureClientProtocol.h" />
     <ClInclude Include="..\src\SecureCharacterLifecycleIdentity.h" />
+    <ClInclude Include="..\src\SecureClassSuitCommandIdentity.h" />
     <ClInclude Include="..\src\SecurePetCommandIdentity.h" />
     <ClInclude Include="..\src\SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="..\src\SecureForgeCommandIdentity.h" />

@@ -13,7 +13,8 @@ namespace Godswar.Server.Infrastructure.Inventory;
 
 internal sealed partial class
     PostgresGearMentorMaterialConversionCommandExecutor :
-    IGearMentorMaterialConversionCommandExecutor
+    IGearMentorMaterialConversionCommandExecutor,
+    IClassSuitCommandExecutor
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresPlayerOwnershipGuard _ownershipGuard;

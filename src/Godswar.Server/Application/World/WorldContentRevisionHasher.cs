@@ -55,6 +55,8 @@ internal static partial class WorldContentRevisionHasher
         IReadOnlyList<NpcDialogueRouteDefinition> routes)
     {
         using var hash = new CanonicalHashBuilder("npc-dialogues");
+        var hasOrderedMultiRoutes = routes.Any(
+            static route => route.RouteOrder != 0);
         hash.AppendInt32(texts.Count);
         foreach (var text in texts)
         {
@@ -75,6 +77,14 @@ internal static partial class WorldContentRevisionHasher
             foreach (var subId in route.InitialMenuSubIds)
             {
                 hash.AppendInt32(subId);
+            }
+
+            // V1 had exactly one implicit order-zero route per NPC. Only
+            // append the explicit order for V2 multi-route publications so
+            // the immutable V1 rollback revision retains its golden hash.
+            if (hasOrderedMultiRoutes)
+            {
+                hash.AppendInt32(route.RouteOrder);
             }
         }
 

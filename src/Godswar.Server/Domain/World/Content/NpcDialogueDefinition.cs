@@ -13,12 +13,16 @@ internal sealed record NpcDialogueRouteDefinition(
     string ClientScriptKey,
     int DialogIndex,
     NpcDialogueBehavior Behavior,
-    ImmutableArray<int> InitialMenuSubIds);
+    ImmutableArray<int> InitialMenuSubIds)
+{
+    public int RouteOrder { get; init; }
+}
 
 internal enum NpcDialogueBehavior
 {
     GearMentor = 1,
     OriginEnhancer = 2,
     HolySuitDesign = 3,
-    HolyStone = 4
+    HolyStone = 4,
+    ClassSuit = 5
 }

@@ -134,6 +134,12 @@ internal static partial class Program
             ("Gear-enhancement material catalog and planner", GearEnhancementStateChecks.RunAsync),
             ("Gear Mentor material, planner, and protocol", GearMentorStateChecks.RunAsync),
             ("PostgreSQL Gear Mentor race and preservation", PostgresGearMentorIntegrationChecks.RunAsync),
+            (ClassSuitWireProtocolChecks.CheckName, ClassSuitWireProtocolChecks.RunAsync),
+            (ClassSuitCommandContractChecks.CheckName, ClassSuitCommandContractChecks.RunAsync),
+            (ClassSuitExecutionContractChecks.CheckName, ClassSuitExecutionContractChecks.RunAsync),
+            ("Class Suit conversion catalog and planner", ClassSuitConversionPlannerChecks.RunAsync),
+            ("Class Suit attribute catalog and planner", ClassSuitAttributePlannerChecks.RunAsync),
+            (ClassSuitHandlerChecks.CheckName, ClassSuitHandlerChecks.RunAsync),
             ("Atomic gear-enhancement persistence", GearEnhancementTransactionChecks.RunAsync),
             (
                 PostgresGearEnhancementIntegrationChecks.CheckName,

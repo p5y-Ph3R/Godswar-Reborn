@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SecureCharacterLifecycleIdentity.h"
+#include "SecureClassSuitCommandIdentity.h"
 #include "SecureEquipmentBagTransferIdentity.h"
 #include "SecureForgeCommandIdentity.h"
 #include "SecureHolyStoneCommandIdentity.h"
@@ -202,6 +203,16 @@ private:
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeHolySuitCommand(
         const LegacyHolySuitCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeClassSuitPacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor,
+        bool* recognized) noexcept;
+    SecureOperationRegistryResult DescribeClassSuitCommand(
+        const LegacyClassSuitCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeHolyEquipmentPacket(

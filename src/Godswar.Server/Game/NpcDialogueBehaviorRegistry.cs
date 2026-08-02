@@ -19,6 +19,8 @@ internal static class NpcDialogueBehaviorRegistry
         [101, 201, 301, 401];
     private static readonly int[] HolyStoneMenu =
         [101, 201, 301, 401, 501, 601, 701];
+    private static readonly int[] ClassSuitMenu =
+        [100, 101, 102, 103, 104, 105, 106, 107, 108];
 
     public static bool IsAllowed(
         NpcSpawnDefinition npc,
@@ -63,6 +65,13 @@ internal static class NpcDialogueBehaviorRegistry
                 (npc.NpcKey, npc.InteractionId) is
                     ("Sparta_086", SpartaHolyStoneNpcId) or
                     ("Athens_086", AthensHolyStoneNpcId),
+            NpcDialogueBehavior.ClassSuit =>
+                route.DialogIndex == ClassSuitProtocol.DialogIndex &&
+                HasExactMenu(route, ClassSuitMenu) &&
+                ClassSuitProtocol.IsNpcKey(npc.NpcKey) &&
+                ClassSuitProtocol.IsEndpoint(
+                    npc.InteractionId,
+                    route.DialogIndex),
             _ => false
         };
     }

@@ -52,6 +52,8 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.MakeAttributeStoneCommands,
             gearMentorMaterialConversionCommands:
                 postgresRuntime?.MaterialConversionCommands,
+            classSuitCommands:
+                postgresRuntime?.ClassSuitCommands,
             gearMentorDecomposeGearCommands:
                 postgresRuntime?.DecomposeGearCommands,
             gearEnhancementCommands:

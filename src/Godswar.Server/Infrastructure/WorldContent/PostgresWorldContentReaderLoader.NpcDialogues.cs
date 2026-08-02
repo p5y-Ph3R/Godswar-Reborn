@@ -335,9 +335,10 @@ internal static partial class PostgresWorldContentReaderLoader
         var routes = new List<NpcDialogueRouteDefinition>(expectedCount);
         await using var command = new NpgsqlCommand(
             """
-            SELECT npc_key, client_script_key, profile_key
+            SELECT npc_key, client_script_key, profile_key, route_order
             FROM npc_dialogue_bindings
-            WHERE revision = @revision;
+            WHERE revision = @revision
+            ORDER BY npc_key, route_order;
             """,
             connection,
             transaction);
@@ -362,7 +363,10 @@ internal static partial class PostgresWorldContentReaderLoader
                 profile.DialogIndex,
                 profile.Behavior,
                 ImmutableArray.CreateRange(
-                    profile.InitialMenuSubIds)));
+                    profile.InitialMenuSubIds))
+            {
+                RouteOrder = reader.GetInt16(3)
+            });
         }
 
         if (routes.Count != expectedCount)
@@ -373,6 +377,7 @@ internal static partial class PostgresWorldContentReaderLoader
 
         return routes
             .OrderBy(static route => route.NpcKey, StringComparer.Ordinal)
+            .ThenBy(static route => route.RouteOrder)
             .ToArray();
     }
 
@@ -406,11 +411,11 @@ internal static partial class PostgresWorldContentReaderLoader
                 "The NPC dialogue text set does not cover the spawn release.");
         }
 
-        var routeKeys = new HashSet<string>(StringComparer.Ordinal);
+        var routeKeys = new HashSet<(string NpcKey, int RouteOrder)>();
         foreach (var route in routes)
         {
             if (!textKeys.Contains(route.NpcKey) ||
-                !routeKeys.Add(route.NpcKey) ||
+                !routeKeys.Add((route.NpcKey, route.RouteOrder)) ||
                 !string.Equals(
                     route.NpcKey,
                     route.ClientScriptKey,
@@ -418,6 +423,24 @@ internal static partial class PostgresWorldContentReaderLoader
             {
                 throw new InvalidDataException(
                     "An NPC dialogue route is invalid or duplicated.");
+            }
+        }
+
+        foreach (var npcRoutes in routes.GroupBy(
+                     static route => route.NpcKey,
+                     StringComparer.Ordinal))
+        {
+            var expectedOrder = 0;
+            var dialogIndices = new HashSet<int>();
+            foreach (var route in npcRoutes)
+            {
+                if (route.RouteOrder != expectedOrder++ ||
+                    !dialogIndices.Add(route.DialogIndex))
+                {
+                    throw new InvalidDataException(
+                        "NPC dialogue routes are non-contiguous or duplicate " +
+                        "an endpoint.");
+                }
             }
         }
 

@@ -103,11 +103,13 @@ internal sealed class PostgresApplicationDataRuntime :
                 _dataSource,
                 outboxOptions,
                 itemContent);
-        MaterialConversionCommands =
+        var materialConversionCommands =
             new PostgresGearMentorMaterialConversionCommandExecutor(
                 _dataSource,
                 outboxOptions,
                 itemContent);
+        MaterialConversionCommands = materialConversionCommands;
+        ClassSuitCommands = materialConversionCommands;
         DecomposeGearCommands =
             new PostgresGearMentorDecomposeCommandExecutor(
                 _dataSource,
@@ -243,6 +245,8 @@ internal sealed class PostgresApplicationDataRuntime :
     public IGearMentorMaterialConversionCommandExecutor
         MaterialConversionCommands
     { get; }
+
+    public IClassSuitCommandExecutor ClassSuitCommands { get; }
 
     public IGearMentorDecomposeGearCommandExecutor
         DecomposeGearCommands

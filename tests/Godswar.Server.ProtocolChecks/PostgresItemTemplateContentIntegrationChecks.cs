@@ -31,6 +31,12 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
 
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
+        await AssertClassSuitV6PublicationAsync(
+            dataSource,
+            first.Revision.Sha256);
+        await AssertV5ToV6ClassSuitUpgradeAsync(
+            dataSource,
+            first.Revision.Sha256);
         await AssertV1UpgradeAsync(
             dataSource,
             first.Revision.Sha256);
@@ -43,7 +49,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         await AssertV4UpgradeAsync(
             dataSource,
             first.Revision.Sha256);
-        await AssertPublishedV5RepairsMutableHolySuitTemplatesAsync(
+        await AssertPublishedV6RepairsMutableHolySuitTemplatesAsync(
             dataSource,
             first.Revision.Sha256);
         await AssertCorruptV1RejectedAsync(
@@ -236,7 +242,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             reader.GetBoolean(4) &&
             reader.GetBoolean(5) &&
             reader.GetBoolean(6),
-            "official item-policy views expose the complete base v5 manifest");
+            "official item-policy views expose the complete manifest-v6 policy set");
         Check.Equal(
             0,
             reader.GetInt32(7),

@@ -8,6 +8,37 @@ deletes immutable item-content rows.
 It is not a production administration tool and it must not be used while a
 server is running.
 
+## Current manifest-v6 prerequisite
+
+The current Class Suit server publishes manifest v6. This v4 tool deliberately
+accepts only an exact v5 current pointer, so it refuses a direct v6-to-v4 jump.
+An old v5-only binary also cannot start while the official pointer remains v6.
+
+Before using this v5-to-v4 procedure in a v6 database, release engineering
+must first complete a separately reviewed, offline v6-to-v5 rollback:
+
+1. drain and stop every server worker, verify no active checkpoint owner, and
+   take a tested PostgreSQL backup;
+2. record the exact published v6 hash and intended retained sealed v5 hash;
+3. validate both releases with their declared counts and version-specific
+   SHA-256, then compare-and-swap only the `items` pointer under the `ITEMSCON`
+   advisory transaction lock;
+4. verify the pointer is the exact sealed v5 hash and fingerprint both v5 and
+   v6 to prove no immutable content changed; and
+5. use only a rollback binary compatible with every installed migration.
+
+No v6-to-v5 operator tool is currently supplied. Do not hand-edit the pointer,
+weaken the publication trigger, or falsify `schema_migrations`. Migration 052
+is forward-only: a binary whose catalog ends at 051 still rejects the ahead
+database after a pointer rollback. Such a rollback needs either a tested
+schema-compatible v5 image or a verified pre-052 database restore.
+
+`PostgresItemTemplateContentIntegrationChecks.AssertV5ToV6ClassSuitUpgradeAsync`
+is the disposable database test for the content boundary: it publishes a
+complete sealed v5 target, records its full fingerprint, advances through the
+normal v6 publisher, verifies v5 was not mutated, and verifies idempotent v6
+startup. It does not authorize a live manual pointer change.
+
 ## What the tool proves
 
 [`tools/SetLocalDevelopmentItemContentV4Publication.ps1`](../tools/SetLocalDevelopmentItemContentV4Publication.ps1)

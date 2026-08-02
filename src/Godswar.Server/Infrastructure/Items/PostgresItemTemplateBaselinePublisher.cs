@@ -20,7 +20,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "reviewed-item-content-v5+holy-suit-v3";
+        "reviewed-item-content-v6+holy-suit-v3+class-suit-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -42,9 +42,9 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             connection,
             transaction,
             cancellationToken);
-        if (existing is { ManifestVersion: 5 })
+        if (existing is { ManifestVersion: 6 })
         {
-            await VerifyPublishedReleaseAsync(
+            await VerifyPublishedV6ReleaseAsync(
                 connection,
                 transaction,
                 existing,
@@ -55,10 +55,22 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
-            if (publishedHolySuit.OperationPolicy.Equals(
+            var hasClassSuitItems =
+                await PublishedClassSuitItemsAreCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+            if (hasClassSuitItems &&
+                publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
             {
                 await EnsureHolySuitMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+                await EnsureClassSuitMutableTemplateCompatibilityAsync(
                     connection,
                     transaction,
                     existing.Revision,
@@ -71,7 +83,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             }
         }
 
-        var snapshot = await PrepareV5PublicationAsync(
+        var snapshot = await PrepareV6PublicationAsync(
             connection,
             transaction,
             existing,
@@ -79,7 +91,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         var definitions = snapshot.Definitions;
         var policies = snapshot.Policies;
         var holySuit = snapshot.HolySuit;
-        var revision = ItemTemplateContentRevisionHasher.Compute(
+        var revision = ItemTemplateContentRevisionHasher.ComputeV6(
             definitions,
             policies.Attributes,
             policies.EquipmentRanks,
@@ -126,6 +138,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             holySuit,
             cancellationToken);
         await EnsureHolySuitMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        await EnsureClassSuitMutableTemplateCompatibilityAsync(
             connection,
             transaction,
             revision,
@@ -255,7 +272,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 holy_suit_upgrade_count, holy_suit_consumable_count,
                 holy_suit_policy_count)
             VALUES (
-                @revision, @entryCount, @source, 5,
+                @revision, @entryCount, @source, 6,
                 @attributeCount, @equipmentRankCount,
                 @holySuitEffectCount, @materialPolicyCount,
                 @materialRecipeCount, @holySuitTierCount,
@@ -329,7 +346,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             holySuit.Tiers.Count != expectedHolySuit.Tiers.Count ||
             holySuit.Upgrades.Count != expectedHolySuit.Upgrades.Count ||
             holySuit.Consumables.Count != expectedHolySuit.Consumables.Count ||
-            !ItemTemplateContentRevisionHasher.Compute(
+            !ItemTemplateContentRevisionHasher.ComputeV6(
                     definitions,
                     policies.Attributes,
                     policies.EquipmentRanks,

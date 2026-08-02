@@ -51,7 +51,7 @@ internal static partial class PostgresItemTemplateCatalogLoader
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        if (publication.ManifestVersion != 5 ||
+        if (publication.ManifestVersion != 6 ||
             definitions.Count != publication.EntryCount ||
             policies.Attributes.Count != publication.AttributeCount ||
             policies.EquipmentRanks.Count !=
@@ -73,7 +73,7 @@ internal static partial class PostgresItemTemplateCatalogLoader
         {
             throw new InvalidOperationException(
                 $"Published item-content revision {publication.Revision} " +
-                "has an incomplete v5 manifest.");
+                "has an incomplete v6 manifest.");
         }
 
         return PinnedItemTemplateCatalog.Create(

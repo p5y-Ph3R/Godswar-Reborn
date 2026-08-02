@@ -98,6 +98,17 @@ internal sealed partial class CharacterInventoryOutboxConsumer :
 
         if (string.Equals(
                 message.EventType,
+                ClassSuitPersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                ClassSuitPersistenceCodec.ContractVersion)
+        {
+            ValidateClassSuit(message);
+            return ValueTask.CompletedTask;
+        }
+
+        if (string.Equals(
+                message.EventType,
                 EquipmentForgePersistenceCodec.EventType,
                 StringComparison.Ordinal) &&
             message.SchemaVersion ==
@@ -310,6 +321,24 @@ internal sealed partial class CharacterInventoryOutboxConsumer :
         {
             throw new InvalidDataException(
                 "The Gear Enhancement outbox identity is inconsistent.");
+        }
+    }
+
+    private static void ValidateClassSuit(OutboxEventMessage message)
+    {
+        var receipt = ClassSuitPersistenceCodec.Decode(
+            message.Payload.Span);
+        if (receipt.Status != ClassSuitCommandResultStatus.Succeeded ||
+            receipt.OutboxEventId != message.EventId ||
+            receipt.InventoryRevision != message.AggregateRevision ||
+            !string.Equals(
+                ClassSuitPersistenceCodec.AggregateKey(
+                    receipt.CharacterId),
+                message.AggregateKey,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The Class Suit outbox identity is inconsistent.");
         }
     }
 }

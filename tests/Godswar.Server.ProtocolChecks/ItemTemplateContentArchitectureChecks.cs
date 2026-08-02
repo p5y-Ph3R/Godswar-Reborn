@@ -95,6 +95,19 @@ internal static class ItemTemplateContentArchitectureChecks
             "manifest_version IN (2, 3, 4)",
             "manifest_version IN (3, 4)",
             "official_item_material_content");
+        var classSuitMigration =
+            PostgresSchemaMigrationCatalog.All.Single(
+                static migration => migration.Id ==
+                    "20260802_052_class_suit_item_content");
+        AssertContains(
+            classSuitMigration.Sql,
+            "manifest_version IN (1, 2, 3, 4, 5, 6)",
+            "manifest_version IN (5, 6)",
+            "guard_item_policy_content_insert",
+            "guard_item_material_content_insert",
+            "guard_holy_suit_content_insert",
+            "validate_item_template_content_publication",
+            "official_item_material_content");
 
         foreach (var relativePath in RuntimeConsumers)
         {
@@ -131,7 +144,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "TryReadPublishedRevisionAsync",
                 StringComparison.Ordinal) <
             publisherEntryPoint.IndexOf(
-                "PrepareV5PublicationAsync",
+                "PrepareV6PublicationAsync",
                 StringComparison.Ordinal) &&
             publisherUpgrade.IndexOf(
                 "if (existing is null)",
@@ -140,6 +153,27 @@ internal static class ItemTemplateContentArchitectureChecks
                 "UpsertReviewedBaselineAsync",
                 StringComparison.Ordinal),
             "compiled item seeds exist only behind a publication-absent check");
+
+        var classSuitUpgrade = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.ClassSuit.Upgrade.cs");
+        var classSuitPublication = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.ClassSuit.cs");
+        Check.True(
+            classSuitUpgrade.Contains(
+                "existing is { ManifestVersion: 5 }",
+                StringComparison.Ordinal) &&
+            classSuitUpgrade.Contains(
+                "AppendMissingReviewedClassSuitItemsAsync",
+                StringComparison.Ordinal) &&
+            classSuitPublication.Contains(
+                "ClassSuitItemContentBaseline.PromotionalInsignias",
+                StringComparison.Ordinal),
+            "manifest-v6 appends only the reviewed Class Suit material set " +
+            "while preserving sealed v5 content");
 
         AssertNoMutableRuntimeTemplateReads(root);
         AssertNoCompiledMaterialRuntimeConsumers(root);
@@ -193,7 +227,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "PinnedItemTemplateCatalog.Create",
                 StringComparison.Ordinal) &&
             loader.Contains(
-                "publication.ManifestVersion != 5",
+                "publication.ManifestVersion != 6",
                 StringComparison.Ordinal) &&
             loader.Contains(
                 "ReadMaterialPoliciesAsync",
@@ -201,7 +235,7 @@ internal static class ItemTemplateContentArchitectureChecks
             loader.Contains(
                 "ReadHolySuitPoliciesAsync",
                 StringComparison.Ordinal),
-            "loader pins one complete v5 revision and validates its hash");
+            "loader pins one complete v6 revision and validates its hash");
 
         AssertPinnedSnapshotIsImmutable();
         return Task.CompletedTask;

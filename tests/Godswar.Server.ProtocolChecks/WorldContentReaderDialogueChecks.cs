@@ -15,9 +15,56 @@ internal static class WorldContentReaderDialogueChecks
     public static async Task RunAsync()
     {
         await CheckPinnedLookupAndRevisionAsync();
+        await CheckPinnedMultiRouteLookupAsync();
         CheckMalformedDialogueRejections();
         CheckReviewedRouteCapabilities();
+        CheckReviewedMultiRouteRelease();
         await CheckGeneratedBaselineAsync();
+    }
+
+    private static async Task CheckPinnedMultiRouteLookupAsync()
+    {
+        var mentor = CreateNpc("Athens_070", 0x9003);
+        var text = new NpcTextDefinition(
+            mentor.NpcKey,
+            mentor.SceneKey,
+            "Gear Mentor",
+            "I can enhance and transform your gear.");
+        var gearRoute = CreateRoute(
+            mentor.NpcKey,
+            NpcDialogueBehavior.GearMentor,
+            [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        var classSuitRoute = new NpcDialogueRouteDefinition(
+            mentor.NpcKey,
+            mentor.NpcKey,
+            37,
+            NpcDialogueBehavior.ClassSuit,
+            [100, 101, 102, 103, 104, 105, 106, 107, 108])
+        {
+            RouteOrder = 1
+        };
+        var reader = PinnedWorldContentReader.Create(
+            "dialogue-multi-route-v2",
+            [1],
+            [mentor],
+            [],
+            [],
+            FixedLoadTime,
+            [text],
+            [classSuitRoute, gearRoute]);
+
+        var dialogue = await reader.ReadNpcDialogueAsync(mentor.NpcKey);
+        Check.Equal(2, dialogue.Routes.Count, "Gear Mentor route count");
+        Check.True(
+            dialogue.Routes[0].Behavior == NpcDialogueBehavior.GearMentor &&
+            dialogue.Routes[0].RouteOrder == 0,
+            "Gear Mentor remains the ordered primary function");
+        Check.True(
+            dialogue.Routes[1].Behavior == NpcDialogueBehavior.ClassSuit &&
+            dialogue.Routes[1].DialogIndex == 37 &&
+            dialogue.Routes[1].InitialMenuSubIds.SequenceEqual(
+                [100, 101, 102, 103, 104, 105, 106, 107, 108]),
+            "Class Suit is the ordered secondary function");
     }
 
     private static async Task CheckPinnedLookupAndRevisionAsync()
@@ -198,6 +245,48 @@ internal static class WorldContentReaderDialogueChecks
             duplicateText,
             "duplicate NPC text definitions are rejected");
 
+        var routeOrderGap = CaptureUnavailable(() =>
+            PinnedWorldContentReader.Create(
+                "dialogue-test-v2",
+                [1],
+                [mentor],
+                [],
+                [],
+                FixedLoadTime,
+                [mentorText],
+                [
+                    CreateRoute(
+                        mentor.NpcKey,
+                        NpcDialogueBehavior.ClassSuit,
+                        [100]) with { RouteOrder = 1 }
+                ]));
+        AssertInvalidDialogue(
+            routeOrderGap,
+            "multi-route order must begin at zero and remain contiguous");
+
+        var duplicateClientEndpoint = CaptureUnavailable(() =>
+            PinnedWorldContentReader.Create(
+                "dialogue-test-v2",
+                [1],
+                [mentor],
+                [],
+                [],
+                FixedLoadTime,
+                [mentorText],
+                [
+                    CreateRoute(
+                        mentor.NpcKey,
+                        NpcDialogueBehavior.GearMentor,
+                        [1]),
+                    CreateRoute(
+                        mentor.NpcKey,
+                        NpcDialogueBehavior.ClassSuit,
+                        [100]) with { RouteOrder = 1 }
+                ]));
+        AssertInvalidDialogue(
+            duplicateClientEndpoint,
+            "one NPC cannot publish the same client dialog twice");
+
     }
 
     private static async Task CheckGeneratedBaselineAsync()
@@ -245,6 +334,51 @@ internal static class WorldContentReaderDialogueChecks
                 npcs.TryGetValue(route.NpcKey, out var npc) &&
                 NpcDialogueBehaviorRegistry.IsAllowed(npc, route),
                 $"reviewed route {route.NpcKey} matches its stock protocol");
+        }
+    }
+
+    private static void CheckReviewedMultiRouteRelease()
+    {
+        var publishedNpcKeys = NpcContentBaselineV1.LoadDefinitions()
+            .Select(static npc => npc.NpcKey)
+            .ToHashSet(StringComparer.Ordinal);
+        var texts = NpcTemplateSeeds.Texts
+            .Where(text => publishedNpcKeys.Contains(text.NpcKey))
+            .Select(static text => new NpcTextDefinition(
+                text.NpcKey,
+                text.SceneKey,
+                text.DisplayName,
+                text.Description))
+            .OrderBy(static text => text.NpcKey, StringComparer.Ordinal)
+            .ToArray();
+        var routes = NpcDialogueBaselineV2.CreateRoutes();
+        var revision = WorldContentRevisionHasher.HashNpcDialogues(
+            texts,
+            routes);
+
+        Check.Equal(
+            NpcDialogueBaselineV2.ExpectedTextCount,
+            texts.Length,
+            "V2 dialogue text count");
+        Check.Equal(
+            NpcDialogueBaselineV2.ExpectedHashedEntryCount,
+            revision.EntryCount,
+            "V2 dialogue hashed-entry count");
+        Check.Equal(
+            NpcDialogueBaselineV2.ExpectedRevision,
+            revision.Sha256,
+            "V2 NPC-dialogue canonical revision golden vector");
+        foreach (var npcKey in new[] { "Athens_070", "Sparta_070" })
+        {
+            var mentorRoutes = routes
+                .Where(route => route.NpcKey == npcKey)
+                .ToArray();
+            Check.True(
+                mentorRoutes.Length == 2 &&
+                mentorRoutes[0].Behavior == NpcDialogueBehavior.GearMentor &&
+                mentorRoutes[1].Behavior == NpcDialogueBehavior.ClassSuit &&
+                mentorRoutes[1].DialogIndex == 37,
+                $"{npcKey} publishes Gear Mentor and Class Suit functions");
         }
     }
 

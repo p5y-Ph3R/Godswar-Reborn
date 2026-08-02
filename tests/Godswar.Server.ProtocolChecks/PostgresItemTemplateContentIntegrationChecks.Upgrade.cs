@@ -119,11 +119,11 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 !upgraded.Revision.Equals(
                     v1Revision,
                     StringComparison.Ordinal),
-                "startup advances a v1 item pointer to a new v5 release");
+                "startup advances a v1 item pointer to a new v6 release");
             Check.Equal(
                 v1Before,
                 await ReadRevisionFingerprintAsync(dataSource, v1Revision),
-                "v1-to-v5 upgrade never mutates the sealed v1 row or definition");
+                "v1-to-v6 upgrade never mutates the sealed v1 row or definition");
             await AssertUpgradeShapeAsync(
                 dataSource,
                 v1Revision,
@@ -135,10 +135,10 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             Check.Equal(
                 upgraded.Revision,
                 repeated.Revision,
-                "v1-to-v5 upgrade is idempotent after pointer advancement");
+                "v1-to-v6 upgrade is idempotent after pointer advancement");
             Check.True(
                 !repeated.Created,
-                "idempotent v5 publication does not recreate content");
+                "idempotent v6 publication does not recreate content");
         }
         finally
         {
@@ -285,7 +285,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
     private static async Task AssertUpgradeShapeAsync(
         NpgsqlDataSource dataSource,
         string v1Revision,
-        string v5Revision,
+        string v6Revision,
         int[] skillBookIds)
     {
         await using var command = dataSource.CreateCommand("""
@@ -307,35 +307,35 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                     EXCEPT
                     SELECT to_jsonb(new_definition) - 'revision'
                     FROM item_template_content_definitions new_definition
-                    WHERE new_definition.revision = @v5Revision
+                    WHERE new_definition.revision = @v6Revision
                 ),
                 (
                     SELECT count(*)::integer
                     FROM item_template_content_definitions definition
-                    WHERE definition.revision = @v5Revision
+                    WHERE definition.revision = @v6Revision
                       AND definition.id = ANY(@skillBookIds)
                 ),
                 (
                     SELECT count(*)::integer
                     FROM item_material_content_definitions definition
-                    WHERE definition.revision = @v5Revision
+                    WHERE definition.revision = @v6Revision
                 ),
                 (
                     SELECT count(*)::integer
                     FROM item_material_content_definitions definition
-                    WHERE definition.revision = @v5Revision
+                    WHERE definition.revision = @v6Revision
                       AND definition.recipe_kind IS NOT NULL
                 ),
                 (
                     SELECT count(*)::integer
                     FROM holy_suit_upgrade_content_definitions definition
-                    WHERE definition.revision = @v5Revision
+                    WHERE definition.revision = @v6Revision
                 )
             FROM item_template_content_revisions release
-            WHERE release.revision = @v5Revision;
+            WHERE release.revision = @v6Revision;
             """);
         command.Parameters.AddWithValue("v1Revision", v1Revision);
-        command.Parameters.AddWithValue("v5Revision", v5Revision);
+        command.Parameters.AddWithValue("v6Revision", v6Revision);
         command.Parameters.Add(new NpgsqlParameter(
             "skillBookIds",
             NpgsqlDbType.Array | NpgsqlDbType.Integer)
@@ -346,7 +346,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         Check.True(
             await reader.ReadAsync(),
             "upgraded item release exists");
-        Check.Equal(5, reader.GetInt16(0), "upgraded item manifest version");
+        Check.Equal(6, reader.GetInt16(0), "upgraded item manifest version");
         Check.True(
             reader.GetInt32(1) > 0 &&
             reader.GetInt32(2) > 0 &&
@@ -360,23 +360,23 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             "upgraded item release captures every policy family");
         Check.True(
             reader.GetBoolean(10),
-            "upgraded v5 release is a monotonic superset of v1 definitions");
+            "upgraded v6 release is a monotonic superset of v1 definitions");
         Check.Equal(
             skillBookIds.Length,
             reader.GetInt32(11),
-            "upgraded v5 release appends every reviewed skill-book item");
+            "upgraded v6 release appends every reviewed skill-book item");
         Check.Equal(
             reader.GetInt32(4),
             reader.GetInt32(12),
-            "upgraded v5 release publishes every declared material policy");
+            "upgraded v6 release publishes every declared material policy");
         Check.Equal(
             reader.GetInt32(5),
             reader.GetInt32(13),
-            "upgraded v5 release publishes every declared material recipe");
+            "upgraded v6 release publishes every declared material recipe");
         Check.Equal(
             reader.GetInt32(7),
             reader.GetInt32(14),
-            "upgraded v5 release publishes every Holy Suit transition");
+            "upgraded v6 release publishes every Holy Suit transition");
     }
 
     private static async Task<string> ReadRevisionFingerprintAsync(

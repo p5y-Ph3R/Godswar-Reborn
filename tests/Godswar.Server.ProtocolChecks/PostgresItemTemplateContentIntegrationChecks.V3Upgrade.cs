@@ -101,17 +101,17 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 !upgraded.Revision.Equals(v3Revision, StringComparison.Ordinal),
-                "startup advances a valid v3 pointer to a new v5 release");
+                "startup advances a valid v3 pointer to a new v6 release");
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
                 dataSource);
             Check.True(
                 loaded.Revision.Sha256 == upgraded.Revision &&
-                loaded.Revision.ManifestVersion == 5 &&
+                loaded.Revision.ManifestVersion == 6 &&
                 loaded.Revision.MaterialRecipeCount > 0 &&
                 loaded.Materials.GearMentorRecipes.Count ==
                     loaded.Revision.MaterialRecipeCount &&
                 loaded.HolySuit.Upgrades.Count == 70,
-                "runtime pins the Holy-Suit-complete official v5 publication");
+                "runtime pins the Holy-Suit-complete official v6 publication");
             Check.True(
                 loaded.Materials.TryResolveForging(
                     decoy.ItemId,
@@ -119,19 +119,19 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 upgradedDecoy.StackCap == decoyStackCap &&
                 loaded.Materials.GearMentorRecipes.All(
                     recipe => recipe.SourceItemId != decoy.ItemId),
-                "v3-to-v5 upgrade preserves the non-recipe material policy");
+                "v3-to-v6 upgrade preserves the non-recipe material policy");
 
             var repeated = await PostgresItemTemplateBaselinePublisher
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 repeated.Revision == upgraded.Revision && !repeated.Created,
-                "v3-to-v5 publication upgrade is idempotent");
+                "v3-to-v6 publication upgrade is idempotent");
             Check.Equal(
                 before,
                 await ReadCompleteRevisionFingerprintAsync(
                     dataSource,
                     v3Revision),
-                "v3-to-v5 upgrade leaves the sealed v3 release immutable");
+                "v3-to-v6 upgrade leaves the sealed v3 release immutable");
         }
         finally
         {
@@ -277,6 +277,32 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                     SELECT jsonb_agg(to_jsonb(definition)
                                      ORDER BY definition.item_id)::text
                     FROM item_material_content_definitions definition
+                    WHERE definition.revision = release.revision
+                ), '[]') ||
+                COALESCE((
+                    SELECT jsonb_agg(to_jsonb(definition)
+                                     ORDER BY definition.suit_type)::text
+                    FROM holy_suit_tier_content_definitions definition
+                    WHERE definition.revision = release.revision
+                ), '[]') ||
+                COALESCE((
+                    SELECT jsonb_agg(to_jsonb(definition)
+                                     ORDER BY definition.item_id)::text
+                    FROM holy_suit_consumable_content_definitions definition
+                    WHERE definition.revision = release.revision
+                ), '[]') ||
+                COALESCE((
+                    SELECT jsonb_agg(to_jsonb(definition)
+                                     ORDER BY definition.current_suit_type,
+                                              definition.current_level)::text
+                    FROM holy_suit_upgrade_content_definitions definition
+                    WHERE definition.revision = release.revision
+                ), '[]') ||
+                COALESCE((
+                    SELECT jsonb_agg(to_jsonb(definition)
+                                     ORDER BY definition.policy_key)::text
+                    FROM holy_suit_operation_policy_content_definitions
+                         definition
                     WHERE definition.revision = release.revision
                 ), '[]'))
             FROM item_template_content_revisions release

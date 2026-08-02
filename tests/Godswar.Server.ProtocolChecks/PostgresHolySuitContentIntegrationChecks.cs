@@ -7,7 +7,7 @@ namespace Godswar.Server.ProtocolChecks;
 internal static class PostgresHolySuitContentIntegrationChecks
 {
     public const string CheckName =
-        "PostgreSQL Holy Suit manifest-v5 publication";
+        "PostgreSQL Holy Suit manifest-v6 publication";
 
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
@@ -27,14 +27,14 @@ internal static class PostgresHolySuitContentIntegrationChecks
         var loaded = await PostgresItemTemplateContentBootstrapper.LoadAsync(
             connectionString);
         Check.True(
-            loaded.Revision.ManifestVersion == 5 &&
+            loaded.Revision.ManifestVersion == 6 &&
             loaded.Revision.HolySuitTierCount == 8 &&
             loaded.Revision.HolySuitUpgradeCount == 70 &&
             loaded.Revision.HolySuitConsumableCount == 13 &&
             loaded.Revision.HolySuitPolicyCount == 1 &&
             loaded.HolySuit.IsAvailable &&
             loaded.HolySuit.ItemTemplates.Count == 13,
-            "runtime pins one complete Holy Suit manifest-v5 catalog");
+            "runtime pins one complete Holy Suit manifest-v6 catalog");
         Check.True(
             loaded.HolySuit.TryGetUpgrade(2, 1, out var silver) &&
             silver.RequiredItemExperience == 5_649_898 &&
@@ -90,7 +90,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
             reader.GetInt64(6) == 2_000_000_000 &&
             reader.GetInt64(7) == 400_000_000 &&
             reader.GetString(8) == "Asia/Singapore",
-            "sealed and official Holy Suit row counts match manifest v5");
+            "sealed and official Holy Suit row counts match manifest v6");
     }
 
     private static async Task AssertDurableStateAndPointRecomputationAsync(

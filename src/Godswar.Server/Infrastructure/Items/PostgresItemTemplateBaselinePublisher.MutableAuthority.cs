@@ -46,6 +46,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 static material => material.ToItemTemplateSeed()))
             .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(
                 static material => material.ToItemTemplateSeed()))
+            .Concat(ClassSuitItemContentBaseline.PromotionalInsignias)
             .Concat(HolySuitContentBaseline.ItemTemplates);
         foreach (var template in templates)
         {

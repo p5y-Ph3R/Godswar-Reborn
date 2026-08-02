@@ -233,6 +233,8 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateFighterLevelSeal(),
         CreateFighterExperienceUInt32(),
         CreateHolySuitSingaporeDayBoundary(),
-        CreateHolySuitFixedDailyCap()
+        CreateHolySuitFixedDailyCap(),
+        CreateNpcDialogueMultiRouteRelease(),
+        CreateItemContentV6Release()
     ];
 }

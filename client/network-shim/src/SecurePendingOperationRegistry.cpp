@@ -189,6 +189,13 @@ SecurePendingOperationRegistry::DescribePacket(
         return zodiacResult;
     }
 
+    bool classSuitPacket = false;
+    const auto classSuitResult = DescribeClassSuitPacket(
+        packet, packetBytes, now, descriptor, &classSuitPacket);
+    if (classSuitPacket) {
+        return classSuitResult;
+    }
+
     bool holyEquipmentPacket = false;
     const auto holyEquipmentResult = DescribeHolyEquipmentPacket(
         packet, packetBytes, now, descriptor, &holyEquipmentPacket);

@@ -39,6 +39,8 @@ internal sealed partial class GameClientHandler
             makeAttributeStoneCommands = null,
         IGearMentorMaterialConversionCommandExecutor?
             gearMentorMaterialConversionCommands = null,
+        IClassSuitCommandExecutor?
+            classSuitCommands = null,
         IGearMentorDecomposeGearCommandExecutor?
             gearMentorDecomposeGearCommands = null,
         IGearEnhancementCommandExecutor?
@@ -122,6 +124,7 @@ internal sealed partial class GameClientHandler
         _makeAttributeStoneCommands = makeAttributeStoneCommands;
         _gearMentorMaterialConversionCommands =
             gearMentorMaterialConversionCommands;
+        _classSuitCommands = classSuitCommands;
         _gearMentorDecomposeGearCommands =
             gearMentorDecomposeGearCommands;
         _gearEnhancementCommands = gearEnhancementCommands;
@@ -180,6 +183,7 @@ internal sealed partial class GameClientHandler
                 _developerBagClearCommands,
                 _makeAttributeStoneCommands,
                 _gearMentorMaterialConversionCommands,
+                _classSuitCommands,
                 _gearMentorDecomposeGearCommands,
                 _gearEnhancementCommands,
                 _equipmentForgeCommands,

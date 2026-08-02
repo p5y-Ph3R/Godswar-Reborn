@@ -9,6 +9,7 @@ internal static partial class PostgresMigrationFoundationChecks
         CheckForwardOnlyCatalog();
         await PostgresNpcContentMigrationChecks.RunAsync();
         await PostgresNpcDialogueMigrationChecks.RunAsync();
+        await PostgresNpcDialogueMultiRouteMigrationChecks.RunAsync();
         PostgresPublishedWorldContentMigrationChecks.Run();
         await PostgresInboxOutboxMigrationChecks.RunAsync();
         await PostgresInboxOutboxHardeningMigrationChecks.RunAsync();

@@ -30,25 +30,29 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var route = await ResolveNpcDialogueRouteAsync(
+        var routes = await ResolveNpcDialogueRoutesAsync(
             npc,
             cancellationToken);
-        if (route is null)
+        if (routes.Count == 0)
         {
             return;
         }
 
-        await _session.SendAsync(
-            PacketBuilder.NpcDialogOpenAck(
-                npc.InteractionId,
-                route.DialogIndex,
-                route.ClientScriptKey),
-            cancellationToken,
-            "NpcDialogOpenAck");
-        Console.WriteLine(
-            $"[npc] dialog open npc={npc.InteractionId} " +
-            $"script={route.ClientScriptKey} " +
-            $"behavior={route.Behavior} dialog={route.DialogIndex}");
+        foreach (var route in routes)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcDialogOpenAck(
+                    npc.InteractionId,
+                    route.DialogIndex,
+                    route.ClientScriptKey),
+                cancellationToken,
+                "NpcDialogOpenAck");
+            Console.WriteLine(
+                $"[npc] dialog open npc={npc.InteractionId} " +
+                $"script={route.ClientScriptKey} " +
+                $"behavior={route.Behavior} dialog={route.DialogIndex} " +
+                $"order={route.RouteOrder}");
+        }
     }
 
     private async Task HandleNpcDialogPageRequestAsync(
@@ -229,6 +233,14 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
+            if (await TryReplayClassSuitBeforeRouteRejectionAsync(
+                    packet,
+                    subId,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                     packet,
                     npcId,
@@ -243,7 +255,8 @@ internal sealed partial class GameClientHandler
                 npcId,
                 "npc_not_authoritative_for_map",
                 cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId),
+                ResolveSecureGearMentorCommandFamily(subId) ??
+                    ResolveSecureClassSuitCommandFamily(subId),
                 responseDialogIndex: dialogIndex);
             Console.WriteLine($"[npc] function action ignored: npc={npcId} dialog={dialogIndex} subId={subId}");
             return;
@@ -251,8 +264,9 @@ internal sealed partial class GameClientHandler
 
         var route = await ResolveNpcDialogueRouteAsync(
             npc,
+            dialogIndex,
             cancellationToken);
-        if (route is null || dialogIndex != route.DialogIndex)
+        if (route is null)
         {
             if (secureHolyStoneIntent is { } holyStoneIntent)
             {
@@ -287,6 +301,14 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
+            if (await TryReplayClassSuitBeforeRouteRejectionAsync(
+                    packet,
+                    subId,
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                     packet,
                     npcId,
@@ -301,7 +323,8 @@ internal sealed partial class GameClientHandler
                 npcId,
                 "dialogue_route_mismatch",
                 cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId),
+                ResolveSecureGearMentorCommandFamily(subId) ??
+                    ResolveSecureClassSuitCommandFamily(subId),
                 responseDialogIndex: dialogIndex);
             Console.WriteLine(
                 $"[npc] function action rejected npc={npcId} " +
@@ -459,6 +482,18 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (route.Behavior == NpcDialogueBehavior.ClassSuit)
+        {
+            await HandleClassSuitAsync(
+                packet,
+                route,
+                npcId,
+                subId,
+                args,
+                cancellationToken);
+            return;
+        }
+
         if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                 packet,
                 npcId,
@@ -468,12 +503,21 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (await TryReplayClassSuitBeforeRouteRejectionAsync(
+                packet,
+                subId,
+                cancellationToken))
+        {
+            return;
+        }
+
         if (await TryRejectUnroutedSecureCommandAsync(
                 packet,
                 npcId,
-                "valuable_command_wrong_npc_behavior",
-                cancellationToken,
-                ResolveSecureGearMentorCommandFamily(subId),
+            "valuable_command_wrong_npc_behavior",
+            cancellationToken,
+            ResolveSecureGearMentorCommandFamily(subId) ??
+                ResolveSecureClassSuitCommandFamily(subId),
                 responseDialogIndex: dialogIndex))
         {
             return;

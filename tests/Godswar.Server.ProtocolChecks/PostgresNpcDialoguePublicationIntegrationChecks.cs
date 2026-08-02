@@ -24,6 +24,7 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             return;
         }
 
+        await PostgresSchemaStartup.InitializeAsync(connectionString);
         await using (var store = new PostgresGameStore(connectionString))
         {
             await store.EnsureSeedDataAsync();
@@ -108,27 +109,27 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
         NpcDialoguePublicationResult result)
     {
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedRevision,
+            NpcDialogueBaselineV2.ExpectedRevision,
             result.Revision,
             "dialogue release revision");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedSpawnRevision,
+            NpcDialogueBaselineV2.ExpectedSpawnRevision,
             result.SpawnRevision,
             "dialogue release spawn dependency");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedTextCount,
+            NpcDialogueBaselineV2.ExpectedTextCount,
             result.TextCount,
             "dialogue release text count");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedProfileCount,
+            NpcDialogueBaselineV2.ExpectedProfileCount,
             result.ProfileCount,
             "dialogue release profile count");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedRouteCount,
+            NpcDialogueBaselineV2.ExpectedRouteCount,
             result.RouteCount,
             "dialogue release route count");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedMenuEntryCount,
+            NpcDialogueBaselineV2.ExpectedMenuEntryCount,
             result.MenuEntryCount,
             "dialogue release menu count");
     }
@@ -140,11 +141,11 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             manifest.NpcDialogues.Family,
             "dialogue manifest family");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedRevision,
+            NpcDialogueBaselineV2.ExpectedRevision,
             manifest.NpcDialogues.Sha256,
             "dialogue manifest revision");
         Check.Equal(
-            NpcDialogueBaselineV1.ExpectedHashedEntryCount,
+            NpcDialogueBaselineV2.ExpectedHashedEntryCount,
             manifest.NpcDialogues.EntryCount,
             "dialogue manifest hashed entry count");
     }
@@ -152,31 +153,43 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
     private static async Task AssertRoutesAsync(
         IWorldContentReader reader)
     {
-        var expected = NpcDialogueBaselineV1.CreateRoutes()
+        var expected = NpcDialogueBaselineV2.CreateRoutes()
+            .GroupBy(static route => route.NpcKey, StringComparer.Ordinal)
             .ToDictionary(
-                static route => route.NpcKey,
+                static group => group.Key,
+                static group => group.ToArray(),
                 StringComparer.Ordinal);
         foreach (var pair in expected)
         {
             var content = await reader.ReadNpcDialogueAsync(pair.Key);
-            var route = content.Route ??
-                        throw new InvalidOperationException(
-                            $"NPC {pair.Key} lost its dialogue route.");
             Check.Equal(
-                pair.Value.ClientScriptKey,
-                route.ClientScriptKey,
-                $"{pair.Key} client script");
-            Check.Equal(
-                pair.Value.DialogIndex,
-                route.DialogIndex,
-                $"{pair.Key} dialog index");
-            Check.True(
-                pair.Value.Behavior == route.Behavior,
-                $"{pair.Key} behavior");
-            Check.True(
-                pair.Value.InitialMenuSubIds.SequenceEqual(
-                    route.InitialMenuSubIds),
-                $"{pair.Key} ordered menu");
+                pair.Value.Length,
+                content.Routes.Count,
+                $"{pair.Key} route count");
+            for (var index = 0; index < pair.Value.Length; index++)
+            {
+                var expectedRoute = pair.Value[index];
+                var route = content.Routes[index];
+                Check.Equal(
+                    expectedRoute.RouteOrder,
+                    route.RouteOrder,
+                    $"{pair.Key} route order");
+                Check.Equal(
+                    expectedRoute.ClientScriptKey,
+                    route.ClientScriptKey,
+                    $"{pair.Key} client script");
+                Check.Equal(
+                    expectedRoute.DialogIndex,
+                    route.DialogIndex,
+                    $"{pair.Key} dialog index");
+                Check.True(
+                    expectedRoute.Behavior == route.Behavior,
+                    $"{pair.Key} behavior");
+                Check.True(
+                    expectedRoute.InitialMenuSubIds.SequenceEqual(
+                        route.InitialMenuSubIds),
+                    $"{pair.Key} ordered menu");
+            }
             Check.True(
                 !string.IsNullOrWhiteSpace(content.Text.DisplayName) &&
                 !string.IsNullOrWhiteSpace(content.Text.Description),
@@ -224,10 +237,10 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             "dialogue publication exists");
         var expected = new[]
         {
-            NpcDialogueBaselineV1.ExpectedTextCount,
-            NpcDialogueBaselineV1.ExpectedProfileCount,
-            NpcDialogueBaselineV1.ExpectedRouteCount,
-            NpcDialogueBaselineV1.ExpectedMenuEntryCount
+            NpcDialogueBaselineV2.ExpectedTextCount,
+            NpcDialogueBaselineV2.ExpectedProfileCount,
+            NpcDialogueBaselineV2.ExpectedRouteCount,
+            NpcDialogueBaselineV2.ExpectedMenuEntryCount
         };
         for (var index = 0; index < expected.Length; index++)
         {

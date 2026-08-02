@@ -1,0 +1,582 @@
+using Godswar.Server.Application.Items;
+
+namespace Godswar.Server.State;
+
+/// <summary>
+/// Authoritative class-specific weapon-attribute rules used by dialogue 37.
+/// It plans every bag change before a persistence executor commits anything.
+/// </summary>
+internal static class ClassSuitAttributePlanner
+{
+    private const int KitBagSlotCount = 96;
+
+    private static readonly IReadOnlyDictionary<uint, (byte ProfessionGroup, int AttributeId)>
+        ClassStones = new Dictionary<uint, (byte, int)>
+        {
+            [9950] = (0, 200),
+            [9951] = (0, 201),
+            [9952] = (0, 210),
+            [9953] = (0, 211),
+            [9954] = (1, 220),
+            [9955] = (1, 221),
+            [9956] = (1, 230),
+            [9957] = (1, 231)
+        };
+
+    private static readonly IReadOnlySet<int> AllClassAttributeIds =
+        ClassStones.Values.Select(static value => value.AttributeId).ToHashSet();
+
+    public static ClassSuitAttributeResult Create(
+        IItemTemplateCatalog templates,
+        string kitBag,
+        byte profession,
+        ClassSuitAttributeRequest? request)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        var originalKitBag = kitBag ?? string.Empty;
+        var normalizedKitBag = string.IsNullOrWhiteSpace(kitBag)
+            ? GameDefaults.EmptyKitBag
+            : kitBag;
+        if (request is null)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.RequestMissing,
+                null,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                "Class-specific attribute request was missing.");
+        }
+
+        if (!Enum.IsDefined(request.Operation))
+        {
+            return Reject(
+                ClassSuitAttributeStatus.UnsupportedOperation,
+                request.Operation,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                "Class-specific attribute operation is not supported.");
+        }
+
+        if (profession > 3)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidProfession,
+                request.Operation,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                "The authoritative character profession is invalid.");
+        }
+
+        if (request.Gear is null || request.Catalyst is null ||
+            (request.Operation == ClassSuitAttributeOperation.AddClassSpecific) !=
+            (request.ClassStone is not null))
+        {
+            return Reject(
+                ClassSuitAttributeStatus.SelectionMissing,
+                request.Operation,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                request.Operation == ClassSuitAttributeOperation.AddClassSpecific
+                    ? "Select a Class Suit weapon, Flame Spark, and class-specific stone."
+                    : "Select a Class Suit weapon and Water Grain only.");
+        }
+
+        var selections = request.ClassStone is null
+            ? new[] { request.Gear, request.Catalyst }
+            : new[] { request.Gear, request.Catalyst, request.ClassStone };
+        var slots = selections.Select(static value => value.KitBagSlot).ToArray();
+        if (slots.Any(static slot => slot is < 0 or >= KitBagSlotCount))
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidKitBagSlot,
+                request.Operation,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                "A class-specific attribute selection used an invalid kit-bag slot.");
+        }
+
+        if (slots.Distinct().Count() != slots.Length)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.DuplicateKitBagSlot,
+                request.Operation,
+                originalKitBag,
+                CompactItemEntry.Empty,
+                "Gear, catalyst, and stone must occupy distinct kit-bag slots.");
+        }
+
+        var before = Enumerable.Range(0, KitBagSlotCount)
+            .Select(slot => KitBagSlots.GetItem(normalizedKitBag, slot))
+            .ToArray();
+        foreach (var selection in selections)
+        {
+            var current = before[selection.KitBagSlot];
+            if (current.IsEmpty)
+            {
+                return Reject(
+                    ClassSuitAttributeStatus.SelectionMissing,
+                    request.Operation,
+                    originalKitBag,
+                    before[request.Gear.KitBagSlot],
+                    "A selected class-specific attribute item is no longer in the bag.");
+            }
+
+            if (current != selection.ExpectedItem)
+            {
+                return Reject(
+                    ClassSuitAttributeStatus.StaleSelection,
+                    request.Operation,
+                    originalKitBag,
+                    before[request.Gear.KitBagSlot],
+                    "A selected class-specific attribute item changed after it was staged.");
+            }
+        }
+
+        var equipment = before[request.Gear.KitBagSlot];
+        if (!TryValidateWeapon(
+                templates,
+                equipment,
+                profession,
+                out var weaponStatus,
+                out var weaponReason))
+        {
+            return Reject(
+                weaponStatus,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                weaponReason);
+        }
+
+        var catalyst = before[request.Catalyst.KitBagSlot];
+        var expectedCatalystKind = request.Operation ==
+            ClassSuitAttributeOperation.AddClassSpecific
+            ? GearEnhancementMaterialKind.FlameSpark
+            : GearEnhancementMaterialKind.WaterGrain;
+        if (!templates.Materials.TryGetGearEnhancement(
+                catalyst.Id,
+                out var catalystDefinition) ||
+            catalystDefinition.Kind != expectedCatalystKind)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidCatalyst,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                request.Operation == ClassSuitAttributeOperation.AddClassSpecific
+                    ? "A Flame Spark is required to add a class-specific stat."
+                    : "A Water Grain is required to delete a class-specific stat.");
+        }
+
+        if (catalyst.Stack < 1)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InsufficientMaterial,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                "The selected catalyst stack is empty.");
+        }
+
+        var working = before.ToArray();
+        var materials = new List<ClassSuitMaterialChange>();
+        CompactItemEntry equipmentAfter;
+        if (request.Operation == ClassSuitAttributeOperation.AddClassSpecific)
+        {
+            var stoneSelection = request.ClassStone!;
+            var stone = before[stoneSelection.KitBagSlot];
+            if (!TryResolveStone(
+                    templates.Materials,
+                    stone.Id,
+                    profession,
+                    out var attributeId))
+            {
+                return Reject(
+                    ClassSuitAttributeStatus.InvalidClassStone,
+                    request.Operation,
+                    originalKitBag,
+                    equipment,
+                    "The selected class-specific stone does not belong to this profession.");
+            }
+
+            if (stone.Stack < 1)
+            {
+                return Reject(
+                    ClassSuitAttributeStatus.InsufficientMaterial,
+                    request.Operation,
+                    originalKitBag,
+                    equipment,
+                    "The selected class-specific stone stack is empty.");
+            }
+
+            if (!TryAddAttribute(
+                    equipment,
+                    attributeId,
+                    out equipmentAfter,
+                    out var attributeStatus,
+                    out var attributeReason))
+            {
+                return Reject(
+                    attributeStatus,
+                    request.Operation,
+                    originalKitBag,
+                    equipment,
+                    attributeReason);
+            }
+
+            equipmentAfter = equipmentAfter with
+            {
+                Bound = Math.Max(
+                    equipmentAfter.Bound,
+                    Math.Max(catalyst.Bound, stone.Bound))
+            };
+            working[stoneSelection.KitBagSlot] = ConsumeOne(stone);
+            materials.Add(new ClassSuitMaterialChange(
+                stone.Id,
+                1,
+                stone.Bound,
+                ClassSuitMaterialDirection.Consumed));
+        }
+        else if (!TryDeleteAttribute(
+                     equipment,
+                     profession,
+                     out equipmentAfter,
+                     out var attributeStatus,
+                     out var attributeReason))
+        {
+            return Reject(
+                attributeStatus,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                attributeReason);
+        }
+
+        equipmentAfter = equipmentAfter with
+        {
+            Bound = Math.Max(equipmentAfter.Bound, catalyst.Bound)
+        };
+        working[request.Gear.KitBagSlot] = equipmentAfter;
+        working[request.Catalyst.KitBagSlot] = ConsumeOne(catalyst);
+        materials.Add(new ClassSuitMaterialChange(
+            catalyst.Id,
+            1,
+            catalyst.Bound,
+            ClassSuitMaterialDirection.Consumed));
+
+        var updatedKitBag = normalizedKitBag;
+        var mutations = new List<ClassSuitSlotMutation>();
+        for (var slot = 0; slot < KitBagSlotCount; slot++)
+        {
+            if (before[slot] == working[slot])
+            {
+                continue;
+            }
+
+            updatedKitBag = working[slot].IsEmpty
+                ? KitBagSlots.ClearSlot(updatedKitBag, slot)
+                : KitBagSlots.SetSlot(
+                    updatedKitBag,
+                    slot,
+                    working[slot].ToCompactString());
+            mutations.Add(new ClassSuitSlotMutation(
+                slot,
+                before[slot],
+                working[slot]));
+        }
+
+        return new ClassSuitAttributeResult(
+            ClassSuitAttributeStatus.Succeeded,
+            request.Operation,
+            originalKitBag,
+            updatedKitBag,
+            equipment,
+            equipmentAfter,
+            mutations,
+            materials);
+    }
+
+    private static bool TryValidateWeapon(
+        IItemTemplateCatalog templates,
+        CompactItemEntry equipment,
+        byte profession,
+        out ClassSuitAttributeStatus status,
+        out string reason)
+    {
+        if (equipment.Stack != 1 ||
+            !templates.TryGet(equipment.Id, out var template) ||
+            !template.Kind.Equals("weapon", StringComparison.OrdinalIgnoreCase))
+        {
+            status = ClassSuitAttributeStatus.InvalidWeapon;
+            reason = "Only one genuine Class Suit weapon can receive a class-specific stat.";
+            return false;
+        }
+
+        if (!ClassSuitConversionCatalog.TryResolveSuit(
+                profession,
+                equipment.Id,
+                out _,
+                out _))
+        {
+            var belongsToAnotherProfession = Enumerable.Range(0, 4)
+                .Where(value => value != profession)
+                .Any(value => ClassSuitConversionCatalog.TryResolveSuit(
+                    checked((byte)value),
+                    equipment.Id,
+                    out _,
+                    out _));
+            status = belongsToAnotherProfession
+                ? ClassSuitAttributeStatus.ProfessionMismatch
+                : ClassSuitAttributeStatus.InvalidWeapon;
+            reason = belongsToAnotherProfession
+                ? "This Class Suit weapon belongs to a different profession."
+                : "Only a Class Suit weapon can receive a class-specific stat.";
+            return false;
+        }
+
+        status = ClassSuitAttributeStatus.Succeeded;
+        reason = string.Empty;
+        return true;
+    }
+
+    private static bool TryResolveStone(
+        IItemMaterialCatalog materials,
+        uint itemId,
+        byte profession,
+        out int attributeId)
+    {
+        attributeId = 0;
+        return ClassStones.TryGetValue(itemId, out var rule) &&
+            IsProfessionAllowed(rule.ProfessionGroup, profession) &&
+            materials.TryGetAttributeStone(itemId, out var stone) &&
+            stone.AllowedAttributeIds.Count == 1 &&
+            stone.AllowedAttributeIds[0] == rule.AttributeId &&
+            (attributeId = rule.AttributeId) > 0;
+    }
+
+    private static bool TryAddAttribute(
+        CompactItemEntry equipment,
+        int attributeId,
+        out CompactItemEntry updated,
+        out ClassSuitAttributeStatus status,
+        out string reason)
+    {
+        var (attributes, levels) = ReadAttributes(equipment);
+        if (!HasValidShape(attributes, levels))
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.InvalidAttributeState,
+                "The weapon contains an invalid appended-attribute record.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        if (attributes.Any(value =>
+                value.HasValue &&
+                AllClassAttributeIds.Contains(value.Value)))
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.ClassAttributeAlreadyPresent,
+                "The weapon already has a class-specific stat.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        var index = Array.FindIndex(attributes, static value => !value.HasValue);
+        if (index < 0)
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.AttributeSlotsFull,
+                "The weapon has no empty appended-attribute slot.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        attributes[index] = attributeId;
+        levels[index] = 1;
+        updated = WriteAttributes(equipment, attributes, levels);
+        status = ClassSuitAttributeStatus.Succeeded;
+        reason = string.Empty;
+        return true;
+    }
+
+    private static bool TryDeleteAttribute(
+        CompactItemEntry equipment,
+        byte profession,
+        out CompactItemEntry updated,
+        out ClassSuitAttributeStatus status,
+        out string reason)
+    {
+        var (attributes, levels) = ReadAttributes(equipment);
+        if (!HasValidShape(attributes, levels))
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.InvalidAttributeState,
+                "The weapon contains an invalid appended-attribute record.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        var classIndexes = Enumerable.Range(0, attributes.Length)
+            .Where(index => attributes[index].HasValue &&
+                AllClassAttributeIds.Contains(attributes[index]!.Value))
+            .ToArray();
+        if (classIndexes.Length == 0)
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.ClassAttributeMissing,
+                "The weapon has no class-specific stat to delete.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        var allowedAttributes = ClassStones.Values
+            .Where(value => IsProfessionAllowed(
+                value.ProfessionGroup,
+                profession))
+            .Select(value => value.AttributeId)
+            .ToHashSet();
+        if (classIndexes.Length != 1 ||
+            !allowedAttributes.Contains(attributes[classIndexes[0]]!.Value))
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.InvalidAttributeState,
+                "The weapon contains conflicting class-specific stats.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        var keptAttributes = new List<int?>(5);
+        var keptLevels = new List<short?>(5);
+        for (var index = 0; index < attributes.Length; index++)
+        {
+            if (index == classIndexes[0] || !attributes[index].HasValue)
+            {
+                continue;
+            }
+
+            keptAttributes.Add(attributes[index]);
+            keptLevels.Add(levels[index]);
+        }
+        while (keptAttributes.Count < 5)
+        {
+            keptAttributes.Add(null);
+            keptLevels.Add(null);
+        }
+
+        updated = WriteAttributes(
+            equipment,
+            keptAttributes.ToArray(),
+            keptLevels.ToArray());
+        status = ClassSuitAttributeStatus.Succeeded;
+        reason = string.Empty;
+        return true;
+    }
+
+    private static (int?[] Attributes, short?[] Levels) ReadAttributes(
+        CompactItemEntry equipment) =>
+        (
+            [
+                equipment.Attribute1,
+                equipment.Attribute2,
+                equipment.Attribute3,
+                equipment.Attribute4,
+                equipment.Attribute5
+            ],
+            [
+                equipment.AttributeLevel1,
+                equipment.AttributeLevel2,
+                equipment.AttributeLevel3,
+                equipment.AttributeLevel4,
+                equipment.AttributeLevel5
+            ]);
+
+    private static bool HasValidShape(int?[] attributes, short?[] levels)
+    {
+        for (var index = 0; index < attributes.Length; index++)
+        {
+            if (attributes[index] is < 0 ||
+                (!attributes[index].HasValue && levels[index].HasValue))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static CompactItemEntry WriteAttributes(
+        CompactItemEntry equipment,
+        int?[] attributes,
+        short?[] levels) =>
+        equipment with
+        {
+            Attribute1 = attributes[0],
+            Attribute2 = attributes[1],
+            Attribute3 = attributes[2],
+            Attribute4 = attributes[3],
+            Attribute5 = attributes[4],
+            AttributeLevel1 = levels[0],
+            AttributeLevel2 = levels[1],
+            AttributeLevel3 = levels[2],
+            AttributeLevel4 = levels[3],
+            AttributeLevel5 = levels[4]
+        };
+
+    private static bool IsProfessionAllowed(
+        byte professionGroup,
+        byte profession) =>
+        professionGroup switch
+        {
+            0 => profession is 0 or 1,
+            1 => profession is 2 or 3,
+            _ => false
+        };
+
+    private static CompactItemEntry ConsumeOne(CompactItemEntry item) =>
+        item.Stack == 1
+            ? CompactItemEntry.Empty
+            : item with { Stack = checked((short)(item.Stack - 1)) };
+
+    private static bool FailAttribute(
+        CompactItemEntry equipment,
+        ClassSuitAttributeStatus failureStatus,
+        string failureReason,
+        out CompactItemEntry updated,
+        out ClassSuitAttributeStatus status,
+        out string reason)
+    {
+        updated = equipment;
+        status = failureStatus;
+        reason = failureReason;
+        return false;
+    }
+
+    private static ClassSuitAttributeResult Reject(
+        ClassSuitAttributeStatus status,
+        ClassSuitAttributeOperation? operation,
+        string originalKitBag,
+        CompactItemEntry equipment,
+        string reason) =>
+        new(
+            status,
+            operation,
+            originalKitBag,
+            originalKitBag,
+            equipment,
+            equipment,
+            [],
+            [],
+            reason);
+}

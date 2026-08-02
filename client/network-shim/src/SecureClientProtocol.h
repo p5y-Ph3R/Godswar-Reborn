@@ -93,6 +93,13 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     HolySuitTransferExperience = 31,
     HolySuitConsumeWare = 32,
     HolySuitTransformExperience = 33,
+    ClassSuitExchangeTierI = 34,
+    ClassSuitConvertToCommon = 35,
+    ClassSuitUpgradeTierII = 36,
+    ClassSuitUpgradeTierIII = 37,
+    ClassSuitUpgradeTierIV = 38,
+    ClassSuitAddAttribute = 39,
+    ClassSuitDeleteAttribute = 40,
 };
 
 struct SecureLegacyCommandResult final {

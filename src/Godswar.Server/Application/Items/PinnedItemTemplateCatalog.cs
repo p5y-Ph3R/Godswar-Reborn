@@ -167,7 +167,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             holySuitConsumables,
             holySuitOperationPolicy,
             expectedRevision,
-            manifestVersion: 5);
+            manifestVersion: 6);
 
     private static PinnedItemTemplateCatalog CreateCore(
         string source,
@@ -230,8 +230,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
         var knownTemplateIds = snapshot
             .Select(static definition => definition.Id)
             .ToHashSet();
-        var materialCatalog = manifestVersion == 4
-            || manifestVersion == 5
+        var materialCatalog = manifestVersion is 4 or 5 or 6
             ? PinnedItemMaterialCatalog.Create(
                 forgingMaterials,
                 enhancementMaterials,
@@ -244,14 +243,14 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 attributeDusts,
                 knownTemplateIds,
                 allowEmpty: manifestVersion == 2);
-        var holySuitCatalog = manifestVersion == 5
+        var holySuitCatalog = manifestVersion is 5 or 6
             ? PinnedHolySuitContentCatalog.Create(
                 snapshot,
                 holySuitTiers,
                 holySuitUpgrades,
                 holySuitConsumables,
                 holySuitOperationPolicy ?? throw new InvalidOperationException(
-                    "Manifest version 5 requires a Holy Suit policy."))
+                    "Manifest version 5 or 6 requires a Holy Suit policy."))
             : PinnedHolySuitContentCatalog.Empty;
 
         var revision = manifestVersion switch
@@ -279,6 +278,19 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 materialCatalog.AttributeDusts,
                 materialCatalog.GearMentorRecipes),
             5 => ItemTemplateContentRevisionHasher.Compute(
+                snapshot,
+                attributeSnapshot,
+                rankSnapshot,
+                holySuitSnapshot,
+                materialCatalog.ForgingMaterials,
+                materialCatalog.GearEnhancementMaterials,
+                materialCatalog.AttributeDusts,
+                materialCatalog.GearMentorRecipes,
+                holySuitCatalog.Tiers,
+                holySuitCatalog.Upgrades,
+                holySuitCatalog.Consumables,
+                holySuitCatalog.OperationPolicy!),
+            6 => ItemTemplateContentRevisionHasher.ComputeV6(
                 snapshot,
                 attributeSnapshot,
                 rankSnapshot,

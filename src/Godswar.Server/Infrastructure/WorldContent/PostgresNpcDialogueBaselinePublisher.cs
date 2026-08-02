@@ -20,7 +20,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
 {
     private const int PublicationLockNamespace = 1_193_657_936;
     private const int PublicationLockKey = 1_448_298_802;
-    private const string Publisher = "server-baseline-v1";
+    private const string Publisher = "server-baseline-v2";
 
     public static async Task<NpcDialoguePublicationResult>
         EnsurePublishedAsync(
@@ -55,10 +55,22 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             connection,
             transaction,
             cancellationToken);
-        if (current is not null)
+        if (current is not null && string.Equals(
+                current.Revision,
+                NpcDialogueBaselineV2.ExpectedRevision,
+                StringComparison.Ordinal))
         {
             await transaction.CommitAsync(cancellationToken);
             return current with { Created = false };
+        }
+        if (current is not null && !string.Equals(
+                current.Revision,
+                NpcDialogueBaselineV1.ExpectedRevision,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The published NPC dialogue revision is neither the " +
+                "reviewed V1 rollback nor the reviewed V2 release.");
         }
 
         var spawnRevision = await ReadCurrentSpawnRevisionAsync(
@@ -67,10 +79,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             cancellationToken);
         if (!string.Equals(
                 spawnRevision.Revision,
-                NpcDialogueBaselineV1.ExpectedSpawnRevision,
+                NpcDialogueBaselineV2.ExpectedSpawnRevision,
                 StringComparison.Ordinal) ||
             spawnRevision.EntryCount !=
-                NpcDialogueBaselineV1.ExpectedTextCount)
+                NpcDialogueBaselineV2.ExpectedTextCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline does not target the " +
@@ -82,7 +94,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             transaction,
             spawnRevision.Revision,
             cancellationToken);
-        var routes = NpcDialogueBaselineV1.CreateRoutes();
+        var routes = NpcDialogueBaselineV2.CreateRoutes();
         var revision = ValidateBaseline(texts, routes);
 
         var releaseCreated = await InsertReleaseAsync(
@@ -134,13 +146,13 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         IReadOnlyList<NpcTextDefinition> texts,
         IReadOnlyList<NpcDialogueRouteDefinition> routes)
     {
-        if (texts.Count != NpcDialogueBaselineV1.ExpectedTextCount ||
-            routes.Count != NpcDialogueBaselineV1.ExpectedRouteCount ||
-            NpcDialogueBaselineV1.Profiles.Length !=
-                NpcDialogueBaselineV1.ExpectedProfileCount ||
-            NpcDialogueBaselineV1.Profiles.Sum(
+        if (texts.Count != NpcDialogueBaselineV2.ExpectedTextCount ||
+            routes.Count != NpcDialogueBaselineV2.ExpectedRouteCount ||
+            NpcDialogueBaselineV2.Profiles.Length !=
+                NpcDialogueBaselineV2.ExpectedProfileCount ||
+            NpcDialogueBaselineV2.Profiles.Sum(
                 static profile => profile.InitialMenuSubIds.Length) !=
-                NpcDialogueBaselineV1.ExpectedMenuEntryCount)
+                NpcDialogueBaselineV2.ExpectedMenuEntryCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline has unexpected counts.");
@@ -167,11 +179,11 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             previousTextKey = text.NpcKey;
         }
 
-        var routeKeys = new HashSet<string>(StringComparer.Ordinal);
+        var routeKeys = new HashSet<(string NpcKey, int RouteOrder)>();
         foreach (var route in routes)
         {
             if (!textKeys.Contains(route.NpcKey) ||
-                !routeKeys.Add(route.NpcKey) ||
+                !routeKeys.Add((route.NpcKey, route.RouteOrder)) ||
                 !string.Equals(
                     route.NpcKey,
                     route.ClientScriptKey,
@@ -185,13 +197,29 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             }
         }
 
+        foreach (var npcRoutes in routes.GroupBy(
+                     static route => route.NpcKey,
+                     StringComparer.Ordinal))
+        {
+            var expectedOrder = 0;
+            var dialogIndices = new HashSet<int>();
+            if (npcRoutes.Any(route =>
+                    route.RouteOrder != expectedOrder++ ||
+                    !dialogIndices.Add(route.DialogIndex)))
+            {
+                throw new InvalidDataException(
+                    "The reviewed NPC dialogue routes are non-contiguous " +
+                    "or duplicate a client dialog endpoint.");
+            }
+        }
+
         var revision =
             WorldContentRevisionHasher.HashNpcDialogues(texts, routes);
         if (revision.EntryCount !=
-                NpcDialogueBaselineV1.ExpectedHashedEntryCount ||
+                NpcDialogueBaselineV2.ExpectedHashedEntryCount ||
             !string.Equals(
                 revision.Sha256,
-                NpcDialogueBaselineV1.ExpectedRevision,
+                NpcDialogueBaselineV2.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
@@ -338,10 +366,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         new(
             revision,
             spawnRevision,
-            NpcDialogueBaselineV1.ExpectedTextCount,
-            NpcDialogueBaselineV1.ExpectedProfileCount,
-            NpcDialogueBaselineV1.ExpectedRouteCount,
-            NpcDialogueBaselineV1.ExpectedMenuEntryCount,
-            NpcDialogueBaselineV1.Source,
+            NpcDialogueBaselineV2.ExpectedTextCount,
+            NpcDialogueBaselineV2.ExpectedProfileCount,
+            NpcDialogueBaselineV2.ExpectedRouteCount,
+            NpcDialogueBaselineV2.ExpectedMenuEntryCount,
+            NpcDialogueBaselineV2.Source,
             Created);
 }

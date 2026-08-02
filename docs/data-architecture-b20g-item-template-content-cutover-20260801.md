@@ -150,10 +150,12 @@ old binaries and administrative inspection; current runtime code does not.
 Pointer moves and rollback require a coordinated drain/restart so all workers
 pin one compatible content fingerprint.
 
-The Holy Suit release advances the current binary to manifest v5. A coordinated
-LocalDevelopment pointer rollback may select only a previously validated,
-sealed, complete v4 revision; see
+The Class Suit content release advances the current binary to manifest v6.
+Manifest v6 contains the complete v5 Holy Suit policy plus the four reviewed
+Promotional Insignias. Historical v4 and v5 revisions remain sealed. A
+coordinated LocalDevelopment pointer rollback may select only a previously
+validated, sealed, complete compatible revision; see
 `docs/local-development-item-content-v4-rollback.md`. That pointer change does
-not reverse forward-only migration 046. A binary whose migration catalog ends
-at 045 still rejects the ahead database, so application rollback also requires
-a tested schema-compatible v4 image or a verified pre-046 database restore.
+not reverse forward-only migrations. An older binary still rejects a database
+whose migration history is ahead, so application rollback also requires a
+tested schema-compatible image or a verified matching database restore.

@@ -43,6 +43,45 @@ internal static partial class ItemTemplateContentRevisionHasher
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
+    public static string ComputeV6(
+        IReadOnlyList<ItemTemplateDefinition> definitions,
+        IReadOnlyList<ItemAttributeDefinition> attributes,
+        IReadOnlyList<EquipmentRankDefinition> equipmentRanks,
+        IReadOnlyList<HolySuitEffectDefinition> holySuitEffects,
+        IReadOnlyList<ForgingMaterialDefinition> forgingMaterials,
+        IReadOnlyList<GearEnhancementMaterialDefinition>
+            enhancementMaterials,
+        IReadOnlyList<AttributeDustDefinition> attributeDusts,
+        IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes,
+        IReadOnlyList<HolySuitTierDefinition> holySuitTiers,
+        IReadOnlyList<HolySuitUpgradeDefinition> holySuitUpgrades,
+        IReadOnlyList<HolySuitConsumableDefinition> holySuitConsumables,
+        HolySuitOperationPolicy holySuitOperationPolicy)
+    {
+        ArgumentNullException.ThrowIfNull(holySuitOperationPolicy);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        AppendManifestCore(
+            hash,
+            "item-content-manifest-v6",
+            definitions,
+            attributes,
+            equipmentRanks,
+            holySuitEffects);
+        AppendMaterialDefinitions(
+            hash,
+            forgingMaterials,
+            enhancementMaterials,
+            attributeDusts);
+        AppendRecipes(hash, recipes);
+        AppendHolySuitContent(
+            hash,
+            holySuitTiers,
+            holySuitUpgrades,
+            holySuitConsumables,
+            holySuitOperationPolicy);
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
     private static void AppendRecipes(
         IncrementalHash hash,
         IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes)

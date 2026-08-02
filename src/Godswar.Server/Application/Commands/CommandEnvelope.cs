@@ -39,7 +39,14 @@ internal enum CommandFamily : ushort
     HolySuitStoreExperience = 30,
     HolySuitTransferExperience = 31,
     HolySuitConsumeWare = 32,
-    HolySuitTransformExperience = 33
+    HolySuitTransformExperience = 33,
+    ClassSuitExchangeTierI = 34,
+    ClassSuitConvertToCommon = 35,
+    ClassSuitUpgradeTierII = 36,
+    ClassSuitUpgradeTierIII = 37,
+    ClassSuitUpgradeTierIV = 38,
+    ClassSuitAddAttribute = 39,
+    ClassSuitDeleteAttribute = 40
 }
 
 internal enum CommandIdentityStrength : byte
