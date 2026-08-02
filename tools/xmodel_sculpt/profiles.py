@@ -212,7 +212,10 @@ class ProfileTransform:
         self._bases: dict[int, MeshBasis] = {}
 
     def __call__(self, mesh: MeshData, _index: int, point: Vector3) -> Vector3:
-        basis = self._bases.setdefault(mesh.index, pca_basis(mesh))
+        basis = self._bases.get(mesh.index)
+        if basis is None:
+            basis = pca_basis(mesh)
+            self._bases[mesh.index] = basis
         centered = _sub(point, basis.origin)
         width_value = _dot(centered, basis.width)
         l_value = _dot(centered, basis.longitudinal)
