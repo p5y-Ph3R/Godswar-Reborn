@@ -11,6 +11,7 @@ internal static partial class EquipmentForgeDurableHandlerChecks
 {
     public static async Task RunAsync()
     {
+        await CheckLegacyRawProjectionPreservesLiveVitalsAsync();
         await CheckCommitOrderingAndProjectionIsolationAsync();
         await CheckFailedRollUsesCommittedAttemptResultAsync();
         await CheckSelectionlessDuplicateReplaysAsync();
