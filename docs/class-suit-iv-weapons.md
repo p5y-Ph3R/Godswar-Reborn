@@ -78,6 +78,7 @@ Offline checks prove:
 - every reviewed source and generated output has the pinned SHA-256 hash;
 - only model positions and normals change;
 - all model topology, UV, material, frame, and attachment bytes are preserved;
+- sculpting introduces no new degenerate triangles;
 - each source contains exactly one rigid mesh;
 - texture dimensions, orientation, alpha, and encoding remain valid;
 - male and female targets exist for both client render trees; and

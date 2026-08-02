@@ -11,6 +11,7 @@ import argparse
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -62,6 +63,27 @@ def _atomic_write(path: Path, value: bytes) -> None:
     temporary.replace(path)
 
 
+def _degenerate_triangle_count(meshes) -> int:
+    count = 0
+    for mesh in meshes:
+        for face in mesh.faces:
+            origin = mesh.vertices[face[0]]
+            for corner in range(1, len(face) - 1):
+                left = mesh.vertices[face[corner]]
+                right = mesh.vertices[face[corner + 1]]
+                edge_a = tuple(left[index] - origin[index] for index in range(3))
+                edge_b = tuple(right[index] - origin[index] for index in range(3))
+                cross = (
+                    edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
+                    edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
+                    edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0],
+                )
+                area = 0.5 * math.sqrt(sum(value * value for value in cross))
+                if area <= 1e-10:
+                    count += 1
+    return count
+
+
 def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, object]]:
     files: list[tuple[Path, bytes]] = []
     entries: list[dict[str, object]] = []
@@ -103,6 +125,13 @@ def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, objec
                     raise XModelError(f"Sculpt did not change any vertices: {source_relative}")
                 if len(result.before) != 1 or len(result.after) != 1:
                     raise XModelError(f"Expected exactly one Mesh: {source_relative}")
+                source_degenerate = _degenerate_triangle_count(result.before)
+                target_degenerate = _degenerate_triangle_count(result.after)
+                if target_degenerate > source_degenerate:
+                    raise XModelError(
+                        f"Sculpt introduced degenerate triangles: {target_relative} "
+                        f"({source_degenerate} to {target_degenerate})"
+                    )
                 if result.result_sha256 != expected_target_hash:
                     raise XModelError(
                         f"Tier IV output hash changed unexpectedly: {target_relative} "
@@ -139,6 +168,8 @@ def _build(client_root: Path) -> tuple[list[tuple[Path, bytes]], dict[str, objec
                         "mesh_count": len(result.before),
                         "vertex_count": sum(len(mesh.vertices) for mesh in result.before),
                         "face_count": sum(len(mesh.faces) for mesh in result.before),
+                        "source_degenerate_triangles": source_degenerate,
+                        "target_degenerate_triangles": target_degenerate,
                     }
                 )
     manifest: dict[str, object] = {
