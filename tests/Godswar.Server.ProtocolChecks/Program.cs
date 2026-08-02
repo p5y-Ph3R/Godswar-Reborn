@@ -65,6 +65,9 @@ internal static partial class Program
             ("Working-original login bootstrap manifest", CheckAfterLoginManifestAsync),
             ("Working-original character preview layout", CheckCharacterPreviewAsync),
             ("EnterMain character identity and saved location", CheckEnterMainCharacterIdentityAsync),
+            (
+                TalentProgressionPolicyChecks.CheckName,
+                TalentProgressionPolicyChecks.RunAsync),
             ("Warrior talent ID-zero upgrade protocol", CheckWarriorTalentIdZeroUpgradeAsync),
             ("JSON warrior talent persistence", CheckJsonWarriorTalentPersistenceAsync),
             ("Warrior starter skill packets", CheckWarriorStarterSkillPacketsAsync),

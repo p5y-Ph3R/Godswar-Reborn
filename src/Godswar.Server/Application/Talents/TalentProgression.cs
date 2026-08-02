@@ -58,7 +58,12 @@ internal static class TalentProgression
             return 120 + (nextRank - 40);
         }
 
-        return 180;
+        return Scale(
+            nextRank,
+            sourceMin: 61,
+            sourceMax: RankCap,
+            targetMin: 141,
+            targetMax: 160);
     }
 
     public static int CalculateDisplayValue(int currentRank)

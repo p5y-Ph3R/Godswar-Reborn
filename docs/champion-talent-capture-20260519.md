@@ -84,7 +84,9 @@ Current local progression rule:
 - Required character level is server-owned:
 - Ranks `1-40`: rank `40` requires player level `120`.
 - Ranks `41-60`: rank `60` requires player level `140`.
-- Ranks `61-100`: require player level `180`.
+- Ranks `61-100`: progress from required player level `141` through `160`;
+  rank `100` requires level `160`. This policy is shared by Warrior, Champion,
+  Priest, and Mage.
 - The client has labels for `Required Expertise Points` and `Required Character Level`, but no editable client data table has been found for this progression. The known client-side logic is compiled in `Origin.exe`, with `CPlayer::GetPassiveSkillExpendValue` mapped at `006f2020`.
 - Client tooltip compatibility patch:
 - `Localization\en_us\Settings\Sys\Skill.ini` champion talent sections `[50]..[68]` have their per-rank display value multiplied by `2.6`, so the stock linear tooltip reaches the server's rank-100 effective total. Example: `Basic Accuracy` changed from `Hit=2,3` to `Hit=2,7.8`, so rank `100` displays `+780 Hit`.
