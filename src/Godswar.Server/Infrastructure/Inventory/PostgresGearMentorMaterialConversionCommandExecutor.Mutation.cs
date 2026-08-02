@@ -56,6 +56,7 @@ internal sealed partial class
                     slot,
                     new LockedInventoryItem(
                         reader.GetInt64(0),
+                        1,
                         slot,
                         item,
                         reader.GetString(32))))

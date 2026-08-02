@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
+using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
@@ -21,7 +23,9 @@ internal readonly record struct ClassSuitWireIntent(
     ClassSuitWireOperation Operation,
     int EquipmentKitBagSlot,
     int MaterialKitBagSlot,
-    int SecondaryMaterialKitBagSlot = -1);
+    int SecondaryMaterialKitBagSlot = -1,
+    ClassSuitItemLocation EquipmentLocation =
+        ClassSuitItemLocation.KitBag);
 
 /// <summary>
 /// Bounded parser and stock-client response catalog for NPC function 37.
@@ -39,8 +43,11 @@ internal static class ClassSuitProtocol
     public const int EquipmentArgumentIndex = 6;
     public const int MaterialArgumentIndex = 7;
     public const int SecondaryMaterialArgumentIndex = 8;
+    public const int MinimumDirectKitBagSlot = 0;
+    public const int MaximumDirectKitBagSlot = 95;
     public const int MinimumKitBagReference = 100;
     public const int MaximumKitBagReference = 195;
+    public const int EquippedWeaponReference = 205;
     public const int NoKitBagSlot = -1;
 
     public static readonly int[] InitialMenuSubIds =
@@ -102,8 +109,9 @@ internal static class ClassSuitProtocol
                 out var subId,
                 out var arguments) ||
             !IsConversionOperation(subId) ||
-            !TryDecodeKitBagReference(
+            !TryDecodeEquipmentReference(
                 arguments[EquipmentArgumentIndex],
+                out var equipmentLocation,
                 out var equipmentSlot))
         {
             return false;
@@ -118,7 +126,8 @@ internal static class ClassSuitProtocol
         {
             return false;
         }
-        if (equipmentSlot == materialSlot)
+        if (equipmentLocation == ClassSuitItemLocation.KitBag &&
+            equipmentSlot == materialSlot)
         {
             return false;
         }
@@ -141,7 +150,9 @@ internal static class ClassSuitProtocol
         intent = new ClassSuitWireIntent(
             operation,
             equipmentSlot,
-            materialSlot);
+            materialSlot,
+            NoKitBagSlot,
+            equipmentLocation);
         return true;
     }
 
@@ -318,9 +329,38 @@ internal static class ClassSuitProtocol
         int encoded,
         out int slot)
     {
+        if (encoded is >= MinimumDirectKitBagSlot and
+            <= MaximumDirectKitBagSlot)
+        {
+            slot = encoded;
+            return true;
+        }
+
         slot = encoded - MinimumKitBagReference;
         return encoded is >= MinimumKitBagReference and
             <= MaximumKitBagReference;
+    }
+
+    private static bool TryDecodeEquipmentReference(
+        int encoded,
+        out ClassSuitItemLocation location,
+        out int slot)
+    {
+        if (encoded == EquippedWeaponReference)
+        {
+            location = ClassSuitItemLocation.Equipment;
+            slot = EquipmentSlots.Weapon;
+            return true;
+        }
+        if (TryDecodeKitBagReference(encoded, out slot))
+        {
+            location = ClassSuitItemLocation.KitBag;
+            return true;
+        }
+
+        location = default;
+        slot = -1;
+        return false;
     }
 
     private static void EnsureEndpoint(uint npcId)

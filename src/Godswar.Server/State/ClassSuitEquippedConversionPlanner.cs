@@ -2,98 +2,21 @@ using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
-internal enum ClassSuitConversionOperation : short
-{
-    ExchangeTierI = 100,
-    ConvertToCommon = 104,
-    UpgradeTierII = 105,
-    UpgradeTierIII = 106,
-    UpgradeTierIV = 108
-}
-
-internal enum ClassSuitConversionStatus
-{
-    Succeeded,
-    RequestMissing,
-    UnsupportedOperation,
-    InvalidProfession,
-    InvalidKitBagSlot,
-    DuplicateKitBagSlot,
-    SelectionMissing,
-    StaleSelection,
-    InvalidEquipment,
-    UnsupportedSource,
-    ProfessionMismatch,
-    UnsupportedReverseTier,
-    ContentMismatch,
-    PlayerLevelTooLow,
-    InvalidInsignia,
-    InsufficientInsignia,
-    InsufficientCapacity
-}
-
-internal enum ClassSuitMaterialDirection
-{
-    Consumed,
-    Granted
-}
-
-internal sealed record ClassSuitSlotSelection(
-    int KitBagSlot,
-    CompactItemEntry ExpectedItem)
-{
-    public static ClassSuitSlotSelection Capture(
-        string kitBag,
-        int kitBagSlot) =>
-        new(kitBagSlot, KitBagSlots.GetItem(kitBag, kitBagSlot));
-}
-
-internal sealed record ClassSuitConversionRequest(
+internal sealed record ClassSuitEquippedConversionRequest(
     ClassSuitConversionOperation Operation,
-    ClassSuitSlotSelection Gear,
+    int EquipmentSlot,
+    CompactItemEntry ExpectedEquipment,
     ClassSuitSlotSelection? Insignia = null);
 
-internal sealed record ClassSuitSlotMutation(
-    int KitBagSlot,
-    CompactItemEntry Before,
-    CompactItemEntry After);
-
-internal sealed record ClassSuitMaterialChange(
-    uint ItemId,
-    int Quantity,
-    short Bound,
-    ClassSuitMaterialDirection Direction);
-
-internal sealed record ClassSuitConversionResult(
-    ClassSuitConversionStatus Status,
-    ClassSuitConversionOperation? Operation,
-    string OriginalKitBag,
-    string UpdatedKitBag,
-    CompactItemEntry EquipmentBefore,
-    CompactItemEntry EquipmentAfter,
-    IReadOnlyList<ClassSuitSlotMutation> Mutations,
-    IReadOnlyList<ClassSuitMaterialChange> Materials,
-    string? RejectionReason = null)
-{
-    public bool Committed => Status == ClassSuitConversionStatus.Succeeded;
-}
-
-/// <summary>
-/// Plans one complete, atomic Class Suit inventory mutation. Persistence must
-/// call this with the locked character's profession, level, and bag rather
-/// than values echoed by the client.
-/// </summary>
 internal static partial class ClassSuitConversionPlanner
 {
-    private const int KitBagSlotCount = 96;
-    private const int InsigniaStackCap = 99;
-
-    public static ClassSuitConversionResult Create(
+    public static ClassSuitConversionResult CreateForEquippedGear(
         IItemTemplateCatalog templates,
         string kitBag,
         byte profession,
         int playerLevel,
-        ClassSuitConversionRequest? request)
+        CompactItemEntry authoritativeEquipment,
+        ClassSuitEquippedConversionRequest? request)
     {
         ArgumentNullException.ThrowIfNull(templates);
         var originalKitBag = kitBag ?? string.Empty;
@@ -107,38 +30,26 @@ internal static partial class ClassSuitConversionPlanner
                 ClassSuitConversionStatus.RequestMissing,
                 null,
                 originalKitBag,
-                CompactItemEntry.Empty,
+                authoritativeEquipment,
                 "Class Suit conversion request was missing.");
         }
-
         if (!Enum.IsDefined(request.Operation))
         {
             return Reject(
                 ClassSuitConversionStatus.UnsupportedOperation,
                 request.Operation,
                 originalKitBag,
-                CompactItemEntry.Empty,
+                authoritativeEquipment,
                 "Class Suit conversion operation is not supported.");
         }
-
         if (profession > 3)
         {
             return Reject(
                 ClassSuitConversionStatus.InvalidProfession,
                 request.Operation,
                 originalKitBag,
-                CompactItemEntry.Empty,
+                authoritativeEquipment,
                 "The authoritative character profession is invalid.");
-        }
-
-        if (request.Gear is null)
-        {
-            return Reject(
-                ClassSuitConversionStatus.SelectionMissing,
-                request.Operation,
-                originalKitBag,
-                CompactItemEntry.Empty,
-                "Select the gear to convert.");
         }
 
         var isReverse = request.Operation ==
@@ -149,84 +60,76 @@ internal static partial class ClassSuitConversionPlanner
                 ClassSuitConversionStatus.SelectionMissing,
                 request.Operation,
                 originalKitBag,
-                CompactItemEntry.Empty,
+                authoritativeEquipment,
                 isReverse
                     ? "Converting to common equipment does not accept an insignia input."
                     : "Select the required Promotional Insignia stack.");
         }
 
-        var selectedSlots = request.Insignia is null
-            ? new[] { request.Gear.KitBagSlot }
-            : new[]
-            {
-                request.Gear.KitBagSlot,
-                request.Insignia.KitBagSlot
-            };
-        if (selectedSlots.Any(static slot =>
-                slot is < 0 or >= KitBagSlotCount))
+        if (request.EquipmentSlot is < EquipmentSlots.Head or
+                > EquipmentSlots.Mount ||
+            request.Insignia is { KitBagSlot: < 0 or >= KitBagSlotCount })
         {
             return Reject(
                 ClassSuitConversionStatus.InvalidKitBagSlot,
                 request.Operation,
                 originalKitBag,
-                CompactItemEntry.Empty,
-                "A Class Suit selection used an invalid kit-bag slot.");
-        }
-
-        if (selectedSlots.Distinct().Count() != selectedSlots.Length)
-        {
-            return Reject(
-                ClassSuitConversionStatus.DuplicateKitBagSlot,
-                request.Operation,
-                originalKitBag,
-                CompactItemEntry.Empty,
-                "Gear and insignias must occupy different kit-bag slots.");
+                authoritativeEquipment,
+                "A Class Suit selection used an invalid equipment or kit-bag slot.");
         }
 
         var before = Enumerable.Range(0, KitBagSlotCount)
             .Select(slot => KitBagSlots.GetItem(normalizedKitBag, slot))
             .ToArray();
-        var equipment = before[request.Gear.KitBagSlot];
-        if (equipment.IsEmpty ||
-            (request.Insignia is not null &&
-             before[request.Insignia.KitBagSlot].IsEmpty))
+        if (authoritativeEquipment.IsEmpty ||
+            request.Insignia is { } selectedInsignia &&
+            before[selectedInsignia.KitBagSlot].IsEmpty)
         {
             return Reject(
                 ClassSuitConversionStatus.SelectionMissing,
                 request.Operation,
                 originalKitBag,
-                equipment,
-                "A selected Class Suit item is no longer in the bag.");
+                authoritativeEquipment,
+                "A selected Class Suit item is no longer available.");
         }
-
-        if (equipment != request.Gear.ExpectedItem ||
-            (request.Insignia is not null &&
-             before[request.Insignia.KitBagSlot] !=
-             request.Insignia.ExpectedItem))
+        if (authoritativeEquipment != request.ExpectedEquipment ||
+            request.Insignia is { } expectedInsignia &&
+            before[expectedInsignia.KitBagSlot] !=
+                expectedInsignia.ExpectedItem)
         {
             return Reject(
                 ClassSuitConversionStatus.StaleSelection,
                 request.Operation,
                 originalKitBag,
-                equipment,
+                authoritativeEquipment,
                 "A selected Class Suit item changed after it was staged.");
         }
-
-        if (equipment.Stack != 1 ||
-            !templates.TryGet(equipment.Id, out var sourceTemplate) ||
+        if (authoritativeEquipment.Stack != 1 ||
+            !templates.TryGet(
+                authoritativeEquipment.Id,
+                out var sourceTemplate) ||
             !EquipmentSlots.IsEquipmentKind(sourceTemplate.Kind) ||
-            !EquipmentSlots.IsEquipmentSlot(sourceTemplate.EquipmentSlot))
+            EquipmentSlots.ResolveSlotForItem(
+                templates,
+                authoritativeEquipment.Id,
+                request.EquipmentSlot) != request.EquipmentSlot)
         {
             return Reject(
                 ClassSuitConversionStatus.InvalidEquipment,
                 request.Operation,
                 originalKitBag,
-                equipment,
-                "Only one genuine non-stackable equipment item can be converted.");
+                authoritativeEquipment,
+                "Only genuine equipment in its authoritative equipped slot can be converted.");
         }
 
         var working = before.ToArray();
         var materials = new List<ClassSuitMaterialChange>();
+        var plannerRequest = new ClassSuitConversionRequest(
+            request.Operation,
+            new ClassSuitSlotSelection(
+                request.EquipmentSlot,
+                request.ExpectedEquipment),
+            request.Insignia);
         CompactItemEntry equipmentAfter;
         ClassSuitConversionStatus failureStatus;
         string failureReason;
@@ -234,7 +137,7 @@ internal static partial class ClassSuitConversionPlanner
             ? TryPlanReverse(
                 templates,
                 working,
-                equipment,
+                authoritativeEquipment,
                 sourceTemplate,
                 profession,
                 materials,
@@ -244,8 +147,8 @@ internal static partial class ClassSuitConversionPlanner
             : TryPlanForward(
                 templates,
                 working,
-                request,
-                equipment,
+                plannerRequest,
+                authoritativeEquipment,
                 sourceTemplate,
                 profession,
                 playerLevel,
@@ -259,12 +162,9 @@ internal static partial class ClassSuitConversionPlanner
                 failureStatus,
                 request.Operation,
                 originalKitBag,
-                equipment,
+                authoritativeEquipment,
                 failureReason);
         }
-
-
-        working[request.Gear.KitBagSlot] = equipmentAfter;
 
         var updatedKitBag = normalizedKitBag;
         var mutations = new List<ClassSuitSlotMutation>();
@@ -292,7 +192,7 @@ internal static partial class ClassSuitConversionPlanner
             request.Operation,
             originalKitBag,
             updatedKitBag,
-            equipment,
+            authoritativeEquipment,
             equipmentAfter,
             mutations,
             materials);

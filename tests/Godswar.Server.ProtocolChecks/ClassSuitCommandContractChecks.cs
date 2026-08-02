@@ -16,9 +16,83 @@ internal static class ClassSuitCommandContractChecks
     {
         CheckFamilies();
         CheckOperationShapesAndBounds();
+        CheckEquippedWeaponIdentity();
         CheckSecureProvenanceAndCanonicalRequest();
         CheckRawLocalProvenance();
         return Task.CompletedTask;
+    }
+
+    private static void CheckEquippedWeaponIdentity()
+    {
+        var identity =
+            ClassSuitOperationIdentity.SecureClient(ClientOperationId);
+        Check.True(
+            ClassSuitCommandEnvelope.TryCreateCommand(
+                identity,
+                ClassSuitCommandOperation.ExchangeTierI,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                new ClassSuitCommandSelection(
+                    ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                    "equipped-weapon-state",
+                    ClassSuitItemLocation.Equipment),
+                Selection(3, "insignia-state"),
+                null,
+                out var equipped),
+            "equipped weapon is valid for Class Suit conversion");
+        Check.True(
+            !ClassSuitCommandEnvelope.TryCreateCommand(
+                identity,
+                ClassSuitCommandOperation.ExchangeTierI,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                new ClassSuitCommandSelection(
+                    9,
+                    "unknown-equipped-state",
+                    ClassSuitItemLocation.Equipment),
+                Selection(3, "insignia-state"),
+                null,
+                out _),
+            "only the captured equipped-weapon slot is accepted");
+        Check.True(
+            !ClassSuitCommandEnvelope.TryCreateCommand(
+                identity,
+                ClassSuitCommandOperation.AddAttribute,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                new ClassSuitCommandSelection(
+                    ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                    "equipped-weapon-state",
+                    ClassSuitItemLocation.Equipment),
+                Selection(3, "flame-state"),
+                Selection(4, "stone-state"),
+                out _),
+            "attribute workflows remain bag-only");
+
+        var bag = equipped with
+        {
+            Gear = new ClassSuitCommandSelection(
+                ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                equipped.Gear.ExpectedCompactItemState)
+        };
+        var connection = new CommandConnectionCorrelation(
+            Guid.NewGuid(),
+            CommandTransportKind.SecureTlsLegacy);
+        var receivedAt = DateTimeOffset.UtcNow;
+        var equippedEnvelope = ClassSuitCommandEnvelope.Create(
+            Subject,
+            connection,
+            receivedAt,
+            equipped);
+        var bagEnvelope = ClassSuitCommandEnvelope.Create(
+            Subject,
+            connection,
+            receivedAt,
+            bag);
+        Check.True(
+            equippedEnvelope.OperationId == bagEnvelope.OperationId &&
+            equippedEnvelope.RequestHash != bagEnvelope.RequestHash,
+            "equipment and bag locations cannot alias one request");
     }
 
     private static void CheckFamilies()
@@ -212,6 +286,10 @@ internal static class ClassSuitCommandContractChecks
             (int)CommandIdentityStrength.ClientOperationId,
             (int)envelope.IdentityStrength,
             "secure UUID remains client-owned");
+        Check.Equal(
+            "95566143E4C789D9A5BC93F0FE911AC39A0F632325D38F30CB00B83D151F86F3",
+            envelope.RequestHash,
+            "bag-only command retains its released v1 request hash");
 
         var secureCommandEnvelope = ClassSuitCommandEnvelope.Create(
             Subject,

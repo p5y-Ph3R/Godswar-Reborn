@@ -436,6 +436,7 @@ internal sealed partial class
 
     private sealed record LockedInventoryItem(
         long ItemInstanceId,
+        short ItemLocation,
         short Slot,
         CompactItemEntry Item,
         string BeforeState);
@@ -443,6 +444,10 @@ internal sealed partial class
     private sealed record LockedKitBag(
         string CompactProjection,
         IReadOnlyDictionary<short, LockedInventoryItem> Items);
+
+    private sealed record LockedClassSuitInventory(
+        LockedKitBag KitBag,
+        LockedInventoryItem? Equipment);
 
     private sealed record InventoryMutation(
         long ItemInstanceId,

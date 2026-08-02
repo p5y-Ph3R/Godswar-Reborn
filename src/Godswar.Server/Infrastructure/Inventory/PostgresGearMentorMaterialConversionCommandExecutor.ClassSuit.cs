@@ -231,13 +231,16 @@ internal sealed partial class
             return ClassSuitExecutionResult.PreconditionFailed();
         }
 
-        var bag = await LockKitBagAsync(
+        var inventory = await LockClassSuitInventoryAsync(
             connection,
             transaction,
             context.Subject.CharacterId,
+            context.Command.Gear,
             cancellationToken);
+        var bag = inventory.KitBag;
         var plan = CreateClassSuitPlan(
             bag.CompactProjection,
+            inventory.Equipment?.Item ?? CompactItemEntry.Empty,
             character.Value.Profession,
             character.Value.PlayerLevel,
             context.Command);
@@ -266,6 +269,7 @@ internal sealed partial class
             character.Value.InventoryRevision,
             plan,
             bag,
+            inventory.Equipment,
             principalKey,
             aggregateKey,
             operationId,
@@ -331,9 +335,15 @@ internal sealed partial class
 
     private sealed record ClassSuitPlan(
         ClassSuitCommandResultStatus Status,
-        IReadOnlyList<ClassSuitSlotMutation> Mutations)
+        IReadOnlyList<ClassSuitPlannedMutation> Mutations)
     {
         public bool Committed =>
             Status == ClassSuitCommandResultStatus.Succeeded;
     }
+
+    private readonly record struct ClassSuitPlannedMutation(
+        ClassSuitItemLocation Location,
+        int Slot,
+        CompactItemEntry Before,
+        CompactItemEntry After);
 }

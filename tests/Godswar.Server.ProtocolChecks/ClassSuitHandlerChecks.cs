@@ -3,6 +3,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Game;
 using Godswar.Server.Networking.Secure;
+using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -17,12 +18,72 @@ internal static partial class ClassSuitHandlerChecks
     {
         await CheckOpenAdvertisesBothRoutesInOrderAsync();
         await CheckMenuNavigationAndDetailsAsync();
+        await CheckStockStagedMutationExecutesAsync();
         await CheckSecureMutationExecutesAndSettlesAsync();
         await CheckChangedSnapshotRetryReplaysAsync();
         await CheckPreRouteIntentConflictSettlesAsync();
         await CheckMalformedPreRoutePacketCannotReplayAsync();
         await CheckMissingSecureIdentityFailsClosedAsync();
         await CheckMalformedSecureMutationFailsClosedAsync();
+    }
+
+    private static async Task CheckStockStagedMutationExecutesAsync()
+    {
+        await using var fixture = await CreateFixtureAsync();
+
+        await InvokeAsync(
+            fixture.Handler,
+            CreateClassSuitActionPacket(
+                ClassSuitProtocol.InitialMenuRequestSubId));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateClassSuitActionPacket(
+                (int)ClassSuitWireOperation.ExchangeTierOne));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateGearEnhancerSelectionPacket(GearSlot, selected: true));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateGearEnhancerSelectionPacket(
+                InsigniaSlot,
+                selected: true));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateGearEnhancerSelectionPacket(GearSlot, selected: false));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateGearEnhancerSelectionPacket(
+                InsigniaSlot,
+                selected: false));
+        await InvokeAsync(
+            fixture.Handler,
+            CreateClassSuitActionPacket(
+                (int)ClassSuitWireOperation.ExchangeTierOne,
+                arguments =>
+                {
+                    arguments[0] = 0;
+                    arguments[ClassSuitProtocol.EquipmentArgumentIndex] =
+                        GearSlot;
+                    arguments[ClassSuitProtocol.MaterialArgumentIndex] =
+                        InsigniaSlot;
+                },
+                operationId: OperationId));
+
+        Check.Equal(
+            1,
+            fixture.Executor.ExecuteCount,
+            "stock Class Suit clear burst executes one mutation");
+        var command = fixture.Executor.Envelope?.Command ??
+            throw new InvalidOperationException(
+                "staged Class Suit command was not captured");
+        Check.Equal(
+            GearSlot,
+            command.Gear.KitBagSlot,
+            "staged Class Suit keeps the exact gear slot");
+        Check.Equal(
+            InsigniaSlot,
+            command.PrimaryMaterial!.Value.KitBagSlot,
+            "staged Class Suit keeps the exact insignia slot");
     }
 
     private static async Task
@@ -39,23 +100,22 @@ internal static partial class ClassSuitHandlerChecks
             fixture.Transport.LegacyWriteChunks.Count,
             "multi-route advertisement uses one physical write");
         Check.Equal(
-            96,
+            48,
             fixture.Transport.LegacyWriteChunks.Single().Length,
-            "multi-route physical write contains both 48-byte routes");
+            "multi-route advertisement uses one native packet");
 
         var packets = fixture.Transport.ReadLegacyPackets();
         Check.Equal(
-            2,
+            1,
             packets.Count,
-            "one physical Gear Mentor advertises both authored routes");
-        AssertDialogOpen(
+            "one physical Gear Mentor uses one native advertisement");
+        AssertPackedDialogOpen(
             packets[0],
-            GearEnhancerProtocol.DialogIndex,
-            "Gear Mentor primary route");
-        AssertDialogOpen(
-            packets[1],
-            ClassSuitProtocol.DialogIndex,
-            "Class Suit secondary route");
+            [
+                GearEnhancerProtocol.DialogIndex,
+                ClassSuitProtocol.DialogIndex
+            ],
+            "Gear Mentor and Class Suit sibling routes");
     }
 
     private static async Task CheckMenuNavigationAndDetailsAsync()
@@ -362,9 +422,9 @@ internal static partial class ClassSuitHandlerChecks
             "malformed mutation settles the supplied UUID");
     }
 
-    private static void AssertDialogOpen(
+    private static void AssertPackedDialogOpen(
         byte[] packet,
-        int expectedDialogIndex,
+        IReadOnlyList<int> expectedDialogIndices,
         string description)
     {
         Check.Equal(48, packet.Length, $"{description} length");
@@ -378,10 +438,20 @@ internal static partial class ClassSuitHandlerChecks
                 packet.AsSpan(4, sizeof(uint))),
             $"{description} NPC");
         Check.Equal(
-            expectedDialogIndex,
+            0x200,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                packet.AsSpan(8, sizeof(int))),
+            $"{description} extended-function flag");
+        Check.Equal(
+            PacketBuilder.PackNpcDialogIndices(expectedDialogIndices),
             BinaryPrimitives.ReadInt32LittleEndian(
                 packet.AsSpan(12, sizeof(int))),
-            $"{description} dialog");
+            $"{description} packed dialogs");
+        Check.Equal(
+            37_004,
+            BinaryPrimitives.ReadInt32LittleEndian(
+                packet.AsSpan(12, sizeof(int))),
+            $"{description} preserves 4 then 37 order");
     }
 
     private static void AssertFunctionResponse(

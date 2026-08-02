@@ -90,7 +90,6 @@ internal static partial class ClassSuitConversionPlanner
             Id = rule.TargetItemId,
             Bound = resultingBound
         };
-        working[request.Gear.KitBagSlot] = equipmentAfter;
         working[insigniaSelection.KitBagSlot] = Consume(
             insignia,
             rule.InsigniaQuantity);
@@ -107,7 +106,6 @@ internal static partial class ClassSuitConversionPlanner
     private static bool TryPlanReverse(
         IItemTemplateCatalog templates,
         CompactItemEntry[] working,
-        int gearSlot,
         CompactItemEntry equipment,
         ItemTemplateDefinition sourceTemplate,
         byte profession,
@@ -156,8 +154,6 @@ internal static partial class ClassSuitConversionPlanner
                 Id = rule.CommonItemId,
                 Bound = equipment.Bound
             });
-        working[gearSlot] = equipmentAfter;
-
         foreach (var refund in rule.Refunds)
         {
             if (!TryAddMaterial(

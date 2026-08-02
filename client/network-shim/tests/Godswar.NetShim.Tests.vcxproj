@@ -93,6 +93,7 @@
     <ClCompile Include="SecureEquipmentBagTransferRegistryTests.cpp" />
     <ClCompile Include="SecureCharacterLifecycleIdentityTests.cpp" />
     <ClCompile Include="SecureClassSuitIdentityTests.cpp" />
+    <ClCompile Include="SecureClassSuitReferenceIdentityTests.cpp" />
     <ClCompile Include="SecurePetCommandIdentityTests.cpp" />
     <ClCompile Include="SecureGameControlTests.cpp" />
     <ClCompile Include="SecureGameGrantRegistryTests.cpp" />
@@ -232,6 +233,7 @@
     <ClInclude Include="SecureClientProtocolTests.h" />
     <ClInclude Include="SecureCharacterLifecycleIdentityTests.h" />
     <ClInclude Include="SecureClassSuitIdentityTests.h" />
+    <ClInclude Include="SecureClassSuitReferenceIdentityTests.h" />
     <ClInclude Include="SecurePetCommandIdentityTests.h" />
     <ClInclude Include="SecurePendingOperationRegistryTests.h" />
     <ClInclude Include="SecureEconomyIdentityTests.h" />

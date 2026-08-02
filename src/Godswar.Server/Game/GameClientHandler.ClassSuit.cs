@@ -26,7 +26,15 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (ClassSuitProtocol.IsExactNavigation(packet, subId) &&
+        var hasStagedMutation = TryResolveClassSuitStagedMutation(
+            packet,
+            route,
+            npcId,
+            subId,
+            out var stagedIntent);
+
+        if (!hasStagedMutation &&
+            ClassSuitProtocol.IsExactNavigation(packet, subId) &&
             ClassSuitProtocol.TryResolveOperation(
                 subId,
                 out var pageOperation))
@@ -64,10 +72,13 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (!ClassSuitProtocol.TryReadMutation(
-                packet,
-                out var exactNpcId,
-                out var intent) ||
+        var exactNpcId = npcId;
+        var intent = stagedIntent;
+        if ((!hasStagedMutation &&
+                !ClassSuitProtocol.TryReadMutation(
+                    packet,
+                    out exactNpcId,
+                    out intent)) ||
             exactNpcId != npcId ||
             !TryMapClassSuitOperation(
                 intent.Operation,
@@ -76,6 +87,7 @@ internal sealed partial class GameClientHandler
                 operation,
                 checked((int)exactNpcId),
                 route.DialogIndex,
+                intent.EquipmentLocation,
                 intent.EquipmentKitBagSlot,
                 intent.MaterialKitBagSlot,
                 intent.SecondaryMaterialKitBagSlot,
@@ -91,6 +103,11 @@ internal sealed partial class GameClientHandler
             }
             return;
         }
+
+        // The stock dialog clears its visual item controls immediately before
+        // its final action. Consume the server-side snapshot before awaiting
+        // persistence so another packet cannot reuse the same selections.
+        ClearGearEnhancerSelection();
 
         if (_session.IsSecure && !packet.ClientOperationId.HasValue)
         {
@@ -217,8 +234,9 @@ internal sealed partial class GameClientHandler
                 "The Class Suit receipt does not match the active command.");
         }
 
-        await ReloadDurableInventoryProjectionAsync(
+        await ReloadDurableClassSuitProjectionAsync(
             ownership,
+            receipt,
             cancellationToken);
         if (!RevalidateCurrentPlayerOwnership(ownership))
         {
@@ -244,7 +262,10 @@ internal sealed partial class GameClientHandler
                     "ClassSuitKitBagDeleteAck");
             }
         }
-        await SendKitBagRefreshAsync(cancellationToken);
+        await SendClassSuitAuthoritativeProjectionAsync(
+            receipt,
+            execution.Disposition.ToString(),
+            cancellationToken);
         if (identity.IsSecureClient)
         {
             await SendSecureGearMentorResultAsync(
@@ -280,23 +301,34 @@ internal sealed partial class GameClientHandler
         string kitBag,
         CancellationToken cancellationToken)
     {
-        ClassSuitCommandSelection Capture(int slot) =>
+        ClassSuitCommandSelection CaptureKitBag(int slot) =>
             new(
                 slot,
                 KitBagSlots.GetItem(kitBag, slot).ToCompactString());
 
+        var gear = intent.EquipmentLocation ==
+            ClassSuitItemLocation.Equipment
+            ? new ClassSuitCommandSelection(
+                intent.EquipmentKitBagSlot,
+                EquipmentSlots.GetItem(
+                    _character!.Equipment,
+                    _character.Profession,
+                    intent.EquipmentKitBagSlot).ToCompactString(),
+                ClassSuitItemLocation.Equipment)
+            : CaptureKitBag(intent.EquipmentKitBagSlot);
+
         var primary = intent.MaterialKitBagSlot >= 0
-            ? Capture(intent.MaterialKitBagSlot)
+            ? CaptureKitBag(intent.MaterialKitBagSlot)
             : (ClassSuitCommandSelection?)null;
         var secondary = intent.SecondaryMaterialKitBagSlot >= 0
-            ? Capture(intent.SecondaryMaterialKitBagSlot)
+            ? CaptureKitBag(intent.SecondaryMaterialKitBagSlot)
             : (ClassSuitCommandSelection?)null;
         if (!ClassSuitCommandEnvelope.TryCreateCommand(
                 identity,
                 operation,
                 checked((int)npcId),
                 dialogIndex,
-                Capture(intent.EquipmentKitBagSlot),
+                gear,
                 primary,
                 secondary,
                 out var command))

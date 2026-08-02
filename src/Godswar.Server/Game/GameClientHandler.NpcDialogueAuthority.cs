@@ -79,7 +79,9 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (route.Behavior == NpcDialogueBehavior.GearMentor)
+        if (route.Behavior is
+            NpcDialogueBehavior.GearMentor or
+            NpcDialogueBehavior.ClassSuit)
         {
             if (_account is null || _character is null)
             {

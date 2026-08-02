@@ -337,6 +337,32 @@ internal static partial class ClassSuitHandlerChecks
             operationId,
             npcId);
 
+    private static GamePacket CreateGearEnhancerSelectionPacket(
+        int kitBagSlot,
+        bool selected)
+    {
+        var bytes = new byte[
+            sizeof(ushort) +
+            sizeof(ushort) +
+            GearEnhancerItemSelectionPacket.PayloadLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            bytes,
+            checked((ushort)bytes.Length));
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            bytes.AsSpan(sizeof(ushort)),
+            Opcodes.GearEnhancerItemSelection);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            bytes.AsSpan(4),
+            kitBagSlot /
+                GearEnhancerItemSelectionPacket.SlotsPerPage);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            bytes.AsSpan(8),
+            kitBagSlot %
+                GearEnhancerItemSelectionPacket.SlotsPerPage);
+        bytes[12] = selected ? (byte)1 : (byte)0;
+        return new GamePacket(bytes);
+    }
+
     private static async Task InvokeAsync(
         GameClientHandler handler,
         GamePacket packet)

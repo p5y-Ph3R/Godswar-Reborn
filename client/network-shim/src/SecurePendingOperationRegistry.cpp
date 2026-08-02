@@ -433,6 +433,14 @@ SecurePendingOperationRegistry::DescribePacket(
             sizeof(entry->bagSlots));
         entry->capturesSelectionState =
             !isOriginEnhancerCommit;
+        if (entry->capturesSelectionState) {
+            entry->capturedSelectionCount =
+                identitySelectionCount;
+            std::memcpy(
+                entry->capturedSelectionBagSlots,
+                identityBagSlots,
+                sizeof(entry->capturedSelectionBagSlots));
+        }
         entry->selectionGeneration = selectionGeneration_;
         entry->combinePageGeneration =
             family ==
@@ -529,8 +537,8 @@ SecurePendingOperationRegistry::Resolve(
         EqualSelection(
             identityBagSlots,
             identitySelectionCount,
-            entry->bagSlots,
-            entry->selectionCount) &&
+            entry->capturedSelectionBagSlots,
+            entry->capturedSelectionCount) &&
         EqualBytes(
             principal_,
             entry->principal,

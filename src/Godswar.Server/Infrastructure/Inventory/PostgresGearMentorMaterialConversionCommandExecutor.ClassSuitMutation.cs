@@ -18,13 +18,18 @@ internal sealed partial class
             long currentInventoryRevision,
             ClassSuitPlan plan,
             LockedKitBag bag,
+            LockedInventoryItem? equipment,
             string principalKey,
             string aggregateKey,
             byte[] operationId,
             byte[] requestHash,
             CancellationToken cancellationToken)
     {
-        ValidateClassSuitPlan(context.Command, plan, bag);
+        ValidateClassSuitPlan(
+            context.Command,
+            plan,
+            bag,
+            equipment);
         var inventoryRevision = checked(currentInventoryRevision + 1);
         var eventId = Guid.NewGuid();
         var auditId = await InsertClassSuitAuditAsync(
@@ -39,11 +44,12 @@ internal sealed partial class
             cancellationToken);
         var receiptMutations = plan.Mutations.Select(static mutation =>
             new ClassSuitReceiptMutation(
-                mutation.KitBagSlot,
+                mutation.Slot,
                 mutation.Before.Id,
                 mutation.After.Id,
                 mutation.Before.ToCompactString(),
-                mutation.After.ToCompactString())).ToArray();
+                mutation.After.ToCompactString(),
+                mutation.Location)).ToArray();
         var receipt = new ClassSuitExecutionReceipt(
             context.Family,
             context.Subject.CharacterId,
@@ -79,6 +85,7 @@ internal sealed partial class
             context.Subject.CharacterId,
             plan.Mutations,
             bag,
+            equipment,
             cancellationToken);
         await AdvanceClassSuitInventoryRevisionAsync(
             connection,
@@ -111,15 +118,18 @@ internal sealed partial class
     private static void ValidateClassSuitPlan(
         ClassSuitCommand command,
         ClassSuitPlan plan,
-        LockedKitBag bag)
+        LockedKitBag bag,
+        LockedInventoryItem? equipment)
     {
         if (!plan.Committed ||
             plan.Mutations.Count is < 1 or
                 > ClassSuitPersistenceCodec.MaximumMutationCount ||
-            plan.Mutations.Select(static value => value.KitBagSlot)
+            plan.Mutations.Select(static value =>
+                    (value.Location, value.Slot))
                 .Distinct().Count() != plan.Mutations.Count ||
             !plan.Mutations.Any(value =>
-                value.KitBagSlot == command.Gear.KitBagSlot))
+                value.Location == command.Gear.Location &&
+                value.Slot == command.Gear.KitBagSlot))
         {
             throw new InvalidDataException(
                 "The committed Class Suit plan has invalid mutation evidence.");
@@ -127,11 +137,16 @@ internal sealed partial class
 
         foreach (var mutation in plan.Mutations)
         {
-            bag.Items.TryGetValue(
-                checked((short)mutation.KitBagSlot),
-                out var locked);
+            var locked = mutation.Location ==
+                ClassSuitItemLocation.Equipment
+                ? equipment
+                : bag.Items.GetValueOrDefault(
+                    checked((short)mutation.Slot));
             var actual = locked?.Item ?? CompactItemEntry.Empty;
-            if (actual != mutation.Before ||
+            if (locked is not null &&
+                (locked.ItemLocation != (short)mutation.Location ||
+                 locked.Slot != mutation.Slot) ||
+                actual != mutation.Before ||
                 mutation.Before == mutation.After)
             {
                 throw new InvalidDataException(
@@ -145,17 +160,39 @@ internal sealed partial class
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             int characterId,
-            IReadOnlyList<ClassSuitSlotMutation> plan,
+            IReadOnlyList<ClassSuitPlannedMutation> plan,
             LockedKitBag bag,
+            LockedInventoryItem? equipment,
             CancellationToken cancellationToken)
     {
         var mutations = new List<InventoryMutation>(plan.Count);
-        foreach (var mutation in plan.OrderBy(
-                     static value => value.KitBagSlot))
+        foreach (var mutation in plan
+                     .OrderBy(static value => value.Location)
+                     .ThenBy(static value => value.Slot))
         {
-            bag.Items.TryGetValue(
-                checked((short)mutation.KitBagSlot),
-                out var locked);
+            var locked = mutation.Location ==
+                ClassSuitItemLocation.Equipment
+                ? equipment
+                : bag.Items.GetValueOrDefault(
+                    checked((short)mutation.Slot));
+            if (mutation.Location == ClassSuitItemLocation.Equipment)
+            {
+                if (locked is null ||
+                    mutation.Before.IsEmpty ||
+                    mutation.After.IsEmpty)
+                {
+                    throw new InvalidDataException(
+                        "The Class Suit equipped-item update is inconsistent.");
+                }
+                mutations.Add(await UpdateItemAsync(
+                    connection,
+                    transaction,
+                    characterId,
+                    locked,
+                    mutation.After,
+                    cancellationToken));
+                continue;
+            }
             if (mutation.Before.IsEmpty)
             {
                 if (mutation.After.IsEmpty || locked is not null)
@@ -167,7 +204,7 @@ internal sealed partial class
                     connection,
                     transaction,
                     characterId,
-                    checked((short)mutation.KitBagSlot),
+                    checked((short)mutation.Slot),
                     mutation.After,
                     cancellationToken));
             }

@@ -84,7 +84,7 @@ SecurePendingOperationRegistry::DescribeClassSuitCommand(
     SecureLegacyCommandFamily family =
         SecureLegacyCommandFamily::ClassSuitExchangeTierI;
     int identity[SecureGearSelectionCapacity]{
-        command.gearBagSlot,
+        command.gearReference,
         command.secondaryBagSlot,
         command.tertiaryBagSlot};
     const std::size_t identityCount =
@@ -92,9 +92,27 @@ SecurePendingOperationRegistry::DescribeClassSuitCommand(
         ? 3
         : command.secondaryBagSlot >= 0 ? 2 : 1;
     if (descriptor == nullptr ||
-        command.gearBagSlot < 0 ||
+        command.gearReference < 0 ||
         !TryGetClassSuitFamily(command.action, &family)) {
         return SecureOperationRegistryResult::InvalidPacket;
+    }
+    int expectedSelection[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t expectedSelectionCount = 0;
+    if (command.gearReference !=
+        LegacyClassSuitEquippedWeaponReference) {
+        expectedSelection[expectedSelectionCount++] =
+            command.gearReference;
+    }
+    if (command.secondaryBagSlot >= 0) {
+        expectedSelection[expectedSelectionCount++] =
+            command.secondaryBagSlot;
+    }
+    if (command.tertiaryBagSlot >= 0) {
+        expectedSelection[expectedSelectionCount++] =
+            command.tertiaryBagSlot;
     }
 
     AcquireSRWLockExclusive(&lock_);
@@ -107,6 +125,20 @@ SecurePendingOperationRegistry::DescribeClassSuitCommand(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::NoCharacter;
     }
+    int stagedSelection[SecureGearSelectionCapacity]{
+        -1,
+        -1,
+        -1};
+    std::size_t stagedSelectionCount = 0;
+    const bool capturesSelectionState =
+        TryGetIdentitySelection(
+            stagedSelection,
+            &stagedSelectionCount) &&
+        EqualSelection(
+            stagedSelection,
+            stagedSelectionCount,
+            expectedSelection,
+            expectedSelectionCount);
 
     // The exact NPC endpoint is part of the durable replay intent. A retry at
     // the other city's mentor must not inherit this command's UUID.
@@ -144,9 +176,18 @@ SecurePendingOperationRegistry::DescribeClassSuitCommand(
             entry->bagSlots,
             identity,
             sizeof(entry->bagSlots));
-        entry->capturesSelectionState = false;
         entry->expiresAt =
             now + SecurePendingOperationLifetimeMilliseconds;
+    }
+    if (capturesSelectionState) {
+        entry->capturesSelectionState = true;
+        entry->capturedSelectionCount =
+            expectedSelectionCount;
+        std::memcpy(
+            entry->capturedSelectionBagSlots,
+            expectedSelection,
+            sizeof(entry->capturedSelectionBagSlots));
+        entry->selectionGeneration = selectionGeneration_;
     }
 
     descriptor->hasOperation = true;

@@ -125,6 +125,11 @@ private:
             -1,
             -1};
         bool capturesSelectionState = false;
+        std::size_t capturedSelectionCount = 0;
+        int capturedSelectionBagSlots[SecureGearSelectionCapacity]{
+            -1,
+            -1,
+            -1};
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
         bool capturesForgeState = false;

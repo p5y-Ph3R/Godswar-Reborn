@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Game;
 using Godswar.Server.Protocol;
 
@@ -210,6 +211,65 @@ internal static class ClassSuitWireProtocolChecks
             scratchIntent.MaterialKitBagSlot == 1,
             "stock unchecked-button arg-0 scratch is tolerated");
 
+        var capturedDirectSlotMutation = CreateAction(
+            ClassSuitProtocol.SpartaNpcId,
+            (int)ClassSuitWireOperation.ExchangeTierOne,
+            static args =>
+            {
+                args[0] = 0;
+                args[ClassSuitProtocol.EquipmentArgumentIndex] = 7;
+                args[ClassSuitProtocol.MaterialArgumentIndex] = 3;
+            });
+        Check.True(
+            ClassSuitProtocol.TryReadConversionMutation(
+                capturedDirectSlotMutation,
+                out _,
+                out var capturedIntent) &&
+            capturedIntent.EquipmentLocation ==
+                ClassSuitItemLocation.KitBag &&
+            capturedIntent.EquipmentKitBagSlot == 7 &&
+            capturedIntent.MaterialKitBagSlot == 3,
+            "live stock dialog-37 direct bag slots parse exactly");
+
+        var equippedWeaponMutation = CreateAction(
+            ClassSuitProtocol.SpartaNpcId,
+            (int)ClassSuitWireOperation.ExchangeTierOne,
+            static args =>
+            {
+                args[0] = 0;
+                args[ClassSuitProtocol.EquipmentArgumentIndex] = 205;
+                args[ClassSuitProtocol.MaterialArgumentIndex] = 103;
+            });
+        Check.True(
+            ClassSuitProtocol.TryReadConversionMutation(
+                equippedWeaponMutation,
+                out _,
+                out var equippedIntent) &&
+            equippedIntent.EquipmentLocation ==
+                ClassSuitItemLocation.Equipment &&
+            equippedIntent.EquipmentKitBagSlot == 10 &&
+            equippedIntent.MaterialKitBagSlot == 3,
+            "native equipped-weapon reference maps to authoritative slot 10");
+
+        var locationAwareSlotCollision = CreateAction(
+            ClassSuitProtocol.SpartaNpcId,
+            (int)ClassSuitWireOperation.ExchangeTierOne,
+            static args =>
+            {
+                args[ClassSuitProtocol.EquipmentArgumentIndex] = 205;
+                args[ClassSuitProtocol.MaterialArgumentIndex] = 110;
+            });
+        Check.True(
+            ClassSuitProtocol.TryReadConversionMutation(
+                locationAwareSlotCollision,
+                out _,
+                out var collisionIntent) &&
+            collisionIntent.EquipmentLocation ==
+                ClassSuitItemLocation.Equipment &&
+            collisionIntent.EquipmentKitBagSlot ==
+                collisionIntent.MaterialKitBagSlot,
+            "equipment slot 10 and bag slot 10 are distinct locations");
+
         Check.True(
             !ClassSuitProtocol.TryReadConversionMutation(
                 CreateAction(
@@ -271,7 +331,7 @@ internal static class ClassSuitWireProtocolChecks
             ClassSuitProtocol.DialogIndex + 1);
         Reject(new GamePacket(duplicateDialog), "mismatched duplicate dialogue");
 
-        foreach (var invalidReference in new[] { 99, 196 })
+        foreach (var invalidReference in new[] { 99, 196, 204, 206 })
         {
             Reject(
                 CreateAction(

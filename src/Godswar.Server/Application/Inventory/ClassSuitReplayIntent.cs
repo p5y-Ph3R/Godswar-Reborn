@@ -11,7 +11,8 @@ internal readonly record struct ClassSuitReplayIntent(
     int DialogIndex,
     int GearKitBagSlot,
     int PrimaryMaterialKitBagSlot,
-    int SecondaryMaterialKitBagSlot)
+    int SecondaryMaterialKitBagSlot,
+    ClassSuitItemLocation GearLocation = ClassSuitItemLocation.KitBag)
 {
     public const int NoKitBagSlot = -1;
 
@@ -26,13 +27,35 @@ internal readonly record struct ClassSuitReplayIntent(
         int secondaryMaterialKitBagSlot,
         out ClassSuitReplayIntent intent)
     {
+        return TryCreate(
+            operation,
+            npcId,
+            dialogIndex,
+            ClassSuitItemLocation.KitBag,
+            gearKitBagSlot,
+            primaryMaterialKitBagSlot,
+            secondaryMaterialKitBagSlot,
+            out intent);
+    }
+
+    public static bool TryCreate(
+        ClassSuitCommandOperation operation,
+        int npcId,
+        int dialogIndex,
+        ClassSuitItemLocation gearLocation,
+        int gearSlot,
+        int primaryMaterialKitBagSlot,
+        int secondaryMaterialKitBagSlot,
+        out ClassSuitReplayIntent intent)
+    {
         intent = new ClassSuitReplayIntent(
             operation,
             npcId,
             dialogIndex,
-            gearKitBagSlot,
+            gearSlot,
             primaryMaterialKitBagSlot,
-            secondaryMaterialKitBagSlot);
+            secondaryMaterialKitBagSlot,
+            gearLocation);
         if (intent.IsValid)
         {
             return true;
@@ -49,6 +72,7 @@ internal readonly record struct ClassSuitReplayIntent(
                 command.Operation,
                 command.NpcId,
                 command.DialogIndex,
+                command.Gear.Location,
                 command.Gear.KitBagSlot,
                 command.PrimaryMaterial?.KitBagSlot ?? NoKitBagSlot,
                 command.SecondaryMaterial?.KitBagSlot ?? NoKitBagSlot,
@@ -68,7 +92,14 @@ internal readonly record struct ClassSuitReplayIntent(
             !ClassSuitCommandEnvelope.IsEndpoint(
                 intent.NpcId,
                 intent.DialogIndex) ||
-            !IsKitBagSlot(intent.GearKitBagSlot))
+            !Enum.IsDefined(intent.GearLocation) ||
+            !IsGearSlot(intent.GearLocation, intent.GearKitBagSlot) ||
+            intent.GearLocation == ClassSuitItemLocation.Equipment &&
+            (intent.GearKitBagSlot !=
+                ClassSuitCommandEnvelope.EquippedWeaponSlot ||
+             intent.Operation is (
+                 ClassSuitCommandOperation.AddAttribute or
+                 ClassSuitCommandOperation.DeleteAttribute)))
         {
             return false;
         }
@@ -93,14 +124,32 @@ internal readonly record struct ClassSuitReplayIntent(
             return false;
         }
 
-        var selected = new[]
+        var selectedMaterials = new[]
         {
-            intent.GearKitBagSlot,
             intent.PrimaryMaterialKitBagSlot,
             intent.SecondaryMaterialKitBagSlot
         }.Where(static slot => slot != NoKitBagSlot).ToArray();
-        return selected.Distinct().Count() == selected.Length;
+        if (selectedMaterials.Distinct().Count() !=
+            selectedMaterials.Length)
+        {
+            return false;
+        }
+
+        return intent.GearLocation != ClassSuitItemLocation.KitBag ||
+            !selectedMaterials.Contains(intent.GearKitBagSlot);
     }
+
+    private static bool IsGearSlot(
+        ClassSuitItemLocation location,
+        int slot) =>
+        location switch
+        {
+            ClassSuitItemLocation.Equipment =>
+                slot is >= ClassSuitCommandEnvelope.MinimumEquipmentSlot and
+                    <= ClassSuitCommandEnvelope.MaximumEquipmentSlot,
+            ClassSuitItemLocation.KitBag => IsKitBagSlot(slot),
+            _ => false
+        };
 
     private static bool IsKitBagSlot(int slot) =>
         slot is >= ClassSuitCommandEnvelope.MinimumKitBagSlot and

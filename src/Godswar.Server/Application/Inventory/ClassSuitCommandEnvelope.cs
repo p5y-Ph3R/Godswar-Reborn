@@ -16,6 +16,12 @@ internal enum ClassSuitCommandOperation : short
     UpgradeTierIV = 108
 }
 
+internal enum ClassSuitItemLocation : byte
+{
+    Equipment = 0,
+    KitBag = 1
+}
+
 internal readonly record struct ClassSuitOperationIdentity(
     CommandIdentityStrength Strength,
     Guid OperationId,
@@ -42,7 +48,8 @@ internal readonly record struct ClassSuitOperationIdentity(
 
 internal readonly record struct ClassSuitCommandSelection(
     int KitBagSlot,
-    string ExpectedCompactItemState);
+    string ExpectedCompactItemState,
+    ClassSuitItemLocation Location = ClassSuitItemLocation.KitBag);
 
 internal readonly record struct ClassSuitCommand(
     ClassSuitOperationIdentity Identity,
@@ -60,13 +67,21 @@ internal static class ClassSuitCommandEnvelope
     public const int DialogIndex = 37;
     public const int MinimumKitBagSlot = 0;
     public const int MaximumKitBagSlot = 95;
+    public const int MinimumEquipmentSlot = 0;
+    public const int MaximumEquipmentSlot = 20;
+    public const int EquippedWeaponSlot = 10;
     public const int MaximumStateUtf8Bytes = 512;
     public const ushort CanonicalVersion = 1;
+    public const ushort EquipmentCanonicalVersion = 2;
 
     private const int OperationScopeBytes = 33;
-    private const int CanonicalBytes =
+    private const int LegacyCanonicalBytes =
         sizeof(ushort) + sizeof(short) + sizeof(int) + sizeof(int) +
         (sizeof(short) * 3) + (SHA256.HashSizeInBytes * 3);
+    private const int LocationCanonicalBytes =
+        sizeof(ushort) + sizeof(short) + sizeof(int) + sizeof(int) +
+        ((sizeof(byte) + sizeof(short)) * 3) +
+        (SHA256.HashSizeInBytes * 3);
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -184,7 +199,12 @@ internal static class ClassSuitCommandEnvelope
         if (!Enum.IsDefined(command.Operation) ||
             !IsValidIdentity(command.Identity) ||
             !IsEndpoint(command.NpcId, command.DialogIndex) ||
-            !IsSelection(command.Gear))
+            !IsSelection(command.Gear) ||
+            command.Gear.Location == ClassSuitItemLocation.Equipment &&
+            (command.Gear.KitBagSlot != EquippedWeaponSlot ||
+             command.Operation is (
+                 ClassSuitCommandOperation.AddAttribute or
+                 ClassSuitCommandOperation.DeleteAttribute)))
         {
             return false;
         }
@@ -207,7 +227,12 @@ internal static class ClassSuitCommandEnvelope
 
         var selections = EnumerateSelections(command).ToArray();
         return selections.All(IsSelection) &&
-            selections.Select(static value => value.KitBagSlot)
+            (command.PrimaryMaterial is not { } primary ||
+             primary.Location == ClassSuitItemLocation.KitBag) &&
+            (command.SecondaryMaterial is not { } secondary ||
+             secondary.Location == ClassSuitItemLocation.KitBag) &&
+            selections.Select(static value =>
+                    (value.Location, value.KitBagSlot))
                 .Distinct().Count() == selections.Length;
     }
 
@@ -227,8 +252,8 @@ internal static class ClassSuitCommandEnvelope
 
     private static bool IsSelection(ClassSuitCommandSelection selection)
     {
-        if (selection.KitBagSlot is
-                < MinimumKitBagSlot or > MaximumKitBagSlot ||
+        if (!Enum.IsDefined(selection.Location) ||
+            !IsValidSlot(selection.Location, selection.KitBagSlot) ||
             string.IsNullOrWhiteSpace(selection.ExpectedCompactItemState) ||
             selection.ExpectedCompactItemState.Any(char.IsControl))
         {
@@ -246,6 +271,18 @@ internal static class ClassSuitCommandEnvelope
             return false;
         }
     }
+
+    private static bool IsValidSlot(
+        ClassSuitItemLocation location,
+        int slot) =>
+        location switch
+        {
+            ClassSuitItemLocation.Equipment =>
+                slot is >= MinimumEquipmentSlot and <= MaximumEquipmentSlot,
+            ClassSuitItemLocation.KitBag =>
+                slot is >= MinimumKitBagSlot and <= MaximumKitBagSlot,
+            _ => false
+        };
 
     private static bool IsValidIdentity(ClassSuitOperationIdentity identity) =>
         identity.IsSecureClient || identity.IsRawLocalServer;
@@ -277,7 +314,55 @@ internal static class ClassSuitCommandEnvelope
 
     private static byte[] CreateCanonicalRequest(ClassSuitCommand command)
     {
-        var canonical = new byte[CanonicalBytes];
+        if (command.Gear.Location == ClassSuitItemLocation.KitBag)
+        {
+            return CreateLegacyCanonicalRequest(command);
+        }
+
+        var canonical = new byte[LocationCanonicalBytes];
+        var span = canonical.AsSpan();
+        BinaryPrimitives.WriteUInt16BigEndian(
+            span,
+            EquipmentCanonicalVersion);
+        BinaryPrimitives.WriteInt16BigEndian(
+            span[2..],
+            (short)command.Operation);
+        BinaryPrimitives.WriteInt32BigEndian(span[4..], command.NpcId);
+        BinaryPrimitives.WriteInt32BigEndian(span[8..], command.DialogIndex);
+        var offset = 12;
+        foreach (var selection in new ClassSuitCommandSelection?[]
+                 {
+                     command.Gear,
+                     command.PrimaryMaterial,
+                     command.SecondaryMaterial
+                 })
+        {
+            span[offset++] = selection.HasValue
+                ? (byte)selection.Value.Location
+                : byte.MaxValue;
+            BinaryPrimitives.WriteInt16BigEndian(
+                span[offset..],
+                selection.HasValue
+                    ? checked((short)selection.Value.KitBagSlot)
+                    : (short)-1);
+            offset += sizeof(short);
+            if (selection.HasValue)
+            {
+                SHA256.HashData(
+                    StrictUtf8.GetBytes(
+                        selection.Value.ExpectedCompactItemState),
+                    span.Slice(offset, SHA256.HashSizeInBytes));
+            }
+            offset += SHA256.HashSizeInBytes;
+        }
+
+        return canonical;
+    }
+
+    private static byte[] CreateLegacyCanonicalRequest(
+        ClassSuitCommand command)
+    {
+        var canonical = new byte[LegacyCanonicalBytes];
         var span = canonical.AsSpan();
         BinaryPrimitives.WriteUInt16BigEndian(span, CanonicalVersion);
         BinaryPrimitives.WriteInt16BigEndian(

@@ -6,13 +6,33 @@ Sparta Gear Mentor NPCs.
 ## Native routing
 
 Gear Mentor keeps its original dialog `4`. The same physical NPC also exposes
-the stock Class Suit dialog `37`; the server sends both top-level dialogue
-advertisements in database-authored `route_order`.
+the stock Class Suit dialog `37`. The server sends one opcode-`10067` native
+advertisement with the extended-function flag `0x200` and packed dialog value
+`37004`. The client decodes that base-1000 value from right to left as `4`,
+then `37`, so Gear Enhancement and Class Suit are sibling choices in
+database-authored `route_order`. It is not a Gear Enhancement submenu entry.
 
 | City | NPC key | Interaction ID |
 |---|---|---:|
 | Sparta | `Sparta_070` | `5067` |
 | Athens | `Athens_070` | `5209` |
+
+The captured stock-client item reference `205` means the currently equipped
+weapon. Conversion actions map it explicitly to authoritative equipment slot
+`10`; insignias remain bag selections. The live stock dialog sends direct bag
+slots `0..95` (for example, `7` and `3`), while captured variants may encode
+the same slots as `100..195`; the bounded decoder accepts both exact forms.
+Unknown equipped references fail closed, and Add/Delete Class Attribute remain
+bag-only until their native equipped-slot encodings are captured and verified.
+
+The stock dialog sends each item choice through opcode `10193`. On confirm it
+clears those visual controls before sending the final opcode `10069`; some
+builds consequently leave the final item references empty. The server keeps a
+short-lived, account/character/NPC/dialog-bound snapshot of the choices and
+accepts only the exact ordered clear burst. Every selected bag item must still
+match its captured compact state, and the snapshot is consumed before durable
+execution. Explicit inline references remain supported for captured clients
+that include them.
 
 Dialogue content is published as immutable NPC-dialogue revision V2. The V1
 revision remains readable for rollback.
@@ -20,8 +40,9 @@ revision remains readable for rollback.
 ## Authoritative conversions
 
 The server owns the complete mapping of 62 equipment branches (248 Class Suit
-templates). A client supplies only selected bag slots; it never supplies the
-result item, required quantity, profession, or level.
+templates). A client supplies only captured item references: a bag slot or the
+verified equipped-weapon reference, plus bag-only material slots. It never
+supplies the result item, required quantity, profession, or level.
 
 | Operation | Source | Material | Result |
 |---|---|---|---|
@@ -69,8 +90,9 @@ operation semantics.
 
 Every completed mutation uses a UUID-backed command identity on the secure
 shim path (or a connection-scoped server UUID in explicitly enabled raw local
-development). PostgreSQL locks the ownership fence, character revision, and
-bag rows before validation. Gear mutation, material consumption/refund,
+development). PostgreSQL locks the ownership fence, character revision, all
+bag rows, and the selected equipment row when applicable before validation.
+Gear mutation, material consumption/refund,
 inventory revision, permanent command inbox, audit, inventory ledger, and
 outbox event commit atomically before the client is acknowledged.
 

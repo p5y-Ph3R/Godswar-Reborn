@@ -1,6 +1,3 @@
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Text;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking;
@@ -13,82 +10,6 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
-    private async Task HandleNpcDialogOpenAsync(GamePacket packet, CancellationToken cancellationToken)
-    {
-        if (packet.Payload.Length < 4)
-        {
-            Console.WriteLine("[npc] dialog open ignored: payload too short");
-            return;
-        }
-
-        ClearGearEnhancerSelection();
-        var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
-
-        if (!TryResolveMapNpc(npcId, out var npc))
-        {
-            Console.WriteLine($"[npc] dialog open ignored: unknown npc={npcId} map={_character?.CurrentMap.ToString() ?? "<none>"}");
-            return;
-        }
-
-        var routes = await ResolveNpcDialogueRoutesAsync(
-            npc,
-            cancellationToken);
-        if (routes.Count == 0)
-        {
-            return;
-        }
-
-        var routePackets = routes
-            .Select(route => PacketBuilder.NpcDialogOpenAck(
-                npc.InteractionId,
-                route.DialogIndex,
-                route.ClientScriptKey))
-            .ToArray();
-        var routeStream = new byte[
-            routePackets.Sum(static routePacket => routePacket.Length)];
-        var routeOffset = 0;
-        foreach (var routePacket in routePackets)
-        {
-            routePacket.CopyTo(routeStream, routeOffset);
-            routeOffset += routePacket.Length;
-        }
-
-        await _session.SendAsync(
-            routeStream,
-            cancellationToken,
-            routes.Count == 1
-                ? "NpcDialogOpenAck"
-                : "NpcDialogOpenRouteStream",
-            framed: routes.Count == 1);
-
-        foreach (var route in routes)
-        {
-            Console.WriteLine(
-                $"[npc] dialog open npc={npc.InteractionId} " +
-                $"script={route.ClientScriptKey} " +
-                $"behavior={route.Behavior} dialog={route.DialogIndex} " +
-                $"order={route.RouteOrder}");
-        }
-    }
-
-    private async Task HandleNpcDialogPageRequestAsync(
-        GamePacket packet,
-        CancellationToken cancellationToken)
-    {
-        if (packet.Payload.Length < 4)
-        {
-            Console.WriteLine("[npc] page request ignored: payload too short");
-            return;
-        }
-
-        var npcId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Payload[..4]);
-
-        Console.WriteLine(
-            TryResolveMapNpc(npcId, out var npc)
-                ? $"[npc] page request npc={npcId} key={npc.NpcKey}"
-                : $"[npc] page request ignored: unknown npc={npcId}");
-    }
-
     private async Task HandleNpcFunctionActionAsync(GamePacket packet, CancellationToken cancellationToken)
     {
         if (_account is null || _character is null)

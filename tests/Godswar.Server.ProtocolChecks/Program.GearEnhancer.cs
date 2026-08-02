@@ -93,9 +93,31 @@ internal static partial class Program
         Check.Equal((ushort)48, ReadUInt16(dialogOpen, 0), "Sparta enhancer dialog-open packet length");
         Check.Equal((ushort)Opcodes.NpcDialogOpen, ReadUInt16(dialogOpen, 2), "Sparta enhancer dialog-open opcode");
         Check.Equal(spartaEndpoint.NpcId, ReadUInt32(dialogOpen, 4), "Sparta enhancer dialog-open NPC id");
+        Check.Equal(0x200, ReadInt32(dialogOpen, 8), "Sparta enhancer uses the extended-dialog flag");
         Check.Equal(4, GearEnhancerProtocol.DialogIndex, "Gear Mentor uses NPC_FLAG_SYS_BREAK dialog 4");
         Check.Equal(GearEnhancerProtocol.DialogIndex, ReadInt32(dialogOpen, 12), "Sparta enhancer dialog-open index");
         Check.Equal(spartaEndpoint.NpcKey, ReadFixedAscii(dialogOpen, 16, 32), "Sparta enhancer dialog-open script key");
+
+        var combinedDialogOpen = PacketBuilder.NpcDialogOpenAck(
+            spartaEndpoint.NpcId,
+            [GearEnhancerProtocol.DialogIndex, ClassSuitProtocol.DialogIndex],
+            spartaEndpoint.NpcKey);
+        Check.Equal(
+            37_004,
+            ReadInt32(combinedDialogOpen, 12),
+            "stock client encoding advertises Gear Enhancement before Class Suit");
+        Check.Throws<ArgumentException>(
+            () => PacketBuilder.NpcDialogOpenAck(
+                spartaEndpoint.NpcId,
+                [4, 4],
+                spartaEndpoint.NpcKey),
+            "duplicate top-level NPC dialogs are rejected");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => PacketBuilder.NpcDialogOpenAck(
+                spartaEndpoint.NpcId,
+                [1, 2, 3, 4],
+                spartaEndpoint.NpcKey),
+            "more than three packed NPC dialogs are rejected");
 
         var dialogueRoutes = NpcDialogueBaselineV1.CreateRoutes();
         var spartaRoute = dialogueRoutes.Single(

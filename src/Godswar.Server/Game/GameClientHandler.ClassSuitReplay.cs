@@ -34,6 +34,7 @@ internal sealed partial class GameClientHandler
                 operation,
                 checked((int)exactNpcId),
                 ClassSuitProtocol.DialogIndex,
+                wireIntent.EquipmentLocation,
                 wireIntent.EquipmentKitBagSlot,
                 wireIntent.MaterialKitBagSlot,
                 wireIntent.SecondaryMaterialKitBagSlot,
@@ -141,8 +142,9 @@ internal sealed partial class GameClientHandler
         }
 
         var bagBefore = _character.KitBag;
-        await ReloadDurableInventoryProjectionAsync(
+        await ReloadDurableClassSuitProjectionAsync(
             ownership,
+            receipt,
             cancellationToken);
         if (!RevalidateCurrentPlayerOwnership(ownership))
         {
@@ -172,7 +174,10 @@ internal sealed partial class GameClientHandler
                     "ClassSuitReplayKitBagDeleteAck");
             }
         }
-        await SendKitBagRefreshAsync(cancellationToken);
+        await SendClassSuitAuthoritativeProjectionAsync(
+            receipt,
+            "replay",
+            cancellationToken);
         await SendSecureGearMentorResultAsync(
             clientOperationId,
             receipt.Family,

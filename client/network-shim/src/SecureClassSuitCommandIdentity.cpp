@@ -66,9 +66,41 @@ bool TryReadAction(
     }
 }
 
-bool IsBagReference(std::int32_t reference) noexcept {
-    return reference >= LegacyClassSuitBagReferenceMinimum &&
-        reference <= LegacyClassSuitBagReferenceMaximum;
+bool TryNormalizeBagReference(
+    std::int32_t reference,
+    int* bagSlot) noexcept {
+    if (bagSlot == nullptr) {
+        return false;
+    }
+    if (reference >= LegacyClassSuitBagSlotMinimum &&
+        reference <= LegacyClassSuitBagSlotMaximum) {
+        *bagSlot = static_cast<int>(reference);
+        return true;
+    }
+    if (reference >= LegacyClassSuitBagReferenceMinimum &&
+        reference <= LegacyClassSuitBagReferenceMaximum) {
+        *bagSlot = static_cast<int>(
+            reference - LegacyClassSuitBagReferenceMinimum);
+        return true;
+    }
+    return false;
+}
+
+bool TryNormalizeGearReference(
+    LegacyClassSuitAction action,
+    std::int32_t reference,
+    int* gearIdentity) noexcept {
+    if (TryNormalizeBagReference(reference, gearIdentity)) {
+        return true;
+    }
+    if (gearIdentity != nullptr &&
+        action != LegacyClassSuitAction::AddAttribute &&
+        action != LegacyClassSuitAction::DeleteAttribute &&
+        reference == LegacyClassSuitEquippedWeaponReference) {
+        *gearIdentity = LegacyClassSuitEquippedWeaponReference;
+        return true;
+    }
+    return false;
 }
 
 bool RequiresSecondaryItem(LegacyClassSuitAction action) noexcept {
@@ -159,17 +191,25 @@ LegacyClassSuitPacketKind ClassifyLegacyClassSuitPacket(
         arguments[LegacyClassSuitInsigniaArgument];
     const auto thirdItemReference =
         arguments[LegacyClassSuitThirdItemArgument];
+    int gearIdentity = -1;
+    int secondaryBagSlot = -1;
+    int tertiaryBagSlot = -1;
     if ((scratch != -1 && scratch != 0) ||
-        !IsBagReference(gearReference) ||
+        !TryNormalizeGearReference(
+            action, gearReference, &gearIdentity) ||
         (RequiresSecondaryItem(action) &&
-            (!IsBagReference(insigniaReference) ||
-                insigniaReference == gearReference)) ||
+            (!TryNormalizeBagReference(
+                    insigniaReference,
+                    &secondaryBagSlot) ||
+                secondaryBagSlot == gearIdentity)) ||
         (!RequiresSecondaryItem(action) &&
             insigniaReference != -1) ||
         (RequiresTertiaryItem(action) &&
-            (!IsBagReference(thirdItemReference) ||
-                thirdItemReference == gearReference ||
-                thirdItemReference == insigniaReference)) ||
+            (!TryNormalizeBagReference(
+                    thirdItemReference,
+                    &tertiaryBagSlot) ||
+                tertiaryBagSlot == gearIdentity ||
+                tertiaryBagSlot == secondaryBagSlot)) ||
         (!RequiresTertiaryItem(action) &&
             thirdItemReference != -1)) {
         return LegacyClassSuitPacketKind::InvalidMutation;
@@ -178,17 +218,12 @@ LegacyClassSuitPacketKind ClassifyLegacyClassSuitPacket(
     if (command != nullptr) {
         command->action = action;
         command->npcId = npcId;
-        command->gearBagSlot = static_cast<int>(
-            gearReference - LegacyClassSuitBagReferenceMinimum);
+        command->gearReference = gearIdentity;
         command->secondaryBagSlot = RequiresSecondaryItem(action)
-            ? static_cast<int>(
-                insigniaReference -
-                LegacyClassSuitBagReferenceMinimum)
+            ? secondaryBagSlot
             : -1;
         command->tertiaryBagSlot = RequiresTertiaryItem(action)
-            ? static_cast<int>(
-                thirdItemReference -
-                LegacyClassSuitBagReferenceMinimum)
+            ? tertiaryBagSlot
             : -1;
     }
     return LegacyClassSuitPacketKind::Commit;

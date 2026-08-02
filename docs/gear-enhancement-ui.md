@@ -11,9 +11,11 @@ The client has two distinct NPC workflows which must not be conflated:
 - Origin Enhancer (`Sparta_143` / `Athens_143`) uses enhancer dialog `118` and
   the separate `NpcFunEnhancer.lua` workflow documented below.
 
-The original Gear Mentor dialog requires no new UI. The server must open
-dialog `4` for NPC 070. The custom GWGE2 Origin Enhancer wrapper has now been
-removed, so both NPC workflows use their shipped client presentations.
+The original Gear Mentor dialog requires no new UI. For NPC 070, one native
+opcode-`10067` advertisement packs dialog `4` followed by Class Suit dialog
+`37` as `37004`; both appear in the client's first NPC-choice window. The
+custom GWGE2 Origin Enhancer wrapper has been removed, so all three workflows
+use their shipped client presentations.
 
 The English client shipped `SYS_NPC_4` with the unrelated label `Salary` even
 though the Chinese localization and the loaded script both identify dialog

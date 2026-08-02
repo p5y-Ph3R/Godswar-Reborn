@@ -70,6 +70,10 @@ internal static class ClassSuitPersistenceCodec
         foreach (var mutation in receipt.Mutations)
         {
             writer.WriteStartObject();
+            if (mutation.Location != ClassSuitItemLocation.KitBag)
+            {
+                writer.WriteNumber("location", (byte)mutation.Location);
+            }
             writer.WriteNumber("kitBagSlot", mutation.KitBagSlot);
             writer.WriteNumber("beforeItemId", mutation.BeforeItemId);
             writer.WriteNumber("afterItemId", mutation.AfterItemId);
@@ -132,6 +136,11 @@ internal static class ClassSuitPersistenceCodec
             mutationArray.GetArrayLength());
         foreach (var mutation in mutationArray.EnumerateArray())
         {
+            var location = mutation.TryGetProperty(
+                    "location",
+                    out var locationElement)
+                ? (ClassSuitItemLocation)locationElement.GetByte()
+                : ClassSuitItemLocation.KitBag;
             mutations.Add(new ClassSuitReceiptMutation(
                 mutation.GetProperty("kitBagSlot").GetInt32(),
                 mutation.GetProperty("beforeItemId").GetUInt32(),
@@ -139,7 +148,8 @@ internal static class ClassSuitPersistenceCodec
                 mutation.GetProperty("beforeCompactItemState")
                     .GetString() ?? string.Empty,
                 mutation.GetProperty("afterCompactItemState")
-                    .GetString() ?? string.Empty));
+                    .GetString() ?? string.Empty,
+                location));
         }
 
         var eventElement = root.GetProperty("outboxEventId");
@@ -214,6 +224,12 @@ internal static class ClassSuitPersistenceCodec
         writer.WriteNumber("operation", (short)intent.Operation);
         writer.WriteNumber("npcId", intent.NpcId);
         writer.WriteNumber("dialogIndex", intent.DialogIndex);
+        if (intent.GearLocation != ClassSuitItemLocation.KitBag)
+        {
+            writer.WriteNumber(
+                "gearLocation",
+                (byte)intent.GearLocation);
+        }
         writer.WriteNumber("gearKitBagSlot", intent.GearKitBagSlot);
         writer.WriteNumber(
             "primaryMaterialKitBagSlot",
@@ -227,12 +243,22 @@ internal static class ClassSuitPersistenceCodec
     private static ClassSuitReplayIntent ReadReplayIntent(
         JsonElement element)
     {
-        if (element.ValueKind != JsonValueKind.Object ||
-            !ClassSuitReplayIntent.TryCreate(
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException(
+                "The stored Class Suit replay intent is invalid.");
+        }
+        var gearLocation = element.TryGetProperty(
+                "gearLocation",
+                out var locationElement)
+            ? (ClassSuitItemLocation)locationElement.GetByte()
+            : ClassSuitItemLocation.KitBag;
+        if (!ClassSuitReplayIntent.TryCreate(
                 (ClassSuitCommandOperation)
                     element.GetProperty("operation").GetInt16(),
                 element.GetProperty("npcId").GetInt32(),
                 element.GetProperty("dialogIndex").GetInt32(),
+                gearLocation,
                 element.GetProperty("gearKitBagSlot").GetInt32(),
                 element.GetProperty("primaryMaterialKitBagSlot").GetInt32(),
                 element.GetProperty("secondaryMaterialKitBagSlot").GetInt32(),
@@ -273,7 +299,27 @@ internal static class ClassSuitPersistenceCodec
         if (succeeded != receipt.OutboxEventId.HasValue ||
             succeeded != (receipt.Mutations.Count > 0) ||
             receipt.Mutations.Count > MaximumMutationCount ||
-            receipt.Mutations.Select(static value => value.KitBagSlot)
+            receipt.Mutations.Any(static value =>
+                !Enum.IsDefined(value.Location) ||
+                value.Location == ClassSuitItemLocation.KitBag &&
+                value.KitBagSlot is
+                    < ClassSuitCommandEnvelope.MinimumKitBagSlot or
+                    > ClassSuitCommandEnvelope.MaximumKitBagSlot ||
+                value.Location == ClassSuitItemLocation.Equipment &&
+                value.KitBagSlot !=
+                    ClassSuitCommandEnvelope.EquippedWeaponSlot) ||
+            receipt.Mutations.Any(value =>
+                value.Location == ClassSuitItemLocation.Equipment &&
+                (receipt.ReplayIntent.GearLocation !=
+                    ClassSuitItemLocation.Equipment ||
+                 value.KitBagSlot !=
+                    receipt.ReplayIntent.GearKitBagSlot)) ||
+            succeeded && !receipt.Mutations.Any(value =>
+                value.Location == receipt.ReplayIntent.GearLocation &&
+                value.KitBagSlot ==
+                    receipt.ReplayIntent.GearKitBagSlot) ||
+            receipt.Mutations.Select(static value =>
+                    (value.Location, value.KitBagSlot))
                 .Distinct().Count() != receipt.Mutations.Count)
         {
             throw new InvalidDataException(

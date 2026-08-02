@@ -93,7 +93,7 @@ internal sealed partial class
                 updated_at = now()
             WHERE id = @itemInstanceId
               AND user_id = @characterId
-              AND item_location = 1
+              AND item_location = @itemLocation
               AND slot_index = @slotIndex
             RETURNING to_jsonb(character_items)::text;
             """,
@@ -103,6 +103,9 @@ internal sealed partial class
             "itemInstanceId",
             locked.ItemInstanceId);
         command.Parameters.AddWithValue("characterId", characterId);
+        command.Parameters.AddWithValue(
+            "itemLocation",
+            locked.ItemLocation);
         command.Parameters.AddWithValue("slotIndex", locked.Slot);
         AddItemParameters(command, item);
         var afterState =

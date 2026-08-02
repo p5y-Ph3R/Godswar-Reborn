@@ -14,10 +14,77 @@ internal static class ClassSuitConversionPlannerChecks
     {
         CheckCanonicalBranchTable();
         CheckTierIConversionPreservesEquipment();
+        CheckEquippedTierIConversionIsLocationAware();
         CheckTierAndProfessionAuthority();
         CheckTierIIReverseRefundAndAttributeRemoval();
         CheckUnsupportedReverseAndCapacityAreAtomic();
         return Task.CompletedTask;
+    }
+
+    private static void CheckEquippedTierIConversionIsLocationAware()
+    {
+        var gear = RichEquipment(1013, bound: 0);
+        var insignia = Material(
+            ClassSuitConversionCatalog.PromotionalInsigniaI,
+            stack: 5,
+            bound: 1);
+        var kitBag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            MaterialSlot,
+            insignia.ToCompactString());
+        var result = ClassSuitConversionPlanner.CreateForEquippedGear(
+            TestItemContent.Catalog,
+            kitBag,
+            profession: 0,
+            playerLevel: 120,
+            gear,
+            new ClassSuitEquippedConversionRequest(
+                ClassSuitConversionOperation.ExchangeTierI,
+                EquipmentSlots.Weapon,
+                gear,
+                ClassSuitSlotSelection.Capture(
+                    kitBag,
+                    MaterialSlot)));
+
+        Check.True(
+            result.Committed &&
+            result.EquipmentBefore == gear &&
+            result.EquipmentAfter.Id == 1032 &&
+            result.EquipmentAfter.Quality == 20 &&
+            result.EquipmentAfter.Grade == 25 &&
+            result.EquipmentAfter.Exp == 777 &&
+            result.EquipmentAfter.HolySuitCode == 705,
+            $"equipped weapon converts without losing state ({result.RejectionReason})");
+        Check.Equal(
+            (short)2,
+            KitBagSlots.GetItem(
+                result.UpdatedKitBag,
+                MaterialSlot).Stack,
+            "equipped conversion consumes only the staged bag insignia");
+        Check.True(
+            result.Mutations.Count == 1 &&
+            result.Mutations[0].KitBagSlot == MaterialSlot,
+            "equipped conversion keeps equipment outside bag mutation evidence");
+
+        var wrongSlot = ClassSuitConversionPlanner.CreateForEquippedGear(
+            TestItemContent.Catalog,
+            kitBag,
+            profession: 0,
+            playerLevel: 120,
+            gear,
+            new ClassSuitEquippedConversionRequest(
+                ClassSuitConversionOperation.ExchangeTierI,
+                EquipmentSlots.Armor,
+                gear,
+                ClassSuitSlotSelection.Capture(
+                    kitBag,
+                    MaterialSlot)));
+        Check.True(
+            !wrongSlot.Committed &&
+            wrongSlot.Status ==
+                ClassSuitConversionStatus.InvalidEquipment &&
+            wrongSlot.UpdatedKitBag == kitBag,
+            "equipped Class Suit conversion rejects the wrong physical slot atomically");
     }
 
     private static void CheckCanonicalBranchTable()

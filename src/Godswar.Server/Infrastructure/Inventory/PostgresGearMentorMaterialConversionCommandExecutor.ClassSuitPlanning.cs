@@ -8,6 +8,7 @@ internal sealed partial class
 {
     private ClassSuitPlan CreateClassSuitPlan(
         string kitBag,
+        CompactItemEntry authoritativeEquipment,
         byte profession,
         int playerLevel,
         ClassSuitCommand command)
@@ -22,21 +23,51 @@ internal sealed partial class
                 command);
         }
 
-        var result = ClassSuitConversionPlanner.Create(
-            _itemContent.Templates,
-            kitBag,
-            profession,
-            playerLevel,
-            new ClassSuitConversionRequest(
-                ToConversionOperation(command.Operation),
-                ToConversionSelection(command.Gear),
-                command.PrimaryMaterial.HasValue
-                    ? ToConversionSelection(
-                        command.PrimaryMaterial.Value)
-                    : null));
+        var operation = ToConversionOperation(command.Operation);
+        var insignia = command.PrimaryMaterial.HasValue
+            ? ToConversionSelection(command.PrimaryMaterial.Value)
+            : null;
+        var result = command.Gear.Location ==
+            ClassSuitItemLocation.Equipment
+            ? ClassSuitConversionPlanner.CreateForEquippedGear(
+                _itemContent.Templates,
+                kitBag,
+                profession,
+                playerLevel,
+                authoritativeEquipment,
+                new ClassSuitEquippedConversionRequest(
+                    operation,
+                    command.Gear.KitBagSlot,
+                    CompactItemEntry.Parse(
+                        command.Gear.ExpectedCompactItemState),
+                    insignia))
+            : ClassSuitConversionPlanner.Create(
+                _itemContent.Templates,
+                kitBag,
+                profession,
+                playerLevel,
+                new ClassSuitConversionRequest(
+                    operation,
+                    ToConversionSelection(command.Gear),
+                    insignia));
+        var mutations = result.Mutations.Select(static value =>
+            new ClassSuitPlannedMutation(
+                ClassSuitItemLocation.KitBag,
+                value.KitBagSlot,
+                value.Before,
+                value.After)).ToList();
+        if (result.Committed &&
+            command.Gear.Location == ClassSuitItemLocation.Equipment)
+        {
+            mutations.Add(new ClassSuitPlannedMutation(
+                ClassSuitItemLocation.Equipment,
+                command.Gear.KitBagSlot,
+                result.EquipmentBefore,
+                result.EquipmentAfter));
+        }
         return new ClassSuitPlan(
             MapClassSuitConversionStatus(result.Status),
-            result.Mutations);
+            mutations);
     }
 
     private static ClassSuitConversionOperation ToConversionOperation(
@@ -124,7 +155,12 @@ internal sealed partial class
                     : null));
         return new ClassSuitPlan(
             MapClassSuitAttributeStatus(result.Status),
-            result.Mutations);
+            result.Mutations.Select(static value =>
+                new ClassSuitPlannedMutation(
+                    ClassSuitItemLocation.KitBag,
+                    value.KitBagSlot,
+                    value.Before,
+                    value.After)).ToArray());
     }
 
     private static ClassSuitCommandResultStatus

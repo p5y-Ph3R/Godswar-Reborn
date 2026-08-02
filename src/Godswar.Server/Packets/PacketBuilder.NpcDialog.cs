@@ -119,14 +119,66 @@ internal static partial class PacketBuilder
 
     public static byte[] NpcDialogOpenAck(uint npcId, int dialogIndex, string scriptKey)
     {
+        return NpcDialogOpenAck(npcId, [dialogIndex], scriptKey);
+    }
+
+    /// <summary>
+    /// Advertises ordered top-level extended NPC functions. The stock client
+    /// decodes the field at offset 12 as base-1000 digits, starting with the
+    /// least-significant digit, so 4 followed by 37 is encoded as 37004.
+    /// </summary>
+    public static byte[] NpcDialogOpenAck(
+        uint npcId,
+        IReadOnlyList<int> dialogIndices,
+        string scriptKey)
+    {
         var packet = new byte[48];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), NpcDialogOpenOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), npcId);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), 0x200);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(12, 4), dialogIndex);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(12, 4),
+            PackNpcDialogIndices(dialogIndices));
         PacketText.WriteFixedAscii(packet.AsSpan(16, 32), scriptKey);
         return packet;
+    }
+
+    internal static int PackNpcDialogIndices(
+        IReadOnlyList<int> dialogIndices)
+    {
+        ArgumentNullException.ThrowIfNull(dialogIndices);
+        if (dialogIndices.Count is < 1 or > 3)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(dialogIndices),
+                "The stock client supports one to three packed NPC dialogs.");
+        }
+
+        var packed = 0;
+        var multiplier = 1;
+        var seen = new HashSet<int>();
+        foreach (var dialogIndex in dialogIndices)
+        {
+            if (dialogIndex is < 1 or > 999)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(dialogIndices),
+                    "Each packed NPC dialog index must be between 1 and 999.");
+            }
+
+            if (!seen.Add(dialogIndex))
+            {
+                throw new ArgumentException(
+                    "Packed NPC dialog indices must be unique.",
+                    nameof(dialogIndices));
+            }
+
+            packed = checked(packed + (dialogIndex * multiplier));
+            multiplier = checked(multiplier * 1000);
+        }
+
+        return packed;
     }
 
     /// <summary>

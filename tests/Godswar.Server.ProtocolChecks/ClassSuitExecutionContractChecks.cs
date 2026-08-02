@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Inventory;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -16,7 +17,117 @@ internal static class ClassSuitExecutionContractChecks
         CheckAttributeFailureResults();
         CheckExecutionDispositions();
         CheckPersistenceMutationBound();
+        CheckEquippedMutationPersistence();
+        CheckRejectedEquippedSelectionRefresh();
         return Task.CompletedTask;
+    }
+
+    private static void CheckEquippedMutationPersistence()
+    {
+        Check.True(
+            ClassSuitReplayIntent.TryCreate(
+                ClassSuitCommandOperation.ExchangeTierI,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                ClassSuitItemLocation.Equipment,
+                ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                3,
+                ClassSuitReplayIntent.NoKitBagSlot,
+                out var replayIntent),
+            "equipped Class Suit replay intent is valid");
+        var receipt = new ClassSuitExecutionReceipt(
+            CommandFamily.ClassSuitExchangeTierI,
+            CharacterId: 13,
+            ClassSuitCommandOperation.ExchangeTierI,
+            ClassSuitCommandEnvelope.SpartaNpcId,
+            ClassSuitCommandEnvelope.DialogIndex,
+            replayIntent,
+            ClassSuitCommandResultStatus.Succeeded,
+            NativeResultSubId: 120,
+            Mutations:
+            [
+                new ClassSuitReceiptMutation(
+                    ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                    BeforeItemId: 1013,
+                    AfterItemId: 1032,
+                    BeforeCompactItemState: "weapon-before",
+                    AfterCompactItemState: "weapon-after",
+                    ClassSuitItemLocation.Equipment),
+                new ClassSuitReceiptMutation(
+                    KitBagSlot: 3,
+                    BeforeItemId: 7001,
+                    AfterItemId: 7001,
+                    BeforeCompactItemState: "insignia-before",
+                    AfterCompactItemState: "insignia-after")
+            ],
+            InventoryRevision: 44,
+            AuditReference: "44",
+            OutboxEventId: Guid.NewGuid());
+
+        var decoded = ClassSuitPersistenceCodec.Decode(
+            ClassSuitPersistenceCodec.Encode(receipt));
+        Check.True(
+            decoded.Family == receipt.Family &&
+            decoded.CharacterId == receipt.CharacterId &&
+            decoded.ReplayIntent == receipt.ReplayIntent &&
+            decoded.Mutations.SequenceEqual(receipt.Mutations) &&
+            decoded.ReplayIntent.GearLocation ==
+                ClassSuitItemLocation.Equipment &&
+            decoded.Mutations[0].Location ==
+                ClassSuitItemLocation.Equipment,
+            "durable receipt preserves equipped location evidence");
+        Check.Throws<InvalidDataException>(
+            () => ClassSuitPersistenceCodec.Encode(
+                receipt with
+                {
+                    Mutations = [receipt.Mutations[1]]
+                }),
+            "successful receipt requires its selected equipment mutation");
+        Check.Throws<InvalidDataException>(
+            () => ClassSuitPersistenceCodec.Encode(
+                receipt with
+                {
+                    Mutations =
+                    [
+                        receipt.Mutations[0] with { KitBagSlot = 9 },
+                        receipt.Mutations[1]
+                    ]
+                }),
+            "receipt rejects unknown equipped slots");
+    }
+
+    private static void CheckRejectedEquippedSelectionRefresh()
+    {
+        Check.True(
+            ClassSuitReplayIntent.TryCreate(
+                ClassSuitCommandOperation.ExchangeTierI,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                ClassSuitItemLocation.Equipment,
+                ClassSuitCommandEnvelope.EquippedWeaponSlot,
+                3,
+                ClassSuitReplayIntent.NoKitBagSlot,
+                out var replayIntent),
+            "rejected equipped fixture intent is valid");
+        var receipt = new ClassSuitExecutionReceipt(
+            CommandFamily.ClassSuitExchangeTierI,
+            CharacterId: 13,
+            ClassSuitCommandOperation.ExchangeTierI,
+            ClassSuitCommandEnvelope.SpartaNpcId,
+            ClassSuitCommandEnvelope.DialogIndex,
+            replayIntent,
+            ClassSuitCommandResultStatus.PlayerLevelTooLow,
+            NativeResultSubId: 147,
+            Mutations: [],
+            InventoryRevision: 44,
+            AuditReference: "45",
+            OutboxEventId: null);
+
+        Check.True(
+            GameClientHandler.ResolveClassSuitEquipmentRefreshSlots(receipt)
+                .SequenceEqual(
+                    [ClassSuitCommandEnvelope.EquippedWeaponSlot]),
+            "terminal rejection refreshes its authoritative equipped weapon");
     }
 
     private static void CheckSuccessResults()

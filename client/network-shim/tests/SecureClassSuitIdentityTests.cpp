@@ -1,4 +1,5 @@
 #include "SecureClassSuitIdentityTests.h"
+#include "SecureClassSuitReferenceIdentityTests.h"
 
 #include "../src/SecureClassSuitCommandIdentity.h"
 #include "../src/SecureLegacyCommandIdentity.h"
@@ -197,7 +198,7 @@ void CheckCanonicalPackets(Checks* checks) {
                     packet, sizeof(packet), &command) &&
                 command.action == expected.action &&
                 command.npcId == city &&
-                command.gearBagSlot == 12 &&
+                command.gearReference == 12 &&
                 command.secondaryBagSlot ==
                     (RequiresSecondaryItem(expected.action) ? 23 : -1) &&
                 command.tertiaryBagSlot ==
@@ -493,5 +494,6 @@ int RunSecureClassSuitIdentityTests() {
     CheckNavigationAndForeignPackets(&checks);
     CheckMalformedPackets(&checks);
     CheckRegistryIdentity(&checks);
-    return checks.failures;
+    return checks.failures +
+        RunSecureClassSuitReferenceIdentityTests();
 }

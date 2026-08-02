@@ -174,6 +174,7 @@ internal sealed partial class
                 jsonb_build_object(
                     'operation', @operation,
                     'npcId', @npcId,
+                    'gearLocation', @gearLocation,
                     'gearSlot', @gearSlot,
                     'primaryMaterialSlot', @primaryMaterialSlot,
                     'secondaryMaterialSlot', @secondaryMaterialSlot,
@@ -202,6 +203,9 @@ internal sealed partial class
             "operation",
             context.Command.Operation.ToString());
         command.Parameters.AddWithValue("npcId", context.Command.NpcId);
+        command.Parameters.AddWithValue(
+            "gearLocation",
+            context.Command.Gear.Location.ToString());
         command.Parameters.AddWithValue(
             "gearSlot",
             context.Command.Gear.KitBagSlot);

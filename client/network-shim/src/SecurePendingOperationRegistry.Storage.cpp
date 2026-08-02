@@ -435,6 +435,10 @@ void SecurePendingOperationRegistry::ClearEntry(
             entry->bagSlots,
             SecureGearSelectionCapacity,
             -1);
+        std::fill_n(
+            entry->capturedSelectionBagSlots,
+            SecureGearSelectionCapacity,
+            -1);
         entry->forgeEquipmentBagSlot = -1;
         entry->forgePrimaryMaterialBagSlot = -1;
         std::fill_n(

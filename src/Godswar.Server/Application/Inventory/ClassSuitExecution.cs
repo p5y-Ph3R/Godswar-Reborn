@@ -26,7 +26,8 @@ internal readonly record struct ClassSuitReceiptMutation(
     uint BeforeItemId,
     uint AfterItemId,
     string BeforeCompactItemState,
-    string AfterCompactItemState);
+    string AfterCompactItemState,
+    ClassSuitItemLocation Location = ClassSuitItemLocation.KitBag);
 
 internal sealed record ClassSuitExecutionReceipt(
     CommandFamily Family,
