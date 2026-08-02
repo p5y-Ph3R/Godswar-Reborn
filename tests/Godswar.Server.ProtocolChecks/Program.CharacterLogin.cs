@@ -180,11 +180,16 @@ internal static partial class Program
         Check.Equal(character.CurrentMap, packet[46], "EnterMain saved map");
         Check.Equal(character.PositionX, ReadSingle(packet, 56), "EnterMain saved X");
         Check.Equal(character.PositionZ, ReadSingle(packet, 64), "EnterMain saved Z");
-        Check.Equal(character.Experience, ReadInt32(packet, 84), "EnterMain saved fighter EXP");
         Check.Equal(
-            PlayerExperienceCatalog.GetNextLevelExperience(character.Level),
-            ReadInt32(packet, 88),
-            "EnterMain next-level EXP threshold");
+            character.Experience,
+            (long)ReadUInt32(packet, 84),
+            "EnterMain saved UInt32 fighter EXP");
+        Check.Equal(
+            PlayerExperienceCatalog.GetClientExperienceMaximum(
+                character.Level,
+                character.FighterLevelSealed),
+            (long)ReadUInt32(packet, 88),
+            "EnterMain fighter EXP bar maximum");
         Check.Equal(character.TalentPoints, ReadInt32(packet, 92), "EnterMain saved Talent Points");
         Check.Equal(character.TalentExperience, ReadInt32(packet, 96), "EnterMain saved Talent EXP");
 

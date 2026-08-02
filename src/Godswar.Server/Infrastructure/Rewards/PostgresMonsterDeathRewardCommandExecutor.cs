@@ -347,7 +347,8 @@ internal sealed partial class
             var fighter = PlayerExperienceCatalog.Apply(
                 character.Level,
                 character.Experience,
-                command.AwardedExperience);
+                command.AwardedExperience,
+                character.LevelSealed);
             var accumulatedTalentExperience = checked(
                 (long)character.TalentExperience +
                 command.AwardedTalentExperience);
@@ -504,7 +505,8 @@ internal sealed partial class
 
     private readonly record struct LockedCharacter(
         int Level,
-        int Experience,
+        long Experience,
+        bool LevelSealed,
         int TalentExperience,
         int TalentPoints,
         long Revision)

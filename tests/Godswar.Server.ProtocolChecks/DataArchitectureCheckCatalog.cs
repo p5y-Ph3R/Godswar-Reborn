@@ -23,6 +23,9 @@ internal static class DataArchitectureCheckCatalog
             ItemTemplateContentArchitectureChecks.CheckName,
             ItemTemplateContentArchitectureChecks.RunAsync),
         (
+            HolySuitContentArchitectureChecks.CheckName,
+            HolySuitContentArchitectureChecks.RunAsync),
+        (
             PetContentArchitectureChecks.CheckName,
             PetContentArchitectureChecks.RunAsync),
         (
@@ -31,6 +34,9 @@ internal static class DataArchitectureCheckCatalog
         (
             "PostgreSQL item-template publication",
             PostgresItemTemplateContentIntegrationChecks.RunAsync),
+        (
+            PostgresHolySuitContentIntegrationChecks.CheckName,
+            PostgresHolySuitContentIntegrationChecks.RunAsync),
         (
             "Pinned immutable world-content reader",
             WorldContentReaderChecks.RunAsync),
@@ -152,6 +158,12 @@ internal static class DataArchitectureCheckCatalog
             "PostgreSQL character lifecycle migration contract",
             PostgresCharacterLifecycleMigrationChecks.RunAsync),
         (
+            PostgresFighterLevelSealMigrationChecks.CheckName,
+            PostgresFighterLevelSealMigrationChecks.RunAsync),
+        (
+            PostgresFighterExperienceUInt32MigrationChecks.CheckName,
+            PostgresFighterExperienceUInt32MigrationChecks.RunAsync),
+        (
             PostgresRealmMigrationChecks.CheckName,
             PostgresRealmMigrationChecks.RunAsync),
         (
@@ -250,6 +262,15 @@ internal static class DataArchitectureCheckCatalog
         (
             "Durable Holy Stone handler and replay",
             HolyStoneDurableHandlerChecks.RunAsync),
+        (
+            HolySuitCommandContractChecks.CheckName,
+            HolySuitCommandContractChecks.RunAsync),
+        (
+            HolySuitExecutionContractChecks.CheckName,
+            HolySuitExecutionContractChecks.RunAsync),
+        (
+            PostgresHolySuitCommandIntegrationChecks.CheckName,
+            PostgresHolySuitCommandIntegrationChecks.RunAsync),
         (
             "Shared character-inventory outbox compatibility",
             CharacterInventoryOutboxConsumerChecks.RunAsync),

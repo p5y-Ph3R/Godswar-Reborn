@@ -79,7 +79,18 @@ internal sealed record DeveloperGrantMaterialDefinition(
     short StackCap,
     short GrantedBound);
 
-internal interface IItemMaterialCatalog
+internal interface IDeveloperItemGrantCatalog
+{
+    bool TryResolveDeveloper(
+        uint itemId,
+        out DeveloperGrantMaterialDefinition item);
+
+    bool TryResolveDeveloper(
+        string alias,
+        out DeveloperGrantMaterialDefinition item);
+}
+
+internal interface IItemMaterialCatalog : IDeveloperItemGrantCatalog
 {
     IReadOnlyList<ForgingMaterialDefinition> ForgingMaterials { get; }
 
@@ -114,10 +125,6 @@ internal interface IItemMaterialCatalog
     bool TryResolveGemPieceCombination(
         uint sourceItemId,
         out GearMentorMaterialRecipeDefinition recipe);
-
-    bool TryResolveDeveloper(uint itemId, out DeveloperGrantMaterialDefinition material);
-
-    bool TryResolveDeveloper(string alias, out DeveloperGrantMaterialDefinition material);
 
     int ResolveStackCap(uint itemId);
 }

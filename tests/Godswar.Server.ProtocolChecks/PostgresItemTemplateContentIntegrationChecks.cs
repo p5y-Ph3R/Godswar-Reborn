@@ -40,6 +40,12 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         await AssertV3UpgradeAsync(
             dataSource,
             first.Revision.Sha256);
+        await AssertV4UpgradeAsync(
+            dataSource,
+            first.Revision.Sha256);
+        await AssertPublishedV5RepairsMutableHolySuitTemplatesAsync(
+            dataSource,
+            first.Revision.Sha256);
         await AssertCorruptV1RejectedAsync(
             dataSource,
             first.Revision.Sha256);
@@ -230,7 +236,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             reader.GetBoolean(4) &&
             reader.GetBoolean(5) &&
             reader.GetBoolean(6),
-            "official item-policy views expose the complete v4 manifest");
+            "official item-policy views expose the complete base v5 manifest");
         Check.Equal(
             0,
             reader.GetInt32(7),

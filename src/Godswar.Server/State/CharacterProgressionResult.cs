@@ -4,7 +4,7 @@ internal sealed record CharacterProgressionResult(
     int ExperienceGained,
     int PreviousLevel,
     int CurrentLevel,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience,
     IReadOnlyList<PlayerLevelUpProgression> LevelUps,
     int TalentExperienceGained,

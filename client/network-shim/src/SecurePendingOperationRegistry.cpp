@@ -189,21 +189,11 @@ SecurePendingOperationRegistry::DescribePacket(
         return zodiacResult;
     }
 
-    LegacyHolyStoneCommand holyStoneCommand{};
-    switch (ClassifyLegacyHolyStonePacket(
-                packet,
-                packetBytes,
-                &holyStoneCommand)) {
-        case LegacyHolyStonePacketKind::Commit:
-            return DescribeHolyStoneCommand(
-                holyStoneCommand,
-                now,
-                descriptor);
-        case LegacyHolyStonePacketKind::InvalidMutation:
-            return SecureOperationRegistryResult::InvalidPacket;
-        case LegacyHolyStonePacketKind::UnrelatedOrNavigation:
-        default:
-            break;
+    bool holyEquipmentPacket = false;
+    const auto holyEquipmentResult = DescribeHolyEquipmentPacket(
+        packet, packetBytes, now, descriptor, &holyEquipmentPacket);
+    if (holyEquipmentPacket) {
+        return holyEquipmentResult;
     }
 
     std::uint8_t

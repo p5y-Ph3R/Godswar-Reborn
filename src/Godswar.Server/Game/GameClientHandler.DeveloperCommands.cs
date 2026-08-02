@@ -26,7 +26,7 @@ internal sealed partial class GameClientHandler
                 out var request,
                 out var error,
                 _itemContent?.DeveloperMounts,
-                _itemContent?.Templates.Materials))
+                _itemContent?.DeveloperItems))
         {
             return false;
         }

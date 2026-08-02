@@ -113,13 +113,24 @@ internal static class CharacterSnapshotContract
             throw Invalid("Character progression is missing.");
         }
 
-        if (progression.Level < 1 ||
-            progression.Experience < 0 ||
+        if (progression.Level is < 1 or >
+                CharacterProgressionSnapshotRules.MaximumCharacterLevel ||
+            progression.Experience is < 0 or > uint.MaxValue ||
             progression.TalentPoints < 0 ||
             progression.TalentExperience < 0 ||
-            progression.HolySuitPoints < 0)
+            progression.HolySuitPoints < 0 ||
+            progression.Revision < 0)
         {
-            throw Invalid("Character progression contains a negative value.");
+            throw Invalid("Character progression is outside persisted bounds.");
+        }
+
+        if (progression.FighterLevelSealed &&
+            progression.Level !=
+            CharacterProgressionSnapshotRules.FighterLevelSealLevel)
+        {
+            throw Invalid(
+                $"Fighter level sealing is valid only at level " +
+                $"{CharacterProgressionSnapshotRules.FighterLevelSealLevel}.");
         }
     }
 
@@ -168,7 +179,9 @@ internal static class CharacterSnapshotContract
             loadout.KitBag,
             CharacterSnapshotLimits.KitBagProjectionLength,
             "kit-bag projection");
-        if (loadout.WeaponRank < 0 || loadout.ArmorRank < 0)
+        if (loadout.WeaponRank < 0 ||
+            loadout.ArmorRank < 0 ||
+            loadout.InventoryRevision < 0)
         {
             throw Invalid("Character equipment ranks cannot be negative.");
         }

@@ -200,15 +200,24 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] ExperienceGain(int gainedExperience, int currentExperience, byte result = 0)
+    public static byte[] ExperienceGain(
+        long gainedExperience,
+        long currentExperience,
+        byte result = 0)
     {
         var packet = new byte[13];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), ExperienceGainOpcode);
         // This client reads +4 only for its "Get EXP" toast. The first working
         // capture had equal gained/current values, which previously hid this.
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), Math.Max(0, gainedExperience));
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, currentExperience));
+        WriteLegacyFighterExperience(
+            packet.AsSpan(4, 4),
+            gainedExperience,
+            nameof(gainedExperience));
+        WriteLegacyFighterExperience(
+            packet.AsSpan(8, 4),
+            currentExperience,
+            nameof(currentExperience));
         packet[12] = result;
         return packet;
     }
@@ -216,7 +225,7 @@ internal static partial class PacketBuilder
     public static byte[] MonsterDeathReward(
         uint monsterObjectId,
         uint playerObjectId,
-        int currentExperience,
+        long currentExperience,
         int currentTalentExperience,
         int currentTalentPoints)
     {
@@ -233,7 +242,10 @@ internal static partial class PacketBuilder
                 index == 0 ? unchecked((int)playerObjectId) : -1);
         }
 
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(48, 4), Math.Max(0, currentExperience));
+        WriteLegacyFighterExperience(
+            packet.AsSpan(48, 4),
+            currentExperience,
+            nameof(currentExperience));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(68, 4), Math.Max(0, currentTalentExperience));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(88, 4), Math.Max(0, currentTalentPoints));
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(108, 4), monsterObjectId);
@@ -243,8 +255,8 @@ internal static partial class PacketBuilder
     public static byte[] PlayerLevelUp(
         uint playerObjectId,
         int level,
-        int nextLevelExperience,
-        int currentExperience,
+        long experienceMaximum,
+        long currentExperience,
         int maxHp,
         int currentHp,
         int maxMp,
@@ -255,8 +267,14 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerLevelUpOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), playerObjectId);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(1, level));
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(12, 4), Math.Max(0, nextLevelExperience));
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(16, 4), Math.Max(0, currentExperience));
+        WriteLegacyFighterExperience(
+            packet.AsSpan(12, 4),
+            experienceMaximum,
+            nameof(experienceMaximum));
+        WriteLegacyFighterExperience(
+            packet.AsSpan(16, 4),
+            currentExperience,
+            nameof(currentExperience));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(20, 4), Math.Max(1, maxHp));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(24, 4), Math.Clamp(currentHp, 0, Math.Max(1, maxHp)));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(28, 4), Math.Max(0, maxMp));

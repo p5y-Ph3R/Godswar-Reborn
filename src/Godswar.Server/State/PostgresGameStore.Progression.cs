@@ -70,11 +70,13 @@ internal sealed partial class PostgresGameStore
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         int previousLevel;
-        int previousExperience;
+        long previousExperience;
+        bool fighterLevelSealed;
         int previousTalentExperience;
         int previousTalentPoints;
         await using (var command = new NpgsqlCommand("""
-            SELECT fighter_job_lv, fighter_job_exp, "SkillExp", "SkillPoint"
+            SELECT fighter_job_lv, fighter_job_exp, fighter_level_sealed,
+                   "SkillExp", "SkillPoint"
             FROM character_base
             WHERE id = @characterId
               AND account_id = @accountId
@@ -90,15 +92,17 @@ internal sealed partial class PostgresGameStore
             }
 
             previousLevel = reader.GetInt32(0);
-            previousExperience = reader.GetInt32(1);
-            previousTalentExperience = reader.GetInt32(2);
-            previousTalentPoints = reader.GetInt32(3);
+            previousExperience = reader.GetInt64(1);
+            fighterLevelSealed = reader.GetBoolean(2);
+            previousTalentExperience = reader.GetInt32(3);
+            previousTalentPoints = reader.GetInt32(4);
         }
 
         var fighterProgression = PlayerExperienceCatalog.Apply(
             previousLevel,
             previousExperience,
-            experience);
+            experience,
+            fighterLevelSealed);
         var accumulatedTalentExperience = checked(previousTalentExperience + talentExperience);
         var talentPointsGained = accumulatedTalentExperience / 100;
         var currentTalentExperience = accumulatedTalentExperience % 100;

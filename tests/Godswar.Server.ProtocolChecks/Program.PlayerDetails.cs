@@ -178,7 +178,10 @@ internal static partial class Program
         Check.Equal(character.PositionZ, ReadSingle(packet, 52), "PlayerStatusUpdate Z at offset 52");
         Check.Equal(1f, ReadSingle(packet, 56), "PlayerStatusUpdate default locomotion multiplier at offset 56");
         Check.Equal((int)character.Profession, ReadInt32(packet, 92), "PlayerStatusUpdate profession");
-        Check.Equal(character.Experience, ReadInt32(packet, 96), "PlayerStatusUpdate fighter EXP");
+        Check.Equal(
+            character.Experience,
+            (long)ReadUInt32(packet, 96),
+            "PlayerStatusUpdate UInt32 fighter EXP");
         Check.Equal(character.Level, ReadInt32(packet, 100), "PlayerStatusUpdate level");
         Check.Equal(character.CurrentHp, ReadInt32(packet, 104), "PlayerStatusUpdate current HP");
         Check.Equal(character.CurrentMp, ReadInt32(packet, 108), "PlayerStatusUpdate current MP");

@@ -72,6 +72,8 @@ internal sealed partial class GameClientHandler
 
         liveCharacter.Equipment = persistedCharacter.Equipment;
         liveCharacter.KitBag = persistedCharacter.KitBag;
+        liveCharacter.HolySuitPoints =
+            persistedCharacter.HolySuitPoints;
         ApplyDurableEquipmentStatsProjection(
             liveCharacter,
             persistedCharacter.CalculatedStats);

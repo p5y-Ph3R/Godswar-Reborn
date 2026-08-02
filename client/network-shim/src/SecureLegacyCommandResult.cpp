@@ -69,7 +69,15 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::BagItemActivation ||
         family ==
-            SecureLegacyCommandFamily::PetPresenceTransition;
+            SecureLegacyCommandFamily::PetPresenceTransition ||
+        family ==
+            SecureLegacyCommandFamily::HolySuitStoreExperience ||
+        family ==
+            SecureLegacyCommandFamily::HolySuitTransferExperience ||
+        family ==
+            SecureLegacyCommandFamily::HolySuitConsumeWare ||
+        family ==
+            SecureLegacyCommandFamily::HolySuitTransformExperience;
 }
 
 bool HasValidRevision(

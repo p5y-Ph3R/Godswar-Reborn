@@ -76,19 +76,36 @@ internal sealed partial class PostgresGameStore
         long itemRowId,
         short itemLocation,
         int slotIndex,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool recomputeHolySuitPoints = false)
     {
         await using var command = new NpgsqlCommand("""
-            UPDATE character_items
-            SET item_location = @itemLocation,
-                slot_index = @slotIndex,
-                updated_at = now()
-            WHERE id = @itemRowId;
+            WITH moved AS (
+                UPDATE character_items
+                SET item_location = @itemLocation,
+                    slot_index = @slotIndex,
+                    updated_at = now()
+                WHERE id = @itemRowId
+                RETURNING user_id
+            )
+            SELECT CASE
+                WHEN @recomputeHolySuitPoints THEN
+                    public.recompute_character_holy_suit_points(user_id)
+                ELSE user_id
+            END
+            FROM moved;
             """, connection, transaction);
         command.Parameters.AddWithValue("itemRowId", itemRowId);
         command.Parameters.AddWithValue("itemLocation", itemLocation);
         command.Parameters.AddWithValue("slotIndex", (short)slotIndex);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        command.Parameters.AddWithValue(
+            "recomputeHolySuitPoints",
+            recomputeHolySuitPoints);
+        if (await command.ExecuteScalarAsync(cancellationToken) is not int)
+        {
+            throw new InvalidDataException(
+                "The moved item's Holy Suit points could not be recomputed.");
+        }
     }
 
     private static async Task<(string Equipment, string KitBag)> LoadAuthoritativeItemProjectionsForUpdateAsync(

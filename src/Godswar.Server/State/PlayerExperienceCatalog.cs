@@ -3,10 +3,12 @@ namespace Godswar.Server.State;
 internal static class PlayerExperienceCatalog
 {
     internal const int MaximumLevel = 200;
+    internal const int FighterLevelSealLevel = 89;
+    internal const long MaximumStoredExperience = uint.MaxValue;
 
     // Original server PlayerNextGradeExp table. Entry n is the fighter EXP
-    // needed to advance from level n; the level-200 entry remains useful to
-    // populate the client's progress field even though level 200 is the cap.
+    // needed to advance from level n. The level-200 entry is retained as
+    // progression metadata, but the client bar uses the UInt32 ceiling there.
     private static readonly int[] NextLevelExperience =
     [
         200, 252, 286, 345, 432, 500, 598, 729, 840, 986,
@@ -34,11 +36,66 @@ internal static class PlayerExperienceCatalog
     public static int GetNextLevelExperience(int level) =>
         NextLevelExperience[Math.Clamp(level, 1, MaximumLevel) - 1];
 
-    public static PlayerExperienceProgression Apply(int level, int currentExperience, int gainedExperience)
+    public static long GetClientExperienceMaximum(
+        int level,
+        bool fighterLevelSealed)
+    {
+        if (level is < 1 or > MaximumLevel)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(level),
+                level,
+                $"Fighter level must be between 1 and {MaximumLevel}.");
+        }
+
+        if (fighterLevelSealed)
+        {
+            if (level != FighterLevelSealLevel)
+            {
+                throw new InvalidOperationException(
+                    $"Fighter level sealing is valid only at level {FighterLevelSealLevel}.");
+            }
+
+            return MaximumStoredExperience;
+        }
+
+        return level == MaximumLevel
+            ? MaximumStoredExperience
+            : GetNextLevelExperience(level);
+    }
+
+    public static PlayerExperienceProgression Apply(
+        int level,
+        long currentExperience,
+        int gainedExperience,
+        bool fighterLevelSealed = false)
     {
         level = Math.Clamp(level, 1, MaximumLevel);
-        currentExperience = Math.Max(0, currentExperience);
+        currentExperience = Math.Clamp(
+            currentExperience,
+            0L,
+            MaximumStoredExperience);
         gainedExperience = Math.Max(0, gainedExperience);
+
+        if (fighterLevelSealed)
+        {
+            if (level != FighterLevelSealLevel)
+            {
+                throw new InvalidOperationException(
+                    $"Fighter level sealing is valid only at level {FighterLevelSealLevel}.");
+            }
+
+            var availableCredit =
+                MaximumStoredExperience - currentExperience;
+            var creditedExperience = checked((int)Math.Min(
+                gainedExperience,
+                availableCredit));
+            return new PlayerExperienceProgression(
+                level,
+                currentExperience + creditedExperience,
+                creditedExperience,
+                []);
+        }
 
         if (level >= MaximumLevel || gainedExperience == 0)
         {
@@ -49,7 +106,7 @@ internal static class PlayerExperienceCatalog
                 []);
         }
 
-        var accumulatedExperience = (long)currentExperience + gainedExperience;
+        var accumulatedExperience = currentExperience + gainedExperience;
         var levelUps = new List<PlayerLevelUpProgression>();
         while (level < MaximumLevel && accumulatedExperience >= GetNextLevelExperience(level))
         {
@@ -57,13 +114,15 @@ internal static class PlayerExperienceCatalog
             level++;
             levelUps.Add(new PlayerLevelUpProgression(
                 level,
-                (int)Math.Min(accumulatedExperience, int.MaxValue),
+                Math.Min(
+                    accumulatedExperience,
+                    MaximumStoredExperience),
                 GetNextLevelExperience(level)));
         }
 
         return new PlayerExperienceProgression(
             level,
-            (int)Math.Min(accumulatedExperience, int.MaxValue),
+            Math.Min(accumulatedExperience, MaximumStoredExperience),
             gainedExperience,
             levelUps);
     }
@@ -71,11 +130,11 @@ internal static class PlayerExperienceCatalog
 
 internal sealed record PlayerExperienceProgression(
     int Level,
-    int Experience,
+    long Experience,
     int ExperienceGained,
     IReadOnlyList<PlayerLevelUpProgression> LevelUps);
 
 internal readonly record struct PlayerLevelUpProgression(
     int Level,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience);

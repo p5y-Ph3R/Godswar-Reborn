@@ -76,7 +76,9 @@ internal sealed class GameCharacter
 
     public int Level { get; set; } = 1;
 
-    public int Experience { get; set; }
+    public long Experience { get; set; }
+
+    public bool FighterLevelSealed { get; set; }
 
     public int Silver { get; set; } = 10_000;
 

@@ -218,6 +218,17 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
+            if (await TryResolveSecureHolySuitOutsideRouteAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    "npc_not_authoritative_for_map",
+                    cancellationToken))
+            {
+                return;
+            }
+
             if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                     packet,
                     npcId,
@@ -262,6 +273,17 @@ internal sealed partial class GameClientHandler
                     holyStoneIntent,
                     "dialogue_route_mismatch",
                     cancellationToken);
+                return;
+            }
+
+            if (await TryResolveSecureHolySuitOutsideRouteAsync(
+                    packet,
+                    npcId,
+                    dialogIndex,
+                    subId,
+                    "dialogue_route_mismatch",
+                    cancellationToken))
+            {
                 return;
             }
 
@@ -426,6 +448,17 @@ internal sealed partial class GameClientHandler
             }
         }
 
+        if (route.Behavior == NpcDialogueBehavior.HolySuitDesign)
+        {
+            await HandleHolySuitDesignAsync(
+                packet,
+                npcId,
+                dialogIndex,
+                subId,
+                cancellationToken);
+            return;
+        }
+
         if (await TryReplayDurableGearMentorBeforeRouteRejectionAsync(
                 packet,
                 npcId,
@@ -443,23 +476,6 @@ internal sealed partial class GameClientHandler
                 ResolveSecureGearMentorCommandFamily(subId),
                 responseDialogIndex: dialogIndex))
         {
-            return;
-        }
-
-        if (route.Behavior == NpcDialogueBehavior.HolySuitDesign)
-        {
-            if (HolySuitDesignProtocol.IsMenuSubId(subId))
-            {
-                await _session.SendAsync(
-                    PacketBuilder.NpcFunctionActionResponse(
-                        npcId,
-                        dialogIndex,
-                        HolySuitDesignProtocol.TemporarilyDisabledResultSubId),
-                    cancellationToken,
-                    "NpcFunctionActionResponse");
-                Console.WriteLine(
-                    $"[holy-suit-design] unsupported original operation npc={npcId} subId={subId} response={HolySuitDesignProtocol.TemporarilyDisabledResultSubId}");
-            }
             return;
         }
 

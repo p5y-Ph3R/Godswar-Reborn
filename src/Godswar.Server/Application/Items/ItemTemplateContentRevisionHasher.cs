@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Godswar.Server.Application.Items;
 
-internal static class ItemTemplateContentRevisionHasher
+internal static partial class ItemTemplateContentRevisionHasher
 {
     public static string Compute(
         IReadOnlyList<ItemTemplateDefinition> definitions) =>

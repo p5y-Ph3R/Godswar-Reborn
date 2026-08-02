@@ -35,7 +35,11 @@ internal enum CommandFamily : ushort
     BagItemActivation = 26,
     PetPresenceTransition = 27,
     MonsterRewardSettlement = 28,
-    ProgressionIntervalSettlement = 29
+    ProgressionIntervalSettlement = 29,
+    HolySuitStoreExperience = 30,
+    HolySuitTransferExperience = 31,
+    HolySuitConsumeWare = 32,
+    HolySuitTransformExperience = 33
 }
 
 internal enum CommandIdentityStrength : byte

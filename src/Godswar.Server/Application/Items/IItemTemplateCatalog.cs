@@ -18,6 +18,8 @@ internal interface IItemTemplateCatalog
 
     IItemMaterialCatalog Materials { get; }
 
+    IHolySuitContentCatalog HolySuit { get; }
+
     bool TryGet(uint itemId, out ItemTemplateDefinition definition);
 }
 
@@ -30,7 +32,11 @@ internal sealed record ItemTemplateContentRevision(
     int EquipmentRankCount = 0,
     int HolySuitEffectCount = 0,
     int MaterialPolicyCount = 0,
-    int MaterialRecipeCount = 0);
+    int MaterialRecipeCount = 0,
+    int HolySuitTierCount = 0,
+    int HolySuitUpgradeCount = 0,
+    int HolySuitConsumableCount = 0,
+    int HolySuitPolicyCount = 0);
 
 internal sealed record ItemTemplateDefinition(
     uint Id,

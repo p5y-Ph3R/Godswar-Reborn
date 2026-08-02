@@ -195,7 +195,29 @@ internal static partial class PacketBuilder
             return;
         }
 
-        BinaryPrimitives.WriteInt32LittleEndian(record.Slice(28, 4), item.Exp);
+        if (IsNativeHolyBox(item.Id))
+        {
+            // The stock client reads a fixed-point UInt32 at record offset 56
+            // and divides it by ten for "Current accumulated EXP". A captured
+            // full Holy Box V therefore carries 4,000,000,000 as 00 28 6B EE.
+            // Offset 28 is equipment EXP and must remain zero for these boxes.
+            if (record.Length >= 60)
+            {
+                var fixedPointExperience = checked((uint)Math.Clamp(
+                    (long)item.Exp * 10L,
+                    uint.MinValue,
+                    uint.MaxValue));
+                BinaryPrimitives.WriteUInt32LittleEndian(
+                    record.Slice(56, 4),
+                    fixedPointExperience);
+            }
+        }
+        else
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(
+                record.Slice(28, 4),
+                item.Exp);
+        }
 
         // Captured item records pack holy suit and holy-stone socket count into one dword.
         BinaryPrimitives.WriteInt16LittleEndian(
@@ -207,6 +229,9 @@ internal static partial class PacketBuilder
 
         WriteHolyStoneValueRows(record, item);
     }
+
+    private static bool IsNativeHolyBox(uint itemId) =>
+        itemId is >= 9020 and <= 9024;
 
     private static void WriteHolyStoneValueRows(Span<byte> record, CompactItemEntry item)
     {

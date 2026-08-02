@@ -15,5 +15,5 @@ internal static class TestDeveloperItemCommand
             out request,
             out error,
             mounts,
-            TestItemContent.Catalog.Materials);
+            TestItemContent.Content.DeveloperItems);
 }

@@ -11,15 +11,21 @@ internal sealed class GameplayItemContent
     {
         Templates = templates ?? throw new ArgumentNullException(
             nameof(templates));
+        DeveloperItems = new PinnedDeveloperItemGrantCatalog(templates);
         DeveloperMounts = new DeveloperMountCatalog(templates);
         Mounts = new MountCatalog(templates, DeveloperMounts);
+        HolySuit = templates.HolySuit;
     }
 
     public IItemTemplateCatalog Templates { get; }
 
+    public IDeveloperItemGrantCatalog DeveloperItems { get; }
+
     public DeveloperMountCatalog DeveloperMounts { get; }
 
     public MountCatalog Mounts { get; }
+
+    public IHolySuitContentCatalog HolySuit { get; }
 }
 
 internal interface IGameplayItemContentProvider

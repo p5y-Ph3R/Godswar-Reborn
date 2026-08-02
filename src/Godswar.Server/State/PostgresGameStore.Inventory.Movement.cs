@@ -81,7 +81,8 @@ internal sealed partial class PostgresGameStore
             itemRowId.Value,
             ItemLocationKitBag,
             destinationSlot.Value,
-            cancellationToken);
+            cancellationToken,
+            recomputeHolySuitPoints: true);
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -235,7 +236,8 @@ internal sealed partial class PostgresGameStore
                 kitBagRowId.Value,
                 ItemLocationEquipment,
                 equipmentSlot,
-                cancellationToken);
+                cancellationToken,
+                recomputeHolySuitPoints: true);
         }
         else
         {
@@ -260,7 +262,8 @@ internal sealed partial class PostgresGameStore
                 kitBagRowId.Value,
                 ItemLocationEquipment,
                 equipmentSlot,
-                cancellationToken);
+                cancellationToken,
+                recomputeHolySuitPoints: true);
         }
 
         await transaction.CommitAsync(cancellationToken);

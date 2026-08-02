@@ -126,7 +126,7 @@ internal readonly record struct MonsterKillLevelUpProjectedEvent(
     EntityId Player,
     ulong ProjectionId,
     int Level,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience);
 
 internal readonly record struct MonsterKillExperienceProjectedEvent(
@@ -135,7 +135,7 @@ internal readonly record struct MonsterKillExperienceProjectedEvent(
     EntityId Player,
     ulong ProjectionId,
     int ExperienceGained,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience);
 
 internal readonly record struct MonsterKillTalentExperienceProjectedEvent(
@@ -153,7 +153,7 @@ internal readonly record struct MonsterDeathProgressionProjectedEvent(
     ulong ProjectionId,
     uint MonsterObjectId,
     uint MonsterSpawnGeneration,
-    int CurrentExperience,
+    long CurrentExperience,
     int CurrentTalentExperience,
     int CurrentTalentPoints);
 

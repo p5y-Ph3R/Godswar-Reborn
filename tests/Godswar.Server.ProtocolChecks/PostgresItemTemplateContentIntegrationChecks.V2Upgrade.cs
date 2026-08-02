@@ -61,26 +61,27 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             Check.Equal(
                 originalRevision,
                 upgraded.Revision,
-                "startup advances a valid v2 pointer to the complete v4 release");
+                "startup advances a valid v2 pointer to the complete v5 release");
             Check.Equal(
                 before,
                 await ReadRevisionFingerprintAsync(dataSource, v2Revision),
-                "v2-to-v4 upgrade leaves the sealed v2 release immutable");
+                "v2-to-v5 upgrade leaves the sealed v2 release immutable");
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(dataSource);
             Check.True(
-                loaded.Revision.ManifestVersion == 4 &&
+                loaded.Revision.ManifestVersion == 5 &&
                 loaded.Revision.MaterialPolicyCount > 0 &&
                 loaded.Revision.MaterialRecipeCount > 0 &&
                 loaded.Materials.DeveloperMaterials.Count ==
                     loaded.Revision.MaterialPolicyCount &&
                 loaded.Materials.GearMentorRecipes.Count ==
-                    loaded.Revision.MaterialRecipeCount,
-                "runtime pins the recipe-complete v4 publication after v2 upgrade");
+                    loaded.Revision.MaterialRecipeCount &&
+                loaded.HolySuit.Upgrades.Count == 70,
+                "runtime pins the Holy-Suit-complete v5 publication after v2 upgrade");
             var repeated = await PostgresItemTemplateBaselinePublisher
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 repeated.Revision == originalRevision && !repeated.Created,
-                "v2-to-v4 publication upgrade is idempotent");
+                "v2-to-v5 publication upgrade is idempotent");
         }
         finally
         {

@@ -101,16 +101,17 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 !upgraded.Revision.Equals(v3Revision, StringComparison.Ordinal),
-                "startup advances a valid v3 pointer to a new v4 release");
+                "startup advances a valid v3 pointer to a new v5 release");
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
                 dataSource);
             Check.True(
                 loaded.Revision.Sha256 == upgraded.Revision &&
-                loaded.Revision.ManifestVersion == 4 &&
+                loaded.Revision.ManifestVersion == 5 &&
                 loaded.Revision.MaterialRecipeCount > 0 &&
                 loaded.Materials.GearMentorRecipes.Count ==
-                    loaded.Revision.MaterialRecipeCount,
-                "runtime pins the recipe-complete official v4 publication");
+                    loaded.Revision.MaterialRecipeCount &&
+                loaded.HolySuit.Upgrades.Count == 70,
+                "runtime pins the Holy-Suit-complete official v5 publication");
             Check.True(
                 loaded.Materials.TryResolveForging(
                     decoy.ItemId,
@@ -118,19 +119,19 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 upgradedDecoy.StackCap == decoyStackCap &&
                 loaded.Materials.GearMentorRecipes.All(
                     recipe => recipe.SourceItemId != decoy.ItemId),
-                "v3-to-v4 upgrade preserves the non-recipe material policy");
+                "v3-to-v5 upgrade preserves the non-recipe material policy");
 
             var repeated = await PostgresItemTemplateBaselinePublisher
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 repeated.Revision == upgraded.Revision && !repeated.Created,
-                "v3-to-v4 publication upgrade is idempotent");
+                "v3-to-v5 publication upgrade is idempotent");
             Check.Equal(
                 before,
                 await ReadCompleteRevisionFingerprintAsync(
                     dataSource,
                     v3Revision),
-                "v3-to-v4 upgrade leaves the sealed v3 release immutable");
+                "v3-to-v5 upgrade leaves the sealed v3 release immutable");
         }
         finally
         {

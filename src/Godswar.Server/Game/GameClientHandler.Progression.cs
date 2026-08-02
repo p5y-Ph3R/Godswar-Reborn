@@ -183,11 +183,15 @@ internal sealed partial class GameClientHandler
                      ? progression.LevelUps
                      : [])
         {
+            var clientExperienceMaximum =
+                PlayerExperienceCatalog.GetClientExperienceMaximum(
+                    levelUp.Level,
+                    _character.FighterLevelSealed);
             await _session.SendAsync(
                 PacketBuilder.PlayerLevelUp(
                     LocalPlayerObjectId,
                     levelUp.Level,
-                    levelUp.NextLevelExperience,
+                    clientExperienceMaximum,
                     levelUp.CurrentExperience,
                     _character.MaxHp,
                     _character.CurrentHp,
@@ -200,7 +204,7 @@ internal sealed partial class GameClientHandler
                 PacketBuilder.PlayerLevelUp(
                     WorldObjectIds.ForPlayer(_character.Id),
                     levelUp.Level,
-                    levelUp.NextLevelExperience,
+                    clientExperienceMaximum,
                     levelUp.CurrentExperience,
                     _character.MaxHp,
                     _character.CurrentHp,
@@ -392,7 +396,7 @@ internal sealed partial class GameClientHandler
     private async Task SendMonsterDeathProgressionAsync(
         uint monsterObjectId,
         uint monsterSpawnGeneration,
-        int currentExperience,
+        long currentExperience,
         int currentTalentExperience,
         int currentTalentPoints,
         CancellationToken cancellationToken)

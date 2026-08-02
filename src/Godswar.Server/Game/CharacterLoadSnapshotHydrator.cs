@@ -70,6 +70,8 @@ internal static partial class CharacterLoadSnapshotHydrator
             PositionRevision = snapshot.Location.PositionRevision,
             Level = snapshot.Progression.Level,
             Experience = snapshot.Progression.Experience,
+            FighterLevelSealed =
+                snapshot.Progression.FighterLevelSealed,
             TalentPoints = snapshot.Progression.TalentPoints,
             TalentExperience = snapshot.Progression.TalentExperience,
             HolySuitPoints = snapshot.Progression.HolySuitPoints,

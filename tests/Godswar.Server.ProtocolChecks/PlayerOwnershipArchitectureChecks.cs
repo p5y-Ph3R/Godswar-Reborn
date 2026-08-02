@@ -29,6 +29,8 @@ internal static class PlayerOwnershipArchitectureChecks
         "src/Godswar.Server/Infrastructure/Inventory/" +
         "PostgresHolyStoneCommandExecutor.cs",
         "src/Godswar.Server/Infrastructure/Inventory/" +
+        "PostgresHolySuitCommandExecutor.cs",
+        "src/Godswar.Server/Infrastructure/Inventory/" +
         "PostgresKitBagItemDeleteCommandExecutor.cs",
         "src/Godswar.Server/Infrastructure/Inventory/" +
         "PostgresKitBagItemMoveCommandExecutor.cs",
@@ -53,7 +55,7 @@ internal static class PlayerOwnershipArchitectureChecks
     public static Task RunAsync()
     {
         var repositoryRoot = FindRepositoryRoot();
-        Check.Equal(18, ExecutorPaths.Length,
+        Check.Equal(19, ExecutorPaths.Length,
             "reviewed durable executor fence inventory");
         AssertExactExecutorInventory(repositoryRoot);
 

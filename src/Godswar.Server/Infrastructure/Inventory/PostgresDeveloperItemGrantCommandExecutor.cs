@@ -357,6 +357,18 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
             return true;
         }
 
+        if (_itemContent.DeveloperItems.TryResolveDeveloper(
+                itemId,
+                out var holyBox))
+        {
+            grantItem = new DeveloperGrantItemDefinition(
+                holyBox.ItemId,
+                holyBox.StackCap,
+                holyBox.GrantedBound,
+                "developer_empty_holy_box_grant");
+            return true;
+        }
+
         if (_itemContent.DeveloperMounts.TryResolveGrantable(
                 itemId,
                 out _))

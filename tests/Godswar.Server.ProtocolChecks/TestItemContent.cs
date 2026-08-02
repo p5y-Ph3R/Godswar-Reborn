@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Items;
+using Godswar.Server.Infrastructure.Items;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -22,12 +23,54 @@ internal static class TestItemContent
 
     private static readonly Lazy<GameplayItemContent> LazyContent =
         new(Create);
+    private static readonly Lazy<GameplayItemContent> LazyHolySuitContent =
+        new(CreateWithHolySuit);
 
     public static GameplayItemContent Content => LazyContent.Value;
+
+    public static GameplayItemContent HolySuitContent =>
+        LazyHolySuitContent.Value;
 
     public static IItemTemplateCatalog Catalog => Content.Templates;
 
     private static GameplayItemContent Create()
+    {
+        var definitions = CreateDefinitions(includeHolySuit: false);
+        return new GameplayItemContent(
+            PinnedItemTemplateCatalog.Create(
+                "protocol-check-reviewed-baseline",
+                definitions,
+                [],
+                [],
+                [],
+                ForgingMaterialCatalog.All,
+                GearEnhancementMaterialCatalog.All,
+                GearMentorMaterialCatalog.AttributeDusts,
+                GearMentorRecipes));
+    }
+
+    private static GameplayItemContent CreateWithHolySuit()
+    {
+        var definitions = CreateDefinitions(includeHolySuit: true);
+        return new GameplayItemContent(
+            PinnedItemTemplateCatalog.Create(
+                "protocol-check-reviewed-holy-suit-baseline",
+                definitions,
+                [],
+                [],
+                [],
+                ForgingMaterialCatalog.All,
+                GearEnhancementMaterialCatalog.All,
+                GearMentorMaterialCatalog.AttributeDusts,
+                GearMentorRecipes,
+                HolySuitContentBaseline.Tiers,
+                HolySuitContentBaseline.Upgrades,
+                HolySuitContentBaseline.Consumables,
+                HolySuitContentBaseline.OperationPolicy));
+    }
+
+    private static ItemTemplateDefinition[] CreateDefinitions(
+        bool includeHolySuit)
     {
         var seeds = ItemTemplateSeeds.All
             .Concat(ForgingMaterialCatalog.All.Select(
@@ -36,7 +79,12 @@ internal static class TestItemContent
                 static value => value.ToItemTemplateSeed()))
             .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(
                 static value => value.ToItemTemplateSeed()));
-        var definitions = seeds.Select(
+        if (includeHolySuit)
+        {
+            seeds = seeds.Concat(HolySuitContentBaseline.ItemTemplates);
+        }
+
+        return seeds.Select(
             static template => new ItemTemplateDefinition(
                 checked((uint)template.Id),
                 template.Kind,
@@ -51,16 +99,5 @@ internal static class TestItemContent
                 template.Texture,
                 template.Icon,
                 template.StatsJson)).ToArray();
-        return new GameplayItemContent(
-            PinnedItemTemplateCatalog.Create(
-                "protocol-check-reviewed-baseline",
-                definitions,
-                [],
-                [],
-                [],
-                ForgingMaterialCatalog.All,
-                GearEnhancementMaterialCatalog.All,
-                GearMentorMaterialCatalog.AttributeDusts,
-                GearMentorRecipes));
     }
 }

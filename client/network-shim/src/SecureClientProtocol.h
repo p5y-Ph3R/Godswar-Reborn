@@ -89,6 +89,10 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     CharacterDelete = 23,
     BagItemActivation = 26,
     PetPresenceTransition = 27,
+    HolySuitStoreExperience = 30,
+    HolySuitTransferExperience = 31,
+    HolySuitConsumeWare = 32,
+    HolySuitTransformExperience = 33,
 };
 
 struct SecureLegacyCommandResult final {

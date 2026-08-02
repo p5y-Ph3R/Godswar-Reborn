@@ -44,9 +44,14 @@ internal static partial class PostgresItemTemplateCatalogLoader
             transaction,
             publication.Revision,
             cancellationToken);
+        var holySuit = await ReadHolySuitPoliciesAsync(
+            connection,
+            transaction,
+            publication.Revision,
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        if (publication.ManifestVersion != 4 ||
+        if (publication.ManifestVersion != 5 ||
             definitions.Count != publication.EntryCount ||
             policies.Attributes.Count != publication.AttributeCount ||
             policies.EquipmentRanks.Count !=
@@ -55,6 +60,11 @@ internal static partial class PostgresItemTemplateCatalogLoader
                 publication.HolySuitEffectCount ||
             materials.Count != publication.MaterialPolicyCount ||
             materials.Recipes.Count != publication.MaterialRecipeCount ||
+            holySuit.Tiers.Count != publication.HolySuitTierCount ||
+            holySuit.Upgrades.Count != publication.HolySuitUpgradeCount ||
+            holySuit.Consumables.Count !=
+                publication.HolySuitConsumableCount ||
+            publication.HolySuitPolicyCount != 1 ||
             policies.Attributes.Count == 0 ||
             policies.EquipmentRanks.Count == 0 ||
             policies.HolySuitEffects.Count == 0 ||
@@ -63,7 +73,7 @@ internal static partial class PostgresItemTemplateCatalogLoader
         {
             throw new InvalidOperationException(
                 $"Published item-content revision {publication.Revision} " +
-                "has an incomplete v4 manifest.");
+                "has an incomplete v5 manifest.");
         }
 
         return PinnedItemTemplateCatalog.Create(
@@ -76,6 +86,10 @@ internal static partial class PostgresItemTemplateCatalogLoader
             materials.Enhancement,
             materials.Dusts,
             materials.Recipes,
+            holySuit.Tiers,
+            holySuit.Upgrades,
+            holySuit.Consumables,
+            holySuit.OperationPolicy,
             publication.Revision);
     }
 
@@ -88,7 +102,11 @@ internal static partial class PostgresItemTemplateCatalogLoader
         int EquipmentRankCount,
         int HolySuitEffectCount,
         int MaterialPolicyCount,
-        int MaterialRecipeCount)> ReadPublicationAsync(
+        int MaterialRecipeCount,
+        int HolySuitTierCount,
+        int HolySuitUpgradeCount,
+        int HolySuitConsumableCount,
+        int HolySuitPolicyCount)> ReadPublicationAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             CancellationToken cancellationToken)
@@ -103,6 +121,10 @@ internal static partial class PostgresItemTemplateCatalogLoader
                    revision.holy_suit_effect_count,
                    revision.material_policy_count,
                    revision.material_recipe_count,
+                   revision.holy_suit_tier_count,
+                   revision.holy_suit_upgrade_count,
+                   revision.holy_suit_consumable_count,
+                   revision.holy_suit_policy_count,
                    revision.sealed_at IS NOT NULL
             FROM item_template_content_publication publication
             JOIN item_template_content_revisions revision
@@ -117,7 +139,7 @@ internal static partial class PostgresItemTemplateCatalogLoader
                 "No item-template content revision is published.");
         }
 
-        if (!reader.GetBoolean(9))
+        if (!reader.GetBoolean(13))
         {
             throw new InvalidOperationException(
                 $"Published item-template revision {reader.GetString(0)} " +
@@ -133,7 +155,11 @@ internal static partial class PostgresItemTemplateCatalogLoader
             reader.GetInt32(5),
             reader.GetInt32(6),
             reader.GetInt32(7),
-            reader.GetInt32(8));
+            reader.GetInt32(8),
+            reader.GetInt32(9),
+            reader.GetInt32(10),
+            reader.GetInt32(11),
+            reader.GetInt32(12));
     }
 
     private static async Task<IReadOnlyList<ItemTemplateDefinition>>

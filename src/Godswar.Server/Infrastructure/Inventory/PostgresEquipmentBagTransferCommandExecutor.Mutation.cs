@@ -61,6 +61,11 @@ internal sealed partial class
             context.Command.EquipmentSlot,
             context.Command.KitBagSlot,
             cancellationToken);
+        await RecomputeHolySuitPointsAsync(
+            connection,
+            transaction,
+            context.Subject.CharacterId,
+            cancellationToken);
         await AdvanceInventoryRevisionAsync(
             connection,
             transaction,
@@ -103,6 +108,25 @@ internal sealed partial class
         await CommitAsync(transaction, cancellationToken);
         return EquipmentBagTransferExecutionResult
             .Committed(evidence.Receipt);
+    }
+
+    private async Task RecomputeHolySuitPointsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(
+            "SELECT public.recompute_character_holy_suit_points(" +
+            "@characterId);",
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("characterId", characterId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is not int)
+        {
+            throw new InvalidDataException(
+                "The equipped Holy Suit points could not be recomputed.");
+        }
     }
 
     private async Task AdvanceInventoryRevisionAsync(

@@ -47,6 +47,18 @@ internal static partial class Program
             ("Character camp starting location", CheckCharacterCampStartingLocationAsync),
             ("Saved character location persistence", CheckSavedCharacterLocationPersistenceAsync),
             ("Persistent monster-kill progression", CheckMonsterKillProgressionAsync),
+            (
+                PlayerExperienceSealingChecks.CheckName,
+                PlayerExperienceSealingChecks.RunAsync),
+            (
+                FighterLevelSealToolChecks.CheckName,
+                FighterLevelSealToolChecks.RunAsync),
+            (
+                FighterExperienceFixtureToolChecks.CheckName,
+                FighterExperienceFixtureToolChecks.RunAsync),
+            (
+                LegacyFighterExperienceWireChecks.CheckName,
+                LegacyFighterExperienceWireChecks.RunAsync),
             ("Additive fighter EXP boost stacking", CheckExperienceBoostStackingAsync),
             ("Online-only EXP and Talent boost duration", CheckOnlineProgressionBoostDurationAsync),
             ("World-session owned boost clock", CheckWorldSessionOwnedBoostClockAsync),
@@ -106,6 +118,9 @@ internal static partial class Program
             ("Occupied ghost-slot bag move parsing", CheckOccupiedGhostSlotBagMoveParsingAsync),
             ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("Developer material item command", CheckDeveloperForgingMaterialCommandAsync),
+            (
+                DeveloperHolyBoxGrantChecks.CheckName,
+                DeveloperHolyBoxGrantChecks.RunAsync),
             ("Developer mount catalog, command, and JSON grant", DeveloperMountCommandChecks.RunAsync),
             ("PostgreSQL developer mount grant and audit", PostgresDeveloperMountIntegrationChecks.RunAsync),
             ("PostgreSQL developer clear-bag scope and audit", PostgresKitBagClearIntegrationChecks.RunAsync),
@@ -125,6 +140,7 @@ internal static partial class Program
                 PostgresEquipmentForgeCommandIntegrationChecks.RunAsync),
             ("Gear-enhancer initial NPC protocol", CheckGearEnhancerInitialProtocolAsync),
             ("Holy-suit design original NPC protocol", CheckHolySuitDesignProtocolAsync),
+            ("Holy-suit bounded stock-client wire protocol", HolySuitWireProtocolChecks.RunAsync),
             ("NPC definitions and spawn layout", CheckNpcDefinitionsAndSpawnLayoutAsync),
             ("NPC multi-segment scene-key generation", NpcMultiSegmentSceneChecks.RunAsync),
             ("NPC movement-cell visibility", CheckNpcMovementCellVisibilityAsync),

@@ -17,7 +17,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         int EquipmentRankCount,
         int HolySuitEffectCount,
         int MaterialPolicyCount,
-        int MaterialRecipeCount);
+        int MaterialRecipeCount,
+        int HolySuitTierCount,
+        int HolySuitUpgradeCount,
+        int HolySuitConsumableCount,
+        int HolySuitPolicyCount);
 
     private sealed record ItemPolicySnapshot(
         IReadOnlyList<ItemAttributeDefinition> Attributes,
@@ -185,7 +189,12 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             transaction,
             release.Revision,
             cancellationToken);
-        if (release.ManifestVersion != 4 ||
+        var holySuit = await ReadPublishedHolySuitPoliciesAsync(
+            connection,
+            transaction,
+            release.Revision,
+            cancellationToken);
+        if (release.ManifestVersion != 5 ||
             release.MaterialPolicyCount <= 0 ||
             release.MaterialRecipeCount <= 0 ||
             definitions.Count != release.EntryCount ||
@@ -194,6 +203,10 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             policies.HolySuitEffects.Count != release.HolySuitEffectCount ||
             policies.MaterialPolicyCount != release.MaterialPolicyCount ||
             policies.MaterialRecipeCount != release.MaterialRecipeCount ||
+            holySuit.Tiers.Count != release.HolySuitTierCount ||
+            holySuit.Upgrades.Count != release.HolySuitUpgradeCount ||
+            holySuit.Consumables.Count != release.HolySuitConsumableCount ||
+            release.HolySuitPolicyCount != 1 ||
             policies.Attributes.Count == 0 ||
             policies.EquipmentRanks.Count == 0 ||
             policies.HolySuitEffects.Count == 0 ||
@@ -205,7 +218,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     policies.ForgingMaterials,
                     policies.EnhancementMaterials,
                     policies.AttributeDusts,
-                    policies.Recipes)
+                    policies.Recipes,
+                    holySuit.Tiers,
+                    holySuit.Upgrades,
+                    holySuit.Consumables,
+                    holySuit.OperationPolicy)
                 .Equals(release.Revision, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -492,6 +509,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         NpgsqlTransaction transaction,
         string revision,
         ItemPolicySnapshot policies,
+        HolySuitPolicySnapshot holySuit,
         CancellationToken cancellationToken)
     {
         await InsertCorePoliciesAsync(
@@ -501,6 +519,12 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             transaction,
             revision,
             policies,
+            cancellationToken);
+        await InsertHolySuitPoliciesAsync(
+            connection,
+            transaction,
+            revision,
+            holySuit,
             cancellationToken);
     }
 }

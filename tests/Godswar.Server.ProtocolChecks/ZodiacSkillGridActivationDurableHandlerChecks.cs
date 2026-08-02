@@ -419,7 +419,7 @@ internal static partial class
         int Level,
         int Hp,
         int Mp,
-        int Experience,
+        long Experience,
         int TalentExperience,
         int TalentPoints,
         int Silver,

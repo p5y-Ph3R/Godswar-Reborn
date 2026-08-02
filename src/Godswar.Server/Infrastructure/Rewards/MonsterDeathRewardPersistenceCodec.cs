@@ -194,8 +194,8 @@ internal static class MonsterDeathRewardPersistenceCodec
                 root.GetProperty("experienceGained").GetInt32(),
                 root.GetProperty("previousLevel").GetInt32(),
                 root.GetProperty("currentLevel").GetInt32(),
-                root.GetProperty("previousExperience").GetInt32(),
-                root.GetProperty("currentExperience").GetInt32(),
+                root.GetProperty("previousExperience").GetInt64(),
+                root.GetProperty("currentExperience").GetInt64(),
                 root.GetProperty("nextLevelExperience").GetInt32(),
                 levelUps,
                 root.GetProperty(
@@ -291,7 +291,7 @@ internal static class MonsterDeathRewardPersistenceCodec
             EnsureLevelUpShape(item);
             levelUps.Add(new MonsterDeathRewardLevelUp(
                 item.GetProperty("level").GetInt32(),
-                item.GetProperty("currentExperience").GetInt32(),
+                item.GetProperty("currentExperience").GetInt64(),
                 item.GetProperty("nextLevelExperience").GetInt32()));
         }
         return levelUps;

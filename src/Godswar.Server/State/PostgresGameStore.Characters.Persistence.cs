@@ -330,7 +330,7 @@ internal sealed partial class PostgresGameStore
             WeaponAuraEffect = reader.GetInt32(24),
             ArmorRank = reader.GetInt16(25),
             ArmorAuraEffect = reader.GetInt32(26),
-            Experience = reader.GetInt32(27),
+            Experience = reader.GetInt64(27),
             VitalsRevision = reader.GetInt64(28),
             ZodiacType = (byte)reader.GetInt16(29),
             ZodiacLuckyStatus = reader.GetInt32(30),
@@ -377,7 +377,8 @@ internal sealed partial class PostgresGameStore
             PurgeAfter = reader.IsDBNull(51)
                 ? null
                 : new DateTimeOffset(
-                    reader.GetDateTime(51).ToUniversalTime())
+                    reader.GetDateTime(51).ToUniversalTime()),
+            FighterLevelSealed = reader.GetBoolean(52)
         };
     }
 

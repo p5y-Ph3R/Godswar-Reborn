@@ -54,6 +54,18 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         ClearGearEnhancerSelection();
+        if (route.Behavior == NpcDialogueBehavior.HolySuitDesign &&
+            _character is { Level: < 70 })
+        {
+            await _session.SendAsync(
+                HolySuitDesignProtocol.BuildResultResponse(
+                    npc.InteractionId,
+                    HolySuitDesignProtocol.StoreLevelTooLowResultSubId),
+                cancellationToken,
+                "HolySuitLevelRequirement");
+            return;
+        }
+
         if (route.Behavior == NpcDialogueBehavior.GearMentor)
         {
             if (_account is null || _character is null)

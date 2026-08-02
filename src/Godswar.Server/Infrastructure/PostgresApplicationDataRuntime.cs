@@ -140,6 +140,11 @@ internal sealed class PostgresApplicationDataRuntime :
                 _dataSource,
                 outboxOptions,
                 itemContent);
+        HolySuitCommands =
+            new PostgresHolySuitCommandExecutor(
+                _dataSource,
+                outboxOptions,
+                itemContent);
         ZodiacSkillGridActivationCommands =
             new PostgresZodiacSkillGridActivationCommandExecutor(
                 _dataSource,
@@ -260,6 +265,8 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IHolyStoneCommandExecutor HolyStoneCommands { get; }
+
+    public IHolySuitCommandExecutor HolySuitCommands { get; }
 
     public IZodiacSkillGridActivationCommandExecutor
         ZodiacSkillGridActivationCommands

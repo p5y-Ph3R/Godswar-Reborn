@@ -109,10 +109,16 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterMaxMpOffset, 4), character.MaxMp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterCurrentHpOffset, 4), character.CurrentHp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterCurrentMpOffset, 4), character.CurrentMp);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(EnterExperienceOffset, 4), character.Experience);
-        BinaryPrimitives.WriteInt32LittleEndian(
+        WriteLegacyFighterExperience(
+            packet.AsSpan(EnterExperienceOffset, 4),
+            character.Experience,
+            nameof(character.Experience));
+        WriteLegacyFighterExperience(
             packet.AsSpan(EnterNextLevelExperienceOffset, 4),
-            PlayerExperienceCatalog.GetNextLevelExperience(character.Level));
+            PlayerExperienceCatalog.GetClientExperienceMaximum(
+                character.Level,
+                character.FighterLevelSealed),
+            "fighterExperienceMaximum");
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(EnterTalentExperienceOffset, 4),
             character.TalentExperience);

@@ -12,7 +12,7 @@ internal enum MonsterDeathRewardExecutionDisposition : byte
 
 internal sealed record MonsterDeathRewardProjection(
     int Level,
-    int Experience,
+    long Experience,
     int NextLevelExperience,
     int TalentExperience,
     int TalentPoints,
@@ -93,7 +93,7 @@ internal sealed record MonsterDeathRewardExecutionResult
             >= 1 and <=
                 MonsterDeathRewardProgressionContract
                     .MaximumCharacterLevel &&
-        projection.Experience >= 0 &&
+        projection.Experience is >= 0 and <= uint.MaxValue &&
         projection.NextLevelExperience >= 0 &&
         projection.TalentExperience is >= 0 and < 100 &&
         projection.TalentPoints >= 0 &&

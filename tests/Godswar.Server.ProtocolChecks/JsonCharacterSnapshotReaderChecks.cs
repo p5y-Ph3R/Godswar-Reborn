@@ -77,6 +77,10 @@ internal static partial class JsonCharacterSnapshotReaderChecks
             var talent = SkillTalentSeeds.Talents.First(seed =>
                 seed.ClassId == 1);
             var character = CreateCharacter(711, 411, "JsonSnapshot");
+            character.Level =
+                PlayerExperienceCatalog.FighterLevelSealLevel;
+            character.Experience = 4_000_000_000L;
+            character.FighterLevelSealed = true;
             character.CurrentHp = character.MaxHp + 250;
             character.CurrentMp = character.MaxMp + 50;
             character.ZodiacSkillGridLevels =
@@ -173,6 +177,20 @@ internal static partial class JsonCharacterSnapshotReaderChecks
                 character.Level,
                 loaded.Progression.Level,
                 "JSON progression level");
+            Check.Equal(
+                character.Experience,
+                loaded.Progression.Experience,
+                "JSON progression preserves UInt32-range fighter EXP");
+            Check.True(
+                loaded.Progression.FighterLevelSealed,
+                "JSON snapshot preserves the fighter level seal");
+            var cloned = await store.GetFirstCharacterAsync(
+                character.AccountId) ??
+                throw new InvalidOperationException(
+                    "Expected one cloned JSON character.");
+            Check.True(
+                cloned.FighterLevelSealed,
+                "JSON compatibility clone preserves the fighter level seal");
             Check.Equal(
                 character.Silver,
                 loaded.Wallet.Silver,

@@ -100,6 +100,7 @@
     <ClInclude Include="SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureHolyStoneCommandIdentity.h" />
+    <ClInclude Include="SecureHolySuitCommandIdentity.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentity.h" />
     <ClInclude Include="SecureKitBagItemMoveIdentity.h" />
     <ClInclude Include="SecureLegacyCommandIdentity.h" />
@@ -158,6 +159,7 @@
     <ClCompile Include="SecureEquipmentBagTransferIdentity.cpp" />
     <ClCompile Include="SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="SecureHolyStoneCommandIdentity.cpp" />
+    <ClCompile Include="SecureHolySuitCommandIdentity.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentity.cpp" />
     <ClCompile Include="SecureKitBagItemMoveIdentity.cpp" />
     <ClCompile Include="SecureLegacyCommandOperation.cpp" />
@@ -170,7 +172,9 @@
     <ClCompile Include="SecurePendingOperationRegistry.Pets.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.HolyEquipment.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.HolyStone.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.HolySuit.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagDelete.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagItemMove.cpp" />

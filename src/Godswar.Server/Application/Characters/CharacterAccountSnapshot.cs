@@ -49,10 +49,18 @@ internal sealed record CharacterLocationSnapshot(
 
 internal sealed record CharacterProgressionSnapshot(
     int Level,
-    int Experience,
+    long Experience,
     int TalentPoints,
     int TalentExperience,
-    int HolySuitPoints);
+    int HolySuitPoints,
+    bool FighterLevelSealed,
+    long Revision = 0);
+
+internal static class CharacterProgressionSnapshotRules
+{
+    public const int MaximumCharacterLevel = 200;
+    public const int FighterLevelSealLevel = 89;
+}
 
 internal sealed record CharacterVitalsSnapshot(
     int BaseMaxHp,
@@ -71,7 +79,8 @@ internal sealed record CharacterLoadoutSnapshot(
     short WeaponRank,
     int WeaponAuraEffect,
     short ArmorRank,
-    int ArmorAuraEffect);
+    int ArmorAuraEffect,
+    long InventoryRevision = 0);
 
 internal sealed record CharacterZodiacSnapshot(
     byte Type,

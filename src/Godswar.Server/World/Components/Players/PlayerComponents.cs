@@ -51,7 +51,8 @@ internal struct PlayerVitalsComponent
 
 internal readonly record struct PlayerProgressionComponent(
     int Level,
-    int Experience,
+    long Experience,
+    bool FighterLevelSealed,
     int TalentPoints,
     int TalentExperience,
     int HolySuitPoints);

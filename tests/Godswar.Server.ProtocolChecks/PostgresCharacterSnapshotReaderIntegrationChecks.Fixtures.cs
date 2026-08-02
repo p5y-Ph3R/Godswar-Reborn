@@ -36,7 +36,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 Face = 1,
                 Faith = 2,
                 Level = 37,
-                Experience = 987_654,
+                Experience = 4_000_000_000L,
                 Silver = 654_321,
                 Gold = 1_234,
                 MaxHp = 2_400,
@@ -98,6 +98,30 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             TalentId = talentId,
             PetId = petId
         };
+    }
+
+    private static async Task SealFighterLevelAsync(
+        NpgsqlDataSource dataSource,
+        SnapshotFixture fixture)
+    {
+        await using var command = dataSource.CreateCommand(
+            """
+            UPDATE public.character_base
+            SET fighter_job_lv = 89,
+                fighter_level_sealed = true
+            WHERE id = @characterId
+              AND account_id = @accountId;
+            """);
+        command.Parameters.AddWithValue(
+            "characterId",
+            fixture.CharacterId);
+        command.Parameters.AddWithValue(
+            "accountId",
+            fixture.AccountId);
+        Check.Equal(
+            1,
+            await command.ExecuteNonQueryAsync(),
+            "parity snapshot fixture seals one level-89 fighter");
     }
 
     private static async Task<int> UpsertTalentAsync(

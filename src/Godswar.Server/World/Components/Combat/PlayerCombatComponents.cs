@@ -238,7 +238,7 @@ internal struct PlayerCommittedProgressionComponent
 {
     public PlayerCommittedProgressionComponent(
         int level,
-        int experience,
+        long experience,
         int talentExperience,
         int talentPoints,
         long revision,
@@ -253,7 +253,7 @@ internal struct PlayerCommittedProgressionComponent
     }
 
     public int Level;
-    public int Experience;
+    public long Experience;
     public int TalentExperience;
     public int TalentPoints;
     public long Revision;
@@ -262,7 +262,7 @@ internal struct PlayerCommittedProgressionComponent
 
 internal readonly record struct CommittedLevelUpSnapshot(
     int Level,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience);
 
 /// <summary>
@@ -272,7 +272,7 @@ internal readonly record struct CommittedCharacterProgressionSnapshot(
     int ExperienceGained,
     int PreviousLevel,
     int CurrentLevel,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience,
     ImmutableArray<CommittedLevelUpSnapshot> LevelUps,
     int TalentExperienceGained,

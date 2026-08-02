@@ -21,6 +21,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             dataSource,
             $"snap_parity_{token}",
             $"SnapParity{token}");
+        await SealFighterLevelAsync(dataSource, fixture);
         fixtures.Add(fixture);
 
         var legacyCharacter =
@@ -65,6 +66,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
         var snapshot = accountSnapshot.Character ??
             throw new InvalidOperationException(
                 "B06 reader returned an empty parity fixture.");
+        Check.True(
+            snapshot.Progression.FighterLevelSealed,
+            "sealed parity fixture exposes its durable level seal");
 
         AssertCoreParity(legacyCharacter, snapshot);
         AssertStatsParity(legacyStats, focusedStats);
@@ -103,6 +107,9 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             legacyCharacter.VitalsRevision,
             hydrated.Character.VitalsRevision,
             "hydration does not invent a persistence revision");
+        Check.True(
+            hydrated.Character.FighterLevelSealed,
+            "hydration preserves the durable fighter level seal");
         Check.Equal(
             legacyPets.Count,
             hydrated.Pets.Count,
@@ -273,6 +280,10 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             expected.Experience,
             actual.Progression.Experience,
             "snapshot experience matches the legacy reader");
+        Check.Equal(
+            expected.FighterLevelSealed,
+            actual.Progression.FighterLevelSealed,
+            "snapshot fighter level seal matches the legacy reader");
         Check.Equal(
             expected.TalentPoints,
             actual.Progression.TalentPoints,

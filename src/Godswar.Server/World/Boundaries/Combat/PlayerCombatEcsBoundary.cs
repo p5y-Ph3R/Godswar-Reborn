@@ -17,7 +17,7 @@ internal readonly record struct PlayerCombatResourceSnapshot(
 
 internal readonly record struct PlayerCommittedProgressionSnapshot(
     int Level,
-    int Experience,
+    long Experience,
     int TalentExperience,
     int TalentPoints,
     long Revision,
@@ -246,12 +246,12 @@ internal static class PlayerCombatEcsBoundary
         ArgumentOutOfRangeException.ThrowIfNegative(
             snapshot.Progression.Revision);
         if (snapshot.Progression.Level <= 0 ||
-            snapshot.Progression.Experience < 0 ||
+            snapshot.Progression.Experience is < 0 or > uint.MaxValue ||
             snapshot.Progression.TalentExperience < 0 ||
             snapshot.Progression.TalentPoints < 0)
         {
             throw new ArgumentException(
-                "Committed progression values must be non-negative.",
+                "Committed progression values are outside runtime bounds.",
                 nameof(snapshot));
         }
     }

@@ -13,7 +13,8 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
         ItemAttributeDefinition[] attributes,
         EquipmentRankDefinition[] equipmentRanks,
         HolySuitEffectDefinition[] holySuitEffects,
-        PinnedItemMaterialCatalog materials)
+        PinnedItemMaterialCatalog materials,
+        PinnedHolySuitContentCatalog holySuit)
     {
         Revision = revision;
         All = Array.AsReadOnly(definitions);
@@ -23,6 +24,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
         EquipmentRanks = Array.AsReadOnly(equipmentRanks);
         HolySuitEffects = Array.AsReadOnly(holySuitEffects);
         Materials = materials;
+        HolySuit = holySuit;
     }
 
     public ItemTemplateContentRevision Revision { get; }
@@ -36,6 +38,8 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
     public IReadOnlyList<HolySuitEffectDefinition> HolySuitEffects { get; }
 
     public IItemMaterialCatalog Materials { get; }
+
+    public IHolySuitContentCatalog HolySuit { get; }
 
     public bool TryGet(
         uint itemId,
@@ -71,6 +75,10 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             [],
             [],
             [],
+            [],
+            [],
+            [],
+            null,
             expectedRevision,
             manifestVersion: 2);
 
@@ -94,6 +102,10 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             enhancementMaterials,
             attributeDusts,
             [],
+            [],
+            [],
+            [],
+            null,
             expectedRevision,
             manifestVersion: 3);
 
@@ -118,8 +130,44 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             enhancementMaterials,
             attributeDusts,
             recipes,
+            [],
+            [],
+            [],
+            null,
             expectedRevision,
             manifestVersion: 4);
+
+    public static PinnedItemTemplateCatalog Create(
+        string source,
+        IReadOnlyList<ItemTemplateDefinition> definitions,
+        IReadOnlyList<ItemAttributeDefinition> attributes,
+        IReadOnlyList<EquipmentRankDefinition> equipmentRanks,
+        IReadOnlyList<HolySuitEffectDefinition> holySuitEffects,
+        IReadOnlyList<ForgingMaterialDefinition> forgingMaterials,
+        IReadOnlyList<GearEnhancementMaterialDefinition> enhancementMaterials,
+        IReadOnlyList<AttributeDustDefinition> attributeDusts,
+        IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes,
+        IReadOnlyList<HolySuitTierDefinition> holySuitTiers,
+        IReadOnlyList<HolySuitUpgradeDefinition> holySuitUpgrades,
+        IReadOnlyList<HolySuitConsumableDefinition> holySuitConsumables,
+        HolySuitOperationPolicy holySuitOperationPolicy,
+        string? expectedRevision = null) =>
+        CreateCore(
+            source,
+            definitions,
+            attributes,
+            equipmentRanks,
+            holySuitEffects,
+            forgingMaterials,
+            enhancementMaterials,
+            attributeDusts,
+            recipes,
+            holySuitTiers,
+            holySuitUpgrades,
+            holySuitConsumables,
+            holySuitOperationPolicy,
+            expectedRevision,
+            manifestVersion: 5);
 
     private static PinnedItemTemplateCatalog CreateCore(
         string source,
@@ -131,6 +179,10 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
         IReadOnlyList<GearEnhancementMaterialDefinition> enhancementMaterials,
         IReadOnlyList<AttributeDustDefinition> attributeDusts,
         IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes,
+        IReadOnlyList<HolySuitTierDefinition> holySuitTiers,
+        IReadOnlyList<HolySuitUpgradeDefinition> holySuitUpgrades,
+        IReadOnlyList<HolySuitConsumableDefinition> holySuitConsumables,
+        HolySuitOperationPolicy? holySuitOperationPolicy,
         string? expectedRevision,
         int manifestVersion)
     {
@@ -179,6 +231,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             .Select(static definition => definition.Id)
             .ToHashSet();
         var materialCatalog = manifestVersion == 4
+            || manifestVersion == 5
             ? PinnedItemMaterialCatalog.Create(
                 forgingMaterials,
                 enhancementMaterials,
@@ -191,6 +244,15 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 attributeDusts,
                 knownTemplateIds,
                 allowEmpty: manifestVersion == 2);
+        var holySuitCatalog = manifestVersion == 5
+            ? PinnedHolySuitContentCatalog.Create(
+                snapshot,
+                holySuitTiers,
+                holySuitUpgrades,
+                holySuitConsumables,
+                holySuitOperationPolicy ?? throw new InvalidOperationException(
+                    "Manifest version 5 requires a Holy Suit policy."))
+            : PinnedHolySuitContentCatalog.Empty;
 
         var revision = manifestVersion switch
         {
@@ -216,6 +278,19 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 materialCatalog.GearEnhancementMaterials,
                 materialCatalog.AttributeDusts,
                 materialCatalog.GearMentorRecipes),
+            5 => ItemTemplateContentRevisionHasher.Compute(
+                snapshot,
+                attributeSnapshot,
+                rankSnapshot,
+                holySuitSnapshot,
+                materialCatalog.ForgingMaterials,
+                materialCatalog.GearEnhancementMaterials,
+                materialCatalog.AttributeDusts,
+                materialCatalog.GearMentorRecipes,
+                holySuitCatalog.Tiers,
+                holySuitCatalog.Upgrades,
+                holySuitCatalog.Consumables,
+                holySuitCatalog.OperationPolicy!),
             _ => throw new InvalidOperationException(
                 $"Unsupported item-content manifest version {manifestVersion}.")
         };
@@ -238,11 +313,16 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 MaterialPolicyCount: materialCatalog.ForgingMaterials.Count +
                     materialCatalog.GearEnhancementMaterials.Count +
                     materialCatalog.AttributeDusts.Count,
-                MaterialRecipeCount: materialCatalog.GearMentorRecipes.Count),
+                MaterialRecipeCount: materialCatalog.GearMentorRecipes.Count,
+                HolySuitTierCount: holySuitCatalog.Tiers.Count,
+                HolySuitUpgradeCount: holySuitCatalog.Upgrades.Count,
+                HolySuitConsumableCount: holySuitCatalog.Consumables.Count,
+                HolySuitPolicyCount: holySuitCatalog.IsAvailable ? 1 : 0),
             snapshot,
             attributeSnapshot,
             rankSnapshot,
             holySuitSnapshot,
-            materialCatalog);
+            materialCatalog,
+            holySuitCatalog);
     }
 }

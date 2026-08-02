@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -8,15 +9,19 @@ internal static partial class CharacterSnapshotContractChecks
     private static readonly DateTimeOffset FixedUtc =
         new(2026, 7, 29, 1, 2, 3, TimeSpan.Zero);
 
-    internal static CharacterAccountSnapshot CreateValidSnapshot()
+    internal static CharacterAccountSnapshot CreateValidSnapshot(
+        bool fighterLevelSealed = false)
     {
         const int accountId = 7;
         const int characterId = 19;
+        var level = fighterLevelSealed
+            ? PlayerExperienceCatalog.FighterLevelSealLevel
+            : 80;
         var stats = new CharacterCalculatedStatsSnapshot(
             characterId,
             accountId,
             "SnapshotHero",
-            80,
+            level,
             9_500,
             1_200,
             8_900,
@@ -106,7 +111,13 @@ internal static partial class CharacterSnapshotContractChecks
                 12.5f,
                 -33.25f,
                 PositionRevision: 4),
-            new CharacterProgressionSnapshot(80, 1_234_567, 99, 98, 97),
+            new CharacterProgressionSnapshot(
+                level,
+                1_234_567,
+                99,
+                98,
+                97,
+                fighterLevelSealed),
             new CharacterVitalsSnapshot(1_500, 177, 8_900, 1_100, 42),
             new CharacterWalletSnapshot(10_000_000, 9_000_000),
             new CharacterLoadoutSnapshot(

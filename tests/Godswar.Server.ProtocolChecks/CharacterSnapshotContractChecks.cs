@@ -45,6 +45,14 @@ internal static partial class CharacterSnapshotContractChecks
 
     private static void CheckValidAndEmptySnapshots()
     {
+        Check.Equal(
+            PlayerExperienceCatalog.FighterLevelSealLevel,
+            CharacterProgressionSnapshotRules.FighterLevelSealLevel,
+            "snapshot and gameplay level-seal rules agree");
+        Check.Equal(
+            PlayerExperienceCatalog.MaximumLevel,
+            CharacterProgressionSnapshotRules.MaximumCharacterLevel,
+            "snapshot and gameplay maximum-level rules agree");
         var valid = CreateValidSnapshot();
         CharacterSnapshotContract.Validate(valid);
         CharacterSnapshotContract.Validate(
@@ -141,6 +149,41 @@ internal static partial class CharacterSnapshotContractChecks
             (int)CharacterSnapshotFailureReason.InvalidData,
             (int)invalid.Reason,
             "duplicate skill rows have a finite invalid-data reason");
+
+        var invalidLevelSeal = valid with
+        {
+            Character = valid.Character! with
+            {
+                Progression = valid.Character.Progression with
+                {
+                    FighterLevelSealed = true
+                }
+            }
+        };
+        var invalidSeal = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(invalidLevelSeal));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.InvalidData,
+            (int)invalidSeal.Reason,
+            "level sealing outside level 89 has a finite invalid-data reason");
+
+        var aboveMaximumLevel = valid with
+        {
+            Character = valid.Character! with
+            {
+                Progression = valid.Character.Progression with
+                {
+                    Level =
+                        CharacterProgressionSnapshotRules.MaximumCharacterLevel + 1
+                }
+            }
+        };
+        var invalidMaximum = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(aboveMaximumLevel));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.InvalidData,
+            (int)invalidMaximum.Reason,
+            "fighter level above 200 has a finite invalid-data reason");
     }
 
     private static void CheckHydration()
@@ -179,5 +222,13 @@ internal static partial class CharacterSnapshotContractChecks
         Check.Equal(1, hydrated.Pets[0].CharacterBonuses.Count, "pet bonuses hydrate");
         Check.Equal(1, hydrated.Pets[0].Skills.Count, "pet skills hydrate");
         Check.Equal(1, hydrated.PersonalBoosts.Count, "raw personal boosts are retained");
+
+        var sealedHydrated = CharacterLoadSnapshotHydrator.Hydrate(
+            CreateValidSnapshot(fighterLevelSealed: true)) ??
+            throw new InvalidOperationException(
+                "Valid sealed character snapshot did not hydrate.");
+        Check.True(
+            sealedHydrated.Character.FighterLevelSealed,
+            "durable fighter level seal hydrates into the runtime projection");
     }
 }

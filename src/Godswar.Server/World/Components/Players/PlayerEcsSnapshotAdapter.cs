@@ -82,6 +82,7 @@ internal static class PlayerEcsSnapshotAdapter
             VitalsRevision = vitals.Revision,
             Level = progression.Level,
             Experience = progression.Experience,
+            FighterLevelSealed = progression.FighterLevelSealed,
             TalentPoints = progression.TalentPoints,
             TalentExperience = progression.TalentExperience,
             HolySuitPoints = progression.HolySuitPoints,

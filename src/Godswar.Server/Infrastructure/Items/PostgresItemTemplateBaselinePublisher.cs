@@ -20,7 +20,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "reviewed-item-content-v4+skillbooks-v1+materials-v1+recipes-v1";
+        "reviewed-item-content-v5+holy-suit-v3";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -42,27 +42,43 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             connection,
             transaction,
             cancellationToken);
-        if (existing is { ManifestVersion: 4 })
+        if (existing is { ManifestVersion: 5 })
         {
             await VerifyPublishedReleaseAsync(
                 connection,
                 transaction,
                 existing,
                 cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return new ItemTemplatePublicationResult(
-                existing.Revision,
-                existing.EntryCount,
-                Created: false);
+            var publishedHolySuit =
+                await ReadPublishedHolySuitPoliciesAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+            if (publishedHolySuit.OperationPolicy.Equals(
+                    ReviewedHolySuitPolicy.OperationPolicy))
+            {
+                await EnsureHolySuitMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return new ItemTemplatePublicationResult(
+                    existing.Revision,
+                    existing.EntryCount,
+                    Created: false);
+            }
         }
 
-        var snapshot = await PrepareV4PublicationAsync(
+        var snapshot = await PrepareV5PublicationAsync(
             connection,
             transaction,
             existing,
             cancellationToken);
         var definitions = snapshot.Definitions;
         var policies = snapshot.Policies;
+        var holySuit = snapshot.HolySuit;
         var revision = ItemTemplateContentRevisionHasher.Compute(
             definitions,
             policies.Attributes,
@@ -71,7 +87,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             policies.ForgingMaterials,
             policies.EnhancementMaterials,
             policies.AttributeDusts,
-            policies.Recipes);
+            policies.Recipes,
+            holySuit.Tiers,
+            holySuit.Upgrades,
+            holySuit.Consumables,
+            holySuit.OperationPolicy);
 
         var created = await InsertRevisionAsync(
             connection,
@@ -79,6 +99,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             revision,
             definitions.Count,
             policies,
+            holySuit,
             cancellationToken);
         if (created)
         {
@@ -93,6 +114,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 transaction,
                 revision,
                 policies,
+                holySuit,
                 cancellationToken);
         }
         await VerifyDefinitionIntegrityAsync(
@@ -101,6 +123,12 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             revision,
             definitions,
             policies,
+            holySuit,
+            cancellationToken);
+        await EnsureHolySuitMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
             cancellationToken);
         await PublishRevisionAsync(
             connection,
@@ -128,6 +156,10 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                                 revision.holy_suit_effect_count,
                                 revision.material_policy_count,
                                 revision.material_recipe_count,
+                                revision.holy_suit_tier_count,
+                                revision.holy_suit_upgrade_count,
+                                revision.holy_suit_consumable_count,
+                                revision.holy_suit_policy_count,
                                 revision.sealed_at IS NOT NULL
                          FROM item_template_content_publication publication
                          JOIN item_template_content_revisions revision
@@ -139,7 +171,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         {
             if (await reader.ReadAsync(cancellationToken))
             {
-                if (!reader.GetBoolean(9))
+                if (!reader.GetBoolean(13))
                 {
                     throw new InvalidOperationException(
                         $"Published item-template revision {reader.GetString(0)} is not sealed.");
@@ -154,7 +186,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     reader.GetInt32(5),
                     reader.GetInt32(6),
                     reader.GetInt32(7),
-                    reader.GetInt32(8));
+                    reader.GetInt32(8),
+                    reader.GetInt32(9),
+                    reader.GetInt32(10),
+                    reader.GetInt32(11),
+                    reader.GetInt32(12));
             }
         }
 
@@ -201,159 +237,13 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task UpsertReviewedBaselineAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        ValidateReviewedSkillBookConflicts();
-        await using var command = new NpgsqlCommand("""
-            INSERT INTO item_templates (
-                id, kind, name_key, display_name, equipment_slot, class_ids,
-                min_level, max_level, hand, skill_flag, texture, icon, stats
-            )
-            VALUES (
-                @id, @kind, @nameKey, @displayName, @equipmentSlot, @classIds,
-                @minLevel, @maxLevel, @hand, @skillFlag, @texture, @icon, @stats
-            )
-            ON CONFLICT (id) DO UPDATE
-            SET kind = EXCLUDED.kind,
-                name_key = EXCLUDED.name_key,
-                display_name = EXCLUDED.display_name,
-                equipment_slot = EXCLUDED.equipment_slot,
-                class_ids = EXCLUDED.class_ids,
-                min_level = EXCLUDED.min_level,
-                max_level = EXCLUDED.max_level,
-                hand = EXCLUDED.hand,
-                skill_flag = EXCLUDED.skill_flag,
-                texture = EXCLUDED.texture,
-                icon = EXCLUDED.icon,
-                stats = EXCLUDED.stats;
-            """, connection, transaction);
-
-        var templates = ItemTemplateSeeds.All
-            .Concat(SkillTalentSeeds.SkillBooks.Select(
-                static skillBook => skillBook.ToItemTemplateSeed()))
-            .Concat(ForgingMaterialCatalog.All.Select(
-                static material => material.ToItemTemplateSeed()))
-            .Concat(GearEnhancementMaterialCatalog.All.Select(
-                static material => material.ToItemTemplateSeed()))
-            .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(
-                static material => material.ToItemTemplateSeed()));
-        foreach (var template in templates)
-        {
-            command.Parameters.Clear();
-            command.Parameters.AddWithValue("id", template.Id);
-            command.Parameters.AddWithValue("kind", template.Kind);
-            command.Parameters.AddWithValue("nameKey", template.NameKey);
-            command.Parameters.AddWithValue(
-                "displayName",
-                template.DisplayName);
-            command.Parameters.AddWithValue(
-                "equipmentSlot",
-                template.EquipmentSlot);
-            command.Parameters.Add(new NpgsqlParameter(
-                "classIds",
-                NpgsqlDbType.Array | NpgsqlDbType.Smallint)
-            {
-                Value = template.ClassIds
-            });
-            command.Parameters.Add(new NpgsqlParameter(
-                "minLevel",
-                NpgsqlDbType.Integer)
-            {
-                Value = template.MinLevel is null
-                    ? DBNull.Value
-                    : template.MinLevel
-            });
-            command.Parameters.Add(new NpgsqlParameter(
-                "maxLevel",
-                NpgsqlDbType.Integer)
-            {
-                Value = template.MaxLevel is null
-                    ? DBNull.Value
-                    : template.MaxLevel
-            });
-            command.Parameters.Add(new NpgsqlParameter(
-                "hand",
-                NpgsqlDbType.Smallint)
-            {
-                Value = template.Hand is null
-                    ? DBNull.Value
-                    : template.Hand
-            });
-            command.Parameters.Add(new NpgsqlParameter(
-                "skillFlag",
-                NpgsqlDbType.Integer)
-            {
-                Value = template.SkillFlag is null
-                    ? DBNull.Value
-                    : template.SkillFlag
-            });
-            command.Parameters.AddWithValue("texture", template.Texture);
-            command.Parameters.AddWithValue("icon", template.Icon);
-            command.Parameters.Add(new NpgsqlParameter(
-                "stats",
-                NpgsqlDbType.Jsonb)
-            {
-                Value = template.StatsJson
-            });
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-    }
-
-    private static async Task<IReadOnlyList<ItemTemplateDefinition>>
-        ReadAuthoritativeDefinitionsAsync(
-            NpgsqlConnection connection,
-            NpgsqlTransaction transaction,
-            CancellationToken cancellationToken)
-    {
-        var definitions = new List<ItemTemplateDefinition>();
-        await using var command = new NpgsqlCommand("""
-            SELECT id, kind, name_key, display_name, equipment_slot,
-                   class_ids, min_level, max_level, hand, skill_flag,
-                   texture, icon, stats::text
-            FROM item_templates
-            ORDER BY id;
-            """, connection, transaction);
-        await using var reader =
-            await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            definitions.Add(ReadDefinition(reader));
-        }
-
-        if (definitions.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "The authoritative item-template table is empty.");
-        }
-
-        return definitions;
-    }
-
-    internal static ItemTemplateDefinition ReadDefinition(
-        NpgsqlDataReader reader) => new(
-            checked((uint)reader.GetInt32(0)),
-            reader.GetString(1),
-            reader.GetString(2),
-            reader.GetString(3),
-            reader.GetInt16(4),
-            reader.GetFieldValue<short[]>(5),
-            reader.IsDBNull(6) ? null : reader.GetInt32(6),
-            reader.IsDBNull(7) ? null : reader.GetInt32(7),
-            reader.IsDBNull(8) ? null : reader.GetInt16(8),
-            reader.IsDBNull(9) ? null : reader.GetInt32(9),
-            reader.GetString(10),
-            reader.GetString(11),
-            reader.GetString(12));
-
     private static async Task<bool> InsertRevisionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         string revision,
         int entryCount,
         ItemPolicySnapshot policies,
+        HolySuitPolicySnapshot holySuit,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
@@ -361,12 +251,15 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 revision, entry_count, source, manifest_version,
                 attribute_count, equipment_rank_count,
                 holy_suit_effect_count, material_policy_count,
-                material_recipe_count)
+                material_recipe_count, holy_suit_tier_count,
+                holy_suit_upgrade_count, holy_suit_consumable_count,
+                holy_suit_policy_count)
             VALUES (
-                @revision, @entryCount, @source, 4,
+                @revision, @entryCount, @source, 5,
                 @attributeCount, @equipmentRankCount,
                 @holySuitEffectCount, @materialPolicyCount,
-                @materialRecipeCount)
+                @materialRecipeCount, @holySuitTierCount,
+                @holySuitUpgradeCount, @holySuitConsumableCount, 1)
             ON CONFLICT (revision) DO NOTHING;
             """, connection, transaction);
         command.Parameters.AddWithValue("revision", revision);
@@ -387,6 +280,15 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         command.Parameters.AddWithValue(
             "materialRecipeCount",
             policies.MaterialRecipeCount);
+        command.Parameters.AddWithValue(
+            "holySuitTierCount",
+            holySuit.Tiers.Count);
+        command.Parameters.AddWithValue(
+            "holySuitUpgradeCount",
+            holySuit.Upgrades.Count);
+        command.Parameters.AddWithValue(
+            "holySuitConsumableCount",
+            holySuit.Consumables.Count);
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
@@ -396,6 +298,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         string revision,
         IReadOnlyList<ItemTemplateDefinition> expectedDefinitions,
         ItemPolicySnapshot expectedPolicies,
+        HolySuitPolicySnapshot expectedHolySuit,
         CancellationToken cancellationToken)
     {
         var definitions = await ReadPublishedDefinitionsAsync(
@@ -404,6 +307,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             revision,
             cancellationToken);
         var policies = await ReadPublishedPoliciesAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        var holySuit = await ReadPublishedHolySuitPoliciesAsync(
             connection,
             transaction,
             revision,
@@ -418,6 +326,9 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 expectedPolicies.MaterialPolicyCount ||
             policies.MaterialRecipeCount !=
                 expectedPolicies.MaterialRecipeCount ||
+            holySuit.Tiers.Count != expectedHolySuit.Tiers.Count ||
+            holySuit.Upgrades.Count != expectedHolySuit.Upgrades.Count ||
+            holySuit.Consumables.Count != expectedHolySuit.Consumables.Count ||
             !ItemTemplateContentRevisionHasher.Compute(
                     definitions,
                     policies.Attributes,
@@ -426,7 +337,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     policies.ForgingMaterials,
                     policies.EnhancementMaterials,
                     policies.AttributeDusts,
-                    policies.Recipes)
+                    policies.Recipes,
+                    holySuit.Tiers,
+                    holySuit.Upgrades,
+                    holySuit.Consumables,
+                    holySuit.OperationPolicy)
                 .Equals(revision, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(

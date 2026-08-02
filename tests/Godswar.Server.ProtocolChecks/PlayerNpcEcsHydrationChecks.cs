@@ -104,6 +104,12 @@ internal static class PlayerNpcEcsHydrationChecks
             snapshot.StatusEffects[0].StatusId,
             "player status list is copied at hydration");
         Check.True(
+            snapshot.Progression.FighterLevelSealed,
+            "fighter level seal survives player ECS hydration");
+        Check.True(
+            protocolCharacter.FighterLevelSealed,
+            "fighter level seal survives the ECS protocol projection");
+        Check.True(
             expectedSpawn.SequenceEqual(
                 PacketBuilder.PlayerWorldSpawn(
                     protocolCharacter,
@@ -279,6 +285,7 @@ internal static class PlayerNpcEcsHydrationChecks
             PositionZ = -654.75f,
             Level = 89,
             Experience = 123_987,
+            FighterLevelSealed = true,
             TalentPoints = 456,
             TalentExperience = 67,
             HolySuitPoints = 23,

@@ -10,7 +10,7 @@ internal static class MonsterDeathRewardProgressionContract
 
 internal readonly record struct MonsterDeathRewardLevelUp(
     int Level,
-    int CurrentExperience,
+    long CurrentExperience,
     int NextLevelExperience);
 
 internal sealed record MonsterDeathRewardExecutionReceipt
@@ -30,8 +30,8 @@ internal sealed record MonsterDeathRewardExecutionReceipt
         int experienceGained,
         int previousLevel,
         int currentLevel,
-        int previousExperience,
-        int currentExperience,
+        long previousExperience,
+        long currentExperience,
         int nextLevelExperience,
         IReadOnlyList<MonsterDeathRewardLevelUp> levelUps,
         int talentExperienceGained,
@@ -70,8 +70,8 @@ internal sealed record MonsterDeathRewardExecutionReceipt
             currentLevel >
                 MonsterDeathRewardProgressionContract
                     .MaximumCharacterLevel ||
-            previousExperience < 0 ||
-            currentExperience < 0 ||
+            previousExperience is < 0 or > uint.MaxValue ||
+            currentExperience is < 0 or > uint.MaxValue ||
             nextLevelExperience < 0 ||
             previousTalentExperience is < 0 or >= 100 ||
             currentTalentExperience is < 0 or >= 100 ||
@@ -91,7 +91,7 @@ internal sealed record MonsterDeathRewardExecutionReceipt
             levelUps.Any(levelUp =>
                 levelUp.Level <= previousLevel ||
                 levelUp.Level > currentLevel ||
-                levelUp.CurrentExperience < 0 ||
+                levelUp.CurrentExperience is < 0 or > uint.MaxValue ||
                 levelUp.NextLevelExperience < 0))
         {
             throw new ArgumentException(
@@ -148,8 +148,8 @@ internal sealed record MonsterDeathRewardExecutionReceipt
     public int ExperienceGained { get; }
     public int PreviousLevel { get; }
     public int CurrentLevel { get; }
-    public int PreviousExperience { get; }
-    public int CurrentExperience { get; }
+    public long PreviousExperience { get; }
+    public long CurrentExperience { get; }
     public int NextLevelExperience { get; }
     public IReadOnlyList<MonsterDeathRewardLevelUp> LevelUps { get; }
     public int TalentExperienceGained { get; }

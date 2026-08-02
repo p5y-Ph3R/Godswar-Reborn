@@ -5,8 +5,10 @@ namespace; see `docs/developer-mount-command.md`. It does not widen the material
 allowlist described below.
 
 The item command is disabled by default and is authorized by exact account ID.
-It can only grant item IDs present in the server's combined forging and Gear
-Enhancement material catalog; arbitrary item IDs are rejected.
+It can only grant item IDs present in the server's narrow developer-item
+allowlist; arbitrary item IDs are rejected. The allowlist combines the
+forging/Gear Enhancement materials below with the five Holy Boxes published by
+the active database-backed Holy Suit content revision.
 
 The allowlist contains 23 ordinary forging materials, all 51 shipped Gear
 Enhancement materials, and all 21 native Attribute Dusts. Their type, texture,
@@ -46,7 +48,15 @@ Use the local chat box with either a native ID or material alias:
 /item add quartzplate1 99
 /item add flamespark 99
 /item add watergrain 99
+/item add holybox1 1
+/item add emptyholybox5 1
 ```
+
+`holybox1` through `holybox5` (and the explicit `emptyholybox1` through
+`emptyholybox5` aliases) create bound Holy Boxes with `item_exp = 0`. They do
+not create pre-filled experience. Their item IDs, names, stack caps, and bound
+rules come from the process-pinned PostgreSQL item-content revision rather than
+from a second command-only list. Each box has a native stack cap of one.
 
 `/item` is the clearest stock-client form. The client masks `/gmitem` to
 `/******` before sending its Talk packet; the server recognizes that exact

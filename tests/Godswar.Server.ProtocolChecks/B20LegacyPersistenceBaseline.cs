@@ -91,7 +91,7 @@ internal static class B20LegacyPersistenceBaseline
         // Generated declarations are excluded only by exact path. These exact
         // reviewed publisher files are the remaining compiled consumers.
         A(B20LegacyDependencyKind.GeneratedSeedConsumer, "src/Godswar.Server/Infrastructure/Database/PostgresSkillTimingBaselinePublisher.cs", 1),
-        A(B20LegacyDependencyKind.GeneratedSeedConsumer, "src/Godswar.Server/Infrastructure/Items/PostgresItemTemplateBaselinePublisher.cs", 2),
+        A(B20LegacyDependencyKind.GeneratedSeedConsumer, "src/Godswar.Server/Infrastructure/Items/PostgresItemTemplateBaselinePublisher.MutableAuthority.cs", 2),
         A(B20LegacyDependencyKind.GeneratedSeedConsumer, "src/Godswar.Server/Infrastructure/Items/PostgresItemTemplateBaselinePublisher.Policy.cs", 3)
     ];
 

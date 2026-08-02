@@ -105,7 +105,10 @@ internal static partial class PacketBuilder
 
         if (packet.Length >= fieldBase + 60)
         {
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 56, 4), character.Experience);
+            WriteLegacyFighterExperience(
+                packet.AsSpan(fieldBase + 56, 4),
+                character.Experience,
+                nameof(character.Experience));
         }
 
         if (packet.Length >= fieldBase + 64)

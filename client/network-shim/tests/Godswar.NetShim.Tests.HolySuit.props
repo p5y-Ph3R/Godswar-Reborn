@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="SecureHolySuitIdentityTests.cpp" />
+    <ClCompile Include="SecureHolySuitParserTests.cpp" />
+    <ClCompile Include="SecureHolySuitRegistryTests.cpp" />
+    <ClCompile Include="..\src\SecureHolySuitCommandIdentity.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.HolySuit.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="SecureHolySuitIdentityTests.h" />
+    <ClInclude Include="SecureHolySuitTestSupport.h" />
+    <ClInclude Include="..\src\SecureHolySuitCommandIdentity.h" />
+  </ItemGroup>
+</Project>

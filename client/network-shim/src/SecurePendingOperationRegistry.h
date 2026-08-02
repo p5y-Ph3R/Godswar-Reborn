@@ -4,6 +4,7 @@
 #include "SecureEquipmentBagTransferIdentity.h"
 #include "SecureForgeCommandIdentity.h"
 #include "SecureHolyStoneCommandIdentity.h"
+#include "SecureHolySuitCommandIdentity.h"
 #include "SecureKitBagItemDeleteIdentity.h"
 #include "SecureKitBagItemMoveIdentity.h"
 #include "SecureLegacyCommandIdentity.h"
@@ -199,6 +200,16 @@ private:
         const LegacyHolyStoneCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolySuitCommand(
+        const LegacyHolySuitCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyEquipmentPacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor,
+        bool* recognized) noexcept;
     SecureOperationRegistryResult
     DescribeZodiacSkillGridUpgrade(
         const LegacyZodiacSkillGridUpgradeCommand& command,

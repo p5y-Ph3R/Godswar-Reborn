@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Rewards;
+using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Rewards;
 using Godswar.Server.State;
@@ -8,7 +9,7 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresMonsterDeathRewardIntegrationChecks
+internal static partial class PostgresMonsterDeathRewardIntegrationChecks
 {
     public const string CheckName =
         "PostgreSQL exactly-once monster reward settlement";
@@ -48,6 +49,13 @@ internal static class PostgresMonsterDeathRewardIntegrationChecks
             }
         }
 
+        await using (var migrationSource =
+                     NpgsqlDataSource.Create(connectionString))
+        {
+            await new PostgresSchemaMigrationRunner(migrationSource)
+                .InitializeGodswarSchemaAsync();
+        }
+
         await using (var store =
                      new PostgresGameStore(connectionString))
         {
@@ -56,6 +64,7 @@ internal static class PostgresMonsterDeathRewardIntegrationChecks
 
         await AssertGlobalDeathContentionAsync(connectionString);
         await AssertZeroRewardClaimAndConflictAsync(connectionString);
+        await AssertLevelSealingAsync(connectionString);
     }
 
     private static async Task AssertGlobalDeathContentionAsync(

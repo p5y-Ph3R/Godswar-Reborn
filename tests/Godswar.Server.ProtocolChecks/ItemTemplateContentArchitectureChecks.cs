@@ -105,18 +105,38 @@ internal static class ItemTemplateContentArchitectureChecks
                 $"{relativePath} receives published item content");
         }
 
-        var publisher = Read(
+        var publisherEntryPoint = Read(
             root,
             "src/Godswar.Server/Infrastructure/Items/" +
             "PostgresItemTemplateBaselinePublisher.cs");
+        var publisherMutableAuthority = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.MutableAuthority.cs");
+        var publisherUpgrade = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.Upgrade.cs");
         Check.True(
-            publisher.Contains(
+            publisherMutableAuthority.Contains(
                 "ItemTemplateSeeds.All",
                 StringComparison.Ordinal) &&
-            publisher.IndexOf(
+            publisherMutableAuthority.IndexOf(
+                "UpsertReviewedBaselineAsync",
+                StringComparison.Ordinal) <
+            publisherMutableAuthority.IndexOf(
+                "ItemTemplateSeeds.All",
+                StringComparison.Ordinal) &&
+            publisherEntryPoint.IndexOf(
                 "TryReadPublishedRevisionAsync",
                 StringComparison.Ordinal) <
-            publisher.IndexOf(
+            publisherEntryPoint.IndexOf(
+                "PrepareV5PublicationAsync",
+                StringComparison.Ordinal) &&
+            publisherUpgrade.IndexOf(
+                "if (existing is null)",
+                StringComparison.Ordinal) <
+            publisherUpgrade.IndexOf(
                 "UpsertReviewedBaselineAsync",
                 StringComparison.Ordinal),
             "compiled item seeds exist only behind a publication-absent check");
@@ -173,12 +193,15 @@ internal static class ItemTemplateContentArchitectureChecks
                 "PinnedItemTemplateCatalog.Create",
                 StringComparison.Ordinal) &&
             loader.Contains(
-                "publication.ManifestVersion != 4",
+                "publication.ManifestVersion != 5",
                 StringComparison.Ordinal) &&
             loader.Contains(
                 "ReadMaterialPoliciesAsync",
+                StringComparison.Ordinal) &&
+            loader.Contains(
+                "ReadHolySuitPoliciesAsync",
                 StringComparison.Ordinal),
-            "loader pins one complete v4 revision and validates its hash");
+            "loader pins one complete v5 revision and validates its hash");
 
         AssertPinnedSnapshotIsImmutable();
         return Task.CompletedTask;
@@ -286,7 +309,7 @@ internal static class ItemTemplateContentArchitectureChecks
             .ToArray();
         Check.True(
             offenders.Length == 0,
-            "runtime material policy uses only the pinned v4 catalog: " +
+            "runtime material policy uses only the pinned catalog: " +
             string.Join(", ", offenders));
     }
 

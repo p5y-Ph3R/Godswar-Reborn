@@ -111,6 +111,7 @@ internal sealed partial class JsonGameStore
             CurrentMap = character.CurrentMap,
             Level = character.Level,
             Experience = character.Experience,
+            FighterLevelSealed = character.FighterLevelSealed,
             Silver = character.Silver,
             Gold = character.Gold,
             MaxHp = character.MaxHp,

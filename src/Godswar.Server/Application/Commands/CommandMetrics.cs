@@ -128,6 +128,14 @@ internal static class CommandMetrics
                 "monster_reward_settlement",
             CommandFamily.ProgressionIntervalSettlement =>
                 "progression_interval_settlement",
+            CommandFamily.HolySuitStoreExperience =>
+                "holy_suit_store_experience",
+            CommandFamily.HolySuitTransferExperience =>
+                "holy_suit_transfer_experience",
+            CommandFamily.HolySuitConsumeWare =>
+                "holy_suit_consume_ware",
+            CommandFamily.HolySuitTransformExperience =>
+                "holy_suit_transform_experience",
             _ => throw new ArgumentOutOfRangeException(nameof(family))
         };
 

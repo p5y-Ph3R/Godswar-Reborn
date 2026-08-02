@@ -43,6 +43,8 @@ internal static partial class RuntimeContentSourceIsolationChecks
         "src/Godswar.Server/Infrastructure/Items/" +
             "PostgresItemTemplateBaselinePublisher.cs",
         "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.MutableAuthority.cs",
+        "src/Godswar.Server/Infrastructure/Items/" +
             "PostgresItemTemplateBaselinePublisher.Policy.cs",
         "src/Godswar.Server/Infrastructure/WorldContent/" +
             "PostgresGameplayContentPublisher.Read.cs",

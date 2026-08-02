@@ -75,6 +75,7 @@ internal sealed partial class
             SELECT
                 fighter_job_lv,
                 fighter_job_exp,
+                fighter_level_sealed,
                 "SkillExp",
                 "SkillPoint",
                 progression_reward_revision
@@ -97,13 +98,18 @@ internal sealed partial class
 
         var character = new LockedCharacter(
             reader.GetInt32(0),
-            reader.GetInt32(1),
-            reader.GetInt32(2),
+            reader.GetInt64(1),
+            reader.GetBoolean(2),
             reader.GetInt32(3),
-            reader.GetInt64(4));
+            reader.GetInt32(4),
+            reader.GetInt64(5));
         if (character.Level is < 1 or >
                 PlayerExperienceCatalog.MaximumLevel ||
-            character.Experience < 0 ||
+            character.Experience is
+                < 0 or > PlayerExperienceCatalog.MaximumStoredExperience ||
+            (character.LevelSealed &&
+             character.Level !=
+                 PlayerExperienceCatalog.FighterLevelSealLevel) ||
             character.TalentExperience is < 0 or >= 100 ||
             character.TalentPoints < 0 ||
             character.Revision < 0)
@@ -177,6 +183,7 @@ internal sealed partial class
                 envelope.Command.AwardedTalentExperience,
             previousLevel = before.Level,
             currentLevel = reward.Fighter.Level,
+            fighterLevelSealed = before.LevelSealed,
             previousExperience = before.Experience,
             currentExperience = reward.Fighter.Experience,
             previousTalentExperience = before.TalentExperience,

@@ -13,11 +13,11 @@ internal sealed partial class PostgresGameStore
         int quantity,
         CancellationToken cancellationToken = default)
     {
-        if (!ItemContent.Templates.Materials.TryResolveDeveloper(itemId, out var material))
+        if (!ItemContent.DeveloperItems.TryResolveDeveloper(itemId, out var material))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(itemId),
-                "Item is not in the developer material allowlist.");
+                "Item is not in the developer-item allowlist.");
         }
 
         if (quantity is < 1 or > KitBagItemGrantPlanner.MaximumQuantity)

@@ -65,9 +65,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 46
+    expectedMigrationCount = 51
     expectedMigrationHead =
-        '20260801_045_item_material_recipe_content_release'
+        '20260802_050_holy_suit_fixed_daily_cap'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -286,7 +286,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 46 `
+        -InitialMigrationCount 51 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -300,7 +300,7 @@ try {
         -Name 'PostgreSQL migration-prefix fixture' `
         -GeneralConnectionString (
             New-TestConnectionString $databaseNames.SmokeTemplate) `
-        -MigrationPrefix '20260801_045_item_material_recipe_content_release'
+        -MigrationPrefix '20260802_050_holy_suit_fixed_daily_cap'
 
     # Repository integration checks own their content publication and fixture
     # setup. Clone a schema-only database rather than the empty-install
@@ -330,6 +330,7 @@ try {
         'PostgreSQL durable kit-bag item-move transactions',
         'PostgreSQL durable equipment/bag transfer transactions',
         'PostgreSQL durable Holy Stone transactions',
+        'PostgreSQL authoritative Holy Suit transactions',
         'PostgreSQL durable Zodiac skill-grid activation',
         'PostgreSQL durable Zodiac skill-grid upgrade',
         'PostgreSQL durable Zodiac skill-grid selection',

@@ -56,6 +56,8 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
         await AssertCommitReplayAndConflictAsync(connectionString);
         await AssertMountGrantCommitReplayAndConflictAsync(
             connectionString);
+        await AssertEmptyHolyBoxGrantAsync(connectionString);
+        await AssertLegacyEmptyHolyBoxGrantAsync(connectionString);
         await AssertConcurrentExecutorsAsync(connectionString);
         await AssertInsufficientCapacityAsync(connectionString);
         await AssertLazyRuntimeCutoverAsync(connectionString);
@@ -70,11 +72,12 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
     private static PostgresDeveloperItemGrantCommandExecutor
         CreateExecutor(
             NpgsqlDataSource dataSource,
-            IPostgresDeveloperItemGrantCommandProbe? probe = null) =>
+            IPostgresDeveloperItemGrantCommandProbe? probe = null,
+            GameplayItemContent? itemContent = null) =>
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            TestItemContent.Content,
+            itemContent ?? TestItemContent.Content,
             probe);
 
     private static CommandEnvelope<DeveloperItemGrantCommand>
@@ -82,10 +85,11 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
             GrantFixture fixture,
             Guid clientOperationId,
             int quantity = GrantQuantity,
-            Guid? connectionId = null)
+            Guid? connectionId = null,
+            uint itemId = MaterialItemId)
     {
         if (!DeveloperItemGrantCommandEnvelope.TryCreateCommand(
-                MaterialItemId,
+                itemId,
                 quantity,
                 clientOperationId,
                 out var command))

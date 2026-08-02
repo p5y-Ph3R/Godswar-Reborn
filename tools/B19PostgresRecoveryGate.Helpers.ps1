@@ -280,12 +280,12 @@ function Assert-B19CurrentMigrationState {
         [System.Collections.IDictionary]$State
     )
 
-    if ($State.count -ne 46 -or
+    if ($State.count -ne 51 -or
         $State.head -cne
-            '20260801_045_item_material_recipe_content_release') {
+            '20260802_050_holy_suit_fixed_daily_cap') {
         throw (
-            "B19 expected 46 migrations through " +
-            "'20260801_045_item_material_recipe_content_release'.")
+            "B19 expected 51 migrations through " +
+            "'20260802_050_holy_suit_fixed_daily_cap'.")
     }
 }
 

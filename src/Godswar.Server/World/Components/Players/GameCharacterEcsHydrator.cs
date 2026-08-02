@@ -117,6 +117,7 @@ internal static class GameCharacterEcsHydrator
             new PlayerProgressionComponent(
                 character.Level,
                 character.Experience,
+                character.FighterLevelSealed,
                 character.TalentPoints,
                 character.TalentExperience,
                 character.HolySuitPoints));

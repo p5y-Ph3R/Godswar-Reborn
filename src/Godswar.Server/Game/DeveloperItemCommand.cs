@@ -42,7 +42,7 @@ internal static class DeveloperItemCommand
         out DeveloperItemRequest? request,
         out string error,
         DeveloperMountCatalog? mounts = null,
-        IItemMaterialCatalog? materials = null)
+        IDeveloperItemGrantCatalog? items = null)
     {
         request = null;
         error = string.Empty;
@@ -114,32 +114,32 @@ internal static class DeveloperItemCommand
         }
 
         DeveloperGrantMaterialDefinition material;
-        if (materials is null)
+        if (items is null)
         {
-            error = "Material commands require the published item catalog.";
+            error = "Item commands require the published developer-item catalog.";
             return true;
         }
         var quantityOffset = 3;
         if (uint.TryParse(tokens[2], out var itemId))
         {
-            if (!materials.TryResolveDeveloper(itemId, out material))
+            if (!items.TryResolveDeveloper(itemId, out material))
             {
-                error = $"Item ID {itemId} is not an allowlisted forging or gear-enhancement material.";
+                error = $"Item ID {itemId} is not an allowlisted developer item.";
                 return true;
             }
         }
-        else if (materials.TryResolveDeveloper(tokens[2], out material))
+        else if (items.TryResolveDeveloper(tokens[2], out material))
         {
         }
         else if (tokens.Length >= 4 &&
                  int.TryParse(tokens[3], out var level) &&
-                 materials.TryResolveDeveloper($"{tokens[2]}{level}", out material))
+                 items.TryResolveDeveloper($"{tokens[2]}{level}", out material))
         {
             quantityOffset = 4;
         }
         else
         {
-            error = $"Unknown or unavailable forging or gear-enhancement material alias '{tokens[2]}'.";
+            error = $"Unknown or unavailable developer-item alias '{tokens[2]}'.";
             return true;
         }
 

@@ -66,10 +66,12 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 reader.GetInt64(45)),
             new CharacterProgressionSnapshot(
                 reader.GetInt32(10),
-                reader.GetInt32(27),
+                reader.GetInt64(27),
                 reader.GetInt32(20),
                 reader.GetInt32(21),
-                reader.GetInt32(22)),
+                reader.GetInt32(22),
+                reader.GetBoolean(50),
+                reader.GetInt64(48)),
             new CharacterVitalsSnapshot(
                 reader.GetInt32(11),
                 reader.GetInt32(12),
@@ -85,7 +87,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 reader.GetInt16(23),
                 reader.GetInt32(24),
                 reader.GetInt16(25),
-                reader.GetInt32(26)),
+                reader.GetInt32(26),
+                reader.GetInt64(49)),
             new CharacterZodiacSnapshot(
                 ToByte(reader.GetInt16(29), "zodiac type"),
                 reader.GetInt32(30),
@@ -219,7 +222,10 @@ internal sealed partial class PostgresCharacterSnapshotReader
             ),
             cb.position_revision,
             cb.character_slot,
-            cb.lifecycle_version
+            cb.lifecycle_version,
+            cb.progression_reward_revision,
+            cb.inventory_revision,
+            cb.fighter_level_sealed
         FROM character_base cb
         {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
         WHERE cb.account_id = @accountId

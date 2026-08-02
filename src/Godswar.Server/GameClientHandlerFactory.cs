@@ -66,6 +66,8 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.EquipmentBagTransferCommands,
             holyStoneCommands:
                 postgresRuntime?.HolyStoneCommands,
+            holySuitCommands:
+                postgresRuntime?.HolySuitCommands,
             zodiacSkillGridActivationCommands:
                 postgresRuntime?.ZodiacSkillGridActivationCommands,
             zodiacSkillGridUpgradeCommands:

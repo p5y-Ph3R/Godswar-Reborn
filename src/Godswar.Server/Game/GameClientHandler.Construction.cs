@@ -53,6 +53,8 @@ internal sealed partial class GameClientHandler
             equipmentBagTransferCommands = null,
         IHolyStoneCommandExecutor?
             holyStoneCommands = null,
+        IHolySuitCommandExecutor?
+            holySuitCommands = null,
         IZodiacSkillGridActivationCommandExecutor?
             zodiacSkillGridActivationCommands = null,
         IZodiacSkillGridUpgradeCommandExecutor?
@@ -128,6 +130,7 @@ internal sealed partial class GameClientHandler
         _kitBagItemMoveCommands = kitBagItemMoveCommands;
         _equipmentBagTransferCommands = equipmentBagTransferCommands;
         _holyStoneCommands = holyStoneCommands;
+        _holySuitCommands = holySuitCommands;
         _zodiacSkillGridActivationCommands =
             zodiacSkillGridActivationCommands;
         _zodiacSkillGridUpgradeCommands =
@@ -184,6 +187,7 @@ internal sealed partial class GameClientHandler
                 _kitBagItemMoveCommands,
                 _equipmentBagTransferCommands,
                 _holyStoneCommands,
+                _holySuitCommands,
                 _zodiacSkillGridActivationCommands,
                 _zodiacSkillGridUpgradeCommands,
                 _zodiacSkillGridSelectionCommands,

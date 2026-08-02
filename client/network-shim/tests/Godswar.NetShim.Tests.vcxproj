@@ -31,6 +31,7 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="$(ProjectDir)Godswar.NetShim.Tests.HolySuit.props" />
   <PropertyGroup>
     <OutDir>$(ProjectDir)..\bin\$(Configuration)\$(Platform)\</OutDir>
     <IntDir>$(ProjectDir)..\obj\$(Configuration)\$(Platform)\tests\</IntDir>
@@ -173,6 +174,7 @@
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Pets.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyEquipment.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStone.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagDelete.cpp" />
