@@ -107,7 +107,8 @@ internal readonly record struct ClassSuitReplayIntent(
         var expectedMaterialCount = intent.Operation switch
         {
             ClassSuitCommandOperation.ConvertToCommon => 0,
-            ClassSuitCommandOperation.AddAttribute => 2,
+            ClassSuitCommandOperation.AddAttribute or
+                ClassSuitCommandOperation.DeleteAttribute => 2,
             _ => 1
         };
         var actualMaterialCount =

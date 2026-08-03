@@ -18,7 +18,7 @@ internal static partial class ClassSuitHandlerChecks
     {
         await CheckOpenAdvertisesBothRoutesInOrderAsync();
         await CheckMenuNavigationAndDetailsAsync();
-        await CheckStockStagedMutationExecutesAsync();
+        await CheckStockClearedFinalStagedMutationExecutesAsync();
         await CheckSecureMutationExecutesAndSettlesAsync();
         await CheckChangedSnapshotRetryReplaysAsync();
         await CheckPreRouteIntentConflictSettlesAsync();
@@ -27,7 +27,8 @@ internal static partial class ClassSuitHandlerChecks
         await CheckMalformedSecureMutationFailsClosedAsync();
     }
 
-    private static async Task CheckStockStagedMutationExecutesAsync()
+    private static async Task
+        CheckStockClearedFinalStagedMutationExecutesAsync()
     {
         await using var fixture = await CreateFixtureAsync();
 
@@ -59,20 +60,13 @@ internal static partial class ClassSuitHandlerChecks
             fixture.Handler,
             CreateClassSuitActionPacket(
                 (int)ClassSuitWireOperation.ExchangeTierOne,
-                arguments =>
-                {
-                    arguments[0] = 0;
-                    arguments[ClassSuitProtocol.EquipmentArgumentIndex] =
-                        GearSlot;
-                    arguments[ClassSuitProtocol.MaterialArgumentIndex] =
-                        InsigniaSlot;
-                },
+                arguments => arguments[2] = 7_777,
                 operationId: OperationId));
 
         Check.Equal(
             1,
             fixture.Executor.ExecuteCount,
-            "stock Class Suit clear burst executes one mutation");
+            "stock Class Suit scratch-final clear burst executes one mutation");
         var command = fixture.Executor.Envelope?.Command ??
             throw new InvalidOperationException(
                 "staged Class Suit command was not captured");
@@ -234,6 +228,11 @@ internal static partial class ClassSuitHandlerChecks
         Check.True(
             result is not null,
             "committed Class Suit mutation sends a stock result");
+        Check.Equal(
+            1,
+            packets.Count(packet =>
+                ReadOpcode(packet) == Opcodes.NpcFunctionActionResponse),
+            "committed Class Suit mutation sends one stock result");
         AssertFunctionResponse(
             result!,
             [120],
@@ -241,6 +240,10 @@ internal static partial class ClassSuitHandlerChecks
         Check.True(
             packets.Any(packet => ReadOpcode(packet) == 0x2731),
             "committed Class Suit mutation sends a full bag refresh");
+        AssertFunctionResponse(
+            packets[^1],
+            [120],
+            "Tier I exchange success is the final legacy response");
 
         var secure = fixture.Transport.CommandResults.Single();
         Check.True(
@@ -294,6 +297,19 @@ internal static partial class ClassSuitHandlerChecks
         Check.True(
             fixture.Executor.ReplayIntent == receipt.ReplayIntent,
             "post-commit retry matches the stored stable replay intent");
+        var replayPackets = fixture.Transport.ReadLegacyPackets();
+        Check.Equal(
+            1,
+            replayPackets.Count(packet =>
+                ReadOpcode(packet) == Opcodes.NpcFunctionActionResponse),
+            "post-commit retry sends one stock result");
+        Check.True(
+            replayPackets.Any(packet => ReadOpcode(packet) == 0x2731),
+            "post-commit retry sends a full bag refresh");
+        AssertFunctionResponse(
+            replayPackets[^1],
+            [120],
+            "replayed Tier I success is the final legacy response");
         Check.True(
             fixture.Transport.CommandResults.Single().Disposition ==
                 SecureLegacyCommandDisposition.Replayed,

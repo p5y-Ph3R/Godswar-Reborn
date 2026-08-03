@@ -132,6 +132,7 @@ private:
             -1};
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
+        std::uint64_t classSuitPageGeneration = 0;
         bool capturesForgeState = false;
         bool capturesLifecycleIntent = false;
         std::uint8_t lifecycleIntent[
@@ -220,6 +221,14 @@ private:
         const LegacyClassSuitCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeClassSuitNavigation(
+        const LegacyClassSuitCommand& navigation,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeClassSuitCommandLocked(
+        const LegacyClassSuitCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeHolyEquipmentPacket(
         const void* packet,
         std::size_t packetBytes,
@@ -283,6 +292,7 @@ private:
     void ResetSelectionClearCandidate() noexcept;
     void InvalidateSelectionClear() noexcept;
     void ResetSelectionState() noexcept;
+    void ClearClassSuitPage() noexcept;
     bool TryGetIdentitySelection(
         int* bagSlots,
         std::size_t* selectionCount) const noexcept;
@@ -327,6 +337,11 @@ private:
     bool combinePageArmed_ = false;
     std::uint32_t combineNpcId_ = 0;
     std::uint64_t combinePageGeneration_ = 0;
+    bool classSuitPageArmed_ = false;
+    LegacyClassSuitAction classSuitPageAction_ =
+        LegacyClassSuitAction::ExchangeTierI;
+    std::uint32_t classSuitPageNpcId_ = 0;
+    std::uint64_t classSuitPageGeneration_ = 0;
     int forgeEquipmentBagSlot_ = -1;
     int forgePrimaryMaterialBagSlot_ = -1;
     std::size_t forgeOddsCount_ = 0;

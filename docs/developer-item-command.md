@@ -11,9 +11,10 @@ forging/Gear Enhancement materials below with the five Holy Boxes published by
 the active database-backed Holy Suit content revision.
 
 The allowlist contains 23 ordinary forging materials, all 51 shipped Gear
-Enhancement materials, and all 21 native Attribute Dusts. Their type, texture,
-icon, native stack cap, and binding state are resolved again inside the store;
-command text cannot override them.
+Enhancement materials, the seven reviewed Greek-themed elemental stones, and
+all 21 native Attribute Dusts. Their type, texture, icon, native stack cap, and
+binding state are resolved again inside the store; command text cannot
+override them.
 
 The checked-in configuration keeps it disabled. This workstation's ignored
 `.env` enables it for the local test accounts `3`, `7`, `13`, and `347`. To
@@ -48,6 +49,9 @@ Use the local chat box with either a native ID or material alias:
 /item add quartzplate1 99
 /item add flamespark 99
 /item add watergrain 99
+/item add prometheusstone 99
+/item add poseidonstone 99
+/item add hadesstone 99
 /item add holybox1 1
 /item add emptyholybox5 1
 ```
@@ -114,8 +118,11 @@ If the full quantity cannot fit, nothing is written.
 
 Gear Enhancement aliases use the normalized client name, for example
 `strengthstone`, `stoneofvitality`, `quartzplate1`, `flamespark`, and
-`watergrain`. Numeric IDs are also accepted. The intentional client-data gap
-`9939` remains rejected.
+`watergrain`. Elemental aliases are `prometheusstone`, `poseidonstone`,
+`zeusstone`, `gaiastone`, `aeolusstone`, `apollostone`, and `hadesstone` for
+IDs `16300`, `16303`, `16306`, `16309`, `16312`, `16315`, and `16318`.
+Numeric IDs are also accepted. Retired elemental IDs and the intentional
+client-data gap `9939` remain rejected.
 
 ## Forging-material catalog
 

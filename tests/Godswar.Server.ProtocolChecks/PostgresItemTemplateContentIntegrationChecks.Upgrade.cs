@@ -346,7 +346,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         Check.True(
             await reader.ReadAsync(),
             "upgraded item release exists");
-        Check.Equal(7, reader.GetInt16(0), "upgraded item manifest version");
+        Check.Equal(9, reader.GetInt16(0), "upgraded item manifest version");
         Check.True(
             reader.GetInt32(1) > 0 &&
             reader.GetInt32(2) > 0 &&
@@ -360,23 +360,23 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             "upgraded item release captures every policy family");
         Check.True(
             reader.GetBoolean(10),
-            "upgraded v7 release is a monotonic superset of v1 definitions");
+            "upgraded v9 release is a monotonic superset of v1 definitions");
         Check.Equal(
             skillBookIds.Length,
             reader.GetInt32(11),
-            "upgraded v7 release appends every reviewed skill-book item");
+            "upgraded v9 release appends every reviewed skill-book item");
         Check.Equal(
             reader.GetInt32(4),
             reader.GetInt32(12),
-            "upgraded v7 release publishes every declared material policy");
+            "upgraded v9 release publishes every declared material policy");
         Check.Equal(
             reader.GetInt32(5),
             reader.GetInt32(13),
-            "upgraded v7 release publishes every declared material recipe");
+            "upgraded v9 release publishes every declared material recipe");
         Check.Equal(
             reader.GetInt32(7),
             reader.GetInt32(14),
-            "upgraded v7 release publishes every Holy Suit transition");
+            "upgraded v9 release publishes every Holy Suit transition");
     }
 
     private static async Task<string> ReadRevisionFingerprintAsync(

@@ -21,17 +21,21 @@ inline constexpr std::int32_t LegacyClassSuitBagReferenceMaximum = 195;
 inline constexpr std::int32_t LegacyClassSuitEquippedWeaponReference = 205;
 
 enum class LegacyClassSuitAction : std::int32_t {
+    InitialMenu = -1,
     ExchangeTierI = 100,
     AddAttribute = 101,
     DeleteAttribute = 102,
+    Instructions = 103,
     ConvertToCommon = 104,
     UpgradeTierII = 105,
     UpgradeTierIII = 106,
+    AddFifthAttribute = 107,
     UpgradeTierIV = 108,
 };
 
 enum class LegacyClassSuitPacketKind : std::uint8_t {
     UnrelatedOrNavigation = 0,
+    Navigation,
     Commit,
     InvalidMutation,
 };
@@ -47,9 +51,10 @@ struct LegacyClassSuitCommand final {
 };
 
 // The stock client reuses each transformation sub-ID to open its page and to
-// confirm it. Only an exact value-bearing packet for the two physical Gear
-// Mentor NPCs is a valuable command. Navigation and every unresolved Class
-// Suit action deliberately remain ordinary legacy traffic.
+// confirm it. Exact navigation is reported separately so the operation
+// registry can correlate the stock select/clear/final-action sequence without
+// assigning an identity to the first page-opening action. Every unresolved
+// Class Suit action deliberately remains ordinary legacy traffic.
 LegacyClassSuitPacketKind ClassifyLegacyClassSuitPacket(
     const void* packet,
     std::size_t packetBytes,

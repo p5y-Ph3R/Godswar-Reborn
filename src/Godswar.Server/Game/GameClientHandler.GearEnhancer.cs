@@ -35,7 +35,10 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var staged = context.Apply(selection, _character.KitBag);
+        var staged = context.Apply(
+            selection,
+            _character.KitBag,
+            _itemContent?.Templates.Materials);
         Console.WriteLine(
             $"[gear-enhancer] item selection character={_character.Name} npc={context.NpcId} dialog={context.DialogIndex} operation={context.Operation?.ToString() ?? "pending-final-action"} selected={selection.Selected} bagSlot={staged.KitBagSlot} item={staged.Item.Id} stack={staged.Item.Stack} role={staged.Role?.ToString() ?? "none"} status={staged.Status}");
     }

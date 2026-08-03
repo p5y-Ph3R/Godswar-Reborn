@@ -17,6 +17,7 @@ internal static class ClassSuitExecutionContractChecks
         CheckAttributeFailureResults();
         CheckExecutionDispositions();
         CheckPersistenceMutationBound();
+        ClassSuitLegacyNativeResultCompatibilityChecks.Run();
         CheckEquippedMutationPersistence();
         CheckRejectedEquippedSelectionRefresh();
         return Task.CompletedTask;
@@ -135,8 +136,8 @@ internal static class ClassSuitExecutionContractChecks
         var expected = new[]
         {
             (ClassSuitCommandOperation.ExchangeTierI, 120),
-            (ClassSuitCommandOperation.AddAttribute, 119),
-            (ClassSuitCommandOperation.DeleteAttribute, 121),
+            (ClassSuitCommandOperation.AddAttribute, 121),
+            (ClassSuitCommandOperation.DeleteAttribute, 122),
             (ClassSuitCommandOperation.ConvertToCommon, 152),
             (ClassSuitCommandOperation.UpgradeTierII, 300),
             (ClassSuitCommandOperation.UpgradeTierIII, 157),
@@ -274,48 +275,58 @@ internal static class ClassSuitExecutionContractChecks
         CheckResult(
             ClassSuitCommandOperation.AddAttribute,
             ClassSuitCommandResultStatus.SelectionMissing,
-            115,
+            149,
             "Add Attribute selection missing");
         CheckResult(
             ClassSuitCommandOperation.AddAttribute,
             ClassSuitCommandResultStatus.InvalidMaterial,
-            116,
+            144,
             "Add Attribute material unsuitable");
         CheckResult(
             ClassSuitCommandOperation.AddAttribute,
+            ClassSuitCommandResultStatus.InsufficientMaterial,
+            144,
+            "Add Attribute material stack empty");
+        CheckResult(
+            ClassSuitCommandOperation.AddAttribute,
             ClassSuitCommandResultStatus.AttributeAlreadyPresent,
-            117,
+            143,
             "class attribute already present");
         CheckResult(
             ClassSuitCommandOperation.AddAttribute,
             ClassSuitCommandResultStatus.ProfessionMismatch,
-            118,
+            142,
             "class stone profession mismatch");
         CheckResult(
             ClassSuitCommandOperation.AddAttribute,
             ClassSuitCommandResultStatus.AttributeSlotsFull,
-            123,
+            149,
             "Add Attribute generic rule failure");
 
         CheckResult(
             ClassSuitCommandOperation.DeleteAttribute,
             ClassSuitCommandResultStatus.SelectionMissing,
-            120,
+            139,
             "Delete Attribute selection missing");
         CheckResult(
             ClassSuitCommandOperation.DeleteAttribute,
             ClassSuitCommandResultStatus.InvalidMaterial,
-            120,
+            141,
             "Delete Attribute water missing");
         CheckResult(
             ClassSuitCommandOperation.DeleteAttribute,
+            ClassSuitCommandResultStatus.InsufficientMaterial,
+            141,
+            "Delete Attribute material stack empty");
+        CheckResult(
+            ClassSuitCommandOperation.DeleteAttribute,
             ClassSuitCommandResultStatus.AttributeMissing,
-            122,
+            140,
             "class attribute not present");
         CheckResult(
             ClassSuitCommandOperation.DeleteAttribute,
             ClassSuitCommandResultStatus.InvalidEquipment,
-            123,
+            139,
             "Delete Attribute generic rule failure");
     }
 

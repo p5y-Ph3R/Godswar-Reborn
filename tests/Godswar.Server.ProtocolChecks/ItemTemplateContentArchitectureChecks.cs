@@ -144,7 +144,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "TryReadPublishedRevisionAsync",
                 StringComparison.Ordinal) <
             publisherEntryPoint.IndexOf(
-                "PrepareV7PublicationAsync",
+                "PrepareV9PublicationAsync",
                 StringComparison.Ordinal) &&
             publisherUpgrade.IndexOf(
                 "if (existing is null)",
@@ -199,6 +199,53 @@ internal static class ItemTemplateContentArchitectureChecks
             "manifest-v7 appends only structurally identical reviewed " +
             "elemental policies to sealed v6 content");
 
+        var elementalIconUpgrade = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.Elemental.IconUpgrade.cs");
+        Check.True(
+            elementalIconUpgrade.Contains(
+                "existing is { ManifestVersion: 7 }",
+                StringComparison.Ordinal) &&
+            elementalIconUpgrade.Contains(
+                "ReplaceReviewedElementalStoneItemsAsync",
+                StringComparison.Ordinal) &&
+            elementalIconUpgrade.Contains(
+                "ManifestVersion != 8",
+                StringComparison.Ordinal),
+            "manifest-v8 replaces only reviewed elemental stone identities " +
+            "while preserving the sealed v7 release");
+
+        var elementalV9Upgrade = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.Elemental.V9Upgrade.cs");
+        var elementalProjection = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.Elemental.cs");
+        Check.True(
+            elementalV9Upgrade.Contains(
+                "existing is { ManifestVersion: 8 }",
+                StringComparison.Ordinal) &&
+            elementalV9Upgrade.Contains(
+                "EnhancementMaterials = ReplaceElementalMaterialPolicies(",
+                StringComparison.Ordinal) &&
+            elementalV9Upgrade.Contains(
+                "!IsElementalStoneRange(value.ItemId)",
+                StringComparison.Ordinal) &&
+            elementalProjection.Contains(
+                "official_v8.revision = @v8Revision",
+                StringComparison.Ordinal) &&
+            elementalProjection.Contains(
+                "IS NOT DISTINCT FROM ROW",
+                StringComparison.Ordinal) &&
+            !elementalProjection.Contains(
+                "ON CONFLICT (id) DO UPDATE",
+                StringComparison.Ordinal),
+            "manifest-v9 removes retired policies and upgrades only exact " +
+            "official-v8 mutable identities without overwriting customization");
+
         AssertNoMutableRuntimeTemplateReads(root);
         AssertNoCompiledMaterialRuntimeConsumers(root);
         AssertNoUnpinnedCharacterItemViews(root);
@@ -251,7 +298,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "PinnedItemTemplateCatalog.Create",
                 StringComparison.Ordinal) &&
             loader.Contains(
-                "publication.ManifestVersion != 7",
+                "publication.ManifestVersion != 9",
                 StringComparison.Ordinal) &&
             loader.Contains(
                 "ReadMaterialPoliciesAsync",
@@ -259,7 +306,7 @@ internal static class ItemTemplateContentArchitectureChecks
             loader.Contains(
                 "ReadHolySuitPoliciesAsync",
                 StringComparison.Ordinal),
-            "loader pins one complete v7 revision and validates its hash");
+            "loader pins one complete v9 revision and validates its hash");
 
         AssertPinnedSnapshotIsImmutable();
         return Task.CompletedTask;

@@ -11,6 +11,8 @@ internal enum ElementKind : byte
     Dark
 }
 
+// Compatibility identity: the numeric order and member names are published in
+// immutable V8/V9 item content. Gameplay code uses ElementalAttributeRole.
 internal enum ElementalStatFamily : byte
 {
     Power,
@@ -18,13 +20,49 @@ internal enum ElementalStatFamily : byte
     Penetration
 }
 
+internal enum ElementalEffectKind : byte
+{
+    Burn = 0,
+    Drench = 1,
+    Shock = 2,
+    Fracture = 3,
+    Gale = 4,
+    Dazzle = 5,
+    Wither = 6
+}
+
+// Numeric values are part of the durable attribute-ID calculation. Keep the
+// historical 0/1/2 order even though the player-facing order is potency,
+// application chance, then resistance.
+internal enum ElementalAttributeRole : byte
+{
+    EffectPotency = 0,
+    EffectResistance = 1,
+    // A compatibility role with effect-specific trigger semantics. Burn,
+    // Drench, Shock, Fracture, Dazzle, and Wither roll only after an
+    // authoritative attack commits. Gale rolls after accepted movement and
+    // activates a self movement-speed boost. Execution remains disabled.
+    ApplicationChance = 2
+}
+
 internal readonly record struct ElementalAttributeDefinition(
     int AttributeId,
-    uint StoneItemId,
     ElementKind Element,
     ElementalStatFamily Family,
     string DisplayName)
 {
+    // Compatibility projection for content code that still starts from an
+    // attribute. Three family-specific attributes intentionally point to the
+    // same canonical elemental stone.
+    public uint StoneItemId =>
+        ElementalAttributeCatalog.StoneItemIdFor(Element);
+
+    public ElementalEffectKind Effect =>
+        ElementalAttributeCatalog.EffectFor(Element).Effect;
+
+    public ElementalAttributeRole Role =>
+        ElementalAttributeCatalog.RoleForFamily(Family);
+
     public int ValueAtGrade(short grade)
     {
         if (grade is < 1 or > 25)
@@ -34,60 +72,89 @@ internal readonly record struct ElementalAttributeDefinition(
                 "Elemental attribute grade must be between 1 and 25.");
         }
 
-        var basisPointsPerGrade = Family == ElementalStatFamily.Penetration
+        var basisPointsPerGrade =
+            Role == ElementalAttributeRole.ApplicationChance
             ? 20
             : 40;
         return checked(basisPointsPerGrade * grade);
     }
 }
 
-internal readonly record struct ElementalStatTotals(
-    int PowerBasisPoints,
-    int ResistanceBasisPoints,
-    int PenetrationBasisPoints)
+internal readonly record struct ElementalEffectDefinition(
+    ElementKind Element,
+    ElementalEffectKind Effect,
+    string ElementDisplayName,
+    string EffectDisplayName,
+    string PotencyDisplayName,
+    string ResistanceDisplayName,
+    string ApplicationDisplayName)
 {
-    public ElementalStatTotals Add(
-        ElementalStatFamily family,
-        int value) =>
-        family switch
+    public string AttributeDisplayName(ElementalAttributeRole role) =>
+        role switch
         {
-            ElementalStatFamily.Power => this with
+            ElementalAttributeRole.EffectPotency => PotencyDisplayName,
+            ElementalAttributeRole.EffectResistance => ResistanceDisplayName,
+            ElementalAttributeRole.ApplicationChance => ApplicationDisplayName,
+            _ => throw new ArgumentOutOfRangeException(nameof(role))
+        };
+}
+
+internal sealed record ElementalStoneDefinition(
+    uint ItemId,
+    ElementKind Element,
+    string DisplayName,
+    IReadOnlyList<int> AttributeIds);
+
+internal readonly record struct ElementalEffectTotals(
+    int EffectPotencyBasisPoints,
+    int EffectResistanceBasisPoints,
+    int ApplicationChanceBasisPoints)
+{
+    public ElementalEffectTotals Add(
+        ElementalAttributeRole role,
+        int value) =>
+        role switch
+        {
+            ElementalAttributeRole.EffectPotency => this with
             {
-                PowerBasisPoints = checked(PowerBasisPoints + value)
+                EffectPotencyBasisPoints = checked(
+                    EffectPotencyBasisPoints + value)
             },
-            ElementalStatFamily.Resistance => this with
+            ElementalAttributeRole.EffectResistance => this with
             {
-                ResistanceBasisPoints = checked(
-                    ResistanceBasisPoints + value)
+                EffectResistanceBasisPoints = checked(
+                    EffectResistanceBasisPoints + value)
             },
-            ElementalStatFamily.Penetration => this with
+            ElementalAttributeRole.ApplicationChance => this with
             {
-                PenetrationBasisPoints = checked(
-                    PenetrationBasisPoints + value)
+                ApplicationChanceBasisPoints = checked(
+                    ApplicationChanceBasisPoints + value)
             },
-            _ => throw new ArgumentOutOfRangeException(nameof(family))
+            _ => throw new ArgumentOutOfRangeException(nameof(role))
         };
 }
 
 internal sealed record ElementalEquipmentProfile(
-    IReadOnlyDictionary<ElementKind, ElementalStatTotals> RawStats,
-    IReadOnlyDictionary<ElementKind, ElementalStatTotals> EffectiveStats,
-    IReadOnlyDictionary<ElementKind, int> EquippedSetCounts)
+    IReadOnlyDictionary<ElementKind, ElementalEffectTotals> RawEffects,
+    IReadOnlyDictionary<ElementKind, int> EquippedSetCounts,
+    IReadOnlyDictionary<
+        ElementKind,
+        IReadOnlyList<ElementalResonanceTierDefinition>> ActiveResonanceTiers)
 {
-    public ElementalStatTotals RawFor(ElementKind element) =>
-        RawStats.TryGetValue(element, out var value) ? value : default;
-
-    public ElementalStatTotals EffectiveFor(ElementKind element) =>
-        EffectiveStats.TryGetValue(element, out var value) ? value : default;
+    public ElementalEffectTotals EffectsFor(ElementKind element) =>
+        RawEffects.TryGetValue(element, out var value) ? value : default;
 
     public int CountFor(ElementKind element) =>
         EquippedSetCounts.TryGetValue(element, out var value) ? value : 0;
 
-    public int HighestThresholdFor(ElementKind element)
-    {
-        var count = CountFor(element);
-        return count >= 10 ? 10 : count >= 6 ? 6 : count >= 3 ? 3 : 0;
-    }
+    public IReadOnlyList<ElementalResonanceTierDefinition> ResonanceFor(
+        ElementKind element) =>
+        ActiveResonanceTiers.TryGetValue(element, out var value)
+            ? value
+            : Array.Empty<ElementalResonanceTierDefinition>();
+
+    public int HighestThresholdFor(ElementKind element) =>
+        ResonanceFor(element).LastOrDefault()?.RequiredPieces ?? 0;
 }
 
 internal static class ElementalAttributeCatalog
@@ -95,26 +162,125 @@ internal static class ElementalAttributeCatalog
     public const int MinimumAttributeId = 480;
     public const int MaximumAttributeId = 500;
     public const uint MinimumStoneItemId = 16300;
-    public const uint MaximumStoneItemId = 16320;
+    public const uint MaximumStoneItemId = 16318;
+    public const uint StoneItemIdStride = 3;
+
+    public static IReadOnlyList<ElementalEffectDefinition> Effects { get; } =
+        BuildEffects();
 
     public static IReadOnlyList<ElementalAttributeDefinition> All { get; } =
         BuildDefinitions();
 
+    public static IReadOnlyList<ElementalStoneDefinition> Stones { get; } =
+        BuildStones();
+
     private static readonly IReadOnlyDictionary<int, ElementalAttributeDefinition>
         ByAttributeId = All.ToDictionary(static value => value.AttributeId);
 
-    private static readonly IReadOnlyDictionary<uint, ElementalAttributeDefinition>
-        ByStoneItemId = All.ToDictionary(static value => value.StoneItemId);
+    private static readonly IReadOnlyDictionary<
+        (ElementKind Element, ElementalStatFamily Family),
+        ElementalAttributeDefinition> ByElementAndFamily =
+        All.ToDictionary(static value => (value.Element, value.Family));
+
+    private static readonly IReadOnlyDictionary<
+        (ElementKind Element, ElementalAttributeRole Role),
+        ElementalAttributeDefinition> ByElementAndRole =
+        All.ToDictionary(static value => (value.Element, value.Role));
+
+    private static readonly IReadOnlyDictionary<
+        ElementKind,
+        ElementalEffectDefinition> EffectByElement =
+        Effects.ToDictionary(static value => value.Element);
+
+    private static readonly IReadOnlyDictionary<uint, ElementalStoneDefinition>
+        ByStoneItemId = Stones.ToDictionary(static value => value.ItemId);
 
     public static bool TryGetAttribute(
         int attributeId,
         out ElementalAttributeDefinition definition) =>
         ByAttributeId.TryGetValue(attributeId, out definition);
 
+    public static bool TryGetAttribute(
+        ElementKind element,
+        ElementalStatFamily family,
+        out ElementalAttributeDefinition definition) =>
+        ByElementAndFamily.TryGetValue((element, family), out definition);
+
+    public static bool TryGetAttribute(
+        ElementKind element,
+        ElementalAttributeRole role,
+        out ElementalAttributeDefinition definition) =>
+        ByElementAndRole.TryGetValue((element, role), out definition);
+
+    public static ElementalEffectDefinition EffectFor(ElementKind element) =>
+        EffectByElement[element];
+
     public static bool TryGetStone(
         uint stoneItemId,
-        out ElementalAttributeDefinition definition) =>
-        ByStoneItemId.TryGetValue(stoneItemId, out definition);
+        out ElementalStoneDefinition definition) =>
+        ByStoneItemId.TryGetValue(stoneItemId, out definition!);
+
+    public static bool TryResolveStoneForEquipmentSlot(
+        uint stoneItemId,
+        short equipmentSlot,
+        out ElementalAttributeDefinition definition)
+    {
+        definition = default;
+        return TryGetStone(stoneItemId, out var stone) &&
+            TryGetFamilyForEquipmentSlot(equipmentSlot, out var family) &&
+            TryGetAttribute(stone.Element, family, out definition) &&
+            stone.AttributeIds.Contains(definition.AttributeId);
+    }
+
+    public static bool TryGetFamilyForEquipmentSlot(
+        int equipmentSlot,
+        out ElementalStatFamily family)
+    {
+        family = equipmentSlot switch
+        {
+            EquipmentSlots.Weapon => ElementalStatFamily.Power,
+            EquipmentSlots.Head or
+            EquipmentSlots.Glove or
+            EquipmentSlots.Ring1 or
+            EquipmentSlots.Ring2 => ElementalStatFamily.Penetration,
+            EquipmentSlots.Amulet or
+            EquipmentSlots.Armor or
+            EquipmentSlots.Cuff or
+            EquipmentSlots.Girdle or
+            EquipmentSlots.Shoes or
+            EquipmentSlots.Leggings or
+            EquipmentSlots.Shield => ElementalStatFamily.Resistance,
+            _ => default
+        };
+        return equipmentSlot is >= EquipmentSlots.Head and <= EquipmentSlots.Shield;
+    }
+
+    public static bool TryGetRoleForEquipmentSlot(
+        int equipmentSlot,
+        out ElementalAttributeRole role)
+    {
+        if (TryGetFamilyForEquipmentSlot(equipmentSlot, out var family))
+        {
+            role = RoleForFamily(family);
+            return true;
+        }
+
+        role = default;
+        return false;
+    }
+
+    public static ElementalAttributeRole RoleForFamily(
+        ElementalStatFamily family) =>
+        family switch
+        {
+            ElementalStatFamily.Power => ElementalAttributeRole.EffectPotency,
+            ElementalStatFamily.Resistance => ElementalAttributeRole.EffectResistance,
+            ElementalStatFamily.Penetration => ElementalAttributeRole.ApplicationChance,
+            _ => throw new ArgumentOutOfRangeException(nameof(family))
+        };
+
+    public static uint StoneItemIdFor(ElementKind element) =>
+        MinimumStoneItemId + checked((uint)((int)element * StoneItemIdStride));
 
     public static bool IsElementalAttribute(int? attributeId) =>
         attributeId.HasValue && ByAttributeId.ContainsKey(attributeId.Value);
@@ -166,7 +332,7 @@ internal static class ElementalAttributeCatalog
     {
         ArgumentNullException.ThrowIfNull(equippedItems);
         var stats = Enum.GetValues<ElementKind>()
-            .ToDictionary(static value => value, static _ => default(ElementalStatTotals));
+            .ToDictionary(static value => value, static _ => default(ElementalEffectTotals));
         var counts = Enum.GetValues<ElementKind>()
             .ToDictionary(static value => value, static _ => 0);
 
@@ -189,17 +355,19 @@ internal static class ElementalAttributeCatalog
             }
         }
 
-        var effective = Enum.GetValues<ElementKind>()
+        var activeResonances = Enum.GetValues<ElementKind>()
             .ToDictionary(
                 static value => value,
-                value => ApplySetBonuses(stats[value], counts[value]));
-        return new ElementalEquipmentProfile(stats, effective, counts);
+                value => ElementalResonanceCatalog.ActiveFor(
+                    value,
+                    counts[value]));
+        return new ElementalEquipmentProfile(stats, counts, activeResonances);
     }
 
     private static void Add(
         int? attributeId,
         short grade,
-        IDictionary<ElementKind, ElementalStatTotals> stats,
+        IDictionary<ElementKind, ElementalEffectTotals> stats,
         ISet<ElementKind> countedElements)
     {
         if (!attributeId.HasValue ||
@@ -209,50 +377,115 @@ internal static class ElementalAttributeCatalog
         }
 
         stats[definition.Element] = stats[definition.Element].Add(
-            definition.Family,
+            definition.Role,
             definition.ValueAtGrade(grade));
         countedElements.Add(definition.Element);
-    }
-
-    private static ElementalStatTotals ApplySetBonuses(
-        ElementalStatTotals raw,
-        int equippedCount)
-    {
-        var effective = raw;
-        if (equippedCount >= 3)
-        {
-            effective = effective.Add(ElementalStatFamily.Power, 200);
-        }
-        if (equippedCount >= 6)
-        {
-            effective = effective.Add(ElementalStatFamily.Resistance, 300);
-        }
-        if (equippedCount >= 10)
-        {
-            effective = effective.Add(ElementalStatFamily.Penetration, 200);
-        }
-        return effective;
     }
 
     private static IReadOnlyList<ElementalAttributeDefinition>
         BuildDefinitions()
     {
         var definitions = new List<ElementalAttributeDefinition>(21);
-        foreach (var element in Enum.GetValues<ElementKind>())
+        foreach (var effect in Effects)
         {
             foreach (var family in Enum.GetValues<ElementalStatFamily>())
             {
-                var ordinal = ((int)element * 3) + (int)family;
+                var ordinal = ((int)effect.Element * 3) + (int)family;
+                var role = RoleForFamily(family);
                 definitions.Add(new ElementalAttributeDefinition(
                     MinimumAttributeId + ordinal,
-                    MinimumStoneItemId + checked((uint)ordinal),
-                    element,
+                    effect.Element,
                     family,
-                    $"{element} {family} Stone"));
+                    effect.AttributeDisplayName(role)));
             }
         }
 
         return definitions;
+    }
+
+    private static IReadOnlyList<ElementalEffectDefinition> BuildEffects() =>
+    [
+        new(
+            ElementKind.Fire,
+            ElementalEffectKind.Burn,
+            "Fire",
+            "Burn",
+            "[Burn] Damage over time",
+            "[Burn] Damage resistance",
+            "[Burn] On-hit chance"),
+        new(
+            ElementKind.Water,
+            ElementalEffectKind.Drench,
+            "Water",
+            "Drench",
+            "[Drench] Movement slow",
+            "[Drench] Slow resistance",
+            "[Drench] Slow chance"),
+        new(
+            ElementKind.Lightning,
+            ElementalEffectKind.Shock,
+            "Lightning",
+            "Shock",
+            "[Shock] Paralyze duration",
+            "[Shock] Paralyze resistance",
+            "[Shock] Paralyze chance"),
+        new(
+            ElementKind.Earth,
+            ElementalEffectKind.Fracture,
+            "Earth",
+            "Fracture",
+            "[Fracture] Defense reduction",
+            "[Fracture] Defense-break resistance",
+            "[Fracture] Defense-break chance"),
+        new(
+            ElementKind.Wind,
+            ElementalEffectKind.Gale,
+            "Wind",
+            "Gale",
+            "[Gale] Movement speed",
+            "[Gale] Slow resistance",
+            "[Gale] Movement activation chance"),
+        new(
+            ElementKind.Light,
+            ElementalEffectKind.Dazzle,
+            "Light",
+            "Dazzle",
+            "[Dazzle] Accuracy reduction",
+            "[Dazzle] Accuracy-loss resistance",
+            "[Dazzle] Accuracy-reduction chance"),
+        new(
+            ElementKind.Dark,
+            ElementalEffectKind.Wither,
+            "Dark",
+            "Wither",
+            "[Wither] Healing reduction",
+            "[Wither] Healing-reduction resistance",
+            "[Wither] Healing-suppression chance")
+    ];
+
+    private static IReadOnlyList<ElementalStoneDefinition> BuildStones()
+    {
+        var names = new Dictionary<ElementKind, string>
+        {
+            [ElementKind.Fire] = "Prometheus Stone",
+            [ElementKind.Water] = "Poseidon Stone",
+            [ElementKind.Lightning] = "Zeus Stone",
+            [ElementKind.Earth] = "Gaia Stone",
+            [ElementKind.Wind] = "Aeolus Stone",
+            [ElementKind.Light] = "Apollo Stone",
+            [ElementKind.Dark] = "Hades Stone"
+        };
+        return Enum.GetValues<ElementKind>()
+            .Select(element => new ElementalStoneDefinition(
+                StoneItemIdFor(element),
+                element,
+                names[element],
+                Array.AsReadOnly(All
+                    .Where(value => value.Element == element)
+                    .OrderBy(static value => value.Family)
+                    .Select(static value => value.AttributeId)
+                    .ToArray())))
+            .ToArray();
     }
 
     private static bool IsDedicatedAttribute(int? attributeId) =>

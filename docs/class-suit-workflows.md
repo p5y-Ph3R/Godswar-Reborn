@@ -27,12 +27,17 @@ bag-only until their native equipped-slot encodings are captured and verified.
 
 The stock dialog sends each item choice through opcode `10193`. On confirm it
 clears those visual controls before sending the final opcode `10069`; some
-builds consequently leave the final item references empty. The server keeps a
-short-lived, account/character/NPC/dialog-bound snapshot of the choices and
-accepts only the exact ordered clear burst. Every selected bag item must still
-match its captured compact state, and the snapshot is consumed before durable
-execution. Explicit inline references remain supported for captured clients
-that include them.
+builds consequently leave the final item references empty or retain unrelated
+scratch values. The server keeps a short-lived,
+account/character/NPC/dialog-bound snapshot of the choices. A non-canonical
+final packet is accepted only after the exact ordered clear burst; live or
+partially cleared selections are insufficient. Every selected bag item must
+still match its captured compact state, and the snapshot is consumed before
+durable execution. The secure client shim separately arms the exact operation
+page and binds an empty Delete confirmation to the same ordered three-slot
+gear/Water Grain/selector-stone snapshot
+before assigning its UUID. Explicit inline references remain supported for
+captured clients that include them.
 
 Dialogue content is published as immutable NPC-dialogue revision V2. The V1
 revision remains readable for rollback.
@@ -99,12 +104,13 @@ for operator repair; conversion never silently drops that player value.
 Adding a dedicated attribute requires any matching Class Suit III or IV gear
 item, one Flame Spark (`9990`), and one allowed Class Suit or elemental stone.
 Class Suit I/II and common gear are ineligible. Deleting a dedicated attribute
-likewise requires Class Suit III/IV gear and one Water Grain (`9991`). Every
-eligible gear branch can hold one profession-compatible attribute and two
-different-element attributes in dedicated fields in addition to all five
-ordinary attributes. The existing Delete dialog has no attribute selector, so
-it removes elemental slot 2, elemental slot 1, and then the profession-specific
-field on successive uses.
+requires Class Suit III/IV gear, one Water Grain (`9991`), and the matching
+Class Suit or elemental stone in the stock dialog's third item slot. The stone
+identifies the exact durable stat to remove. One Water Grain and one matching
+selector stone are consumed after a successful deletion. A selector that does
+not match a stat currently on the gear fails atomically. Every eligible gear branch can
+hold one profession-compatible attribute and two different-element attributes
+in dedicated fields in addition to all five ordinary attributes.
 
 | Professions | Stone | Attribute | Grade 1 to 25 value |
 |---|---:|---:|---:|
@@ -121,6 +127,25 @@ These eight attributes are add/delete-only: they have no Quartz Plate upgrade
 chain. Their effective bonus is nevertheless selected from the original
 `L1`-through-`L25` content values by the gear's authoritative grade, so a Grade
 25 item receives the right-hand value in the table.
+
+Seven Greek-themed stones add elemental attributes. The server derives the
+semantic role from the pinned equipment template rather than trusting the
+client:
+
+| Gear slot | Applied role |
+|---|---|
+| Weapon | Element-specific Effect Potency |
+| Helmet, gloves, rings | Element-specific Application Chance |
+| Armor, sleeves, leggings, girdle, amulet, shoes, shield | Element-specific Effect Resistance |
+
+The stones are Prometheus (`16300`), Poseidon (`16303`), Zeus (`16306`), Gaia
+(`16309`), Aeolus (`16312`), Apollo (`16315`), and Hades (`16318`). Their
+role-specific applied attribute IDs remain `480..500`, preserving existing
+gear and the GWA3 wire contract. The immutable content names still use their
+legacy Power/Resistance/Penetration identifiers solely for compatibility.
+Their client icons use deity-specific flame, trident, thunderbolt,
+mountain-and-olive, winged-wind, sun-and-lyre, and bident symbols in the same
+order; item names remain the full Greek names.
 
 The stock “fifth attribute” page remains visible, but its final action is
 fail-closed until an exact original wire capture establishes the missing

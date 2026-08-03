@@ -155,12 +155,6 @@ internal sealed partial class GameClientHandler
             receipt.Family,
             CommandIdentityStrength.ClientOperationId,
             CommandOutcome.Duplicate);
-        await _session.SendAsync(
-            ClassSuitProtocol.BuildResultResponse(
-                checked((uint)expectedIntent.NpcId),
-                receipt.NativeResultSubId),
-            cancellationToken,
-            "ClassSuitReplayResult");
         if (receipt.Status == ClassSuitCommandResultStatus.Succeeded)
         {
             foreach (var acknowledgement in
@@ -178,6 +172,14 @@ internal sealed partial class GameClientHandler
             receipt,
             "replay",
             cancellationToken);
+        // Match the committed response ordering: inventory refreshes precede
+        // the native result so the stock client does not dismiss the dialog.
+        await _session.SendAsync(
+            ClassSuitProtocol.BuildResultResponse(
+                checked((uint)expectedIntent.NpcId),
+                receipt.NativeResultSubId),
+            cancellationToken,
+            "ClassSuitReplayResult");
         await SendSecureGearMentorResultAsync(
             clientOperationId,
             receipt.Family,

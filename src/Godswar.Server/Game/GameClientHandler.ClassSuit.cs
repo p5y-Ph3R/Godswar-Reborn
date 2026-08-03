@@ -31,6 +31,7 @@ internal sealed partial class GameClientHandler
             route,
             npcId,
             subId,
+            arguments,
             out var stagedIntent);
 
         if (!hasStagedMutation &&
@@ -243,12 +244,6 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        await _session.SendAsync(
-            ClassSuitProtocol.BuildResultResponse(
-                npcId,
-                receipt.NativeResultSubId),
-            cancellationToken,
-            "ClassSuitResult");
         if (receipt.Status == ClassSuitCommandResultStatus.Succeeded)
         {
             foreach (var acknowledgement in
@@ -266,6 +261,15 @@ internal sealed partial class GameClientHandler
             receipt,
             execution.Disposition.ToString(),
             cancellationToken);
+        // The stock client replaces an open NPC result dialog while it
+        // processes inventory refresh packets. Settle inventory first so the
+        // native success/failure message remains visible to the player.
+        await _session.SendAsync(
+            ClassSuitProtocol.BuildResultResponse(
+                npcId,
+                receipt.NativeResultSubId),
+            cancellationToken,
+            "ClassSuitResult");
         if (identity.IsSecureClient)
         {
             await SendSecureGearMentorResultAsync(

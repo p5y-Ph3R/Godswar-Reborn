@@ -68,8 +68,7 @@ internal static partial class ClassSuitAttributePlanner
         }
 
         if (request.Gear is null || request.Catalyst is null ||
-            (request.Operation == ClassSuitAttributeOperation.AddClassSpecific) !=
-            (request.ClassStone is not null))
+            request.ClassStone is null)
         {
             return Reject(
                 ClassSuitAttributeStatus.SelectionMissing,
@@ -78,12 +77,15 @@ internal static partial class ClassSuitAttributePlanner
                 CompactItemEntry.Empty,
                 request.Operation == ClassSuitAttributeOperation.AddClassSpecific
                     ? "Select Class Suit III/IV gear, a Flame Spark, and a class-specific stone."
-                    : "Select Class Suit III/IV gear and a Water Grain only.");
+                    : "Select Class Suit III/IV gear, a Water Grain, and the stone for the stat to delete.");
         }
 
-        var selections = request.ClassStone is null
-            ? new[] { request.Gear, request.Catalyst }
-            : new[] { request.Gear, request.Catalyst, request.ClassStone };
+        var selections = new[]
+        {
+            request.Gear,
+            request.Catalyst,
+            request.ClassStone
+        };
         var slots = selections.Select(static value => value.KitBagSlot).ToArray();
         if (slots.Any(static slot => slot is < 0 or >= KitBagSlotCount))
         {
@@ -138,6 +140,7 @@ internal static partial class ClassSuitAttributePlanner
                 equipment,
                 profession,
                 out var gearTier,
+                out var gearTemplate,
                 out var gearStatus,
                 out var gearReason))
         {
@@ -199,37 +202,38 @@ internal static partial class ClassSuitAttributePlanner
                 "The selected catalyst stack is empty.");
         }
 
+        var stoneSelection = request.ClassStone;
+        var stone = before[stoneSelection.KitBagSlot];
+        if (!TryResolveStone(
+                templates.Materials,
+                stone.Id,
+                profession,
+                gearTemplate.EquipmentSlot,
+                out var attributeId))
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidClassStone,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                "The selected stone does not identify a stat supported by this gear and profession.");
+        }
+
+        if (stone.Stack < 1)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InsufficientMaterial,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                "The selected class-specific stone stack is empty.");
+        }
+
         var working = before.ToArray();
         var materials = new List<ClassSuitMaterialChange>();
         CompactItemEntry equipmentAfter;
         if (request.Operation == ClassSuitAttributeOperation.AddClassSpecific)
         {
-            var stoneSelection = request.ClassStone!;
-            var stone = before[stoneSelection.KitBagSlot];
-            if (!TryResolveStone(
-                    templates.Materials,
-                    stone.Id,
-                    profession,
-                    out var attributeId))
-            {
-                return Reject(
-                    ClassSuitAttributeStatus.InvalidClassStone,
-                    request.Operation,
-                    originalKitBag,
-                    equipment,
-                    "The selected class-specific stone does not belong to this profession.");
-            }
-
-            if (stone.Stack < 1)
-            {
-                return Reject(
-                    ClassSuitAttributeStatus.InsufficientMaterial,
-                    request.Operation,
-                    originalKitBag,
-                    equipment,
-                    "The selected class-specific stone stack is empty.");
-            }
-
             if (!TryAddAttribute(
                     equipment,
                     attributeId,
@@ -245,23 +249,11 @@ internal static partial class ClassSuitAttributePlanner
                     equipment,
                     attributeReason);
             }
-
-            equipmentAfter = equipmentAfter with
-            {
-                Bound = Math.Max(
-                    equipmentAfter.Bound,
-                    Math.Max(catalyst.Bound, stone.Bound))
-            };
-            working[stoneSelection.KitBagSlot] = ConsumeOne(stone);
-            materials.Add(new ClassSuitMaterialChange(
-                stone.Id,
-                1,
-                stone.Bound,
-                ClassSuitMaterialDirection.Consumed));
         }
         else if (!TryDeleteAttribute(
                      equipment,
                      profession,
+                     attributeId,
                      out equipmentAfter,
                      out var attributeStatus,
                      out var attributeReason))
@@ -276,14 +268,22 @@ internal static partial class ClassSuitAttributePlanner
 
         equipmentAfter = equipmentAfter with
         {
-            Bound = Math.Max(equipmentAfter.Bound, catalyst.Bound)
+            Bound = Math.Max(
+                equipmentAfter.Bound,
+                Math.Max(catalyst.Bound, stone.Bound))
         };
         working[request.Gear.KitBagSlot] = equipmentAfter;
         working[request.Catalyst.KitBagSlot] = ConsumeOne(catalyst);
+        working[stoneSelection.KitBagSlot] = ConsumeOne(stone);
         materials.Add(new ClassSuitMaterialChange(
             catalyst.Id,
             1,
             catalyst.Bound,
+            ClassSuitMaterialDirection.Consumed));
+        materials.Add(new ClassSuitMaterialChange(
+            stone.Id,
+            1,
+            stone.Bound,
             ClassSuitMaterialDirection.Consumed));
 
         var updatedKitBag = normalizedKitBag;
@@ -323,12 +323,14 @@ internal static partial class ClassSuitAttributePlanner
         CompactItemEntry equipment,
         byte profession,
         out ClassSuitTier tier,
+        out ItemTemplateDefinition template,
         out ClassSuitAttributeStatus status,
         out string reason)
     {
         tier = default;
+        template = default!;
         if (equipment.Stack != 1 ||
-            !templates.TryGet(equipment.Id, out var template) ||
+            !templates.TryGet(equipment.Id, out template) ||
             !EquipmentSlots.IsEquipmentKind(template.Kind) ||
             !EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot))
         {
@@ -368,17 +370,21 @@ internal static partial class ClassSuitAttributePlanner
         IItemMaterialCatalog materials,
         uint itemId,
         byte profession,
+        short equipmentSlot,
         out int attributeId)
     {
         attributeId = 0;
         if (!materials.TryGetAttributeStone(itemId, out var stone) ||
-            stone.AllowedAttributeIds.Count != 1)
+            stone.AllowedAttributeIds.Count == 0)
         {
             return false;
         }
 
-        if (ElementalAttributeCatalog.TryGetStone(itemId, out var elemental) &&
-            stone.AllowedAttributeIds[0] == elemental.AttributeId)
+        if (ElementalAttributeCatalog.TryResolveStoneForEquipmentSlot(
+                itemId,
+                equipmentSlot,
+                out var elemental) &&
+            stone.AllowedAttributeIds.Contains(elemental.AttributeId))
         {
             attributeId = elemental.AttributeId;
             return true;

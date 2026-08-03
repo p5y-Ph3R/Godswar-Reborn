@@ -109,8 +109,8 @@ internal static class ClassSuitNativeResults
             return operation switch
             {
                 ClassSuitCommandOperation.ExchangeTierI => 120,
-                ClassSuitCommandOperation.AddAttribute => 119,
-                ClassSuitCommandOperation.DeleteAttribute => 121,
+                ClassSuitCommandOperation.AddAttribute => 121,
+                ClassSuitCommandOperation.DeleteAttribute => 122,
                 ClassSuitCommandOperation.ConvertToCommon => 152,
                 ClassSuitCommandOperation.UpgradeTierII => 300,
                 ClassSuitCommandOperation.UpgradeTierIII => 157,
@@ -162,11 +162,11 @@ internal static class ClassSuitNativeResults
         ClassSuitCommandResultStatus status) =>
         status switch
         {
-            ClassSuitCommandResultStatus.SelectionMissing => 115,
-            ClassSuitCommandResultStatus.InvalidMaterial => 116,
-            ClassSuitCommandResultStatus.AttributeAlreadyPresent => 117,
-            ClassSuitCommandResultStatus.ProfessionMismatch => 118,
-            _ => 123
+            ClassSuitCommandResultStatus.InvalidMaterial or
+                ClassSuitCommandResultStatus.InsufficientMaterial => 144,
+            ClassSuitCommandResultStatus.AttributeAlreadyPresent => 143,
+            ClassSuitCommandResultStatus.ProfessionMismatch => 142,
+            _ => GenericWrongSelection
         };
 
     private static int ResolveDeleteAttributeFailure(
@@ -174,10 +174,62 @@ internal static class ClassSuitNativeResults
         status switch
         {
             ClassSuitCommandResultStatus.InvalidMaterial or
-                ClassSuitCommandResultStatus.SelectionMissing => 120,
-            ClassSuitCommandResultStatus.AttributeMissing => 122,
-            _ => 123
+                ClassSuitCommandResultStatus.InsufficientMaterial => 141,
+            ClassSuitCommandResultStatus.AttributeMissing => 140,
+            _ => 139
         };
+
+    /// <summary>
+    /// Original contract-v2 storage IDs retained for immutable inbox replay
+    /// and rollback compatibility. Player-facing replies must always use
+    /// <see cref="Resolve"/>.
+    /// </summary>
+    internal static int ResolveLegacy(
+        ClassSuitCommandOperation operation,
+        ClassSuitCommandResultStatus status)
+    {
+        if (status == ClassSuitCommandResultStatus.Succeeded)
+        {
+            return operation switch
+            {
+                ClassSuitCommandOperation.ExchangeTierI => 120,
+                ClassSuitCommandOperation.AddAttribute => 119,
+                ClassSuitCommandOperation.DeleteAttribute => 121,
+                ClassSuitCommandOperation.ConvertToCommon => 152,
+                ClassSuitCommandOperation.UpgradeTierII => 300,
+                ClassSuitCommandOperation.UpgradeTierIII => 157,
+                ClassSuitCommandOperation.UpgradeTierIV => 169,
+                _ => GenericWrongSelection
+            };
+        }
+
+        return operation switch
+        {
+            ClassSuitCommandOperation.AddAttribute => status switch
+            {
+                ClassSuitCommandResultStatus.SelectionMissing => 115,
+                ClassSuitCommandResultStatus.InvalidMaterial => 116,
+                ClassSuitCommandResultStatus.AttributeAlreadyPresent => 117,
+                ClassSuitCommandResultStatus.ProfessionMismatch => 118,
+                _ => 123
+            },
+            ClassSuitCommandOperation.DeleteAttribute => status switch
+            {
+                ClassSuitCommandResultStatus.InvalidMaterial or
+                    ClassSuitCommandResultStatus.SelectionMissing => 120,
+                ClassSuitCommandResultStatus.AttributeMissing => 122,
+                _ => 123
+            },
+            _ => Resolve(operation, status)
+        };
+    }
+
+    internal static bool IsPersistedResultCompatible(
+        ClassSuitCommandOperation operation,
+        ClassSuitCommandResultStatus status,
+        int nativeResultSubId) =>
+        nativeResultSubId == Resolve(operation, status) ||
+        nativeResultSubId == ResolveLegacy(operation, status);
 
     private static int ResolveTierThreeFailure(
         ClassSuitCommandResultStatus status) =>

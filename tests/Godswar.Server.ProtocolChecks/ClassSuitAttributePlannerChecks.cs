@@ -17,7 +17,7 @@ internal static partial class ClassSuitAttributePlannerChecks
         CheckAddConsumesExactMaterialsAndPreservesGear();
         CheckAddAuthorityAndDuplicateRejections();
         CheckTierBoundClassSlotRules();
-        CheckDeleteCompactsAttributesAndConsumesWater();
+        CheckDeleteTargetsExactAttributeAndConsumesWater();
         CheckDeleteAndStaleRejectionsAreAtomic();
         return Task.CompletedTask;
     }
@@ -191,7 +191,7 @@ internal static partial class ClassSuitAttributePlannerChecks
             "another profession cannot modify the gear");
     }
 
-    private static void CheckDeleteCompactsAttributesAndConsumesWater()
+    private static void CheckDeleteTargetsExactAttributeAndConsumesWater()
     {
         var gear = Weapon(1034, bound: 0) with
         {
@@ -205,7 +205,8 @@ internal static partial class ClassSuitAttributePlannerChecks
         };
         var kitBag = StageDelete(
             gear,
-            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1),
+            Material(16300, 7, 0));
         var result = ClassSuitAttributePlanner.Create(
             TestItemContent.Catalog,
             kitBag,
@@ -222,21 +223,26 @@ internal static partial class ClassSuitAttributePlannerChecks
         Check.Equal((short)4, updated.AttributeLevel2 ?? -1, "delete preserves ordinary level two");
         Check.True(
             updated.ClassAttribute1 == 200 &&
-            updated.ElementalAttribute1 == 480 &&
+            updated.ElementalAttribute1 == 483 &&
             updated.ElementalAttribute2 is null,
-            "delete removes elemental slot two before earlier dedicated slots");
+            "Prometheus Stone deletes Fire and compacts the remaining elemental stat");
         Check.Equal((short)1, updated.Bound, "bound Water Grain binds the resulting gear");
         Check.Equal((short)20, updated.Quality, "delete preserves gear quality");
         Check.Equal((short)25, updated.Grade, "delete preserves gear grade");
         Check.True(
             KitBagSlots.GetItem(result.UpdatedKitBag, CatalystSlot).IsEmpty,
             "delete consumes one Water Grain");
-        Check.Equal(2, result.Mutations.Count, "delete has exact gear/water mutations");
-        Check.Equal(1, result.Materials.Count, "delete has one consumption plan entry");
+        Check.Equal(
+            (short)6,
+            KitBagSlots.GetItem(result.UpdatedKitBag, StoneSlot).Stack,
+            "delete consumes one selector stone");
+        Check.Equal(3, result.Mutations.Count, "delete has exact gear/water/stone mutations");
+        Check.Equal(2, result.Materials.Count, "delete has two consumption plan entries");
 
         var secondBag = StageDelete(
             updated,
-            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1),
+            Material(9950, 3, 0));
         var second = ClassSuitAttributePlanner.Create(
             TestItemContent.Catalog,
             secondBag,
@@ -244,13 +250,14 @@ internal static partial class ClassSuitAttributePlannerChecks
             DeleteRequest(secondBag));
         Check.True(
             second.Committed &&
-            second.EquipmentAfter.ClassAttribute1 == 200 &&
-            second.EquipmentAfter.ElementalAttribute1 is null,
-            "a second delete removes elemental slot one");
+            second.EquipmentAfter.ClassAttribute1 is null &&
+            second.EquipmentAfter.ElementalAttribute1 == 483,
+            "Primal Stone deletes only the matching class-specific stat");
 
         var thirdBag = StageDelete(
             second.EquipmentAfter,
-            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1),
+            Material(16303, 2, 0));
         var third = ClassSuitAttributePlanner.Create(
             TestItemContent.Catalog,
             thirdBag,
@@ -258,8 +265,10 @@ internal static partial class ClassSuitAttributePlannerChecks
             DeleteRequest(thirdBag));
         Check.True(
             third.Committed &&
-            third.EquipmentAfter.ClassAttribute1 is null,
-            "a third delete removes the non-elemental Class Suit stat");
+            third.EquipmentAfter.ClassAttribute1 is null &&
+            third.EquipmentAfter.ElementalAttribute1 is null &&
+            third.EquipmentAfter.ElementalAttribute2 is null,
+            "Poseidon Stone deletes the matching Water stat");
     }
 
     private static void CheckDeleteAndStaleRejectionsAreAtomic()
@@ -270,7 +279,8 @@ internal static partial class ClassSuitAttributePlannerChecks
                 Attribute1 = 40,
                 AttributeLevel1 = 2
             },
-            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1),
+            Material(9950, 1, 1));
         AssertRejected(
             ClassSuitAttributePlanner.Create(
                 TestItemContent.Catalog,
@@ -280,6 +290,24 @@ internal static partial class ClassSuitAttributePlannerChecks
             missingBag,
             ClassSuitAttributeStatus.ClassAttributeMissing,
             "delete requires an existing class-specific stat");
+
+        var mismatchedSelectorBag = StageDelete(
+            Weapon(1034, bound: 1) with
+            {
+                ClassAttribute1 = 200,
+                ElementalAttribute1 = 480
+            },
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1),
+            Material(16303, 1, 1));
+        AssertRejected(
+            ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                mismatchedSelectorBag,
+                profession: 0,
+                DeleteRequest(mismatchedSelectorBag)),
+            mismatchedSelectorBag,
+            ClassSuitAttributeStatus.ClassAttributeMissing,
+            "a selector stone cannot delete a different Class Suit stat");
 
         var stagedBag = StageAdd(
             Weapon(1034, bound: 0),
@@ -313,32 +341,34 @@ internal static partial class ClassSuitAttributePlannerChecks
         new(
             ClassSuitAttributeOperation.DeleteClassSpecific,
             ClassSuitSlotSelection.Capture(kitBag, GearSlot),
-            ClassSuitSlotSelection.Capture(kitBag, CatalystSlot));
+            ClassSuitSlotSelection.Capture(kitBag, CatalystSlot),
+            ClassSuitSlotSelection.Capture(kitBag, StoneSlot));
 
     private static string StageAdd(
         CompactItemEntry gear,
         CompactItemEntry catalyst,
         CompactItemEntry stone)
     {
-        var bag = StageDelete(gear, catalyst);
-        return KitBagSlots.SetSlot(
-            bag,
-            StoneSlot,
-            stone.ToCompactString());
+        return StageDelete(gear, catalyst, stone);
     }
 
     private static string StageDelete(
         CompactItemEntry gear,
-        CompactItemEntry catalyst)
+        CompactItemEntry catalyst,
+        CompactItemEntry selectorStone)
     {
         var bag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
             GearSlot,
             gear.ToCompactString());
-        return KitBagSlots.SetSlot(
+        bag = KitBagSlots.SetSlot(
             bag,
             CatalystSlot,
             catalyst.ToCompactString());
+        return KitBagSlots.SetSlot(
+            bag,
+            StoneSlot,
+            selectorStone.ToCompactString());
     }
 
     private static CompactItemEntry Weapon(uint itemId, short bound) =>

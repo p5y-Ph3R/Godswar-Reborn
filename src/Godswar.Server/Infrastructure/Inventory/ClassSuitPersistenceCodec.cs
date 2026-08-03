@@ -56,7 +56,26 @@ internal static class ClassSuitPersistenceCodec
     public static byte[] Encode(ClassSuitExecutionReceipt receipt)
     {
         ArgumentNullException.ThrowIfNull(receipt);
-        ValidateReceipt(receipt);
+        ValidateReceipt(receipt, allowLegacyNativeResult: false);
+
+        // Contract v2 is immutable and older binaries validate its original
+        // native result IDs. Persist that representation for rollback safety;
+        // Decode normalizes it before any reply reaches the stock client.
+        var storedReceipt = receipt with
+        {
+            NativeResultSubId = ClassSuitNativeResults.ResolveLegacy(
+                receipt.Operation,
+                receipt.Status)
+        };
+        return EncodeCore(storedReceipt, allowLegacyNativeResult: true);
+    }
+
+    private static byte[] EncodeCore(
+        ClassSuitExecutionReceipt receipt,
+        bool allowLegacyNativeResult)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        ValidateReceipt(receipt, allowLegacyNativeResult);
         var buffer = new ArrayBufferWriter<byte>(2_048);
         using var writer = new Utf8JsonWriter(buffer);
         writer.WriteStartObject();
@@ -105,6 +124,10 @@ internal static class ClassSuitPersistenceCodec
     }
 
     public static ClassSuitExecutionReceipt Decode(
+        ReadOnlySpan<byte> payload) =>
+        NormalizeNativeResult(DecodeStored(payload));
+
+    private static ClassSuitExecutionReceipt DecodeStored(
         ReadOnlySpan<byte> payload)
     {
         using var document = JsonDocument.Parse(payload.ToArray());
@@ -181,7 +204,7 @@ internal static class ClassSuitPersistenceCodec
                 throw new InvalidDataException(
                     "The stored Class Suit audit reference is missing."),
             eventId);
-        ValidateReceipt(receipt);
+        ValidateReceipt(receipt, allowLegacyNativeResult: true);
         return receipt;
     }
 
@@ -192,16 +215,19 @@ internal static class ClassSuitPersistenceCodec
         long expectedAuditId,
         CommandFamily expectedFamily)
     {
-        var receipt = Decode(Encoding.UTF8.GetBytes(payloadJson));
-        var encoded = Encode(receipt);
+        var storedReceipt = DecodeStored(
+            Encoding.UTF8.GetBytes(payloadJson));
+        var encoded = EncodeCore(
+            storedReceipt,
+            allowLegacyNativeResult: true);
         var actualHash = SHA256.HashData(encoded);
-        if (receipt.Family != expectedFamily ||
+        if (storedReceipt.Family != expectedFamily ||
             !string.Equals(
-                ResultCode(receipt.Status),
+                ResultCode(storedReceipt.Status),
                 expectedResultCode,
                 StringComparison.Ordinal) ||
             !string.Equals(
-                receipt.AuditReference,
+                storedReceipt.AuditReference,
                 expectedAuditId.ToString(CultureInfo.InvariantCulture),
                 StringComparison.Ordinal) ||
             expectedHash.Length != actualHash.Length ||
@@ -213,7 +239,7 @@ internal static class ClassSuitPersistenceCodec
                 "The stored Class Suit result evidence is inconsistent.");
         }
 
-        return receipt;
+        return NormalizeNativeResult(storedReceipt);
     }
 
     public static byte[] Hash(ReadOnlySpan<byte> payload) =>
@@ -274,7 +300,18 @@ internal static class ClassSuitPersistenceCodec
         return intent;
     }
 
-    private static void ValidateReceipt(ClassSuitExecutionReceipt receipt)
+    private static ClassSuitExecutionReceipt NormalizeNativeResult(
+        ClassSuitExecutionReceipt receipt) =>
+        receipt with
+        {
+            NativeResultSubId = ClassSuitNativeResults.Resolve(
+                receipt.Operation,
+                receipt.Status)
+        };
+
+    private static void ValidateReceipt(
+        ClassSuitExecutionReceipt receipt,
+        bool allowLegacyNativeResult)
     {
         if (receipt.CharacterId <= 0 ||
             receipt.Family !=
@@ -287,9 +324,15 @@ internal static class ClassSuitPersistenceCodec
             receipt.ReplayIntent.NpcId != receipt.NpcId ||
             receipt.ReplayIntent.DialogIndex != receipt.DialogIndex ||
             !Enum.IsDefined(receipt.Status) ||
-            receipt.NativeResultSubId != ClassSuitNativeResults.Resolve(
-                receipt.Operation,
-                receipt.Status) ||
+            !(allowLegacyNativeResult
+                ? ClassSuitNativeResults.IsPersistedResultCompatible(
+                    receipt.Operation,
+                    receipt.Status,
+                    receipt.NativeResultSubId)
+                : receipt.NativeResultSubId ==
+                    ClassSuitNativeResults.Resolve(
+                        receipt.Operation,
+                        receipt.Status)) ||
             receipt.InventoryRevision < 0 ||
             string.IsNullOrWhiteSpace(receipt.AuditReference))
         {

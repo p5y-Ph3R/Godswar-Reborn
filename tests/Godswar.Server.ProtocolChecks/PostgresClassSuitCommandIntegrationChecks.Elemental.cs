@@ -45,7 +45,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         AssertElementalCommittedState(
             committedState,
             expectedDuplicateCount: 0,
-            "elemental Class Suit commit persists Fire Power and consumes " +
+            "elemental Class Suit commit persists [Burn] Damage over time and consumes " +
             "one stone plus one Flame Spark");
 
         ClassSuitExecutionReceipt duplicate;

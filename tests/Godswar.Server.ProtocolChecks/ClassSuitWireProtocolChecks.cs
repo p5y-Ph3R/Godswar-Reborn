@@ -36,6 +36,7 @@ internal static class ClassSuitWireProtocolChecks
         CheckEndpointsAndResponses();
         CheckNavigationShapes();
         CheckConversionMutations();
+        CheckAttributeMutations();
         CheckMalformedMutations();
         return Task.CompletedTask;
     }
@@ -386,6 +387,52 @@ internal static class ClassSuitWireProtocolChecks
                     args[7] = 101;
                 }),
             "reverse conversion accepts no material");
+    }
+
+    private static void CheckAttributeMutations()
+    {
+        foreach (var operation in new[]
+                 {
+                     ClassSuitWireOperation.AddClassAttribute,
+                     ClassSuitWireOperation.DeleteClassAttribute
+                 })
+        {
+            var packet = CreateAction(
+                ClassSuitProtocol.SpartaNpcId,
+                (int)operation,
+                static args =>
+                {
+                    args[ClassSuitProtocol.EquipmentArgumentIndex] = 112;
+                    args[ClassSuitProtocol.MaterialArgumentIndex] = 123;
+                    args[ClassSuitProtocol.SecondaryMaterialArgumentIndex] = 134;
+                });
+            Check.True(
+                ClassSuitProtocol.TryReadMutation(
+                    packet,
+                    out var npcId,
+                    out var intent) &&
+                npcId == ClassSuitProtocol.SpartaNpcId &&
+                intent.Operation == operation &&
+                intent.EquipmentKitBagSlot == 12 &&
+                intent.MaterialKitBagSlot == 23 &&
+                intent.SecondaryMaterialKitBagSlot == 34,
+                $"{operation} parses gear, catalyst, and exact selector stone");
+
+            var missingSelector = CreateAction(
+                ClassSuitProtocol.SpartaNpcId,
+                (int)operation,
+                static args =>
+                {
+                    args[ClassSuitProtocol.EquipmentArgumentIndex] = 112;
+                    args[ClassSuitProtocol.MaterialArgumentIndex] = 123;
+                });
+            Check.True(
+                !ClassSuitProtocol.TryReadMutation(
+                    missingSelector,
+                    out _,
+                    out _),
+                $"{operation} fails closed without its third item");
+        }
     }
 
     private static void Reject(GamePacket packet, string description)

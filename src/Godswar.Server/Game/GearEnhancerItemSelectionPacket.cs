@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Application.Items;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -68,7 +69,7 @@ internal readonly record struct GearEnhancerSelectionStageResult(
     int KitBagSlot,
     CompactItemEntry Item);
 
-internal sealed class GearEnhancerSelectionContext
+internal sealed partial class GearEnhancerSelectionContext
 {
     private readonly Func<DateTimeOffset> _utcNow;
     private GearEnhancerSelectionSnapshot? _gearSelection;
@@ -220,13 +221,44 @@ internal sealed class GearEnhancerSelectionContext
         return true;
     }
 
+    public bool TryResolveClearedNativeSlots(
+        int minimumCount,
+        int maximumCount,
+        out IReadOnlyList<GearEnhancerSelectionSnapshot> selections)
+    {
+        selections = [];
+        if (minimumCount < 1 || maximumCount < minimumCount)
+        {
+            return false;
+        }
+
+        // A non-canonical final action is accepted only after the stock
+        // controls emit their complete, ordered clear burst. Live selections
+        // are never enough to authorize a scratch-tailed packet.
+        PruneExpiredNativeCorrelation(_utcNow());
+        var snapshots = _pendingGenericCommit;
+        if (snapshots is null ||
+            snapshots.Length < minimumCount ||
+            snapshots.Length > maximumCount)
+        {
+            return false;
+        }
+
+        selections = snapshots;
+        return true;
+    }
+
     public GearEnhancerSelectionStageResult Apply(
         GearEnhancerItemSelectionPacket selection,
-        string kitBag)
+        string kitBag,
+        IItemMaterialCatalog? materials = null)
     {
         var now = _utcNow();
         PruneExpiredNativeCorrelation(now);
-        var slot = selection.KitBagSlot;
+        var slot = ResolveNativeSelectionSlot(
+            selection,
+            kitBag,
+            materials);
         var item = KitBagSlots.GetItem(kitBag, slot);
         // Any event after a completed native clear burst starts a new edit and
         // invalidates that one-shot confirmation snapshot. GameClientHandler

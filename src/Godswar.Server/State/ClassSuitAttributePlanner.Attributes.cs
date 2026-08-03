@@ -138,6 +138,7 @@ internal static partial class ClassSuitAttributePlanner
     private static bool TryDeleteAttribute(
         CompactItemEntry equipment,
         byte profession,
+        int attributeId,
         out CompactItemEntry updated,
         out ClassSuitAttributeStatus status,
         out string reason)
@@ -153,26 +154,28 @@ internal static partial class ClassSuitAttributePlanner
                 out reason);
         }
 
-        // The legacy dialog does not identify a target stone. Delete newest
-        // dedicated slots first, then the profession-specific slot.
-        if (equipment.ElementalAttribute2.HasValue)
-        {
-            updated = equipment with { ElementalAttribute2 = null };
-        }
-        else if (equipment.ElementalAttribute1.HasValue)
-        {
-            updated = equipment with { ElementalAttribute1 = null };
-        }
-        else if (equipment.ClassAttribute1.HasValue)
+        if (equipment.ClassAttribute1 == attributeId)
         {
             updated = equipment with { ClassAttribute1 = null };
+        }
+        else if (equipment.ElementalAttribute1 == attributeId)
+        {
+            updated = equipment with
+            {
+                ElementalAttribute1 = equipment.ElementalAttribute2,
+                ElementalAttribute2 = null
+            };
+        }
+        else if (equipment.ElementalAttribute2 == attributeId)
+        {
+            updated = equipment with { ElementalAttribute2 = null };
         }
         else
         {
             return FailAttribute(
                 equipment,
                 ClassSuitAttributeStatus.ClassAttributeMissing,
-                "The gear has no Class Suit stat to delete.",
+                "The gear does not contain the stat identified by the selected stone.",
                 out updated,
                 out status,
                 out reason);

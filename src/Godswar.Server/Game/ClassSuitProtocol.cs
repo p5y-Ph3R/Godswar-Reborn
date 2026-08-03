@@ -188,7 +188,8 @@ internal static class ClassSuitProtocol
 
         var operation = (ClassSuitWireOperation)subId;
         var secondarySlot = NoKitBagSlot;
-        if (operation == ClassSuitWireOperation.AddClassAttribute &&
+        if (operation is ClassSuitWireOperation.AddClassAttribute or
+                ClassSuitWireOperation.DeleteClassAttribute &&
             !TryDecodeKitBagReference(
                 arguments[SecondaryMaterialArgumentIndex],
                 out secondarySlot))
@@ -211,7 +212,8 @@ internal static class ClassSuitProtocol
         {
             var isSelection = index == EquipmentArgumentIndex ||
                 index == MaterialArgumentIndex ||
-                operation == ClassSuitWireOperation.AddClassAttribute &&
+                operation is ClassSuitWireOperation.AddClassAttribute or
+                    ClassSuitWireOperation.DeleteClassAttribute &&
                 index == SecondaryMaterialArgumentIndex;
             if (isSelection ||
                 index == 0 && arguments[index] == 0)

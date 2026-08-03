@@ -554,6 +554,13 @@ SecurePendingOperationRegistry::Resolve(
         combinePageArmed_ = false;
         combineNpcId_ = 0;
     }
+    if (entry->classSuitPageGeneration != 0 &&
+        classSuitPageArmed_ &&
+        classSuitPageNpcId_ == entry->npcId &&
+        classSuitPageGeneration_ ==
+            entry->classSuitPageGeneration) {
+        ClearClassSuitPage();
+    }
     ClearEntry(entry);
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
@@ -576,6 +583,7 @@ SecurePendingOperationRegistry::SetCharacter(
         ResetForgeState();
         combinePageArmed_ = false;
         combineNpcId_ = 0;
+        ClearClassSuitPage();
     }
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
@@ -599,6 +607,8 @@ void SecurePendingOperationRegistry::Clear() noexcept {
     combinePageArmed_ = false;
     combineNpcId_ = 0;
     combinePageGeneration_ = 0;
+    ClearClassSuitPage();
+    classSuitPageGeneration_ = 0;
     ReleaseSRWLockExclusive(&lock_);
 }
 

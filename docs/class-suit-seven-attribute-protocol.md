@@ -10,8 +10,9 @@ stone candidates are specified in
 - Gear Enhancement can add up to five ordinary appended attributes.
 - Class Suit III/IV gear can additionally hold one profession-specific Class
   Suit attribute and up to two elemental attributes.
-- The elemental attributes must belong to different elements. Fire Power plus
-  Fire Resistance on the same gear is invalid; Fire plus Water is valid.
+- The elemental attributes must belong to different elements. `[Burn] Damage
+  over time` plus `[Burn] Damage resistance` on the same gear is invalid;
+  Burn plus Drench is valid.
 - These three dedicated fields do not consume ordinary enhancement slots and
   cannot be enhanced with Quartz Plate. Their effective values use gear grade
   `1..25`.
@@ -69,16 +70,30 @@ because doing so overwrites adjacent item-object state and causes crashes.
 - Legacy records and exact `GWA2` records remain supported as read paths during
   migration. New authoritative writes use `GWA3`.
 - The server owns eligibility, slot capacity, duplicate-element validation,
-  material consumption, persistence, grade scaling, and resonance totals.
+  material consumption, persistence, grade scaling, raw elemental totals, and
+  active resonance-tier projection.
 - Expected-state strings, transaction ledgers, move/equip operations, forging,
   inspection identities, snapshots, and reconciliation include all dedicated
   fields.
-- The client computes the visible Elemental Resonance panel from the twelve
+- The client appends the visible Elemental Resonance section to the native
+  Ware/Holy Suit popup from the twelve
   equipped authoritative item records; the server independently computes the
   typed profile from the same canonical equipment state.
-- Elemental Power, Resistance, and Penetration are not converted into global
-  physical or magical modifiers. Combat activation waits for authoritative
-  skill-element mapping and the separately reviewed combat patch.
+- The active `[3]`, `[3,6]`, or `[3,6,10]` profile entries reference the unique
+  Prometheus, Poseidon, Zeus, Gaia, Aeolus, Apollo, or Hades typed definitions.
+  Resonance does not add the retired generic threshold bonuses. The exact
+  counters, basis points, durations, distances,
+  caps, and replacement rules live in `ElementalResonanceCatalog` and the
+  linked roadmap.
+- Elemental Effect Potency, Effect Resistance, and Application Chance are not
+  converted into global physical or magical modifiers. The authoritative
+  profile now establishes
+  resonance entitlement, but combat/recovery/movement effect execution waits
+  for the separately reviewed and testable gameplay patch.
+- Burn, Drench, Shock, Fracture, Gale, Dazzle, and Wither are currently typed
+  display/runtime contracts only. Their damage-over-time, slow, paralyze,
+  defense-break, movement/evasion, accuracy-loss, and healing-reduction
+  processors remain disabled.
 - A stock client cannot display or safely round-trip `GWA3`, so the matching
   patched client must be released before the new server protocol is enabled.
 

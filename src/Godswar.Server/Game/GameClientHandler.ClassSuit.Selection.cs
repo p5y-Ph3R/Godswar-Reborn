@@ -11,6 +11,7 @@ internal sealed partial class GameClientHandler
         NpcDialogueRouteDefinition route,
         uint npcId,
         int subId,
+        IReadOnlyList<int> arguments,
         out ClassSuitWireIntent intent)
     {
         intent = default;
@@ -33,8 +34,31 @@ internal sealed partial class GameClientHandler
                 out var inlineIntent) &&
             inlineNpcId == npcId &&
             inlineIntent.Operation == operation;
+        var exactNavigation =
+            ClassSuitProtocol.IsExactNavigation(packet, subId);
+        var requiresCompletedClear =
+            !hasInlineMutation && !exactNavigation;
+        var selectionShape = GearEnhancerSelectionShape.MenuSelection;
+        if (requiresCompletedClear)
+        {
+            selectionShape = GearEnhancerProtocol.ReadSelection(
+                arguments,
+                out _,
+                out _,
+                out _);
+            if (selectionShape == GearEnhancerSelectionShape.Commit)
+            {
+                // Physical NpcFunBreak sends authoritative item choices in
+                // opcode 10193. Values left in its final 10069 controls are
+                // scratch data and must never replace the staged snapshot.
+                selectionShape = GearEnhancerSelectionShape.MalformedCommit;
+            }
+        }
         if (!hasInlineMutation &&
-            !ClassSuitProtocol.IsExactNavigation(packet, subId))
+            !exactNavigation &&
+            selectionShape is not (
+                GearEnhancerSelectionShape.MenuSelection or
+                GearEnhancerSelectionShape.MalformedCommit))
         {
             return false;
         }
@@ -48,11 +72,16 @@ internal sealed partial class GameClientHandler
                 now) ||
             context.NpcId != npcId ||
             context.DialogIndex != route.DialogIndex ||
-            !context.TryResolveNativeSlots(
-                GearEnhancerSelectionShape.MenuSelection,
-                expectedCount,
-                expectedCount,
-                out var selections))
+            !(requiresCompletedClear
+                ? context.TryResolveClearedNativeSlots(
+                    expectedCount,
+                    expectedCount,
+                    out var selections)
+                : context.TryResolveNativeSlots(
+                    GearEnhancerSelectionShape.MenuSelection,
+                    expectedCount,
+                    expectedCount,
+                    out selections)))
         {
             return false;
         }
@@ -104,11 +133,11 @@ internal sealed partial class GameClientHandler
         {
             ClassSuitWireOperation.ConvertToCommon => 1,
             ClassSuitWireOperation.ExchangeTierOne or
-                ClassSuitWireOperation.DeleteClassAttribute or
                 ClassSuitWireOperation.UpgradeTierTwo or
                 ClassSuitWireOperation.UpgradeTierThree or
                 ClassSuitWireOperation.UpgradeTierFour => 2,
-            ClassSuitWireOperation.AddClassAttribute => 3,
+            ClassSuitWireOperation.AddClassAttribute or
+                ClassSuitWireOperation.DeleteClassAttribute => 3,
             _ => 0
         };
         return count != 0;

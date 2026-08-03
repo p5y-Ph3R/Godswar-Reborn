@@ -207,6 +207,7 @@ void SecurePendingOperationRegistry::SetPrincipal(
         ResetForgeState();
         combinePageArmed_ = false;
         combineNpcId_ = 0;
+        ClearClassSuitPage();
     }
 }
 

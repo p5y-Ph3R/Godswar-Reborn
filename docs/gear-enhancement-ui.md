@@ -298,7 +298,10 @@ stone, an existing attribute from the same family, or a gear item whose five
 ordinary attribute slots are full. The Class Suit workflow separately owns one
 profession-specific field and two different-element fields on Class Suit
 III/IV gear; none consumes an ordinary slot. Elemental stones deliberately
-fail closed in ordinary Gear Enhancement. Enhance
+fail closed in ordinary Gear Enhancement. The seven elemental stones are
+Greek-themed by element; the Class Suit handler derives Power for weapons,
+Penetration for helmets/gloves/rings, and Resistance for defensive gear from
+the authoritative equipment slot. Enhance
 requires the matching family, synchronized attribute template/level fields,
 and the Quartz Plate for the current level. Delete removes the matching family
 and compacts the remaining attribute and attribute-level pairs without

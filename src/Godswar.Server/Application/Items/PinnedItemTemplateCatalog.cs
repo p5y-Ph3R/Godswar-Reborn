@@ -201,6 +201,70 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
             expectedRevision,
             manifestVersion: 7);
 
+    public static PinnedItemTemplateCatalog CreateV8(
+        string source,
+        IReadOnlyList<ItemTemplateDefinition> definitions,
+        IReadOnlyList<ItemAttributeDefinition> attributes,
+        IReadOnlyList<EquipmentRankDefinition> equipmentRanks,
+        IReadOnlyList<HolySuitEffectDefinition> holySuitEffects,
+        IReadOnlyList<ForgingMaterialDefinition> forgingMaterials,
+        IReadOnlyList<GearEnhancementMaterialDefinition> enhancementMaterials,
+        IReadOnlyList<AttributeDustDefinition> attributeDusts,
+        IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes,
+        IReadOnlyList<HolySuitTierDefinition> holySuitTiers,
+        IReadOnlyList<HolySuitUpgradeDefinition> holySuitUpgrades,
+        IReadOnlyList<HolySuitConsumableDefinition> holySuitConsumables,
+        HolySuitOperationPolicy holySuitOperationPolicy,
+        string? expectedRevision = null) =>
+        CreateCore(
+            source,
+            definitions,
+            attributes,
+            equipmentRanks,
+            holySuitEffects,
+            forgingMaterials,
+            enhancementMaterials,
+            attributeDusts,
+            recipes,
+            holySuitTiers,
+            holySuitUpgrades,
+            holySuitConsumables,
+            holySuitOperationPolicy,
+            expectedRevision,
+            manifestVersion: 8);
+
+    public static PinnedItemTemplateCatalog CreateV9(
+        string source,
+        IReadOnlyList<ItemTemplateDefinition> definitions,
+        IReadOnlyList<ItemAttributeDefinition> attributes,
+        IReadOnlyList<EquipmentRankDefinition> equipmentRanks,
+        IReadOnlyList<HolySuitEffectDefinition> holySuitEffects,
+        IReadOnlyList<ForgingMaterialDefinition> forgingMaterials,
+        IReadOnlyList<GearEnhancementMaterialDefinition> enhancementMaterials,
+        IReadOnlyList<AttributeDustDefinition> attributeDusts,
+        IReadOnlyList<GearMentorMaterialRecipeDefinition> recipes,
+        IReadOnlyList<HolySuitTierDefinition> holySuitTiers,
+        IReadOnlyList<HolySuitUpgradeDefinition> holySuitUpgrades,
+        IReadOnlyList<HolySuitConsumableDefinition> holySuitConsumables,
+        HolySuitOperationPolicy holySuitOperationPolicy,
+        string? expectedRevision = null) =>
+        CreateCore(
+            source,
+            definitions,
+            attributes,
+            equipmentRanks,
+            holySuitEffects,
+            forgingMaterials,
+            enhancementMaterials,
+            attributeDusts,
+            recipes,
+            holySuitTiers,
+            holySuitUpgrades,
+            holySuitConsumables,
+            holySuitOperationPolicy,
+            expectedRevision,
+            manifestVersion: 9);
+
     private static PinnedItemTemplateCatalog CreateCore(
         string source,
         IReadOnlyList<ItemTemplateDefinition> definitions,
@@ -262,7 +326,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
         var knownTemplateIds = snapshot
             .Select(static definition => definition.Id)
             .ToHashSet();
-        var materialCatalog = manifestVersion is 4 or 5 or 6 or 7
+        var materialCatalog = manifestVersion is 4 or 5 or 6 or 7 or 8 or 9
             ? PinnedItemMaterialCatalog.Create(
                 forgingMaterials,
                 enhancementMaterials,
@@ -275,14 +339,14 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 attributeDusts,
                 knownTemplateIds,
                 allowEmpty: manifestVersion == 2);
-        var holySuitCatalog = manifestVersion is 5 or 6 or 7
+        var holySuitCatalog = manifestVersion is 5 or 6 or 7 or 8 or 9
             ? PinnedHolySuitContentCatalog.Create(
                 snapshot,
                 holySuitTiers,
                 holySuitUpgrades,
                 holySuitConsumables,
                 holySuitOperationPolicy ?? throw new InvalidOperationException(
-                    "Manifest version 5, 6, or 7 requires a Holy Suit policy."))
+                    "Manifest version 5 through 9 requires a Holy Suit policy."))
             : PinnedHolySuitContentCatalog.Empty;
 
         var revision = manifestVersion switch
@@ -322,7 +386,7 @@ internal sealed class PinnedItemTemplateCatalog : IItemTemplateCatalog
                 holySuitCatalog.Upgrades,
                 holySuitCatalog.Consumables,
                 holySuitCatalog.OperationPolicy!),
-            6 or 7 => ItemTemplateContentRevisionHasher.ComputeV6(
+            6 or 7 or 8 or 9 => ItemTemplateContentRevisionHasher.ComputeV6(
                 snapshot,
                 attributeSnapshot,
                 rankSnapshot,

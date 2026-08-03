@@ -68,7 +68,8 @@ internal static partial class ClassSuitAttributePlannerChecks
             Material(
                 GearEnhancementMaterialCatalog.WaterGrainItemId,
                 1,
-                1));
+                1),
+            Material(9950, 1, 1));
         AssertRejected(
             ClassSuitAttributePlanner.Create(
                 TestItemContent.Catalog,
@@ -83,7 +84,10 @@ internal static partial class ClassSuitAttributePlannerChecks
                  {
                      1034, 1035,
                      2133, 2134,
-                     3133, 3134
+                     3133, 3134,
+                     2333, 2334,
+                     2833, 2834,
+                     3232, 3236
                  })
         {
             var kitBag = StageAdd(
@@ -121,6 +125,17 @@ internal static partial class ClassSuitAttributePlannerChecks
                 ClassSuitAttributeStatus.AttributeSlotsFull,
                 $"Tier III/IV Class Suit item {itemId} rejects a second non-elemental class stat");
 
+            Check.True(
+                TestItemContent.Catalog.TryGet(itemId, out var template),
+                $"Class Suit item {itemId} has an authoritative template");
+            Check.True(
+                ElementalAttributeCatalog.TryGetFamilyForEquipmentSlot(
+                    template.EquipmentSlot,
+                    out var family),
+                $"Class Suit item {itemId} slot {template.EquipmentSlot} has an elemental family");
+            var fireAttributeId = 480 + (int)family;
+            var waterAttributeId = 483 + (int)family;
+
             var firstElementBag = StageAdd(
                 first.EquipmentAfter,
                 Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
@@ -133,14 +148,15 @@ internal static partial class ClassSuitAttributePlannerChecks
             Check.True(
                 firstElement.Committed &&
                 firstElement.EquipmentAfter.ClassAttribute1 == 200 &&
-                firstElement.EquipmentAfter.ElementalAttribute1 == 480 &&
+                firstElement.EquipmentAfter.ElementalAttribute1 ==
+                    fireAttributeId &&
                 firstElement.EquipmentAfter.ElementalAttribute2 is null,
-                $"Class Suit item {itemId} adds Fire Power independently of its class stat");
+                $"Class Suit item {itemId} derives Fire {family} from authoritative slot {template.EquipmentSlot}");
 
             var sameElementBag = StageAdd(
                 firstElement.EquipmentAfter,
                 Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
-                Material(16301, 1, 1));
+                Material(16300, 1, 1));
             AssertRejected(
                 ClassSuitAttributePlanner.Create(
                     TestItemContent.Catalog,
@@ -148,8 +164,8 @@ internal static partial class ClassSuitAttributePlannerChecks
                     profession: 0,
                     AddRequest(sameElementBag)),
                 sameElementBag,
-                ClassSuitAttributeStatus.ElementAlreadyPresent,
-                $"Class Suit item {itemId} rejects a second Fire family");
+                ClassSuitAttributeStatus.ElementalAttributeAlreadyPresent,
+                $"Class Suit item {itemId} rejects a duplicate Prometheus Stone attribute");
 
             var secondElementBag = StageAdd(
                 firstElement.EquipmentAfter,
@@ -162,9 +178,11 @@ internal static partial class ClassSuitAttributePlannerChecks
                 AddRequest(secondElementBag));
             Check.True(
                 secondElement.Committed &&
-                secondElement.EquipmentAfter.ElementalAttribute1 == 480 &&
-                secondElement.EquipmentAfter.ElementalAttribute2 == 483,
-                $"Class Suit item {itemId} accepts two different elements");
+                secondElement.EquipmentAfter.ElementalAttribute1 ==
+                    fireAttributeId &&
+                secondElement.EquipmentAfter.ElementalAttribute2 ==
+                    waterAttributeId,
+                $"Class Suit item {itemId} accepts two different elements with slot-derived {family}");
 
             var thirdElementBag = StageAdd(
                 secondElement.EquipmentAfter,
@@ -180,6 +198,20 @@ internal static partial class ClassSuitAttributePlannerChecks
                 ClassSuitAttributeStatus.ElementalSlotsFull,
                 $"Class Suit item {itemId} rejects a third elemental stat");
         }
+
+        var retiredStoneBag = StageAdd(
+            FiveOrdinaryAttributes(1034),
+            Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+            Material(16301, 1, 1));
+        AssertRejected(
+            ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                retiredStoneBag,
+                profession: 0,
+                AddRequest(retiredStoneBag)),
+            retiredStoneBag,
+            ClassSuitAttributeStatus.InvalidClassStone,
+            "retired Fire Resistance item is not an active elemental stone");
     }
 
     private static CompactItemEntry FiveOrdinaryAttributes(uint itemId) =>

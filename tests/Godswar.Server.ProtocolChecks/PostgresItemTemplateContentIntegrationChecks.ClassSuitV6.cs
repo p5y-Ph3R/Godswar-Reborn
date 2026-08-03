@@ -17,9 +17,9 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
             dataSource);
         Check.True(
-            loaded.Revision.ManifestVersion == 7 &&
+            loaded.Revision.ManifestVersion == 9 &&
             loaded.Revision.Sha256 == revision,
-            "runtime pins the immutable Class Suit and elemental manifest-v7 release");
+            "runtime pins the immutable Class Suit and canonical elemental manifest-v9 release");
         Check.True(
             loaded.TryGet(3931, out var tierOne) &&
             tierOne.DisplayName == "Promotional Insignia I" &&
@@ -34,6 +34,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             tierFour.DisplayName == "Promotional Insignia IV" &&
             tierFour.Icon == "828,288",
             "manifest-v6 pins all four reviewed Promotional Insignias");
+        await AssertElementalV9PublicationAsync(dataSource, loaded, revision);
 
         await using var command = dataSource.CreateCommand("""
             SELECT count(*)::integer,

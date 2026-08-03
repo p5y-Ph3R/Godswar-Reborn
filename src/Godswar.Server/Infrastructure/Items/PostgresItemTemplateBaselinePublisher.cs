@@ -20,7 +20,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "reviewed-item-content-v7+holy-suit-v3+class-suit-elemental-v1";
+        "reviewed-item-content-v9+holy-suit-v3+canonical-elemental-stones-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -42,9 +42,9 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             connection,
             transaction,
             cancellationToken);
-        if (existing is { ManifestVersion: 7 })
+        if (existing is { ManifestVersion: 9 })
         {
-            await VerifyPublishedV7ReleaseAsync(
+            await VerifyPublishedV9ReleaseAsync(
                 connection,
                 transaction,
                 existing,
@@ -86,6 +86,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     connection,
                     transaction,
                     existing.Revision,
+                    upgradeFromV8Revision: null,
                     cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return new ItemTemplatePublicationResult(
@@ -95,7 +96,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             }
         }
 
-        var snapshot = await PrepareV7PublicationAsync(
+        var snapshot = await PrepareV9PublicationAsync(
             connection,
             transaction,
             existing,
@@ -163,6 +164,9 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             connection,
             transaction,
             revision,
+            existing is { ManifestVersion: 8 }
+                ? existing.Revision
+                : null,
             cancellationToken);
         await PublishRevisionAsync(
             connection,
@@ -289,7 +293,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 holy_suit_upgrade_count, holy_suit_consumable_count,
                 holy_suit_policy_count)
             VALUES (
-                @revision, @entryCount, @source, 7,
+                @revision, @entryCount, @source, 9,
                 @attributeCount, @equipmentRankCount,
                 @holySuitEffectCount, @materialPolicyCount,
                 @materialRecipeCount, @holySuitTierCount,

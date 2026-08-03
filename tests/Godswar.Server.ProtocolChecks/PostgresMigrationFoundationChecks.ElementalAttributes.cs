@@ -84,5 +84,37 @@ internal static partial class PostgresMigrationFoundationChecks
                 "manifest_version IN (5, 6, 7)",
                 StringComparison.Ordinal),
             "migration extends immutable publication guards through v7");
+
+        var iconPublication = PostgresSchemaMigrationCatalog.All.Single(
+            static value => value.Id ==
+                "20260803_055_elemental_stone_icon_content");
+        Check.True(
+            iconPublication.Sql.Contains(
+                "manifest_version IN (1, 2, 3, 4, 5, 6, 7, 8)",
+                StringComparison.Ordinal),
+            "elemental icon publication extends immutable item manifests through v8");
+        Check.True(
+            iconPublication.Sql.Contains(
+                "manifest_version IN (5, 6, 7, 8)",
+                StringComparison.Ordinal) &&
+            iconPublication.Sql.Contains(
+                "manifest version 5 through 8",
+                StringComparison.Ordinal),
+            "v8 publication guards retain complete Holy Suit content");
+
+        var canonicalPublication = PostgresSchemaMigrationCatalog.All.Single(
+            static value => value.Id ==
+                "20260803_056_canonical_elemental_stone_content");
+        Check.True(
+            canonicalPublication.Sql.Contains(
+                "manifest_version IN (1, 2, 3, 4, 5, 6, 7, 8, 9)",
+                StringComparison.Ordinal) &&
+            canonicalPublication.Sql.Contains(
+                "manifest_version IN (5, 6, 7, 8, 9)",
+                StringComparison.Ordinal) &&
+            canonicalPublication.Sql.Contains(
+                "manifest version 5 through 9",
+                StringComparison.Ordinal),
+            "canonical stone publication extends all immutable manifest and publication guards through v9");
     }
 }

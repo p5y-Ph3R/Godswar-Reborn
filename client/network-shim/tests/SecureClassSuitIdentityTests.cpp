@@ -1,5 +1,6 @@
 #include "SecureClassSuitIdentityTests.h"
 #include "SecureClassSuitReferenceIdentityTests.h"
+#include "SecureClassSuitStagedDeleteIdentityTests.h"
 
 #include "../src/SecureClassSuitCommandIdentity.h"
 #include "../src/SecureLegacyCommandIdentity.h"
@@ -87,7 +88,8 @@ bool RequiresSecondaryItem(LegacyClassSuitAction action) {
 }
 
 bool RequiresTertiaryItem(LegacyClassSuitAction action) {
-    return action == LegacyClassSuitAction::AddAttribute;
+    return action == LegacyClassSuitAction::AddAttribute ||
+        action == LegacyClassSuitAction::DeleteAttribute;
 }
 
 void BuildClassSuitPacket(
@@ -253,7 +255,7 @@ void CheckNavigationAndForeignPackets(Checks* checks) {
         -1);
     checks->Require(
         ClassifyLegacyClassSuitPacket(packet, sizeof(packet), &command) ==
-            LegacyClassSuitPacketKind::UnrelatedOrNavigation,
+            LegacyClassSuitPacketKind::Navigation,
         "All--1 Class Suit navigation received an identity");
     BuildClassSuitPacket(
         packet,
@@ -262,7 +264,7 @@ void CheckNavigationAndForeignPackets(Checks* checks) {
         -1);
     checks->Require(
         ClassifyLegacyClassSuitPacket(packet, sizeof(packet), &command) ==
-            LegacyClassSuitPacketKind::UnrelatedOrNavigation,
+            LegacyClassSuitPacketKind::Navigation,
         "Scratch-zero Class Suit navigation received an identity");
 
     BuildClassSuitPacket(
@@ -357,11 +359,8 @@ void CheckMalformedPackets(Checks* checks) {
         packet,
         LegacyClassSuitAction::DeleteAttribute,
         112,
-        123,
-        LegacySpartaClassSuitNpc,
-        0,
-        134);
-    requireInvalid("Delete-attribute accepted a third item");
+        123);
+    requireInvalid("Delete-attribute accepted a missing selector stone");
     BuildClassSuitPacket(
         packet,
         LegacyClassSuitAction::AddAttribute,
@@ -495,5 +494,6 @@ int RunSecureClassSuitIdentityTests() {
     CheckMalformedPackets(&checks);
     CheckRegistryIdentity(&checks);
     return checks.failures +
-        RunSecureClassSuitReferenceIdentityTests();
+        RunSecureClassSuitReferenceIdentityTests() +
+        RunSecureClassSuitStagedDeleteIdentityTests();
 }

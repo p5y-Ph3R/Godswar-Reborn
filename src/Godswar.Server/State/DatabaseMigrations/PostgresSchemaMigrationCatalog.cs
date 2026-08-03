@@ -237,6 +237,8 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateNpcDialogueMultiRouteRelease(),
         CreateItemContentV6Release(),
         CreateClassSuitAttributeSlots(),
-        CreateElementalAttributeSlots()
+        CreateElementalAttributeSlots(),
+        CreateItemContentV8Release(),
+        CreateItemContentV9Release()
     ];
 }

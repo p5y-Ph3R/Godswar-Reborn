@@ -80,7 +80,7 @@ internal static class GearEnhancementMaterialCatalog
     ];
 
     public static IReadOnlyList<GearEnhancementMaterialDefinition> All { get; } =
-        Native.Concat(ElementalAttributeCatalog.All.Select(ElementalStone))
+        Native.Concat(ElementalAttributeCatalog.Stones.Select(ElementalStone))
             .OrderBy(static value => value.ItemId)
             .ToArray();
 
@@ -127,29 +127,29 @@ internal static class GearEnhancementMaterialCatalog
     }
 
     private static GearEnhancementMaterialDefinition ElementalStone(
-        ElementalAttributeDefinition definition)
+        ElementalStoneDefinition definition)
     {
-        var icon = definition.Element switch
+        var iconX = definition.Element switch
         {
-            ElementKind.Fire => "504,576",
-            ElementKind.Water => "648,576",
-            ElementKind.Lightning => "576,576",
-            ElementKind.Earth => "540,648",
-            ElementKind.Wind => "612,648",
-            ElementKind.Light => "540,576",
-            ElementKind.Dark => "720,576",
+            ElementKind.Fire => 648,
+            ElementKind.Water => 684,
+            ElementKind.Lightning => 720,
+            ElementKind.Earth => 756,
+            ElementKind.Wind => 792,
+            ElementKind.Light => 828,
+            ElementKind.Dark => 864,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(definition.Element))
         };
         return Stone(
-            definition.StoneItemId,
-            $"ElementalMaterial{definition.AttributeId}",
+            definition.ItemId,
+            $"ElementalMaterial{definition.AttributeIds[0]}",
             definition.DisplayName,
-            $"{definition.Element} {definition.Family}",
+            $"{definition.Element} element; applied family depends on gear slot",
             Icon2,
-            icon,
+            $"{iconX},180",
             ShippedStackCap,
-            [definition.AttributeId]);
+            definition.AttributeIds);
     }
 
     private static GearEnhancementMaterialDefinition Quartz(

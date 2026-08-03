@@ -99,6 +99,11 @@ some items. The current backend selects the first allowed intersection. Keep
 these stones out of ordinary-gear test packs until the original tier-selection
 rule is confirmed.
 
+In particular, character weapons use Spirit of Destruction (`9958`, attribute
+`240`) for Ignore Physical Defense. Stone of Ruin (`9980`, attributes
+`400-407`) belongs to the mount/mount-equipment pool and is intentionally
+rejected for character weapons. Neither stone is a Class Suit attribute stone.
+
 ## Safe developer generation
 
 Examples:

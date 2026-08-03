@@ -27,7 +27,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
         var loaded = await PostgresItemTemplateContentBootstrapper.LoadAsync(
             connectionString);
         Check.True(
-            loaded.Revision.ManifestVersion == 7 &&
+            loaded.Revision.ManifestVersion == 9 &&
             loaded.Revision.HolySuitTierCount == 8 &&
             loaded.Revision.HolySuitUpgradeCount == 70 &&
             loaded.Revision.HolySuitConsumableCount == 13 &&

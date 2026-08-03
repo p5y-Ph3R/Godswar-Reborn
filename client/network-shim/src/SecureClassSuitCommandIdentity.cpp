@@ -34,6 +34,10 @@ bool TryReadAction(
 
     switch (subId) {
         case static_cast<std::int32_t>(
+                LegacyClassSuitAction::InitialMenu):
+            *action = LegacyClassSuitAction::InitialMenu;
+            return true;
+        case static_cast<std::int32_t>(
                 LegacyClassSuitAction::ExchangeTierI):
             *action = LegacyClassSuitAction::ExchangeTierI;
             return true;
@@ -46,6 +50,10 @@ bool TryReadAction(
             *action = LegacyClassSuitAction::DeleteAttribute;
             return true;
         case static_cast<std::int32_t>(
+                LegacyClassSuitAction::Instructions):
+            *action = LegacyClassSuitAction::Instructions;
+            return true;
+        case static_cast<std::int32_t>(
                 LegacyClassSuitAction::ConvertToCommon):
             *action = LegacyClassSuitAction::ConvertToCommon;
             return true;
@@ -56,6 +64,10 @@ bool TryReadAction(
         case static_cast<std::int32_t>(
                 LegacyClassSuitAction::UpgradeTierIII):
             *action = LegacyClassSuitAction::UpgradeTierIII;
+            return true;
+        case static_cast<std::int32_t>(
+                LegacyClassSuitAction::AddFifthAttribute):
+            *action = LegacyClassSuitAction::AddFifthAttribute;
             return true;
         case static_cast<std::int32_t>(
                 LegacyClassSuitAction::UpgradeTierIV):
@@ -108,7 +120,8 @@ bool RequiresSecondaryItem(LegacyClassSuitAction action) noexcept {
 }
 
 bool RequiresTertiaryItem(LegacyClassSuitAction action) noexcept {
-    return action == LegacyClassSuitAction::AddAttribute;
+    return action == LegacyClassSuitAction::AddAttribute ||
+        action == LegacyClassSuitAction::DeleteAttribute;
 }
 
 } // namespace
@@ -166,6 +179,18 @@ LegacyClassSuitPacketKind ClassifyLegacyClassSuitPacket(
         }
     }
     if (!hasValue) {
+        if (command != nullptr) {
+            command->action = action;
+            command->npcId = npcId;
+            command->gearReference = -1;
+            command->secondaryBagSlot = -1;
+            command->tertiaryBagSlot = -1;
+        }
+        return LegacyClassSuitPacketKind::Navigation;
+    }
+    if (action == LegacyClassSuitAction::InitialMenu ||
+        action == LegacyClassSuitAction::Instructions ||
+        action == LegacyClassSuitAction::AddFifthAttribute) {
         return LegacyClassSuitPacketKind::UnrelatedOrNavigation;
     }
 

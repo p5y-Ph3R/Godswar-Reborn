@@ -198,8 +198,19 @@ internal static class ClassSuitCommandContractChecks
                 ClassSuitCommandEnvelope.SpartaNpcId,
                 ClassSuitCommandEnvelope.DialogIndex,
                 Selection(0, "gear"),
-                Selection(0, "water"),
+                Selection(1, "water"),
                 null,
+                out _),
+            "Delete Attribute requires a selector stone");
+        Check.True(
+            !ClassSuitCommandEnvelope.TryCreateCommand(
+                identity,
+                ClassSuitCommandOperation.DeleteAttribute,
+                ClassSuitCommandEnvelope.SpartaNpcId,
+                ClassSuitCommandEnvelope.DialogIndex,
+                Selection(0, "gear"),
+                Selection(0, "water"),
+                Selection(2, "selector-stone"),
                 out _),
             "one slot cannot identify two selected items");
 
@@ -445,7 +456,8 @@ internal static class ClassSuitCommandContractChecks
             ? null
             : Selection(1, "primary-material-state");
         ClassSuitCommandSelection? secondary =
-            operation == ClassSuitCommandOperation.AddAttribute
+            operation is ClassSuitCommandOperation.AddAttribute or
+                ClassSuitCommandOperation.DeleteAttribute
             ? Selection(2, "secondary-material-state")
             : null;
         return ClassSuitCommandEnvelope.TryCreateCommand(
