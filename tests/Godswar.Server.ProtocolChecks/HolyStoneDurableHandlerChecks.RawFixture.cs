@@ -11,7 +11,8 @@ internal static partial class HolyStoneDurableHandlerChecks
     private static async Task<RawHolyStoneFixture>
         CreateRawFixtureAsync(
             string? initialKitBag = null,
-            Func<GameCharacter, GameCharacter?>? storeMutation = null)
+            Func<GameCharacter, GameCharacter?>? storeMutation = null,
+            uint requestNpcId = HolyStoneProtocol.SpartaNpcId)
     {
         var baseSnapshot =
             CharacterSnapshotContractChecks.CreateValidSnapshot();
@@ -33,7 +34,7 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         var npc = CreateHolyStoneNpc(
             live,
-            HolyStoneProtocol.SpartaNpcId);
+            requestNpcId);
         var registry = new GameSessionRegistry();
         var transport = new RawHolyStoneCaptureTransport();
         var session = new ClientSession(transport);

@@ -10,6 +10,7 @@ internal static partial class HolyStoneDurableHandlerChecks
 {
     private static async Task CheckRawExactWireSemanticsAsync()
     {
+        await CheckRawInitialMenuNavigationAsync();
         await CheckRawBoundaryRejectsDowngradesAsync();
         await CheckRawMountAsync(
             HolyStoneProtocol.ClientEquippedWeaponReference,

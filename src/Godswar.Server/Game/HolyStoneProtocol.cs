@@ -17,6 +17,7 @@ internal static class HolyStoneProtocol
     public const uint SpartaNpcId = 5083;
     public const uint AthensNpcId = 5225;
     public const int DialogIndex = 30;
+    public const int InitialMenuRequestSubId = -1;
     public const int MountSubId = 101;
     public const int RemoveSubId = 201;
     public const int DrillSubId = 301;
@@ -61,6 +62,7 @@ internal static class HolyStoneProtocol
         IsExactNavigation(packet, MountSubId);
 
     public static bool IsExactPageNavigation(GamePacket packet) =>
+        IsExactInitialMenuNavigation(packet) ||
         IsExactNavigation(packet, MountSubId) ||
         IsExactNavigation(packet, UpgradeSubId) ||
         IsExactNavigation(packet, ImplementSpiritSubId) ||
@@ -122,6 +124,37 @@ internal static class HolyStoneProtocol
         GamePacket packet,
         int expectedSubId)
     {
+        if (!HasExactNavigationHeader(packet, expectedSubId))
+        {
+            return false;
+        }
+
+        var payload = packet.Payload;
+        for (var index = 0;
+             index < FunctionArgumentCount;
+             index++)
+        {
+            if (BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.Slice(
+                        (sizeof(int) * 4) +
+                        (index * sizeof(int)),
+                        sizeof(int))) != -1)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsExactInitialMenuNavigation(
+        GamePacket packet) =>
+        HasExactNavigationHeader(packet, InitialMenuRequestSubId);
+
+    private static bool HasExactNavigationHeader(
+        GamePacket packet,
+        int expectedSubId)
+    {
         if (packet.Opcode != Opcodes.NpcFunctionAction ||
             packet.Length != PacketBytes ||
             packet.Buffer.Length != PacketBytes)
@@ -149,20 +182,6 @@ internal static class HolyStoneProtocol
             subId != expectedSubId)
         {
             return false;
-        }
-
-        for (var index = 0;
-             index < FunctionArgumentCount;
-             index++)
-        {
-            if (BinaryPrimitives.ReadInt32LittleEndian(
-                    payload.Slice(
-                        (sizeof(int) * 4) +
-                        (index * sizeof(int)),
-                        sizeof(int))) != -1)
-            {
-                return false;
-            }
         }
 
         return true;
