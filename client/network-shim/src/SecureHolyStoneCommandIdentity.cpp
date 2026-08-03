@@ -25,14 +25,23 @@ bool IsHolyStoneNpc(std::uint32_t npcId) noexcept {
         npcId == LegacyAthensHolyStoneNpc;
 }
 
-bool IsBagReference(std::int32_t reference) noexcept {
-    return reference >= LegacyHolyStoneBagReferenceMinimum &&
-        reference <= LegacyHolyStoneBagReferenceMaximum;
-}
-
-bool IsTargetReference(std::int32_t reference) noexcept {
-    return IsBagReference(reference) ||
-        reference == LegacyCapturedEquippedHolyStoneReference;
+bool TryDecodeBagReference(
+    std::int32_t reference,
+    int* bagSlot) noexcept {
+    if (bagSlot == nullptr || reference < 0) {
+        return false;
+    }
+    const auto page =
+        reference / LegacyHolyStoneBagPageStride;
+    const auto pageSlot =
+        reference % LegacyHolyStoneBagPageStride;
+    if (page >= LegacyHolyStoneBagPageCount ||
+        pageSlot >= LegacyHolyStoneBagSlotsPerPage) {
+        return false;
+    }
+    *bagSlot =
+        page * LegacyHolyStoneBagSlotsPerPage + pageSlot;
+    return true;
 }
 
 bool IsMutationSubId(std::int32_t subId) noexcept {
@@ -154,37 +163,43 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
     }
 
     LegacyHolyStoneCommand parsed{};
+    int targetBagSlot = -1;
+    int materialBagSlot = -1;
     switch (subId) {
         case LegacyHolyStoneMountSubId:
             if (arguments[0] != 0 ||
-                !IsTargetReference(arguments[6]) ||
-                !IsBagReference(arguments[7]) ||
-                arguments[6] == arguments[7] ||
+                !TryDecodeBagReference(
+                    arguments[6], &targetBagSlot) ||
+                !TryDecodeBagReference(
+                    arguments[7], &materialBagSlot) ||
+                targetBagSlot == materialBagSlot ||
                 !HasOnlyExpectedArguments(arguments, 0, 6, 7)) {
                 return LegacyHolyStonePacketKind::InvalidMutation;
             }
             parsed.action = LegacyHolyStoneAction::Mount;
-            parsed.targetReference = arguments[6];
-            parsed.secondaryValue = arguments[7];
+            parsed.targetReference = targetBagSlot;
+            parsed.secondaryValue = materialBagSlot;
             break;
         case LegacyHolyStoneRemoveSubId:
-            if (!IsTargetReference(arguments[6]) ||
+            if (!TryDecodeBagReference(
+                    arguments[6], &targetBagSlot) ||
                 arguments[10] < 1 ||
                 arguments[10] > 4 ||
                 !HasOnlyExpectedArguments(arguments, 6, 10)) {
                 return LegacyHolyStonePacketKind::InvalidMutation;
             }
             parsed.action = LegacyHolyStoneAction::Remove;
-            parsed.targetReference = arguments[6];
+            parsed.targetReference = targetBagSlot;
             parsed.secondaryValue = arguments[10];
             break;
         case LegacyHolyStoneDrillSubId:
-            if (!IsTargetReference(arguments[6]) ||
+            if (!TryDecodeBagReference(
+                    arguments[6], &targetBagSlot) ||
                 !HasOnlyExpectedArguments(arguments, 6)) {
                 return LegacyHolyStonePacketKind::InvalidMutation;
             }
             parsed.action = LegacyHolyStoneAction::Drill;
-            parsed.targetReference = arguments[6];
+            parsed.targetReference = targetBagSlot;
             parsed.secondaryValue = -1;
             break;
         default:

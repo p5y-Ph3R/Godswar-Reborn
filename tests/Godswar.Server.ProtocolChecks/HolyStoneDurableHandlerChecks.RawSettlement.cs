@@ -11,7 +11,7 @@ internal static partial class HolyStoneDurableHandlerChecks
     {
         await CheckRawStackDecrementSettlementAsync();
         await CheckRawBagTargetSettlementAsync();
-        await CheckRawUnchangedBagSettlementAsync();
+        await CheckRawDrillBagSettlementAsync();
     }
 
     private static async Task CheckRawStackDecrementSettlementAsync()
@@ -21,6 +21,10 @@ internal static partial class HolyStoneDurableHandlerChecks
             GameDefaults.EmptyKitBag,
             7,
             material.ToCompactString());
+        bag = KitBagSlots.SetSlot(
+            bag,
+            WeaponSlot,
+            WeaponBefore.ToCompactString());
         await using var fixture = await CreateRawFixtureAsync(
             bag,
             character =>
@@ -38,8 +42,8 @@ internal static partial class HolyStoneDurableHandlerChecks
         await InvokeAsync(
             fixture.Handler,
             CreateRawCanonicalMountPacket(
-                HolyStoneProtocol.ClientEquippedWeaponReference,
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7));
+                HolyStoneProtocol.EncodeKitBagReference(WeaponSlot),
+                HolyStoneProtocol.EncodeKitBagReference(7)));
 
         AssertRawSettlement(
             fixture,
@@ -83,8 +87,8 @@ internal static partial class HolyStoneDurableHandlerChecks
         await InvokeAsync(
             fixture.Handler,
             CreateRawCanonicalMountPacket(
-                HolyStoneProtocol.ClientKitBagReferenceBase + 15,
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7));
+                HolyStoneProtocol.EncodeKitBagReference(15),
+                HolyStoneProtocol.EncodeKitBagReference(7)));
 
         AssertRawSettlement(
             fixture,
@@ -92,21 +96,22 @@ internal static partial class HolyStoneDurableHandlerChecks
             "raw bag-target Mount");
     }
 
-    private static async Task CheckRawUnchangedBagSettlementAsync()
+    private static async Task CheckRawDrillBagSettlementAsync()
     {
-        var bag = GameDefaults.EmptyKitBag;
+        var bag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            WeaponSlot,
+            WeaponBefore.ToCompactString());
         await using var fixture = await CreateRawFixtureAsync(
             bag,
             character =>
             {
-                var weapon = EquipmentSlots.GetItem(
-                    character.Equipment,
-                    character.Profession,
-                    EquipmentSlots.Weapon);
-                character.Equipment = EquipmentSlots.SetSlot(
-                    character.Equipment,
-                    character.Profession,
-                    EquipmentSlots.Weapon,
+                var weapon = KitBagSlots.GetItem(
+                    character.KitBag,
+                    WeaponSlot);
+                character.KitBag = KitBagSlots.SetSlot(
+                    character.KitBag,
+                    WeaponSlot,
                     (weapon with
                     {
                         SocketCount = 2
@@ -117,14 +122,14 @@ internal static partial class HolyStoneDurableHandlerChecks
             HolyStoneProtocol.SpartaNpcId,
             HolyStoneProtocol.DrillSubId,
             args => args[HolyStoneProtocol.TargetArgumentIndex] =
-                HolyStoneProtocol.ClientEquippedWeaponReference);
+                16);
 
         await InvokeAsync(fixture.Handler, packet);
 
         AssertRawSettlement(
             fixture,
-            expectedChangedSlots: [],
-            "raw unchanged-bag Drill");
+            expectedChangedSlots: [WeaponSlot],
+            "raw bag-target Drill");
     }
 
     private static void AssertRawSettlement(

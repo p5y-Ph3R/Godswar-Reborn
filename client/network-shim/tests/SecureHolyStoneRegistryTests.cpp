@@ -147,6 +147,28 @@ void CheckIdentityAndCrossCityRetry(Checks* checks) {
         !SameOperation(remove, drill),
         "Distinct Holy Stone families shared operation UUID");
 
+    LegacyPacketDescriptor pageZeroDrill{};
+    LegacyPacketDescriptor pageOneDrill{};
+    checks->Require(
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::Drill,
+            16,
+            -1,
+            LegacySpartaHolyStoneNpc,
+            &pageZeroDrill) ==
+                SecureOperationRegistryResult::Success &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::Drill,
+            116,
+            -1,
+            LegacySpartaHolyStoneNpc,
+            &pageOneDrill) ==
+                SecureOperationRegistryResult::Success &&
+        !SameOperation(pageZeroDrill, pageOneDrill),
+        "Distinct page-zero and page-one Drill slots shared UUID");
+
     std::uint8_t login[LoginPacketBytes]{};
     BuildLoginPacket(50, login);
     LegacyPacketDescriptor ignored{};
@@ -418,8 +440,7 @@ void CheckInvalidLookalikeAndCapacity(Checks* checks) {
             DescribeHolyStone(
                 &registry,
                 LegacyHolyStoneAction::Mount,
-                static_cast<int>(
-                    LegacyHolyStoneBagReferenceMinimum + index),
+                static_cast<int>(index),
                 LegacyHolyStoneBagReferenceMaximum,
                 LegacySpartaHolyStoneNpc,
                 &descriptor) ==
@@ -436,7 +457,7 @@ void CheckInvalidLookalikeAndCapacity(Checks* checks) {
         DescribeHolyStone(
             &registry,
             LegacyHolyStoneAction::Mount,
-            LegacyHolyStoneBagReferenceMinimum + 16,
+            16,
             LegacyHolyStoneBagReferenceMaximum,
             LegacySpartaHolyStoneNpc,
             &descriptor) ==
@@ -448,7 +469,7 @@ void CheckInvalidLookalikeAndCapacity(Checks* checks) {
         DescribeHolyStone(
             &registry,
             LegacyHolyStoneAction::Mount,
-            LegacyHolyStoneBagReferenceMinimum + 16,
+            16,
             LegacyHolyStoneBagReferenceMaximum,
             LegacySpartaHolyStoneNpc,
             &descriptor) ==

@@ -59,9 +59,14 @@ The exact mutation shapes and secure families are:
 | Remove | 201 | arg 6 = target; arg 10 = one-based socket 1..4 | 17 |
 | basic Drill | 301 | arg 6 = target | 18 |
 
-Every unused argument must be `-1`. Target references `100..195` mean kit-bag
-slots `0..95`; captured reference `205` means the equipped weapon. A Mount
-material must be a distinct kit-bag reference in `100..195`.
+Every unused argument must be `-1`. Stock item references use decimal
+page/slot encoding: `reference = (page * 100) + pageSlot`, with pages `0..3`
+and page-local slots `0..23`. The authoritative slot is
+`(page * 24) + pageSlot`. For example, references `16`, `107`, `112`, and
+`205` resolve to authoritative kit-bag slots `16`, `31`, `36`, and `53`.
+Targets and Mount materials are kit-bag items; the captured `205` value is
+page 2/slot 5, not an equipped-item sentinel. A Mount material must resolve
+to a different authoritative kit-bag slot than its target.
 
 The stock client's `NpcFunEment.lua` also proves the non-mutating Artisan
 page responses. An exact 92-byte request with all eighteen arguments set to
@@ -83,10 +88,11 @@ commit shapes and item-state representation are captured.
 Literal clear-packet evidence is in
 `captures/capture-proxy-20260514-173331.log`:
 
-- lines 4152-4153: Remove from equipped reference 205, socket ordinal 1;
+- lines 4152-4153: Remove from bag page 2/slot 5 (reference 205), socket
+  ordinal 1;
 - lines 4203-4204: Mount page/navigation request with all arguments `-1`;
-- lines 4251-4252: Mount to equipped reference 205 from material reference
-  107;
+- lines 4251-4252: Mount to bag slot 53 (reference 205) from bag slot 31
+  (reference 107);
 - lines 6126-6127: basic Drill of bag reference 107;
 - lines 8630-8631: Remove from bag reference 112, socket ordinal 1;
 - lines 8789-8790: a second all-`-1` Mount navigation request;
@@ -125,8 +131,9 @@ The native retry key binds:
 - authenticated principal fingerprint;
 - authenticated character;
 - family 16, 17, or 18;
-- raw target reference; and
-- Mount material reference or Remove socket ordinal, where applicable.
+- canonical authoritative target kit-bag slot; and
+- canonical Mount material kit-bag slot or Remove socket ordinal, where
+  applicable.
 
 Drill binds only its target. The Artisan NPC is canonicalized out of the key
 so an otherwise identical retry can retain its UUID after movement between
@@ -154,8 +161,8 @@ Raw legacy TCP retains an explicit compatibility boundary. It uses the same
 exact `HolyStoneProtocol` argument decoder for canonical Mount, Remove, and
 Drill shapes, but still calls `ApplyWeaponHolyStoneAsync`. It has no client
 operation UUID, permanent command receipt, or cross-reconnect idempotency.
-Aliases, malformed lengths, bare bag references, unexpected arguments, and
-unknown Holy Stone actions fail before store access. The compatibility
+Aliases, malformed lengths, invalid page/slot references, unexpected
+arguments, and unknown Holy Stone actions fail before store access. The compatibility
 mutator also requires an existing empty socket and an allowlisted Fire Spirit,
 consumes exactly one stacked material, rejects full-bag Remove without
 clearing the socket, preserves the removed level, and limits basic Drill to

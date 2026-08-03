@@ -16,6 +16,7 @@ namespace Godswar.Server.ProtocolChecks;
 internal static partial class HolyStoneDurableHandlerChecks
 {
     private const int StoneSlot = 0;
+    private const int WeaponSlot = 16;
     private static readonly Guid OperationId =
         Guid.Parse("551a75f5-3908-4fd5-adba-431910e561b4");
     private static readonly Guid OutboxEventId =
@@ -169,22 +170,20 @@ internal static partial class HolyStoneDurableHandlerChecks
         var character = snapshot.Character ??
             throw new InvalidOperationException(
                 "Holy Stone fixture requires a character.");
-        var equipment = EquipmentSlots.SetSlot(
-            character.Loadout.Equipment,
-            character.Appearance.Profession,
-            EquipmentSlots.Weapon,
-            weapon.ToCompactString());
         var bag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
             StoneSlot,
             stone.ToCompactString());
+        bag = KitBagSlots.SetSlot(
+            bag,
+            WeaponSlot,
+            weapon.ToCompactString());
         return snapshot with
         {
             Character = character with
             {
                 Loadout = character.Loadout with
                 {
-                    Equipment = equipment,
                     KitBag = bag
                 },
                 CalculatedStats = character.CalculatedStats with
@@ -269,8 +268,8 @@ internal static partial class HolyStoneDurableHandlerChecks
             HolyStoneCommandEnvelope.DialogIndex,
             HolyStoneCommandResultStatus.Mounted,
             HolyStoneNativeResults.MountedSubId,
-            HolyStoneTargetLocation.Equipment,
-            EquipmentSlots.Weapon,
+            HolyStoneTargetLocation.KitBag,
+            WeaponSlot,
             socketIndex: 0,
             targetItemInstanceId: 71,
             WeaponBefore.ToCompactString(),
@@ -303,10 +302,9 @@ internal static partial class HolyStoneDurableHandlerChecks
             {
                 args[HolyStoneProtocol.MountScratchArgumentIndex] = 0;
                 args[HolyStoneProtocol.TargetArgumentIndex] =
-                    HolyStoneProtocol.ClientEquippedWeaponReference;
+                    HolyStoneProtocol.EncodeKitBagReference(WeaponSlot);
                 args[HolyStoneProtocol.StoneArgumentIndex] =
-                    HolyStoneProtocol.ClientKitBagReferenceBase +
-                    StoneSlot;
+                    HolyStoneProtocol.EncodeKitBagReference(StoneSlot);
             },
             operationId);
 

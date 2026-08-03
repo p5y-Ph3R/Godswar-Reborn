@@ -6,7 +6,7 @@ using Godswar.Server.Protocol;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class HolyStoneCommandContractChecks
+internal static partial class HolyStoneCommandContractChecks
 {
     private static readonly Guid OperationId =
         Guid.Parse("4e67438c-54dd-496f-b741-085bd5765555");
@@ -62,10 +62,11 @@ internal static class HolyStoneCommandContractChecks
                 HolyStoneCommandOperation.Mount,
                 HolyStoneCommandEnvelope.SpartaNpcId,
                 HolyStoneCommandEnvelope.DialogIndex,
-                HolyStoneTargetLocation.Equipment,
-                HolyStoneCommandEnvelope.WeaponEquipmentSlot,
-                "[]",
-                HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+                HolyStoneTargetLocation.KitBag,
+                targetSlot: 16,
+                expectedTargetCompactItemState: "[]",
+                socketIndex:
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
                 stoneKitBagSlot: 0,
                 expectedStoneCompactItemState: "[]",
                 out _),
@@ -90,11 +91,13 @@ internal static class HolyStoneCommandContractChecks
                 HolyStoneCommandOperation.Drill,
                 HolyStoneCommandEnvelope.AthensNpcId,
                 HolyStoneCommandEnvelope.DialogIndex,
-                HolyStoneTargetLocation.Equipment,
-                HolyStoneCommandEnvelope.WeaponEquipmentSlot,
-                "[]",
-                HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
-                HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+                HolyStoneTargetLocation.KitBag,
+                targetSlot: 31,
+                expectedTargetCompactItemState: "[]",
+                socketIndex:
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+                stoneKitBagSlot:
+                    HolyStoneCommandEnvelope.NoStoneKitBagSlot,
                 expectedStoneCompactItemState: "[]",
                 out _),
             "missing Drill target snapshot reaches durable execution");
@@ -126,10 +129,12 @@ internal static class HolyStoneCommandContractChecks
                 HolyStoneCommandOperation.Mount,
                 HolyStoneCommandEnvelope.SpartaNpcId,
                 HolyStoneCommandEnvelope.DialogIndex,
-                HolyStoneTargetLocation.Equipment,
-                HolyStoneCommandEnvelope.WeaponEquipmentSlot,
-                "[1100,,,,,,3,5,1,1,0,0,,,,,,1,,,,,,,,,,,,]",
-                HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+                HolyStoneTargetLocation.KitBag,
+                targetSlot: 16,
+                expectedTargetCompactItemState:
+                    "[1100,,,,,,3,5,1,1,0,0,,,,,,1,,,,,,,,,,,,]",
+                socketIndex:
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
                 stoneKitBagSlot: 0,
                 expectedStoneCompactItemState:
                     "[9030,,,,,,1,1,1,1,0,0,,,,,,0,,,,,,,,,,,,]",
@@ -196,9 +201,9 @@ internal static class HolyStoneCommandContractChecks
             {
                 args[HolyStoneProtocol.MountScratchArgumentIndex] = 0;
                 args[HolyStoneProtocol.TargetArgumentIndex] =
-                    HolyStoneProtocol.ClientEquippedWeaponReference;
+                    HolyStoneProtocol.EncodeKitBagReference(53);
                 args[HolyStoneProtocol.StoneArgumentIndex] =
-                    HolyStoneProtocol.ClientKitBagReferenceBase + 95;
+                    HolyStoneProtocol.EncodeKitBagReference(95);
             });
         Check.True(
             HolyStoneProtocol.TryReadMutation(
@@ -220,9 +225,13 @@ internal static class HolyStoneCommandContractChecks
             (int)mountIntent.Operation,
             "Mount operation");
         Check.Equal(
-            HolyStoneCommandEnvelope.WeaponEquipmentSlot,
+            (int)HolyStoneTargetLocation.KitBag,
+            (int)mountIntent.TargetLocation,
+            "Mount uses a kitbag target");
+        Check.Equal(
+            53,
             mountIntent.TargetSlot,
-            "equipped weapon reference");
+            "page-two Mount target");
         Check.Equal(95, mountIntent.StoneKitBagSlot, "Mount material slot");
 
         var remove = CreatePacket(
@@ -231,7 +240,7 @@ internal static class HolyStoneCommandContractChecks
             args =>
             {
                 args[HolyStoneProtocol.TargetArgumentIndex] =
-                    HolyStoneProtocol.ClientKitBagReferenceBase + 17;
+                    HolyStoneProtocol.EncodeKitBagReference(40);
                 args[HolyStoneProtocol.RemoveOrdinalArgumentIndex] = 4;
             });
         Check.True(
@@ -241,25 +250,10 @@ internal static class HolyStoneCommandContractChecks
                 out _,
                 out var removeIntent),
             "exact 92-byte Remove packet parses");
-        Check.Equal(17, removeIntent.TargetSlot, "Remove bag target");
+        Check.Equal(40, removeIntent.TargetSlot, "Remove bag target");
         Check.Equal(3, removeIntent.SocketIndex, "one-based socket ordinal");
 
-        var drill = CreatePacket(
-            HolyStoneProtocol.SpartaNpcId,
-            HolyStoneProtocol.DrillSubId,
-            args => args[HolyStoneProtocol.TargetArgumentIndex] =
-                HolyStoneProtocol.ClientEquippedWeaponReference);
-        Check.True(
-            HolyStoneProtocol.TryReadMutation(
-                drill,
-                out _,
-                out _,
-                out var drillIntent),
-            "exact 92-byte Drill packet parses");
-        Check.Equal(
-            HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
-            drillIntent.SocketIndex,
-            "Drill delegates socket choice to the server");
+        CheckCapturedPageAwareBagReferences();
     }
 
     private static void CheckWireShapeRejections()
@@ -271,9 +265,9 @@ internal static class HolyStoneCommandContractChecks
             {
                 args[0] = 0;
                 args[6] =
-                    HolyStoneProtocol.ClientEquippedWeaponReference;
+                    HolyStoneProtocol.EncodeKitBagReference(16);
                 args[7] =
-                    HolyStoneProtocol.ClientKitBagReferenceBase;
+                    HolyStoneProtocol.EncodeKitBagReference(0);
             });
         var wrongDeclaredLength = valid.Buffer.ToArray();
         BinaryPrimitives.WriteUInt16LittleEndian(
@@ -325,6 +319,41 @@ internal static class HolyStoneCommandContractChecks
                 out _),
             "unexpected argument data is rejected");
 
+        foreach (var invalidReference in new[]
+                 {
+                     -1,
+                     24,
+                     99,
+                     124,
+                     195,
+                     199,
+                     224,
+                     299,
+                     324,
+                     399,
+                     400
+                 })
+        {
+            var invalidDrill = CreatePacket(
+                HolyStoneProtocol.SpartaNpcId,
+                HolyStoneProtocol.DrillSubId,
+                args => args[HolyStoneProtocol.TargetArgumentIndex] =
+                    invalidReference);
+            Check.True(
+                !HolyStoneProtocol.TryReadMutation(
+                    invalidDrill,
+                    out _,
+                    out _,
+                    out _),
+                $"invalid bag reference {invalidReference} is rejected");
+        }
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => HolyStoneProtocol.EncodeKitBagReference(-1),
+            "negative canonical bag slot cannot encode");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => HolyStoneProtocol.EncodeKitBagReference(96),
+            "out-of-range canonical bag slot cannot encode");
+
         var navigationArgs =
             Enumerable.Repeat(
                 -1,
@@ -356,6 +385,9 @@ internal static class HolyStoneCommandContractChecks
 
     private static void CheckReceiptEvidence()
     {
+        // Version-2 receipts written before the page-aware wire correction
+        // can name the equipped weapon. Keep decoding this historical form
+        // even though new stock-client Holy Stone commands are bag-targeted.
         var staleMissing = new HolyStoneExecutionReceipt(
             characterId: 19,
             HolyStoneCommandOperation.Mount,
@@ -391,7 +423,7 @@ internal static class HolyStoneCommandContractChecks
         Check.True(
             HolyStoneExecutionResult
                 .TerminalRejected(staleMissing).IsDurable,
-            "empty expected states can produce durable stale receipts");
+            "legacy equipment receipts remain replay-compatible");
     }
 
     internal static GamePacket CreatePacket(

@@ -42,6 +42,9 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
             Bound = 1,
             Stack = 2
         };
+        // Historical version-2 outbox events may identify the equipped
+        // weapon. The consumer must remain able to project those events even
+        // though current stock-client Holy Stone commands target the bag.
         var receipt = new HolyStoneExecutionReceipt(
             CharacterId,
             HolyStoneCommandOperation.Mount,

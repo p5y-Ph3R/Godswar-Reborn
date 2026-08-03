@@ -15,8 +15,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         string scenario,
         CompactItemEntry? target = null,
         HolyStoneTargetLocation targetLocation =
-            HolyStoneTargetLocation.Equipment,
-        short targetSlot = HolyStoneCommandEnvelope.WeaponEquipmentSlot,
+            HolyStoneTargetLocation.KitBag,
+        short targetSlot = 16,
         CompactItemEntry? stone = null,
         short stoneSlot = 10,
         IReadOnlyList<(short Slot, CompactItemEntry Item)>?

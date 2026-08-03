@@ -14,10 +14,14 @@ inline constexpr std::int32_t LegacyHolyStoneRemoveSubId = 201;
 inline constexpr std::int32_t LegacyHolyStoneDrillSubId = 301;
 inline constexpr std::int32_t
     LegacyHolyStoneAdvancedDrillSubId = 701;
-inline constexpr std::int32_t LegacyHolyStoneBagReferenceMinimum = 100;
-inline constexpr std::int32_t LegacyHolyStoneBagReferenceMaximum = 195;
-inline constexpr std::int32_t
-    LegacyCapturedEquippedHolyStoneReference = 205;
+inline constexpr std::int32_t LegacyHolyStoneBagPageCount = 4;
+inline constexpr std::int32_t LegacyHolyStoneBagSlotsPerPage = 24;
+inline constexpr std::int32_t LegacyHolyStoneBagPageStride = 100;
+inline constexpr std::int32_t LegacyHolyStoneBagReferenceMinimum = 0;
+inline constexpr std::int32_t LegacyHolyStoneBagReferenceMaximum =
+    ((LegacyHolyStoneBagPageCount - 1) *
+     LegacyHolyStoneBagPageStride) +
+    (LegacyHolyStoneBagSlotsPerPage - 1);
 inline constexpr std::size_t LegacyHolyStoneArgumentCount = 18;
 
 enum class LegacyHolyStoneAction : std::uint8_t {
@@ -34,7 +38,11 @@ enum class LegacyHolyStonePacketKind : std::uint8_t {
 
 struct LegacyHolyStoneCommand final {
     LegacyHolyStoneAction action = LegacyHolyStoneAction::Mount;
+    // The parser normalizes wire reference page*100+pageSlot into the
+    // authoritative linear bag slot page*24+pageSlot (0..95).
     int targetReference = -1;
+    // Mount: normalized material bag slot. Remove: one-based socket ordinal.
+    // Drill: -1.
     int secondaryValue = -1;
 };
 

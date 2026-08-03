@@ -79,7 +79,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             "mount never automatically drills");
         Check.Equal(

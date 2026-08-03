@@ -74,7 +74,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             $"{stage} rolls back target");
         Check.Equal(
@@ -128,7 +128,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             $"{stage} rolls back drilled target");
         var state = await ReadStateAsync(
@@ -179,7 +179,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             "output fault rolls back target");
         Check.True(

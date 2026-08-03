@@ -53,11 +53,10 @@ internal static partial class HolyStoneDurableHandlerChecks
             "Mount captures full stone state");
         Check.Equal(
             WeaponAfter,
-            EquipmentSlots.GetItem(
-                fixture.LiveCharacter.Equipment,
-                fixture.LiveCharacter.Profession,
-                EquipmentSlots.Weapon),
-            "committed Mount reloads authoritative weapon");
+            KitBagSlots.GetItem(
+                fixture.LiveCharacter.KitBag,
+                WeaponSlot),
+            "committed Mount reloads authoritative bagged weapon");
         Check.True(
             KitBagSlots.GetItem(
                 fixture.LiveCharacter.KitBag,
@@ -75,7 +74,7 @@ internal static partial class HolyStoneDurableHandlerChecks
         AssertDurableResponse(
             fixture,
             SecureLegacyCommandDisposition.Applied,
-            expectedDeletionAcknowledgements: 1,
+            expectedDeletionAcknowledgements: 2,
             "committed Mount");
     }
 

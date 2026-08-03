@@ -49,7 +49,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var target = await ReadItemAsync(
             connectionString,
             fixture.CharacterId,
-            0,
+            checked((short)fixture.TargetLocation),
             fixture.TargetSlot);
         Check.Equal(
             fixture.TargetItemId.Value,

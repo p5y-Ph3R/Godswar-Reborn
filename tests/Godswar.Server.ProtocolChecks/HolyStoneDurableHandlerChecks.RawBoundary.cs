@@ -21,8 +21,8 @@ internal static partial class HolyStoneDurableHandlerChecks
         }
 
         var canonical = CreateRawCanonicalMountPacket(
-            HolyStoneProtocol.ClientEquippedWeaponReference,
-            HolyStoneProtocol.ClientKitBagReferenceBase + 7);
+            HolyStoneProtocol.EncodeKitBagReference(WeaponSlot),
+            HolyStoneProtocol.EncodeKitBagReference(7));
         await AssertRawRejectedAsync(
             ResizePacket(canonical, -sizeof(int)),
             "short canonical Mount");
@@ -38,11 +38,26 @@ internal static partial class HolyStoneDurableHandlerChecks
             new GamePacket(wrongDeclaredLength),
             "declared-length mismatch");
 
-        await AssertRawRejectedAsync(
-            CreateRawCanonicalMountPacket(
-                targetReference: 5,
-                stoneReference: 7),
-            "bare 0..95 references");
+        foreach (var invalidReference in new[]
+                 {
+                     24,
+                     99,
+                     124,
+                     199,
+                     224,
+                     299,
+                     324,
+                     399,
+                     400
+                 })
+        {
+            await AssertRawRejectedAsync(
+                CreateRawCanonicalMountPacket(
+                    targetReference: invalidReference,
+                    stoneReference:
+                        HolyStoneProtocol.EncodeKitBagReference(7)),
+                $"invalid raw target reference {invalidReference}");
+        }
         await AssertRawRejectedAsync(
             HolyStoneCommandContractChecks.CreatePacket(
                 HolyStoneProtocol.SpartaNpcId,
@@ -51,16 +66,17 @@ internal static partial class HolyStoneDurableHandlerChecks
                 {
                     args[HolyStoneProtocol.MountScratchArgumentIndex] = 0;
                     args[HolyStoneProtocol.TargetArgumentIndex] =
-                        HolyStoneProtocol.ClientEquippedWeaponReference;
+                        HolyStoneProtocol.EncodeKitBagReference(
+                            WeaponSlot);
                     args[HolyStoneProtocol.StoneArgumentIndex] =
-                        HolyStoneProtocol.ClientKitBagReferenceBase + 7;
+                        HolyStoneProtocol.EncodeKitBagReference(7);
                     args[4] = 44;
                 }),
             "arbitrary extra argument");
         await AssertRawRejectedAsync(
             CreateRawCanonicalMountPacket(
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7,
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7),
+                HolyStoneProtocol.EncodeKitBagReference(7),
+                HolyStoneProtocol.EncodeKitBagReference(7)),
             "same target and material slot");
         await AssertRawRejectedAsync(
                 HolyStoneCommandContractChecks.CreatePacket(

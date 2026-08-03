@@ -32,7 +32,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             fixture,
             receipt.NativeResultSubId,
             SecureLegacyCommandDisposition.Rejected,
-            expectedChangedSlots: [StoneSlot],
+            expectedChangedSlots: [StoneSlot, WeaponSlot],
             $"terminal {status} Mount");
     }
 
@@ -48,7 +48,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             fixture,
             HolyStoneNativeResults.MountedSubId,
             SecureLegacyCommandDisposition.Replayed,
-            expectedChangedSlots: [StoneSlot],
+            expectedChangedSlots: [StoneSlot, WeaponSlot],
             "replayed Mount after local divergence");
     }
 
@@ -82,7 +82,7 @@ internal static partial class HolyStoneDurableHandlerChecks
                 fixture,
                 HolyStoneNativeResults.WrongSelectionSubId,
                 outcome.Disposition,
-                expectedChangedSlots: [StoneSlot],
+                expectedChangedSlots: [StoneSlot, WeaponSlot],
                 $"non-durable {outcome.Name}");
         }
     }
@@ -101,8 +101,8 @@ internal static partial class HolyStoneDurableHandlerChecks
             HolyStoneNativeResults.GetResultSubId(
                 HolyStoneCommandOperation.Mount,
                 status),
-            HolyStoneTargetLocation.Equipment,
-            HolyStoneCommandEnvelope.WeaponEquipmentSlot,
+            HolyStoneTargetLocation.KitBag,
+            WeaponSlot,
             HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
             targetItemInstanceId: 71,
             WeaponBefore.ToCompactString(),

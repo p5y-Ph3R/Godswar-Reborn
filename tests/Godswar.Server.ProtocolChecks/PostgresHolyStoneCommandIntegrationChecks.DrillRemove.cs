@@ -44,7 +44,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var afterFirst = (await ReadItemAsync(
             connectionString,
             fixture.CharacterId,
-            0,
+            checked((short)fixture.TargetLocation),
             fixture.TargetSlot))!.Value;
         Check.Equal(
             fixture.TargetItemId!.Value,
@@ -72,7 +72,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var afterSecond = (await ReadItemAsync(
             connectionString,
             fixture.CharacterId,
-            0,
+            checked((short)fixture.TargetLocation),
             fixture.TargetSlot))!.Value;
         Check.Equal(2, afterSecond.Item.SocketCount, "second socket");
 
@@ -186,7 +186,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             $"socket {sockets} insufficient Gold preserves target");
         AssertTerminalEvidence(
@@ -240,7 +240,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         var targetAfter = (await ReadItemAsync(
             connectionString,
             fixture.CharacterId,
-            0,
+            checked((short)fixture.TargetLocation),
             fixture.TargetSlot))!.Value;
         Check.Equal(
             fixture.TargetItemId!.Value,
@@ -304,7 +304,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
-                0,
+                checked((short)fixture.TargetLocation),
                 fixture.TargetSlot))!.Value.Item,
             "BagFull is decided before clearing the target");
         AssertTerminalEvidence(

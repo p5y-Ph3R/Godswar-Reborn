@@ -43,8 +43,9 @@ internal static class HolyStoneProtocol
     public const int TargetArgumentIndex = 6;
     public const int StoneArgumentIndex = 7;
     public const int RemoveOrdinalArgumentIndex = 10;
-    public const int ClientKitBagReferenceBase = 100;
-    public const int ClientEquippedWeaponReference = 205;
+    public const int ClientKitBagPageStride = 100;
+    public const int ClientKitBagSlotsPerPage = 24;
+    public const int ClientKitBagPageCount = 4;
     public const int PacketBytes = 92;
 
     public static bool IsEndpoint(uint npcId, int dialogIndex) =>
@@ -361,12 +362,6 @@ internal static class HolyStoneProtocol
         out HolyStoneTargetLocation location,
         out int slot)
     {
-        if (reference == ClientEquippedWeaponReference)
-        {
-            location = HolyStoneTargetLocation.Equipment;
-            slot = HolyStoneCommandEnvelope.WeaponEquipmentSlot;
-            return true;
-        }
         if (TryDecodeKitBagReference(reference, out slot))
         {
             location = HolyStoneTargetLocation.KitBag;
@@ -378,11 +373,40 @@ internal static class HolyStoneProtocol
         return false;
     }
 
+    public static int EncodeKitBagReference(int slot)
+    {
+        if (slot is
+            < HolyStoneCommandEnvelope.MinimumKitBagSlot or
+            > HolyStoneCommandEnvelope.MaximumKitBagSlot)
+        {
+            throw new ArgumentOutOfRangeException(nameof(slot));
+        }
+
+        var page = slot / ClientKitBagSlotsPerPage;
+        var pageSlot = slot % ClientKitBagSlotsPerPage;
+        return checked((page * ClientKitBagPageStride) + pageSlot);
+    }
+
     private static bool TryDecodeKitBagReference(
         int reference,
         out int slot)
     {
-        slot = reference - ClientKitBagReferenceBase;
+        if (reference < 0)
+        {
+            slot = -1;
+            return false;
+        }
+
+        var page = reference / ClientKitBagPageStride;
+        var pageSlot = reference % ClientKitBagPageStride;
+        if (page is < 0 or >= ClientKitBagPageCount ||
+            pageSlot is < 0 or >= ClientKitBagSlotsPerPage)
+        {
+            slot = -1;
+            return false;
+        }
+
+        slot = checked((page * ClientKitBagSlotsPerPage) + pageSlot);
         return slot is
             >= HolyStoneCommandEnvelope.MinimumKitBagSlot and
             <= HolyStoneCommandEnvelope.MaximumKitBagSlot;

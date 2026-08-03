@@ -63,15 +63,15 @@ internal static partial class HolyStoneDurableHandlerChecks
             weapon,
             bag,
             CreateRawCanonicalMountPacket(
-                HolyStoneProtocol.ClientEquippedWeaponReference,
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7));
+                HolyStoneProtocol.EncodeKitBagReference(WeaponSlot),
+                HolyStoneProtocol.EncodeKitBagReference(7)));
 
         Check.True(
             outcome.Result is null,
             $"{description} Mount is rejected");
         Check.Equal(
             weapon,
-            ReadEquippedWeapon(outcome.Persisted),
+            ReadBaggedWeapon(outcome.Persisted),
             $"{description} cannot mutate the target");
         Check.Equal(
             material,
@@ -92,13 +92,13 @@ internal static partial class HolyStoneDurableHandlerChecks
             WeaponBefore,
             bag,
             CreateRawCanonicalMountPacket(
-                HolyStoneProtocol.ClientEquippedWeaponReference,
-                HolyStoneProtocol.ClientKitBagReferenceBase + 7));
+                HolyStoneProtocol.EncodeKitBagReference(WeaponSlot),
+                HolyStoneProtocol.EncodeKitBagReference(7)));
 
         Check.True(
             outcome.Result is not null,
             "allowlisted stacked Fire Spirit mounts");
-        var weapon = ReadEquippedWeapon(outcome.Persisted);
+        var weapon = ReadBaggedWeapon(outcome.Persisted);
         Check.True(
             weapon.Socket1EffectId == 1,
             "allowlisted Fire Spirit supplies its exact effect");
@@ -130,7 +130,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             "Remove rejects an empty exact socket");
         Check.Equal(
             weapon,
-            ReadEquippedWeapon(outcome.Persisted),
+            ReadBaggedWeapon(outcome.Persisted),
             "Remove cannot fall back to another occupied socket");
     }
 
@@ -151,6 +151,10 @@ internal static partial class HolyStoneDurableHandlerChecks
             Socket1EffectId = 2,
             Socket1Level = 7
         };
+        fullBag = KitBagSlots.SetSlot(
+            fullBag,
+            WeaponSlot,
+            weapon.ToCompactString());
         var outcome = await ApplyExactPacketToJsonStoreAsync(
             weapon,
             fullBag,
@@ -161,7 +165,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             "full-bag Remove is rejected");
         Check.Equal(
             weapon,
-            ReadEquippedWeapon(outcome.Persisted),
+            ReadBaggedWeapon(outcome.Persisted),
             "full-bag Remove preserves the occupied socket");
         Check.True(
             string.Equals(
@@ -187,7 +191,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             outcome.Result is not null,
             "occupied exact socket can be removed");
         Check.True(
-            ReadEquippedWeapon(outcome.Persisted)
+            ReadBaggedWeapon(outcome.Persisted)
                 .Socket1EffectId is null,
             "successful Remove clears the requested socket");
         var output = KitBagSlots.GetItem(
@@ -211,7 +215,7 @@ internal static partial class HolyStoneDurableHandlerChecks
             args =>
             {
                 args[HolyStoneProtocol.TargetArgumentIndex] =
-                    HolyStoneProtocol.ClientEquippedWeaponReference;
+                    HolyStoneProtocol.EncodeKitBagReference(WeaponSlot);
                 args[HolyStoneProtocol.RemoveOrdinalArgumentIndex] =
                     socketOrdinal;
             });
@@ -240,10 +244,9 @@ internal static partial class HolyStoneDurableHandlerChecks
             var account = await store.LoginOrCreateAccountAsync(
                 "raw-holy-store",
                 string.Empty);
-            var equipment = EquipmentSlots.SetSlot(
-                GameDefaults.DefaultEquipment(profession: 0),
-                profession: 0,
-                EquipmentSlots.Weapon,
+            kitBag = KitBagSlots.SetSlot(
+                kitBag,
+                WeaponSlot,
                 weapon.ToCompactString());
             var created = await store.CreateCharacterAsync(
                 account.Id,
@@ -252,7 +255,6 @@ internal static partial class HolyStoneDurableHandlerChecks
                     Name = "RawHolyStore",
                     Profession = 0,
                     Gold = 10_000,
-                    Equipment = equipment,
                     KitBag = kitBag
                 });
             var operation = intent.Operation switch
@@ -266,20 +268,15 @@ internal static partial class HolyStoneDurableHandlerChecks
                 _ => throw new InvalidDataException(
                     "Unknown crafted Holy Stone operation.")
             };
-            var targetMode = intent.TargetLocation switch
-            {
-                HolyStoneTargetLocation.Equipment =>
-                    HolyStoneTargetMode.EquippedWeapon,
-                HolyStoneTargetLocation.KitBag =>
-                    HolyStoneTargetMode.KitBag,
-                _ => throw new InvalidDataException(
-                    "Unknown crafted Holy Stone target.")
-            };
+            Check.Equal(
+                (int)HolyStoneTargetLocation.KitBag,
+                (int)intent.TargetLocation,
+                "crafted raw store packet targets the kitbag");
             var result = await store.ApplyWeaponHolyStoneAsync(
                 account.Id,
                 created.Id,
                 operation,
-                targetMode,
+                HolyStoneTargetMode.KitBag,
                 intent.TargetSlot,
                 intent.SocketIndex,
                 intent.StoneKitBagSlot,
@@ -299,12 +296,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         }
     }
 
-    private static CompactItemEntry ReadEquippedWeapon(
+    private static CompactItemEntry ReadBaggedWeapon(
         GameCharacter character) =>
-        EquipmentSlots.GetItem(
-            character.Equipment,
-            character.Profession,
-            EquipmentSlots.Weapon);
+        KitBagSlots.GetItem(character.KitBag, WeaponSlot);
 
     private static CompactItemEntry CreateFireSpirit(
         short stack) =>

@@ -53,7 +53,7 @@ void CheckCapturedGoldenVectors(Checks* checks) {
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFF",
             LegacyHolyStoneAction::Remove,
-            205,
+            53,
             1,
         },
         {
@@ -63,7 +63,7 @@ void CheckCapturedGoldenVectors(Checks* checks) {
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFF",
             LegacyHolyStoneAction::Remove,
-            112,
+            36,
             1,
         },
         {
@@ -72,8 +72,8 @@ void CheckCapturedGoldenVectors(Checks* checks) {
             "CD0000006B000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
             LegacyHolyStoneAction::Mount,
-            205,
-            107,
+            53,
+            31,
         },
         {
             "5C005527DB1300001E0000001E00000065000000"
@@ -81,8 +81,8 @@ void CheckCapturedGoldenVectors(Checks* checks) {
             "700000006D000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
             LegacyHolyStoneAction::Mount,
-            112,
-            109,
+            36,
+            33,
         },
         {
             "5C005527DB1300001E0000001E0000002D010000"
@@ -90,7 +90,18 @@ void CheckCapturedGoldenVectors(Checks* checks) {
             "6B000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
             LegacyHolyStoneAction::Drill,
-            107,
+            31,
+            -1,
+        },
+        {
+            // Exact retail-client packet captured on 2026-08-04. Page zero,
+            // slot 16 is wire reference 16 and canonical linear slot 16.
+            "5C005527DB1300001E0000001E0000002D010000"
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+            "10000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+            LegacyHolyStoneAction::Drill,
+            16,
             -1,
         },
     };
@@ -139,13 +150,14 @@ void CheckCitiesAndBoundaries(Checks* checks) {
             command.targetReference ==
                 LegacyHolyStoneBagReferenceMinimum &&
             command.secondaryValue ==
-                LegacyHolyStoneBagReferenceMaximum,
-        "Athens Holy Stone commit or bag boundaries failed");
+                (LegacyHolyStoneBagPageCount *
+                 LegacyHolyStoneBagSlotsPerPage) - 1,
+        "Athens Holy Stone page-coordinate boundaries failed");
 
     BuildHolyStonePacket(
         packet,
         LegacyHolyStoneAction::Drill,
-        LegacyCapturedEquippedHolyStoneReference,
+        205,
         -1);
     checks->Require(
         ClassifyLegacyHolyStonePacket(
@@ -158,9 +170,52 @@ void CheckCitiesAndBoundaries(Checks* checks) {
             sizeof(packet),
             &command) &&
             command.action == LegacyHolyStoneAction::Drill &&
-            command.targetReference ==
-                LegacyCapturedEquippedHolyStoneReference,
-        "Captured equipped-item reference was not preserved");
+            command.targetReference == 53,
+        "Page-two Holy Stone reference was not normalized");
+
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::Mount,
+        16,
+        107);
+    checks->Require(
+        TryReadLegacyHolyStoneCommand(
+            packet,
+            sizeof(packet),
+            &command) &&
+        command.action == LegacyHolyStoneAction::Mount &&
+        command.targetReference == 16 &&
+        command.secondaryValue == 31,
+        "Mount did not normalize target and material coordinates");
+
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::Drill,
+        100,
+        -1);
+    checks->Require(
+        TryReadLegacyHolyStoneCommand(
+            packet,
+            sizeof(packet),
+            &command) &&
+        command.action == LegacyHolyStoneAction::Drill &&
+        command.targetReference == 24,
+        "Page-one slot zero did not normalize to bag slot 24");
+
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::Remove,
+        116,
+        1);
+    checks->Require(
+        TryReadLegacyHolyStoneCommand(
+            packet,
+            sizeof(packet),
+            &command) &&
+        command.action == LegacyHolyStoneAction::Remove &&
+        command.targetReference == 40 &&
+        command.secondaryValue == 1,
+        "Remove did not normalize its target coordinate");
 }
 
 void CheckNavigationAndForeignActions(Checks* checks) {
@@ -403,8 +458,8 @@ void CheckStrictShapeRejections(Checks* checks) {
         "Holy Stone accepted scratch argument data");
     rejectsMutation(
         20 + 6 * 4,
-        204,
-        "Holy Stone accepted unknown equipped reference");
+        224,
+        "Holy Stone accepted page slot 24");
     rejectsMutation(
         20 + 7 * 4,
         196,
@@ -468,6 +523,31 @@ void CheckStrictShapeRejections(Checks* checks) {
             sizeof(changed),
             &command),
         "Holy Stone Drill accepted stray arguments");
+
+    for (const int invalidReference :
+         {24, 99, 124, 195, 199, 224, 299, 324}) {
+        for (const auto action : {
+                 LegacyHolyStoneAction::Mount,
+                 LegacyHolyStoneAction::Remove,
+                 LegacyHolyStoneAction::Drill}) {
+            BuildHolyStonePacket(
+                changed,
+                action,
+                invalidReference,
+                action == LegacyHolyStoneAction::Mount
+                    ? 107
+                    : action == LegacyHolyStoneAction::Remove
+                        ? 1
+                        : -1);
+            checks->Require(
+                ClassifyLegacyHolyStonePacket(
+                    changed,
+                    sizeof(changed),
+                    &command) ==
+                    LegacyHolyStonePacketKind::InvalidMutation,
+                "Holy Stone accepted an invalid page coordinate");
+        }
+    }
 
     std::uint8_t shortMutation[20]{};
     std::memcpy(shortMutation, valid, sizeof(shortMutation));

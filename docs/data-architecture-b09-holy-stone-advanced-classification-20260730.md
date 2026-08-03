@@ -47,12 +47,13 @@ available source trees found no reliable action-701 serializer. Therefore
 the following remain unknown:
 
 - which of the eighteen signed arguments select the equipment and spell;
-- whether the target encoding supports all equipment or only captured
-  weapon reference `205`;
+- whether action `701` reuses the basic operations' page/slot bag encoding,
+  or introduces a separately tagged equipped-item encoding;
 - whether Socket Spell III/IV is explicitly selected or server-selected;
 - exact success and rejection response sub-IDs;
 - exact consumption and client refresh sequence; and
-- retry equivalence when an equipped item moves to the bag.
+- retry equivalence if future captures prove that action `701` can target an
+  equipped item as well as a bagged item.
 
 The UI's word “equipment” is especially important: reusing the current
 weapon-only basic Drill executor could reject legitimate targets or mutate
