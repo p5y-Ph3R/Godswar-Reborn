@@ -151,7 +151,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         var fixture = await CreateFixtureAsync(
             connectionString,
             "stale");
-        var staleGear = CreateGear() with { Exp = 778 };
+        var staleGear = CreateCommonGear() with { Exp = 778 };
         ClassSuitExecutionReceipt receipt;
         await using (var source = NpgsqlDataSource.Create(connectionString))
         {
@@ -213,7 +213,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         ClassSuitDurableState state,
         string description)
     {
-        var expectedGear = CreateGear() with
+        var expectedGear = CreateCommonGear() with
         {
             Id = 1032,
             Bound = 1
@@ -239,7 +239,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
     {
         Check.True(
             state.InventoryRevision == 0 &&
-            state.Gear == CreateGear() &&
+            state.Gear == CreateCommonGear() &&
             state.Insignia ==
                 CreateInsignia(fixture.InitialInsigniaStack) &&
             state.AuditCount == 1 &&

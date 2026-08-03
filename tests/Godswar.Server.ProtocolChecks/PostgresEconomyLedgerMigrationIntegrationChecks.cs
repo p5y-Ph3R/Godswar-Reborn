@@ -346,10 +346,12 @@ internal static class PostgresEconomyLedgerMigrationIntegrationChecks
                       item_row.item_location
                    OR snapshot_row.slot_index <> item_row.slot_index
                    OR snapshot_row.prop_id <> item_row.prop_id
-                   OR snapshot_row.item_state IS DISTINCT FROM
+                   OR public.canonical_character_item_state_v2(
+                          snapshot_row.item_state) IS DISTINCT FROM
                       CASE
                           WHEN item_row.id IS NULL THEN NULL::jsonb
-                          ELSE to_jsonb(item_row)
+                          ELSE public.canonical_character_item_state_v2(
+                              to_jsonb(item_row))
                       END;
                 """),
             "per-item baseline snapshots preserve every current item");

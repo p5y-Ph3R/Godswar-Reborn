@@ -235,6 +235,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateHolySuitSingaporeDayBoundary(),
         CreateHolySuitFixedDailyCap(),
         CreateNpcDialogueMultiRouteRelease(),
-        CreateItemContentV6Release()
+        CreateItemContentV6Release(),
+        CreateClassSuitAttributeSlots()
     ];
 }

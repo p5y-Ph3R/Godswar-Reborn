@@ -294,13 +294,14 @@ chains. Other stones can be added or deleted but cannot be Quartz-enhanced.
 
 Add chooses the first attribute template in the stone family that is allowed
 by the equipment template's `MainAttribute` data. It rejects an incompatible
-stone, an existing attribute from the same family, or a gear item whose first
-four ordinary attribute slots are full. Slot five is reserved for the
-Class Suit workflow; existing slot-five data remains fully supported by
-Enhance, Delete, serialization, and persistence. Enhance requires the matching
-family, synchronized attribute template/level fields, and the Quartz Plate for
-the current level. Delete removes the matching family and compacts the
-remaining attribute and attribute-level pairs without separating them.
+stone, an existing attribute from the same family, or a gear item whose five
+ordinary attribute slots are full. Class Suit III/IV bonuses use two separate
+Class Suit fields and therefore do not consume an ordinary slot. Enhance
+requires the matching family, synchronized attribute template/level fields,
+and the Quartz Plate for the current level. Delete removes the matching family
+and compacts the remaining attribute and attribute-level pairs without
+separating them. The compatible seven-field contract is documented in
+[Five ordinary plus two Class Suit attributes](class-suit-seven-attribute-protocol.md).
 
 If any consumed material is bound, the resulting gear is bound. A failed
 operation consumes nothing and does not change the gear.
@@ -363,63 +364,11 @@ The server returns the shipped result IDs on the originating dialog (`4` or
 Success is acknowledged before refreshed bag pages are sent. Reject paths send
 only the appropriate result and leave the authoritative inventory unchanged.
 
-## Capture and native evidence
+## Native evidence and NPC placement
 
-The original-service capture
-`captures/capture-proxy-20260514-173331.log` establishes the dialog handshake
-and packet shape: opcode `10067` opens dialog `118`; the initial 92-byte opcode
-`10069` request uses sub-ID `-1`; opcode `10070` returns operations `2,3,6`.
-That capture used NPC `5140` / `Sparta_143`, confirming that dialog `118` is
-the separate Origin Enhancer workflow. The stock Gear Mentors are NPC 070 and
-use dialog `4` instead. The server returns the captured wire order `2,3,6` for
-Origin Enhancer; the client lays those sub-IDs out visibly as Add, Enhance,
-Delete.
-
-The shipped scripts establish the native dialog path:
-
-- `NpcFunBreak_SetMsg` assigns physical Gear Mentor controls as Gear, operation
-  Catalyst, Attribute Stone and emits opcode `10193` for item selection;
-- `NpcFunEnhancer_SetMsg` assigns Origin Enhancer native controls as Gear,
-  Catalyst, Attribute Stone;
-- Add, Enhance, and Delete remain native controls `800001..3` and generate the
-  operation request through their shipped click handlers;
-- confirmed item references occupy arguments `6`, `7`, and `8`.
-
-`NpcFunLoad.xml` loads `NpcFunBreak.lua` and `NpcFunEnhancer.lua` separately.
-The custom GWGE2/GWGE3 XML/Lua wrapper has been removed. Both scripts and the
-stock `NpcFun.xml` dialog shell now run without presentation overrides.
-
-## Nearby original NPC actors
-
-City NPC placement comes from server opcode `10020` actor records, not from
-the client's navigation destinations. The restored Sparta cluster uses these
-original-service positions:
-
-| NPC | Object | Position | Stock dialog |
-|---|---:|---:|---|
-| Gear Mentor (`Sparta_070`) | `5067` | `142,-165` | `4`, Gear Enhancement |
-| Master Vestment Forger (`Sparta_085`) | `5082` | `126,-162` | `29`, Holy Suit Design |
-| Class Shifter (`Sparta_044`) | `5041` | `141,-174` | Shift class |
-| Ingredients Vendor (`Sparta_122`) | `5119` | `97,-174` | Vendor |
-| Origin Enhancer (`Sparta_143`) | `5140` | `97,-163` | `118`, Enhancer |
-
-The stale `Quest.xml` reference at `143,-170` for NPC 122 is not an actor
-position and no longer overrides the captured Ingredients Vendor location.
-Athens no longer mirrors this cluster: all 111 actors are seeded from the
-original server actor table, including orientation.
-
-| NPC | Protocol object | Athens actor position | Facing |
-|---|---:|---:|---:|
-| Gear Mentor (`Athens_070`) | `5209` | `142,-165` | `1.7` |
-| Master Vestment Forger (`Athens_085`) | `5224` | `126,-162` | `4.7` |
-| Class Shifter (`Athens_044`) | `5183` | `141,-174` | `2.3` |
-| Ingredients Vendor (`Athens_122`) | `5261` | `97,-174` | `1.7` |
-| Origin Enhancer (`Athens_143`) | `5282` | `97,-163` | `1.7` |
-
-The actor table used source IDs `6101/6102` and unavailable
-`*_FemVillager3` appearances for Athens 142/143. The emulator retains the
-established protocol-safe city IDs and shipped `*_Hallo` appearances while
-using the authoritative positions and facing.
+The capture evidence, native Lua path, and restored Athens/Sparta NPC actor
+coordinates are maintained in
+[Gear enhancement native evidence](gear-enhancement-native-evidence.md).
 
 ## Acceptance criteria
 

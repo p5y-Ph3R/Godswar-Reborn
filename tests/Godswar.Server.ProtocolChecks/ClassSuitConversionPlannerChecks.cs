@@ -150,6 +150,14 @@ internal static partial class ClassSuitConversionPlannerChecks
                     template.MinLevel.HasValue,
                     $"Class Suit {branch.Key} {tier} has pinned class and level authority");
                 Check.True(
+                    ClassSuitConversionCatalog.TryResolveSuit(
+                        branch.ItemIdFor(tier),
+                        out var anyProfessionBranch,
+                        out var anyProfessionTier) &&
+                    anyProfessionBranch == branch &&
+                    anyProfessionTier == tier,
+                    $"globally unique Class Suit item {branch.ItemIdFor(tier)} resolves without client profession input");
+                Check.True(
                     ClassSuitConversionCatalog.TryResolveReverse(
                         branch.Profession,
                         branch.ItemIdFor(tier),
@@ -196,7 +204,10 @@ internal static partial class ClassSuitConversionPlannerChecks
         Check.Equal((short)20, converted.Quality, "quality survives Class Suit conversion");
         Check.Equal((short)25, converted.Grade, "grade survives Class Suit conversion");
         Check.Equal(40, converted.Attribute1 ?? -1, "first appended attribute survives");
-        Check.Equal(200, converted.Attribute2 ?? -1, "class attribute survives forward conversion");
+        Check.Equal(60, converted.Attribute2 ?? -1, "second ordinary attribute survives forward conversion");
+        Check.True(
+            converted.ClassAttribute1 is null && converted.ClassAttribute2 is null,
+            "conversion to Class Suit I cannot carry class-specific attributes");
         Check.Equal(777, converted.Exp, "stored gear EXP survives conversion");
         Check.Equal(705, converted.HolySuitCode, "Holy Suit code survives conversion");
         Check.Equal((short)2, converted.SocketCount, "socket count survives conversion");
@@ -212,7 +223,11 @@ internal static partial class ClassSuitConversionPlannerChecks
 
     private static void CheckTierAndProfessionAuthority()
     {
-        var tierThree = RichEquipment(1034, bound: 1);
+        var tierThree = RichEquipment(1034, bound: 1) with
+        {
+            ClassAttribute1 = 200,
+            ClassAttribute2 = 201
+        };
         var tierFourInsignia = Material(
             ClassSuitConversionCatalog.PromotionalInsigniaIV,
             stack: 3,
@@ -230,6 +245,43 @@ internal static partial class ClassSuitConversionPlannerChecks
             kitBag,
             ClassSuitConversionStatus.PlayerLevelTooLow,
             "target template minimum level is authoritative");
+
+        var upgraded = ClassSuitConversionPlanner.Create(
+            TestItemContent.Catalog,
+            kitBag,
+            profession: 0,
+            playerLevel: 200,
+            ForwardRequest(
+                kitBag,
+                ClassSuitConversionOperation.UpgradeTierIV));
+        Check.True(
+            upgraded.Committed &&
+            upgraded.EquipmentAfter.Id == 1035 &&
+            upgraded.EquipmentAfter.ClassAttribute1 == 200 &&
+            upgraded.EquipmentAfter.ClassAttribute2 == 201,
+            "Tier III to IV preserves both dedicated class attributes");
+
+        var invalidTierTwoBag = Stage(
+            RichEquipment(1033, bound: 1) with
+            {
+                ClassAttribute1 = 200
+            },
+            Material(
+                ClassSuitConversionCatalog.PromotionalInsigniaIII,
+                stack: 3,
+                bound: 1));
+        AssertRejected(
+            ClassSuitConversionPlanner.Create(
+                TestItemContent.Catalog,
+                invalidTierTwoBag,
+                profession: 0,
+                playerLevel: 200,
+                ForwardRequest(
+                    invalidTierTwoBag,
+                    ClassSuitConversionOperation.UpgradeTierIII)),
+            invalidTierTwoBag,
+            ClassSuitConversionStatus.InvalidEquipment,
+            "Tier II class attributes are rejected instead of silently dropped");
 
         var foreignKitBag = Stage(
             RichEquipment(1032, bound: 1),
@@ -317,7 +369,7 @@ internal static partial class ClassSuitConversionPlannerChecks
         {
             Id = itemId,
             Attribute1 = 40,
-            Attribute2 = 200,
+            Attribute2 = 60,
             AttributeLevel1 = 3,
             AttributeLevel2 = 1,
             Quality = 20,

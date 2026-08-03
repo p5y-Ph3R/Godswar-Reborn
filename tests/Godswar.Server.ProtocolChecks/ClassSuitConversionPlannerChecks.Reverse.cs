@@ -17,7 +17,9 @@ internal static partial class ClassSuitConversionPlannerChecks
             Attribute4 = 201,
             AttributeLevel4 = 1,
             Attribute5 = null,
-            AttributeLevel5 = null
+            AttributeLevel5 = null,
+            ClassAttribute1 = 200,
+            ClassAttribute2 = 201
         };
         var kitBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -56,8 +58,10 @@ internal static partial class ClassSuitConversionPlannerChecks
         Check.True(
             common.Attribute3 is null &&
             common.Attribute4 is null &&
-            common.Attribute5 is null,
-            "class-only weapon attributes are stripped on reverse");
+            common.Attribute5 is null &&
+            common.ClassAttribute1 is null &&
+            common.ClassAttribute2 is null,
+            "legacy and dedicated class-only weapon attributes are stripped on reverse");
         Check.Equal((short)20, common.Quality, "reverse preserves quality");
         Check.Equal((short)25, common.Grade, "reverse preserves grade");
         Check.Equal(777, common.Exp, "reverse preserves stored EXP");
@@ -128,8 +132,10 @@ internal static partial class ClassSuitConversionPlannerChecks
         {
             Attribute1 = 40,
             AttributeLevel1 = 3,
-            Attribute2 = 200,
-            AttributeLevel2 = 1
+            Attribute2 = 60,
+            AttributeLevel2 = 1,
+            ClassAttribute1 = 200,
+            ClassAttribute2 = 201
         };
         var tierFourBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -153,9 +159,11 @@ internal static partial class ClassSuitConversionPlannerChecks
             common.Id == 1013 &&
             common.Attribute1 == 40 &&
             common.AttributeLevel1 == 3 &&
-            common.Attribute2 is null &&
-            common.AttributeLevel2 is null,
-            "Tier IV reverse restores common gear and strips only its class attribute");
+            common.Attribute2 == 60 &&
+            common.AttributeLevel2 == 1 &&
+            common.ClassAttribute1 is null &&
+            common.ClassAttribute2 is null,
+            "Tier IV reverse restores common gear and strips both class attributes");
         foreach (var tier in new[]
                  {
                      ClassSuitTier.TierI,
@@ -197,7 +205,9 @@ internal static partial class ClassSuitConversionPlannerChecks
             equippedReverse.Committed &&
             equippedReverse.EquipmentAfter.Id == 1013 &&
             equippedReverse.EquipmentAfter.Attribute1 == 40 &&
-            equippedReverse.EquipmentAfter.Attribute2 is null &&
+            equippedReverse.EquipmentAfter.Attribute2 == 60 &&
+            equippedReverse.EquipmentAfter.ClassAttribute1 is null &&
+            equippedReverse.EquipmentAfter.ClassAttribute2 is null &&
             equippedReverse.Mutations.Count == 4,
             "equipped Tier IV weapon reverses and returns all four refunds to the bag");
         foreach (var tier in new[]

@@ -24,14 +24,15 @@ internal static partial class GearEnhancementStateChecks
                 firstFourFull,
                 Item(9935),
                 Item(GearEnhancementMaterialCatalog.FlameSparkItemId));
-            CheckRejectedUnchanged(
-                GearEnhancementPlanner.Create(
-                    TestItemContent.Catalog,
-                    kitBag,
-                    request),
+            var result = GearEnhancementPlanner.Create(
+                TestItemContent.Catalog,
                 kitBag,
-                GearEnhancementStatus.AttributeSlotsFull,
-                $"ordinary Add reserves slot five for item {itemId}");
+                request);
+            Check.True(
+                result.Committed &&
+                result.EquipmentAfter.Attribute5 == 130 &&
+                result.EquipmentAfter.AttributeLevel5 == 1,
+                $"ordinary Add uses native slot five for item {itemId}");
         }
 
         var gapBeforeSlotFive = Item(1000) with
@@ -58,7 +59,34 @@ internal static partial class GearEnhancementStateChecks
             gapResult.Committed &&
             gapResult.EquipmentAfter.Attribute2 == 0 &&
             gapResult.EquipmentAfter.Attribute5 == 110,
-            "ordinary Add fills slots one through four and preserves slot five");
+            "ordinary Add fills the first empty native slot and preserves slot five");
+
+        var allFiveFull = Item(1000) with
+        {
+            Attribute1 = 0,
+            Attribute2 = 40,
+            Attribute3 = 60,
+            Attribute4 = 80,
+            Attribute5 = 110,
+            AttributeLevel1 = 1,
+            AttributeLevel2 = 1,
+            AttributeLevel3 = 1,
+            AttributeLevel4 = 1,
+            AttributeLevel5 = 1
+        };
+        var (fullBag, fullRequest) = Stage(
+            GearEnhancementOperation.Add,
+            allFiveFull,
+            Item(9935),
+            Item(GearEnhancementMaterialCatalog.FlameSparkItemId));
+        CheckRejectedUnchanged(
+            GearEnhancementPlanner.Create(
+                TestItemContent.Catalog,
+                fullBag,
+                fullRequest),
+            fullBag,
+            GearEnhancementStatus.AttributeSlotsFull,
+            "ordinary Add rejects a sixth native attribute");
 
         var slotFiveAttribute = Item(1000) with
         {

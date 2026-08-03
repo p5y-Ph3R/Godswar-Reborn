@@ -133,10 +133,11 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
     {
         var token = Guid.NewGuid().ToString("N")[..12];
         var username = $"b09cs_reverse4_{token}";
-        var tierIVGear = CreateGear() with
+        var tierIVGear = CreateCommonGear() with
         {
             Id = 1035,
-            Bound = 1
+            Bound = 1,
+            ClassAttribute1 = 200
         };
 
         await using var connection = new NpgsqlConnection(connectionString);
@@ -375,7 +376,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         int expectedDuplicateCount,
         string description)
     {
-        var expectedGear = CreateGear() with
+        var expectedGear = CreateCommonGear() with
         {
             Bound = 1,
             Attribute2 = null,

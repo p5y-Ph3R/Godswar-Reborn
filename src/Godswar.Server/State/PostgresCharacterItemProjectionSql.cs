@@ -82,6 +82,15 @@ internal static class PostgresCharacterItemProjectionSql
                     COALESCE(ci.holy_socket5_level::text, '') || ',' ||
                     COALESCE(ci.holy_socket6_effect_id::text, '') || ',' ||
                     COALESCE(ci.holy_socket6_level::text, '') ||
+                    CASE
+                        WHEN ci.class_attribute1 IS NULL
+                         AND ci.class_attribute2 IS NULL
+                            THEN ''
+                        ELSE
+                            ',' ||
+                            COALESCE(ci.class_attribute1::text, '') || ',' ||
+                            COALESCE(ci.class_attribute2::text, '')
+                    END ||
                     ']' AS compact_entry
                 FROM character_items ci
                 LEFT JOIN item_template_content_definitions template

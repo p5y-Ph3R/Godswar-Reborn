@@ -11,6 +11,17 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
         EconomyFixture fixture,
         ReconciliationRunner runner)
     {
+        await ConvertInventoryBaselineToLegacyItemShapeAsync(
+            dataSource,
+            fixture);
+        var legacyBaseline = await runner.RunAsync();
+        AssertCompleted(
+            legacyBaseline,
+            "legacy item-schema baseline reconciliation");
+        AssertNoFindings(
+            legacyBaseline,
+            "an old-shape baseline remains semantically equal to current item state");
+
         var inboxIds = await CreateEconomyInboxIdsAsync(
             dataSource,
             fixture);
@@ -109,6 +120,10 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
             await transaction.CommitAsync();
         }
 
+        await AssertCrossVersionInventoryChainFixtureAsync(
+            dataSource,
+            fixture);
+
         var completed = await runner.RunAsync();
         AssertCompleted(completed, "completed ledger-chain reconciliation");
         Check.Equal(
@@ -122,7 +137,7 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
             Find(
                 completed,
                 ReconciliationCategory.InventoryLedgerChainMismatch),
-            "a contiguous inventory ledger chain is clean");
+            "a contiguous old-baseline to new-ledger inventory chain is clean");
         AssertNoFindings(
             completed,
             "completed ledger chains restore a zero-mismatch source");
@@ -278,75 +293,6 @@ internal static partial class PostgresB19ReconciliationIntegrationChecks
             1,
             await command.ExecuteNonQueryAsync(),
             $"wallet ledger revision {revision} is seeded");
-    }
-
-    private static async Task InsertInventoryLedgerAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        long inboxId,
-        EconomyFixture fixture,
-        long revision,
-        int beforeIncrement,
-        int afterIncrement)
-    {
-        await using var command = new NpgsqlCommand(
-            """
-            INSERT INTO public.character_inventory_ledger (
-                command_inbox_id,
-                account_id,
-                character_id,
-                inventory_revision,
-                entry_ordinal,
-                item_instance_id,
-                mutation_kind,
-                state_contract_version,
-                before_state,
-                after_state,
-                reason_code
-            )
-            SELECT
-                @inbox_id,
-                @account_id,
-                @character_id,
-                @revision,
-                0,
-                baseline.item_instance_id,
-                'update',
-                1,
-                jsonb_set(
-                    baseline.item_state,
-                    '{item_exp}',
-                    to_jsonb(@before_item_exp::integer),
-                    false),
-                jsonb_set(
-                    baseline.item_state,
-                    '{item_exp}',
-                    to_jsonb(@after_item_exp::integer),
-                    false),
-                'b19.chain.test'
-            FROM public.character_inventory_baseline_items baseline
-            WHERE baseline.character_id = @character_id
-              AND baseline.item_instance_id = @item_id;
-            """,
-            connection,
-            transaction);
-        command.Parameters.AddWithValue("inbox_id", inboxId);
-        command.Parameters.AddWithValue("account_id", fixture.AccountId);
-        command.Parameters.AddWithValue(
-            "character_id",
-            fixture.CharacterId);
-        command.Parameters.AddWithValue("revision", revision);
-        command.Parameters.AddWithValue("item_id", fixture.ItemId);
-        command.Parameters.AddWithValue(
-            "before_item_exp",
-            fixture.ItemExperience + beforeIncrement);
-        command.Parameters.AddWithValue(
-            "after_item_exp",
-            fixture.ItemExperience + afterIncrement);
-        Check.Equal(
-            1,
-            await command.ExecuteNonQueryAsync(),
-            $"inventory ledger revision {revision} is seeded");
     }
 
     private static async Task AssertOutboxPositionMismatchAsync(

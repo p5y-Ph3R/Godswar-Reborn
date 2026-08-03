@@ -3,7 +3,7 @@ using Godswar.Server.State;
 namespace Godswar.Server.ProtocolChecks;
 
 /// <summary>
-/// Focused checks for dialogue-37 class-specific weapon attributes.
+/// Focused checks for dialogue-37 class-specific gear attributes.
 /// </summary>
 internal static partial class ClassSuitAttributePlannerChecks
 {
@@ -16,7 +16,7 @@ internal static partial class ClassSuitAttributePlannerChecks
         CheckProfessionStoneMap();
         CheckAddConsumesExactMaterialsAndPreservesGear();
         CheckAddAuthorityAndDuplicateRejections();
-        CheckTierBoundFifthSlotRules();
+        CheckTierBoundClassSlotRules();
         CheckDeleteCompactsAttributesAndConsumesWater();
         CheckDeleteAndStaleRejectionsAreAtomic();
         return Task.CompletedTask;
@@ -56,8 +56,10 @@ internal static partial class ClassSuitAttributePlannerChecks
                 AddRequest(bag));
             Check.True(
                 result.Committed &&
-                result.EquipmentAfter.Attribute1 == row.Attribute,
-                $"profession {row.Profession} stone {row.Stone} adds attribute {row.Attribute}");
+                result.EquipmentAfter.ClassAttribute1 == row.Attribute,
+                $"profession {row.Profession} stone {row.Stone} adds attribute {row.Attribute} " +
+                $"(status {result.Status}, actual {result.EquipmentAfter.ClassAttribute1}, " +
+                $"reason {result.RejectionReason})");
         }
     }
 
@@ -68,7 +70,13 @@ internal static partial class ClassSuitAttributePlannerChecks
             Attribute1 = 40,
             AttributeLevel1 = 2,
             Attribute2 = 60,
-            AttributeLevel2 = 3
+            AttributeLevel2 = 3,
+            Attribute3 = 80,
+            AttributeLevel3 = 1,
+            Attribute4 = 110,
+            AttributeLevel4 = 1,
+            Attribute5 = 130,
+            AttributeLevel5 = 1
         };
         var kitBag = StageAdd(
             gear,
@@ -82,14 +90,17 @@ internal static partial class ClassSuitAttributePlannerChecks
 
         Check.True(
             result.Committed,
-            $"class-specific weapon attribute add commits ({result.RejectionReason})");
+            $"class-specific gear attribute add commits ({result.RejectionReason})");
         var updated = KitBagSlots.GetItem(result.UpdatedKitBag, GearSlot);
-        Check.Equal(1034u, updated.Id, "class-stat add preserves weapon ID");
+        Check.Equal(1034u, updated.Id, "class-stat add preserves gear ID");
         Check.Equal(40, updated.Attribute1 ?? -1, "class-stat add preserves attribute one");
         Check.Equal(60, updated.Attribute2 ?? -1, "class-stat add preserves attribute two");
-        Check.Equal(200, updated.Attribute3 ?? -1, "Primal Stone adds profession-zero stat 200");
-        Check.Equal((short)1, updated.AttributeLevel3 ?? -1, "new class stat starts at level one");
-        Check.Equal((short)1, updated.Bound, "bound class stone binds the weapon");
+        Check.Equal(80, updated.Attribute3 ?? -1, "class-stat add preserves attribute three");
+        Check.Equal(110, updated.Attribute4 ?? -1, "class-stat add preserves attribute four");
+        Check.Equal(130, updated.Attribute5 ?? -1, "class-stat add preserves attribute five");
+        Check.Equal(200, updated.ClassAttribute1 ?? -1, "Primal Stone adds class stat 200");
+        Check.True(updated.ClassAttribute2 is null, "first class stat leaves class slot two empty");
+        Check.Equal((short)1, updated.Bound, "bound class stone binds the gear");
         Check.Equal((short)20, updated.Quality, "class-stat add preserves quality");
         Check.Equal((short)25, updated.Grade, "class-stat add preserves grade");
         Check.Equal(777, updated.Exp, "class-stat add preserves stored EXP");
@@ -107,8 +118,7 @@ internal static partial class ClassSuitAttributePlannerChecks
     {
         var duplicateGear = Weapon(1034, bound: 1) with
         {
-            Attribute1 = 201,
-            AttributeLevel1 = 1
+            ClassAttribute1 = 200
         };
         var duplicateBag = StageAdd(
             duplicateGear,
@@ -122,7 +132,7 @@ internal static partial class ClassSuitAttributePlannerChecks
                 AddRequest(duplicateBag)),
             duplicateBag,
             ClassSuitAttributeStatus.ClassAttributeAlreadyPresent,
-            "a weapon cannot hold a second class-specific stat");
+            "gear cannot hold the same class-specific stat twice");
 
         var wrongStoneBag = StageAdd(
             Weapon(1034, bound: 1),
@@ -138,6 +148,20 @@ internal static partial class ClassSuitAttributePlannerChecks
             ClassSuitAttributeStatus.InvalidClassStone,
             "melee professions cannot use a caster Holy Stone");
 
+        var incompatibleExistingBag = StageAdd(
+            Weapon(1034, bound: 1) with { ClassAttribute1 = 220 },
+            Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+            Material(9950, 1, 1));
+        AssertRejected(
+            ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                incompatibleExistingBag,
+                profession: 0,
+                AddRequest(incompatibleExistingBag)),
+            incompatibleExistingBag,
+            ClassSuitAttributeStatus.InvalidAttributeState,
+            "melee gear rejects an existing caster class stat");
+
         var commonBag = StageAdd(
             Weapon(1013, bound: 1),
             Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
@@ -150,7 +174,7 @@ internal static partial class ClassSuitAttributePlannerChecks
                 AddRequest(commonBag)),
             commonBag,
             ClassSuitAttributeStatus.InvalidWeapon,
-            "common weapons cannot receive Class Suit stats");
+            "common gear cannot receive Class Suit stats");
 
         var foreignBag = StageAdd(
             Weapon(1034, bound: 1),
@@ -164,19 +188,19 @@ internal static partial class ClassSuitAttributePlannerChecks
                 AddRequest(foreignBag)),
             foreignBag,
             ClassSuitAttributeStatus.ProfessionMismatch,
-            "another profession cannot modify the weapon");
+            "another profession cannot modify the gear");
     }
 
     private static void CheckDeleteCompactsAttributesAndConsumesWater()
     {
-        var gear = Weapon(1032, bound: 0) with
+        var gear = Weapon(1034, bound: 0) with
         {
             Attribute1 = 40,
             AttributeLevel1 = 2,
-            Attribute2 = 200,
-            AttributeLevel2 = 1,
-            Attribute3 = 60,
-            AttributeLevel3 = 4
+            Attribute2 = 60,
+            AttributeLevel2 = 4,
+            ClassAttribute1 = 200,
+            ClassAttribute2 = 201
         };
         var kitBag = StageDelete(
             gear,
@@ -189,29 +213,43 @@ internal static partial class ClassSuitAttributePlannerChecks
 
         Check.True(
             result.Committed,
-            $"class-specific weapon attribute delete commits ({result.RejectionReason})");
+            $"class-specific gear attribute delete commits ({result.RejectionReason})");
         var updated = KitBagSlots.GetItem(result.UpdatedKitBag, GearSlot);
         Check.Equal(40, updated.Attribute1 ?? -1, "delete preserves ordinary attribute one");
         Check.Equal((short)2, updated.AttributeLevel1 ?? -1, "delete preserves ordinary level one");
-        Check.Equal(60, updated.Attribute2 ?? -1, "delete compacts ordinary attribute two");
-        Check.Equal((short)4, updated.AttributeLevel2 ?? -1, "delete compacts paired ordinary level");
+        Check.Equal(60, updated.Attribute2 ?? -1, "delete preserves ordinary attribute two");
+        Check.Equal((short)4, updated.AttributeLevel2 ?? -1, "delete preserves ordinary level two");
         Check.True(
-            updated.Attribute3 is null && updated.Attribute4 is null && updated.Attribute5 is null,
-            "delete removes only the class-specific stat");
-        Check.Equal((short)1, updated.Bound, "bound Water Grain binds the resulting weapon");
-        Check.Equal((short)20, updated.Quality, "delete preserves weapon quality");
-        Check.Equal((short)25, updated.Grade, "delete preserves weapon grade");
+            updated.ClassAttribute1 == 200 && updated.ClassAttribute2 is null,
+            "delete removes class slot two before class slot one");
+        Check.Equal((short)1, updated.Bound, "bound Water Grain binds the resulting gear");
+        Check.Equal((short)20, updated.Quality, "delete preserves gear quality");
+        Check.Equal((short)25, updated.Grade, "delete preserves gear grade");
         Check.True(
             KitBagSlots.GetItem(result.UpdatedKitBag, CatalystSlot).IsEmpty,
             "delete consumes one Water Grain");
         Check.Equal(2, result.Mutations.Count, "delete has exact gear/water mutations");
         Check.Equal(1, result.Materials.Count, "delete has one consumption plan entry");
+
+        var secondBag = StageDelete(
+            updated,
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+        var second = ClassSuitAttributePlanner.Create(
+            TestItemContent.Catalog,
+            secondBag,
+            profession: 0,
+            DeleteRequest(secondBag));
+        Check.True(
+            second.Committed &&
+            second.EquipmentAfter.ClassAttribute1 is null &&
+            second.EquipmentAfter.ClassAttribute2 is null,
+            "a second delete removes class slot one");
     }
 
     private static void CheckDeleteAndStaleRejectionsAreAtomic()
     {
         var missingBag = StageDelete(
-            Weapon(1032, bound: 1) with
+            Weapon(1034, bound: 1) with
             {
                 Attribute1 = 40,
                 AttributeLevel1 = 2

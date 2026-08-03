@@ -59,7 +59,8 @@ internal sealed partial class PostgresKitBagItemDeleteCommandExecutor
                 holy_socket4_effect_id, holy_socket4_level,
                 holy_socket5_effect_id, holy_socket5_level,
                 holy_socket6_effect_id, holy_socket6_level,
-                to_jsonb(character_items)::text
+                to_jsonb(character_items)::text,
+                class_attribute1, class_attribute2
             FROM public.character_items
             WHERE user_id = @characterId
               AND item_location = 1

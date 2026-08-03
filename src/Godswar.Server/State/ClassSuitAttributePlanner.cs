@@ -3,7 +3,7 @@ using Godswar.Server.Application.Items;
 namespace Godswar.Server.State;
 
 /// <summary>
-/// Authoritative class-specific weapon-attribute rules used by dialogue 37.
+/// Authoritative class-specific gear-attribute rules used by dialogue 37.
 /// It plans every bag change before a persistence executor commits anything.
 /// </summary>
 internal static partial class ClassSuitAttributePlanner
@@ -77,8 +77,8 @@ internal static partial class ClassSuitAttributePlanner
                 originalKitBag,
                 CompactItemEntry.Empty,
                 request.Operation == ClassSuitAttributeOperation.AddClassSpecific
-                    ? "Select a Class Suit weapon, Flame Spark, and class-specific stone."
-                    : "Select a Class Suit weapon and Water Grain only.");
+                    ? "Select Class Suit III/IV gear, a Flame Spark, and a class-specific stone."
+                    : "Select Class Suit III/IV gear and a Water Grain only.");
         }
 
         var selections = request.ClassStone is null
@@ -133,32 +133,30 @@ internal static partial class ClassSuitAttributePlanner
         }
 
         var equipment = before[request.Gear.KitBagSlot];
-        if (!TryValidateWeapon(
+        if (!TryValidateGear(
                 templates,
                 equipment,
                 profession,
-                out var weaponTier,
-                out var weaponStatus,
-                out var weaponReason))
+                out var gearTier,
+                out var gearStatus,
+                out var gearReason))
         {
             return Reject(
-                weaponStatus,
+                gearStatus,
                 request.Operation,
                 originalKitBag,
                 equipment,
-                weaponReason);
+                gearReason);
         }
 
-        if (request.Operation ==
-                ClassSuitAttributeOperation.AddClassSpecific &&
-            weaponTier is ClassSuitTier.TierI or ClassSuitTier.TierII)
+        if (gearTier is not (ClassSuitTier.TierIII or ClassSuitTier.TierIV))
         {
             return Reject(
                 ClassSuitAttributeStatus.InvalidWeapon,
                 request.Operation,
                 originalKitBag,
                 equipment,
-                "Class-specific stones require a Class Suit III or IV weapon.");
+                "Class-specific stats require Class Suit III or IV gear.");
         }
 
         var catalyst = before[request.Catalyst.KitBagSlot];
@@ -225,7 +223,7 @@ internal static partial class ClassSuitAttributePlanner
             if (!TryAddAttribute(
                     equipment,
                     attributeId,
-                    weaponTier,
+                    profession,
                     out equipmentAfter,
                     out var attributeStatus,
                     out var attributeReason))
@@ -310,7 +308,7 @@ internal static partial class ClassSuitAttributePlanner
             materials);
     }
 
-    private static bool TryValidateWeapon(
+    private static bool TryValidateGear(
         IItemTemplateCatalog templates,
         CompactItemEntry equipment,
         byte profession,
@@ -321,10 +319,11 @@ internal static partial class ClassSuitAttributePlanner
         tier = default;
         if (equipment.Stack != 1 ||
             !templates.TryGet(equipment.Id, out var template) ||
-            !template.Kind.Equals("weapon", StringComparison.OrdinalIgnoreCase))
+            !EquipmentSlots.IsEquipmentKind(template.Kind) ||
+            !EquipmentSlots.IsEquipmentSlot(template.EquipmentSlot))
         {
             status = ClassSuitAttributeStatus.InvalidWeapon;
-            reason = "Only one genuine Class Suit weapon can receive a class-specific stat.";
+            reason = "Only one genuine Class Suit gear item can receive a class-specific stat.";
             return false;
         }
 
@@ -345,8 +344,8 @@ internal static partial class ClassSuitAttributePlanner
                 ? ClassSuitAttributeStatus.ProfessionMismatch
                 : ClassSuitAttributeStatus.InvalidWeapon;
             reason = belongsToAnotherProfession
-                ? "This Class Suit weapon belongs to a different profession."
-                : "Only a Class Suit weapon can receive a class-specific stat.";
+                ? "This Class Suit gear belongs to a different profession."
+                : "Only Class Suit gear can receive a class-specific stat.";
             return false;
         }
 

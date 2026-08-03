@@ -33,7 +33,10 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
 
         var after = await ReadSnapshotAsync(dataSource);
         AssertReleaseState(after);
-        AssertDurableStatePreserved(before, after);
+        await AssertDurableStatePreservedAsync(
+            dataSource,
+            before,
+            after);
 
         await InitializeReleaseAsync(connectionString);
         var repeated = await ReadSnapshotAsync(dataSource);
@@ -46,72 +49,6 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
         Console.WriteLine(
             $"PostgreSQL schema release verified from " +
             $"{before.AppliedMigrations.Count} applied migrations.");
-    }
-
-    private static void AssertReleaseState(SchemaReleaseSnapshot snapshot)
-    {
-        Check.Equal(
-            PostgresSchemaMigrationCatalog.All.Count,
-            snapshot.AppliedMigrations.Count,
-            "release has the exact registered migration count");
-        for (var index = 0;
-             index < PostgresSchemaMigrationCatalog.All.Count;
-             index++)
-        {
-            var expected = PostgresSchemaMigrationCatalog.All[index];
-            var actual = snapshot.AppliedMigrations[index];
-            Check.Equal(
-                expected.Id,
-                actual.Id,
-                $"release migration {index} ID");
-            Check.Equal(
-                expected.Checksum,
-                actual.Checksum,
-                $"release migration {expected.Id} checksum");
-        }
-
-        Check.Equal(3, snapshot.PacketRelationCount, "all packet metadata tables exist");
-        Check.True(
-            snapshot.HasOpcodeNameFunction,
-            "packet opcode-name trigger function exists");
-        Check.Equal(
-            1,
-            snapshot.OpcodeNameTriggerCount,
-            "packet transaction opcode-name trigger exists once");
-        Check.Equal(
-            1,
-            snapshot.PacketCaptureForeignKeyCount,
-            "packet transactions retain the capture-session cascade foreign key");
-        Check.Equal(
-            3,
-            snapshot.CheckpointColumnCount,
-            "all additive character checkpoint columns exist");
-        Check.Equal(
-            4,
-            snapshot.CheckpointConstraintCount,
-            "all character checkpoint constraints exist and validate");
-        Check.Equal(
-            6,
-            snapshot.LifecycleColumnCount,
-            "all additive character lifecycle columns exist");
-        Check.Equal(
-            5,
-            snapshot.LifecycleConstraintCount,
-            "all character lifecycle constraints exist and validate");
-        Check.Equal(
-            3,
-            snapshot.LifecycleIndexCount,
-            "all character lifecycle indexes exist and validate");
-        Check.Equal(
-            1,
-            snapshot.AccountLifecycleColumnCount,
-            "account aggregate lifecycle version exists");
-        Check.Equal(
-            1,
-            snapshot.AccountLifecycleConstraintCount,
-            "account aggregate lifecycle version is constrained");
-        Check.Equal(0, snapshot.UnvalidatedConstraintCount, "all constraints validate");
-        Check.Equal(0, snapshot.InvalidIndexCount, "all indexes are valid and ready");
     }
 
     private static async Task<SchemaReleaseSnapshot> ReadSnapshotAsync(
@@ -159,6 +96,11 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                     FROM public.character_items item_row;
                     """)
                 : null;
+        var inventoryRows =
+            inventoryFingerprint is null
+                ? null
+                : await ReadInventoryRowsAsync(
+                    connection);
         var accountCharacterFingerprint =
             await RelationExistsAsync(connection, "public.accounts") &&
             await RelationExistsAsync(connection, "public.character_base")
@@ -236,6 +178,19 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                 : null;
         var lifecycle =
             await ReadLifecycleReleaseStateAsync(connection);
+        var classSuitAttributeColumnCount =
+            await RelationExistsAsync(connection, "public.character_items")
+                ? await ReadInt32Async(connection, """
+                    SELECT count(*)::integer
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'character_items'
+                      AND column_name = ANY(ARRAY[
+                          'class_attribute1',
+                          'class_attribute2'
+                      ]::text[]);
+                    """)
+                : 0;
         var packetPayloadFingerprint =
             await RelationExistsAsync(connection, "public.packet_transactions")
                 ? await ReadTextAsync(connection, """
@@ -398,7 +353,8 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             "|",
             migrations.Select(static migration =>
                 $"{migration.Id}:{migration.Checksum}")) +
-            $"|{inventoryFingerprint}|{accountCharacterFingerprint}|" +
+            $"|{inventoryFingerprint}|" +
+            $"{accountCharacterFingerprint}|" +
             $"{packetPayloadFingerprint}|{petFingerprint}|" +
             $"{economyFingerprint}|" +
             $"{checkpointFingerprint}|" +
@@ -409,6 +365,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             $"{lifecycle.ConstraintCount}:{lifecycle.IndexCount}:" +
             $"{lifecycle.AccountColumnCount}:" +
             $"{lifecycle.AccountConstraintCount}:" +
+            $"{classSuitAttributeColumnCount}:" +
             $"{unvalidatedConstraints}:" +
             $"{invalidIndexes}";
 
@@ -416,6 +373,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             markerCount,
             migrations,
             inventoryFingerprint,
+            inventoryRows,
             accountCharacterFingerprint,
             checkpointFingerprint,
             lifecycle.Fingerprint,
@@ -433,6 +391,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             lifecycle.IndexCount,
             lifecycle.AccountColumnCount,
             lifecycle.AccountConstraintCount,
+            classSuitAttributeColumnCount,
             unvalidatedConstraints,
             invalidIndexes,
             releaseFingerprint);

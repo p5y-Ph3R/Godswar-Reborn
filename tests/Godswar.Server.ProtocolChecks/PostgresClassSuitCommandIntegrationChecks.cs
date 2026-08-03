@@ -237,9 +237,11 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                    AND slot_index = @gearSlot
                    AND prop_id = 1032
                    AND attribute1 = 40
-                   AND attribute2 = 200
+                   AND attribute2 IS NULL
+                   AND class_attribute1 IS NULL
+                   AND class_attribute2 IS NULL
                    AND attribute_level1 = 3
-                   AND attribute_level2 = 1
+                   AND attribute_level2 IS NULL
                    AND item_quality = 20
                    AND item_grade = 25
                    AND bound = 1

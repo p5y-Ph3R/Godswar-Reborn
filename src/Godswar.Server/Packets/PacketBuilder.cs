@@ -101,6 +101,10 @@ internal static partial class PacketBuilder
     // the extended packet length before reading the appended full-byte fields.
     private const uint PlayerWorldFullVisualMarker = 0x31585747;
     private const short NativeClientHolyStoneSocketCount = 4;
+    // ASCII "GWA2" in little-endian order. Item records retain their native
+    // 72-byte stride; patched clients only read the two separate Class Suit
+    // attributes when this marker is present at record offset 60.
+    private const uint ClassSuitAttributeExtensionMarker = 0x32415747;
     private const uint LocalPlayerObjectId = 0x00001448;
     private const int WorldObjectAppearanceLength = 108;
     private const int WorldObjectTemplateOffset = 44;

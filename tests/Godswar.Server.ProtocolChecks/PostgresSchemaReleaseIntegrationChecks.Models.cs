@@ -56,6 +56,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
         IReadOnlyList<AppliedPostgresSchemaMigration>
             AppliedMigrations,
         string? InventoryFingerprint,
+        IReadOnlyList<InventoryRowSnapshot>? InventoryRows,
         string? AccountCharacterFingerprint,
         string? CheckpointFingerprint,
         string? LifecycleFingerprint,
@@ -73,7 +74,12 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
         int LifecycleIndexCount,
         int AccountLifecycleColumnCount,
         int AccountLifecycleConstraintCount,
+        int ClassSuitAttributeColumnCount,
         int UnvalidatedConstraintCount,
         int InvalidIndexCount,
         string ReleaseFingerprint);
+
+    private sealed record InventoryRowSnapshot(
+        long Id,
+        string StateJson);
 }

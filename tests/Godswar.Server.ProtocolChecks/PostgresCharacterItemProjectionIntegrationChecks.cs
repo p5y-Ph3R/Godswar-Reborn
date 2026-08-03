@@ -48,6 +48,9 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
                 connection,
                 transaction,
                 characterId);
+            await AssertHistoricalStateNormalizationAsync(
+                connection,
+                transaction);
             var direct = await ReadDirectAsync(
                 connection,
                 transaction,
@@ -71,10 +74,50 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
                 direct.Equipment,
                 profession: 0,
                 slot: 23);
-            Check.Equal(1000u, equipment.Id, "last equipment slot survives projection");
+            var compatibilityEquipment = EquipmentSlots.GetItem(
+                compatibility.Equipment,
+                profession: 0,
+                slot: 23);
+            Check.Equal(2133u, equipment.Id, "last equipment slot survives projection");
             Check.Equal((short)20, equipment.Quality, "quality uses published item-template cap");
             Check.Equal((short)25, equipment.Grade, "grade uses published item-template cap");
-            Check.Equal((short)5, equipment.SocketCount, "projection preserves existing socket-count semantics");
+            Check.True(
+                new int?[]
+                {
+                    equipment.Attribute1,
+                    equipment.Attribute2,
+                    equipment.Attribute3,
+                    equipment.Attribute4,
+                    equipment.Attribute5
+                }.SequenceEqual(new int?[] { 10, 40, 60, 80, 130 }),
+                "all five ordinary attribute IDs retain native compact positions");
+            Check.True(
+                new short?[]
+                {
+                    equipment.AttributeLevel1,
+                    equipment.AttributeLevel2,
+                    equipment.AttributeLevel3,
+                    equipment.AttributeLevel4,
+                    equipment.AttributeLevel5
+                }.SequenceEqual(new short?[] { 3, 7, 11, 15, 19 }),
+                "all five ordinary attribute levels remain paired");
+            Check.Equal((short)6, equipment.SocketCount, "projection preserves existing socket-count semantics");
+            Check.Equal(
+                (short)10,
+                equipment.Socket6Level ?? -1,
+                "sixth socket level retains native compact field 30");
+            Check.Equal(
+                200,
+                equipment.ClassAttribute1 ?? -1,
+                "first Class Suit attribute is parsed after socket six");
+            Check.Equal(
+                210,
+                equipment.ClassAttribute2 ?? -1,
+                "second Class Suit attribute is parsed after socket six");
+            Check.Equal(
+                equipment,
+                compatibilityEquipment,
+                "direct and compatibility compact entries parse to identical item state");
             Check.Equal(
                 4030u,
                 KitBagSlots.GetItem(direct.KitBag, 95).Id,
@@ -127,28 +170,86 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
     {
         await using var command = new NpgsqlCommand(
             """
-            UPDATE item_templates
-            SET stats = jsonb_set(
-                jsonb_set(stats, '{BaseFraction}', '"1,2"'::jsonb),
-                '{AppFraction}',
-                '"1,2,3"'::jsonb)
-            WHERE id = 1000;
-
             INSERT INTO character_items (
                 user_id, item_location, slot_index, prop_id,
+                attribute1, attribute2, attribute3, attribute4, attribute5,
+                attribute_level1, attribute_level2, attribute_level3,
+                attribute_level4, attribute_level5,
                 item_quality, item_grade, bound, stack, item_exp,
-                holy_suit_code, holy_socket_count,
-                holy_socket1_effect_id, holy_socket1_level)
+                holy_suit_code,
+                class_attribute1, class_attribute2,
+                holy_socket_count,
+                holy_socket1_effect_id, holy_socket1_level,
+                holy_socket6_effect_id, holy_socket6_level)
             VALUES
-                (@characterId, 0, 23, 1000,
-                 20, 25, 1, 2, 5, 0, 5, 7, 1),
+                (@characterId, 0, 23, 2133,
+                 10, 40, 60, 80, 130,
+                 3, 7, 11, 15, 19,
+                 20, 25, 1, 2, 5,
+                 0, 200, 210, 6, 7, 1, 20, 10),
                 (@characterId, 1, 95, 4030,
-                 1, 1, 1, 3, 0, 0, 0, NULL, NULL);
+                 NULL, NULL, NULL, NULL, NULL,
+                 NULL, NULL, NULL, NULL, NULL,
+                 1, 1, 1, 3, 0,
+                 0, NULL, NULL, 0, NULL, NULL, NULL, NULL);
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("characterId", characterId);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task AssertHistoricalStateNormalizationAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            WITH shapes AS (
+                SELECT
+                    jsonb_build_object(
+                        'id', 1,
+                        'attribute1', 10,
+                        'attribute2', 200,
+                        'attribute3', 40,
+                        'attribute4', 210,
+                        'attribute5', 60,
+                        'attribute_level1', 3,
+                        'attribute_level2', 1,
+                        'attribute_level3', 7,
+                        'attribute_level4', 1,
+                        'attribute_level5', 11
+                    ) AS historical_state,
+                    jsonb_build_object(
+                        'id', 1,
+                        'attribute1', 10,
+                        'attribute2', 40,
+                        'attribute3', 60,
+                        'attribute4', NULL,
+                        'attribute5', NULL,
+                        'attribute_level1', 3,
+                        'attribute_level2', 7,
+                        'attribute_level3', 11,
+                        'attribute_level4', NULL,
+                        'attribute_level5', NULL,
+                        'class_attribute1', 200,
+                        'class_attribute2', 210
+                    ) AS current_state
+            )
+            SELECT
+                public.canonical_character_item_state_v2(
+                    historical_state
+                ) =
+                public.canonical_character_item_state_v2(
+                    current_state
+                )
+            FROM shapes;
+            """,
+            connection,
+            transaction);
+        Check.True(
+            Convert.ToBoolean(await command.ExecuteScalarAsync()),
+            "schema-aware reconciliation normalizes historical Class Suit JSON");
     }
 
     private static async Task<ItemProjection> ReadDirectAsync(

@@ -42,6 +42,20 @@ internal static partial class ClassSuitConversionPlanner
                 out reason);
         }
 
+        if (HasLegacyOrdinaryClassAttributes(equipment) ||
+            (rule.SourceTier != ClassSuitTier.TierIII &&
+             (equipment.ClassAttribute1.HasValue ||
+              equipment.ClassAttribute2.HasValue)))
+        {
+            return Fail(
+                equipment,
+                ClassSuitConversionStatus.InvalidEquipment,
+                "Class Suit attributes are valid only on Class Suit III/IV gear; repair the persisted item before upgrading it.",
+                out equipmentAfter,
+                out status,
+                out reason);
+        }
+
         if (!TryValidateTarget(
                 templates,
                 sourceTemplate,
@@ -88,7 +102,16 @@ internal static partial class ClassSuitConversionPlanner
         equipmentAfter = equipment with
         {
             Id = rule.TargetItemId,
-            Bound = resultingBound
+            Bound = resultingBound,
+            // Only the Tier III -> Tier IV path may carry canonical Class Suit
+            // attributes forward. Earlier tiers are rejected above if they
+            // contain such state, so conversion never silently drops value.
+            ClassAttribute1 = targetTier == ClassSuitTier.TierIV
+                ? equipment.ClassAttribute1
+                : null,
+            ClassAttribute2 = targetTier == ClassSuitTier.TierIV
+                ? equipment.ClassAttribute2
+                : null
         };
         working[insigniaSelection.KitBagSlot] = Consume(
             insignia,
@@ -314,9 +337,24 @@ internal static partial class ClassSuitConversionPlanner
             AttributeLevel2 = keptLevels[1],
             AttributeLevel3 = keptLevels[2],
             AttributeLevel4 = keptLevels[3],
-            AttributeLevel5 = keptLevels[4]
+            AttributeLevel5 = keptLevels[4],
+            ClassAttribute1 = null,
+            ClassAttribute2 = null
         };
     }
+
+    private static bool HasLegacyOrdinaryClassAttributes(
+        CompactItemEntry equipment) =>
+        new[]
+        {
+            equipment.Attribute1,
+            equipment.Attribute2,
+            equipment.Attribute3,
+            equipment.Attribute4,
+            equipment.Attribute5
+        }.Any(value =>
+            value.HasValue &&
+            ClassSpecificAttributeIds.Contains(value.Value));
 
     private static bool TryAddMaterial(
         CompactItemEntry[] working,

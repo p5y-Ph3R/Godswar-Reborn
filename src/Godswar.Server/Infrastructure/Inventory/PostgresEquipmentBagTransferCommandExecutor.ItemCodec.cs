@@ -38,7 +38,11 @@ internal sealed partial class
             ReadNullableSmallint(reader, 29),
             ReadNullableSmallint(reader, 30),
             ReadNullableSmallint(reader, 31),
-            ReadNullableSmallint(reader, 32));
+            ReadNullableSmallint(reader, 32))
+        {
+            ClassAttribute1 = ReadNullableAttribute(reader, 34),
+            ClassAttribute2 = ReadNullableAttribute(reader, 35)
+        };
 
     private static int? ReadNullableAttribute(
         NpgsqlDataReader reader,

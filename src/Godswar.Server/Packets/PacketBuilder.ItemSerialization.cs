@@ -128,6 +128,8 @@ internal static partial class PacketBuilder
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute3));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute4));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute5));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ClassAttribute1));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ClassAttribute2));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel1));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel2));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel3));
@@ -228,7 +230,56 @@ internal static partial class PacketBuilder
             Math.Clamp(item.SocketCount, (short)0, NativeClientHolyStoneSocketCount));
 
         WriteHolyStoneValueRows(record, item);
+        WriteClassSuitAttributeExtension(record, item);
     }
+
+    private static void WriteClassSuitAttributeExtension(
+        Span<byte> record,
+        CompactItemEntry item)
+    {
+        // Offsets 52..63 are reserved in retained native equipment captures.
+        // Holy Boxes already use offset 56 for stored EXP and can never carry
+        // Class Suit attributes, so the marker prevents cross-item ambiguity.
+        if (record.Length < 64 ||
+            !HasCanonicalClassSuitAttributeExtension(item))
+        {
+            return;
+        }
+
+        WriteNullableInt32(record.Slice(52, 4), item.ClassAttribute1);
+        WriteNullableInt32(record.Slice(56, 4), item.ClassAttribute2);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            record.Slice(60, 4),
+            ClassSuitAttributeExtensionMarker);
+    }
+
+    private static bool HasCanonicalClassSuitAttributeExtension(
+        CompactItemEntry item)
+    {
+        if (!ClassSuitConversionCatalog.TryResolveSuit(
+                item.Id,
+                out _,
+                out var tier) ||
+            tier is not (ClassSuitTier.TierIII or ClassSuitTier.TierIV) ||
+            !IsClassSuitAttribute(item.ClassAttribute1) ||
+            (item.ClassAttribute2.HasValue &&
+             (!IsClassSuitAttribute(item.ClassAttribute2) ||
+              item.ClassAttribute2 == item.ClassAttribute1)))
+        {
+            return false;
+        }
+
+        return !IsClassSuitAttribute(item.Attribute1) &&
+            !IsClassSuitAttribute(item.Attribute2) &&
+            !IsClassSuitAttribute(item.Attribute3) &&
+            !IsClassSuitAttribute(item.Attribute4) &&
+            !IsClassSuitAttribute(item.Attribute5);
+    }
+
+    private static bool IsClassSuitAttribute(int? attributeId) =>
+        attributeId is
+            200 or 201 or 210 or 211 or
+            220 or 221 or 230 or 231;
 
     private static bool IsNativeHolyBox(uint itemId) =>
         itemId is >= 9020 and <= 9024;

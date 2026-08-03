@@ -76,7 +76,6 @@ internal static partial class GearEnhancementPlanner
 {
     private const int KitBagSlotCount = 96;
     private const int MaximumAttributeSlots = 5;
-    private const int OrdinaryAddAttributeSlots = 4;
 
     public static GearEnhancementResult Create(
         IItemTemplateCatalog templates,

@@ -89,15 +89,21 @@ rather than inventing an item ID. Quality, grade, item EXP, Holy Suit state,
 ordinary attributes, and Holy Stone sockets remain preserved; class-specific
 attributes are removed.
 
-## Class-specific weapon attributes
+Forward conversion preserves both class-specific fields only on the legitimate
+Class Suit III-to-IV path. A malformed Common, Tier I, or Tier II source that
+already carries one is rejected for operator repair; conversion never silently
+drops that player value.
 
-Adding a class attribute requires a matching Class Suit III or IV weapon, one
-Flame Spark (`9990`), and one allowed class stone. Class Suit I/II and common
-weapons are ineligible. Deleting an existing legacy class attribute remains
-available on any Class Suit tier and requires one Water Grain (`9991`), so an
-older weapon is never trapped with a now-ineligible attribute. Only one
-class-specific attribute can exist on a weapon. Tier III and IV may use slot
-five when the first four appended slots are occupied.
+## Class-specific gear attributes
+
+Adding a class attribute requires any matching Class Suit III or IV gear item,
+one Flame Spark (`9990`), and one allowed class stone. Class Suit I/II and
+common gear are ineligible. Deleting a class attribute likewise requires Class
+Suit III/IV gear and one Water Grain (`9991`). Every eligible gear branch can
+hold two distinct, profession-compatible class-specific attributes in dedicated
+fields in addition to all five ordinary attributes. The existing Delete dialog
+has no attribute selector, so it removes the second Class Suit field first and
+the first field on the next use.
 
 | Professions | Stone | Attribute | Grade 1 to 25 value |
 |---|---:|---:|---:|
@@ -112,8 +118,8 @@ five when the first four appended slots are occupied.
 
 These eight attributes are add/delete-only: they have no Quartz Plate upgrade
 chain. Their effective bonus is nevertheless selected from the original
-`L1`-through-`L25` content values by the weapon's authoritative grade, so a
-Grade 25 weapon receives the right-hand value in the table.
+`L1`-through-`L25` content values by the gear's authoritative grade, so a Grade
+25 item receives the right-hand value in the table.
 
 The stock “fifth attribute” page remains visible, but its final action is
 fail-closed until an exact original wire capture establishes the missing
@@ -121,8 +127,10 @@ operation semantics.
 
 Specifically, wire operation `107` remains deliberately fail-closed and is not
 implemented. It must not be wired until an exact original-client capture
-establishes its request and response semantics. The slot rules above reserve
-the fifth slot now without guessing that unresolved protocol.
+establishes its request and response semantics. Ordinary Gear Enhancement owns
+the native fifth slot; the Class Suit extension does not guess operation 107.
+See [Five ordinary plus two Class Suit attributes](class-suit-seven-attribute-protocol.md)
+for the durable and client wire contract.
 
 ## Persistence and anti-duplication boundary
 

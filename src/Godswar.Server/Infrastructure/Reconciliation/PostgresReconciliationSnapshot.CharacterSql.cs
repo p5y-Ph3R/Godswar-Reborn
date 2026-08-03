@@ -2,6 +2,8 @@ namespace Godswar.Server.Infrastructure.Reconciliation;
 
 internal sealed partial class PostgresReconciliationSnapshot
 {
+    internal static string CharacterPageSqlForChecks => CharacterPageSql;
+
     private const string CharacterPageSql =
         """
         WITH keys AS MATERIALIZED (
@@ -104,11 +106,15 @@ internal sealed partial class PostgresReconciliationSnapshot
                         WHERE current_item.id IS NOT NULL
                     )::integer AS current_item_count,
                     count(*) FILTER (
-                        WHERE latest.item_state IS DISTINCT FROM
+                        WHERE public.canonical_character_item_state_v2(
+                                latest.item_state
+                            ) IS DISTINCT FROM
                             CASE
                                 WHEN current_item.id IS NULL
                                     THEN NULL::jsonb
-                                ELSE to_jsonb(current_item)
+                                ELSE public.canonical_character_item_state_v2(
+                                    to_jsonb(current_item)
+                                )
                             END
                     )::integer AS mismatched_item_count
                 FROM item_keys item_key

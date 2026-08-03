@@ -34,6 +34,7 @@ internal sealed partial class PostgresGameStore
             INSERT INTO character_items (
                 user_id, item_location, slot_index, prop_id,
                 attribute1, attribute2, attribute3, attribute4, attribute5,
+                class_attribute1, class_attribute2,
                 attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
                 item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
                 holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
@@ -43,6 +44,7 @@ internal sealed partial class PostgresGameStore
             VALUES (
                 @characterId, @itemLocation, @slotIndex, @itemId,
                 @attribute1, @attribute2, @attribute3, @attribute4, @attribute5,
+                @classAttribute1, @classAttribute2,
                 @attributeLevel1, @attributeLevel2, @attributeLevel3, @attributeLevel4, @attributeLevel5,
                 @itemQuality, @itemGrade, @bound, @stack, @itemExp, @holySuitCode,
                 @holySocketCount, @holySocket1EffectId, @holySocket1Level, @holySocket2EffectId, @holySocket2Level,
@@ -56,6 +58,8 @@ internal sealed partial class PostgresGameStore
                 attribute3 = EXCLUDED.attribute3,
                 attribute4 = EXCLUDED.attribute4,
                 attribute5 = EXCLUDED.attribute5,
+                class_attribute1 = EXCLUDED.class_attribute1,
+                class_attribute2 = EXCLUDED.class_attribute2,
                 attribute_level1 = EXCLUDED.attribute_level1,
                 attribute_level2 = EXCLUDED.attribute_level2,
                 attribute_level3 = EXCLUDED.attribute_level3,
@@ -99,6 +103,7 @@ internal sealed partial class PostgresGameStore
             INSERT INTO character_items (
                 user_id, item_location, slot_index, prop_id,
                 attribute1, attribute2, attribute3, attribute4, attribute5,
+                class_attribute1, class_attribute2,
                 attribute_level1, attribute_level2, attribute_level3, attribute_level4, attribute_level5,
                 item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
                 holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
@@ -108,6 +113,7 @@ internal sealed partial class PostgresGameStore
             VALUES (
                 @characterId, @itemLocation, @slotIndex, @itemId,
                 @attribute1, @attribute2, @attribute3, @attribute4, @attribute5,
+                @classAttribute1, @classAttribute2,
                 @attributeLevel1, @attributeLevel2, @attributeLevel3, @attributeLevel4, @attributeLevel5,
                 @itemQuality, @itemGrade, @bound, @stack, @itemExp, @holySuitCode,
                 @holySocketCount, @holySocket1EffectId, @holySocket1Level, @holySocket2EffectId, @holySocket2Level,
@@ -140,6 +146,8 @@ internal sealed partial class PostgresGameStore
         AddAttributeParameter(command, "attribute3", item.Attribute3);
         AddAttributeParameter(command, "attribute4", item.Attribute4);
         AddAttributeParameter(command, "attribute5", item.Attribute5);
+        AddAttributeParameter(command, "classAttribute1", item.ClassAttribute1);
+        AddAttributeParameter(command, "classAttribute2", item.ClassAttribute2);
         AddNullableSmallintParameter(command, "attributeLevel1", item.AttributeLevel1);
         AddNullableSmallintParameter(command, "attributeLevel2", item.AttributeLevel2);
         AddNullableSmallintParameter(command, "attributeLevel3", item.AttributeLevel3);

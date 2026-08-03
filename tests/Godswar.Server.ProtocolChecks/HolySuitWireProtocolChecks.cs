@@ -17,6 +17,7 @@ internal static partial class HolySuitWireProtocolChecks
         CheckTransformAmountSentinel();
         CheckResponsesAndCounters();
         CheckHolyBoxStoredExperienceSerialization();
+        CheckClassSuitAttributeExtensionSerialization();
         return Task.CompletedTask;
     }
 

@@ -68,6 +68,12 @@ internal static class ClassSuitConversionCatalog
         (ClassSuitConversionBranch Branch, ClassSuitTier Tier)> SuitIndex =
         CreateSuitIndex();
 
+    private static readonly IReadOnlyDictionary<uint,
+        (ClassSuitConversionBranch Branch, ClassSuitTier Tier)> AnySuitIndex =
+        SuitIndex.ToDictionary(
+            static value => value.Key.ItemId,
+            static value => value.Value);
+
     public static IReadOnlyList<ClassSuitConversionBranch> Branches => BranchTable;
 
     static ClassSuitConversionCatalog()
@@ -154,6 +160,23 @@ internal static class ClassSuitConversionCatalog
         out ClassSuitTier tier)
     {
         if (SuitIndex.TryGetValue((profession, itemId), out var value))
+        {
+            branch = value.Branch;
+            tier = value.Tier;
+            return true;
+        }
+
+        branch = default!;
+        tier = default;
+        return false;
+    }
+
+    public static bool TryResolveSuit(
+        uint itemId,
+        out ClassSuitConversionBranch branch,
+        out ClassSuitTier tier)
+    {
+        if (AnySuitIndex.TryGetValue(itemId, out var value))
         {
             branch = value.Branch;
             tier = value.Tier;

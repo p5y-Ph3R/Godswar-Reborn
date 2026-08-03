@@ -16,7 +16,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
     {
         var token = Guid.NewGuid().ToString("N")[..12];
         var username = $"b09cs_{scenario}_{token}";
-        var gear = CreateGear();
+        var gear = CreateCommonGear();
         var insignia = CreateInsignia(insigniaStack);
 
         await using var connection =
@@ -113,6 +113,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             INSERT INTO public.character_items (
                 user_id, item_location, slot_index, prop_id,
                 attribute1, attribute2,
+                class_attribute1, class_attribute2,
                 attribute_level1, attribute_level2,
                 item_quality, item_grade, bound, stack, item_exp,
                 holy_suit_code, holy_socket_count,
@@ -122,6 +123,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             VALUES (
                 @characterId, 1, @slot, @itemId,
                 @attribute1, @attribute2,
+                @classAttribute1, @classAttribute2,
                 @attributeLevel1, @attributeLevel2,
                 @quality, @grade, @bound, @stack, @itemExp,
                 @holySuitCode, @socketCount,
@@ -136,6 +138,14 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         command.Parameters.AddWithValue("itemId", checked((int)item.Id));
         AddNullableSmallint(command, "attribute1", item.Attribute1);
         AddNullableSmallint(command, "attribute2", item.Attribute2);
+        AddNullableSmallint(
+            command,
+            "classAttribute1",
+            item.ClassAttribute1);
+        AddNullableSmallint(
+            command,
+            "classAttribute2",
+            item.ClassAttribute2);
         AddNullableSmallint(
             command,
             "attributeLevel1",
@@ -180,14 +190,12 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         command.Parameters.Add(name, NpgsqlDbType.Smallint).Value =
             value.HasValue ? checked((short)value.Value) : DBNull.Value;
 
-    private static CompactItemEntry CreateGear() =>
+    private static CompactItemEntry CreateCommonGear() =>
         CompactItemEntry.Empty with
         {
             Id = 1013,
             Attribute1 = 40,
-            Attribute2 = 200,
             AttributeLevel1 = 3,
-            AttributeLevel2 = 1,
             Quality = 20,
             Grade = 25,
             Bound = 0,
@@ -343,7 +351,8 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                 holy_socket3_effect_id, holy_socket3_level,
                 holy_socket4_effect_id, holy_socket4_level,
                 holy_socket5_effect_id, holy_socket5_level,
-                holy_socket6_effect_id, holy_socket6_level
+                holy_socket6_effect_id, holy_socket6_level,
+                class_attribute1, class_attribute2
             FROM public.character_items
             WHERE user_id = @characterId
               AND item_location = 1
@@ -388,7 +397,11 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             NullableInt16(reader, 26),
             NullableInt16(reader, 27),
             NullableInt16(reader, 28),
-            NullableInt16(reader, 29));
+            NullableInt16(reader, 29))
+        {
+            ClassAttribute1 = NullableInt16(reader, 30),
+            ClassAttribute2 = NullableInt16(reader, 31)
+        };
     }
 
     private static short? NullableInt16(NpgsqlDataReader reader, int ordinal) =>
