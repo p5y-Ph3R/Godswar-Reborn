@@ -23,7 +23,10 @@ internal enum ClassSuitAttributeStatus
     InsufficientMaterial,
     InvalidAttributeState,
     ClassAttributeAlreadyPresent,
+    ElementalAttributeAlreadyPresent,
+    ElementAlreadyPresent,
     AttributeSlotsFull,
+    ElementalSlotsFull,
     ClassAttributeMissing
 }
 

@@ -4,6 +4,8 @@ namespace Godswar.Server.State;
 
 internal sealed class GameCharacter
 {
+    private string _equipment = string.Empty;
+
     [JsonIgnore]
     internal object VitalsSync { get; } = new();
 
@@ -122,7 +124,16 @@ internal sealed class GameCharacter
 
     public float PositionZ { get; set; } = GameDefaults.StartingPositionZ;
 
-    public string Equipment { get; set; } = string.Empty;
+    public string Equipment
+    {
+        get => _equipment;
+        set
+        {
+            _equipment = value ?? string.Empty;
+            ElementalEquipment = ElementalAttributeCatalog
+                .CalculateEquippedProfile(ParseEquipment(_equipment));
+        }
+    }
 
     public string KitBag { get; set; } = string.Empty;
 
@@ -130,6 +141,10 @@ internal sealed class GameCharacter
 
     [JsonIgnore]
     public CharacterStats? CalculatedStats { get; set; }
+
+    [JsonIgnore]
+    public ElementalEquipmentProfile ElementalEquipment { get; private set; } =
+        ElementalAttributeCatalog.CalculateEquippedProfile([]);
 
     internal long MarkVitalsChanged()
     {
@@ -142,4 +157,10 @@ internal sealed class GameCharacter
         PositionRevision = checked(PositionRevision + 1);
         return PositionRevision;
     }
+
+    private static IEnumerable<CompactItemEntry> ParseEquipment(
+        string equipment) =>
+        equipment.Split('#', StringSplitOptions.RemoveEmptyEntries)
+            .Take(EquipmentSlots.Shield + 1)
+            .Select(CompactItemEntry.Parse);
 }

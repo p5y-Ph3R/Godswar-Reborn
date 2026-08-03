@@ -51,7 +51,7 @@ internal static partial class PostgresItemTemplateCatalogLoader
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        if (publication.ManifestVersion != 6 ||
+        if (publication.ManifestVersion != 7 ||
             definitions.Count != publication.EntryCount ||
             policies.Attributes.Count != publication.AttributeCount ||
             policies.EquipmentRanks.Count !=
@@ -73,10 +73,10 @@ internal static partial class PostgresItemTemplateCatalogLoader
         {
             throw new InvalidOperationException(
                 $"Published item-content revision {publication.Revision} " +
-                "has an incomplete v6 manifest.");
+                "has an incomplete v7 manifest.");
         }
 
-        return PinnedItemTemplateCatalog.Create(
+        return PinnedItemTemplateCatalog.CreateV7(
             publication.Source,
             definitions,
             policies.Attributes,

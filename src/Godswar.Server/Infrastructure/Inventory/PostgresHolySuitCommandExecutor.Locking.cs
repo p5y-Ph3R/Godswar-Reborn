@@ -75,7 +75,8 @@ internal sealed partial class PostgresHolySuitCommandExecutor
                 holy_socket5_effect_id, holy_socket5_level,
                 holy_socket6_effect_id, holy_socket6_level,
                 to_jsonb(character_items)::text,
-                class_attribute1, class_attribute2
+                class_attribute1, class_attribute2,
+                elemental_attribute1, elemental_attribute2
             FROM public.character_items
             WHERE user_id = @characterId
               AND item_location = 1
@@ -248,7 +249,9 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             ReadNullableInt16(reader, 31))
         {
             ClassAttribute1 = ReadNullableInt16(reader, 33),
-            ClassAttribute2 = ReadNullableInt16(reader, 34)
+            ClassAttribute2 = ReadNullableInt16(reader, 34),
+            ElementalAttribute1 = ReadNullableInt16(reader, 35),
+            ElementalAttribute2 = ReadNullableInt16(reader, 36)
         };
 
     private static short? ReadNullableInt16(

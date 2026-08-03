@@ -41,7 +41,9 @@ internal sealed partial class PostgresEquipmentForgeCommandExecutor
             ReadNullableSmallint(reader, 31))
         {
             ClassAttribute1 = ReadNullableAttribute(reader, 33),
-            ClassAttribute2 = ReadNullableAttribute(reader, 34)
+            ClassAttribute2 = ReadNullableAttribute(reader, 34),
+            ElementalAttribute1 = ReadNullableAttribute(reader, 35),
+            ElementalAttribute2 = ReadNullableAttribute(reader, 36)
         };
 
     private static void AddItemParameters(
@@ -58,6 +60,8 @@ internal sealed partial class PostgresEquipmentForgeCommandExecutor
         AddNullableAttribute(command, "attribute5", item.Attribute5);
         AddNullableAttribute(command, "classAttribute1", item.ClassAttribute1);
         AddNullableAttribute(command, "classAttribute2", item.ClassAttribute2);
+        AddNullableAttribute(command, "elementalAttribute1", item.ElementalAttribute1);
+        AddNullableAttribute(command, "elementalAttribute2", item.ElementalAttribute2);
         AddNullableSmallint(
             command,
             "attributeLevel1",

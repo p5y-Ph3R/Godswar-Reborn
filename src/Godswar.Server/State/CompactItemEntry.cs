@@ -43,6 +43,14 @@ internal readonly record struct CompactItemEntry(
 
     public int? ClassAttribute2 { get; init; }
 
+    /// <summary>
+    /// Elemental Class Suit III/IV attributes are separate from ordinary and
+    /// profession-specific attributes. Their values resolve from item grade.
+    /// </summary>
+    public int? ElementalAttribute1 { get; init; }
+
+    public int? ElementalAttribute2 { get; init; }
+
     public bool IsEmpty => Id == 0;
 
     public short HolySuitType => HolySuitCode <= 0 ? (short)0 : (short)Math.Clamp(HolySuitCode / 100, 0, 7);
@@ -95,9 +103,11 @@ internal readonly record struct CompactItemEntry(
             ParseNullableInt16(parts, 29))
         {
             ClassAttribute1 = ParseNullableInt(parts, 30),
-            ClassAttribute2 = ParseNullableInt(parts, 31)
+            ClassAttribute2 = ParseNullableInt(parts, 31),
+            ElementalAttribute1 = ParseNullableInt(parts, 32),
+            ElementalAttribute2 = ParseNullableInt(parts, 33)
         };
-        return parsed.NormalizeClassAttributes();
+        return parsed.NormalizeExtendedAttributes();
     }
 
     public static CompactItemEntry Empty => new(
@@ -171,17 +181,22 @@ internal readonly record struct CompactItemEntry(
             Format(Socket5Level),
             Format(Socket6EffectId),
             Format(Socket6Level));
-        if (!ClassAttribute1.HasValue && !ClassAttribute2.HasValue)
+        if (!ClassAttribute1.HasValue &&
+            !ClassAttribute2.HasValue &&
+            !ElementalAttribute1.HasValue &&
+            !ElementalAttribute2.HasValue)
         {
             return '[' + nativeFields + ']';
         }
 
         return '[' + nativeFields + ',' +
             Format(ClassAttribute1) + ',' +
-            Format(ClassAttribute2) + ']';
+            Format(ClassAttribute2) + ',' +
+            Format(ElementalAttribute1) + ',' +
+            Format(ElementalAttribute2) + ']';
     }
 
-    internal CompactItemEntry NormalizeClassAttributes()
+    internal CompactItemEntry NormalizeExtendedAttributes()
     {
         var attributes = new[]
         {
@@ -225,7 +240,10 @@ internal readonly record struct CompactItemEntry(
             levels[index] = null;
         }
 
-        if (classAttributes.Count > 2)
+        if (classAttributes.Count > 1 ||
+            !ElementalAttributeCatalog.HasValidPair(
+                ElementalAttribute1,
+                ElementalAttribute2))
         {
             return this;
         }
@@ -233,9 +251,7 @@ internal readonly record struct CompactItemEntry(
         var normalizedClassAttribute1 = classAttributes.Count > 0
             ? classAttributes[0]
             : (int?)null;
-        var normalizedClassAttribute2 = classAttributes.Count > 1
-            ? classAttributes[1]
-            : (int?)null;
+        int? normalizedClassAttribute2 = null;
         if (!legacyClassAttributeFound &&
             ClassAttribute1 == normalizedClassAttribute1 &&
             ClassAttribute2 == normalizedClassAttribute2)

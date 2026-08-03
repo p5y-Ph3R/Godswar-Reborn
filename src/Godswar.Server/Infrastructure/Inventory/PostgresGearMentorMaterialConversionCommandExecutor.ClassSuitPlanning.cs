@@ -188,9 +188,12 @@ internal sealed partial class
                 ClassSuitCommandResultStatus.InvalidMaterial,
             ClassSuitAttributeStatus.InsufficientMaterial =>
                 ClassSuitCommandResultStatus.InsufficientMaterial,
-            ClassSuitAttributeStatus.ClassAttributeAlreadyPresent =>
+            ClassSuitAttributeStatus.ClassAttributeAlreadyPresent or
+                ClassSuitAttributeStatus.ElementalAttributeAlreadyPresent or
+                ClassSuitAttributeStatus.ElementAlreadyPresent =>
                 ClassSuitCommandResultStatus.AttributeAlreadyPresent,
-            ClassSuitAttributeStatus.AttributeSlotsFull =>
+            ClassSuitAttributeStatus.AttributeSlotsFull or
+                ClassSuitAttributeStatus.ElementalSlotsFull =>
                 ClassSuitCommandResultStatus.AttributeSlotsFull,
             ClassSuitAttributeStatus.ClassAttributeMissing =>
                 ClassSuitCommandResultStatus.AttributeMissing,

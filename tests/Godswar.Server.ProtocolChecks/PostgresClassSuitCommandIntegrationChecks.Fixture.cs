@@ -114,6 +114,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                 user_id, item_location, slot_index, prop_id,
                 attribute1, attribute2,
                 class_attribute1, class_attribute2,
+                elemental_attribute1, elemental_attribute2,
                 attribute_level1, attribute_level2,
                 item_quality, item_grade, bound, stack, item_exp,
                 holy_suit_code, holy_socket_count,
@@ -124,6 +125,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                 @characterId, 1, @slot, @itemId,
                 @attribute1, @attribute2,
                 @classAttribute1, @classAttribute2,
+                @elementalAttribute1, @elementalAttribute2,
                 @attributeLevel1, @attributeLevel2,
                 @quality, @grade, @bound, @stack, @itemExp,
                 @holySuitCode, @socketCount,
@@ -146,6 +148,14 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             command,
             "classAttribute2",
             item.ClassAttribute2);
+        AddNullableSmallint(
+            command,
+            "elementalAttribute1",
+            item.ElementalAttribute1);
+        AddNullableSmallint(
+            command,
+            "elementalAttribute2",
+            item.ElementalAttribute2);
         AddNullableSmallint(
             command,
             "attributeLevel1",
@@ -352,7 +362,8 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                 holy_socket4_effect_id, holy_socket4_level,
                 holy_socket5_effect_id, holy_socket5_level,
                 holy_socket6_effect_id, holy_socket6_level,
-                class_attribute1, class_attribute2
+                class_attribute1, class_attribute2,
+                elemental_attribute1, elemental_attribute2
             FROM public.character_items
             WHERE user_id = @characterId
               AND item_location = 1
@@ -400,7 +411,9 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             NullableInt16(reader, 29))
         {
             ClassAttribute1 = NullableInt16(reader, 30),
-            ClassAttribute2 = NullableInt16(reader, 31)
+            ClassAttribute2 = NullableInt16(reader, 31),
+            ElementalAttribute1 = NullableInt16(reader, 32),
+            ElementalAttribute2 = NullableInt16(reader, 33)
         };
     }
 

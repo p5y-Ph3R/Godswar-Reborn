@@ -9,7 +9,7 @@ internal static partial class HolySuitWireProtocolChecks
     private static void CheckClassSuitAttributeExtensionSerialization()
     {
         const int itemRecordOffset = 24;
-        const uint marker = 0x32415747;
+        const uint marker = 0x33415747;
         var item = CompactItemEntry.Empty with
         {
             Id = 1035,
@@ -28,7 +28,8 @@ internal static partial class HolySuitWireProtocolChecks
             AttributeLevel4 = 25,
             AttributeLevel5 = 25,
             ClassAttribute1 = 200,
-            ClassAttribute2 = 210
+            ElementalAttribute1 = 480,
+            ElementalAttribute2 = 483
         };
         var character = new GameCharacter
         {
@@ -49,13 +50,42 @@ internal static partial class HolySuitWireProtocolChecks
             BinaryPrimitives.ReadInt32LittleEndian(record.Slice(52, 4)),
             "first Class Suit attribute uses extension field one");
         Check.Equal(
-            210,
-            BinaryPrimitives.ReadInt32LittleEndian(record.Slice(56, 4)),
-            "second Class Suit attribute uses extension field two");
+            0x01E301E0u,
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(56, 4)),
+            "two elemental IDs use the locked low/high UInt16 packing");
         Check.Equal(
             marker,
             BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)),
-            "Class Suit extension requires the GWA2 marker");
+            "Class Suit extension requires the GWA3 marker");
+        Check.True(
+            record.SequenceEqual(Convert.FromHexString(
+                "0B0400000A000000280000003C0000005000000082000000" +
+                "141901010000000000000000000000000000000000000000" +
+                "00000000C8000000E001E301475741330000000048140000")),
+            "GWA3 uses the exact retained 72-byte item vector");
+
+        var legacyVector = Convert.FromHexString(
+            "0B0400000A000000280000003C0000005000000082000000" +
+            "141901010000000000000000000000000000000000000000" +
+            "000000000000000000000000000000000000000048140000");
+        var gwa2Vector = Convert.FromHexString(
+            "0B0400000A000000280000003C0000005000000082000000" +
+            "141901010000000000000000000000000000000000000000" +
+            "00000000C8000000D2000000475741320000000048140000");
+        Check.True(
+            legacyVector.Length == 72 &&
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                legacyVector.AsSpan(60, 4)) == 0,
+            "legacy exact vector retains the native 72-byte stride without a marker");
+        Check.True(
+            gwa2Vector.Length == 72 &&
+            BinaryPrimitives.ReadInt32LittleEndian(
+                gwa2Vector.AsSpan(52, 4)) == 200 &&
+            BinaryPrimitives.ReadInt32LittleEndian(
+                gwa2Vector.AsSpan(56, 4)) == 210 &&
+            BinaryPrimitives.ReadUInt32LittleEndian(
+                gwa2Vector.AsSpan(60, 4)) == 0x32415747,
+            "historical GWA2 exact vector remains distinguishable from GWA3");
 
         character.KitBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -65,9 +95,26 @@ internal static partial class HolySuitWireProtocolChecks
         record = packet.AsSpan(itemRecordOffset, 72);
         Check.True(
             BinaryPrimitives.ReadInt32LittleEndian(record.Slice(52, 4)) == 200 &&
-            BinaryPrimitives.ReadInt32LittleEndian(record.Slice(56, 4)) == 210 &&
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(56, 4)) == 0x01E301E0u &&
             BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)) == marker,
-            "Tier III armor carries the same canonical Class Suit extension as a weapon");
+            "Tier III armor carries the same canonical GWA3 extension as a weapon");
+
+        character.KitBag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            0,
+            (item with
+            {
+                ClassAttribute1 = null,
+                ElementalAttribute1 = 480,
+                ElementalAttribute2 = null
+            }).ToCompactString());
+        packet = PacketBuilder.KitBagDetailPages(character)[0];
+        record = packet.AsSpan(itemRecordOffset, 72);
+        Check.True(
+            BinaryPrimitives.ReadInt32LittleEndian(record.Slice(52, 4)) == -1 &&
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(56, 4)) == 0xFFFF01E0u &&
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)) == marker,
+            "elemental-only Tier III/IV gear emits a canonical GWA3 extension");
 
         foreach (var ineligibleItemId in new uint[] { 1013, 1032 })
         {
@@ -77,14 +124,14 @@ internal static partial class HolySuitWireProtocolChecks
                 (item with
                 {
                     Id = ineligibleItemId,
-                    ClassAttribute2 = null
+                    ElementalAttribute2 = null
                 }).ToCompactString());
             packet = PacketBuilder.KitBagDetailPages(character)[0];
             record = packet.AsSpan(itemRecordOffset, 72);
             Check.Equal(
                 0u,
                 BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)),
-                $"ineligible common/lower-tier item {ineligibleItemId} cannot advertise GWA2");
+                $"ineligible common/lower-tier item {ineligibleItemId} cannot advertise GWA3");
         }
 
         character.KitBag = KitBagSlots.SetSlot(
@@ -93,14 +140,15 @@ internal static partial class HolySuitWireProtocolChecks
             (item with
             {
                 ClassAttribute1 = null,
-                ClassAttribute2 = null
+                ElementalAttribute1 = null,
+                ElementalAttribute2 = null
             }).ToCompactString());
         packet = PacketBuilder.KitBagDetailPages(character)[0];
         record = packet.AsSpan(itemRecordOffset, 72);
         Check.Equal(
             0u,
             BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)),
-            "ordinary equipment cannot accidentally advertise GWA2");
+            "ordinary equipment cannot accidentally advertise GWA3");
 
         character.KitBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -108,7 +156,8 @@ internal static partial class HolySuitWireProtocolChecks
             (item with
             {
                 ClassAttribute1 = 999,
-                ClassAttribute2 = null
+                ElementalAttribute1 = null,
+                ElementalAttribute2 = null
             }).ToCompactString());
         packet = PacketBuilder.KitBagDetailPages(character)[0];
         record = packet.AsSpan(itemRecordOffset, 72);
@@ -116,6 +165,29 @@ internal static partial class HolySuitWireProtocolChecks
             0u,
             BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)),
             "unrecognized Class Suit IDs fail closed without an extension marker");
+
+        foreach (var malformed in new[]
+                 {
+                     item with { Grade = 0 },
+                     item with { Grade = 26 },
+                     item with
+                     {
+                         ElementalAttribute1 = 480,
+                         ElementalAttribute2 = 481
+                     }
+                 })
+        {
+            character.KitBag = KitBagSlots.SetSlot(
+                GameDefaults.EmptyKitBag,
+                0,
+                malformed.ToCompactString());
+            packet = PacketBuilder.KitBagDetailPages(character)[0];
+            record = packet.AsSpan(itemRecordOffset, 72);
+            Check.Equal(
+                0u,
+                BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(60, 4)),
+                "invalid grade or duplicate element fails closed on the wire");
+        }
     }
 
     private static void CheckHolyBoxStoredExperienceSerialization()
@@ -176,7 +248,8 @@ internal static partial class HolySuitWireProtocolChecks
                 Stack = 1,
                 Exp = capturedExperience,
                 ClassAttribute1 = 200,
-                ClassAttribute2 = 210
+                ElementalAttribute1 = 480,
+                ElementalAttribute2 = 483
             }).ToCompactString());
         packet = PacketBuilder.KitBagDetailPages(character)[0];
         record = packet.AsSpan(itemRecordOffset, 72);

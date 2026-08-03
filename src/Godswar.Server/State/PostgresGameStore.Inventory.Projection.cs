@@ -130,7 +130,8 @@ internal sealed partial class PostgresGameStore
                 holy_socket4_effect_id, holy_socket4_level,
                 holy_socket5_effect_id, holy_socket5_level,
                 holy_socket6_effect_id, holy_socket6_level,
-                class_attribute1, class_attribute2
+                class_attribute1, class_attribute2,
+                elemental_attribute1, elemental_attribute2
             FROM character_items
             WHERE user_id = @characterId
               AND item_location IN (@equipmentLocation, @kitBagLocation)
@@ -195,7 +196,9 @@ internal sealed partial class PostgresGameStore
             ReadNullableSmallint(reader, 31))
         {
             ClassAttribute1 = ReadNullableAttribute(reader, 32),
-            ClassAttribute2 = ReadNullableAttribute(reader, 33)
+            ClassAttribute2 = ReadNullableAttribute(reader, 33),
+            ElementalAttribute1 = ReadNullableAttribute(reader, 34),
+            ElementalAttribute2 = ReadNullableAttribute(reader, 35)
         };
     }
 
@@ -335,6 +338,8 @@ internal sealed partial class PostgresGameStore
                 attribute5 = @attribute5,
                 class_attribute1 = @classAttribute1,
                 class_attribute2 = @classAttribute2,
+                elemental_attribute1 = @elementalAttribute1,
+                elemental_attribute2 = @elementalAttribute2,
                 attribute_level1 = @attributeLevel1,
                 attribute_level2 = @attributeLevel2,
                 attribute_level3 = @attributeLevel3,

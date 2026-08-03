@@ -62,6 +62,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         await AssertCommitReplayAndConflictAsync(connectionString);
         await AssertEquippedWeaponCommitIsAtomicAsync(connectionString);
         await AssertTierIVReverseCommitAndReplayAsync(connectionString);
+        await AssertElementalAttributeExactOnceAsync(connectionString);
         await AssertStaleSelectionIsAtomicAsync(connectionString);
         await AssertInsufficientInsigniaIsAtomicAsync(connectionString);
     }

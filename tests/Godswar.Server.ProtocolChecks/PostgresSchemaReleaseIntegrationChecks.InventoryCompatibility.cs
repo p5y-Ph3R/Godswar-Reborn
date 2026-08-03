@@ -62,7 +62,7 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
             expected_items AS (
                 SELECT
                     canonical_before.id,
-                    CASE
+                    (CASE
                         WHEN canonical_before.canonical_state
                                 -> 'class_attribute1' <> 'null'::jsonb
                             THEN canonical_before.canonical_state
@@ -70,7 +70,9 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                             jsonb_build_object(
                                 'class_attribute1', NULL,
                                 'class_attribute2', NULL)
-                    END AS item_state
+                    END) || jsonb_build_object(
+                        'elemental_attribute1', NULL,
+                        'elemental_attribute2', NULL) AS item_state
                 FROM canonical_before
             ),
             actual_items AS (
@@ -97,8 +99,8 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
         Check.True(
             mismatchItemId is null,
             mismatchItemId is null
-                ? "migration 053 preserves authoritative inventory semantics"
-                : $"migration 053 changed unrelated durable state for item " +
+                ? "migrations 053-054 preserve authoritative inventory semantics"
+                : $"migrations 053-054 changed unrelated durable state for item " +
                   $"{mismatchItemId}");
     }
 }

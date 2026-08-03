@@ -28,6 +28,8 @@ internal sealed partial class PostgresEquipmentForgeCommandExecutor
                 attribute5 = @attribute5,
                 class_attribute1 = @classAttribute1,
                 class_attribute2 = @classAttribute2,
+                elemental_attribute1 = @elementalAttribute1,
+                elemental_attribute2 = @elementalAttribute2,
                 attribute_level1 = @attributeLevel1,
                 attribute_level2 = @attributeLevel2,
                 attribute_level3 = @attributeLevel3,

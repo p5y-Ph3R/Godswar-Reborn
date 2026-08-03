@@ -115,39 +115,70 @@ internal static partial class ClassSuitAttributePlannerChecks
                 secondBag,
                 profession: 0,
                 AddRequest(secondBag));
-            Check.True(
-                second.Committed &&
-                second.EquipmentAfter.ClassAttribute1 == 200 &&
-                second.EquipmentAfter.ClassAttribute2 == 201,
-                $"Tier III/IV Class Suit item {itemId} adds a distinct second class stat");
-
-            var duplicateBag = StageAdd(
-                second.EquipmentAfter,
-                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
-                Material(9950, 1, 1));
             AssertRejected(
-                ClassSuitAttributePlanner.Create(
-                    TestItemContent.Catalog,
-                    duplicateBag,
-                    profession: 0,
-                    AddRequest(duplicateBag)),
-                duplicateBag,
-                ClassSuitAttributeStatus.ClassAttributeAlreadyPresent,
-                $"Class Suit item {itemId} rejects a duplicate class stat");
-
-            var thirdBag = StageAdd(
-                second.EquipmentAfter,
-                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
-                Material(9952, 1, 1));
-            AssertRejected(
-                ClassSuitAttributePlanner.Create(
-                    TestItemContent.Catalog,
-                    thirdBag,
-                    profession: 0,
-                    AddRequest(thirdBag)),
-                thirdBag,
+                second,
+                secondBag,
                 ClassSuitAttributeStatus.AttributeSlotsFull,
-                $"Class Suit item {itemId} rejects a third distinct class stat");
+                $"Tier III/IV Class Suit item {itemId} rejects a second non-elemental class stat");
+
+            var firstElementBag = StageAdd(
+                first.EquipmentAfter,
+                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+                Material(16300, 1, 1));
+            var firstElement = ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                firstElementBag,
+                profession: 0,
+                AddRequest(firstElementBag));
+            Check.True(
+                firstElement.Committed &&
+                firstElement.EquipmentAfter.ClassAttribute1 == 200 &&
+                firstElement.EquipmentAfter.ElementalAttribute1 == 480 &&
+                firstElement.EquipmentAfter.ElementalAttribute2 is null,
+                $"Class Suit item {itemId} adds Fire Power independently of its class stat");
+
+            var sameElementBag = StageAdd(
+                firstElement.EquipmentAfter,
+                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+                Material(16301, 1, 1));
+            AssertRejected(
+                ClassSuitAttributePlanner.Create(
+                    TestItemContent.Catalog,
+                    sameElementBag,
+                    profession: 0,
+                    AddRequest(sameElementBag)),
+                sameElementBag,
+                ClassSuitAttributeStatus.ElementAlreadyPresent,
+                $"Class Suit item {itemId} rejects a second Fire family");
+
+            var secondElementBag = StageAdd(
+                firstElement.EquipmentAfter,
+                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+                Material(16303, 1, 1));
+            var secondElement = ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                secondElementBag,
+                profession: 0,
+                AddRequest(secondElementBag));
+            Check.True(
+                secondElement.Committed &&
+                secondElement.EquipmentAfter.ElementalAttribute1 == 480 &&
+                secondElement.EquipmentAfter.ElementalAttribute2 == 483,
+                $"Class Suit item {itemId} accepts two different elements");
+
+            var thirdElementBag = StageAdd(
+                secondElement.EquipmentAfter,
+                Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
+                Material(16306, 1, 1));
+            AssertRejected(
+                ClassSuitAttributePlanner.Create(
+                    TestItemContent.Catalog,
+                    thirdElementBag,
+                    profession: 0,
+                    AddRequest(thirdElementBag)),
+                thirdElementBag,
+                ClassSuitAttributeStatus.ElementalSlotsFull,
+                $"Class Suit item {itemId} rejects a third elemental stat");
         }
     }
 

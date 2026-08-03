@@ -41,7 +41,9 @@ internal sealed partial class
             ReadNullableSmallint(reader, 32))
         {
             ClassAttribute1 = ReadNullableAttribute(reader, 34),
-            ClassAttribute2 = ReadNullableAttribute(reader, 35)
+            ClassAttribute2 = ReadNullableAttribute(reader, 35),
+            ElementalAttribute1 = ReadNullableAttribute(reader, 36),
+            ElementalAttribute2 = ReadNullableAttribute(reader, 37)
         };
 
     private static int? ReadNullableAttribute(

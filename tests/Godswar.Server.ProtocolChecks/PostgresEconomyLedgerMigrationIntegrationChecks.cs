@@ -346,11 +346,11 @@ internal static class PostgresEconomyLedgerMigrationIntegrationChecks
                       item_row.item_location
                    OR snapshot_row.slot_index <> item_row.slot_index
                    OR snapshot_row.prop_id <> item_row.prop_id
-                   OR public.canonical_character_item_state_v2(
+                   OR public.canonical_character_item_state_v3(
                           snapshot_row.item_state) IS DISTINCT FROM
                       CASE
                           WHEN item_row.id IS NULL THEN NULL::jsonb
-                          ELSE public.canonical_character_item_state_v2(
+                          ELSE public.canonical_character_item_state_v3(
                               to_jsonb(item_row))
                       END;
                 """),

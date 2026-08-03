@@ -86,24 +86,25 @@ commits atomically, including split stacks. The stock content has no same-level
 common template for the Class Suit III/IV levels, so those tiers deliberately
 return the same canonical common template used at the start of the branch
 rather than inventing an item ID. Quality, grade, item EXP, Holy Suit state,
-ordinary attributes, and Holy Stone sockets remain preserved; class-specific
-attributes are removed.
+ordinary attributes, and Holy Stone sockets remain preserved; all dedicated
+profession and elemental attributes are removed.
 
-Forward conversion preserves both class-specific fields only on the legitimate
-Class Suit III-to-IV path. A malformed Common, Tier I, or Tier II source that
-already carries one is rejected for operator repair; conversion never silently
-drops that player value.
+Forward conversion preserves the profession-specific field and both elemental
+fields only on the legitimate Class Suit III-to-IV path. A malformed Common,
+Tier I, or Tier II source that already carries a dedicated field is rejected
+for operator repair; conversion never silently drops that player value.
 
 ## Class-specific gear attributes
 
-Adding a class attribute requires any matching Class Suit III or IV gear item,
-one Flame Spark (`9990`), and one allowed class stone. Class Suit I/II and
-common gear are ineligible. Deleting a class attribute likewise requires Class
-Suit III/IV gear and one Water Grain (`9991`). Every eligible gear branch can
-hold two distinct, profession-compatible class-specific attributes in dedicated
-fields in addition to all five ordinary attributes. The existing Delete dialog
-has no attribute selector, so it removes the second Class Suit field first and
-the first field on the next use.
+Adding a dedicated attribute requires any matching Class Suit III or IV gear
+item, one Flame Spark (`9990`), and one allowed Class Suit or elemental stone.
+Class Suit I/II and common gear are ineligible. Deleting a dedicated attribute
+likewise requires Class Suit III/IV gear and one Water Grain (`9991`). Every
+eligible gear branch can hold one profession-compatible attribute and two
+different-element attributes in dedicated fields in addition to all five
+ordinary attributes. The existing Delete dialog has no attribute selector, so
+it removes elemental slot 2, elemental slot 1, and then the profession-specific
+field on successive uses.
 
 | Professions | Stone | Attribute | Grade 1 to 25 value |
 |---|---:|---:|---:|
@@ -129,7 +130,7 @@ Specifically, wire operation `107` remains deliberately fail-closed and is not
 implemented. It must not be wired until an exact original-client capture
 establishes its request and response semantics. Ordinary Gear Enhancement owns
 the native fifth slot; the Class Suit extension does not guess operation 107.
-See [Five ordinary plus two Class Suit attributes](class-suit-seven-attribute-protocol.md)
+See [Five ordinary plus three Class Suit fields](class-suit-seven-attribute-protocol.md)
 for the durable and client wire contract.
 
 ## Persistence and anti-duplication boundary

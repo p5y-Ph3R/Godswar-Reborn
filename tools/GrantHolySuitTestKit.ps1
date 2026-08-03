@@ -199,10 +199,10 @@ BEGIN
       ON revision.revision = publication.revision
     WHERE publication.family = 'items'
       AND revision.sealed_at IS NOT NULL
-      AND revision.manifest_version = 6;
+      AND revision.manifest_version = 7;
     IF v_publication_revision IS NULL THEN
         RAISE EXCEPTION
-            'No sealed v6 item manifest is currently published';
+            'No sealed v7 item manifest is currently published';
     END IF;
 
     SELECT string_agg(desired.prop_id::text, ', ' ORDER BY desired.prop_id)

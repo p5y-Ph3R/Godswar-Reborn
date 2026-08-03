@@ -10,16 +10,14 @@ internal static partial class ClassSuitConversionPlannerChecks
         {
             Attribute1 = 40,
             AttributeLevel1 = 3,
-            Attribute2 = 200,
-            AttributeLevel2 = 1,
-            Attribute3 = 60,
-            AttributeLevel3 = 2,
-            Attribute4 = 201,
-            AttributeLevel4 = 1,
+            Attribute2 = 60,
+            AttributeLevel2 = 2,
+            Attribute3 = null,
+            AttributeLevel3 = null,
+            Attribute4 = null,
+            AttributeLevel4 = null,
             Attribute5 = null,
-            AttributeLevel5 = null,
-            ClassAttribute1 = 200,
-            ClassAttribute2 = 201
+            AttributeLevel5 = null
         };
         var kitBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -60,8 +58,10 @@ internal static partial class ClassSuitConversionPlannerChecks
             common.Attribute4 is null &&
             common.Attribute5 is null &&
             common.ClassAttribute1 is null &&
-            common.ClassAttribute2 is null,
-            "legacy and dedicated class-only weapon attributes are stripped on reverse");
+            common.ClassAttribute2 is null &&
+            common.ElementalAttribute1 is null &&
+            common.ElementalAttribute2 is null,
+            "Tier II reverse retains only ordinary weapon attributes");
         Check.Equal((short)20, common.Quality, "reverse preserves quality");
         Check.Equal((short)25, common.Grade, "reverse preserves grade");
         Check.Equal(777, common.Exp, "reverse preserves stored EXP");
@@ -124,6 +124,30 @@ internal static partial class ClassSuitConversionPlannerChecks
         Check.True(
             splitRefund.Committed && splitRefund.Mutations.Count == 5,
             "Tier II reverse permits the bounded five-slot split-refund plan");
+
+        var hiddenElement = tierTwo with
+        {
+            Attribute2 = 480,
+            AttributeLevel2 = 1
+        };
+        var hiddenElementBag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            GearSlot,
+            hiddenElement.ToCompactString());
+        AssertRejected(
+            ClassSuitConversionPlanner.Create(
+                TestItemContent.Catalog,
+                hiddenElementBag,
+                profession: 0,
+                playerLevel: 200,
+                new ClassSuitConversionRequest(
+                    ClassSuitConversionOperation.ConvertToCommon,
+                    ClassSuitSlotSelection.Capture(
+                        hiddenElementBag,
+                        GearSlot))),
+            hiddenElementBag,
+            ClassSuitConversionStatus.InvalidEquipment,
+            "reverse rejects an elemental ID hidden in an ordinary slot");
     }
 
     private static void CheckTierIVReverseAndCapacityAreAtomic()
@@ -135,7 +159,8 @@ internal static partial class ClassSuitConversionPlannerChecks
             Attribute2 = 60,
             AttributeLevel2 = 1,
             ClassAttribute1 = 200,
-            ClassAttribute2 = 201
+            ElementalAttribute1 = 480,
+            ElementalAttribute2 = 483
         };
         var tierFourBag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
@@ -162,8 +187,10 @@ internal static partial class ClassSuitConversionPlannerChecks
             common.Attribute2 == 60 &&
             common.AttributeLevel2 == 1 &&
             common.ClassAttribute1 is null &&
-            common.ClassAttribute2 is null,
-            "Tier IV reverse restores common gear and strips both class attributes");
+            common.ClassAttribute2 is null &&
+            common.ElementalAttribute1 is null &&
+            common.ElementalAttribute2 is null,
+            "Tier IV reverse restores common gear and strips all dedicated attributes");
         foreach (var tier in new[]
                  {
                      ClassSuitTier.TierI,

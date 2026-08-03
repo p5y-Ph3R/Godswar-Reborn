@@ -247,7 +247,8 @@ internal static partial class PacketBuilder
         count += HasWorldItemAttribute(item.Attribute4) ? 1 : 0;
         count += HasWorldItemAttribute(item.Attribute5) ? 1 : 0;
         count += HasWorldItemAttribute(item.ClassAttribute1) ? 1 : 0;
-        count += HasWorldItemAttribute(item.ClassAttribute2) ? 1 : 0;
+        count += HasWorldItemAttribute(item.ElementalAttribute1) ? 1 : 0;
+        count += HasWorldItemAttribute(item.ElementalAttribute2) ? 1 : 0;
         return (byte)count;
     }
 

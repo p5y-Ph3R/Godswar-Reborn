@@ -42,10 +42,10 @@ internal static partial class ClassSuitConversionPlanner
                 out reason);
         }
 
-        if (HasLegacyOrdinaryClassAttributes(equipment) ||
-            (rule.SourceTier != ClassSuitTier.TierIII &&
-             (equipment.ClassAttribute1.HasValue ||
-              equipment.ClassAttribute2.HasValue)))
+        if (!HasCanonicalClassSuitAttributeShape(
+                equipment,
+                profession,
+                rule.SourceTier))
         {
             return Fail(
                 equipment,
@@ -111,6 +111,12 @@ internal static partial class ClassSuitConversionPlanner
                 : null,
             ClassAttribute2 = targetTier == ClassSuitTier.TierIV
                 ? equipment.ClassAttribute2
+                : null,
+            ElementalAttribute1 = targetTier == ClassSuitTier.TierIV
+                ? equipment.ElementalAttribute1
+                : null,
+            ElementalAttribute2 = targetTier == ClassSuitTier.TierIV
+                ? equipment.ElementalAttribute2
                 : null
         };
         working[insigniaSelection.KitBagSlot] = Consume(
@@ -146,6 +152,20 @@ internal static partial class ClassSuitConversionPlanner
                 equipment,
                 profession,
                 isReverse: true,
+                out equipmentAfter,
+                out status,
+                out reason);
+        }
+
+        if (!HasCanonicalClassSuitAttributeShape(
+                equipment,
+                profession,
+                rule.SourceTier))
+        {
+            return Fail(
+                equipment,
+                ClassSuitConversionStatus.InvalidEquipment,
+                "The Class Suit gear has malformed, misplaced, or profession-incompatible attributes; repair it before conversion.",
                 out equipmentAfter,
                 out status,
                 out reason);
@@ -339,7 +359,9 @@ internal static partial class ClassSuitConversionPlanner
             AttributeLevel4 = keptLevels[3],
             AttributeLevel5 = keptLevels[4],
             ClassAttribute1 = null,
-            ClassAttribute2 = null
+            ClassAttribute2 = null,
+            ElementalAttribute1 = null,
+            ElementalAttribute2 = null
         };
     }
 
@@ -354,7 +376,33 @@ internal static partial class ClassSuitConversionPlanner
             equipment.Attribute5
         }.Any(value =>
             value.HasValue &&
-            ClassSpecificAttributeIds.Contains(value.Value));
+            (ClassSpecificAttributeIds.Contains(value.Value) ||
+             ElementalAttributeCatalog.IsElementalAttribute(value.Value)));
+
+    private static bool HasCanonicalClassSuitAttributeShape(
+        CompactItemEntry equipment,
+        byte profession,
+        ClassSuitTier sourceTier)
+    {
+        if (HasLegacyOrdinaryClassAttributes(equipment) ||
+            !ElementalAttributeCatalog.HasCanonicalDedicatedAttributeShape(
+                equipment) ||
+            equipment.ClassAttribute1.HasValue &&
+            !ClassSuitAttributePlanner.IsClassAttributeAllowed(
+                equipment.ClassAttribute1.Value,
+                profession))
+        {
+            return false;
+        }
+
+        var hasDedicatedAttribute =
+            equipment.ClassAttribute1.HasValue ||
+            equipment.ElementalAttribute1.HasValue ||
+            equipment.ElementalAttribute2.HasValue;
+        return !hasDedicatedAttribute ||
+            sourceTier is ClassSuitTier.TierIII or ClassSuitTier.TierIV &&
+            equipment.Grade is >= 1 and <= 25;
+    }
 
     private static bool TryAddMaterial(
         CompactItemEntry[] working,

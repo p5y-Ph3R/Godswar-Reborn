@@ -206,14 +206,17 @@ internal static partial class GearEnhancementPlanner
                 "The target gear contains an invalid appended-attribute record.");
         }
 
-        if (!templates.Materials.TryGetAttributeStone(stoneItem.Id, out var stone))
+        if (!templates.Materials.TryGetAttributeStone(stoneItem.Id, out var stone) ||
+            stone.AllowedAttributeIds.Any(
+                static attributeId =>
+                    ElementalAttributeCatalog.IsElementalAttribute(attributeId)))
         {
             return Reject(
                 GearEnhancementStatus.InvalidAttributeStone,
                 request.Operation,
                 originalKitBag,
                 equipment,
-                "The selected stone is not a supported Attribute Stone.");
+                "The selected stone is not a supported ordinary Attribute Stone.");
         }
 
         if (!templates.Materials.TryGetGearEnhancement(catalystItem.Id, out var catalyst) ||

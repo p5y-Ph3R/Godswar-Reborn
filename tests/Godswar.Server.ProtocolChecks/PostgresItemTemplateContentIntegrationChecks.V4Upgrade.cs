@@ -96,10 +96,10 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
                 dataSource);
             Check.True(
-                loaded.Revision.ManifestVersion == 6 &&
+                loaded.Revision.ManifestVersion == 7 &&
                 loaded.HolySuit.ItemTemplates.Count == 13 &&
                 loaded.HolySuit.Upgrades.Count == 70,
-                "v4-to-v6 upgrade publishes and pins all Holy Suit content");
+                "v4-to-v7 upgrade publishes and pins Holy Suit and elemental content");
             await AssertMutableHolySuitTemplatesMatchPublishedAsync(
                 dataSource,
                 originalRevision,

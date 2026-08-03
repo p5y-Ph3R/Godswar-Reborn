@@ -106,7 +106,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 dataSource);
             Check.True(
                 loaded.Revision.Sha256 == upgraded.Revision &&
-                loaded.Revision.ManifestVersion == 6 &&
+                loaded.Revision.ManifestVersion == 7 &&
                 loaded.Revision.MaterialRecipeCount > 0 &&
                 loaded.Materials.GearMentorRecipes.Count ==
                     loaded.Revision.MaterialRecipeCount &&

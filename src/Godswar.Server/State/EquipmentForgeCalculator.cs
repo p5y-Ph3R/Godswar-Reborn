@@ -310,7 +310,9 @@ internal static class EquipmentForgeCalculator
                equipment.Attribute4 is >= 0 ||
                equipment.Attribute5 is >= 0 ||
                equipment.ClassAttribute1 is >= 0 ||
-               equipment.ClassAttribute2 is >= 0;
+               equipment.ClassAttribute2 is >= 0 ||
+               equipment.ElementalAttribute1 is >= 0 ||
+               equipment.ElementalAttribute2 is >= 0;
     }
 
     private static bool TryGetProgressionValues(

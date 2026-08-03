@@ -27,7 +27,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
         var loaded = await PostgresItemTemplateContentBootstrapper.LoadAsync(
             connectionString);
         Check.True(
-            loaded.Revision.ManifestVersion == 6 &&
+            loaded.Revision.ManifestVersion == 7 &&
             loaded.Revision.HolySuitTierCount == 8 &&
             loaded.Revision.HolySuitUpgradeCount == 70 &&
             loaded.Revision.HolySuitConsumableCount == 13 &&
@@ -90,7 +90,7 @@ internal static class PostgresHolySuitContentIntegrationChecks
             reader.GetInt64(6) == 2_000_000_000 &&
             reader.GetInt64(7) == 400_000_000 &&
             reader.GetString(8) == "Asia/Singapore",
-            "sealed and official Holy Suit row counts match manifest v6");
+            "sealed and official Holy Suit row counts match manifest v7");
     }
 
     private static async Task AssertDurableStateAndPointRecomputationAsync(

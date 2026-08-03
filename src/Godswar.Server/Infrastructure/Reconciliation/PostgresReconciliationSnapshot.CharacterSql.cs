@@ -106,13 +106,13 @@ internal sealed partial class PostgresReconciliationSnapshot
                         WHERE current_item.id IS NOT NULL
                     )::integer AS current_item_count,
                     count(*) FILTER (
-                        WHERE public.canonical_character_item_state_v2(
+                        WHERE public.canonical_character_item_state_v3(
                                 latest.item_state
                             ) IS DISTINCT FROM
                             CASE
                                 WHEN current_item.id IS NULL
                                     THEN NULL::jsonb
-                                ELSE public.canonical_character_item_state_v2(
+                                ELSE public.canonical_character_item_state_v3(
                                     to_jsonb(current_item)
                                 )
                             END

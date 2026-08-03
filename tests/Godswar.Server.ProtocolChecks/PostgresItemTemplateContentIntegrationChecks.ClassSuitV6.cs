@@ -17,9 +17,9 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
         var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(
             dataSource);
         Check.True(
-            loaded.Revision.ManifestVersion == 6 &&
+            loaded.Revision.ManifestVersion == 7 &&
             loaded.Revision.Sha256 == revision,
-            "runtime pins the immutable Class Suit manifest-v6 release");
+            "runtime pins the immutable Class Suit and elemental manifest-v7 release");
         Check.True(
             loaded.TryGet(3931, out var tierOne) &&
             tierOne.DisplayName == "Promotional Insignia I" &&
@@ -86,7 +86,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             reader.GetInt32(1) == ClassSuitV6ItemIds.Length &&
             reader.GetInt32(2) == ClassSuitV6ItemIds.Length &&
             reader.GetInt32(3) == ClassSuitV6ItemIds.Length,
-            "official and mutable Class Suit identities match manifest v6");
+            "official and mutable Class Suit identities match manifest v7");
     }
 
     private static async Task AssertV5ToV6ClassSuitUpgradeAsync(

@@ -226,7 +226,8 @@ internal static partial class ClassSuitConversionPlannerChecks
         var tierThree = RichEquipment(1034, bound: 1) with
         {
             ClassAttribute1 = 200,
-            ClassAttribute2 = 201
+            ElementalAttribute1 = 480,
+            ElementalAttribute2 = 483
         };
         var tierFourInsignia = Material(
             ClassSuitConversionCatalog.PromotionalInsigniaIV,
@@ -258,8 +259,26 @@ internal static partial class ClassSuitConversionPlannerChecks
             upgraded.Committed &&
             upgraded.EquipmentAfter.Id == 1035 &&
             upgraded.EquipmentAfter.ClassAttribute1 == 200 &&
-            upgraded.EquipmentAfter.ClassAttribute2 == 201,
-            "Tier III to IV preserves both dedicated class attributes");
+            upgraded.EquipmentAfter.ClassAttribute2 is null &&
+            upgraded.EquipmentAfter.ElementalAttribute1 == 480 &&
+            upgraded.EquipmentAfter.ElementalAttribute2 == 483,
+            "Tier III to IV preserves one class and two elemental attributes");
+
+        var wrongClassAttributeBag = Stage(
+            tierThree with { ClassAttribute1 = 220 },
+            tierFourInsignia);
+        AssertRejected(
+            ClassSuitConversionPlanner.Create(
+                TestItemContent.Catalog,
+                wrongClassAttributeBag,
+                profession: 0,
+                playerLevel: 200,
+                ForwardRequest(
+                    wrongClassAttributeBag,
+                    ClassSuitConversionOperation.UpgradeTierIV)),
+            wrongClassAttributeBag,
+            ClassSuitConversionStatus.InvalidEquipment,
+            "Tier III to IV rejects another profession's Class Suit attribute");
 
         var invalidTierTwoBag = Stage(
             RichEquipment(1033, bound: 1) with

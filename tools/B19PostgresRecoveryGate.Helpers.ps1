@@ -280,12 +280,12 @@ function Assert-B19CurrentMigrationState {
         [System.Collections.IDictionary]$State
     )
 
-    if ($State.count -ne 54 -or
+    if ($State.count -ne 55 -or
         $State.head -cne
-            '20260803_053_class_suit_attribute_slots') {
+            '20260803_054_elemental_class_suit_attributes') {
         throw (
-            "B19 expected 54 migrations through " +
-            "'20260803_053_class_suit_attribute_slots'.")
+            "B19 expected 55 migrations through " +
+            "'20260803_054_elemental_class_suit_attributes'.")
     }
 }
 

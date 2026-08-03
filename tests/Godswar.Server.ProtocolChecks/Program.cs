@@ -142,6 +142,9 @@ internal static partial class Program
             (ClassSuitExecutionContractChecks.CheckName, ClassSuitExecutionContractChecks.RunAsync),
             ("Class Suit conversion catalog and planner", ClassSuitConversionPlannerChecks.RunAsync),
             ("Class Suit attribute catalog and planner", ClassSuitAttributePlannerChecks.RunAsync),
+            (
+                ElementalClassSuitAttributeChecks.CheckName,
+                ElementalClassSuitAttributeChecks.RunAsync),
             (ClassSuitHandlerChecks.CheckName, ClassSuitHandlerChecks.RunAsync),
             ("Atomic gear-enhancement persistence", GearEnhancementTransactionChecks.RunAsync),
             (

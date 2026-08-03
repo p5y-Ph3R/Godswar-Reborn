@@ -54,17 +54,20 @@ internal static class CompactItemClassAttributeChecks
             Attribute4 = 80,
             Attribute5 = 130,
             ClassAttribute1 = 200,
-            ClassAttribute2 = 210
+            ElementalAttribute1 = 480,
+            ElementalAttribute2 = 483
         };
         var compact = item.ToCompactString();
         var parsed = CompactItemEntry.Parse(compact);
 
         Check.Equal(
-            32,
+            34,
             compact.Trim('[', ']').Split(',').Length,
-            "Class Suit attributes append exactly two compact fields");
+            "Class Suit attributes append the four versioned compact fields");
         Check.Equal(200, parsed.ClassAttribute1 ?? -1, "first Class Suit field round-trips");
-        Check.Equal(210, parsed.ClassAttribute2 ?? -1, "second Class Suit field round-trips");
+        Check.True(parsed.ClassAttribute2 is null, "deprecated Class Suit field stays empty");
+        Check.Equal(480, parsed.ElementalAttribute1 ?? -1, "first elemental field round-trips");
+        Check.Equal(483, parsed.ElementalAttribute2 ?? -1, "second elemental field round-trips");
         Check.Equal(compact, parsed.ToCompactString(), "extended compact form is canonical");
     }
 
@@ -75,11 +78,9 @@ internal static class CompactItemClassAttributeChecks
             Attribute1 = 40,
             Attribute2 = 200,
             Attribute3 = 60,
-            Attribute4 = 210,
             AttributeLevel1 = 2,
             AttributeLevel2 = 1,
-            AttributeLevel3 = 3,
-            AttributeLevel4 = 1
+            AttributeLevel3 = 3
         }).ToCompactString();
         var normalized = CompactItemEntry.Parse(legacy);
 
@@ -97,8 +98,8 @@ internal static class CompactItemClassAttributeChecks
             "ordinary attribute levels remain paired during normalization");
         Check.True(
             normalized.ClassAttribute1 == 200 &&
-            normalized.ClassAttribute2 == 210,
-            "legacy Class Suit IDs preserve their first-seen order");
+            normalized.ClassAttribute2 is null,
+            "one legacy Class Suit ID moves to its dedicated slot");
     }
 
     private static void CheckInvalidLegacyShapeRemainsRejectable()
@@ -124,29 +125,41 @@ internal static class CompactItemClassAttributeChecks
             PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
                 "ci.class_attribute1",
                 StringComparison.Ordinal) &&
-            PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
+            !PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
                 "ci.class_attribute2",
+                StringComparison.Ordinal) &&
+            PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
+                "ci.elemental_attribute1",
+                StringComparison.Ordinal) &&
+            PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
+                "ci.elemental_attribute2",
                 StringComparison.Ordinal) &&
             PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias.Contains(
                 "WHEN ci.class_attribute1 IS NULL",
                 StringComparison.Ordinal),
-            "authoritative compact projection carries class fields without changing native-only strings");
+            "authoritative compact projection carries class and elemental fields without changing native-only strings");
         Check.True(
             PostgresCharacterRuntimeItemProjectionSql.CalculatedStatsForCharacter.Contains(
                 "(equipment.class_attribute1)",
                 StringComparison.Ordinal) &&
-            PostgresCharacterRuntimeItemProjectionSql.CalculatedStatsForCharacter.Contains(
-                "(equipment.class_attribute2)",
+            !PostgresCharacterRuntimeItemProjectionSql.CalculatedStatsForCharacter.Contains(
+                "(equipment.elemental_attribute1)",
+                StringComparison.Ordinal) &&
+            !PostgresCharacterRuntimeItemProjectionSql.CalculatedStatsForCharacter.Contains(
+                "(equipment.elemental_attribute2)",
                 StringComparison.Ordinal),
-            "authoritative stat projection consumes both Class Suit fields");
+            "generic stat projection excludes typed elemental families");
         Check.True(
             PostgresCharacterRuntimeItemProjectionSql.RankLateralJoinForCharacterAlias.Contains(
                 "equipment.class_attribute1 IS NOT NULL",
                 StringComparison.Ordinal) &&
             PostgresCharacterRuntimeItemProjectionSql.RankLateralJoinForCharacterAlias.Contains(
-                "equipment.class_attribute2 IS NOT NULL",
+                "equipment.elemental_attribute1 IS NOT NULL",
+                StringComparison.Ordinal) &&
+            PostgresCharacterRuntimeItemProjectionSql.RankLateralJoinForCharacterAlias.Contains(
+                "equipment.elemental_attribute2 IS NOT NULL",
                 StringComparison.Ordinal),
-            "authoritative equipment rank counts both Class Suit fields");
+            "authoritative equipment rank counts all three dedicated fields");
     }
 
     private static CompactItemEntry Equipment() =>

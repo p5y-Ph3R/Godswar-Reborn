@@ -17,7 +17,7 @@ internal static class GearEnhancementMaterialCatalog
     // Macadam1..4, and Rmacadam1..2. Display names come from EquipName.dat;
     // the attribute families come from EquipDescription.dat and are joined to
     // ItemAppendAttribute.xml IDs. The shipped table deliberately has no 9939.
-    public static IReadOnlyList<GearEnhancementMaterialDefinition> All { get; } =
+    private static IReadOnlyList<GearEnhancementMaterialDefinition> Native { get; } =
     [
         Stone(9930, "Material1", "Strength Stone", "Physical Attack", Icon2, "504,468", ShippedStackCap, Chain(0, 4), canEnhance: true),
         Stone(9931, "Material2", "Shield Stone", "Physical Defense", Icon2, "540,468", ShippedStackCap, Chain(10, 14), canEnhance: true),
@@ -79,6 +79,11 @@ internal static class GearEnhancementMaterialCatalog
             Icon2, "972,504", ShippedStackCap, 0, "100,200")
     ];
 
+    public static IReadOnlyList<GearEnhancementMaterialDefinition> All { get; } =
+        Native.Concat(ElementalAttributeCatalog.All.Select(ElementalStone))
+            .OrderBy(static value => value.ItemId)
+            .ToArray();
+
     public static IReadOnlyList<GearEnhancementMaterialDefinition> AttributeStones { get; } =
         All.Where(static material => material.Kind == GearEnhancementMaterialKind.AttributeStone).ToArray();
 
@@ -119,6 +124,32 @@ internal static class GearEnhancementMaterialCatalog
             attributeName,
             attributeChain,
             canEnhance);
+    }
+
+    private static GearEnhancementMaterialDefinition ElementalStone(
+        ElementalAttributeDefinition definition)
+    {
+        var icon = definition.Element switch
+        {
+            ElementKind.Fire => "504,576",
+            ElementKind.Water => "648,576",
+            ElementKind.Lightning => "576,576",
+            ElementKind.Earth => "540,648",
+            ElementKind.Wind => "612,648",
+            ElementKind.Light => "540,576",
+            ElementKind.Dark => "720,576",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(definition.Element))
+        };
+        return Stone(
+            definition.StoneItemId,
+            $"ElementalMaterial{definition.AttributeId}",
+            definition.DisplayName,
+            $"{definition.Element} {definition.Family}",
+            Icon2,
+            icon,
+            ShippedStackCap,
+            [definition.AttributeId]);
     }
 
     private static GearEnhancementMaterialDefinition Quartz(

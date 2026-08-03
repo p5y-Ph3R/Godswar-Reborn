@@ -68,7 +68,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 "v2-to-v6 upgrade leaves the sealed v2 release immutable");
             var loaded = await PostgresItemTemplateCatalogLoader.LoadAsync(dataSource);
             Check.True(
-                loaded.Revision.ManifestVersion == 6 &&
+                loaded.Revision.ManifestVersion == 7 &&
                 loaded.Revision.MaterialPolicyCount > 0 &&
                 loaded.Revision.MaterialRecipeCount > 0 &&
                 loaded.Materials.DeveloperMaterials.Count ==

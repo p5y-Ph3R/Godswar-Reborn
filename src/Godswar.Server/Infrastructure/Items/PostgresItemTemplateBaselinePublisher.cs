@@ -20,7 +20,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "reviewed-item-content-v6+holy-suit-v3+class-suit-v1";
+        "reviewed-item-content-v7+holy-suit-v3+class-suit-elemental-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -42,9 +42,9 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             connection,
             transaction,
             cancellationToken);
-        if (existing is { ManifestVersion: 6 })
+        if (existing is { ManifestVersion: 7 })
         {
-            await VerifyPublishedV6ReleaseAsync(
+            await VerifyPublishedV7ReleaseAsync(
                 connection,
                 transaction,
                 existing,
@@ -61,7 +61,14 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+            var hasElementalContent =
+                await PublishedElementalContentIsCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
             if (hasClassSuitItems &&
+                hasElementalContent &&
                 publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
             {
@@ -75,6 +82,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+                await EnsureElementalMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return new ItemTemplatePublicationResult(
                     existing.Revision,
@@ -83,7 +95,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             }
         }
 
-        var snapshot = await PrepareV6PublicationAsync(
+        var snapshot = await PrepareV7PublicationAsync(
             connection,
             transaction,
             existing,
@@ -143,6 +155,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             revision,
             cancellationToken);
         await EnsureClassSuitMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        await EnsureElementalMutableTemplateCompatibilityAsync(
             connection,
             transaction,
             revision,
@@ -272,7 +289,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 holy_suit_upgrade_count, holy_suit_consumable_count,
                 holy_suit_policy_count)
             VALUES (
-                @revision, @entryCount, @source, 6,
+                @revision, @entryCount, @source, 7,
                 @attributeCount, @equipmentRankCount,
                 @holySuitEffectCount, @materialPolicyCount,
                 @materialRecipeCount, @holySuitTierCount,

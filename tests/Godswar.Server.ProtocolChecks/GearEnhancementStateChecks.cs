@@ -28,8 +28,8 @@ internal static partial class GearEnhancementStateChecks
 
     private static void CheckMaterialCatalog()
     {
-        Check.Equal(51, GearEnhancementMaterialCatalog.All.Count, "gear-enhancement material count");
-        Check.Equal(45, GearEnhancementMaterialCatalog.AttributeStones.Count, "Attribute Stone count");
+        Check.Equal(72, GearEnhancementMaterialCatalog.All.Count, "gear-enhancement material count");
+        Check.Equal(66, GearEnhancementMaterialCatalog.AttributeStones.Count, "Attribute Stone count");
         Check.Equal(
             GearEnhancementMaterialCatalog.All.Count,
             GearEnhancementMaterialCatalog.All.Select(static material => material.ItemId).Distinct().Count(),
@@ -37,6 +37,20 @@ internal static partial class GearEnhancementStateChecks
         Check.True(
             !GearEnhancementMaterialCatalog.TryGet(9939, out _),
             "the ItemBaseAttribute gap at item 9939 remains unsupported");
+
+        Check.True(
+            GearEnhancementMaterialCatalog.TryGet(16300, out var firePower) &&
+            firePower.DisplayName == "Fire Power Stone" &&
+            firePower.Texture == "./Localization/en_us/UI/Texture/Icon2.gwo" &&
+            firePower.Icon == "504,576" &&
+            firePower.AllowedAttributeIds.SequenceEqual([480]),
+            "Fire Power Stone has the locked item, icon, and attribute mapping");
+        Check.True(
+            GearEnhancementMaterialCatalog.TryGet(16320, out var darkPenetration) &&
+            darkPenetration.DisplayName == "Dark Penetration Stone" &&
+            darkPenetration.Icon == "720,576" &&
+            darkPenetration.AllowedAttributeIds.SequenceEqual([500]),
+            "Dark Penetration Stone closes the locked elemental range");
 
         Check.True(GearEnhancementMaterialCatalog.TryGet(9930, out var strength), "Strength Stone resolves");
         Check.Equal("Material1", strength.NameKey, "Strength Stone name key");
@@ -350,6 +364,20 @@ internal static partial class GearEnhancementStateChecks
             wrongCatalystBag,
             GearEnhancementStatus.InvalidCatalyst,
             "Add rejects Water Grain");
+
+        var (elementalStoneBag, elementalStoneRequest) = Stage(
+            GearEnhancementOperation.Add,
+            gear,
+            Item(16300),
+            Item(9990));
+        CheckRejectedUnchanged(
+            GearEnhancementPlanner.Create(
+                TestItemContent.Catalog,
+                elementalStoneBag,
+                elementalStoneRequest),
+            elementalStoneBag,
+            GearEnhancementStatus.InvalidAttributeStone,
+            "ordinary Gear Enhancement cannot consume an elemental Class Suit stone");
 
         var (nonEquipmentBag, nonEquipmentRequest) = Stage(
             GearEnhancementOperation.Add,

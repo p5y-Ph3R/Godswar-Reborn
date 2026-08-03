@@ -191,6 +191,10 @@ internal static class ClassSuitConversionCatalog
     public static bool IsTierIII(uint itemId) =>
         BranchTable.Any(branch => branch.TierIIIItemId == itemId);
 
+    public static bool IsTierThreeOrFourItem(uint itemId) =>
+        AnySuitIndex.TryGetValue(itemId, out var value) &&
+        value.Tier is ClassSuitTier.TierIII or ClassSuitTier.TierIV;
+
     public static uint InsigniaFor(ClassSuitTier targetTier) => targetTier switch
     {
         ClassSuitTier.TierI => PromotionalInsigniaI,

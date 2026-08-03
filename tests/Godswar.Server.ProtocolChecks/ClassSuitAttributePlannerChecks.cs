@@ -200,7 +200,8 @@ internal static partial class ClassSuitAttributePlannerChecks
             Attribute2 = 60,
             AttributeLevel2 = 4,
             ClassAttribute1 = 200,
-            ClassAttribute2 = 201
+            ElementalAttribute1 = 480,
+            ElementalAttribute2 = 483
         };
         var kitBag = StageDelete(
             gear,
@@ -220,8 +221,10 @@ internal static partial class ClassSuitAttributePlannerChecks
         Check.Equal(60, updated.Attribute2 ?? -1, "delete preserves ordinary attribute two");
         Check.Equal((short)4, updated.AttributeLevel2 ?? -1, "delete preserves ordinary level two");
         Check.True(
-            updated.ClassAttribute1 == 200 && updated.ClassAttribute2 is null,
-            "delete removes class slot two before class slot one");
+            updated.ClassAttribute1 == 200 &&
+            updated.ElementalAttribute1 == 480 &&
+            updated.ElementalAttribute2 is null,
+            "delete removes elemental slot two before earlier dedicated slots");
         Check.Equal((short)1, updated.Bound, "bound Water Grain binds the resulting gear");
         Check.Equal((short)20, updated.Quality, "delete preserves gear quality");
         Check.Equal((short)25, updated.Grade, "delete preserves gear grade");
@@ -241,9 +244,22 @@ internal static partial class ClassSuitAttributePlannerChecks
             DeleteRequest(secondBag));
         Check.True(
             second.Committed &&
-            second.EquipmentAfter.ClassAttribute1 is null &&
-            second.EquipmentAfter.ClassAttribute2 is null,
-            "a second delete removes class slot one");
+            second.EquipmentAfter.ClassAttribute1 == 200 &&
+            second.EquipmentAfter.ElementalAttribute1 is null,
+            "a second delete removes elemental slot one");
+
+        var thirdBag = StageDelete(
+            second.EquipmentAfter,
+            Material(GearEnhancementMaterialCatalog.WaterGrainItemId, 1, 1));
+        var third = ClassSuitAttributePlanner.Create(
+            TestItemContent.Catalog,
+            thirdBag,
+            profession: 0,
+            DeleteRequest(thirdBag));
+        Check.True(
+            third.Committed &&
+            third.EquipmentAfter.ClassAttribute1 is null,
+            "a third delete removes the non-elemental Class Suit stat");
     }
 
     private static void CheckDeleteAndStaleRejectionsAreAtomic()

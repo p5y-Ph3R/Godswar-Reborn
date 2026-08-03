@@ -28,7 +28,8 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                             (equipment.attribute4 IS NOT NULL AND equipment.attribute4 >= 0)::integer +
                             (equipment.attribute5 IS NOT NULL AND equipment.attribute5 >= 0)::integer +
                             (equipment.class_attribute1 IS NOT NULL AND equipment.class_attribute1 >= 0)::integer +
-                            (equipment.class_attribute2 IS NOT NULL AND equipment.class_attribute2 >= 0)::integer
+                            (equipment.elemental_attribute1 IS NOT NULL AND equipment.elemental_attribute1 >= 0)::integer +
+                            (equipment.elemental_attribute2 IS NOT NULL AND equipment.elemental_attribute2 >= 0)::integer
                         )
                     END AS item_score
                 FROM character_items equipment

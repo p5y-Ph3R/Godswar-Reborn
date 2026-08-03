@@ -10,46 +10,121 @@ internal static partial class ClassSuitAttributePlanner
         out ClassSuitAttributeStatus status,
         out string reason)
     {
-        if (!HasValidOrdinaryAttributeShape(equipment) ||
-            !TryReadClassAttributes(
-                equipment,
-                profession,
-                out var classAttributes))
+        if (!HasValidAttributeShape(equipment, profession))
         {
             return FailAttribute(
                 equipment,
                 ClassSuitAttributeStatus.InvalidAttributeState,
-                "The gear contains an invalid ordinary or class-specific attribute record.",
+                "The gear contains an invalid ordinary, class-specific, or elemental attribute record.",
                 out updated,
                 out status,
                 out reason);
         }
 
-        if (classAttributes.Contains(attributeId))
+        if (ElementalAttributeCatalog.TryGetAttribute(
+                attributeId,
+                out var elemental))
+        {
+            return TryAddElementalAttribute(
+                equipment,
+                elemental,
+                out updated,
+                out status,
+                out reason);
+        }
+
+        if (!AllClassAttributeIds.Contains(attributeId))
         {
             return FailAttribute(
                 equipment,
-                ClassSuitAttributeStatus.ClassAttributeAlreadyPresent,
-                "The gear already has this class-specific stat.",
+                ClassSuitAttributeStatus.InvalidClassStone,
+                "The selected stone does not contain a supported Class Suit attribute.",
                 out updated,
                 out status,
                 out reason);
         }
 
-        if (!equipment.ClassAttribute1.HasValue)
+        if (equipment.ClassAttribute1.HasValue)
         {
-            updated = equipment with { ClassAttribute1 = attributeId };
+            return FailAttribute(
+                equipment,
+                equipment.ClassAttribute1 == attributeId
+                    ? ClassSuitAttributeStatus.ClassAttributeAlreadyPresent
+                    : ClassSuitAttributeStatus.AttributeSlotsFull,
+                equipment.ClassAttribute1 == attributeId
+                    ? "The gear already has this class-specific stat."
+                    : "The gear already has its one class-specific stat.",
+                out updated,
+                out status,
+                out reason);
         }
-        else if (!equipment.ClassAttribute2.HasValue)
+
+        updated = equipment with { ClassAttribute1 = attributeId };
+        status = ClassSuitAttributeStatus.Succeeded;
+        reason = string.Empty;
+        return true;
+    }
+
+    private static bool TryAddElementalAttribute(
+        CompactItemEntry equipment,
+        ElementalAttributeDefinition definition,
+        out CompactItemEntry updated,
+        out ClassSuitAttributeStatus status,
+        out string reason)
+    {
+        var existingIds = new[]
         {
-            updated = equipment with { ClassAttribute2 = attributeId };
+            equipment.ElementalAttribute1,
+            equipment.ElementalAttribute2
+        };
+        if (existingIds.Contains(definition.AttributeId))
+        {
+            return FailAttribute(
+                equipment,
+                ClassSuitAttributeStatus.ElementalAttributeAlreadyPresent,
+                "The gear already has this elemental stat.",
+                out updated,
+                out status,
+                out reason);
+        }
+
+        foreach (var existingId in existingIds.Where(static value => value.HasValue))
+        {
+            if (ElementalAttributeCatalog.TryGetAttribute(
+                    existingId!.Value,
+                    out var existing) &&
+                existing.Element == definition.Element)
+            {
+                return FailAttribute(
+                    equipment,
+                    ClassSuitAttributeStatus.ElementAlreadyPresent,
+                    $"The gear already contains a {definition.Element} attribute.",
+                    out updated,
+                    out status,
+                    out reason);
+            }
+        }
+
+        if (!equipment.ElementalAttribute1.HasValue)
+        {
+            updated = equipment with
+            {
+                ElementalAttribute1 = definition.AttributeId
+            };
+        }
+        else if (!equipment.ElementalAttribute2.HasValue)
+        {
+            updated = equipment with
+            {
+                ElementalAttribute2 = definition.AttributeId
+            };
         }
         else
         {
             return FailAttribute(
                 equipment,
-                ClassSuitAttributeStatus.AttributeSlotsFull,
-                "The gear already has the maximum of two class-specific stats.",
+                ClassSuitAttributeStatus.ElementalSlotsFull,
+                "The gear already has the maximum of two elemental stats.",
                 out updated,
                 out status,
                 out reason);
@@ -67,42 +142,40 @@ internal static partial class ClassSuitAttributePlanner
         out ClassSuitAttributeStatus status,
         out string reason)
     {
-        if (!HasValidOrdinaryAttributeShape(equipment) ||
-            !TryReadClassAttributes(
-                equipment,
-                profession,
-                out var classAttributes))
+        if (!HasValidAttributeShape(equipment, profession))
         {
             return FailAttribute(
                 equipment,
                 ClassSuitAttributeStatus.InvalidAttributeState,
-                "The gear contains an invalid ordinary or class-specific attribute record.",
+                "The gear contains an invalid ordinary, class-specific, or elemental attribute record.",
                 out updated,
                 out status,
                 out reason);
         }
 
-        if (classAttributes.Count == 0)
+        // The legacy dialog does not identify a target stone. Delete newest
+        // dedicated slots first, then the profession-specific slot.
+        if (equipment.ElementalAttribute2.HasValue)
+        {
+            updated = equipment with { ElementalAttribute2 = null };
+        }
+        else if (equipment.ElementalAttribute1.HasValue)
+        {
+            updated = equipment with { ElementalAttribute1 = null };
+        }
+        else if (equipment.ClassAttribute1.HasValue)
+        {
+            updated = equipment with { ClassAttribute1 = null };
+        }
+        else
         {
             return FailAttribute(
                 equipment,
                 ClassSuitAttributeStatus.ClassAttributeMissing,
-                "The gear has no class-specific stat to delete.",
+                "The gear has no Class Suit stat to delete.",
                 out updated,
                 out status,
                 out reason);
-        }
-
-        // Delete the most recently populated canonical slot first. This keeps
-        // deletion deterministic even though the legacy dialogue does not
-        // submit a particular class stone with the request.
-        if (equipment.ClassAttribute2.HasValue)
-        {
-            updated = equipment with { ClassAttribute2 = null };
-        }
-        else
-        {
-            updated = equipment with { ClassAttribute1 = null };
         }
 
         status = ClassSuitAttributeStatus.Succeeded;
@@ -110,8 +183,9 @@ internal static partial class ClassSuitAttributePlanner
         return true;
     }
 
-    private static bool HasValidOrdinaryAttributeShape(
-        CompactItemEntry equipment)
+    private static bool HasValidAttributeShape(
+        CompactItemEntry equipment,
+        byte profession)
     {
         var attributes = new[]
         {
@@ -134,57 +208,36 @@ internal static partial class ClassSuitAttributePlanner
             if (attributes[index] is < 0 ||
                 (!attributes[index].HasValue && levels[index].HasValue) ||
                 (attributes[index].HasValue &&
-                 AllClassAttributeIds.Contains(attributes[index]!.Value)))
+                 (AllClassAttributeIds.Contains(attributes[index]!.Value) ||
+                  ElementalAttributeCatalog.IsElementalAttribute(
+                      attributes[index]))))
             {
                 return false;
             }
         }
-        return true;
+
+        return HasValidClassAttribute(equipment, profession) &&
+            ElementalAttributeCatalog.HasValidPair(
+                equipment.ElementalAttribute1,
+                equipment.ElementalAttribute2);
     }
 
-    private static bool TryReadClassAttributes(
+    private static bool HasValidClassAttribute(
         CompactItemEntry equipment,
-        byte profession,
-        out IReadOnlyList<int> attributes)
+        byte profession)
     {
-        var values = new[]
+        if (equipment.ClassAttribute2.HasValue)
         {
-            equipment.ClassAttribute1,
-            equipment.ClassAttribute2
-        };
-        if (!values[0].HasValue && values[1].HasValue)
-        {
-            attributes = [];
             return false;
         }
 
-        var populated = values
-            .Where(static value => value.HasValue)
-            .Select(static value => value!.Value)
-            .ToArray();
-        if (populated.Length != populated.Distinct().Count())
+        if (!equipment.ClassAttribute1.HasValue)
         {
-            attributes = [];
-            return false;
+            return true;
         }
 
-        var allowedAttributes = ClassStones.Values
-            .Where(value => IsProfessionAllowed(
-                value.ProfessionGroup,
-                profession))
-            .Select(static value => value.AttributeId)
-            .ToHashSet();
-        if (populated.Any(value =>
-                value < 0 ||
-                !AllClassAttributeIds.Contains(value) ||
-                !allowedAttributes.Contains(value)))
-        {
-            attributes = [];
-            return false;
-        }
-
-        attributes = populated;
-        return true;
+        var value = equipment.ClassAttribute1.Value;
+        return value >= 0 && IsClassAttributeAllowed(value, profession);
     }
 
     private static bool FailAttribute(

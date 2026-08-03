@@ -40,7 +40,9 @@ internal sealed partial class PostgresKitBagItemDeleteCommandExecutor
             ReadNullableSmallint(reader, 31))
         {
             ClassAttribute1 = ReadNullableAttribute(reader, 33),
-            ClassAttribute2 = ReadNullableAttribute(reader, 34)
+            ClassAttribute2 = ReadNullableAttribute(reader, 34),
+            ElementalAttribute1 = ReadNullableAttribute(reader, 35),
+            ElementalAttribute2 = ReadNullableAttribute(reader, 36)
         };
 
     private static int? ReadNullableAttribute(

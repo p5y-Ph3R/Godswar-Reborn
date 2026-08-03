@@ -3,7 +3,7 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresMigrationPrefixFixtureChecks
+internal static partial class PostgresMigrationPrefixFixtureChecks
 {
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
@@ -84,6 +84,19 @@ internal static class PostgresMigrationPrefixFixtureChecks
             expected.Length,
             actualIndex,
             "migration-prefix fixture has the exact requested history");
+        await reader.CloseAsync();
+
+        if (string.Equals(
+                requestedPrefix,
+                "20260803_053_class_suit_attribute_slots",
+                StringComparison.Ordinal))
+        {
+            await AssertElementalMigrationRejectsLossyHistoryAsync(
+                dataSource);
+            await AssertElementalMigrationPreservesSingleLegacyClassAsync(
+                connectionString);
+        }
+
         Console.WriteLine(
             $"PostgreSQL migration-prefix fixture ready at {requestedPrefix}.");
     }

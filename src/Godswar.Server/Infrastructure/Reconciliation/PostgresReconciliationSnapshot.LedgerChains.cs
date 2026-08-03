@@ -83,10 +83,10 @@ internal sealed partial class PostgresReconciliationSnapshot
                     row.item_instance_id
             GROUP BY row.character_id
             HAVING bool_or(
-                public.canonical_character_item_state_v2(
+                public.canonical_character_item_state_v3(
                     row.before_state
                 ) IS DISTINCT FROM
-                public.canonical_character_item_state_v2(
+                public.canonical_character_item_state_v3(
                     CASE
                         WHEN row.chain_ordinal > 1
                             THEN row.previous_state

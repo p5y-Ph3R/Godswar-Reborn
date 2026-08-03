@@ -111,9 +111,16 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
                 equipment.ClassAttribute1 ?? -1,
                 "first Class Suit attribute is parsed after socket six");
             Check.Equal(
-                210,
-                equipment.ClassAttribute2 ?? -1,
-                "second Class Suit attribute is parsed after socket six");
+                480,
+                equipment.ElementalAttribute1 ?? -1,
+                "first elemental attribute follows the optional class attribute");
+            Check.Equal(
+                483,
+                equipment.ElementalAttribute2 ?? -1,
+                "second elemental attribute retains its dedicated position");
+            Check.True(
+                equipment.ClassAttribute2 is null,
+                "deprecated second Class Suit attribute remains empty");
             Check.Equal(
                 equipment,
                 compatibilityEquipment,
@@ -178,6 +185,7 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
                 item_quality, item_grade, bound, stack, item_exp,
                 holy_suit_code,
                 class_attribute1, class_attribute2,
+                elemental_attribute1, elemental_attribute2,
                 holy_socket_count,
                 holy_socket1_effect_id, holy_socket1_level,
                 holy_socket6_effect_id, holy_socket6_level)
@@ -186,12 +194,13 @@ internal static class PostgresCharacterItemProjectionIntegrationChecks
                  10, 40, 60, 80, 130,
                  3, 7, 11, 15, 19,
                  20, 25, 1, 2, 5,
-                 0, 200, 210, 6, 7, 1, 20, 10),
+                 0, 200, NULL, 480, 483, 6, 7, 1, 20, 10),
                 (@characterId, 1, 95, 4030,
                  NULL, NULL, NULL, NULL, NULL,
                  NULL, NULL, NULL, NULL, NULL,
                  1, 1, 1, 3, 0,
-                 0, NULL, NULL, 0, NULL, NULL, NULL, NULL);
+                 0, NULL, NULL, NULL, NULL,
+                 0, NULL, NULL, NULL, NULL);
             """,
             connection,
             transaction);

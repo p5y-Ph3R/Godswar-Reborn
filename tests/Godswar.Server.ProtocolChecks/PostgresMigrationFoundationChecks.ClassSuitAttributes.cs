@@ -59,7 +59,7 @@ internal static partial class PostgresMigrationFoundationChecks
             "Class Suit migration publishes a schema-aware historical JSON normalizer");
         Check.True(
             PostgresReconciliationSnapshot.CharacterPageSqlForChecks.Contains(
-                "canonical_character_item_state_v2(",
+                "canonical_character_item_state_v3(",
                 StringComparison.Ordinal) &&
             PostgresReconciliationSnapshot.CharacterPageSqlForChecks.Contains(
                 "to_jsonb(current_item)",
@@ -68,7 +68,7 @@ internal static partial class PostgresMigrationFoundationChecks
         Check.True(
             CountOccurrences(
                 PostgresReconciliationSnapshot.LedgerChainSqlForChecks,
-                "public.canonical_character_item_state_v2(") == 2 &&
+                "public.canonical_character_item_state_v3(") == 2 &&
             PostgresReconciliationSnapshot.LedgerChainSqlForChecks.Contains(
                 "row.before_state",
                 StringComparison.Ordinal) &&

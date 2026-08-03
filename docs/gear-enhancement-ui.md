@@ -292,16 +292,18 @@ The material catalog contains the 45 shipped Attribute Stones (`9930`-`9938`,
 gap. Only the nine ordinary stone families `9930`-`9938` have Quartz upgrade
 chains. Other stones can be added or deleted but cannot be Quartz-enhanced.
 
-Add chooses the first attribute template in the stone family that is allowed
+Add chooses the first ordinary attribute template in the stone family that is allowed
 by the equipment template's `MainAttribute` data. It rejects an incompatible
 stone, an existing attribute from the same family, or a gear item whose five
-ordinary attribute slots are full. Class Suit III/IV bonuses use two separate
-Class Suit fields and therefore do not consume an ordinary slot. Enhance
+ordinary attribute slots are full. The Class Suit workflow separately owns one
+profession-specific field and two different-element fields on Class Suit
+III/IV gear; none consumes an ordinary slot. Elemental stones deliberately
+fail closed in ordinary Gear Enhancement. Enhance
 requires the matching family, synchronized attribute template/level fields,
 and the Quartz Plate for the current level. Delete removes the matching family
 and compacts the remaining attribute and attribute-level pairs without
-separating them. The compatible seven-field contract is documented in
-[Five ordinary plus two Class Suit attributes](class-suit-seven-attribute-protocol.md).
+separating them. The compatible eight-field contract is documented in
+[Five ordinary plus three Class Suit fields](class-suit-seven-attribute-protocol.md).
 
 If any consumed material is bound, the resulting gear is bound. A failed
 operation consumes nothing and does not change the gear.

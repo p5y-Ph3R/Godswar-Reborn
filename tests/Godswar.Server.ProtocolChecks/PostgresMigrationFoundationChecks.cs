@@ -20,6 +20,7 @@ internal static partial class PostgresMigrationFoundationChecks
         await PostgresFighterLevelSealMigrationChecks.RunAsync();
         CheckHolySuitSingaporeDayMigration();
         CheckClassSuitAttributeSlotMigration();
+        CheckElementalClassSuitAttributeMigration();
         CheckDatabaseCleanupMigrations();
         CheckStableChecksums();
         CheckImmutableHistory();

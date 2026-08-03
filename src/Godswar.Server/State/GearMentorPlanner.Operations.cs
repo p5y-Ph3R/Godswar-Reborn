@@ -221,7 +221,9 @@ internal static partial class GearMentorPlanner
             equipment.Attribute4,
             equipment.Attribute5,
             equipment.ClassAttribute1,
-            equipment.ClassAttribute2
+            equipment.ClassAttribute2,
+            equipment.ElementalAttribute1,
+            equipment.ElementalAttribute2
         };
         var dusts = new List<AttributeDustDefinition>();
         var seen = new HashSet<uint>();

@@ -144,7 +144,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "TryReadPublishedRevisionAsync",
                 StringComparison.Ordinal) <
             publisherEntryPoint.IndexOf(
-                "PrepareV6PublicationAsync",
+                "PrepareV7PublicationAsync",
                 StringComparison.Ordinal) &&
             publisherUpgrade.IndexOf(
                 "if (existing is null)",
@@ -174,6 +174,30 @@ internal static class ItemTemplateContentArchitectureChecks
                 StringComparison.Ordinal),
             "manifest-v6 appends only the reviewed Class Suit material set " +
             "while preserving sealed v5 content");
+
+        var elementalUpgrade = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "PostgresItemTemplateBaselinePublisher.Elemental.Upgrade.cs");
+        var elementalContent = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Items/" +
+            "ElementalItemContentBaseline.cs");
+        Check.True(
+            elementalUpgrade.Contains(
+                "existing is { ManifestVersion: 6 }",
+                StringComparison.Ordinal) &&
+            elementalUpgrade.Contains(
+                "AppendElementalAttributesAsync",
+                StringComparison.Ordinal) &&
+            elementalUpgrade.Contains(
+                "!ElementalAttributeDefinitionsEqual(",
+                StringComparison.Ordinal) &&
+            elementalContent.Contains(
+                "391 + ((definition.AttributeId - 480) * 2)",
+                StringComparison.Ordinal),
+            "manifest-v7 appends only structurally identical reviewed " +
+            "elemental policies to sealed v6 content");
 
         AssertNoMutableRuntimeTemplateReads(root);
         AssertNoCompiledMaterialRuntimeConsumers(root);
@@ -227,7 +251,7 @@ internal static class ItemTemplateContentArchitectureChecks
                 "PinnedItemTemplateCatalog.Create",
                 StringComparison.Ordinal) &&
             loader.Contains(
-                "publication.ManifestVersion != 6",
+                "publication.ManifestVersion != 7",
                 StringComparison.Ordinal) &&
             loader.Contains(
                 "ReadMaterialPoliciesAsync",
@@ -235,7 +259,7 @@ internal static class ItemTemplateContentArchitectureChecks
             loader.Contains(
                 "ReadHolySuitPoliciesAsync",
                 StringComparison.Ordinal),
-            "loader pins one complete v6 revision and validates its hash");
+            "loader pins one complete v7 revision and validates its hash");
 
         AssertPinnedSnapshotIsImmutable();
         return Task.CompletedTask;

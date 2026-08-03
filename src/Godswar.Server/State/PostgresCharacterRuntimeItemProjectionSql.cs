@@ -76,8 +76,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     (equipment.attribute3),
                     (equipment.attribute4),
                     (equipment.attribute5),
-                    (equipment.class_attribute1),
-                    (equipment.class_attribute2)
+                    (equipment.class_attribute1)
             ) attribute(attribute_id)
             JOIN item_attribute_content_definitions attribute_template
               ON attribute_template.revision = @itemContentRevision

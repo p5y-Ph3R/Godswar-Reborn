@@ -130,6 +130,8 @@ internal static partial class PacketBuilder
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Attribute5));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ClassAttribute1));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ClassAttribute2));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ElementalAttribute1));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.ElementalAttribute2));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel1));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel2));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.AttributeLevel3));
@@ -247,7 +249,9 @@ internal static partial class PacketBuilder
         }
 
         WriteNullableInt32(record.Slice(52, 4), item.ClassAttribute1);
-        WriteNullableInt32(record.Slice(56, 4), item.ClassAttribute2);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            record.Slice(56, 4),
+            PackElementalAttributes(item));
         BinaryPrimitives.WriteUInt32LittleEndian(
             record.Slice(60, 4),
             ClassSuitAttributeExtensionMarker);
@@ -261,25 +265,29 @@ internal static partial class PacketBuilder
                 out _,
                 out var tier) ||
             tier is not (ClassSuitTier.TierIII or ClassSuitTier.TierIV) ||
-            !IsClassSuitAttribute(item.ClassAttribute1) ||
-            (item.ClassAttribute2.HasValue &&
-             (!IsClassSuitAttribute(item.ClassAttribute2) ||
-              item.ClassAttribute2 == item.ClassAttribute1)))
+            item.Grade is < 1 or > 25 ||
+            (!item.ClassAttribute1.HasValue &&
+             !item.ElementalAttribute1.HasValue) ||
+            !ElementalAttributeCatalog.HasCanonicalDedicatedAttributeShape(
+                item))
         {
             return false;
         }
 
-        return !IsClassSuitAttribute(item.Attribute1) &&
-            !IsClassSuitAttribute(item.Attribute2) &&
-            !IsClassSuitAttribute(item.Attribute3) &&
-            !IsClassSuitAttribute(item.Attribute4) &&
-            !IsClassSuitAttribute(item.Attribute5);
+        return true;
     }
 
-    private static bool IsClassSuitAttribute(int? attributeId) =>
-        attributeId is
-            200 or 201 or 210 or 211 or
-            220 or 221 or 230 or 231;
+    private static uint PackElementalAttributes(CompactItemEntry item)
+    {
+        const ushort empty = ushort.MaxValue;
+        var first = item.ElementalAttribute1.HasValue
+            ? checked((ushort)item.ElementalAttribute1.Value)
+            : empty;
+        var second = item.ElementalAttribute2.HasValue
+            ? checked((ushort)item.ElementalAttribute2.Value)
+            : empty;
+        return first | ((uint)second << 16);
+    }
 
     private static bool IsNativeHolyBox(uint itemId) =>
         itemId is >= 9020 and <= 9024;

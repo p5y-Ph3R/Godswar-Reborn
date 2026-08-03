@@ -159,6 +159,16 @@ internal static partial class ClassSuitAttributePlanner
                 "Class-specific stats require Class Suit III or IV gear.");
         }
 
+        if (equipment.Grade is < 1 or > 25)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidAttributeState,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                "Class Suit attribute calculations require gear grade 1 through 25.");
+        }
+
         var catalyst = before[request.Catalyst.KitBagSlot];
         var expectedCatalystKind = request.Operation ==
             ClassSuitAttributeOperation.AddClassSpecific
@@ -361,10 +371,21 @@ internal static partial class ClassSuitAttributePlanner
         out int attributeId)
     {
         attributeId = 0;
+        if (!materials.TryGetAttributeStone(itemId, out var stone) ||
+            stone.AllowedAttributeIds.Count != 1)
+        {
+            return false;
+        }
+
+        if (ElementalAttributeCatalog.TryGetStone(itemId, out var elemental) &&
+            stone.AllowedAttributeIds[0] == elemental.AttributeId)
+        {
+            attributeId = elemental.AttributeId;
+            return true;
+        }
+
         return ClassStones.TryGetValue(itemId, out var rule) &&
             IsProfessionAllowed(rule.ProfessionGroup, profession) &&
-            materials.TryGetAttributeStone(itemId, out var stone) &&
-            stone.AllowedAttributeIds.Count == 1 &&
             stone.AllowedAttributeIds[0] == rule.AttributeId &&
             (attributeId = rule.AttributeId) > 0;
     }
@@ -378,6 +399,14 @@ internal static partial class ClassSuitAttributePlanner
             1 => profession is 2 or 3,
             _ => false
         };
+
+    internal static bool IsClassAttributeAllowed(
+        int attributeId,
+        byte profession) =>
+        profession <= 3 &&
+        ClassStones.Values.Any(rule =>
+            rule.AttributeId == attributeId &&
+            IsProfessionAllowed(rule.ProfessionGroup, profession));
 
     private static CompactItemEntry ConsumeOne(CompactItemEntry item) =>
         item.Stack == 1
