@@ -11,7 +11,10 @@ namespace Godswar.Server.Infrastructure.Inventory;
 internal static class ClassSuitPersistenceCodec
 {
     public const short ContractVersion = 2;
-    public const int MaximumMutationCount = 5;
+    // Reverse-converting a Tier-IV cost-three item can touch the gear plus
+    // three nearly-full stacks for each of the four refunded insignia tiers.
+    // This is the exact planner maximum, not an open-ended receipt allowance.
+    public const int MaximumMutationCount = 13;
     public const string ConsumerKey =
         DeveloperItemGrantPersistenceCodec.ConsumerKey;
     public const string AggregateType = "character_inventory";

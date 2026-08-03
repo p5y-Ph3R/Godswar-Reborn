@@ -404,10 +404,24 @@ internal static class ClassSuitExecutionContractChecks
         Check.Equal(
             ClassSuitPersistenceCodec.MaximumMutationCount,
             decoded.Mutations.Count,
-            "Tier-II reverse split refunds fit the durable receipt");
+            "Tier-IV reverse split refunds fit the durable receipt");
         Check.True(
             decoded.ReplayIntent == receipt.ReplayIntent,
             "durable codec preserves the exact stable replay intent");
+
+        var historicalFiveMutationReceipt = receipt with
+        {
+            Mutations = mutations.Take(5).ToArray()
+        };
+        var historicalDecoded = ClassSuitPersistenceCodec.Decode(
+            ClassSuitPersistenceCodec.Encode(
+                historicalFiveMutationReceipt));
+        Check.True(
+            historicalDecoded.Mutations.SequenceEqual(
+                historicalFiveMutationReceipt.Mutations) &&
+            historicalDecoded.ReplayIntent ==
+                historicalFiveMutationReceipt.ReplayIntent,
+            "the expanded bound preserves historical five-mutation receipts");
 
         Check.Throws<InvalidDataException>(
             () => ClassSuitPersistenceCodec.Encode(

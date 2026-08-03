@@ -52,11 +52,16 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
                      new Godswar.Server.State.PostgresGameStore(
                          connectionString))
         {
+            await using var migrationSource =
+                NpgsqlDataSource.Create(connectionString);
+            await new PostgresSchemaMigrationRunner(migrationSource)
+                .InitializeGodswarSchemaAsync();
             await store.EnsureSeedDataAsync();
         }
 
         await AssertCommitReplayAndConflictAsync(connectionString);
         await AssertEquippedWeaponCommitIsAtomicAsync(connectionString);
+        await AssertTierIVReverseCommitAndReplayAsync(connectionString);
         await AssertStaleSelectionIsAtomicAsync(connectionString);
         await AssertInsufficientInsigniaIsAtomicAsync(connectionString);
     }

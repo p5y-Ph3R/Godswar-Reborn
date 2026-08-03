@@ -78,10 +78,16 @@ Quality, grade, binding, item EXP, Holy Suit state, ordinary attributes, and
 Holy Stone sockets are preserved. The output becomes bound when either input
 is bound.
 
-Safe reverse conversion is implemented for Class Suit I and II. It restores a
-canonical common item and refunds the corresponding bound insignias. Tier II
-refunds both the Tier I and Tier II costs. Class Suit III/IV reverse conversion
-is rejected because the shipped client contains no complete safe recipe.
+Reverse conversion is implemented for Class Suit I through IV. It restores the
+branch's canonical common item and refunds every insignia cost paid along that
+branch: Tier I refunds Insignia I, Tier II refunds I and II, and so on through
+Tier IV. Refunds inherit the equipment's binding state and the whole conversion
+commits atomically, including split stacks. The stock content has no same-level
+common template for the Class Suit III/IV levels, so those tiers deliberately
+return the same canonical common template used at the start of the branch
+rather than inventing an item ID. Quality, grade, item EXP, Holy Suit state,
+ordinary attributes, and Holy Stone sockets remain preserved; class-specific
+attributes are removed.
 
 ## Class-specific weapon attributes
 

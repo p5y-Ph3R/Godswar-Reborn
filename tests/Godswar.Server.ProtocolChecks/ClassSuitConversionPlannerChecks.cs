@@ -5,7 +5,7 @@ namespace Godswar.Server.ProtocolChecks;
 /// <summary>
 /// Focused checks for the pure dialogue-37 conversion planner.
 /// </summary>
-internal static class ClassSuitConversionPlannerChecks
+internal static partial class ClassSuitConversionPlannerChecks
 {
     private const int GearSlot = 10;
     private const int MaterialSlot = 11;
@@ -17,7 +17,7 @@ internal static class ClassSuitConversionPlannerChecks
         CheckEquippedTierIConversionIsLocationAware();
         CheckTierAndProfessionAuthority();
         CheckTierIIReverseRefundAndAttributeRemoval();
-        CheckUnsupportedReverseAndCapacityAreAtomic();
+        CheckTierIVReverseAndCapacityAreAtomic();
         return Task.CompletedTask;
     }
 
@@ -149,6 +149,23 @@ internal static class ClassSuitConversionPlannerChecks
                     template.ClassIds.Contains((short)branch.Profession) &&
                     template.MinLevel.HasValue,
                     $"Class Suit {branch.Key} {tier} has pinned class and level authority");
+                Check.True(
+                    ClassSuitConversionCatalog.TryResolveReverse(
+                        branch.Profession,
+                        branch.ItemIdFor(tier),
+                        out var reverse) &&
+                    reverse.Branch == branch &&
+                    reverse.SourceTier == tier &&
+                    reverse.Refunds.Count == (int)tier &&
+                    reverse.Refunds.Select(static refund => refund.ItemId)
+                        .SequenceEqual(
+                            Enumerable.Range(1, (int)tier)
+                                .Select(value =>
+                                    ClassSuitConversionCatalog.InsigniaFor(
+                                        (ClassSuitTier)value))) &&
+                    reverse.Refunds.All(refund =>
+                        refund.Quantity == branch.InsigniaCost),
+                    $"Class Suit {branch.Key} {tier} has a cumulative reverse recipe");
             }
         }
     }
@@ -251,139 +268,6 @@ internal static class ClassSuitConversionPlannerChecks
             wrongInsigniaBag,
             ClassSuitConversionStatus.InvalidInsignia,
             "each target tier requires its exact insignia");
-    }
-
-    private static void CheckTierIIReverseRefundAndAttributeRemoval()
-    {
-        var tierTwo = RichEquipment(1033, bound: 1) with
-        {
-            Attribute1 = 40,
-            AttributeLevel1 = 3,
-            Attribute2 = 200,
-            AttributeLevel2 = 1,
-            Attribute3 = 60,
-            AttributeLevel3 = 2,
-            Attribute4 = 201,
-            AttributeLevel4 = 1,
-            Attribute5 = null,
-            AttributeLevel5 = null
-        };
-        var kitBag = KitBagSlots.SetSlot(
-            GameDefaults.EmptyKitBag,
-            GearSlot,
-            tierTwo.ToCompactString());
-        var result = ClassSuitConversionPlanner.Create(
-            TestItemContent.Catalog,
-            kitBag,
-            profession: 0,
-            playerLevel: 200,
-            new ClassSuitConversionRequest(
-                ClassSuitConversionOperation.ConvertToCommon,
-                ClassSuitSlotSelection.Capture(kitBag, GearSlot)));
-
-        Check.True(
-            result.Committed,
-            $"Class Suit II reverses safely ({result.RejectionReason})");
-        var common = KitBagSlots.GetItem(result.UpdatedKitBag, GearSlot);
-        Check.Equal(1013u, common.Id, "Tier II reverse common weapon ID");
-        Check.Equal(40, common.Attribute1 ?? -1, "ordinary attribute one survives reverse");
-        Check.Equal((short)3, common.AttributeLevel1 ?? -1, "ordinary attribute level one survives reverse");
-        Check.Equal(60, common.Attribute2 ?? -1, "ordinary attributes compact after class removal");
-        Check.Equal((short)2, common.AttributeLevel2 ?? -1, "compacted attribute level stays paired");
-        Check.True(
-            common.Attribute3 is null && common.Attribute4 is null && common.Attribute5 is null,
-            "class-only weapon attributes are stripped on reverse");
-        Check.Equal((short)20, common.Quality, "reverse preserves quality");
-        Check.Equal((short)25, common.Grade, "reverse preserves grade");
-        Check.Equal(777, common.Exp, "reverse preserves stored EXP");
-        Check.Equal(705, common.HolySuitCode, "reverse preserves Holy Suit code");
-        Check.Equal(3, Quantity(result.UpdatedKitBag, ClassSuitConversionCatalog.PromotionalInsigniaI, 1),
-            "Tier II reverse refunds cumulative tier-I insignias");
-        Check.Equal(3, Quantity(result.UpdatedKitBag, ClassSuitConversionCatalog.PromotionalInsigniaII, 1),
-            "Tier II reverse refunds tier-II insignias");
-        Check.Equal(2, result.Materials.Count, "Tier II reverse has two refund plan entries");
-        Check.True(
-            result.Materials.All(static value =>
-                value.Direction == ClassSuitMaterialDirection.Granted),
-            "reverse material plan contains grants only");
-
-        var splitRefundBag = GameDefaults.EmptyKitBag;
-        splitRefundBag = KitBagSlots.SetSlot(
-            splitRefundBag,
-            0,
-            Material(
-                ClassSuitConversionCatalog.PromotionalInsigniaI,
-                98,
-                bound: 1).ToCompactString());
-        splitRefundBag = KitBagSlots.SetSlot(
-            splitRefundBag,
-            1,
-            Material(
-                ClassSuitConversionCatalog.PromotionalInsigniaII,
-                98,
-                bound: 1).ToCompactString());
-        splitRefundBag = KitBagSlots.SetSlot(
-            splitRefundBag,
-            GearSlot,
-            tierTwo.ToCompactString());
-        var splitRefund = ClassSuitConversionPlanner.Create(
-            TestItemContent.Catalog,
-            splitRefundBag,
-            profession: 0,
-            playerLevel: 200,
-            new ClassSuitConversionRequest(
-                ClassSuitConversionOperation.ConvertToCommon,
-                ClassSuitSlotSelection.Capture(
-                    splitRefundBag,
-                    GearSlot)));
-        Check.True(
-            splitRefund.Committed && splitRefund.Mutations.Count == 5,
-            "Tier II reverse permits the bounded five-slot split-refund plan");
-    }
-
-    private static void CheckUnsupportedReverseAndCapacityAreAtomic()
-    {
-        var tierThreeBag = KitBagSlots.SetSlot(
-            GameDefaults.EmptyKitBag,
-            GearSlot,
-            RichEquipment(1034, bound: 1).ToCompactString());
-        AssertRejected(
-            ClassSuitConversionPlanner.Create(
-                TestItemContent.Catalog,
-                tierThreeBag,
-                profession: 0,
-                playerLevel: 200,
-                new ClassSuitConversionRequest(
-                    ClassSuitConversionOperation.ConvertToCommon,
-                    ClassSuitSlotSelection.Capture(tierThreeBag, GearSlot))),
-            tierThreeBag,
-            ClassSuitConversionStatus.UnsupportedReverseTier,
-            "no Class Suit III reverse recipe is invented");
-
-        var fullBag = GameDefaults.EmptyKitBag;
-        for (var slot = 0; slot < 96; slot++)
-        {
-            fullBag = KitBagSlots.SetSlot(
-                fullBag,
-                slot,
-                Material(4234, 99, bound: 1).ToCompactString());
-        }
-        fullBag = KitBagSlots.SetSlot(
-            fullBag,
-            GearSlot,
-            RichEquipment(1033, bound: 1).ToCompactString());
-        AssertRejected(
-            ClassSuitConversionPlanner.Create(
-                TestItemContent.Catalog,
-                fullBag,
-                profession: 0,
-                playerLevel: 200,
-                new ClassSuitConversionRequest(
-                    ClassSuitConversionOperation.ConvertToCommon,
-                    ClassSuitSlotSelection.Capture(fullBag, GearSlot))),
-            fullBag,
-            ClassSuitConversionStatus.InsufficientCapacity,
-            "reverse conversion is atomic when both refund types cannot fit");
     }
 
     private static void AssertBranch(

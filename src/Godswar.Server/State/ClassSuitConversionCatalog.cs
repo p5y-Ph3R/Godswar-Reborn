@@ -123,28 +123,22 @@ internal static class ClassSuitConversionCatalog
         out ClassSuitReverseRule rule)
     {
         rule = default!;
-        if (!TryResolveSuit(profession, sourceItemId, out var branch, out var tier) ||
-            tier is not (ClassSuitTier.TierI or ClassSuitTier.TierII))
+        if (!TryResolveSuit(
+                profession,
+                sourceItemId,
+                out var branch,
+                out var tier) ||
+            tier is < ClassSuitTier.TierI or > ClassSuitTier.TierIV)
         {
             return false;
         }
 
-        var refunds = tier == ClassSuitTier.TierI
-            ? new[]
-            {
-                new ClassSuitRefundDefinition(
-                    PromotionalInsigniaI,
-                    branch.InsigniaCost)
-            }
-            : new[]
-            {
-                new ClassSuitRefundDefinition(
-                    PromotionalInsigniaI,
-                    branch.InsigniaCost),
-                new ClassSuitRefundDefinition(
-                    PromotionalInsigniaII,
-                    branch.InsigniaCost)
-            };
+        var refunds = Enumerable
+            .Range((int)ClassSuitTier.TierI, (int)tier)
+            .Select(targetTier => new ClassSuitRefundDefinition(
+                InsigniaFor((ClassSuitTier)targetTier),
+                branch.InsigniaCost))
+            .ToArray();
         rule = new ClassSuitReverseRule(
             branch,
             tier,

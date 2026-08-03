@@ -243,28 +243,11 @@ internal static partial class ClassSuitConversionPlanner
                 out reason);
         }
 
-        if (isReverse &&
-            ClassSuitConversionCatalog.TryResolveSuit(
-                profession,
-                equipment.Id,
-                out _,
-                out var tier) &&
-            tier is ClassSuitTier.TierIII or ClassSuitTier.TierIV)
-        {
-            return Fail(
-                equipment,
-                ClassSuitConversionStatus.UnsupportedReverseTier,
-                "The shipped client defines no safe Class Suit III or IV reverse recipe.",
-                out equipmentAfter,
-                out status,
-                out reason);
-        }
-
         return Fail(
             equipment,
             ClassSuitConversionStatus.UnsupportedSource,
             isReverse
-                ? "Only Class Suit I or II equipment can be converted to common equipment."
+                ? "Only Class Suit I through IV equipment can be converted to common equipment."
                 : "The selected equipment is not the required source for this Class Suit tier.",
             out equipmentAfter,
             out status,
