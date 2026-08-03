@@ -26,22 +26,22 @@ internal static partial class ClassSuitAttributePlannerChecks
     {
         var rows = new[]
         {
-            (Profession: (byte)0, Weapon: 1032u, Stone: 9950u, Attribute: 200),
-            (Profession: (byte)0, Weapon: 1032u, Stone: 9951u, Attribute: 201),
-            (Profession: (byte)0, Weapon: 1032u, Stone: 9952u, Attribute: 210),
-            (Profession: (byte)0, Weapon: 1032u, Stone: 9953u, Attribute: 211),
-            (Profession: (byte)1, Weapon: 1432u, Stone: 9950u, Attribute: 200),
-            (Profession: (byte)1, Weapon: 1432u, Stone: 9951u, Attribute: 201),
-            (Profession: (byte)1, Weapon: 1432u, Stone: 9952u, Attribute: 210),
-            (Profession: (byte)1, Weapon: 1432u, Stone: 9953u, Attribute: 211),
-            (Profession: (byte)2, Weapon: 1732u, Stone: 9954u, Attribute: 220),
-            (Profession: (byte)2, Weapon: 1732u, Stone: 9955u, Attribute: 221),
-            (Profession: (byte)2, Weapon: 1732u, Stone: 9956u, Attribute: 230),
-            (Profession: (byte)2, Weapon: 1732u, Stone: 9957u, Attribute: 231),
-            (Profession: (byte)3, Weapon: 1832u, Stone: 9954u, Attribute: 220),
-            (Profession: (byte)3, Weapon: 1832u, Stone: 9955u, Attribute: 221),
-            (Profession: (byte)3, Weapon: 1832u, Stone: 9956u, Attribute: 230),
-            (Profession: (byte)3, Weapon: 1832u, Stone: 9957u, Attribute: 231)
+            (Profession: (byte)0, Weapon: 1034u, Stone: 9950u, Attribute: 200),
+            (Profession: (byte)0, Weapon: 1034u, Stone: 9951u, Attribute: 201),
+            (Profession: (byte)0, Weapon: 1034u, Stone: 9952u, Attribute: 210),
+            (Profession: (byte)0, Weapon: 1034u, Stone: 9953u, Attribute: 211),
+            (Profession: (byte)1, Weapon: 1434u, Stone: 9950u, Attribute: 200),
+            (Profession: (byte)1, Weapon: 1434u, Stone: 9951u, Attribute: 201),
+            (Profession: (byte)1, Weapon: 1434u, Stone: 9952u, Attribute: 210),
+            (Profession: (byte)1, Weapon: 1434u, Stone: 9953u, Attribute: 211),
+            (Profession: (byte)2, Weapon: 1734u, Stone: 9954u, Attribute: 220),
+            (Profession: (byte)2, Weapon: 1734u, Stone: 9955u, Attribute: 221),
+            (Profession: (byte)2, Weapon: 1734u, Stone: 9956u, Attribute: 230),
+            (Profession: (byte)2, Weapon: 1734u, Stone: 9957u, Attribute: 231),
+            (Profession: (byte)3, Weapon: 1834u, Stone: 9954u, Attribute: 220),
+            (Profession: (byte)3, Weapon: 1834u, Stone: 9955u, Attribute: 221),
+            (Profession: (byte)3, Weapon: 1834u, Stone: 9956u, Attribute: 230),
+            (Profession: (byte)3, Weapon: 1834u, Stone: 9957u, Attribute: 231)
         };
         foreach (var row in rows)
         {
@@ -63,7 +63,7 @@ internal static partial class ClassSuitAttributePlannerChecks
 
     private static void CheckAddConsumesExactMaterialsAndPreservesGear()
     {
-        var gear = Weapon(1032, bound: 0) with
+        var gear = Weapon(1034, bound: 0) with
         {
             Attribute1 = 40,
             AttributeLevel1 = 2,
@@ -84,7 +84,7 @@ internal static partial class ClassSuitAttributePlannerChecks
             result.Committed,
             $"class-specific weapon attribute add commits ({result.RejectionReason})");
         var updated = KitBagSlots.GetItem(result.UpdatedKitBag, GearSlot);
-        Check.Equal(1032u, updated.Id, "class-stat add preserves weapon ID");
+        Check.Equal(1034u, updated.Id, "class-stat add preserves weapon ID");
         Check.Equal(40, updated.Attribute1 ?? -1, "class-stat add preserves attribute one");
         Check.Equal(60, updated.Attribute2 ?? -1, "class-stat add preserves attribute two");
         Check.Equal(200, updated.Attribute3 ?? -1, "Primal Stone adds profession-zero stat 200");
@@ -105,7 +105,7 @@ internal static partial class ClassSuitAttributePlannerChecks
 
     private static void CheckAddAuthorityAndDuplicateRejections()
     {
-        var duplicateGear = Weapon(1032, bound: 1) with
+        var duplicateGear = Weapon(1034, bound: 1) with
         {
             Attribute1 = 201,
             AttributeLevel1 = 1
@@ -125,7 +125,7 @@ internal static partial class ClassSuitAttributePlannerChecks
             "a weapon cannot hold a second class-specific stat");
 
         var wrongStoneBag = StageAdd(
-            Weapon(1032, bound: 1),
+            Weapon(1034, bound: 1),
             Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
             Material(9954, 1, 1));
         AssertRejected(
@@ -153,7 +153,7 @@ internal static partial class ClassSuitAttributePlannerChecks
             "common weapons cannot receive Class Suit stats");
 
         var foreignBag = StageAdd(
-            Weapon(1032, bound: 1),
+            Weapon(1034, bound: 1),
             Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
             Material(9950, 1, 1));
         AssertRejected(
@@ -228,7 +228,7 @@ internal static partial class ClassSuitAttributePlannerChecks
             "delete requires an existing class-specific stat");
 
         var stagedBag = StageAdd(
-            Weapon(1032, bound: 0),
+            Weapon(1034, bound: 0),
             Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 2, 0),
             Material(9950, 1, 1));
         var request = AddRequest(stagedBag);

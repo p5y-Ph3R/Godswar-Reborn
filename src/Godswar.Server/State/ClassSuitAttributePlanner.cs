@@ -149,6 +149,18 @@ internal static partial class ClassSuitAttributePlanner
                 weaponReason);
         }
 
+        if (request.Operation ==
+                ClassSuitAttributeOperation.AddClassSpecific &&
+            weaponTier is ClassSuitTier.TierI or ClassSuitTier.TierII)
+        {
+            return Reject(
+                ClassSuitAttributeStatus.InvalidWeapon,
+                request.Operation,
+                originalKitBag,
+                equipment,
+                "Class-specific stones require a Class Suit III or IV weapon.");
+        }
+
         var catalyst = before[request.Catalyst.KitBagSlot];
         var expectedCatalystKind = request.Operation ==
             ClassSuitAttributeOperation.AddClassSpecific

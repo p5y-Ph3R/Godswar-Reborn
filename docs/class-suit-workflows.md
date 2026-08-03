@@ -91,23 +91,29 @@ attributes are removed.
 
 ## Class-specific weapon attributes
 
-Adding a class attribute requires a matching Class Suit weapon, one Flame
-Spark (`9990`), and one allowed class stone. Deleting it requires one Water
-Grain (`9991`). Only one class-specific attribute can exist on a weapon. Tier I
-and II weapons may place it only in the first four appended slots; Tier III and
-IV may also use slot five when the first four are occupied. Common weapons and
-Tier I/II weapons with only slot five empty fail closed.
+Adding a class attribute requires a matching Class Suit III or IV weapon, one
+Flame Spark (`9990`), and one allowed class stone. Class Suit I/II and common
+weapons are ineligible. Deleting an existing legacy class attribute remains
+available on any Class Suit tier and requires one Water Grain (`9991`), so an
+older weapon is never trapped with a now-ineligible attribute. Only one
+class-specific attribute can exist on a weapon. Tier III and IV may use slot
+five when the first four appended slots are occupied.
 
-| Professions | Stone | Attribute |
-|---|---:|---:|
-| Warrior or Champion | `9950` Primal | `200` Physical Attack |
-| Warrior or Champion | `9951` Courage | `201` Hit |
-| Warrior or Champion | `9952` Energy | `210` Physical Damage |
-| Warrior or Champion | `9953` Rage | `211` Critical |
-| Priest or Mage | `9954` Holy | `220` Magic Attack |
-| Priest or Mage | `9955` Blessing | `221` Healing |
-| Priest or Mage | `9956` Rune | `230` Magic Damage |
-| Priest or Mage | `9957` Force | `231` Critical |
+| Professions | Stone | Attribute | Grade 1 to 25 value |
+|---|---:|---:|---:|
+| Warrior or Champion | `9950` Primal | `200` Physical Attack | `+33` to `+840` |
+| Warrior or Champion | `9951` Courage | `201` Hit | `+4` to `+124` |
+| Warrior or Champion | `9952` Energy | `210` Physical Damage | `+1%` to `+26%` |
+| Warrior or Champion | `9953` Rage | `211` Critical | `+3` to `+93` |
+| Priest or Mage | `9954` Holy | `220` Magic Attack | `+25` to `+628` |
+| Priest or Mage | `9955` Blessing | `221` Healing | `+2.1%` to `+59.6%` |
+| Priest or Mage | `9956` Rune | `230` Magic Damage | `+1.2%` to `+31.2%` |
+| Priest or Mage | `9957` Force | `231` Critical | `+3` to `+93` |
+
+These eight attributes are add/delete-only: they have no Quartz Plate upgrade
+chain. Their effective bonus is nevertheless selected from the original
+`L1`-through-`L25` content values by the weapon's authoritative grade, so a
+Grade 25 weapon receives the right-hand value in the table.
 
 The stock “fifth attribute” page remains visible, but its final action is
 fail-closed until an exact original wire capture establishes the missing

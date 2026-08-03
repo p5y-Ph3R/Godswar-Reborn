@@ -33,8 +33,8 @@ internal static partial class ClassSuitAttributePlannerChecks
                     profession: 0,
                     AddRequest(kitBag)),
                 kitBag,
-                ClassSuitAttributeStatus.AttributeSlotsFull,
-                $"Class Suit item {itemId} cannot claim slot five before Tier III");
+                ClassSuitAttributeStatus.InvalidWeapon,
+                $"Class Suit item {itemId} cannot receive a class stone before Tier III");
         }
 
         var tierTwoGapBag = StageAdd(
@@ -47,16 +47,15 @@ internal static partial class ClassSuitAttributePlannerChecks
             },
             Material(GearEnhancementMaterialCatalog.FlameSparkItemId, 1, 1),
             Material(9950, 1, 1));
-        var tierTwoGap = ClassSuitAttributePlanner.Create(
-            TestItemContent.Catalog,
+        AssertRejected(
+            ClassSuitAttributePlanner.Create(
+                TestItemContent.Catalog,
+                tierTwoGapBag,
+                profession: 0,
+                AddRequest(tierTwoGapBag)),
             tierTwoGapBag,
-            profession: 0,
-            AddRequest(tierTwoGapBag));
-        Check.True(
-            tierTwoGap.Committed &&
-            tierTwoGap.EquipmentAfter.Attribute4 == 200 &&
-            tierTwoGap.EquipmentAfter.Attribute5 == 130,
-            "Tier II uses an available first-four slot and preserves slot five");
+            ClassSuitAttributeStatus.InvalidWeapon,
+            "Tier II remains ineligible even when an ordinary slot is empty");
 
         foreach (var itemId in new uint[] { 1034, 1035 })
         {
