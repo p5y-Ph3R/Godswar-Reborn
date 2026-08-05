@@ -15,6 +15,8 @@ param(
 
     [string]$RedisEnvironmentFile,
 
+    [switch]$UsePrebuiltServerImage,
+
     [switch]$AllowMutation
 )
 
@@ -183,6 +185,19 @@ if (Test-Path -LiteralPath $activePath) {
         'tools/GetB20HDockerObservation.ps1; never silently replace a window.')
 }
 
+if ($UsePrebuiltServerImage) {
+    $prebuiltImage = @(
+        (Invoke-B20Command docker @(
+            'image', 'inspect', 'reborn-server:latest')) |
+            ConvertFrom-Json
+    )[0]
+    $prebuiltRevision = [string]$prebuiltImage.Config.Labels.
+        'org.opencontainers.image.revision'
+    Assert-B20Condition ($prebuiltRevision -ceq $sourceCommit) (
+        'The prebuilt reborn-server image does not carry the exact ' +
+        'approved Git revision.')
+}
+
 $approvedAt = [DateTimeOffset]::UtcNow
 $runId = '{0}-{1}' -f
     $approvedAt.UtcDateTime.ToString('yyyyMMddTHHmmssZ'),
@@ -221,6 +236,12 @@ $approval = [ordered]@{
     expectedReplicaCount = 1
     replicaName = $ReplicaName
     sourceCommit = $sourceCommit
+    serverImageMode = if ($UsePrebuiltServerImage) {
+        'verified-prebuilt-local'
+    }
+    else {
+        'compose-build'
+    }
 }
 Write-B20Json `
     -LiteralPath (Join-Path $evidenceDirectory 'approval.json') `
@@ -257,9 +278,18 @@ $artifactSha256 = Get-B20ObservationArtifactHashes $repositoryRoot
     Invoke-B20Command docker ($composeArguments + @(
         'up', '--detach', '--wait', '--wait-timeout', '120',
         '--force-recreate', 'redis-coordination')) | Write-Host
-    Invoke-B20Command docker ($composeArguments + @(
+    $serverUpArguments = @(
         'up', '--detach', '--wait', '--wait-timeout', '300',
-        '--no-deps', '--build', '--force-recreate', 'server')) | Write-Host
+        '--no-deps', '--force-recreate')
+    if ($UsePrebuiltServerImage) {
+        $serverUpArguments += @('--no-build', '--pull', 'never')
+    }
+    else {
+        $serverUpArguments += '--build'
+    }
+    $serverUpArguments += 'server'
+    Invoke-B20Command docker (
+        $composeArguments + $serverUpArguments) | Write-Host
     Invoke-B20Command docker ($composeArguments + @(
         'up', '--detach', '--wait', '--wait-timeout', '180',
         '--no-deps', '--force-recreate', 'b20h-prometheus')) | Write-Host

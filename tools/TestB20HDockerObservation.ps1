@@ -301,6 +301,7 @@ try {
 
     foreach ($scriptName in @(
         'StartB20HDockerObservation.ps1',
+        'NewB20HPrebuiltServerImage.ps1',
         'GetB20HDockerObservation.ps1',
         'ExportB20HDockerObservationTelemetry.ps1',
         'InvalidateB20HDockerObservation.ps1',
