@@ -122,13 +122,20 @@ ENTRYPOINT ["dotnet", "Godswar.Server.dll", "appsettings.json"]
         Image = $TargetImage
         ImageId = [string]$candidate.Id
         BaseImage = $BaseImage
+        BaseSnapshotImage = $baseTag
         NetworkUsed = $false
     }
 }
 finally {
     $env:DOCKER_BUILDKIT = $savedBuildKit
-    & docker image rm $baseTag 2>$null | Out-Null
-    & docker image rm $candidateTag 2>$null | Out-Null
+    try {
+        $null = Invoke-B20Command docker @(
+            'image', 'rm', $candidateTag)
+    }
+    catch {
+        Write-Warning (
+            "Could not remove temporary image tag ${candidateTag}: $_")
+    }
     if (Test-Path -LiteralPath $temporaryRoot -PathType Container) {
         Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
     }
