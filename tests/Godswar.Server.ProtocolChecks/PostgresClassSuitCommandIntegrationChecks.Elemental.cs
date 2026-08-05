@@ -167,7 +167,7 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
             GearEnhancementMaterialCatalog.FlameSparkItemId,
             3);
         var elementalStone = CreateStack(16300, 3);
-        var sameElementStone = CreateStack(16301, 3);
+        var sameElementStone = CreateStack(16300, 3);
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();

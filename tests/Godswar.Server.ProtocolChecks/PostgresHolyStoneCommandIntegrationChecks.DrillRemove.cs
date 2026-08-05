@@ -9,9 +9,135 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         string connectionString)
     {
         await AssertBasicDrillMaximumAsync(connectionString);
+        await AssertNormalCharacterGearDrillsAsync(connectionString);
+        await AssertDrillRejectsNonCharacterGearAsync(connectionString);
         await AssertDrillInsufficientFundsAsync(connectionString);
         await AssertSelectedRemovalAsync(connectionString);
         await AssertFullBagRemovalAsync(connectionString);
+    }
+
+    private static async Task AssertDrillRejectsNonCharacterGearAsync(
+        string connectionString)
+    {
+        foreach (var (itemId, description) in new (uint, string)[]
+                 {
+                     (9030, "non-equipment"),
+                     (8000, "stylish"),
+                     (6000, "mount"),
+                     (14500, "mount gear")
+                 })
+        {
+            var fixture = await CreateFixtureAsync(
+                connectionString,
+                $"no{itemId}",
+                target: SimpleItem(itemId),
+                gold: 3000);
+            await using var dataSource =
+                NpgsqlDataSource.Create(connectionString);
+            var executor = CreateExecutor(dataSource);
+            var receipt = RequireReceipt(
+                await ExecuteAsync(
+                    executor,
+                    fixture,
+                    Guid.NewGuid(),
+                    HolyStoneCommandOperation.Drill),
+                HolyStoneExecutionDisposition.TerminalRejected,
+                HolyStoneCommandResultStatus.TargetNotEquipment,
+                $"basic Drill rejects {description}");
+            var state = await ReadStateAsync(
+                connectionString,
+                fixture,
+                HolyStoneCommandOperation.Drill);
+            Check.True(
+                receipt.GoldSpent == 0 &&
+                receipt.GoldBefore == 3000 &&
+                receipt.GoldAfter == 3000 &&
+                state.InventoryRevision == 0 &&
+                state.WalletRevision == 0 &&
+                state.Gold == 3000 &&
+                state.LedgerCount == 0 &&
+                state.CurrencyLedgerCount == 0 &&
+                state.OutboxCount == 0,
+                $"rejected {description} Drill changes no item or currency");
+        }
+    }
+
+    private static async Task AssertNormalCharacterGearDrillsAsync(
+        string connectionString)
+    {
+        foreach (var (itemId, description) in new (uint, string)[]
+                 {
+                     (2113, "armor"),
+                     (2834, "gloves")
+                 })
+        {
+            var fixture = await CreateFixtureAsync(
+                connectionString,
+                $"dr{description}",
+                target: SimpleItem(itemId),
+                gold: 3000);
+            await using var dataSource =
+                NpgsqlDataSource.Create(connectionString);
+            var executor = CreateExecutor(dataSource);
+
+            var firstReceipt = RequireReceipt(
+                await ExecuteAsync(
+                    executor,
+                    fixture,
+                    Guid.NewGuid(),
+                    HolyStoneCommandOperation.Drill),
+                HolyStoneExecutionDisposition.Committed,
+                HolyStoneCommandResultStatus.Drilled,
+                $"first basic {description} drill");
+            var afterFirst = (await ReadItemAsync(
+                connectionString,
+                fixture.CharacterId,
+                checked((short)fixture.TargetLocation),
+                fixture.TargetSlot))!.Value;
+            Check.True(
+                firstReceipt.GoldSpent ==
+                    HolyStoneExecutionReceipt.FirstDrillGoldCost &&
+                firstReceipt.GoldBefore == 3000 &&
+                firstReceipt.GoldAfter == 2770 &&
+                afterFirst.Item.SocketCount == 1,
+                $"first {description} Drill opens one socket for 230 Gold");
+
+            var secondReceipt = RequireReceipt(
+                await ExecuteAsync(
+                    executor,
+                    fixture,
+                    Guid.NewGuid(),
+                    HolyStoneCommandOperation.Drill,
+                    expectedTarget: afterFirst.Item.ToCompactString()),
+                HolyStoneExecutionDisposition.Committed,
+                HolyStoneCommandResultStatus.Drilled,
+                $"second basic {description} drill");
+            var afterSecond = (await ReadItemAsync(
+                connectionString,
+                fixture.CharacterId,
+                checked((short)fixture.TargetLocation),
+                fixture.TargetSlot))!.Value;
+            Check.True(
+                secondReceipt.GoldSpent ==
+                    HolyStoneExecutionReceipt.SecondDrillGoldCost &&
+                secondReceipt.GoldBefore == 2770 &&
+                secondReceipt.GoldAfter == 470 &&
+                afterSecond.Item.SocketCount == 2,
+                $"second {description} Drill opens two sockets for 2300 Gold");
+
+            var state = await ReadStateAsync(
+                connectionString,
+                fixture,
+                HolyStoneCommandOperation.Drill);
+            Check.True(
+                state.InventoryRevision == 2 &&
+                state.WalletRevision == 2 &&
+                state.Gold == 470 &&
+                state.GoldLedgerDelta == -2530 &&
+                state.WalletReconciled &&
+                state.InventoryReconciled,
+                $"{description} Drill remains atomically reconciled");
+        }
     }
 
     private static async Task AssertBasicDrillMaximumAsync(

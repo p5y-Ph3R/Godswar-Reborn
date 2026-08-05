@@ -7,14 +7,14 @@ allowlist described below.
 The item command is disabled by default and is authorized by exact account ID.
 It can only grant item IDs present in the server's narrow developer-item
 allowlist; arbitrary item IDs are rejected. The allowlist combines the
-forging/Gear Enhancement materials below with the five Holy Boxes published by
-the active database-backed Holy Suit content revision.
+forging/Gear Enhancement materials below with four stock Socket Spells and the
+five Holy Boxes published by the active database-backed item-content revision.
 
 The allowlist contains 23 ordinary forging materials, all 51 shipped Gear
-Enhancement materials, the seven reviewed Greek-themed elemental stones, and
-all 21 native Attribute Dusts. Their type, texture, icon, native stack cap, and
-binding state are resolved again inside the store; command text cannot
-override them.
+Enhancement materials, the seven reviewed Greek-themed elemental stones, all
+21 native Attribute Dusts, and the four stock Socket Spells. Their type,
+texture, icon, native stack cap, and binding state are resolved again inside
+the store; command text cannot override them.
 
 The checked-in configuration keeps it disabled. This workstation's ignored
 `.env` enables it for the local test accounts `3`, `7`, `13`, and `347`. To
@@ -52,6 +52,8 @@ Use the local chat box with either a native ID or material alias:
 /item add prometheusstone 99
 /item add poseidonstone 99
 /item add hadesstone 99
+/item add socketspell1 99
+/item add socketspell4 99
 /item add holybox1 1
 /item add emptyholybox5 1
 ```
@@ -83,6 +85,12 @@ disabled-by-default switch and exact account-ID allowlist documented above.
 not create pre-filled experience. Their item IDs, names, stack caps, and bound
 rules come from the process-pinned PostgreSQL item-content revision rather than
 from a second command-only list. Each box has a native stack cap of one.
+
+`socketspell1` through `socketspell4` resolve the stock unbound consumables
+`4270` through `4273`; numeric IDs are accepted too. All four have a native
+stack cap of 99. Their names, icon, type, stack cap, and binding behavior come
+from the process-pinned PostgreSQL item-content revision. The command adds only
+the narrow aliases and allowlist entries.
 
 `/item` is the clearest stock-client form. The client masks `/gmitem` to
 `/******` before sending its Talk packet; the server recognizes that exact

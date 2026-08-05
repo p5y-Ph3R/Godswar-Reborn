@@ -86,13 +86,21 @@ internal static class PostgresCharacterItemProjectionSql
                         WHEN ci.class_attribute1 IS NULL
                          AND ci.elemental_attribute1 IS NULL
                          AND ci.elemental_attribute2 IS NULL
+                         AND ci.holy_socket1_value IS NULL
+                         AND ci.holy_socket2_value IS NULL
+                         AND ci.holy_socket3_value IS NULL
+                         AND ci.holy_socket4_value IS NULL
                             THEN ''
                         ELSE
                             ',' ||
                             COALESCE(ci.class_attribute1::text, '') || ',' ||
                             '' || ',' ||
                             COALESCE(ci.elemental_attribute1::text, '') || ',' ||
-                            COALESCE(ci.elemental_attribute2::text, '')
+                            COALESCE(ci.elemental_attribute2::text, '') || ',' ||
+                            COALESCE(ci.holy_socket1_value::text, '') || ',' ||
+                            COALESCE(ci.holy_socket2_value::text, '') || ',' ||
+                            COALESCE(ci.holy_socket3_value::text, '') || ',' ||
+                            COALESCE(ci.holy_socket4_value::text, '')
                     END ||
                     ']' AS compact_entry
                 FROM character_items ci

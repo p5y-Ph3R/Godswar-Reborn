@@ -14,6 +14,74 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class Program
 {
+    private static Task CheckHolyStoneWireLevelProjectionAsync()
+    {
+        const int itemRecordOffset = 24;
+        var holyStone = CompactItemEntry.Empty with
+        {
+            Id = HolyStoneUpgradePolicy.HeatedHolyStoneItemId,
+            Quality = 1,
+            Grade = 4,
+            Bound = 1,
+            Stack = 1
+        };
+        var character = new GameCharacter
+        {
+            KitBag = KitBagSlots.SetSlot(
+                GameDefaults.EmptyKitBag,
+                0,
+                holyStone.ToCompactString())
+        };
+
+        var record = PacketBuilder.KitBagDetailPages(character)[0]
+            .AsSpan(itemRecordOffset, 72);
+        Check.Equal(
+            (byte)1,
+            record[24],
+            "PreStone wire quality remains independent from its level");
+        Check.Equal(
+            (byte)4,
+            record[25],
+            "PreStone wire grade retains the authoritative Holy Stone level");
+        var encodedLevel = BinaryPrimitives.ReadInt32LittleEndian(
+            record.Slice(56, 4));
+        Check.Equal(
+            3,
+            encodedLevel,
+            "PreStone extension carries the zero-based native level");
+        Check.Equal(
+            4,
+            (encodedLevel % 100) + 1,
+            "stock-client PreStone formula renders the authoritative level");
+
+        var ordinaryItem = holyStone with
+        {
+            Id = 9040,
+            Quality = 7,
+            Grade = 4
+        };
+        character.KitBag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            0,
+            ordinaryItem.ToCompactString());
+        record = PacketBuilder.KitBagDetailPages(character)[0]
+            .AsSpan(itemRecordOffset, 72);
+        Check.Equal(
+            (byte)7,
+            record[24],
+            "non-PreStone wire quality is unchanged");
+        Check.Equal(
+            (byte)4,
+            record[25],
+            "non-PreStone wire grade is unchanged");
+        Check.Equal(
+            0,
+            BinaryPrimitives.ReadInt32LittleEndian(record.Slice(56, 4)),
+            "non-PreStone extension is unchanged");
+
+        return Task.CompletedTask;
+    }
+
     private static Task CheckHolyStoneAuthoritativePersistencePlanAsync()
     {
         const byte profession = 0;
@@ -101,6 +169,7 @@ internal static partial class Program
 
         Check.True(
             HolyStonePersistencePlanner.TryCreate(
+                TestItemContent.Catalog,
                 equipment,
                 kitBag,
                 profession,

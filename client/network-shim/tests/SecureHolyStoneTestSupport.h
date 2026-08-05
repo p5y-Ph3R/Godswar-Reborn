@@ -116,6 +116,14 @@ inline void BuildHolyStonePacket(
         subId = LegacyHolyStoneRemoveSubId;
     } else if (action == LegacyHolyStoneAction::Drill) {
         subId = LegacyHolyStoneDrillSubId;
+    } else if (action == LegacyHolyStoneAction::AdvancedDrill) {
+        subId = LegacyHolyStoneAdvancedDrillSubId;
+    } else if (action == LegacyHolyStoneAction::Upgrade) {
+        subId = LegacyHolyStoneUpgradeSubId;
+    } else if (action == LegacyHolyStoneAction::ImplementSpirit) {
+        subId = LegacyHolyStoneImplementSpiritSubId;
+    } else if (action == LegacyHolyStoneAction::Combine) {
+        subId = LegacyHolyStoneCombineSubId;
     }
     Write32(packet + 16, static_cast<std::uint32_t>(subId));
     if (navigation) {
@@ -137,11 +145,80 @@ inline void BuildHolyStonePacket(
         Write32(
             packet + 20 + 10 * 4,
             static_cast<std::uint32_t>(secondaryValue));
-    } else {
+    } else if (action == LegacyHolyStoneAction::Drill) {
         Write32(
             packet + 20 + 6 * 4,
             static_cast<std::uint32_t>(targetReference));
+    } else if (action == LegacyHolyStoneAction::AdvancedDrill) {
+        Write32(packet + 20, 0);
+        Write32(
+            packet + 20 + 6 * 4,
+            static_cast<std::uint32_t>(targetReference));
+        Write32(
+            packet + 20 + 7 * 4,
+            static_cast<std::uint32_t>(secondaryValue));
+    } else if (action == LegacyHolyStoneAction::Upgrade ||
+               action == LegacyHolyStoneAction::ImplementSpirit) {
+        // No argument role is trusted for staged actions. Emit a populated
+        // candidate solely so parser/registry tests can exercise that path.
+        Write32(packet + 20 + 3 * 4, 0);
     }
+}
+
+inline std::uint32_t EncodeHolyStoneBagReference(int bagSlot) {
+    return static_cast<std::uint32_t>(
+        (bagSlot / LegacyHolyStoneBagSlotsPerPage) *
+            LegacyHolyStoneBagPageStride +
+        (bagSlot % LegacyHolyStoneBagSlotsPerPage));
+}
+
+inline void BuildHolyStoneCombinePacket(
+    std::uint8_t* packet,
+    const int* orderedBagSlots,
+    std::uint32_t npcId = LegacySpartaHolyStoneNpc,
+    bool navigation = false) {
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::Combine,
+        -1,
+        -1,
+        npcId,
+        true);
+    if (navigation) {
+        return;
+    }
+    for (std::size_t index = 0; index < 4; ++index) {
+        Write32(
+            packet + 20 + (6 + index) * 4,
+            orderedBagSlots == nullptr
+                ? 0xFFFFFFFFU
+                : EncodeHolyStoneBagReference(
+                      orderedBagSlots[index]));
+    }
+}
+
+inline bool StageSelection(
+    SecurePendingOperationRegistry* registry,
+    int bagSlot,
+    bool selected = true) {
+    if (registry == nullptr || bagSlot < 0 || bagSlot >= 96) {
+        return false;
+    }
+    std::uint8_t packet[16]{};
+    Write16(packet, sizeof(packet));
+    Write16(packet + 2, LegacyGearSelectionOpcode);
+    Write32(
+        packet + 4,
+        static_cast<std::uint32_t>(bagSlot / 24));
+    Write32(
+        packet + 8,
+        static_cast<std::uint32_t>(bagSlot % 24));
+    packet[12] = selected ? 1 : 0;
+    LegacyPacketDescriptor descriptor{};
+    return registry->DescribePacket(
+               packet, sizeof(packet), &descriptor) ==
+            SecureOperationRegistryResult::Success &&
+        !descriptor.hasOperation;
 }
 
 inline bool Establish(

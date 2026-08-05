@@ -137,15 +137,18 @@ internal static partial class BackhaulProtocolChecks
         X509Certificate2 gateway,
         X509Certificate2 worker)
     {
+        // Keep the pinned mTLS leg outside host security products that proxy
+        // IPv4 loopback TLS with their own certificate. The test must observe
+        // the exact generated leaf rather than weaken pin validation.
         var listener = new TcpListener(
-            IPAddress.Loopback,
+            IPAddress.IPv6Loopback,
             0);
         listener.Start(1);
         try
         {
             var endpoint = (IPEndPoint)listener.LocalEndpoint;
             using var client = new TcpClient(
-                AddressFamily.InterNetwork);
+                AddressFamily.InterNetworkV6);
             var acceptTask = listener.AcceptTcpClientAsync();
             await client.ConnectAsync(
                 endpoint.Address,

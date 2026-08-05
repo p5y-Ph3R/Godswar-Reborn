@@ -22,6 +22,27 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var combination = _holyStoneCombinationSelectionContext;
+        if (combination is not null &&
+            combination.IsActiveFor(
+                _account.Id,
+                _character.Id,
+                DateTimeOffset.UtcNow))
+        {
+            var stagedCombination = combination.Apply(
+                selection,
+                _character.KitBag);
+            Console.WriteLine(
+                "[holy-stone-combine] item selection " +
+                $"character={_character.Name} npc={combination.NpcId} " +
+                $"selected={selection.Selected} " +
+                $"bagSlot={stagedCombination.KitBagSlot} " +
+                $"item={stagedCombination.Item.Id} " +
+                $"count={stagedCombination.SelectionCount} " +
+                $"status={stagedCombination.Status}");
+            return;
+        }
+
         var context = _gearEnhancerSelectionContext;
         if (context is null ||
             !context.IsActiveForSelection(

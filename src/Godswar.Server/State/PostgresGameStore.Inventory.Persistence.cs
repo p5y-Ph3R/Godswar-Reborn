@@ -40,7 +40,8 @@ internal sealed partial class PostgresGameStore
                 item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
                 holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
                 holy_socket3_effect_id, holy_socket3_level, holy_socket4_effect_id, holy_socket4_level,
-                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level
+                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level,
+                holy_socket1_value, holy_socket2_value, holy_socket3_value, holy_socket4_value
             )
             VALUES (
                 @characterId, @itemLocation, @slotIndex, @itemId,
@@ -51,7 +52,8 @@ internal sealed partial class PostgresGameStore
                 @itemQuality, @itemGrade, @bound, @stack, @itemExp, @holySuitCode,
                 @holySocketCount, @holySocket1EffectId, @holySocket1Level, @holySocket2EffectId, @holySocket2Level,
                 @holySocket3EffectId, @holySocket3Level, @holySocket4EffectId, @holySocket4Level,
-                @holySocket5EffectId, @holySocket5Level, @holySocket6EffectId, @holySocket6Level
+                @holySocket5EffectId, @holySocket5Level, @holySocket6EffectId, @holySocket6Level,
+                @holySocket1Value, @holySocket2Value, @holySocket3Value, @holySocket4Value
             )
             ON CONFLICT (user_id, item_location, slot_index) DO UPDATE
             SET prop_id = EXCLUDED.prop_id,
@@ -88,6 +90,10 @@ internal sealed partial class PostgresGameStore
                 holy_socket5_level = EXCLUDED.holy_socket5_level,
                 holy_socket6_effect_id = EXCLUDED.holy_socket6_effect_id,
                 holy_socket6_level = EXCLUDED.holy_socket6_level,
+                holy_socket1_value = EXCLUDED.holy_socket1_value,
+                holy_socket2_value = EXCLUDED.holy_socket2_value,
+                holy_socket3_value = EXCLUDED.holy_socket3_value,
+                holy_socket4_value = EXCLUDED.holy_socket4_value,
                 updated_at = now();
             """, connection, transaction);
         AddCharacterItemParameters(command, characterId, itemLocation, slotIndex, item);
@@ -113,7 +119,8 @@ internal sealed partial class PostgresGameStore
                 item_quality, item_grade, bound, stack, item_exp, holy_suit_code,
                 holy_socket_count, holy_socket1_effect_id, holy_socket1_level, holy_socket2_effect_id, holy_socket2_level,
                 holy_socket3_effect_id, holy_socket3_level, holy_socket4_effect_id, holy_socket4_level,
-                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level
+                holy_socket5_effect_id, holy_socket5_level, holy_socket6_effect_id, holy_socket6_level,
+                holy_socket1_value, holy_socket2_value, holy_socket3_value, holy_socket4_value
             )
             VALUES (
                 @characterId, @itemLocation, @slotIndex, @itemId,
@@ -124,7 +131,8 @@ internal sealed partial class PostgresGameStore
                 @itemQuality, @itemGrade, @bound, @stack, @itemExp, @holySuitCode,
                 @holySocketCount, @holySocket1EffectId, @holySocket1Level, @holySocket2EffectId, @holySocket2Level,
                 @holySocket3EffectId, @holySocket3Level, @holySocket4EffectId, @holySocket4Level,
-                @holySocket5EffectId, @holySocket5Level, @holySocket6EffectId, @holySocket6Level
+                @holySocket5EffectId, @holySocket5Level, @holySocket6EffectId, @holySocket6Level,
+                @holySocket1Value, @holySocket2Value, @holySocket3Value, @holySocket4Value
             )
             ON CONFLICT (user_id, item_location, slot_index) DO NOTHING;
             """, connection, transaction);
@@ -187,6 +195,10 @@ internal sealed partial class PostgresGameStore
         AddNullableSmallintParameter(command, "holySocket5Level", item.Socket5Level);
         AddNullableSmallintParameter(command, "holySocket6EffectId", item.Socket6EffectId);
         AddNullableSmallintParameter(command, "holySocket6Level", item.Socket6Level);
+        AddNullableSmallintParameter(command, "holySocket1Value", item.Socket1Value);
+        AddNullableSmallintParameter(command, "holySocket2Value", item.Socket2Value);
+        AddNullableSmallintParameter(command, "holySocket3Value", item.Socket3Value);
+        AddNullableSmallintParameter(command, "holySocket4Value", item.Socket4Value);
     }
 
     private static async Task<int> DeleteCharacterItemSlotAsync(

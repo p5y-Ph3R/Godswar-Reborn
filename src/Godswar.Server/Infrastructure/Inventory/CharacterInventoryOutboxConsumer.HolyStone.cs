@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Messaging;
 
@@ -11,13 +12,17 @@ internal sealed partial class CharacterInventoryOutboxConsumer
         var receipt = HolyStonePersistenceCodec.Decode(
             message.Payload.Span);
         var walletEvidenceValid =
-            receipt.Status == HolyStoneCommandResultStatus.Drilled
+            receipt.Status == HolyStoneCommandResultStatus.Drilled &&
+            receipt.Operation == HolyStoneCommandOperation.Drill
                 ? receipt.GoldSpent > 0 &&
                   receipt.GoldAfter ==
                       receipt.GoldBefore - receipt.GoldSpent &&
                   receipt.WalletRevision > 0
                 : receipt.GoldSpent == 0 &&
-                  receipt.GoldAfter == receipt.GoldBefore;
+                  receipt.GoldAfter == receipt.GoldBefore &&
+                  (receipt.Status != HolyStoneCommandResultStatus.Drilled ||
+                   receipt.Operation ==
+                       HolyStoneCommandOperation.AdvancedDrill);
         if (!HolyStoneNativeResults.IsSuccess(receipt.Status) ||
             !walletEvidenceValid ||
             receipt.OutboxEventId != message.EventId ||

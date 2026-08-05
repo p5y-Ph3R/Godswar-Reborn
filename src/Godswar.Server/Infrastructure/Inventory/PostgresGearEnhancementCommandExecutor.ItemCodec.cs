@@ -43,7 +43,11 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor
             ClassAttribute1 = ReadNullableAttribute(reader, 33),
             ClassAttribute2 = ReadNullableAttribute(reader, 34),
             ElementalAttribute1 = ReadNullableAttribute(reader, 35),
-            ElementalAttribute2 = ReadNullableAttribute(reader, 36)
+            ElementalAttribute2 = ReadNullableAttribute(reader, 36),
+            Socket1Value = ReadNullableSmallint(reader, 37),
+            Socket2Value = ReadNullableSmallint(reader, 38),
+            Socket3Value = ReadNullableSmallint(reader, 39),
+            Socket4Value = ReadNullableSmallint(reader, 40)
         };
 
     private static void AddItemParameters(
@@ -144,6 +148,10 @@ internal sealed partial class PostgresGearEnhancementCommandExecutor
             command,
             "holySocket6Level",
             item.Socket6Level);
+        AddNullableSmallint(command, "holySocket1Value", item.Socket1Value);
+        AddNullableSmallint(command, "holySocket2Value", item.Socket2Value);
+        AddNullableSmallint(command, "holySocket3Value", item.Socket3Value);
+        AddNullableSmallint(command, "holySocket4Value", item.Socket4Value);
     }
 
     private static int? ReadNullableAttribute(

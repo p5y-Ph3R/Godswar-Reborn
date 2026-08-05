@@ -51,6 +51,19 @@ internal readonly record struct CompactItemEntry(
 
     public int? ElementalAttribute2 { get; init; }
 
+    /// <summary>
+    /// Authoritative rolled Holy Spirit effectiveness values. A mounted
+    /// Holy Stone needs its grade and its independently rolled value, so the
+    /// value cannot be derived from <see cref="Socket1Level"/>.
+    /// </summary>
+    public short? Socket1Value { get; init; }
+
+    public short? Socket2Value { get; init; }
+
+    public short? Socket3Value { get; init; }
+
+    public short? Socket4Value { get; init; }
+
     public bool IsEmpty => Id == 0;
 
     public short HolySuitType => HolySuitCode <= 0 ? (short)0 : (short)Math.Clamp(HolySuitCode / 100, 0, 7);
@@ -105,7 +118,11 @@ internal readonly record struct CompactItemEntry(
             ClassAttribute1 = ParseNullableInt(parts, 30),
             ClassAttribute2 = ParseNullableInt(parts, 31),
             ElementalAttribute1 = ParseNullableInt(parts, 32),
-            ElementalAttribute2 = ParseNullableInt(parts, 33)
+            ElementalAttribute2 = ParseNullableInt(parts, 33),
+            Socket1Value = ParseNullableInt16(parts, 34),
+            Socket2Value = ParseNullableInt16(parts, 35),
+            Socket3Value = ParseNullableInt16(parts, 36),
+            Socket4Value = ParseNullableInt16(parts, 37)
         };
         return parsed.NormalizeExtendedAttributes();
     }
@@ -184,7 +201,11 @@ internal readonly record struct CompactItemEntry(
         if (!ClassAttribute1.HasValue &&
             !ClassAttribute2.HasValue &&
             !ElementalAttribute1.HasValue &&
-            !ElementalAttribute2.HasValue)
+            !ElementalAttribute2.HasValue &&
+            !Socket1Value.HasValue &&
+            !Socket2Value.HasValue &&
+            !Socket3Value.HasValue &&
+            !Socket4Value.HasValue)
         {
             return '[' + nativeFields + ']';
         }
@@ -193,7 +214,11 @@ internal readonly record struct CompactItemEntry(
             Format(ClassAttribute1) + ',' +
             Format(ClassAttribute2) + ',' +
             Format(ElementalAttribute1) + ',' +
-            Format(ElementalAttribute2) + ']';
+            Format(ElementalAttribute2) + ',' +
+            Format(Socket1Value) + ',' +
+            Format(Socket2Value) + ',' +
+            Format(Socket3Value) + ',' +
+            Format(Socket4Value) + ']';
     }
 
     internal CompactItemEntry NormalizeExtendedAttributes()

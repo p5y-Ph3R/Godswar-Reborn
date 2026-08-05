@@ -104,7 +104,14 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                     'targetItemInstanceId', @targetItemInstanceId,
                     'stoneSlot', @stoneSlot,
                     'stoneItemInstanceId', @stoneItemInstanceId,
+                    'catalystSlot', @catalystSlot,
+                    'catalystItemInstanceId', @catalystItemInstanceId,
+                    'thirdMaterialSlot', @thirdMaterialSlot,
+                    'thirdMaterialItemInstanceId',
+                        @thirdMaterialItemInstanceId,
                     'socketIndex', @socketIndex,
+                    'upgradeRoll', @upgradeRoll,
+                    'upgradeSuccessRate', @upgradeSuccessRate,
                     'removedEffectId', @removedEffectId,
                     'removedLevel', @removedLevel,
                     'outputSlot', @outputSlot,
@@ -157,8 +164,27 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             "stoneItemInstanceId",
             locked.Stone?.ItemInstanceId);
         command.Parameters.AddWithValue(
+            "catalystSlot",
+            context.Command.CatalystKitBagSlot);
+        AddNullableBigint(
+            command,
+            "catalystItemInstanceId",
+            locked.Catalyst?.ItemInstanceId);
+        command.Parameters.AddWithValue(
+            "thirdMaterialSlot",
+            context.Command.ThirdMaterialKitBagSlot);
+        AddNullableBigint(
+            command,
+            "thirdMaterialItemInstanceId",
+            locked.ThirdMaterial?.ItemInstanceId);
+        command.Parameters.AddWithValue(
             "socketIndex",
             plan.SocketIndex);
+        AddNullableInteger(command, "upgradeRoll", plan.UpgradeRoll);
+        AddNullableInteger(
+            command,
+            "upgradeSuccessRate",
+            plan.UpgradeSuccessRate);
         AddNullableSmallint(
             command,
             "removedEffectId",
@@ -354,10 +380,21 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
 
     private static string AuditOutcomeCode(
         HolyStoneCommandResultStatus status) =>
-        HolyStoneNativeResults.IsSuccess(status)
-            ? "committed_" +
-                HolyStonePersistenceCodec.ResultCode(status)
-            : HolyStonePersistenceCodec.ResultCode(status);
+        status switch
+        {
+            // Both failure results are committed mutations: materials are
+            // consumed and the target is either downgraded or protected.
+            // Keep their audit codes within command_audit.outcome_code's
+            // established varchar(32) contract.
+            HolyStoneCommandResultStatus.UpgradeFailedDowngraded =>
+                "committed_upgrade_downgrade",
+            HolyStoneCommandResultStatus.UpgradeFailedProtected =>
+                "committed_upgrade_protected",
+            _ when HolyStoneNativeResults.IsSuccess(status) =>
+                "committed_" +
+                    HolyStonePersistenceCodec.ResultCode(status),
+            _ => HolyStonePersistenceCodec.ResultCode(status)
+        };
 
     private static void AddIdentityParameters(
         NpgsqlCommand command,
@@ -389,6 +426,20 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
     {
         command.Parameters.Add(
             new NpgsqlParameter(name, NpgsqlDbType.Bigint)
+            {
+                Value = value.HasValue
+                    ? value.Value
+                    : DBNull.Value
+            });
+    }
+
+    private static void AddNullableInteger(
+        NpgsqlCommand command,
+        string name,
+        int? value)
+    {
+        command.Parameters.Add(
+            new NpgsqlParameter(name, NpgsqlDbType.Integer)
             {
                 Value = value.HasValue
                     ? value.Value

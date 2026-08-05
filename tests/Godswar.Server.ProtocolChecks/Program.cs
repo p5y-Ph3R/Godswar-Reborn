@@ -118,6 +118,7 @@ internal static partial class Program
             ("Rejected right-click equip authoritative slot", CheckRejectedEquipRefreshSlotAsync),
             ("Genuine equipment-kind persistence guard", EquipmentKindGuardChecks.RunAsync),
             ("Holy-stone targeted authoritative-item preservation", CheckHolyStoneAuthoritativePersistencePlanAsync),
+            ("Holy-stone stock-client level projection", CheckHolyStoneWireLevelProjectionAsync),
             ("Occupied ghost-slot bag move parsing", CheckOccupiedGhostSlotBagMoveParsingAsync),
             ("Confirmed bag-item deletion protocol and persistence", CheckBagItemDeletionAsync),
             ("Developer material item command", CheckDeveloperForgingMaterialCommandAsync),

@@ -8,11 +8,11 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
     private static async Task AssertMountSemanticsAsync(
         string connectionString)
     {
-        await AssertStackedMountAsync(connectionString);
+        await AssertImplementedMountAsync(connectionString);
         await AssertSingleStoneDeletionAsync(connectionString);
     }
 
-    private static async Task AssertStackedMountAsync(
+    private static async Task AssertImplementedMountAsync(
         string connectionString)
     {
         var fallback = SimpleItem(1007);
@@ -20,7 +20,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "mount",
             target: Weapon(2),
-            stone: SimpleItem(9060, grade: 7, stack: 2),
+            stone: ImplementedStone(9060, grade: 7),
             additionalBagItems:
             [
                 (0, fallback)
@@ -35,7 +35,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 HolyStoneCommandOperation.Mount),
             HolyStoneExecutionDisposition.Committed,
             HolyStoneCommandResultStatus.Mounted,
-            "stacked mount");
+            "implemented mount");
         Check.Equal(0, receipt.SocketIndex, "first opened socket");
         Check.Equal(
             fixture.TargetItemId!.Value,
@@ -59,19 +59,13 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             target.Value.Item.Socket1EffectId == 1 &&
             target.Value.Item.Socket1Level == 7,
             "mount writes the Fire spirit and level");
-        var stone = await ReadItemAsync(
-            connectionString,
-            fixture.CharacterId,
-            1,
-            fixture.StoneSlot);
-        Check.Equal(
-            fixture.StoneItemId.Value,
-            stone!.Value.Id,
-            "stack decrement preserves stone identity");
-        Check.Equal(
-            1,
-            stone.Value.Item.Stack,
-            "mount consumes exactly one stacked stone");
+        Check.True(
+            await ReadItemAsync(
+                connectionString,
+                fixture.CharacterId,
+                1,
+                fixture.StoneSlot) is null,
+            "mount consumes the individualized implemented stone");
         var fallbackAfter = await ReadItemAsync(
             connectionString,
             fixture.CharacterId,
@@ -98,7 +92,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "delete",
             target: Weapon(1),
-            stone: SimpleItem(9061, grade: 9));
+            stone: ImplementedStone(9061, grade: 9));
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
         RequireReceipt(

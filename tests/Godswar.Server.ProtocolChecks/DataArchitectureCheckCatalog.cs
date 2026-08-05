@@ -26,6 +26,30 @@ internal static class DataArchitectureCheckCatalog
             HolySuitContentArchitectureChecks.CheckName,
             HolySuitContentArchitectureChecks.RunAsync),
         (
+            SocketSpellItemContentChecks.CheckName,
+            SocketSpellItemContentChecks.RunAsync),
+        (
+            HolyStoneMaterialItemContentChecks.CheckName,
+            HolyStoneMaterialItemContentChecks.RunAsync),
+        (
+            HolyStoneUpgradePolicyChecks.CheckName,
+            HolyStoneUpgradePolicyChecks.RunAsync),
+        (
+            HolyStoneCombinationPolicyChecks.CheckName,
+            HolyStoneCombinationPolicyChecks.RunAsync),
+        (
+            HolySpiritEffectivenessPolicyChecks.CheckName,
+            HolySpiritEffectivenessPolicyChecks.RunAsync),
+        (
+            HolySpiritPersistenceSurfaceChecks.CheckName,
+            HolySpiritPersistenceSurfaceChecks.RunAsync),
+        (
+            HolyStoneCombinationSelectionChecks.CheckName,
+            HolyStoneCombinationSelectionChecks.RunAsync),
+        (
+            HolyStoneUpgradePersistenceChecks.CheckName,
+            HolyStoneUpgradePersistenceChecks.RunAsync),
+        (
             PetContentArchitectureChecks.CheckName,
             PetContentArchitectureChecks.RunAsync),
         (

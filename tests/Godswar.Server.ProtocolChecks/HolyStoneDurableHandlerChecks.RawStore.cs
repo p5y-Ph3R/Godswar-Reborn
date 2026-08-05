@@ -265,6 +265,8 @@ internal static partial class HolyStoneDurableHandlerChecks
                     HolyStoneOperation.RemoveStone,
                 HolyStoneCommandOperation.Drill =>
                     HolyStoneOperation.DrillSocket,
+                HolyStoneCommandOperation.AdvancedDrill =>
+                    HolyStoneOperation.AdvancedDrillSocket,
                 _ => throw new InvalidDataException(
                     "Unknown crafted Holy Stone operation.")
             };

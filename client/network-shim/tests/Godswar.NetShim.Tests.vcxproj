@@ -106,6 +106,10 @@
     <ClCompile Include="SecureGearMentorDecomposeIdentityTests.cpp" />
     <ClCompile Include="SecureGearMentorCommandIdentityTests.cpp" />
     <ClCompile Include="SecureHolyStoneIdentityTests.cpp" />
+    <ClCompile Include="SecureHolyStoneAdvancedDrillParserTests.cpp" />
+    <ClCompile Include="SecureHolyStoneUpgradeIdentityTests.cpp" />
+    <ClCompile Include="SecureHolyStoneCombineIdentityTests.cpp" />
+    <ClCompile Include="SecureHolyStoneImplementSpiritIdentityTests.cpp" />
     <ClCompile Include="SecureHolyStoneParserTests.cpp" />
     <ClCompile Include="SecureHolyStoneRegistryTests.cpp" />
     <ClCompile Include="SecureKitBagItemDeleteIdentityTests.cpp" />
@@ -174,6 +178,7 @@
     <ClCompile Include="..\src\SecureZodiacSkillGridUpgradeIdentity.cpp" />
     <ClCompile Include="..\src\SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.Results.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.CharacterLifecycle.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.ClassSuit.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Pets.cpp" />
@@ -181,6 +186,8 @@
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyEquipment.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStone.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStoneCombine.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStoneImplement.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagDelete.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.KitBagItemMove.cpp" />
@@ -253,6 +260,10 @@
     <ClInclude Include="SecureGearMentorDecomposeIdentityTests.h" />
     <ClInclude Include="SecureGearMentorCommandIdentityTests.h" />
     <ClInclude Include="SecureHolyStoneIdentityTests.h" />
+    <ClInclude Include="SecureHolyStoneAdvancedDrillParserTests.h" />
+    <ClInclude Include="SecureHolyStoneUpgradeIdentityTests.h" />
+    <ClInclude Include="SecureHolyStoneCombineIdentityTests.h" />
+    <ClInclude Include="SecureHolyStoneImplementSpiritIdentityTests.h" />
     <ClInclude Include="SecureHolyStoneTestSupport.h" />
     <ClInclude Include="SecureKitBagItemDeleteIdentityTests.h" />
     <ClInclude Include="SecureKitBagItemMoveIdentityTests.h" />

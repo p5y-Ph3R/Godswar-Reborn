@@ -10,9 +10,11 @@ internal readonly record struct HolyStoneWireIntent(
     HolyStoneTargetLocation TargetLocation,
     int TargetSlot,
     int SocketIndex,
-    int StoneKitBagSlot);
+    int StoneKitBagSlot,
+    int CatalystKitBagSlot,
+    int ThirdMaterialKitBagSlot = -1);
 
-internal static class HolyStoneProtocol
+internal static partial class HolyStoneProtocol
 {
     public const uint SpartaNpcId = 5083;
     public const uint AthensNpcId = 5225;
@@ -31,17 +33,24 @@ internal static class HolyStoneProtocol
     public const int MountAliasFourSubId = 406;
     public const int UpgradeStoneSlotSubId = 506;
     public const int UpgradeEclipseSlotSubId = 606;
+    public const int UpgradeResultPanelSubId = 3100;
     public const int ImplementSpiritPageSubId = 706;
     public const int ImplementStoneSlotSubId = 806;
     public const int ImplementSpiritSlotSubId = 906;
+    public const int ImplementSpiritResultPanelSubId = 3200;
     public const int CombinePageSubId = 907;
+    public const int CombineResultPanelSubId = 3300;
     public const int AdvancedDrillPageSubId = 107;
     public const int AdvancedDrillEquipmentSlotSubId = 207;
     public const int AdvancedDrillSpellSlotSubId = 307;
     public const int FunctionArgumentCount = 18;
     public const int MountScratchArgumentIndex = 0;
+    public const int AdvancedDrillScratchArgumentIndex = 0;
     public const int TargetArgumentIndex = 6;
     public const int StoneArgumentIndex = 7;
+    public const int UpgradeCatalystArgumentIndex = 8;
+    public const int CombineSecondMaterialArgumentIndex = 8;
+    public const int CombineThirdMaterialArgumentIndex = 9;
     public const int RemoveOrdinalArgumentIndex = 10;
     public const int ClientKitBagPageStride = 100;
     public const int ClientKitBagSlotsPerPage = 24;
@@ -191,6 +200,43 @@ internal static class HolyStoneProtocol
     public static bool IsMutationSubId(int subId) =>
         TryResolveBoundaryOperation(subId, out _);
 
+    public static bool IsExactUpgradeBoundary(GamePacket packet) =>
+        HasExactNavigationHeader(packet, UpgradeSubId);
+
+    public static bool IsExactCombinationBoundary(GamePacket packet) =>
+        HasExactNavigationHeader(packet, CombineSubId);
+
+    public static bool IsExactImplementSpiritBoundary(GamePacket packet) =>
+        HasExactNavigationHeader(packet, ImplementSpiritSubId);
+
+    public static HolyStoneWireIntent PendingUpgradeIntent() =>
+        new(
+            HolyStoneCommandOperation.Upgrade,
+            HolyStoneTargetLocation.KitBag,
+            -1,
+            HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot);
+
+    public static HolyStoneWireIntent PendingCombinationIntent() =>
+        new(
+            HolyStoneCommandOperation.Combine,
+            HolyStoneTargetLocation.KitBag,
+            -1,
+            HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot);
+
+    public static HolyStoneWireIntent PendingImplementSpiritIntent() =>
+        new(
+            HolyStoneCommandOperation.ImplementSpirit,
+            HolyStoneTargetLocation.KitBag,
+            -1,
+            HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot);
+
     public static bool TryResolveBoundaryOperation(
         int subId,
         out HolyStoneCommandOperation operation)
@@ -205,6 +251,12 @@ internal static class HolyStoneProtocol
                 HolyStoneCommandOperation.Mount,
             RemoveSubId => HolyStoneCommandOperation.Remove,
             DrillSubId => HolyStoneCommandOperation.Drill,
+            AdvancedDrillSubId =>
+                HolyStoneCommandOperation.AdvancedDrill,
+            UpgradeSubId => HolyStoneCommandOperation.Upgrade,
+            CombineSubId => HolyStoneCommandOperation.Combine,
+            ImplementSpiritSubId =>
+                HolyStoneCommandOperation.ImplementSpirit,
             _ => default
         };
         return Enum.IsDefined(operation);
@@ -283,6 +335,10 @@ internal static class HolyStoneProtocol
             HolyStoneCommandEnvelope.ServerSelectedSocketIndex;
         var stoneKitBagSlot =
             HolyStoneCommandEnvelope.NoStoneKitBagSlot;
+        var catalystKitBagSlot =
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot;
+        var thirdMaterialKitBagSlot =
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot;
         switch (operation)
         {
             case HolyStoneCommandOperation.Mount:
@@ -326,6 +382,111 @@ internal static class HolyStoneProtocol
                 }
                 break;
 
+            case HolyStoneCommandOperation.AdvancedDrill:
+                if (args[AdvancedDrillScratchArgumentIndex] != 0 ||
+                    !TryDecodeKitBagReference(
+                        args[StoneArgumentIndex],
+                        out stoneKitBagSlot) ||
+                    targetLocation != HolyStoneTargetLocation.KitBag ||
+                    targetSlot == stoneKitBagSlot ||
+                    !OnlyArgumentsUsed(
+                        args,
+                        AdvancedDrillScratchArgumentIndex,
+                        TargetArgumentIndex,
+                        StoneArgumentIndex))
+                {
+                    return false;
+                }
+                break;
+
+            case HolyStoneCommandOperation.Upgrade:
+                if (targetLocation != HolyStoneTargetLocation.KitBag ||
+                    !TryDecodeKitBagReference(
+                        args[StoneArgumentIndex],
+                        out stoneKitBagSlot) ||
+                    targetSlot == stoneKitBagSlot)
+                {
+                    return false;
+                }
+
+                var catalystReference =
+                    args[UpgradeCatalystArgumentIndex];
+                if (catalystReference != -1 &&
+                    (!TryDecodeKitBagReference(
+                         catalystReference,
+                         out catalystKitBagSlot) ||
+                     catalystKitBagSlot == targetSlot ||
+                     catalystKitBagSlot == stoneKitBagSlot))
+                {
+                    return false;
+                }
+                if (!OnlyArgumentsUsed(
+                        args,
+                        TargetArgumentIndex,
+                        StoneArgumentIndex,
+                        UpgradeCatalystArgumentIndex))
+                {
+                    return false;
+                }
+                break;
+
+            case HolyStoneCommandOperation.ImplementSpirit:
+                if (targetLocation != HolyStoneTargetLocation.KitBag ||
+                    !TryDecodeKitBagReference(
+                        args[StoneArgumentIndex],
+                        out stoneKitBagSlot) ||
+                    targetSlot == stoneKitBagSlot)
+                {
+                    return false;
+                }
+
+                var goddessReference =
+                    args[UpgradeCatalystArgumentIndex];
+                if (goddessReference != -1 &&
+                    (!TryDecodeKitBagReference(
+                         goddessReference,
+                         out catalystKitBagSlot) ||
+                     catalystKitBagSlot == targetSlot ||
+                     catalystKitBagSlot == stoneKitBagSlot) ||
+                    !OnlyArgumentsUsed(
+                        args,
+                        TargetArgumentIndex,
+                        StoneArgumentIndex,
+                        UpgradeCatalystArgumentIndex))
+                {
+                    return false;
+                }
+                break;
+
+            case HolyStoneCommandOperation.Combine:
+                if (targetLocation != HolyStoneTargetLocation.KitBag ||
+                    !TryDecodeKitBagReference(
+                        args[StoneArgumentIndex],
+                        out stoneKitBagSlot) ||
+                    !TryDecodeKitBagReference(
+                        args[CombineSecondMaterialArgumentIndex],
+                        out catalystKitBagSlot) ||
+                    !TryDecodeKitBagReference(
+                        args[CombineThirdMaterialArgumentIndex],
+                        out thirdMaterialKitBagSlot) ||
+                    new[]
+                    {
+                        targetSlot,
+                        stoneKitBagSlot,
+                        catalystKitBagSlot,
+                        thirdMaterialKitBagSlot
+                    }.Distinct().Count() != 4 ||
+                    !OnlyArgumentsUsed(
+                        args,
+                        TargetArgumentIndex,
+                        StoneArgumentIndex,
+                        CombineSecondMaterialArgumentIndex,
+                        CombineThirdMaterialArgumentIndex))
+                {
+                    return false;
+                }
+                break;
+
             default:
                 return false;
         }
@@ -335,7 +496,9 @@ internal static class HolyStoneProtocol
             targetLocation,
             targetSlot,
             socketIndex,
-            stoneKitBagSlot);
+            stoneKitBagSlot,
+            catalystKitBagSlot,
+            thirdMaterialKitBagSlot);
         return true;
     }
 
@@ -352,6 +515,12 @@ internal static class HolyStoneProtocol
             MountSubId => HolyStoneCommandOperation.Mount,
             RemoveSubId => HolyStoneCommandOperation.Remove,
             DrillSubId => HolyStoneCommandOperation.Drill,
+            AdvancedDrillSubId =>
+                HolyStoneCommandOperation.AdvancedDrill,
+            UpgradeSubId => HolyStoneCommandOperation.Upgrade,
+            CombineSubId => HolyStoneCommandOperation.Combine,
+            ImplementSpiritSubId =>
+                HolyStoneCommandOperation.ImplementSpirit,
             _ => default
         };
         return Enum.IsDefined(operation);
@@ -373,61 +542,4 @@ internal static class HolyStoneProtocol
         return false;
     }
 
-    public static int EncodeKitBagReference(int slot)
-    {
-        if (slot is
-            < HolyStoneCommandEnvelope.MinimumKitBagSlot or
-            > HolyStoneCommandEnvelope.MaximumKitBagSlot)
-        {
-            throw new ArgumentOutOfRangeException(nameof(slot));
-        }
-
-        var page = slot / ClientKitBagSlotsPerPage;
-        var pageSlot = slot % ClientKitBagSlotsPerPage;
-        return checked((page * ClientKitBagPageStride) + pageSlot);
-    }
-
-    private static bool TryDecodeKitBagReference(
-        int reference,
-        out int slot)
-    {
-        if (reference < 0)
-        {
-            slot = -1;
-            return false;
-        }
-
-        var page = reference / ClientKitBagPageStride;
-        var pageSlot = reference % ClientKitBagPageStride;
-        if (page is < 0 or >= ClientKitBagPageCount ||
-            pageSlot is < 0 or >= ClientKitBagSlotsPerPage)
-        {
-            slot = -1;
-            return false;
-        }
-
-        slot = checked((page * ClientKitBagSlotsPerPage) + pageSlot);
-        return slot is
-            >= HolyStoneCommandEnvelope.MinimumKitBagSlot and
-            <= HolyStoneCommandEnvelope.MaximumKitBagSlot;
-    }
-
-    private static bool OnlyArgumentsUsed(
-        IReadOnlyList<int> args,
-        params int[] usedIndexes)
-    {
-        for (var index = 0; index < args.Count; index++)
-        {
-            if (usedIndexes.Contains(index))
-            {
-                continue;
-            }
-            if (args[index] != -1)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
 }

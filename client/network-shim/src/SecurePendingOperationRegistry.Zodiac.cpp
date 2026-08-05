@@ -70,6 +70,7 @@ SecurePendingOperationRegistry::DescribeZodiacSkillGridUpgrade(
     const int identity[SecureGearSelectionCapacity]{
         command.gridIndex,
         -1,
+        -1,
         -1};
 
     AcquireSRWLockExclusive(&lock_);
@@ -152,6 +153,7 @@ SecurePendingOperationRegistry::DescribeZodiacSkillGridSelection(
     const int identity[SecureGearSelectionCapacity]{
         command.gridIndex,
         command.selectedSkillKind,
+        -1,
         -1};
     AcquireSRWLockExclusive(&lock_);
     Prune(now);

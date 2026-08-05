@@ -70,11 +70,14 @@ internal sealed partial class GameClientHandler
             var receipt = execution.Receipt ??
                 throw new InvalidDataException(
                     "A durable Holy Stone replay has no receipt.");
+            var replayIntent = ResolveHolyStoneReplayIntent(
+                intent,
+                receipt);
             ValidateHolyStoneReceiptIdentity(
                 _character.Id,
                 npcId,
                 dialogIndex,
-                intent,
+                replayIntent,
                 receipt);
             var kitBagBeforeReplay = _character.KitBag;
             await ReloadDurableHolyStoneProjectionAsync(
@@ -127,6 +130,54 @@ internal sealed partial class GameClientHandler
                 $"pre-route replay failed: {ex.Message}");
             return true;
         }
+    }
+
+    private static HolyStoneWireIntent ResolveHolyStoneReplayIntent(
+        HolyStoneWireIntent intent,
+        HolyStoneExecutionReceipt receipt)
+    {
+        if (intent.Operation is not (
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit))
+        {
+            return intent;
+        }
+        var hasCompleteIdentity =
+            intent.TargetSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot &&
+            intent.StoneKitBagSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot &&
+            (intent.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.ImplementSpirit ||
+             intent.CatalystKitBagSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot &&
+             intent.ThirdMaterialKitBagSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot);
+        if (hasCompleteIdentity)
+        {
+            return intent;
+        }
+
+        // Staged stock confirmations carry item identity only in their
+        // preceding 10193 selection packets. Those selections are one-shot and
+        // may no longer exist when the same secure UUID is retried after a lost
+        // response. The durable receipt is the authoritative identity for that
+        // UUID; a new UUID cannot enter this branch because it has no inbox row.
+        var thirdMaterialSlot = receipt.Operation ==
+                HolyStoneCommandOperation.Combine
+            ? receipt.CombinationEvidence?.ThirdMaterialKitBagSlot ??
+                HolyStoneCommandEnvelope.NoStoneKitBagSlot
+            : HolyStoneCommandEnvelope.NoStoneKitBagSlot;
+        return intent with
+        {
+            TargetLocation = receipt.TargetLocation,
+            TargetSlot = receipt.TargetSlot,
+            StoneKitBagSlot = receipt.StoneKitBagSlot,
+            CatalystKitBagSlot = receipt.CatalystKitBagSlot,
+            ThirdMaterialKitBagSlot = thirdMaterialSlot
+        };
     }
 
     private async Task RejectMalformedSecureHolyStoneAsync(

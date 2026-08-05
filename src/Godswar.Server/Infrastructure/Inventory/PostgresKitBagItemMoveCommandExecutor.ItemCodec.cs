@@ -42,7 +42,11 @@ internal sealed partial class PostgresKitBagItemMoveCommandExecutor
             ClassAttribute1 = ReadNullableAttribute(reader, 33),
             ClassAttribute2 = ReadNullableAttribute(reader, 34),
             ElementalAttribute1 = ReadNullableAttribute(reader, 35),
-            ElementalAttribute2 = ReadNullableAttribute(reader, 36)
+            ElementalAttribute2 = ReadNullableAttribute(reader, 36),
+            Socket1Value = ReadNullableSmallint(reader, 37),
+            Socket2Value = ReadNullableSmallint(reader, 38),
+            Socket3Value = ReadNullableSmallint(reader, 39),
+            Socket4Value = ReadNullableSmallint(reader, 40)
         };
 
     private static int? ReadNullableAttribute(

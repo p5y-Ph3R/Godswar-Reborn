@@ -25,6 +25,7 @@ SecurePendingOperationRegistry::DescribeKitBagItemMove(
     const int identityBagSlots[SecureGearSelectionCapacity]{
         sourceBagSlot,
         destinationBagSlot,
+        -1,
         -1};
 
     AcquireSRWLockExclusive(&lock_);

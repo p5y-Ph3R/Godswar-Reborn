@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Items;
+
 namespace Godswar.Server.State;
 
 internal readonly record struct HolyStoneSlotMutation(
@@ -18,6 +20,7 @@ internal static class HolyStonePersistencePlanner
     private const int KitBagSlotCount = 96;
 
     public static bool TryCreate(
+        IItemTemplateCatalog templates,
         string equipment,
         string kitBag,
         byte profession,
@@ -30,6 +33,7 @@ internal static class HolyStonePersistencePlanner
         out string summary)
     {
         return TryCreate(
+            templates,
             equipment,
             kitBag,
             profession,
@@ -44,6 +48,7 @@ internal static class HolyStonePersistencePlanner
     }
 
     public static bool TryCreate(
+        IItemTemplateCatalog templates,
         string equipment,
         string kitBag,
         byte profession,
@@ -58,6 +63,7 @@ internal static class HolyStonePersistencePlanner
     {
         plan = null;
         if (!HolyStoneItemMutator.TryApply(
+                templates,
                 equipment,
                 kitBag,
                 profession,

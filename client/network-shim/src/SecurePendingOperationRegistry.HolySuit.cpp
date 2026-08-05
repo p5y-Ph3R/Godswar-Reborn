@@ -77,7 +77,7 @@ SecurePendingOperationRegistry::DescribeHolySuitCommand(
     LegacyPacketDescriptor* descriptor) noexcept {
     SecureLegacyCommandFamily family =
         SecureLegacyCommandFamily::HolySuitStoreExperience;
-    int identity[SecureGearSelectionCapacity]{-1, -1, -1};
+    int identity[SecureGearSelectionCapacity]{-1, -1, -1, -1};
     const auto identityCount =
         CreateHolySuitIdentity(command, identity);
     if (descriptor == nullptr || identityCount == 0 ||

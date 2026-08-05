@@ -15,6 +15,9 @@ internal static partial class PostgresMigrationFoundationChecks
         await PostgresInboxOutboxHardeningMigrationChecks.RunAsync();
         await PostgresEconomyLedgerMigrationChecks.RunAsync();
         CheckHolyStoneMaterialMigration();
+        CheckSocketSpellItemMigration();
+        CheckStockHolyStoneMaterialMigration();
+        CheckHolySpiritEffectivenessMigration();
         await PostgresCharacterCheckpointMigrationChecks.RunAsync();
         await PostgresCharacterLifecycleMigrationChecks.RunAsync();
         await PostgresFighterLevelSealMigrationChecks.RunAsync();

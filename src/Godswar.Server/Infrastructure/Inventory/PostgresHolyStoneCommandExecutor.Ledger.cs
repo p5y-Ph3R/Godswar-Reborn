@@ -51,7 +51,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         IReadOnlyList<InventoryMutation> mutations,
         CancellationToken cancellationToken)
     {
-        if (mutations.Count is < 1 or > 2 ||
+        if (mutations.Count is < 1 or > 4 ||
             mutations.Select(static mutation =>
                     mutation.ItemInstanceId)
                 .Distinct()

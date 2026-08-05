@@ -193,10 +193,34 @@ internal sealed partial class GameClientHandler
             _ => CompactItemEntry.Empty
         };
         var expectedStone =
-            intent.Operation == HolyStoneCommandOperation.Mount
+            intent.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.AdvancedDrill or
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit
                 ? KitBagSlots.GetItem(
                     _character!.KitBag,
                     intent.StoneKitBagSlot)
+                : CompactItemEntry.Empty;
+        var expectedCatalyst =
+            (intent.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit) &&
+            intent.CatalystKitBagSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot
+                ? KitBagSlots.GetItem(
+                    _character!.KitBag,
+                    intent.CatalystKitBagSlot)
+                : CompactItemEntry.Empty;
+        var expectedThirdMaterial =
+            intent.Operation == HolyStoneCommandOperation.Combine &&
+            intent.ThirdMaterialKitBagSlot >=
+                HolyStoneCommandEnvelope.MinimumKitBagSlot
+                ? KitBagSlots.GetItem(
+                    _character!.KitBag,
+                    intent.ThirdMaterialKitBagSlot)
                 : CompactItemEntry.Empty;
         if (!HolyStoneCommandEnvelope.TryCreateCommand(
                 clientOperationId,
@@ -209,6 +233,10 @@ internal sealed partial class GameClientHandler
                 intent.SocketIndex,
                 intent.StoneKitBagSlot,
                 expectedStone.ToCompactString(),
+                intent.CatalystKitBagSlot,
+                expectedCatalyst.ToCompactString(),
+                intent.ThirdMaterialKitBagSlot,
+                expectedThirdMaterial.ToCompactString(),
                 out var command))
         {
             return HolyStoneExecutionResult.InvalidIntent();

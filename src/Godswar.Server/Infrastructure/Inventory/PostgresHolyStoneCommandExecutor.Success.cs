@@ -80,7 +80,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             -1,
             cancellationToken);
 
-        var mutations = new List<InventoryMutation>(2)
+        var mutations = new List<InventoryMutation>(4)
         {
             await UpdateTargetAsync(
                 connection,
@@ -109,11 +109,18 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 -1,
                 cancellationToken);
         }
-        if (plan.Status == HolyStoneCommandResultStatus.Mounted)
+        if (plan.Status == HolyStoneCommandResultStatus.Mounted ||
+            context.Command.Operation ==
+                HolyStoneCommandOperation.AdvancedDrill ||
+            context.Command.Operation == HolyStoneCommandOperation.Upgrade ||
+            context.Command.Operation == HolyStoneCommandOperation.Combine ||
+            context.Command.Operation ==
+                HolyStoneCommandOperation.ImplementSpirit)
         {
             var stone = locked.Stone ??
                 throw new InvalidDataException(
-                    "A successful Mount has no source stone.");
+                    "A successful material-consuming Holy Stone " +
+                    "operation has no source material.");
             mutations.Add(await ConsumeStoneAsync(
                 connection,
                 transaction,
@@ -125,6 +132,43 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 PostgresHolyStoneCommandStage.StoneMutated,
                 1,
                 cancellationToken);
+            if ((context.Command.Operation is
+                    HolyStoneCommandOperation.Upgrade or
+                    HolyStoneCommandOperation.Combine or
+                    HolyStoneCommandOperation.ImplementSpirit) &&
+                locked.Catalyst is not null)
+            {
+                mutations.Add(await ConsumeStoneAsync(
+                    connection,
+                    transaction,
+                    context,
+                    locked.Catalyst,
+                    plan.CatalystAfter,
+                    cancellationToken));
+                await ReachAsync(
+                    PostgresHolyStoneCommandStage.StoneMutated,
+                    2,
+                    cancellationToken);
+            }
+            if (context.Command.Operation ==
+                HolyStoneCommandOperation.Combine)
+            {
+                var thirdMaterial = locked.ThirdMaterial ??
+                    throw new InvalidDataException(
+                        "A successful Holy Stone Combination has no " +
+                        "third material.");
+                mutations.Add(await ConsumeStoneAsync(
+                    connection,
+                    transaction,
+                    context,
+                    thirdMaterial,
+                    plan.ThirdMaterialAfter,
+                    cancellationToken));
+                await ReachAsync(
+                    PostgresHolyStoneCommandStage.StoneMutated,
+                    3,
+                    cancellationToken);
+            }
         }
         else if (plan.Status == HolyStoneCommandResultStatus.Removed)
         {

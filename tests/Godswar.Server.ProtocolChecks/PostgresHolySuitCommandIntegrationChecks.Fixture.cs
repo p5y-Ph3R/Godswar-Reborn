@@ -2,6 +2,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.State;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -37,7 +38,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         await InsertItemAsync(connection, transaction, characterId, 0,
             Item(9023, bound: 1));
         await InsertItemAsync(connection, transaction, characterId, 1,
-            Item(1007));
+            HolySpiritGear());
         await InsertItemAsync(connection, transaction, characterId, 2,
             Item(1007, suit: 501));
         await InsertItemAsync(connection, transaction, characterId, 3,
@@ -76,9 +77,12 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             """
             INSERT INTO character_items(
                 user_id,item_location,slot_index,prop_id,item_quality,
-                item_grade,bound,stack,item_exp,holy_suit_code)
+                item_grade,bound,stack,item_exp,holy_suit_code,
+                holy_socket_count,holy_socket1_effect_id,
+                holy_socket1_level,holy_socket1_value)
             VALUES(@characterId,1,@slot,@itemId,@quality,@grade,
-                @bound,@stack,@itemExp,@holySuitCode);
+                @bound,@stack,@itemExp,@holySuitCode,@socketCount,
+                @socket1EffectId,@socket1Level,@socket1Value);
             """,
             connection,
             transaction);
@@ -91,6 +95,10 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         command.Parameters.AddWithValue("stack", item.Stack);
         command.Parameters.AddWithValue("itemExp", item.Exp);
         command.Parameters.AddWithValue("holySuitCode", item.HolySuitCode);
+        command.Parameters.AddWithValue("socketCount", item.SocketCount);
+        AddNullable(command, "socket1EffectId", item.Socket1EffectId);
+        AddNullable(command, "socket1Level", item.Socket1Level);
+        AddNullable(command, "socket1Value", item.Socket1Value);
         Check.Equal(1, await command.ExecuteNonQueryAsync(),
             $"insert Holy Suit fixture slot {slot}");
     }
@@ -203,6 +211,22 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             Exp = exp,
             HolySuitCode = suit
         };
+
+    private static CompactItemEntry HolySpiritGear() =>
+        Item(1007) with
+        {
+            SocketCount = 1,
+            Socket1EffectId = 2,
+            Socket1Level = 10,
+            Socket1Value = 797
+        };
+
+    private static void AddNullable(
+        NpgsqlCommand command,
+        string name,
+        short? value) =>
+        command.Parameters.Add(name, NpgsqlDbType.Smallint).Value =
+            value.HasValue ? value.Value : DBNull.Value;
 
     private sealed record Fixture(
         int AccountId,

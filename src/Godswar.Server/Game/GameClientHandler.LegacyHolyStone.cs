@@ -30,6 +30,21 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (intent.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.Remove or
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit)
+        {
+            await HandleRawDurableHolyStoneAsync(
+                npcId,
+                dialogIndex,
+                intent,
+                cancellationToken);
+            return;
+        }
+
         var operation = MapOperation(intent.Operation);
         var targetMode =
             intent.TargetLocation switch
@@ -51,22 +66,64 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var preflightRejection =
+            ResolveLegacyDrillPreflightRejection(
+                operation,
+                targetMode,
+                targetSlot,
+                stoneSlot);
+        if (preflightRejection.HasValue)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    dialogIndex,
+                    preflightRejection.Value),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            return;
+        }
+
         var kitBagBeforeMutation = _character!.KitBag;
         LegacyPersistenceMetrics.Record(
             LegacyPersistenceOperation.ApplyWeaponHolyStone);
-        var updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
-            _account!.Id,
-            _character!.Id,
-            operation,
-            targetMode,
-            targetSlot,
-            socketIndex,
-            stoneSlot,
-            destinationSlot,
-            cancellationToken);
+        GameCharacter? updatedCharacter;
+        try
+        {
+            updatedCharacter = await _store.ApplyWeaponHolyStoneAsync(
+                _account!.Id,
+                _character!.Id,
+                operation,
+                targetMode,
+                targetSlot,
+                socketIndex,
+                stoneSlot,
+                destinationSlot,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                "[holy-stone] legacy persistence failed " +
+                $"character={_character.Name} operation={operation} " +
+                $"error={exception.GetType().Name}");
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    dialogIndex,
+                    HolyStoneNativeResults.WrongSelectionSubId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+            return;
+        }
 
         var responseSubId = updatedCharacter is null
-            ? HolyStoneInsufficientFunds
+            ? HolyStoneNativeResults.WrongSelectionSubId
             : operation switch
             {
                 HolyStoneOperation.MountStone =>
@@ -75,7 +132,9 @@ internal sealed partial class GameClientHandler
                     HolyStoneRemoveSuccess,
                 HolyStoneOperation.DrillSocket =>
                     HolyStoneDrillSuccess,
-                _ => HolyStoneInsufficientFunds
+                HolyStoneOperation.AdvancedDrillSocket =>
+                    HolyStoneDrillSuccess,
+                _ => HolyStoneNativeResults.WrongSelectionSubId
             };
 
         await _session.SendAsync(
@@ -144,12 +203,66 @@ internal sealed partial class GameClientHandler
         HolyStoneCommandOperation operation) =>
         operation switch
         {
-            HolyStoneCommandOperation.Mount =>
-                HolyStoneOperation.MountStone,
             HolyStoneCommandOperation.Remove =>
                 HolyStoneOperation.RemoveStone,
             HolyStoneCommandOperation.Drill =>
                 HolyStoneOperation.DrillSocket,
+            HolyStoneCommandOperation.AdvancedDrill =>
+                HolyStoneOperation.AdvancedDrillSocket,
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
+
+    private int? ResolveLegacyDrillPreflightRejection(
+        HolyStoneOperation operation,
+        HolyStoneTargetMode targetMode,
+        int targetSlot,
+        int stoneSlot)
+    {
+        if (operation is not (
+                HolyStoneOperation.DrillSocket or
+                HolyStoneOperation.AdvancedDrillSocket))
+        {
+            return null;
+        }
+
+        if (!HolyStoneItemMutator.TryEvaluateDrill(
+                RequireItemContent().Templates,
+                _character!.Equipment,
+                _character.KitBag,
+                _character.Profession,
+                operation,
+                targetMode,
+                targetSlot,
+                stoneSlot,
+                out var eligibility,
+                out var goldCost))
+        {
+            return HolyStoneNativeResults.TargetNotEquipmentSubId;
+        }
+
+        if (eligibility == HolyStoneDrillEligibilityFailure.None)
+        {
+            return operation == HolyStoneOperation.DrillSocket &&
+                _character.Gold < goldCost
+                    ? HolyStoneNativeResults.InsufficientFundsSubId
+                    : null;
+        }
+
+        if (operation == HolyStoneOperation.AdvancedDrillSocket)
+        {
+            return eligibility switch
+            {
+                HolyStoneDrillEligibilityFailure.SocketSpell =>
+                    HolyStoneNativeResults.AdvancedSpellRequiredSubId,
+                HolyStoneDrillEligibilityFailure.MaximumSockets =>
+                    HolyStoneNativeResults.AdvancedMaximumSocketsSubId,
+                _ => HolyStoneNativeResults.DrillPrerequisiteSubId
+            };
+        }
+
+        return eligibility ==
+            HolyStoneDrillEligibilityFailure.MaximumSockets
+                ? HolyStoneNativeResults.MaximumSocketsSubId
+                : HolyStoneNativeResults.DrillPrerequisiteSubId;
+    }
 }

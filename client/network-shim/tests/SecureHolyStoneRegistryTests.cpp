@@ -126,6 +126,9 @@ void CheckIdentityAndCrossCityRetry(Checks* checks) {
 
     LegacyPacketDescriptor remove{};
     LegacyPacketDescriptor drill{};
+    LegacyPacketDescriptor advancedDrill{};
+    LegacyPacketDescriptor changedAdvancedSpell{};
+    LegacyPacketDescriptor athensAdvancedDrill{};
     checks->Require(
         DescribeHolyStone(
             &registry,
@@ -143,8 +146,35 @@ void CheckIdentityAndCrossCityRetry(Checks* checks) {
             LegacySpartaHolyStoneNpc,
             &drill) ==
                 SecureOperationRegistryResult::Success &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::AdvancedDrill,
+            205,
+            307,
+            LegacySpartaHolyStoneNpc,
+            &advancedDrill) ==
+                SecureOperationRegistryResult::Success &&
         !SameOperation(sparta, remove) &&
-        !SameOperation(remove, drill),
+        !SameOperation(remove, drill) &&
+        !SameOperation(drill, advancedDrill) &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::AdvancedDrill,
+            205,
+            309,
+            LegacySpartaHolyStoneNpc,
+            &changedAdvancedSpell) ==
+                SecureOperationRegistryResult::Success &&
+        !SameOperation(advancedDrill, changedAdvancedSpell) &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::AdvancedDrill,
+            205,
+            307,
+            LegacyAthensHolyStoneNpc,
+            &athensAdvancedDrill) ==
+                SecureOperationRegistryResult::Success &&
+        SameOperation(advancedDrill, athensAdvancedDrill),
         "Distinct Holy Stone families shared operation UUID");
 
     LegacyPacketDescriptor pageZeroDrill{};
@@ -281,6 +311,11 @@ void CheckSettlementAndResultCodec(Checks* checks) {
             LegacyHolyStoneAction::Drill,
             SecureLegacyCommandFamily::HolyStoneDrill,
             -1,
+        },
+        {
+            LegacyHolyStoneAction::AdvancedDrill,
+            SecureLegacyCommandFamily::HolyStoneAdvancedDrill,
+            307,
         },
     };
 

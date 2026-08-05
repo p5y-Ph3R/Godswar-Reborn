@@ -3,6 +3,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.State;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -180,7 +181,10 @@ internal static partial class
                 stack,
                 item_exp,
                 holy_suit_code,
-                holy_socket_count
+                holy_socket_count,
+                holy_socket1_effect_id,
+                holy_socket1_level,
+                holy_socket1_value
             )
             VALUES (
                 @characterId,
@@ -193,7 +197,10 @@ internal static partial class
                 @stack,
                 @itemExp,
                 @holySuitCode,
-                @socketCount
+                @socketCount,
+                @socket1EffectId,
+                @socket1Level,
+                @socket1Value
             )
             RETURNING id;
             """,
@@ -215,6 +222,9 @@ internal static partial class
         command.Parameters.AddWithValue(
             "socketCount",
             item.SocketCount);
+        AddNullable(command, "socket1EffectId", item.Socket1EffectId);
+        AddNullable(command, "socket1Level", item.Socket1Level);
+        AddNullable(command, "socket1Value", item.Socket1Value);
         return Convert.ToInt64(
             await command.ExecuteScalarAsync() ??
             throw new InvalidDataException(
@@ -335,6 +345,13 @@ internal static partial class
         CompactItemEntry.Parse(
             $"[{id},,,,,,{quality},{grade},1,{stack},0,0," +
             ",,,,,0,,,,,,,,,,,,]");
+
+    private static void AddNullable(
+        NpgsqlCommand command,
+        string name,
+        short? value) =>
+        command.Parameters.Add(name, NpgsqlDbType.Smallint).Value =
+            value.HasValue ? value.Value : DBNull.Value;
 
     private sealed record MoveFixture(
         string Username,

@@ -20,7 +20,8 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "reviewed-item-content-v9+holy-suit-v3+canonical-elemental-stones-v1";
+        "items-v9+holy-suit-v3+elemental-v1+socket-spells-v1+" +
+        "holy-stone-materials-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -67,8 +68,22 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+            var hasSocketSpells =
+                await PublishedSocketSpellItemsAreCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+            var hasHolyStoneMaterials =
+                await PublishedHolyStoneMaterialsAreCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
             if (hasClassSuitItems &&
                 hasElementalContent &&
+                hasSocketSpells &&
+                hasHolyStoneMaterials &&
                 publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
             {

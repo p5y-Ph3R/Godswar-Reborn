@@ -93,6 +93,10 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
                 holy_socket5_level = @holySocket5Level,
                 holy_socket6_effect_id = @holySocket6EffectId,
                 holy_socket6_level = @holySocket6Level,
+                holy_socket1_value = @holySocket1Value,
+                holy_socket2_value = @holySocket2Value,
+                holy_socket3_value = @holySocket3Value,
+                holy_socket4_value = @holySocket4Value,
                 updated_at = now()
             WHERE id = @itemInstanceId
               AND user_id = @characterId
@@ -275,7 +279,9 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
         holy_socket3_effect_id, holy_socket3_level,
         holy_socket4_effect_id, holy_socket4_level,
         holy_socket5_effect_id, holy_socket5_level,
-        holy_socket6_effect_id, holy_socket6_level
+        holy_socket6_effect_id, holy_socket6_level,
+        holy_socket1_value, holy_socket2_value,
+        holy_socket3_value, holy_socket4_value
         """;
 
     private const string ItemParameterNames =
@@ -294,6 +300,8 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
         @holySocket3EffectId, @holySocket3Level,
         @holySocket4EffectId, @holySocket4Level,
         @holySocket5EffectId, @holySocket5Level,
-        @holySocket6EffectId, @holySocket6Level
+        @holySocket6EffectId, @holySocket6Level,
+        @holySocket1Value, @holySocket2Value,
+        @holySocket3Value, @holySocket4Value
         """;
 }

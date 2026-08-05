@@ -54,7 +54,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         PostgresHolyStoneCommandStage stage)
     {
         var targetBefore = Weapon(1);
-        var stoneBefore = SimpleItem(9060, grade: 6, stack: 2);
+        var stoneBefore = ImplementedStone(9060, grade: 6);
         var fixture = await CreateFixtureAsync(
             connectionString,
             $"rb{(int)stage}",
@@ -198,7 +198,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "afterc",
             target: Weapon(1),
-            stone: SimpleItem(9060, grade: 7, stack: 2));
+            stone: ImplementedStone(9060, grade: 7));
         var operationId = Guid.NewGuid();
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);

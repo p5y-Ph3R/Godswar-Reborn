@@ -46,7 +46,11 @@ internal enum CommandFamily : ushort
     ClassSuitUpgradeTierIII = 37,
     ClassSuitUpgradeTierIV = 38,
     ClassSuitAddAttribute = 39,
-    ClassSuitDeleteAttribute = 40
+    ClassSuitDeleteAttribute = 40,
+    HolyStoneAdvancedDrill = 41,
+    HolyStoneUpgrade = 42,
+    HolyStoneCombine = 43,
+    HolyStoneImplementSpirit = 44
 }
 
 internal enum CommandIdentityStrength : byte

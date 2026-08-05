@@ -47,15 +47,11 @@ bool TryDecodeBagReference(
 bool IsMutationSubId(std::int32_t subId) noexcept {
     return subId == LegacyHolyStoneMountSubId ||
         subId == LegacyHolyStoneRemoveSubId ||
-        subId == LegacyHolyStoneDrillSubId;
-}
-
-bool IsUnsupportedMutationSubId(std::int32_t subId) noexcept {
-    // The original client labels action 701 as advanced drilling, but no
-    // captured client-to-server commit establishes its argument roles.
-    // Keep its empty page transition untagged and fail closed on every
-    // value-bearing shape until an exact wire capture is available.
-    return subId == LegacyHolyStoneAdvancedDrillSubId;
+        subId == LegacyHolyStoneDrillSubId ||
+        subId == LegacyHolyStoneUpgradeSubId ||
+        subId == LegacyHolyStoneImplementSpiritSubId ||
+        subId == LegacyHolyStoneCombineSubId ||
+        subId == LegacyHolyStoneAdvancedDrillSubId;
 }
 
 bool IsLegacyMutationAlias(std::int32_t subId) noexcept {
@@ -65,7 +61,8 @@ bool IsLegacyMutationAlias(std::int32_t subId) noexcept {
     return subId == 106 ||
         subId == 206 ||
         subId == 306 ||
-        subId == 406;
+        subId == 406 ||
+        subId == 506;
 }
 
 bool AreAllArgumentsUnset(
@@ -86,6 +83,8 @@ bool HasOnlyExpectedArguments(
     std::size_t secondExpected =
         LegacyHolyStoneArgumentCount,
     std::size_t thirdExpected =
+        LegacyHolyStoneArgumentCount,
+    std::size_t fourthExpected =
         LegacyHolyStoneArgumentCount) noexcept {
     for (std::size_t index = 0;
          index < LegacyHolyStoneArgumentCount;
@@ -93,6 +92,7 @@ bool HasOnlyExpectedArguments(
         if (index != firstExpected &&
             index != secondExpected &&
             index != thirdExpected &&
+            index != fourthExpected &&
             arguments[index] != -1) {
             return false;
         }
@@ -126,8 +126,7 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
     const auto subId = static_cast<std::int32_t>(
         ReadUInt32Little(bytes + 16));
     if (!IsMutationSubId(subId) &&
-        !IsLegacyMutationAlias(subId) &&
-        !IsUnsupportedMutationSubId(subId)) {
+        !IsLegacyMutationAlias(subId)) {
         return LegacyHolyStonePacketKind::UnrelatedOrNavigation;
     }
     if (ReadUInt16Little(bytes) != packetBytes ||
@@ -149,20 +148,70 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
             ReadUInt32Little(bytes + 20 + index * 4));
     }
 
-    if (subId == LegacyHolyStoneMountSubId &&
+    const auto npcId = ReadUInt32Little(bytes + 4);
+    if (subId == LegacyHolyStoneCombineSubId) {
+        LegacyHolyStoneCommand staged{};
+        staged.action = LegacyHolyStoneAction::Combine;
+        staged.npcId = npcId;
+        if (AreAllArgumentsUnset(arguments)) {
+            if (command != nullptr) {
+                *command = staged;
+            }
+            return LegacyHolyStonePacketKind::Navigation;
+        }
+
+        if (!HasOnlyExpectedArguments(arguments, 6, 7, 8, 9)) {
+            return LegacyHolyStonePacketKind::InvalidMutation;
+        }
+        for (std::size_t index = 0; index < 4; ++index) {
+            if (!TryDecodeBagReference(
+                    arguments[6 + index],
+                    &staged.combinationBagSlots[index])) {
+                return LegacyHolyStonePacketKind::InvalidMutation;
+            }
+            for (std::size_t prior = 0; prior < index; ++prior) {
+                if (staged.combinationBagSlots[prior] ==
+                    staged.combinationBagSlots[index]) {
+                    return LegacyHolyStonePacketKind::InvalidMutation;
+                }
+            }
+        }
+        staged.combinationCount = 4;
+        if (command != nullptr) {
+            *command = staged;
+        }
+        return LegacyHolyStonePacketKind::StagedCommit;
+    }
+    if (subId == LegacyHolyStoneUpgradeSubId ||
+        subId == LegacyHolyStoneImplementSpiritSubId) {
+        LegacyHolyStoneCommand staged{};
+        staged.action =
+            subId == LegacyHolyStoneUpgradeSubId
+            ? LegacyHolyStoneAction::Upgrade
+            : LegacyHolyStoneAction::ImplementSpirit;
+        staged.npcId = npcId;
+        if (command != nullptr) {
+            *command = staged;
+        }
+        // ItemBtn selections travel in bounded opcode-10193 packets. The
+        // action scratch array has no captured role contract, so it must
+        // never become the operation identity or authorize an item choice.
+        return AreAllArgumentsUnset(arguments)
+            ? LegacyHolyStonePacketKind::Navigation
+            : LegacyHolyStonePacketKind::StagedCommit;
+    }
+
+    if ((subId == LegacyHolyStoneMountSubId ||
+         subId == LegacyHolyStoneAdvancedDrillSubId) &&
         AreAllArgumentsUnset(arguments)) {
         return LegacyHolyStonePacketKind::UnrelatedOrNavigation;
-    }
-    if (IsUnsupportedMutationSubId(subId)) {
-        return AreAllArgumentsUnset(arguments)
-            ? LegacyHolyStonePacketKind::UnrelatedOrNavigation
-            : LegacyHolyStonePacketKind::InvalidMutation;
     }
     if (IsLegacyMutationAlias(subId)) {
         return LegacyHolyStonePacketKind::InvalidMutation;
     }
 
     LegacyHolyStoneCommand parsed{};
+    parsed.npcId = npcId;
     int targetBagSlot = -1;
     int materialBagSlot = -1;
     switch (subId) {
@@ -201,6 +250,20 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
             parsed.action = LegacyHolyStoneAction::Drill;
             parsed.targetReference = targetBagSlot;
             parsed.secondaryValue = -1;
+            break;
+        case LegacyHolyStoneAdvancedDrillSubId:
+            if (arguments[0] != 0 ||
+                !TryDecodeBagReference(
+                    arguments[6], &targetBagSlot) ||
+                !TryDecodeBagReference(
+                    arguments[7], &materialBagSlot) ||
+                targetBagSlot == materialBagSlot ||
+                !HasOnlyExpectedArguments(arguments, 0, 6, 7)) {
+                return LegacyHolyStonePacketKind::InvalidMutation;
+            }
+            parsed.action = LegacyHolyStoneAction::AdvancedDrill;
+            parsed.targetReference = targetBagSlot;
+            parsed.secondaryValue = materialBagSlot;
             break;
         default:
             return LegacyHolyStonePacketKind::UnrelatedOrNavigation;

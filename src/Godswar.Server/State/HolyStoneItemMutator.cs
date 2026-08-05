@@ -1,35 +1,14 @@
-using Godswar.Server.Domain.Inventory;
+using Godswar.Server.Application.Items;
 
 namespace Godswar.Server.State;
 
-internal static class HolyStoneItemMutator
+internal static partial class HolyStoneItemMutator
 {
     public const int MaxSockets = 4;
     public const int HeatedHolyStoneItemId = 9030;
-    private const int BasicMaximumSockets = 2;
-
-    public static bool TryGetDrillGoldCost(
-        string equipment,
-        string kitBag,
-        byte profession,
-        HolyStoneTargetMode targetMode,
-        int targetKitBagSlot,
-        out int goldCost)
-    {
-        goldCost = 0;
-        return TryGetTargetWeapon(
-                equipment,
-                kitBag,
-                profession,
-                targetMode,
-                targetKitBagSlot,
-                out var target) &&
-            HolyStoneDrillCostPolicy.TryGetGoldCost(
-                target.Item.SocketCount,
-                out goldCost);
-    }
 
     public static bool TryApply(
+        IItemTemplateCatalog templates,
         string equipment,
         string kitBag,
         byte profession,
@@ -43,6 +22,7 @@ internal static class HolyStoneItemMutator
         out string summary)
     {
         return TryApply(
+            templates,
             equipment,
             kitBag,
             profession,
@@ -58,6 +38,7 @@ internal static class HolyStoneItemMutator
     }
 
     public static bool TryApply(
+        IItemTemplateCatalog templates,
         string equipment,
         string kitBag,
         byte profession,
@@ -75,18 +56,25 @@ internal static class HolyStoneItemMutator
         updatedKitBag = kitBag;
         summary = string.Empty;
 
-        if (!TryGetTargetWeapon(
+        if (!TryGetTarget(
+                templates,
                 equipment,
                 kitBag,
                 profession,
                 targetMode,
                 targetKitBagSlot,
+                allowNormalCharacterGear:
+                    operation is
+                        HolyStoneOperation.DrillSocket or
+                        HolyStoneOperation.AdvancedDrillSocket,
                 out var target))
         {
-            summary = "no weapon target found";
+            summary = "no supported equipment target found";
             return false;
         }
-        if (operation == HolyStoneOperation.MountStone &&
+        if ((operation is
+                HolyStoneOperation.MountStone or
+                HolyStoneOperation.AdvancedDrillSocket) &&
             target.IsKitBag &&
             target.Slot == stoneKitBagSlot)
         {
@@ -97,7 +85,17 @@ internal static class HolyStoneItemMutator
         var item = target.Item;
         var changed = operation switch
         {
-            HolyStoneOperation.DrillSocket => TryDrill(ref item, out summary),
+            HolyStoneOperation.DrillSocket => TryDrill(
+                templates,
+                ref item,
+                out summary),
+            HolyStoneOperation.AdvancedDrillSocket => TryAdvancedDrill(
+                templates,
+                updatedKitBag,
+                ref item,
+                stoneKitBagSlot,
+                out updatedKitBag,
+                out summary),
             HolyStoneOperation.MountStone => TryMount(updatedKitBag, ref item, socketIndex, stoneKitBagSlot, out updatedKitBag, out summary),
             HolyStoneOperation.RemoveStone => TryRemove(updatedKitBag, ref item, socketIndex, destinationKitBagSlot, out updatedKitBag, out summary),
             _ => false
@@ -120,12 +118,14 @@ internal static class HolyStoneItemMutator
         return true;
     }
 
-    private static bool TryGetTargetWeapon(
+    private static bool TryGetTarget(
+        IItemTemplateCatalog templates,
         string equipment,
         string kitBag,
         byte profession,
         HolyStoneTargetMode targetMode,
         int targetKitBagSlot,
+        bool allowNormalCharacterGear,
         out HolyStoneTarget target)
     {
         if (targetMode == HolyStoneTargetMode.EquippedWeapon)
@@ -134,7 +134,10 @@ internal static class HolyStoneItemMutator
                 equipment,
                 profession,
                 EquipmentSlots.Weapon);
-            if (IsWeapon(equipped.Id))
+            if (IsEligibleTarget(
+                    templates,
+                    equipped,
+                    allowNormalCharacterGear: false))
             {
                 target = new HolyStoneTarget(
                     false,
@@ -150,7 +153,10 @@ internal static class HolyStoneItemMutator
         if (IsKitBagSlot(targetKitBagSlot))
         {
             var requestedItem = KitBagSlots.GetItem(kitBag, targetKitBagSlot);
-            if (IsWeapon(requestedItem.Id))
+            if (IsEligibleTarget(
+                    templates,
+                    requestedItem,
+                    allowNormalCharacterGear))
             {
                 target = new HolyStoneTarget(true, targetKitBagSlot, requestedItem);
                 return true;
@@ -166,7 +172,10 @@ internal static class HolyStoneItemMutator
         for (var slot = 0; slot < 96; slot++)
         {
             var item = KitBagSlots.GetItem(kitBag, slot);
-            if (IsWeapon(item.Id))
+            if (IsEligibleTarget(
+                    templates,
+                    item,
+                    allowNormalCharacterGear))
             {
                 target = new HolyStoneTarget(true, slot, item);
                 return true;
@@ -174,7 +183,10 @@ internal static class HolyStoneItemMutator
         }
 
         var equippedWeapon = EquipmentSlots.GetItem(equipment, profession, EquipmentSlots.Weapon);
-        if (IsWeapon(equippedWeapon.Id))
+        if (IsEligibleTarget(
+                templates,
+                equippedWeapon,
+                allowNormalCharacterGear: false))
         {
             target = new HolyStoneTarget(false, EquipmentSlots.Weapon, equippedWeapon);
             return true;
@@ -182,20 +194,6 @@ internal static class HolyStoneItemMutator
 
         target = default;
         return false;
-    }
-
-    private static bool TryDrill(ref CompactItemEntry item, out string summary)
-    {
-        var current = Math.Clamp(item.SocketCount, (short)0, (short)MaxSockets);
-        if (current >= BasicMaximumSockets)
-        {
-            summary = $"socket_count already {BasicMaximumSockets}";
-            return false;
-        }
-
-        item = item with { SocketCount = (short)(current + 1) };
-        summary = $"drilled socket={current + 1}";
-        return true;
     }
 
     private static bool TryMount(
@@ -443,10 +441,18 @@ internal static class HolyStoneItemMutator
         };
     }
 
-    private static bool IsWeapon(uint itemId)
-    {
-        return itemId is >= 1000 and < 2000;
-    }
+    private static bool IsEligibleTarget(
+        IItemTemplateCatalog templates,
+        CompactItemEntry item,
+        bool allowNormalCharacterGear) =>
+        item.Stack == 1 &&
+        (allowNormalCharacterGear
+            ? HolyStoneEquipmentEligibility.IsNormalCharacterGear(
+                templates,
+                item.Id)
+            : HolyStoneEquipmentEligibility.IsWeapon(
+                templates,
+                item.Id));
 
     private static bool IsKitBagSlot(int slot)
     {

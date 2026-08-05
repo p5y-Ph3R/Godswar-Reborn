@@ -488,6 +488,7 @@ internal sealed partial class JsonGameStore
             var goldCost = 0;
             if (operation == HolyStoneOperation.DrillSocket &&
                 (!HolyStoneItemMutator.TryGetDrillGoldCost(
+                    Godswar.Server.ProtocolChecks.TestItemContent.Catalog,
                     character.Equipment,
                     character.KitBag,
                     character.Profession,
@@ -500,6 +501,7 @@ internal sealed partial class JsonGameStore
             }
 
             if (!HolyStoneItemMutator.TryApply(
+                    Godswar.Server.ProtocolChecks.TestItemContent.Catalog,
                     character.Equipment,
                     character.KitBag,
                     character.Profession,

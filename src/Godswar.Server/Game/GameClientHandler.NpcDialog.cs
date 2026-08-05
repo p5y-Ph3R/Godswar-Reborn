@@ -1,4 +1,3 @@
-using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -53,11 +52,45 @@ internal sealed partial class GameClientHandler
                 subId,
                 out var secureHolyStoneOperation))
         {
-            if (!HolyStoneProtocol.TryReadMutation(
-                    packet,
-                    out var exactNpcId,
-                    out var exactDialogIndex,
-                    out var exactIntent) ||
+            var exactMutation = HolyStoneProtocol.TryReadMutation(
+                packet,
+                out var exactNpcId,
+                out var exactDialogIndex,
+                out var exactIntent);
+            if (!exactMutation &&
+                secureHolyStoneOperation ==
+                    HolyStoneCommandOperation.Upgrade &&
+                HolyStoneProtocol.IsExactUpgradeBoundary(packet))
+            {
+                exactNpcId = npcId;
+                exactDialogIndex = dialogIndex;
+                exactIntent = HolyStoneProtocol.PendingUpgradeIntent();
+                exactMutation = true;
+            }
+            else if (!exactMutation &&
+                     secureHolyStoneOperation ==
+                        HolyStoneCommandOperation.ImplementSpirit &&
+                     HolyStoneProtocol.IsExactImplementSpiritBoundary(packet))
+            {
+                exactNpcId = npcId;
+                exactDialogIndex = dialogIndex;
+                exactIntent =
+                    HolyStoneProtocol.PendingImplementSpiritIntent();
+                exactMutation = true;
+            }
+            else if (!exactMutation &&
+                     secureHolyStoneOperation ==
+                        HolyStoneCommandOperation.Combine &&
+                     !HolyStoneProtocol.IsExactPageNavigation(packet) &&
+                     HolyStoneProtocol.IsExactCombinationBoundary(packet))
+            {
+                exactNpcId = npcId;
+                exactDialogIndex = dialogIndex;
+                exactIntent = HolyStoneProtocol.PendingCombinationIntent();
+                exactMutation = true;
+            }
+
+            if (!exactMutation ||
                 exactNpcId != npcId ||
                 exactDialogIndex != dialogIndex ||
                 exactIntent.Operation != secureHolyStoneOperation)
@@ -90,47 +123,18 @@ internal sealed partial class GameClientHandler
         else if (!_session.IsSecure &&
                  HolyStoneProtocol.IsEndpoint(npcId, dialogIndex))
         {
-            var exactNavigation =
-                !packet.ClientOperationId.HasValue &&
-                HolyStoneProtocol.IsExactPageNavigation(packet);
-            var exactNpcId = 0u;
-            var exactDialogIndex = 0;
-            var exactIntent = default(HolyStoneWireIntent);
-            var exactMutation =
-                !packet.ClientOperationId.HasValue &&
-                HolyStoneProtocol.TryReadMutation(
-                    packet,
-                    out exactNpcId,
-                    out exactDialogIndex,
-                    out exactIntent) &&
-                exactNpcId == npcId &&
-                exactDialogIndex == dialogIndex;
-            if (!exactNavigation && !exactMutation)
+            var rawClassification = await ClassifyRawHolyStoneBoundaryAsync(
+                packet,
+                npcId,
+                dialogIndex,
+                subId,
+                cancellationToken);
+            if (!rawClassification.Accepted)
             {
-                if (HolyStoneProtocol.IsAdvancedDrillSubId(subId))
-                {
-                    await RejectUnsupportedAdvancedHolyStoneAsync(
-                        packet,
-                        npcId,
-                        dialogIndex,
-                        cancellationToken);
-                    return;
-                }
-
-                await _session.SendAsync(
-                    PacketBuilder.NpcFunctionActionResponse(
-                        npcId,
-                        dialogIndex,
-                        HolyStoneNativeResults.WrongSelectionSubId),
-                    cancellationToken,
-                    "NpcFunctionActionResponse");
                 return;
             }
 
-            if (exactMutation)
-            {
-                rawHolyStoneIntent = exactIntent;
-            }
+            rawHolyStoneIntent = rawClassification.Intent;
         }
 
         if (!TryResolveMapNpc(npcId, out var npc))
@@ -371,11 +375,17 @@ internal sealed partial class GameClientHandler
 
         if (route.Behavior == NpcDialogueBehavior.HolyStone)
         {
-            if (HolyStoneProtocol.TryGetPageResponseSubIds(
+            if (!packet.ClientOperationId.HasValue &&
+                rawHolyStoneIntent is null &&
+                HolyStoneProtocol.TryGetPageResponseSubIds(
                     subId,
                     args,
                     out var pageSubIds))
             {
+                PrepareHolyStoneSelectionContext(
+                    npcId,
+                    dialogIndex,
+                    subId);
                 await _session.SendAsync(
                     PacketBuilder.NpcFunctionActionResponse(
                         npcId,
@@ -386,18 +396,54 @@ internal sealed partial class GameClientHandler
                 return;
             }
 
-            if (HolyStoneProtocol.IsAdvancedDrillSubId(subId))
-            {
-                await RejectUnsupportedAdvancedHolyStoneAsync(
-                    packet,
-                    npcId,
-                    dialogIndex,
-                    cancellationToken);
-                return;
-            }
-
             if (secureHolyStoneIntent is { } holyStoneIntent)
             {
+                if (!TryResolveAdvancedDrillSelections(
+                        npcId,
+                        dialogIndex,
+                        args,
+                        holyStoneIntent,
+                        out holyStoneIntent) ||
+                    !TryResolveUpgradeSelections(
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent,
+                        out holyStoneIntent) ||
+                    !TryResolveImplementSpiritSelections(
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent,
+                        out holyStoneIntent) ||
+                    !TryResolveCombinationSelections(
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent,
+                        out holyStoneIntent))
+                {
+                    if ((holyStoneIntent.Operation is
+                            HolyStoneCommandOperation.Upgrade or
+                            HolyStoneCommandOperation.Combine or
+                            HolyStoneCommandOperation.ImplementSpirit) &&
+                        await TryReplayDurableHolyStoneBeforeRouteRejectionAsync(
+                            packet,
+                            npcId,
+                            dialogIndex,
+                            holyStoneIntent,
+                            cancellationToken))
+                    {
+                        return;
+                    }
+
+                    await RejectMalformedSecureHolyStoneAsync(
+                        packet,
+                        npcId,
+                        dialogIndex,
+                        holyStoneIntent.Operation,
+                        "item_selection_context_mismatch",
+                        cancellationToken);
+                    return;
+                }
+
                 await HandleDurableHolyStoneAsync(
                     npcId,
                     dialogIndex,
@@ -405,6 +451,43 @@ internal sealed partial class GameClientHandler
                     packet.ClientOperationId!.Value,
                     cancellationToken);
                 return;
+            }
+
+            if (rawHolyStoneIntent is { } rawIntent)
+            {
+                if (!TryResolveAdvancedDrillSelections(
+                        npcId,
+                        dialogIndex,
+                        args,
+                        rawIntent,
+                        out rawIntent) ||
+                    !TryResolveRawUpgradeSelections(
+                        npcId,
+                        dialogIndex,
+                        rawIntent,
+                        out rawIntent) ||
+                    !TryResolveRawImplementSpiritSelections(
+                        npcId,
+                        dialogIndex,
+                        rawIntent,
+                        out rawIntent) ||
+                    !TryResolveRawCombinationSelections(
+                        npcId,
+                        dialogIndex,
+                        rawIntent,
+                        out rawIntent))
+                {
+                    await _session.SendAsync(
+                        PacketBuilder.NpcFunctionActionResponse(
+                            npcId,
+                            dialogIndex,
+                            HolyStoneNativeResults.WrongSelectionSubId),
+                        cancellationToken,
+                        "NpcFunctionActionResponse");
+                    return;
+                }
+
+                rawHolyStoneIntent = rawIntent;
             }
 
             // A UUID-bearing command is an authenticated secure command
@@ -487,26 +570,5 @@ internal sealed partial class GameClientHandler
             rawHolyStoneIntent,
             cancellationToken);
     }
-
-    private static CommandFamily?
-        ResolveSecureGearMentorCommandFamily(int wireSubId) =>
-        wireSubId switch
-        {
-            GearEnhancerProtocol.DecomposeGearSubId =>
-                CommandFamily.GearMentorDecomposeGear,
-            GearEnhancerProtocol.EnhanceAttributeSubId =>
-                CommandFamily.GearMentorEnhanceAttribute,
-            GearEnhancerProtocol.AddAttributeSubId =>
-                CommandFamily.GearMentorAddAttribute,
-            GearEnhancerProtocol.MakeAttributeStoneSubId =>
-                CommandFamily.GearMentorMakeAttributeStone,
-            GearEnhancerProtocol.DeleteAttributesSubId =>
-                CommandFamily.GearMentorDeleteAttribute,
-            GearEnhancerProtocol.TransformCrystalSubId =>
-                CommandFamily.GearMentorTransformCrystal,
-            GearEnhancerProtocol.CombineGemPiecesMenuSubId =>
-                CommandFamily.GearMentorCombineGemPieces,
-            _ => null
-        };
 
 }

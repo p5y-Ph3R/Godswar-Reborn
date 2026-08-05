@@ -381,6 +381,7 @@ internal sealed partial class GameClientHandler
     private void ClearGearEnhancerSelection()
     {
         _gearEnhancerSelectionContext = null;
+        _holyStoneCombinationSelectionContext = null;
         _gearMentorOperationPageSubId = null;
     }
 

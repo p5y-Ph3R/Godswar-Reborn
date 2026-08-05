@@ -124,7 +124,8 @@ SecurePendingOperationRegistry::DescribeClassSuitNavigation(
     // shipped client. Requiring the completed ordered clear snapshot prevents
     // the page-opening navigation, a partial clear, or live stale selections
     // from becoming an authoritative command.
-    int stagedSelection[SecureGearSelectionCapacity]{-1, -1, -1};
+    int stagedSelection[SecureGearSelectionCapacity]{
+        -1, -1, -1, -1};
     std::size_t stagedSelectionCount = 0;
     if (navigation.action != LegacyClassSuitAction::DeleteAttribute ||
         !hasPendingClearedSelection_ ||
@@ -170,7 +171,8 @@ SecurePendingOperationRegistry::DescribeClassSuitCommandLocked(
     int identity[SecureGearSelectionCapacity]{
         command.gearReference,
         command.secondaryBagSlot,
-        command.tertiaryBagSlot};
+        command.tertiaryBagSlot,
+        -1};
     const std::size_t identityCount =
         command.tertiaryBagSlot >= 0
         ? 3
@@ -181,6 +183,7 @@ SecurePendingOperationRegistry::DescribeClassSuitCommandLocked(
         return SecureOperationRegistryResult::InvalidPacket;
     }
     int expectedSelection[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};
@@ -206,6 +209,7 @@ SecurePendingOperationRegistry::DescribeClassSuitCommandLocked(
         return SecureOperationRegistryResult::NoCharacter;
     }
     int stagedSelection[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};

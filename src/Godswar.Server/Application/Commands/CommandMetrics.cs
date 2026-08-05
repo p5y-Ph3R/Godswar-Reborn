@@ -106,6 +106,12 @@ internal static class CommandMetrics
                 "holy_stone_remove",
             CommandFamily.HolyStoneDrill =>
                 "holy_stone_drill",
+            CommandFamily.HolyStoneAdvancedDrill =>
+                "holy_stone_advanced_drill",
+            CommandFamily.HolyStoneUpgrade =>
+                "holy_stone_upgrade",
+            CommandFamily.HolyStoneCombine =>
+                "holy_stone_combine",
             CommandFamily.ZodiacSkillGridActivation =>
                 "zodiac_skill_grid_activation",
             CommandFamily.ZodiacSkillGridUpgrade =>

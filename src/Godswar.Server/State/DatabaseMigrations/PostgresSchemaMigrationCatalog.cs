@@ -239,6 +239,9 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateClassSuitAttributeSlots(),
         CreateElementalAttributeSlots(),
         CreateItemContentV8Release(),
-        CreateItemContentV9Release()
+        CreateItemContentV9Release(),
+        CreateSocketSpellItemTemplates(),
+        ReconcileStockHolyStoneMaterialTemplates(),
+        CreateHolySpiritEffectivenessValues()
     ];
 }

@@ -62,8 +62,10 @@ internal sealed class LoopbackBackhaulWorker : IAsyncDisposable
         X509Certificate2 gatewayCertificate,
         byte[] marker)
     {
+        // Match the direct mTLS check: endpoint security may proxy IPv4
+        // loopback TLS, which correctly fails the exact worker leaf pin.
         var listener = new TcpListener(
-            IPAddress.Loopback,
+            IPAddress.IPv6Loopback,
             0);
         listener.Start(16);
         BackhaulHandshakeGate? gate = null;

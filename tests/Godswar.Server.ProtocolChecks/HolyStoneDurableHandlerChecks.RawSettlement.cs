@@ -9,8 +9,9 @@ internal static partial class HolyStoneDurableHandlerChecks
 {
     private static async Task CheckRawSettlementOrderingAsync()
     {
-        await CheckRawStackDecrementSettlementAsync();
-        await CheckRawBagTargetSettlementAsync();
+        // Mount and Remove now use the durable command executor. Their
+        // projection ordering is covered by the durable receipt checks; this
+        // legacy-store settlement suite remains only for basic Drill.
         await CheckRawDrillBagSettlementAsync();
     }
 
@@ -98,10 +99,15 @@ internal static partial class HolyStoneDurableHandlerChecks
 
     private static async Task CheckRawDrillBagSettlementAsync()
     {
+        var drillTarget = WeaponBefore with
+        {
+            Id = 1035,
+            SocketCount = 1
+        };
         var bag = KitBagSlots.SetSlot(
             GameDefaults.EmptyKitBag,
             WeaponSlot,
-            WeaponBefore.ToCompactString());
+            drillTarget.ToCompactString());
         await using var fixture = await CreateRawFixtureAsync(
             bag,
             character =>

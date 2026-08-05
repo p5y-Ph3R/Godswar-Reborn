@@ -1,5 +1,6 @@
 using System.Globalization;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Inventory;
@@ -81,28 +82,59 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             locked.Target?.Item.ToCompactString() ?? "[]";
         var stoneBefore =
             locked.Stone?.Item.ToCompactString() ?? "[]";
+        var catalystBefore =
+            locked.Catalyst?.Item.ToCompactString() ?? "[]";
+        var thirdMaterialBefore =
+            locked.ThirdMaterial?.Item.ToCompactString() ?? "[]";
         var success = plan.IsSuccess;
         var targetAfter = success
             ? plan.TargetAfter.ToCompactString()
             : targetBefore;
         var stoneAfter =
-            context.Command.Operation ==
-                HolyStoneCommandOperation.Mount
+            context.Command.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.AdvancedDrill or
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit
                 ? success
                     ? plan.StoneAfter.ToCompactString()
                     : stoneBefore
                 : "[]";
         var hasOutput =
             plan.Status == HolyStoneCommandResultStatus.Removed;
+        var catalystAfter =
+            context.Command.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit
+                ? success
+                    ? plan.CatalystAfter.ToCompactString()
+                    : catalystBefore
+                : "[]";
+        var combinationEvidence =
+            context.Command.Operation == HolyStoneCommandOperation.Combine
+                ? new HolyStoneCombinationReceiptEvidence(
+                    context.Command.ThirdMaterialKitBagSlot,
+                    locked.ThirdMaterial?.ItemInstanceId,
+                    context.Command.ExpectedThirdMaterialCompactItemState,
+                    thirdMaterialBefore,
+                    success
+                        ? plan.ThirdMaterialAfter.ToCompactString()
+                        : thirdMaterialBefore)
+                : null;
         return new HolyStoneExecutionReceipt(
             context.Subject.CharacterId,
             context.Command.Operation,
             context.Command.NpcId,
             context.Command.DialogIndex,
             plan.Status,
-            HolyStoneNativeResults.GetResultSubId(
+            HolySpiritNativeResult.GetResultSubId(
                 context.Command.Operation,
-                plan.Status),
+                plan.Status,
+                targetBefore,
+                targetAfter,
+                stoneBefore),
             context.Command.TargetLocation,
             context.Command.TargetSlot,
             plan.SocketIndex,
@@ -127,6 +159,14 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             walletRevision,
             inventoryRevision,
             auditId.ToString(CultureInfo.InvariantCulture),
-            eventId);
+            eventId,
+            context.Command.CatalystKitBagSlot,
+            locked.Catalyst?.ItemInstanceId,
+            context.Command.ExpectedCatalystCompactItemState,
+            catalystBefore,
+            catalystAfter,
+            plan.UpgradeRoll,
+            plan.UpgradeSuccessRate,
+            combinationEvidence);
     }
 }

@@ -72,7 +72,11 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                                 'class_attribute2', NULL)
                     END) || jsonb_build_object(
                         'elemental_attribute1', NULL,
-                        'elemental_attribute2', NULL) AS item_state
+                        'elemental_attribute2', NULL,
+                        'holy_socket1_value', NULL,
+                        'holy_socket2_value', NULL,
+                        'holy_socket3_value', NULL,
+                        'holy_socket4_value', NULL) AS item_state
                 FROM canonical_before
             ),
             actual_items AS (

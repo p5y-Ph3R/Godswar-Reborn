@@ -17,7 +17,9 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         await using var command = CreateCommand(
             """
             UPDATE public.character_items
-            SET holy_socket_count = @socketCount,
+            SET item_grade = @itemGrade,
+                bound = @bound,
+                holy_socket_count = @socketCount,
                 holy_socket1_effect_id = @socket1Effect,
                 holy_socket1_level = @socket1Level,
                 holy_socket2_effect_id = @socket2Effect,
@@ -26,6 +28,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 holy_socket3_level = @socket3Level,
                 holy_socket4_effect_id = @socket4Effect,
                 holy_socket4_level = @socket4Level,
+                holy_socket1_value = @socket1Value,
+                holy_socket2_value = @socket2Value,
+                holy_socket3_value = @socket3Value,
+                holy_socket4_value = @socket4Value,
                 holy_socket5_effect_id = NULL,
                 holy_socket5_level = NULL,
                 holy_socket6_effect_id = NULL,
@@ -52,6 +58,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         command.Parameters.AddWithValue(
             "socketCount",
             after.SocketCount);
+        command.Parameters.AddWithValue(
+            "itemGrade",
+            after.Grade);
+        command.Parameters.AddWithValue("bound", after.Bound);
         AddNullableSmallint(
             command,
             "socket1Effect",
@@ -84,6 +94,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             command,
             "socket4Level",
             after.Socket4Level);
+        AddNullableSmallint(command, "socket1Value", after.Socket1Value);
+        AddNullableSmallint(command, "socket2Value", after.Socket2Value);
+        AddNullableSmallint(command, "socket3Value", after.Socket3Value);
+        AddNullableSmallint(command, "socket4Value", after.Socket4Value);
         var afterState =
             await command.ExecuteScalarAsync(cancellationToken)
                 as string ??
@@ -130,7 +144,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                     old_item
                 )
                 SELECT
-                    'holy-stone-mount',
+                    @auditSource,
                     'delete',
                     user_id,
                     item_location,
@@ -151,11 +165,14 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 "characterId",
                 context.Subject.CharacterId);
             delete.Parameters.AddWithValue("slotIndex", stone.Slot);
+            delete.Parameters.AddWithValue(
+                "auditSource",
+                MaterialAuditSource(context.Command.Operation));
             if (await delete.ExecuteNonQueryAsync(
                     cancellationToken) != 1)
             {
                 throw new InvalidDataException(
-                    "The consumed Holy Stone stack was not deleted " +
+                    "The consumed Holy Stone material was not deleted " +
                     "exactly once.");
             }
             return new InventoryMutation(
@@ -196,7 +213,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             await update.ExecuteScalarAsync(cancellationToken)
                 as string ??
             throw new InvalidDataException(
-                "The consumed Holy Stone stack was not decremented " +
+                "The consumed Holy Stone material was not decremented " +
                 "exactly once.");
         return new InventoryMutation(
             stone.ItemInstanceId,
@@ -204,6 +221,20 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             stone.BeforeState,
             afterState);
     }
+
+    private static string MaterialAuditSource(
+        HolyStoneCommandOperation operation) =>
+        operation switch
+        {
+            HolyStoneCommandOperation.Mount => "holy-stone-mount",
+            HolyStoneCommandOperation.AdvancedDrill =>
+                "holy-stone-advanced-drill",
+            HolyStoneCommandOperation.Upgrade => "holy-stone-upgrade",
+            HolyStoneCommandOperation.Combine => "holy-stone-combine",
+            HolyStoneCommandOperation.ImplementSpirit =>
+                "holy-spirit-implement",
+            _ => throw new ArgumentOutOfRangeException(nameof(operation))
+        };
 
     private async Task<long> ReserveItemInstanceIdAsync(
         NpgsqlConnection connection,
@@ -248,7 +279,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 stack,
                 item_exp,
                 holy_suit_code,
-                holy_socket_count
+                holy_socket_count,
+                holy_socket1_effect_id,
+                holy_socket1_level,
+                holy_socket1_value
             )
             VALUES (
                 @itemInstanceId,
@@ -262,7 +296,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 @stack,
                 @itemExp,
                 @holySuitCode,
-                @socketCount
+                @socketCount,
+                @socket1Effect,
+                @socket1Level,
+                @socket1Value
             )
             RETURNING to_jsonb(character_items)::text;
             """,
@@ -301,6 +338,18 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         command.Parameters.AddWithValue(
             "socketCount",
             plan.OutputItem.SocketCount);
+        AddNullableSmallint(
+            command,
+            "socket1Effect",
+            plan.OutputItem.Socket1EffectId);
+        AddNullableSmallint(
+            command,
+            "socket1Level",
+            plan.OutputItem.Socket1Level);
+        AddNullableSmallint(
+            command,
+            "socket1Value",
+            plan.OutputItem.Socket1Value);
         var afterState =
             await command.ExecuteScalarAsync(cancellationToken)
                 as string ??

@@ -203,7 +203,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             Guid.NewGuid(),
             HolySuitCommandOperation.TransferExperience,
             primarySlot: 1,
-            primaryState: Item(1007).ToCompactString(),
+            primaryState: HolySpiritGear().ToCompactString(),
             secondarySlot: 0,
             secondaryState: storeReceipt.Mutations[0]
                 .AfterCompactItemState);
@@ -212,6 +212,12 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             HolySuitExecutionDisposition.Committed,
             HolySuitCommandResultStatus.ExperienceTransferred,
             "full box transfers and is deleted");
+        Check.Equal(
+            797,
+            CompactItemEntry.Parse(
+                transferReceipt.Mutations[0].AfterCompactItemState)
+                .Socket1Value!.Value,
+            "Holy Suit transfer preserves rolled Holy Spirit value");
 
         var ware = await ExecuteAsync(
             executor,

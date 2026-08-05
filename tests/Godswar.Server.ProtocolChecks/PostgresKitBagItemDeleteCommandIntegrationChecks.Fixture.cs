@@ -179,7 +179,11 @@ internal static partial class
                 holy_socket5_effect_id,
                 holy_socket5_level,
                 holy_socket6_effect_id,
-                holy_socket6_level
+                holy_socket6_level,
+                holy_socket1_value,
+                holy_socket2_value,
+                holy_socket3_value,
+                holy_socket4_value
             )
             VALUES (
                 @characterId,
@@ -214,7 +218,11 @@ internal static partial class
                 @socket5EffectId,
                 @socket5Level,
                 @socket6EffectId,
-                @socket6Level
+                @socket6Level,
+                @socket1Value,
+                @socket2Value,
+                @socket3Value,
+                @socket4Value
             );
             """,
             connection,
@@ -290,6 +298,10 @@ internal static partial class
             "socket6EffectId",
             item.Socket6EffectId);
         AddNullable(command, "socket6Level", item.Socket6Level);
+        AddNullable(command, "socket1Value", item.Socket1Value);
+        AddNullable(command, "socket2Value", item.Socket2Value);
+        AddNullable(command, "socket3Value", item.Socket3Value);
+        AddNullable(command, "socket4Value", item.Socket4Value);
         Check.Equal(
             1,
             await command.ExecuteNonQueryAsync(),

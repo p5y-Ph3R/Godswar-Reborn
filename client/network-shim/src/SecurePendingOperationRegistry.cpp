@@ -23,13 +23,6 @@ bool DefaultClock(
     return ReadSystemUnixMilliseconds(unixMilliseconds);
 }
 
-bool EqualBytes(
-    const std::uint8_t* first,
-    const std::uint8_t* second,
-    std::size_t bytes) noexcept {
-    return std::memcmp(first, second, bytes) == 0;
-}
-
 bool TryResolveCommandFamily(
     LegacyGearMentorAction action,
     SecureLegacyCommandFamily* family) noexcept {
@@ -80,14 +73,14 @@ bool HasValidSelectionCount(
     switch (family) {
         case SecureLegacyCommandFamily::DecomposeGear:
             return selectionCount >= 1 &&
-                selectionCount <= SecureGearSelectionCapacity;
+                selectionCount <= SecureThreeSlotSelectionCount;
         case SecureLegacyCommandFamily::
                 GearMentorEnhanceAttribute:
         case SecureLegacyCommandFamily::
                 GearMentorAddAttribute:
         case SecureLegacyCommandFamily::
                 GearMentorDeleteAttribute:
-            return selectionCount == SecureGearSelectionCapacity;
+            return selectionCount == SecureThreeSlotSelectionCount;
         case SecureLegacyCommandFamily::MakeAttributeStone:
         case SecureLegacyCommandFamily::TransformCrystal:
         case SecureLegacyCommandFamily::CombineGemPieces:
@@ -217,6 +210,7 @@ SecurePendingOperationRegistry::DescribePacket(
     std::uint32_t originEnhancerNpcId = 0;
     std::uint32_t originEnhancerNavigationNpcId = 0;
     int originEnhancerBagSlots[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};
@@ -365,6 +359,7 @@ SecurePendingOperationRegistry::DescribePacket(
     int identityBagSlots[SecureGearSelectionCapacity]{
         -1,
         -1,
+        -1,
         -1};
     std::size_t identitySelectionCount = 0;
     if (isOriginEnhancerCommit) {
@@ -372,7 +367,7 @@ SecurePendingOperationRegistry::DescribePacket(
             identityBagSlots,
             originEnhancerBagSlots,
             sizeof(identityBagSlots));
-        identitySelectionCount = SecureGearSelectionCapacity;
+        identitySelectionCount = SecureThreeSlotSelectionCount;
     } else if (!TryGetIdentitySelection(
                    identityBagSlots,
                    &identitySelectionCount)) {
@@ -471,102 +466,6 @@ SecurePendingOperationRegistry::DescribePacket(
 }
 
 SecureOperationRegistryResult
-SecurePendingOperationRegistry::Resolve(
-    const SecureLegacyCommandResult& result) noexcept {
-    std::uint64_t now = 0;
-    if (!ReadNow(&now)) {
-        return SecureOperationRegistryResult::ClockFailure;
-    }
-    AcquireSRWLockExclusive(&lock_);
-    Prune(now);
-    Entry* entry = FindByOperationId(result.operationId);
-    if (entry == nullptr) {
-        Tombstone* tombstone =
-            FindTombstone(result.operationId);
-        if (tombstone != nullptr) {
-            const bool familyMatches =
-                tombstone->family == result.commandFamily;
-            ReleaseSRWLockExclusive(&lock_);
-            return familyMatches
-                ? SecureOperationRegistryResult::Success
-                : SecureOperationRegistryResult::
-                    FamilyConflict;
-        }
-        ReleaseSRWLockExclusive(&lock_);
-        return SecureOperationRegistryResult::UnknownOperation;
-    }
-    if (entry->family != result.commandFamily) {
-        ReleaseSRWLockExclusive(&lock_);
-        return SecureOperationRegistryResult::FamilyConflict;
-    }
-
-    if (!RememberResolved(*entry, now)) {
-        ReleaseSRWLockExclusive(&lock_);
-        return SecureOperationRegistryResult::ClockFailure;
-    }
-    if (entry->family ==
-        SecureLegacyCommandFamily::EquipmentForge) {
-        if (hasPrincipal_ &&
-            hasCharacter_ &&
-            characterId_ == entry->characterId &&
-            EqualBytes(
-                principal_,
-                entry->principal,
-                sizeof(principal_)) &&
-            ForgeStateMatches(*entry)) {
-            ResetForgeState();
-        }
-        ClearEntry(entry);
-        ReleaseSRWLockExclusive(&lock_);
-        return SecureOperationRegistryResult::Success;
-    }
-    int identityBagSlots[SecureGearSelectionCapacity]{
-        -1,
-        -1,
-        -1};
-    std::size_t identitySelectionCount = 0;
-    if (entry->capturesSelectionState &&
-        hasPrincipal_ &&
-        hasCharacter_ &&
-        characterId_ == entry->characterId &&
-        selectionGeneration_ ==
-            entry->selectionGeneration &&
-        TryGetIdentitySelection(
-            identityBagSlots,
-            &identitySelectionCount) &&
-        EqualSelection(
-            identityBagSlots,
-            identitySelectionCount,
-            entry->capturedSelectionBagSlots,
-            entry->capturedSelectionCount) &&
-        EqualBytes(
-            principal_,
-            entry->principal,
-            sizeof(principal_))) {
-        ResetSelectionState();
-    }
-    if (entry->family ==
-            SecureLegacyCommandFamily::CombineGemPieces &&
-        combinePageArmed_ &&
-        combineNpcId_ == entry->npcId &&
-        combinePageGeneration_ ==
-            entry->combinePageGeneration) {
-        combinePageArmed_ = false;
-        combineNpcId_ = 0;
-    }
-    if (entry->classSuitPageGeneration != 0 &&
-        classSuitPageArmed_ &&
-        classSuitPageNpcId_ == entry->npcId &&
-        classSuitPageGeneration_ ==
-            entry->classSuitPageGeneration) {
-        ClearClassSuitPage();
-    }
-    ClearEntry(entry);
-    ReleaseSRWLockExclusive(&lock_);
-    return SecureOperationRegistryResult::Success;
-}
-
-SecureOperationRegistryResult
 SecurePendingOperationRegistry::SetCharacter(
     int characterId) noexcept {
     if (characterId <= 0) {
@@ -584,6 +483,9 @@ SecurePendingOperationRegistry::SetCharacter(
         combinePageArmed_ = false;
         combineNpcId_ = 0;
         ClearClassSuitPage();
+        ClearHolyStoneUpgradePage();
+        ClearHolyStoneImplementPage();
+        ClearHolyStoneCombinePage();
     }
     ReleaseSRWLockExclusive(&lock_);
     return SecureOperationRegistryResult::Success;
@@ -609,6 +511,12 @@ void SecurePendingOperationRegistry::Clear() noexcept {
     combinePageGeneration_ = 0;
     ClearClassSuitPage();
     classSuitPageGeneration_ = 0;
+    ClearHolyStoneUpgradePage();
+    holyStoneUpgradePageGeneration_ = 0;
+    ClearHolyStoneImplementPage();
+    holyStoneImplementPageGeneration_ = 0;
+    ClearHolyStoneCombinePage();
+    holyStoneCombinePageGeneration_ = 0;
     ReleaseSRWLockExclusive(&lock_);
 }
 

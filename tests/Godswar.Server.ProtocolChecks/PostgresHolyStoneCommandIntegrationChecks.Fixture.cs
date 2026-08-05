@@ -192,7 +192,9 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 holy_socket1_effect_id, holy_socket1_level,
                 holy_socket2_effect_id, holy_socket2_level,
                 holy_socket3_effect_id, holy_socket3_level,
-                holy_socket4_effect_id, holy_socket4_level
+                holy_socket4_effect_id, holy_socket4_level,
+                holy_socket1_value, holy_socket2_value,
+                holy_socket3_value, holy_socket4_value
             )
             VALUES (
                 @characterId, @location, @slot, @itemId,
@@ -201,7 +203,9 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 @socket1Effect, @socket1Level,
                 @socket2Effect, @socket2Level,
                 @socket3Effect, @socket3Level,
-                @socket4Effect, @socket4Level
+                @socket4Effect, @socket4Level,
+                @socket1Value, @socket2Value,
+                @socket3Value, @socket4Value
             )
             RETURNING id;
             """,
@@ -232,6 +236,10 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         AddNullable(command, "socket3Level", item.Socket3Level);
         AddNullable(command, "socket4Effect", item.Socket4EffectId);
         AddNullable(command, "socket4Level", item.Socket4Level);
+        AddNullable(command, "socket1Value", item.Socket1Value);
+        AddNullable(command, "socket2Value", item.Socket2Value);
+        AddNullable(command, "socket3Value", item.Socket3Value);
+        AddNullable(command, "socket4Value", item.Socket4Value);
         return Convert.ToInt64(
             await command.ExecuteScalarAsync() ??
             throw new InvalidDataException(
@@ -255,10 +263,11 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         short? effect1 = null,
         short? level1 = null,
         short? effect2 = null,
-        short? level2 = null) =>
+        short? level2 = null,
+        uint id = 1035) =>
         CompactItemEntry.Empty with
         {
-            Id = 1007,
+            Id = id,
             Quality = 1,
             Grade = 1,
             Bound = 1,
@@ -282,6 +291,42 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             Bound = 1,
             Stack = stack
         };
+
+    private static CompactItemEntry ImplementedStone(
+        uint spiritItemId,
+        short grade)
+    {
+        if (!HolySpiritEffectivenessPolicy.TryGetDefinition(
+                spiritItemId,
+                out var definition) ||
+            !HolySpiritEffectivenessPolicy.TryGetGradeBracket(
+                spiritItemId,
+                grade,
+                out var minimum,
+                out _) ||
+            !HolyStoneAffinityCatalog.TryGetItemId(
+                definition.Affinity,
+                out var holyStoneItemId))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(spiritItemId),
+                spiritItemId,
+                "The fixture requires a supported Holy Spirit and grade.");
+        }
+
+        return CompactItemEntry.Empty with
+        {
+            Id = holyStoneItemId,
+            Quality = 1,
+            Grade = grade,
+            Bound = 1,
+            Stack = 1,
+            SocketCount = 1,
+            Socket1EffectId = definition.EffectId,
+            Socket1Level = grade,
+            Socket1Value = checked((short)minimum)
+        };
+    }
 
     private static async Task<HolyDurableState> ReadStateAsync(
         string connectionString,

@@ -307,6 +307,7 @@ internal sealed partial class PostgresGameStore
         var goldCost = 0;
         if (operation == HolyStoneOperation.DrillSocket &&
             (!HolyStoneItemMutator.TryGetDrillGoldCost(
+                ItemContent.Templates,
                 equipment,
                 kitBag,
                 profession,
@@ -320,6 +321,7 @@ internal sealed partial class PostgresGameStore
         }
 
         if (!HolyStonePersistencePlanner.TryCreate(
+                ItemContent.Templates,
                 equipment,
                 kitBag,
                 profession,

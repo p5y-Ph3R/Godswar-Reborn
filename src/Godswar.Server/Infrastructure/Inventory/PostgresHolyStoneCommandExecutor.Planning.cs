@@ -7,7 +7,6 @@ namespace Godswar.Server.Infrastructure.Inventory;
 
 internal sealed partial class PostgresHolyStoneCommandExecutor
 {
-    private const int BasicMaximumSockets = 2;
     private const int MaximumUsableSockets = 4;
     private const int HeatedHolyStoneItemId = 9030;
 
@@ -25,6 +24,12 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             target?.Item.ToCompactString() ?? "[]";
         var stoneState =
             stone?.Item.ToCompactString() ?? "[]";
+        var catalyst = locked.Catalyst;
+        var catalystState =
+            catalyst?.Item.ToCompactString() ?? "[]";
+        var thirdMaterial = locked.ThirdMaterial;
+        var thirdMaterialState =
+            thirdMaterial?.Item.ToCompactString() ?? "[]";
         if (target is null)
         {
             return Rejected(
@@ -44,18 +49,31 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target.Item,
                 stone?.Item ?? CompactItemEntry.Empty);
         }
-        if (context.Command.Operation ==
-                HolyStoneCommandOperation.Mount &&
+        var consumesSourceMaterial =
+            context.Command.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.AdvancedDrill or
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit;
+        if (consumesSourceMaterial &&
             stone is null)
         {
             return Rejected(
                 context,
-                HolyStoneCommandResultStatus.StoneMissing,
+                context.Command.Operation switch
+                {
+                    HolyStoneCommandOperation.Combine =>
+                        HolyStoneCommandResultStatus
+                            .CombinationSelectionRequired,
+                    HolyStoneCommandOperation.Upgrade =>
+                        MissingUpgradeMaterialStatus(target.Item),
+                    _ => HolyStoneCommandResultStatus.StoneMissing
+                },
                 target.Item,
                 CompactItemEntry.Empty);
         }
-        if (context.Command.Operation ==
-                HolyStoneCommandOperation.Mount &&
+        if (consumesSourceMaterial &&
             !string.Equals(
                 context.Command.ExpectedStoneCompactItemState,
                 stoneState,
@@ -67,6 +85,94 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target.Item,
                 stone!.Item);
         }
+        if ((context.Command.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit) &&
+            context.Command.CatalystKitBagSlot >= 0 &&
+            catalyst is null)
+        {
+            return Rejected(
+                context,
+                context.Command.Operation ==
+                    HolyStoneCommandOperation.Combine
+                    ? HolyStoneCommandResultStatus
+                        .CombinationSelectionRequired
+                    : HolyStoneCommandResultStatus.CatalystMissing,
+                target.Item,
+                stone!.Item);
+        }
+        if ((context.Command.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit) &&
+            !string.Equals(
+                context.Command.ExpectedCatalystCompactItemState,
+                catalystState,
+                StringComparison.Ordinal))
+        {
+            return Rejected(
+                context,
+                context.Command.Operation ==
+                    HolyStoneCommandOperation.Combine
+                    ? HolyStoneCommandResultStatus
+                        .CombinationSelectionRequired
+                    : HolyStoneCommandResultStatus.StaleCatalyst,
+                target.Item,
+                stone!.Item);
+        }
+        if (context.Command.Operation ==
+                HolyStoneCommandOperation.Combine &&
+            thirdMaterial is null)
+        {
+            return Rejected(
+                context,
+                HolyStoneCommandResultStatus.CombinationSelectionRequired,
+                target.Item,
+                stone!.Item);
+        }
+        if (context.Command.Operation ==
+                HolyStoneCommandOperation.Combine &&
+            !string.Equals(
+                context.Command.ExpectedThirdMaterialCompactItemState,
+                thirdMaterialState,
+                StringComparison.Ordinal))
+        {
+            return Rejected(
+                context,
+                HolyStoneCommandResultStatus.CombinationSelectionRequired,
+                target.Item,
+                stone!.Item);
+        }
+
+        if (context.Command.Operation == HolyStoneCommandOperation.Upgrade)
+        {
+            return PlanUpgrade(
+                context,
+                target.Item,
+                stone!.Item,
+                catalyst?.Item ?? CompactItemEntry.Empty);
+        }
+
+        if (context.Command.Operation == HolyStoneCommandOperation.Combine)
+        {
+            return PlanCombination(
+                context,
+                target.Item,
+                stone!.Item,
+                catalyst!.Item,
+                thirdMaterial!.Item);
+        }
+
+        if (context.Command.Operation ==
+            HolyStoneCommandOperation.ImplementSpirit)
+        {
+            return PlanImplementSpirit(
+                context,
+                target.Item,
+                stone!.Item,
+                catalyst?.Item ?? CompactItemEntry.Empty);
+        }
 
         if (target.Item.Stack != 1)
         {
@@ -76,13 +182,19 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target.Item,
                 stone?.Item ?? CompactItemEntry.Empty);
         }
-        if (!_itemContent.Templates.TryGet(
-                target.Item.Id,
-                out var targetTemplate) ||
-            !string.Equals(
-                targetTemplate.Kind,
-                "weapon",
-                StringComparison.OrdinalIgnoreCase))
+        var targetIsEligible =
+            context.Command.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.Remove or
+                HolyStoneCommandOperation.Drill or
+                HolyStoneCommandOperation.AdvancedDrill
+                ? HolyStoneEquipmentEligibility.IsNormalCharacterGear(
+                    _itemContent.Templates,
+                    target.Item.Id)
+                : HolyStoneEquipmentEligibility.IsWeapon(
+                    _itemContent.Templates,
+                    target.Item.Id);
+        if (!targetIsEligible)
         {
             return Rejected(
                 context,
@@ -91,84 +203,40 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 stone?.Item ?? CompactItemEntry.Empty);
         }
 
+        if (!_itemContent.Templates.TryGet(
+                target.Item.Id,
+                out var targetTemplate))
+        {
+            throw new InvalidDataException(
+                "The eligible Holy Stone target has no item template.");
+        }
+
         ValidateSocketState(target.Item);
         return context.Command.Operation switch
         {
             HolyStoneCommandOperation.Mount =>
-                PlanMount(context, target.Item, stone!.Item),
+                PlanMount(
+                    context,
+                    targetTemplate,
+                    target.Item,
+                    stone!.Item),
             HolyStoneCommandOperation.Remove =>
                 PlanRemove(context, target.Item, locked.KitBag),
             HolyStoneCommandOperation.Drill =>
-                PlanDrill(context, target.Item, character.Gold),
+                PlanDrill(
+                    context,
+                    targetTemplate,
+                    target.Item,
+                    character.Gold),
+            HolyStoneCommandOperation.AdvancedDrill =>
+                PlanAdvancedDrill(
+                    context,
+                    targetTemplate,
+                    target.Item,
+                    stone!.Item),
             _ => throw new InvalidDataException(
                 "The Holy Stone operation is unsupported.")
         };
-    }
-
-    private static HolyStonePlan PlanMount(
-        HolyStoneCommandContext context,
-        CompactItemEntry target,
-        CompactItemEntry stone)
-    {
-        if (stone.Id == HeatedHolyStoneItemId)
-        {
-            return Rejected(
-                context,
-                HolyStoneCommandResultStatus.StoneMissingSpirit,
-                target,
-                stone);
-        }
-        if (!TryResolveFireSpirit(stone.Id, out var effectId))
-        {
-            return Rejected(
-                context,
-                HolyStoneCommandResultStatus.StoneNotHolyStone,
-                target,
-                stone);
-        }
-        if (HasSocketEffect(target, effectId))
-        {
-            return Rejected(
-                context,
-                HolyStoneCommandResultStatus.DuplicateSpirit,
-                target,
-                stone);
-        }
-        if (target.SocketCount <= 0)
-        {
-            return Rejected(
-                context,
-                HolyStoneCommandResultStatus.SocketNotDrilled,
-                target,
-                stone);
-        }
-
-        var socketIndex = FindFirstEmptyOpenedSocket(target);
-        if (socketIndex < 0)
-        {
-            return Rejected(
-                context,
-                HolyStoneCommandResultStatus.SocketCapacityReached,
-                target,
-                stone);
-        }
-
-        var level = ResolveStoneLevel(stone);
-        return new HolyStonePlan(
-            HolyStoneCommandResultStatus.Mounted,
-            socketIndex,
-            SetSocket(target, socketIndex, effectId, level),
-            stone.Stack == 1
-                ? CompactItemEntry.Empty
-                : stone with
-                {
-                    Stack = checked((short)(stone.Stack - 1))
-                },
-            -1,
-            CompactItemEntry.Empty,
-            null,
-            null,
-            0);
     }
 
     private static HolyStonePlan PlanRemove(
@@ -188,7 +256,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 CompactItemEntry.Empty);
         }
 
-        var (effectId, level) = GetSocket(target, socketIndex);
+        var (effectId, level, value) = GetSocket(target, socketIndex);
         if (!effectId.HasValue || !level.HasValue)
         {
             return Rejected(
@@ -208,18 +276,37 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 CompactItemEntry.Empty);
         }
 
+        var restoredValue = value;
+        if (!restoredValue.HasValue &&
+            HolySpiritLegacyEffectiveness.TryResolve(
+                effectId.Value,
+                level.Value,
+                out var legacyValue))
+        {
+            restoredValue = legacyValue;
+        }
+        if (!restoredValue.HasValue)
+        {
+            throw new InvalidDataException(
+                "The legacy Holy Spirit effectiveness cannot be resolved.");
+        }
+
         var output = CompactItemEntry.Empty with
         {
-            Id = HeatedHolyStoneItemId,
+            Id = ResolveHolyStoneItemId(effectId.Value),
             Quality = 1,
             Grade = level.Value,
             Bound = 1,
-            Stack = 1
+            Stack = 1,
+            SocketCount = 1,
+            Socket1EffectId = effectId,
+            Socket1Level = level,
+            Socket1Value = restoredValue
         };
         return new HolyStonePlan(
             HolyStoneCommandResultStatus.Removed,
             socketIndex,
-            SetSocket(target, socketIndex, null, null),
+            SetSocket(target, socketIndex, null, null, null),
             CompactItemEntry.Empty,
             destination,
             output,
@@ -230,14 +317,28 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
 
     private static HolyStonePlan PlanDrill(
         HolyStoneCommandContext context,
+        Godswar.Server.Application.Items.ItemTemplateDefinition template,
         CompactItemEntry target,
         int gold)
     {
-        if (target.SocketCount >= BasicMaximumSockets)
+        var eligibility =
+            HolyStoneDrillEligibilityPolicy.ValidateBasic(
+                template,
+                target);
+        if (eligibility ==
+            HolyStoneDrillEligibilityFailure.MaximumSockets)
         {
             return Rejected(
                 context,
                 HolyStoneCommandResultStatus.MaximumSockets,
+                target,
+                CompactItemEntry.Empty);
+        }
+        if (eligibility != HolyStoneDrillEligibilityFailure.None)
+        {
+            return Rejected(
+                context,
+                HolyStoneCommandResultStatus.DrillPrerequisite,
                 target,
                 CompactItemEntry.Empty);
         }
@@ -271,6 +372,58 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             null,
             null,
             goldCost);
+    }
+
+    private static HolyStonePlan PlanAdvancedDrill(
+        HolyStoneCommandContext context,
+        Godswar.Server.Application.Items.ItemTemplateDefinition template,
+        CompactItemEntry target,
+        CompactItemEntry socketSpell)
+    {
+        var eligibility =
+            HolyStoneDrillEligibilityPolicy.ValidateAdvanced(
+                template,
+                target,
+                socketSpell);
+        var rejection = eligibility switch
+        {
+            HolyStoneDrillEligibilityFailure.None =>
+                (HolyStoneCommandResultStatus?)null,
+            HolyStoneDrillEligibilityFailure.MaximumSockets =>
+                HolyStoneCommandResultStatus.MaximumSockets,
+            HolyStoneDrillEligibilityFailure.SocketSpell =>
+                HolyStoneCommandResultStatus.StoneNotHolyStone,
+            _ => HolyStoneCommandResultStatus.DrillPrerequisite
+        };
+        if (rejection.HasValue)
+        {
+            return Rejected(
+                context,
+                rejection.Value,
+                target,
+                socketSpell);
+        }
+
+        var socketIndex = target.SocketCount;
+        var spellAfter = socketSpell.Stack == 1
+            ? CompactItemEntry.Empty
+            : socketSpell with
+            {
+                Stack = checked((short)(socketSpell.Stack - 1))
+            };
+        return new HolyStonePlan(
+            HolyStoneCommandResultStatus.Drilled,
+            socketIndex,
+            target with
+            {
+                SocketCount = checked((short)(socketIndex + 1))
+            },
+            spellAfter,
+            -1,
+            CompactItemEntry.Empty,
+            null,
+            null,
+            0);
     }
 
     private static HolyStonePlan Rejected(
@@ -342,12 +495,14 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
 
         for (var index = 0; index < 6; index++)
         {
-            var (effectId, level) = GetSocket(item, index);
+            var (effectId, level, value) = GetSocket(item, index);
             if (effectId.HasValue != level.HasValue ||
+                value.HasValue && !effectId.HasValue ||
+                value is <= 0 ||
                 effectId is <= 0 ||
                 level is < 1 or > 10 ||
                 index >= item.SocketCount &&
-                (effectId.HasValue || level.HasValue))
+                (effectId.HasValue || level.HasValue || value.HasValue))
             {
                 throw new InvalidDataException(
                     "The target weapon has corrupt Holy Stone state.");
@@ -355,82 +510,57 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         }
     }
 
-    private static (short? EffectId, short? Level) GetSocket(
+    private static (short? EffectId, short? Level, short? Value) GetSocket(
         CompactItemEntry item,
         int index) =>
         index switch
         {
-            0 => (item.Socket1EffectId, item.Socket1Level),
-            1 => (item.Socket2EffectId, item.Socket2Level),
-            2 => (item.Socket3EffectId, item.Socket3Level),
-            3 => (item.Socket4EffectId, item.Socket4Level),
-            4 => (item.Socket5EffectId, item.Socket5Level),
-            5 => (item.Socket6EffectId, item.Socket6Level),
-            _ => (null, null)
+            0 => (item.Socket1EffectId, item.Socket1Level,
+                item.Socket1Value),
+            1 => (item.Socket2EffectId, item.Socket2Level,
+                item.Socket2Value),
+            2 => (item.Socket3EffectId, item.Socket3Level,
+                item.Socket3Value),
+            3 => (item.Socket4EffectId, item.Socket4Level,
+                item.Socket4Value),
+            4 => (item.Socket5EffectId, item.Socket5Level, null),
+            5 => (item.Socket6EffectId, item.Socket6Level, null),
+            _ => (null, null, null)
         };
 
     private static CompactItemEntry SetSocket(
         CompactItemEntry item,
         int index,
         short? effectId,
-        short? level) =>
+        short? level,
+        short? value) =>
         index switch
         {
             0 => item with
             {
                 Socket1EffectId = effectId,
-                Socket1Level = level
+                Socket1Level = level,
+                Socket1Value = value
             },
             1 => item with
             {
                 Socket2EffectId = effectId,
-                Socket2Level = level
+                Socket2Level = level,
+                Socket2Value = value
             },
             2 => item with
             {
                 Socket3EffectId = effectId,
-                Socket3Level = level
+                Socket3Level = level,
+                Socket3Value = value
             },
             3 => item with
             {
                 Socket4EffectId = effectId,
-                Socket4Level = level
+                Socket4Level = level,
+                Socket4Value = value
             },
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
 
-    private static bool TryResolveFireSpirit(
-        uint itemId,
-        out short effectId)
-    {
-        effectId = itemId switch
-        {
-            9060 => 1,
-            9061 => 2,
-            9062 => 5,
-            9063 => 6,
-            9064 => 7,
-            9065 => 8,
-            9066 => 3,
-            9067 => 4,
-            9088 => 17,
-            9089 => 18,
-            _ => 0
-        };
-        return effectId > 0;
-    }
-
-    private static short ResolveStoneLevel(
-        CompactItemEntry stone)
-    {
-        if (stone.Grade > 0)
-        {
-            return checked((short)Math.Clamp((int)stone.Grade, 1, 10));
-        }
-        if (stone.Quality > 0)
-        {
-            return checked((short)Math.Clamp((int)stone.Quality, 1, 10));
-        }
-        return 1;
-    }
 }

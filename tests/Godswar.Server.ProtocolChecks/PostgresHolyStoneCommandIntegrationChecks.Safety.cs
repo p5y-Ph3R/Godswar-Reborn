@@ -22,7 +22,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "nofall",
             target: null,
-            stone: SimpleItem(9060, grade: 5),
+            stone: ImplementedStone(9060, grade: 5),
             additionalBagItems:
             [
                 (0, fallback)
@@ -62,7 +62,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "nodril",
             target: targetBefore,
-            stone: SimpleItem(9060, grade: 5, stack: 2));
+            stone: ImplementedStone(9060, grade: 5));
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
         RequireReceipt(
@@ -83,7 +83,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 fixture.TargetSlot))!.Value.Item,
             "mount never automatically drills");
         Check.Equal(
-            2,
+            1,
             (await ReadItemAsync(
                 connectionString,
                 fixture.CharacterId,
@@ -105,7 +105,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "dupspi",
             target: Weapon(2, effect1: 1, level1: 4),
-            stone: SimpleItem(9060, grade: 8));
+            stone: ImplementedStone(9060, grade: 8));
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
         RequireReceipt(

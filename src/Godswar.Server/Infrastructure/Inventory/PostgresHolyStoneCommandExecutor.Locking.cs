@@ -75,7 +75,9 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 holy_socket6_effect_id, holy_socket6_level,
                 to_jsonb(character_items)::text,
                 class_attribute1, class_attribute2,
-                elemental_attribute1, elemental_attribute2
+                elemental_attribute1, elemental_attribute2,
+                holy_socket1_value, holy_socket2_value,
+                holy_socket3_value, holy_socket4_value
             FROM public.character_items
             WHERE user_id = @characterId
               AND (
@@ -92,6 +94,16 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                     @stoneSlot >= 0
                     AND item_location = 1
                     AND slot_index = @stoneSlot
+                )
+                OR (
+                    @catalystSlot >= 0
+                    AND item_location = 1
+                    AND slot_index = @catalystSlot
+                )
+                OR (
+                    @thirdMaterialSlot >= 0
+                    AND item_location = 1
+                    AND slot_index = @thirdMaterialSlot
                 )
               )
             ORDER BY item_location, slot_index
@@ -114,9 +126,17 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         command.Parameters.AddWithValue(
             "stoneSlot",
             checked((short)context.Command.StoneKitBagSlot));
+        command.Parameters.AddWithValue(
+            "catalystSlot",
+            checked((short)context.Command.CatalystKitBagSlot));
+        command.Parameters.AddWithValue(
+            "thirdMaterialSlot",
+            checked((short)context.Command.ThirdMaterialKitBagSlot));
 
         LockedItem? target = null;
         LockedItem? stone = null;
+        LockedItem? catalyst = null;
+        LockedItem? thirdMaterial = null;
         var kitBag = new Dictionary<short, LockedItem>();
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -140,16 +160,41 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             {
                 target = locked;
             }
-            if (context.Command.Operation ==
-                    HolyStoneCommandOperation.Mount &&
+            if ((context.Command.Operation is
+                    HolyStoneCommandOperation.Mount or
+                    HolyStoneCommandOperation.AdvancedDrill or
+                    HolyStoneCommandOperation.Upgrade or
+                    HolyStoneCommandOperation.Combine or
+                    HolyStoneCommandOperation.ImplementSpirit) &&
                 locked.Location == 1 &&
                 locked.Slot == context.Command.StoneKitBagSlot)
             {
                 stone = locked;
             }
+                if ((context.Command.Operation is
+                    HolyStoneCommandOperation.Upgrade or
+                    HolyStoneCommandOperation.Combine or
+                    HolyStoneCommandOperation.ImplementSpirit) &&
+                locked.Location == 1 &&
+                locked.Slot == context.Command.CatalystKitBagSlot)
+            {
+                catalyst = locked;
+            }
+            if (context.Command.Operation ==
+                    HolyStoneCommandOperation.Combine &&
+                locked.Location == 1 &&
+                locked.Slot == context.Command.ThirdMaterialKitBagSlot)
+            {
+                thirdMaterial = locked;
+            }
         }
 
-        return new LockedCommandItems(target, stone, kitBag);
+        return new LockedCommandItems(
+            target,
+            stone,
+            catalyst,
+            thirdMaterial,
+            kitBag);
     }
 
     private static void ValidatePhysicalItem(LockedItem item)

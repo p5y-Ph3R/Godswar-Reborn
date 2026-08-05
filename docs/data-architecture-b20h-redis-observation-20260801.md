@@ -1,8 +1,8 @@
-# B20H Redis-coordinated local observation
+# B20H Redis-coordinated local observation (historical)
 
-Status: active local-alpha rehearsal; not retirement authorization
+Status: invalidated local-alpha rehearsal; not retirement authorization
 
-## Active run
+## Historical run
 
 The game server now uses the `Redis` operational-coordination provider in the
 main `reborn` Compose project. Redis is a private, disposable coordination
@@ -17,18 +17,26 @@ container; PostgreSQL remains the authoritative durable player-data store.
 | Evidence directory | `artifacts/b20h-observation/20260801T070756Z-db6565382693` |
 | PostgreSQL volume | `reborn_godswar-postgres-data` |
 | Required coordination routes | `23` |
+| Invalidated | `2026-08-01T08:34:55.7875487Z` |
+| Reason | `local-gameplay-compatibility-hotfix` |
 
 The initial export is `in_progress` and confirms observer readiness `1`, Redis
 coordination readiness `1`, exact route minimum/maximum `23`, zero legacy
 invocations, zero missing required samples, matching observation/input hashes,
-matching Redis identity, and no active alerts. The export also deliberately
-records `eligibleForRetirementAuthorization=false` because this is a local
-single-worker alpha rehearsal.
+matching Redis identity, and no active alerts. This partial window was later
+invalidated and cannot be resumed or combined with another run. The export
+also deliberately records `eligibleForRetirementAuthorization=false` because
+this was a local single-worker alpha rehearsal.
+
+The authoritative current-state indicator is the ignored runtime pointer
+`artifacts/b20h-observation/active-observation.json`. Use
+`GetB20HDockerObservation.ps1` to inspect it; this historical document must
+not be used to decide whether an observation is active.
 
 ## Retired rehearsals
 
-Two shorter runs are retained as non-authorizing evidence and must never be
-combined with the active window:
+Two earlier runs are also retained as non-authorizing evidence and must never
+be combined with a later window:
 
 - `20260801T044109Z-d0f3f73c8339` used Local coordination and was invalidated
   for `coordination_topology_correction`.
@@ -43,10 +51,11 @@ Prometheus TSDB directories.
 
 ## Operating boundary
 
-Do not rebuild, recreate, or restart the game server, Redis container, or
-Prometheus observer during this window. Source work may continue, but it must
-not be deployed into these containers. Keep Docker and the host awake and run
-the required gameplay workload, including scheduled world-boss cycles.
+During any active replacement window, do not rebuild, recreate, or restart the
+game server, Redis container, or Prometheus observer. Source work may continue,
+but it must not be deployed into those containers. Keep Docker and the host
+awake and run the required gameplay workload, including scheduled world-boss
+cycles.
 
 Use these read-only checks:
 

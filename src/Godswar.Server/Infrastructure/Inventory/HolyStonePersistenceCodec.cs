@@ -8,7 +8,7 @@ using Godswar.Server.Application.Messaging;
 
 namespace Godswar.Server.Infrastructure.Inventory;
 
-internal static class HolyStonePersistenceCodec
+internal static partial class HolyStonePersistenceCodec
 {
     public const short ContractVersion = 2;
     public const string ConsumerKey =
@@ -31,6 +31,12 @@ internal static class HolyStonePersistenceCodec
             HolyStoneCommandOperation.Mount => "holy_stone_mount",
             HolyStoneCommandOperation.Remove => "holy_stone_remove",
             HolyStoneCommandOperation.Drill => "holy_stone_drill",
+            HolyStoneCommandOperation.AdvancedDrill =>
+                "holy_stone_advanced_drill",
+            HolyStoneCommandOperation.Upgrade => "holy_stone_upgrade",
+            HolyStoneCommandOperation.Combine => "holy_stone_combine",
+            HolyStoneCommandOperation.ImplementSpirit =>
+                "holy_spirit_implement",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
 
@@ -41,6 +47,12 @@ internal static class HolyStonePersistenceCodec
             HolyStoneCommandOperation.Mount => "holy_stone_mount",
             HolyStoneCommandOperation.Remove => "holy_stone_remove",
             HolyStoneCommandOperation.Drill => "holy_stone_drill",
+            HolyStoneCommandOperation.AdvancedDrill =>
+                "holy_stone_advanced_drill",
+            HolyStoneCommandOperation.Upgrade => "holy_stone_upgrade",
+            HolyStoneCommandOperation.Combine => "holy_stone_combine",
+            HolyStoneCommandOperation.ImplementSpirit =>
+                "holy_spirit_implement",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
 
@@ -81,6 +93,40 @@ internal static class HolyStonePersistenceCodec
                 "target_missing",
             HolyStoneCommandResultStatus.StoneMissing =>
                 "stone_missing",
+            HolyStoneCommandResultStatus.DrillPrerequisite =>
+                "drill_prerequisite",
+            HolyStoneCommandResultStatus.Upgraded => "upgraded",
+            HolyStoneCommandResultStatus.UpgradeFailedDowngraded =>
+                "upgrade_failed_downgraded",
+            HolyStoneCommandResultStatus.UpgradeFailedProtected =>
+                "upgrade_failed_protected",
+            HolyStoneCommandResultStatus.TargetNotHolyStone =>
+                "target_not_holy_stone",
+            HolyStoneCommandResultStatus.EclipseStoneRequired =>
+                "eclipse_stone_required",
+            HolyStoneCommandResultStatus.MaximumStoneLevel =>
+                "maximum_stone_level",
+            HolyStoneCommandResultStatus.SignetMismatch =>
+                "signet_mismatch",
+            HolyStoneCommandResultStatus.SignetProtectionUnavailable =>
+                "signet_protection_unavailable",
+            HolyStoneCommandResultStatus.CatalystMissing =>
+                "catalyst_missing",
+            HolyStoneCommandResultStatus.StaleCatalyst =>
+                "stale_catalyst",
+            HolyStoneCommandResultStatus.EclipseLevel1Missing =>
+                "eclipse_level_1_missing",
+            HolyStoneCommandResultStatus.EclipseLevel2Missing =>
+                "eclipse_level_2_missing",
+            HolyStoneCommandResultStatus.EclipseLevel3Missing =>
+                "eclipse_level_3_missing",
+            HolyStoneCommandResultStatus.Combined => "combined",
+            HolyStoneCommandResultStatus.CombinationSelectionRequired =>
+                "combination_selection_required",
+            HolyStoneCommandResultStatus.CombinationNotAllowed =>
+                "combination_not_allowed",
+            HolyStoneCommandResultStatus.SpiritImplemented =>
+                "spirit_implemented",
             _ => throw new ArgumentOutOfRangeException(nameof(status))
         };
 
@@ -134,6 +180,40 @@ internal static class HolyStonePersistenceCodec
             writer.WriteString(
                 "authoritativeStoneAfterCompactItemState",
                 receipt.AuthoritativeStoneAfterCompactItemState);
+            if (receipt.Operation is
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit)
+            {
+                writer.WriteNumber(
+                    "catalystKitBagSlot",
+                    receipt.CatalystKitBagSlot);
+                WriteNullableNumber(
+                    writer,
+                    "catalystItemInstanceId",
+                    receipt.CatalystItemInstanceId);
+                writer.WriteString(
+                    "expectedCatalystCompactItemState",
+                    receipt.ExpectedCatalystCompactItemState);
+                writer.WriteString(
+                    "authoritativeCatalystBeforeCompactItemState",
+                    receipt.AuthoritativeCatalystBeforeCompactItemState);
+                writer.WriteString(
+                    "authoritativeCatalystAfterCompactItemState",
+                    receipt.AuthoritativeCatalystAfterCompactItemState);
+                if (receipt.Operation == HolyStoneCommandOperation.Upgrade)
+                {
+                    WriteNullableNumber(
+                        writer,
+                        "upgradeRoll",
+                        receipt.UpgradeRoll);
+                    WriteNullableNumber(
+                        writer,
+                        "upgradeSuccessRate",
+                        receipt.UpgradeSuccessRate);
+                }
+            }
+            WriteCombinationEvidence(writer, receipt);
             writer.WriteNumber(
                 "outputKitBagSlot",
                 receipt.OutputKitBagSlot);
@@ -199,10 +279,15 @@ internal static class HolyStonePersistenceCodec
         }
 
         var outbox = root.GetProperty("outboxEventId");
+        var operation = (HolyStoneCommandOperation)
+            root.GetProperty("operation").GetByte();
+        var upgrade = operation == HolyStoneCommandOperation.Upgrade;
+        var combination = operation == HolyStoneCommandOperation.Combine;
+        var hasCatalyst = upgrade || combination ||
+            operation == HolyStoneCommandOperation.ImplementSpirit;
         return new HolyStoneExecutionReceipt(
             root.GetProperty("characterId").GetInt32(),
-            (HolyStoneCommandOperation)
-                root.GetProperty("operation").GetByte(),
+            operation,
             root.GetProperty("npcId").GetInt32(),
             root.GetProperty("dialogIndex").GetInt32(),
             (HolyStoneCommandResultStatus)
@@ -241,7 +326,31 @@ internal static class HolyStonePersistenceCodec
             RequiredString(root, "auditReference"),
             outbox.ValueKind == JsonValueKind.Null
                 ? null
-                : outbox.GetGuid());
+                : outbox.GetGuid(),
+            hasCatalyst
+                ? root.GetProperty("catalystKitBagSlot").GetInt32()
+                : HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            hasCatalyst
+                ? NullableInt64(root, "catalystItemInstanceId")
+                : null,
+            hasCatalyst
+                ? RequiredString(
+                    root,
+                    "expectedCatalystCompactItemState")
+                : "[]",
+            hasCatalyst
+                ? RequiredString(
+                    root,
+                    "authoritativeCatalystBeforeCompactItemState")
+                : "[]",
+            hasCatalyst
+                ? RequiredString(
+                    root,
+                    "authoritativeCatalystAfterCompactItemState")
+                : "[]",
+            upgrade ? NullableInt32(root, "upgradeRoll") : null,
+            upgrade ? NullableInt32(root, "upgradeSuccessRate") : null,
+            DecodeCombinationEvidence(root, combination));
     }
 
     public static HolyStoneExecutionReceipt DecodeAndVerify(
@@ -306,6 +415,16 @@ internal static class HolyStonePersistenceCodec
         return value.ValueKind == JsonValueKind.Null
             ? null
             : value.GetInt64();
+    }
+
+    private static int? NullableInt32(
+        JsonElement root,
+        string name)
+    {
+        var value = root.GetProperty(name);
+        return value.ValueKind == JsonValueKind.Null
+            ? null
+            : value.GetInt32();
     }
 
     private static void WriteNullableNumber(

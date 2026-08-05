@@ -25,6 +25,7 @@ SecurePendingOperationRegistry::DescribeEquipmentBagTransfer(
     const int identitySlots[SecureGearSelectionCapacity]{
         equipmentSlot,
         bagSlot,
+        -1,
         -1};
 
     AcquireSRWLockExclusive(&lock_);

@@ -22,7 +22,8 @@ namespace godswar::network {
 
 inline constexpr std::size_t SecurePendingOperationCapacity = 16;
 inline constexpr std::size_t SecureResolvedOperationCapacity = 16;
-inline constexpr std::size_t SecureGearSelectionCapacity = 3;
+inline constexpr std::size_t SecureThreeSlotSelectionCount = 3;
+inline constexpr std::size_t SecureGearSelectionCapacity = 4;
 inline constexpr std::size_t SecureForgeOddsCapacity = 25;
 inline constexpr std::uint64_t
     SecurePendingOperationLifetimeMilliseconds = 10 * 60 * 1000;
@@ -68,6 +69,7 @@ struct SecurePendingOperationSnapshot final {
     int selectedBagSlot = -1;
     std::size_t selectionCount = 0;
     int selectedBagSlots[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};
@@ -123,16 +125,21 @@ private:
         int bagSlots[SecureGearSelectionCapacity]{
             -1,
             -1,
+            -1,
             -1};
         bool capturesSelectionState = false;
         std::size_t capturedSelectionCount = 0;
         int capturedSelectionBagSlots[SecureGearSelectionCapacity]{
             -1,
             -1,
+            -1,
             -1};
         std::uint64_t selectionGeneration = 0;
         std::uint64_t combinePageGeneration = 0;
         std::uint64_t classSuitPageGeneration = 0;
+        std::uint64_t holyStoneUpgradePageGeneration = 0;
+        std::uint64_t holyStoneImplementPageGeneration = 0;
+        std::uint64_t holyStoneCombinePageGeneration = 0;
         bool capturesForgeState = false;
         bool capturesLifecycleIntent = false;
         std::uint8_t lifecycleIntent[
@@ -204,6 +211,45 @@ private:
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeHolyStoneCommand(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneUpgradeNavigation(
+        const LegacyHolyStoneCommand& navigation,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneUpgradeCommit(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeHolyStoneUpgradeCommitLocked(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneImplementNavigation(
+        const LegacyHolyStoneCommand& navigation,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneImplementCommit(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeHolyStoneImplementCommitLocked(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneCombineNavigation(
+        const LegacyHolyStoneCommand& navigation,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeHolyStoneCombineCommit(
+        const LegacyHolyStoneCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult
+    DescribeHolyStoneCombineCommitLocked(
         const LegacyHolyStoneCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
@@ -293,6 +339,9 @@ private:
     void InvalidateSelectionClear() noexcept;
     void ResetSelectionState() noexcept;
     void ClearClassSuitPage() noexcept;
+    void ClearHolyStoneUpgradePage() noexcept;
+    void ClearHolyStoneImplementPage() noexcept;
+    void ClearHolyStoneCombinePage() noexcept;
     bool TryGetIdentitySelection(
         int* bagSlots,
         std::size_t* selectionCount) const noexcept;
@@ -315,11 +364,14 @@ private:
     int selectedBagSlots_[SecureGearSelectionCapacity]{
         -1,
         -1,
+        -1,
         -1};
     std::size_t selectionCount_ = 0;
     std::uint64_t selectionGeneration_ = 0;
+    bool selectionOverflowed_ = false;
     bool selectionClearCandidateActive_ = false;
     int selectionClearCandidate_[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};
@@ -328,6 +380,7 @@ private:
     std::uint64_t selectionClearCandidateExpiresAt_ = 0;
     bool hasPendingClearedSelection_ = false;
     int pendingClearedSelection_[SecureGearSelectionCapacity]{
+        -1,
         -1,
         -1,
         -1};
@@ -342,6 +395,21 @@ private:
         LegacyClassSuitAction::ExchangeTierI;
     std::uint32_t classSuitPageNpcId_ = 0;
     std::uint64_t classSuitPageGeneration_ = 0;
+    bool holyStoneUpgradePageArmed_ = false;
+    bool holyStoneUpgradePostResultRearmed_ = false;
+    std::uint32_t holyStoneUpgradePageNpcId_ = 0;
+    std::uint64_t holyStoneUpgradePageGeneration_ = 0;
+    std::uint64_t holyStoneUpgradePageExpiresAt_ = 0;
+    bool holyStoneImplementPageArmed_ = false;
+    bool holyStoneImplementPostResultRearmed_ = false;
+    std::uint32_t holyStoneImplementPageNpcId_ = 0;
+    std::uint64_t holyStoneImplementPageGeneration_ = 0;
+    std::uint64_t holyStoneImplementPageExpiresAt_ = 0;
+    bool holyStoneCombinePageArmed_ = false;
+    bool holyStoneCombinePostResultRearmed_ = false;
+    std::uint32_t holyStoneCombinePageNpcId_ = 0;
+    std::uint64_t holyStoneCombinePageGeneration_ = 0;
+    std::uint64_t holyStoneCombinePageExpiresAt_ = 0;
     int forgeEquipmentBagSlot_ = -1;
     int forgePrimaryMaterialBagSlot_ = -1;
     std::size_t forgeOddsCount_ = 0;

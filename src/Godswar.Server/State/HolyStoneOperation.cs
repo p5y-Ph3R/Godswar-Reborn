@@ -3,6 +3,7 @@ namespace Godswar.Server.State;
 internal enum HolyStoneOperation
 {
     DrillSocket,
+    AdvancedDrillSocket,
     MountStone,
     RemoveStone
 }

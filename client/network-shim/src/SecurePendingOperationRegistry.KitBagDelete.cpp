@@ -21,6 +21,7 @@ SecurePendingOperationRegistry::DescribeKitBagItemDelete(
     const int identityBagSlots[SecureGearSelectionCapacity]{
         bagSlot,
         -1,
+        -1,
         -1};
 
     AcquireSRWLockExclusive(&lock_);

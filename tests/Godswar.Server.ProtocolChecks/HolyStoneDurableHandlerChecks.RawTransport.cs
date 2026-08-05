@@ -11,6 +11,8 @@ internal static partial class HolyStoneDurableHandlerChecks
     {
         private readonly List<byte[]> _writes = [];
 
+        public bool Disconnected { get; private set; }
+
         public string RemoteEndPoint => "raw-holy-stone-check";
 
         public ValueTask<int> ReadAsync(
@@ -63,6 +65,7 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         public void Disconnect()
         {
+            Disconnected = true;
         }
 
         public ValueTask DisposeAsync() =>

@@ -65,9 +65,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 55
+    expectedMigrationCount = 60
     expectedMigrationHead =
-        '20260803_054_elemental_class_suit_attributes'
+        '20260805_059_holy_spirit_effectiveness_values'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -286,7 +286,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 55 `
+        -InitialMigrationCount 58 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -300,7 +300,7 @@ try {
         -Name 'PostgreSQL migration-prefix fixture' `
         -GeneralConnectionString (
             New-TestConnectionString $databaseNames.SmokeTemplate) `
-        -MigrationPrefix '20260803_054_elemental_class_suit_attributes'
+        -MigrationPrefix '20260805_059_holy_spirit_effectiveness_values'
 
     # Repository integration checks own their content publication and fixture
     # setup. Clone a schema-only database rather than the empty-install

@@ -14,6 +14,9 @@ namespace Godswar.Server.Infrastructure.Inventory;
 internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
     IDeveloperItemGrantCommandExecutor
 {
+    private const uint FirstSocketSpellItemId = 4270;
+    private const uint LastSocketSpellItemId = 4273;
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
@@ -359,13 +362,16 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
 
         if (_itemContent.DeveloperItems.TryResolveDeveloper(
                 itemId,
-                out var holyBox))
+                out var catalogItem))
         {
             grantItem = new DeveloperGrantItemDefinition(
-                holyBox.ItemId,
-                holyBox.StackCap,
-                holyBox.GrantedBound,
-                "developer_empty_holy_box_grant");
+                catalogItem.ItemId,
+                catalogItem.StackCap,
+                catalogItem.GrantedBound,
+                itemId is >= FirstSocketSpellItemId and
+                    <= LastSocketSpellItemId
+                    ? "developer_socket_spell_grant"
+                    : "developer_empty_holy_box_grant");
             return true;
         }
 

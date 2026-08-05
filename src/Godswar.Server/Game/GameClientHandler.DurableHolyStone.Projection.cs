@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
@@ -89,7 +90,12 @@ internal sealed partial class GameClientHandler
                 "The committed Holy Stone target projection is stale.");
         }
 
-        if (receipt.Operation == HolyStoneCommandOperation.Mount)
+        if (receipt.Operation is
+                HolyStoneCommandOperation.Mount or
+                HolyStoneCommandOperation.AdvancedDrill or
+                HolyStoneCommandOperation.Upgrade or
+                HolyStoneCommandOperation.Combine or
+                HolyStoneCommandOperation.ImplementSpirit)
         {
             var projectedStone = KitBagSlots.GetItem(
                 persistedCharacter.KitBag,
@@ -102,6 +108,51 @@ internal sealed partial class GameClientHandler
                 throw new InvalidDataException(
                     "The committed Holy Stone material projection is " +
                     "stale.");
+            }
+
+            if (receipt.Operation is
+                    HolyStoneCommandOperation.Upgrade or
+                    HolyStoneCommandOperation.ImplementSpirit &&
+                receipt.CatalystKitBagSlot >=
+                    HolyStoneCommandEnvelope.MinimumKitBagSlot)
+            {
+                var projectedCatalyst = KitBagSlots.GetItem(
+                    persistedCharacter.KitBag,
+                    receipt.CatalystKitBagSlot);
+                if (!string.Equals(
+                        projectedCatalyst.ToCompactString(),
+                        receipt.AuthoritativeCatalystAfterCompactItemState,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException(
+                        "The committed Holy Stone catalyst projection is " +
+                        "stale.");
+                }
+            }
+            if (receipt.Operation == HolyStoneCommandOperation.Combine)
+            {
+                var evidence = receipt.CombinationEvidence ??
+                    throw new InvalidDataException(
+                        "The Combination receipt has no third material evidence.");
+                var projectedSecondMaterial = KitBagSlots.GetItem(
+                    persistedCharacter.KitBag,
+                    receipt.CatalystKitBagSlot);
+                var projectedThirdMaterial = KitBagSlots.GetItem(
+                    persistedCharacter.KitBag,
+                    evidence.ThirdMaterialKitBagSlot);
+                if (!string.Equals(
+                        projectedSecondMaterial.ToCompactString(),
+                        receipt.AuthoritativeCatalystAfterCompactItemState,
+                        StringComparison.Ordinal) ||
+                    !string.Equals(
+                        projectedThirdMaterial.ToCompactString(),
+                        evidence
+                            .AuthoritativeThirdMaterialAfterCompactItemState,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException(
+                        "The committed Combination material projection is stale.");
+                }
             }
         }
         else if (receipt.Operation ==
@@ -139,6 +190,11 @@ internal sealed partial class GameClientHandler
             receipt.TargetLocation != intent.TargetLocation ||
             receipt.TargetSlot != intent.TargetSlot ||
             receipt.StoneKitBagSlot != intent.StoneKitBagSlot ||
+            receipt.CatalystKitBagSlot != intent.CatalystKitBagSlot ||
+            intent.Operation == HolyStoneCommandOperation.Combine &&
+            (receipt.CombinationEvidence is not { } combinationEvidence ||
+             combinationEvidence.ThirdMaterialKitBagSlot !=
+                intent.ThirdMaterialKitBagSlot) ||
             intent.Operation == HolyStoneCommandOperation.Remove &&
             receipt.SocketIndex != intent.SocketIndex)
         {
@@ -157,13 +213,22 @@ internal sealed partial class GameClientHandler
         string kitBagBeforeExecution,
         CancellationToken cancellationToken)
     {
-        await _session.SendAsync(
-            PacketBuilder.NpcFunctionActionResponse(
-                responseNpcId,
-                responseDialogIndex,
-                receipt.NativeResultSubId),
-            cancellationToken,
-            "NpcFunctionActionResponse");
+        var isUpgrade = receipt.Operation ==
+            HolyStoneCommandOperation.Upgrade;
+        var isCombination = receipt.Operation ==
+            HolyStoneCommandOperation.Combine;
+        var isImplementation = receipt.Operation ==
+            HolyStoneCommandOperation.ImplementSpirit;
+        if (!isUpgrade && !isCombination && !isImplementation)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    responseNpcId,
+                    responseDialogIndex,
+                    receipt.NativeResultSubId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+        }
 
         foreach (var acknowledgement in
             PacketBuilder.KitBagMutationDeletionAcknowledgements(
@@ -179,20 +244,61 @@ internal sealed partial class GameClientHandler
         await SendHolyStoneAuthoritativeProjectionAsync(
             receipt.Status.ToString(),
             cancellationToken);
-        await SendSecureHolyStoneResultAsync(
-            clientOperationId,
-            receipt.Family,
-            receipt.NativeResultSubId,
-            disposition switch
-            {
-                HolyStoneExecutionDisposition.Committed =>
-                    SecureLegacyCommandDisposition.Applied,
-                HolyStoneExecutionDisposition.Duplicate =>
-                    SecureLegacyCommandDisposition.Replayed,
-                _ => SecureLegacyCommandDisposition.Rejected
-            },
-            receipt.InventoryRevision,
-            cancellationToken);
+        var secureDisposition = disposition switch
+        {
+            HolyStoneExecutionDisposition.Committed =>
+                SecureLegacyCommandDisposition.Applied,
+            HolyStoneExecutionDisposition.Duplicate =>
+                SecureLegacyCommandDisposition.Replayed,
+            _ => SecureLegacyCommandDisposition.Rejected
+        };
+        if (isCombination)
+        {
+            // The shim must observe the durable settlement before the
+            // stock 3300 result panel is exposed, otherwise it cannot bind
+            // that legacy panel to the completed operation.
+            await SendSecureHolyStoneResultAsync(
+                clientOperationId,
+                receipt.Family,
+                receipt.NativeResultSubId,
+                secureDisposition,
+                receipt.InventoryRevision,
+                cancellationToken);
+        }
+        if (isUpgrade)
+        {
+            await SendHolyStoneUpgradeResultPanelAsync(
+                responseNpcId,
+                responseDialogIndex,
+                receipt.NativeResultSubId,
+                cancellationToken);
+        }
+        else if (isImplementation)
+        {
+            await SendHolySpiritImplementationResultPanelAsync(
+                responseNpcId,
+                responseDialogIndex,
+                receipt.NativeResultSubId,
+                cancellationToken);
+        }
+        else if (isCombination)
+        {
+            await SendHolyStoneCombinationResultPanelAsync(
+                responseNpcId,
+                responseDialogIndex,
+                receipt.NativeResultSubId,
+                cancellationToken);
+        }
+        if (!isCombination)
+        {
+            await SendSecureHolyStoneResultAsync(
+                clientOperationId,
+                receipt.Family,
+                receipt.NativeResultSubId,
+                secureDisposition,
+                receipt.InventoryRevision,
+                cancellationToken);
+        }
     }
 
     private async Task SendHolyStoneProjectionAndResultAsync(
@@ -206,13 +312,20 @@ internal sealed partial class GameClientHandler
         string kitBagBeforeExecution,
         CancellationToken cancellationToken)
     {
-        await _session.SendAsync(
-            PacketBuilder.NpcFunctionActionResponse(
-                npcId,
-                dialogIndex,
-                nativeResultSubId),
-            cancellationToken,
-            "NpcFunctionActionResponse");
+        var isUpgrade = family == CommandFamily.HolyStoneUpgrade;
+        var isCombination = family == CommandFamily.HolyStoneCombine;
+        var isImplementation = family ==
+            CommandFamily.HolyStoneImplementSpirit;
+        if (!isUpgrade && !isCombination && !isImplementation)
+        {
+            await _session.SendAsync(
+                PacketBuilder.NpcFunctionActionResponse(
+                    npcId,
+                    dialogIndex,
+                    nativeResultSubId),
+                cancellationToken,
+                "NpcFunctionActionResponse");
+        }
         foreach (var acknowledgement in
             PacketBuilder.KitBagMutationDeletionAcknowledgements(
                 kitBagBeforeExecution,
@@ -226,13 +339,50 @@ internal sealed partial class GameClientHandler
         await SendHolyStoneAuthoritativeProjectionAsync(
             "rejected",
             cancellationToken);
-        await SendSecureHolyStoneResultAsync(
-            clientOperationId,
-            family,
-            nativeResultSubId,
-            disposition,
-            inventoryRevision,
-            cancellationToken);
+        if (isCombination)
+        {
+            await SendSecureHolyStoneResultAsync(
+                clientOperationId,
+                family,
+                nativeResultSubId,
+                disposition,
+                inventoryRevision,
+                cancellationToken);
+        }
+        if (isUpgrade)
+        {
+            await SendHolyStoneUpgradeResultPanelAsync(
+                npcId,
+                dialogIndex,
+                nativeResultSubId,
+                cancellationToken);
+        }
+        else if (isImplementation)
+        {
+            await SendHolySpiritImplementationResultPanelAsync(
+                npcId,
+                dialogIndex,
+                nativeResultSubId,
+                cancellationToken);
+        }
+        else if (isCombination)
+        {
+            await SendHolyStoneCombinationResultPanelAsync(
+                npcId,
+                dialogIndex,
+                nativeResultSubId,
+                cancellationToken);
+        }
+        if (!isCombination)
+        {
+            await SendSecureHolyStoneResultAsync(
+                clientOperationId,
+                family,
+                nativeResultSubId,
+                disposition,
+                inventoryRevision,
+                cancellationToken);
+        }
     }
 
     private async Task SendHolyStoneAuthoritativeProjectionAsync(

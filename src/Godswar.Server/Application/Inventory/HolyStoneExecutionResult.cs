@@ -1,4 +1,3 @@
-using System.Text;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Domain.Inventory;
 
@@ -25,10 +24,28 @@ internal enum HolyStoneCommandResultStatus : byte
     StaleTarget = 17,
     StaleStone = 18,
     TargetMissing = 19,
-    StoneMissing = 20
+    StoneMissing = 20,
+    DrillPrerequisite = 21,
+    Upgraded = 22,
+    UpgradeFailedDowngraded = 23,
+    UpgradeFailedProtected = 24,
+    TargetNotHolyStone = 25,
+    EclipseStoneRequired = 26,
+    MaximumStoneLevel = 27,
+    SignetMismatch = 28,
+    CatalystMissing = 29,
+    StaleCatalyst = 30,
+    EclipseLevel1Missing = 31,
+    EclipseLevel2Missing = 32,
+    EclipseLevel3Missing = 33,
+    SignetProtectionUnavailable = 34,
+    Combined = 35,
+    CombinationSelectionRequired = 36,
+    CombinationNotAllowed = 37,
+    SpiritImplemented = 38
 }
 
-internal sealed record HolyStoneExecutionReceipt
+internal sealed partial record HolyStoneExecutionReceipt
 {
     public const int MaximumAuditReferenceUtf8Bytes = 256;
     public const int FirstDrillGoldCost =
@@ -65,7 +82,15 @@ internal sealed record HolyStoneExecutionReceipt
         long walletRevision,
         long inventoryRevision,
         string auditReference,
-        Guid? outboxEventId)
+        Guid? outboxEventId,
+        int catalystKitBagSlot = -1,
+        long? catalystItemInstanceId = null,
+        string expectedCatalystCompactItemState = "[]",
+        string authoritativeCatalystBeforeCompactItemState = "[]",
+        string authoritativeCatalystAfterCompactItemState = "[]",
+        int? upgradeRoll = null,
+        int? upgradeSuccessRate = null,
+        HolyStoneCombinationReceiptEvidence? combinationEvidence = null)
     {
         if (characterId <= 0 ||
             !Enum.IsDefined(operation) ||
@@ -74,8 +99,13 @@ internal sealed record HolyStoneExecutionReceipt
                 dialogIndex) ||
             !Enum.IsDefined(status) ||
             !HolyStoneNativeResults.IsReachable(operation, status) ||
-            nativeResultSubId !=
-                HolyStoneNativeResults.GetResultSubId(operation, status) ||
+            !HolySpiritNativeResult.IsValid(
+                operation,
+                status,
+                nativeResultSubId,
+                authoritativeTargetBeforeCompactItemState,
+                authoritativeTargetAfterCompactItemState,
+                authoritativeStoneBeforeCompactItemState) ||
             !Enum.IsDefined(targetLocation) ||
             !IsValidTargetSlot(targetLocation, targetSlot) ||
             socketIndex is
@@ -83,6 +113,7 @@ internal sealed record HolyStoneExecutionReceipt
                 > HolyStoneCommandEnvelope.MaximumSocketIndex ||
             !IsValidInstanceId(targetItemInstanceId) ||
             !IsValidInstanceId(stoneItemInstanceId) ||
+            !IsValidInstanceId(catalystItemInstanceId) ||
             !IsValidInstanceId(outputItemInstanceId) ||
             !IsBoundedCompactState(
                 expectedTargetCompactItemState,
@@ -101,6 +132,15 @@ internal sealed record HolyStoneExecutionReceipt
                 allowEmpty: true) ||
             !IsBoundedCompactState(
                 authoritativeStoneAfterCompactItemState,
+                allowEmpty: true) ||
+            !IsBoundedCompactState(
+                expectedCatalystCompactItemState,
+                allowEmpty: true) ||
+            !IsBoundedCompactState(
+                authoritativeCatalystBeforeCompactItemState,
+                allowEmpty: true) ||
+            !IsBoundedCompactState(
+                authoritativeCatalystAfterCompactItemState,
                 allowEmpty: true) ||
             !IsOptionalCompactState(outputBeforeCompactItemState) ||
             !IsOptionalCompactState(outputAfterCompactItemState) ||
@@ -134,6 +174,52 @@ internal sealed record HolyStoneExecutionReceipt
             targetItemInstanceId,
             inventoryRevision,
             outboxEventId);
+        HolyStoneUpgradeReceiptEvidence.Validate(
+            operation,
+            status,
+            authoritativeTargetBeforeCompactItemState,
+            authoritativeTargetAfterCompactItemState,
+            authoritativeStoneBeforeCompactItemState,
+            authoritativeStoneAfterCompactItemState,
+            catalystKitBagSlot,
+            catalystItemInstanceId,
+            expectedCatalystCompactItemState,
+            authoritativeCatalystBeforeCompactItemState,
+            authoritativeCatalystAfterCompactItemState,
+            upgradeRoll,
+            upgradeSuccessRate);
+        HolyStoneCombinationReceiptEvidence.Validate(
+            operation,
+            status,
+            targetLocation,
+            targetSlot,
+            targetItemInstanceId,
+            expectedTargetCompactItemState,
+            authoritativeTargetBeforeCompactItemState,
+            authoritativeTargetAfterCompactItemState,
+            stoneKitBagSlot,
+            stoneItemInstanceId,
+            expectedStoneCompactItemState,
+            authoritativeStoneBeforeCompactItemState,
+            authoritativeStoneAfterCompactItemState,
+            catalystKitBagSlot,
+            catalystItemInstanceId,
+            expectedCatalystCompactItemState,
+            authoritativeCatalystBeforeCompactItemState,
+            authoritativeCatalystAfterCompactItemState,
+            combinationEvidence);
+        HolySpiritImplementationReceiptEvidence.Validate(
+            operation,
+            status,
+            authoritativeTargetBeforeCompactItemState,
+            authoritativeTargetAfterCompactItemState,
+            authoritativeStoneBeforeCompactItemState,
+            authoritativeStoneAfterCompactItemState,
+            catalystKitBagSlot,
+            catalystItemInstanceId,
+            expectedCatalystCompactItemState,
+            authoritativeCatalystBeforeCompactItemState,
+            authoritativeCatalystAfterCompactItemState);
         ValidateWalletEvidence(
             operation,
             status,
@@ -179,6 +265,17 @@ internal sealed record HolyStoneExecutionReceipt
         InventoryRevision = inventoryRevision;
         AuditReference = auditReference;
         OutboxEventId = outboxEventId;
+        CatalystKitBagSlot = catalystKitBagSlot;
+        CatalystItemInstanceId = catalystItemInstanceId;
+        ExpectedCatalystCompactItemState =
+            expectedCatalystCompactItemState;
+        AuthoritativeCatalystBeforeCompactItemState =
+            authoritativeCatalystBeforeCompactItemState;
+        AuthoritativeCatalystAfterCompactItemState =
+            authoritativeCatalystAfterCompactItemState;
+        UpgradeRoll = upgradeRoll;
+        UpgradeSuccessRate = upgradeSuccessRate;
+        CombinationEvidence = combinationEvidence;
     }
 
     public CommandFamily Family =>
@@ -212,6 +309,17 @@ internal sealed record HolyStoneExecutionReceipt
     public long InventoryRevision { get; }
     public string AuditReference { get; }
     public Guid? OutboxEventId { get; }
+    public int CatalystKitBagSlot { get; }
+    public long? CatalystItemInstanceId { get; }
+    public string ExpectedCatalystCompactItemState { get; }
+    public string AuthoritativeCatalystBeforeCompactItemState { get; }
+    public string AuthoritativeCatalystAfterCompactItemState { get; }
+    public int? UpgradeRoll { get; }
+    public int? UpgradeSuccessRate { get; }
+    public HolyStoneCombinationReceiptEvidence? CombinationEvidence
+    {
+        get;
+    }
 
     private static void ValidateOperationEvidence(
         HolyStoneCommandOperation operation,
@@ -249,6 +357,101 @@ internal sealed record HolyStoneExecutionReceipt
             return;
         }
 
+        if (operation == HolyStoneCommandOperation.AdvancedDrill)
+        {
+            var drilled =
+                status == HolyStoneCommandResultStatus.Drilled;
+            if (stoneKitBagSlot is
+                    < HolyStoneCommandEnvelope.MinimumKitBagSlot or
+                    > HolyStoneCommandEnvelope.MaximumKitBagSlot ||
+                outputKitBagSlot != -1 ||
+                outputItemInstanceId.HasValue ||
+                outputBefore is not null ||
+                outputAfter is not null ||
+                (drilled &&
+                 (socketIndex is not (2 or 3) ||
+                  !stoneItemInstanceId.HasValue ||
+                  authoritativeStoneBefore == "[]")) ||
+                (!drilled &&
+                 socketIndex !=
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex))
+            {
+                throw new ArgumentException(
+                    "The Advanced Drill receipt evidence is invalid.");
+            }
+            return;
+        }
+
+        if (operation == HolyStoneCommandOperation.Upgrade)
+        {
+            var committedOutcome =
+                HolyStoneNativeResults.IsSuccess(status);
+            if (socketIndex !=
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex ||
+                stoneKitBagSlot is
+                    < HolyStoneCommandEnvelope.MinimumKitBagSlot or
+                    > HolyStoneCommandEnvelope.MaximumKitBagSlot ||
+                outputKitBagSlot != -1 ||
+                outputItemInstanceId.HasValue ||
+                outputBefore is not null ||
+                outputAfter is not null ||
+                (committedOutcome &&
+                 (!stoneItemInstanceId.HasValue ||
+                  authoritativeStoneBefore == "[]")))
+            {
+                throw new ArgumentException(
+                    "The Holy Stone Upgrade receipt evidence is invalid.");
+            }
+            return;
+        }
+
+        if (operation == HolyStoneCommandOperation.Combine)
+        {
+            var committedOutcome =
+                status == HolyStoneCommandResultStatus.Combined;
+            if (socketIndex !=
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex ||
+                stoneKitBagSlot is
+                    < HolyStoneCommandEnvelope.MinimumKitBagSlot or
+                    > HolyStoneCommandEnvelope.MaximumKitBagSlot ||
+                outputKitBagSlot != -1 ||
+                outputItemInstanceId.HasValue ||
+                outputBefore is not null ||
+                outputAfter is not null ||
+                (committedOutcome &&
+                 (!stoneItemInstanceId.HasValue ||
+                  authoritativeStoneBefore == "[]")))
+            {
+                throw new ArgumentException(
+                    "The Holy Stone Combination receipt evidence is " +
+                    "invalid.");
+            }
+            return;
+        }
+
+        if (operation == HolyStoneCommandOperation.ImplementSpirit)
+        {
+            var implemented =
+                status == HolyStoneCommandResultStatus.SpiritImplemented;
+            if (socketIndex !=
+                    HolyStoneCommandEnvelope.ServerSelectedSocketIndex ||
+                stoneKitBagSlot is
+                    < HolyStoneCommandEnvelope.MinimumKitBagSlot or
+                    > HolyStoneCommandEnvelope.MaximumKitBagSlot ||
+                outputKitBagSlot != -1 ||
+                outputItemInstanceId.HasValue ||
+                outputBefore is not null ||
+                outputAfter is not null ||
+                implemented &&
+                (!stoneItemInstanceId.HasValue ||
+                 authoritativeStoneBefore == "[]"))
+            {
+                throw new ArgumentException(
+                    "Holy Spirit implementation evidence is invalid.");
+            }
+            return;
+        }
+
         if (stoneKitBagSlot !=
                 HolyStoneCommandEnvelope.NoStoneKitBagSlot ||
             stoneItemInstanceId.HasValue ||
@@ -257,7 +460,8 @@ internal sealed record HolyStoneExecutionReceipt
             authoritativeStoneAfter != "[]")
         {
             throw new ArgumentException(
-                "Only Mount may contain source-stone evidence.");
+                "Only Mount or Advanced Drill may contain material " +
+                "evidence.");
         }
 
         if (operation == HolyStoneCommandOperation.Remove)
@@ -308,167 +512,4 @@ internal sealed record HolyStoneExecutionReceipt
         }
     }
 
-    private static void ValidateOutcomeEvidence(
-        HolyStoneCommandResultStatus status,
-        long? targetItemInstanceId,
-        long inventoryRevision,
-        Guid? outboxEventId)
-    {
-        var success = HolyStoneNativeResults.IsSuccess(status);
-        if (success != outboxEventId.HasValue ||
-            (success &&
-             (outboxEventId == Guid.Empty ||
-              !targetItemInstanceId.HasValue ||
-              inventoryRevision <= 0)))
-        {
-            throw new ArgumentException(
-                "Only a successful Holy Stone operation may publish an " +
-                "inventory event.");
-        }
-    }
-
-    private static void ValidateWalletEvidence(
-        HolyStoneCommandOperation operation,
-        HolyStoneCommandResultStatus status,
-        string targetBefore,
-        int goldSpent,
-        long walletRevision)
-    {
-        if (status != HolyStoneCommandResultStatus.Drilled)
-        {
-            if (goldSpent != 0)
-            {
-                throw new ArgumentException(
-                    "Only a successful Drill may spend Gold.");
-            }
-            return;
-        }
-
-        var hasGoldCost =
-            HolyStoneDrillCostPolicy
-                .TryGetGoldCostFromCompactTargetState(
-            targetBefore,
-            out var expectedCost);
-        if (operation != HolyStoneCommandOperation.Drill ||
-            !hasGoldCost ||
-            goldSpent != expectedCost ||
-            walletRevision <= 0)
-        {
-            throw new ArgumentException(
-                "The Drill Gold evidence is inconsistent.");
-        }
-    }
-
-    private static bool IsValidTargetSlot(
-        HolyStoneTargetLocation location,
-        int slot) =>
-        location switch
-        {
-            HolyStoneTargetLocation.Equipment =>
-                slot == HolyStoneCommandEnvelope.WeaponEquipmentSlot,
-            HolyStoneTargetLocation.KitBag =>
-                slot is
-                    >= HolyStoneCommandEnvelope.MinimumKitBagSlot and
-                    <= HolyStoneCommandEnvelope.MaximumKitBagSlot,
-            _ => false
-        };
-
-    private static bool IsValidInstanceId(long? value) =>
-        !value.HasValue || value.Value > 0;
-
-    private static bool IsOptionalCompactState(string? value) =>
-        value is null || IsBoundedCompactState(value, allowEmpty: true);
-
-    private static bool IsBoundedCompactState(
-        string? value,
-        bool allowEmpty)
-    {
-        if (string.IsNullOrWhiteSpace(value) ||
-            value.Any(char.IsControl) ||
-            value[0] != '[' ||
-            value[^1] != ']' ||
-            (!allowEmpty && value == "[]"))
-        {
-            return false;
-        }
-
-        return Encoding.UTF8.GetByteCount(value) <=
-            HolyStoneCommandEnvelope.MaximumCompactItemStateUtf8Bytes;
-    }
-
-    private static void ValidateAuditReference(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        if (value.Any(char.IsControl) ||
-            Encoding.UTF8.GetByteCount(value) >
-                MaximumAuditReferenceUtf8Bytes)
-        {
-            throw new ArgumentOutOfRangeException(nameof(value));
-        }
-    }
-}
-
-internal enum HolyStoneExecutionDisposition : byte
-{
-    Committed = 1,
-    Duplicate = 2,
-    TerminalRejected = 3,
-    ReplayNotFound = 4,
-    RequestHashConflict = 5,
-    InvalidIntent = 6,
-    PreconditionFailed = 7
-}
-
-internal sealed record HolyStoneExecutionResult
-{
-    private HolyStoneExecutionResult(
-        HolyStoneExecutionDisposition disposition,
-        HolyStoneExecutionReceipt? receipt = null)
-    {
-        var needsReceipt = disposition is
-            HolyStoneExecutionDisposition.Committed or
-            HolyStoneExecutionDisposition.Duplicate or
-            HolyStoneExecutionDisposition.TerminalRejected;
-        if (!Enum.IsDefined(disposition) ||
-            needsReceipt != (receipt is not null) ||
-            disposition == HolyStoneExecutionDisposition.Committed &&
-            !HolyStoneNativeResults.IsSuccess(receipt!.Status) ||
-            disposition == HolyStoneExecutionDisposition.TerminalRejected &&
-            HolyStoneNativeResults.IsSuccess(receipt!.Status))
-        {
-            throw new ArgumentException(
-                "The execution disposition and receipt are inconsistent.");
-        }
-
-        Disposition = disposition;
-        Receipt = receipt;
-    }
-
-    public HolyStoneExecutionDisposition Disposition { get; }
-    public HolyStoneExecutionReceipt? Receipt { get; }
-    public bool IsDurable => Receipt is not null;
-    public bool IsSuccess =>
-        Receipt is not null &&
-        HolyStoneNativeResults.IsSuccess(Receipt.Status) &&
-        Disposition is
-            HolyStoneExecutionDisposition.Committed or
-            HolyStoneExecutionDisposition.Duplicate;
-
-    public static HolyStoneExecutionResult Committed(
-        HolyStoneExecutionReceipt receipt) =>
-        new(HolyStoneExecutionDisposition.Committed, receipt);
-    public static HolyStoneExecutionResult Duplicate(
-        HolyStoneExecutionReceipt receipt) =>
-        new(HolyStoneExecutionDisposition.Duplicate, receipt);
-    public static HolyStoneExecutionResult TerminalRejected(
-        HolyStoneExecutionReceipt receipt) =>
-        new(HolyStoneExecutionDisposition.TerminalRejected, receipt);
-    public static HolyStoneExecutionResult ReplayNotFound() =>
-        new(HolyStoneExecutionDisposition.ReplayNotFound);
-    public static HolyStoneExecutionResult RequestHashConflict() =>
-        new(HolyStoneExecutionDisposition.RequestHashConflict);
-    public static HolyStoneExecutionResult InvalidIntent() =>
-        new(HolyStoneExecutionDisposition.InvalidIntent);
-    public static HolyStoneExecutionResult PreconditionFailed() =>
-        new(HolyStoneExecutionDisposition.PreconditionFailed);
 }

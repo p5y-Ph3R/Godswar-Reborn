@@ -35,6 +35,36 @@ SecurePendingOperationRegistry::DescribeHolyEquipmentPacket(
             *recognized = true;
             return DescribeHolyStoneCommand(
                 holyStone, now, descriptor);
+        case LegacyHolyStonePacketKind::Navigation:
+            *recognized = true;
+            switch (holyStone.action) {
+                case LegacyHolyStoneAction::Combine:
+                    return DescribeHolyStoneCombineNavigation(
+                        holyStone, now, descriptor);
+                case LegacyHolyStoneAction::Upgrade:
+                    return DescribeHolyStoneUpgradeNavigation(
+                        holyStone, now, descriptor);
+                case LegacyHolyStoneAction::ImplementSpirit:
+                    return DescribeHolyStoneImplementNavigation(
+                        holyStone, now, descriptor);
+                default:
+                    return SecureOperationRegistryResult::InvalidPacket;
+            }
+        case LegacyHolyStonePacketKind::StagedCommit:
+            *recognized = true;
+            switch (holyStone.action) {
+                case LegacyHolyStoneAction::Combine:
+                    return DescribeHolyStoneCombineCommit(
+                        holyStone, now, descriptor);
+                case LegacyHolyStoneAction::Upgrade:
+                    return DescribeHolyStoneUpgradeCommit(
+                        holyStone, now, descriptor);
+                case LegacyHolyStoneAction::ImplementSpirit:
+                    return DescribeHolyStoneImplementCommit(
+                        holyStone, now, descriptor);
+                default:
+                    return SecureOperationRegistryResult::InvalidPacket;
+            }
         case LegacyHolyStonePacketKind::InvalidMutation:
             *recognized = true;
             return SecureOperationRegistryResult::InvalidPacket;

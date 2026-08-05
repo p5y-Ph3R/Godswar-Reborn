@@ -1,26 +1,110 @@
+using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Game;
+using Godswar.Server.Networking.Secure;
 
 namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class HolyStoneDurableHandlerChecks
 {
-    private static async Task CheckAdvancedDrillStaysFailClosedAsync()
+    private static async Task CheckAdvancedDrillRoutingAsync()
     {
         await AssertSecureAdvancedDrillPageAsync();
         await AssertSecureAdvancedDrillRejectedAsync(
             operationId: null,
-            static args => args[6] = 205,
-            "secure Advanced Drill unknown value shape");
+            args =>
+            {
+                args[HolyStoneProtocol.AdvancedDrillScratchArgumentIndex] =
+                    0;
+                args[HolyStoneProtocol.TargetArgumentIndex] =
+                    HolyStoneProtocol.EncodeKitBagReference(WeaponSlot);
+                args[HolyStoneProtocol.StoneArgumentIndex] =
+                    HolyStoneProtocol.EncodeKitBagReference(StoneSlot);
+            },
+            "secure Advanced Drill without UUID");
         await AssertSecureAdvancedDrillRejectedAsync(
             OperationId,
             static args => args[7] = 100,
-            "UUID-bearing Advanced Drill unknown value shape");
+            "malformed UUID-bearing Advanced Drill");
+        await AssertSecureAdvancedDrillAcceptedAsync();
 
         await AssertRawAdvancedDrillPageAsync();
         await AssertRawAdvancedDrillRejectedAsync(
             static args => args[10] = 1,
             "raw Advanced Drill unknown value shape");
+    }
+
+    private static async Task AssertSecureAdvancedDrillAcceptedAsync()
+    {
+        await using var fixture = await CreateFixtureAsync(
+            HolyStoneExecutionResult.ReplayNotFound(),
+            HolyStoneExecutionResult.InvalidIntent(),
+            expectedOperation: HolyStoneCommandOperation.AdvancedDrill);
+        var packet = HolyStoneCommandContractChecks.CreatePacket(
+            HolyStoneProtocol.SpartaNpcId,
+            HolyStoneProtocol.AdvancedDrillSubId,
+            args =>
+            {
+                args[HolyStoneProtocol.AdvancedDrillScratchArgumentIndex] =
+                    0;
+                args[HolyStoneProtocol.TargetArgumentIndex] =
+                    HolyStoneProtocol.EncodeKitBagReference(WeaponSlot);
+                args[HolyStoneProtocol.StoneArgumentIndex] =
+                    HolyStoneProtocol.EncodeKitBagReference(StoneSlot);
+            },
+            OperationId);
+
+        await InvokeAsync(fixture.Handler, packet);
+
+        Check.Equal(
+            1,
+            fixture.Executor!.ReplayCount,
+            "secure Advanced Drill checks the durable inbox");
+        Check.Equal(
+            1,
+            fixture.Executor.ExecuteCount,
+            "new secure Advanced Drill executes once");
+        Check.Equal(
+            0,
+            fixture.Store.HolyStoneCount,
+            "secure Advanced Drill cannot reach the legacy store");
+        var command = fixture.Executor.ExecutedCommand ??
+            throw new InvalidOperationException(
+                "Advanced Drill executor did not capture its command.");
+        Check.Equal(
+            (int)HolyStoneCommandOperation.AdvancedDrill,
+            (int)command.Operation,
+            "Advanced Drill command operation");
+        Check.Equal(
+            WeaponSlot,
+            command.TargetSlot,
+            "Advanced Drill command target slot");
+        Check.Equal(
+            StoneSlot,
+            command.StoneKitBagSlot,
+            "Advanced Drill command material slot");
+        Check.Equal(
+            WeaponBefore.ToCompactString(),
+            command.ExpectedTargetCompactItemState,
+            "Advanced Drill captures target state");
+        Check.Equal(
+            StoneBefore.ToCompactString(),
+            command.ExpectedStoneCompactItemState,
+            "Advanced Drill captures material state");
+
+        var result = fixture.Transport.CommandResults.Single();
+        Check.Equal(
+            (ushort)CommandFamily.HolyStoneAdvancedDrill,
+            result.CommandFamily,
+            "Advanced Drill result family");
+        Check.Equal(
+            OperationId,
+            result.OperationId,
+            "Advanced Drill result operation UUID");
+        Check.Equal(
+            (int)SecureLegacyCommandDisposition.Rejected,
+            (int)result.Disposition,
+            "invalid Advanced Drill test execution is rejected");
     }
 
     private static async Task AssertSecureAdvancedDrillPageAsync()
@@ -116,10 +200,29 @@ internal static partial class HolyStoneDurableHandlerChecks
             0,
             fixture.Store.HolyStoneCount,
             $"{description} cannot reach the legacy store");
-        Check.Equal(
-            0,
-            fixture.Transport.CommandResults.Count,
-            $"{description} cannot invent a command-family result");
+        if (operationId.HasValue)
+        {
+            var result = fixture.Transport.CommandResults.Single();
+            Check.Equal(
+                (ushort)CommandFamily.HolyStoneAdvancedDrill,
+                result.CommandFamily,
+                $"{description} result family");
+            Check.Equal(
+                operationId.Value,
+                result.OperationId,
+                $"{description} result operation UUID");
+            Check.Equal(
+                (int)SecureLegacyCommandDisposition.Rejected,
+                (int)result.Disposition,
+                $"{description} result disposition");
+        }
+        else
+        {
+            Check.Equal(
+                0,
+                fixture.Transport.CommandResults.Count,
+                $"{description} without UUID has no command result");
+        }
         AssertNpcResult(
             fixture.Transport.ReadClearLegacyPackets().Single(),
             HolyStoneNativeResults.WrongSelectionSubId,

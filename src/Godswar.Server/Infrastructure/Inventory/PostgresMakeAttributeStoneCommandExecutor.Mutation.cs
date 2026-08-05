@@ -36,7 +36,9 @@ internal sealed partial class PostgresMakeAttributeStoneCommandExecutor
                 holy_socket6_effect_id, holy_socket6_level,
                 to_jsonb(character_items)::text,
                 class_attribute1, class_attribute2,
-                elemental_attribute1, elemental_attribute2
+                elemental_attribute1, elemental_attribute2,
+                holy_socket1_value, holy_socket2_value,
+                holy_socket3_value, holy_socket4_value
             FROM public.character_items
             WHERE user_id = @characterId
               AND item_location = 1

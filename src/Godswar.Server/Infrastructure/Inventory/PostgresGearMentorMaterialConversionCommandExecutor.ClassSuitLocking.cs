@@ -43,6 +43,8 @@ internal sealed partial class
                 to_jsonb(character_items)::text,
                 class_attribute1, class_attribute2,
                 elemental_attribute1, elemental_attribute2,
+                holy_socket1_value, holy_socket2_value,
+                holy_socket3_value, holy_socket4_value,
                 item_location
             FROM public.character_items
             WHERE user_id = @characterId
@@ -71,7 +73,7 @@ internal sealed partial class
         while (await reader.ReadAsync(cancellationToken))
         {
             var slot = reader.GetInt16(1);
-            var location = reader.GetInt16(37);
+            var location = reader.GetInt16(41);
             var locked = new LockedInventoryItem(
                 reader.GetInt64(0),
                 location,

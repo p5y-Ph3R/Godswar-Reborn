@@ -61,13 +61,19 @@ internal static class CompactItemClassAttributeChecks
         var parsed = CompactItemEntry.Parse(compact);
 
         Check.Equal(
-            34,
+            38,
             compact.Trim('[', ']').Split(',').Length,
-            "Class Suit attributes append the four versioned compact fields");
+            "Class Suit and Holy Spirit values append eight versioned compact fields");
         Check.Equal(200, parsed.ClassAttribute1 ?? -1, "first Class Suit field round-trips");
         Check.True(parsed.ClassAttribute2 is null, "deprecated Class Suit field stays empty");
         Check.Equal(480, parsed.ElementalAttribute1 ?? -1, "first elemental field round-trips");
         Check.Equal(483, parsed.ElementalAttribute2 ?? -1, "second elemental field round-trips");
+        Check.True(
+            parsed.Socket1Value is null &&
+            parsed.Socket2Value is null &&
+            parsed.Socket3Value is null &&
+            parsed.Socket4Value is null,
+            "unset Holy Spirit effectiveness fields round-trip as empty values");
         Check.Equal(compact, parsed.ToCompactString(), "extended compact form is canonical");
     }
 

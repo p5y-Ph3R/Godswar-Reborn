@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Accounts;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
@@ -12,7 +13,13 @@ internal static partial class HolyStoneDurableHandlerChecks
         CreateRawFixtureAsync(
             string? initialKitBag = null,
             Func<GameCharacter, GameCharacter?>? storeMutation = null,
-            uint requestNpcId = HolyStoneProtocol.SpartaNpcId)
+            int? initialGold = null,
+            uint requestNpcId = HolyStoneProtocol.SpartaNpcId,
+            HolyStoneExecutionResult? durableExecutionResult = null,
+            HolyStoneCommandOperation durableOperation =
+                HolyStoneCommandOperation.Upgrade,
+            bool requiresDurablePlayerCommands = false,
+            bool hasLocalLegacyAuthenticationAccess = false)
     {
         var baseSnapshot =
             CharacterSnapshotContractChecks.CreateValidSnapshot();
@@ -31,24 +38,48 @@ internal static partial class HolyStoneDurableHandlerChecks
         {
             live.KitBag = initialKitBag;
         }
+        if (initialGold.HasValue)
+        {
+            live.Gold = initialGold.Value;
+        }
 
         var npc = CreateHolyStoneNpc(
             live,
             requestNpcId);
-        var registry = new GameSessionRegistry();
         var transport = new RawHolyStoneCaptureTransport();
         var session = new ClientSession(transport);
+        var registry = GameHandlerOwnershipTestFences.CreateRegistry(
+            session,
+            baseSnapshot.AccountId,
+            live);
         var store = new HolyStoneStore();
         if (storeMutation is not null)
         {
             store.ResultFactory = () => storeMutation(live);
         }
+        var executor = durableExecutionResult is null
+            ? null
+            : new HolyStoneExecutor(
+                HolyStoneExecutionResult.ReplayNotFound(),
+                durableExecutionResult,
+                durableOperation);
+        var localAccess = hasLocalLegacyAuthenticationAccess
+            ? LegacyAuthenticationAccess.Create(
+                new ValidatedServerRuntimeProfile(
+                    ServerRuntimeProfileKind.LocalDevelopment,
+                    GameStorageProviderKind.Postgres,
+                    ServerListenerTransport.RawTcp,
+                    AllowsLegacyAuthentication: true))
+            : null;
         var handler = new GameClientHandler(
             session,
             store,
             registry,
             new HolyStoneSnapshotReader(snapshot, fails: false),
-            CreateWorldContent(npc));
+            CreateWorldContent(npc),
+            holyStoneCommands: executor,
+            legacyAuthenticationAccess: localAccess,
+            itemContent: TestItemContent.Content);
         SetField(
             handler,
             "_account",
@@ -56,6 +87,13 @@ internal static partial class HolyStoneDurableHandlerChecks
                 baseSnapshot.AccountId,
                 "raw-holy-stone-check"));
         SetField(handler, "_character", live);
+        if (requiresDurablePlayerCommands)
+        {
+            SetField(
+                handler,
+                "_requiresDurablePlayerCommands",
+                true);
+        }
 
         var catalog =
             await registry.PublishMapNpcDefinitionsAsync(
@@ -84,7 +122,9 @@ internal static partial class HolyStoneDurableHandlerChecks
             transport,
             handler,
             store,
-            registry);
+            registry,
+            executor,
+            live);
     }
 
     private sealed record RawHolyStoneFixture(
@@ -92,7 +132,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         RawHolyStoneCaptureTransport Transport,
         GameClientHandler Handler,
         HolyStoneStore Store,
-        GameSessionRegistry Registry) : IAsyncDisposable
+        GameSessionRegistry Registry,
+        HolyStoneExecutor? Executor,
+        GameCharacter LiveCharacter) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {

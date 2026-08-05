@@ -1,4 +1,5 @@
 using Godswar.Server.Game;
+using System.Data.Common;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -45,6 +46,19 @@ internal sealed partial class PostgresGameStore
             return;
         }
 
+        if (IsSingleHolyStoneStackConsumption(mutation))
+        {
+            await UpdateHolyStoneMaterialStackAsync(
+                connection,
+                transaction,
+                characterId,
+                mutation.Slot,
+                mutation.Before,
+                mutation.After,
+                cancellationToken);
+            return;
+        }
+
         if (WithoutHolyStoneSocketState(mutation.Before) != WithoutHolyStoneSocketState(mutation.After))
         {
             throw new InvalidOperationException(
@@ -62,6 +76,71 @@ internal sealed partial class PostgresGameStore
             cancellationToken);
     }
 
+    private static bool IsSingleHolyStoneStackConsumption(
+        HolyStoneSlotMutation mutation) =>
+        mutation.IsKitBag &&
+        mutation.Before.Stack > 1 &&
+        mutation.After.Stack == mutation.Before.Stack - 1 &&
+        WithoutStack(mutation.Before) == WithoutStack(mutation.After);
+
+    private static CompactItemEntry WithoutStack(
+        CompactItemEntry item) =>
+        item with { Stack = 0 };
+
+    private static async Task UpdateHolyStoneMaterialStackAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        int characterId,
+        int slotIndex,
+        CompactItemEntry before,
+        CompactItemEntry after,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE character_items
+            SET stack = @stackAfter,
+                updated_at = now()
+            WHERE user_id = @characterId
+              AND item_location = @itemLocation
+              AND slot_index = @slotIndex
+              AND prop_id = @expectedItemId
+              AND stack = @stackBefore;
+            """;
+        AddHolyStoneStackParameter(command, "stackAfter", after.Stack);
+        AddHolyStoneStackParameter(command, "stackBefore", before.Stack);
+        AddHolyStoneStackParameter(command, "characterId", characterId);
+        AddHolyStoneStackParameter(
+            command,
+            "itemLocation",
+            ItemLocationKitBag);
+        AddHolyStoneStackParameter(
+            command,
+            "slotIndex",
+            checked((short)slotIndex));
+        AddHolyStoneStackParameter(
+            command,
+            "expectedItemId",
+            checked((int)before.Id));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(
+                "Holy-stone material stack was not decremented exactly once.");
+        }
+    }
+
+    private static void AddHolyStoneStackParameter(
+        DbCommand command,
+        string name,
+        object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
     private static CompactItemEntry WithoutHolyStoneSocketState(CompactItemEntry item)
     {
         return item with
@@ -75,6 +154,10 @@ internal sealed partial class PostgresGameStore
             Socket3Level = null,
             Socket4EffectId = null,
             Socket4Level = null,
+            Socket1Value = null,
+            Socket2Value = null,
+            Socket3Value = null,
+            Socket4Value = null,
             Socket5EffectId = null,
             Socket5Level = null,
             Socket6EffectId = null,
@@ -103,6 +186,10 @@ internal sealed partial class PostgresGameStore
                 holy_socket3_level = @holySocket3Level,
                 holy_socket4_effect_id = @holySocket4EffectId,
                 holy_socket4_level = @holySocket4Level,
+                holy_socket1_value = @holySocket1Value,
+                holy_socket2_value = @holySocket2Value,
+                holy_socket3_value = @holySocket3Value,
+                holy_socket4_value = @holySocket4Value,
                 holy_socket5_effect_id = @holySocket5EffectId,
                 holy_socket5_level = @holySocket5Level,
                 holy_socket6_effect_id = @holySocket6EffectId,

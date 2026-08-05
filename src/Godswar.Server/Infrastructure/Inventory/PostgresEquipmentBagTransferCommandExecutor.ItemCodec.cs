@@ -43,7 +43,11 @@ internal sealed partial class
             ClassAttribute1 = ReadNullableAttribute(reader, 34),
             ClassAttribute2 = ReadNullableAttribute(reader, 35),
             ElementalAttribute1 = ReadNullableAttribute(reader, 36),
-            ElementalAttribute2 = ReadNullableAttribute(reader, 37)
+            ElementalAttribute2 = ReadNullableAttribute(reader, 37),
+            Socket1Value = ReadNullableSmallint(reader, 38),
+            Socket2Value = ReadNullableSmallint(reader, 39),
+            Socket3Value = ReadNullableSmallint(reader, 40),
+            Socket4Value = ReadNullableSmallint(reader, 41)
         };
 
     private static int? ReadNullableAttribute(

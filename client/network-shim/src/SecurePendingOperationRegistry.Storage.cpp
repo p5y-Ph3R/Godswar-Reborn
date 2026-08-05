@@ -27,6 +27,18 @@ bool SecurePendingOperationRegistry::ReadNow(
 
 void SecurePendingOperationRegistry::Prune(
     std::uint64_t now) noexcept {
+    if (holyStoneUpgradePageArmed_ &&
+        now >= holyStoneUpgradePageExpiresAt_) {
+        ClearHolyStoneUpgradePage();
+    }
+    if (holyStoneImplementPageArmed_ &&
+        now >= holyStoneImplementPageExpiresAt_) {
+        ClearHolyStoneImplementPage();
+    }
+    if (holyStoneCombinePageArmed_ &&
+        now >= holyStoneCombinePageExpiresAt_) {
+        ClearHolyStoneCombinePage();
+    }
     if (hasPendingClearedSelection_ &&
         now >= pendingClearedSelectionExpiresAt_) {
         hasPendingClearedSelection_ = false;
@@ -208,6 +220,9 @@ void SecurePendingOperationRegistry::SetPrincipal(
         combinePageArmed_ = false;
         combineNpcId_ = 0;
         ClearClassSuitPage();
+        ClearHolyStoneUpgradePage();
+        ClearHolyStoneImplementPage();
+        ClearHolyStoneCombinePage();
     }
 }
 
@@ -219,6 +234,7 @@ bool SecurePendingOperationRegistry::AddSelection(
         }
     }
     if (selectionCount_ >= SecureGearSelectionCapacity) {
+        selectionOverflowed_ = true;
         return false;
     }
 
@@ -278,6 +294,7 @@ void SecurePendingOperationRegistry::TrackSelectionClear(
 
     if (!selectionClearCandidateActive_) {
         int current[SecureGearSelectionCapacity]{
+            -1,
             -1,
             -1,
             -1};
@@ -369,6 +386,7 @@ void SecurePendingOperationRegistry::ResetSelectionState() noexcept {
         SecureGearSelectionCapacity,
         -1);
     selectionCount_ = 0;
+    selectionOverflowed_ = false;
     ResetSelectionClearCandidate();
     hasPendingClearedSelection_ = false;
     pendingClearedSelectionCount_ = 0;
@@ -392,6 +410,9 @@ bool SecurePendingOperationRegistry::TryGetIdentitySelection(
         -1);
     *selectionCount = 0;
 
+    if (selectionOverflowed_) {
+        return false;
+    }
     if (hasPendingClearedSelection_) {
         std::memcpy(
             bagSlots,

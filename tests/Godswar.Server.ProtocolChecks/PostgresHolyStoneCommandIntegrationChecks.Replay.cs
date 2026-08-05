@@ -23,7 +23,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "replay",
             target: Weapon(1),
-            stone: SimpleItem(9060, grade: 6, stack: 2));
+            stone: ImplementedStone(9060, grade: 6));
         var operationId = Guid.NewGuid();
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
@@ -80,7 +80,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "termre",
             target: Weapon(0),
-            stone: SimpleItem(9060, grade: 3));
+            stone: ImplementedStone(9060, grade: 3));
         var operationId = Guid.NewGuid();
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
@@ -119,7 +119,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "concur",
             target: Weapon(1),
-            stone: SimpleItem(9061, grade: 4, stack: 3));
+            stone: ImplementedStone(9061, grade: 4));
         var operationId = Guid.NewGuid();
         await using var firstSource =
             NpgsqlDataSource.Create(connectionString);
@@ -150,12 +150,13 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                     result.Disposition ==
                     HolyStoneExecutionDisposition.Duplicate),
             "concurrent operation replays once");
-        var stone = (await ReadItemAsync(
-            connectionString,
-            fixture.CharacterId,
-            1,
-            fixture.StoneSlot))!.Value.Item;
-        Check.Equal(2, stone.Stack, "concurrency consumes one stone");
+        Check.True(
+            await ReadItemAsync(
+                connectionString,
+                fixture.CharacterId,
+                1,
+                fixture.StoneSlot) is null,
+            "concurrency consumes the individualized stone once");
         var state = await ReadStateAsync(
             connectionString,
             fixture,
@@ -282,7 +283,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "cityrp",
             target: Weapon(1),
-            stone: SimpleItem(9060, grade: 4, stack: 2));
+            stone: ImplementedStone(9060, grade: 4));
         var operationId = Guid.NewGuid();
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);

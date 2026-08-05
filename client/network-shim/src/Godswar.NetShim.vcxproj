@@ -170,6 +170,7 @@
     <ClCompile Include="SecureZodiacSkillGridUpgradeIdentity.cpp" />
     <ClCompile Include="SecureZodiacSkillGridSelectionIdentity.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.Results.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.CharacterLifecycle.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.ClassSuit.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Pets.cpp" />
@@ -177,6 +178,8 @@
     <ClCompile Include="SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.HolyEquipment.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.HolyStone.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.HolyStoneCombine.cpp" />
+    <ClCompile Include="SecurePendingOperationRegistry.HolyStoneImplement.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.HolySuit.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.Inventory.cpp" />
     <ClCompile Include="SecurePendingOperationRegistry.KitBagDelete.cpp" />

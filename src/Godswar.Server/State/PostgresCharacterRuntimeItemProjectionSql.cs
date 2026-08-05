@@ -130,7 +130,9 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     WHEN socket.effect_id = 7 THEN 'critical_damage_percent'
                     WHEN socket.effect_id = 8 THEN 'critical_damage_flat'
                 END AS stat_name,
-                CASE
+                COALESCE(
+                    socket.effectiveness_value::numeric,
+                    CASE
                     WHEN socket.effect_id IN (1,2,3,4) THEN
                         (ARRAY[110,170,240,320,410,500,650,850,1100,1400]::numeric[])[socket_level.safe_level]
                     WHEN socket.effect_id IN (5,6) THEN
@@ -141,15 +143,15 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                         (ARRAY[60,90,130,170,210,250,350,500,700,950]::numeric[])[socket_level.safe_level]
                     ELSE
                         (ARRAY[80,120,170,230,300,370,500,700,950,1200]::numeric[])[socket_level.safe_level]
-                END AS stat_value
+                    END) AS stat_value
             FROM character_items equipment
             CROSS JOIN LATERAL (
                 VALUES
-                    (equipment.holy_socket1_effect_id, equipment.holy_socket1_level),
-                    (equipment.holy_socket2_effect_id, equipment.holy_socket2_level),
-                    (equipment.holy_socket3_effect_id, equipment.holy_socket3_level),
-                    (equipment.holy_socket4_effect_id, equipment.holy_socket4_level)
-            ) socket(effect_id, effect_level)
+                    (equipment.holy_socket1_effect_id, equipment.holy_socket1_level, equipment.holy_socket1_value),
+                    (equipment.holy_socket2_effect_id, equipment.holy_socket2_level, equipment.holy_socket2_value),
+                    (equipment.holy_socket3_effect_id, equipment.holy_socket3_level, equipment.holy_socket3_value),
+                    (equipment.holy_socket4_effect_id, equipment.holy_socket4_level, equipment.holy_socket4_value)
+            ) socket(effect_id, effect_level, effectiveness_value)
             CROSS JOIN LATERAL (
                 SELECT LEAST(
                     GREATEST(COALESCE(socket.effect_level, 1)::integer, 1),

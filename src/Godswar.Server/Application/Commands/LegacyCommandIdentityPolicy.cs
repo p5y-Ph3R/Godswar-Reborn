@@ -25,6 +25,9 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.HolyStoneMount or
             CommandFamily.HolyStoneRemove or
             CommandFamily.HolyStoneDrill or
+            CommandFamily.HolyStoneAdvancedDrill or
+            CommandFamily.HolyStoneUpgrade or
+            CommandFamily.HolyStoneCombine or
             CommandFamily.HolySuitStoreExperience or
             CommandFamily.HolySuitTransferExperience or
             CommandFamily.HolySuitConsumeWare or

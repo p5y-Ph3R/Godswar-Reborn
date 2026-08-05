@@ -301,67 +301,6 @@ void CheckNavigationAndForeignActions(Checks* checks) {
         "Unknown Holy Stone menu value was treated as a mutation");
 }
 
-void CheckUnsupportedAdvancedDrillBoundary(Checks* checks) {
-    std::uint8_t packet[LegacyHolyStoneActionPacketBytes]{};
-    LegacyHolyStoneCommand command{};
-    BuildHolyStonePacket(
-        packet,
-        LegacyHolyStoneAction::Mount,
-        -1,
-        -1,
-        LegacySpartaHolyStoneNpc,
-        true);
-    Write32(
-        packet + 16,
-        static_cast<std::uint32_t>(
-            LegacyHolyStoneAdvancedDrillSubId));
-
-    checks->Require(
-        ClassifyLegacyHolyStonePacket(
-            packet,
-            sizeof(packet),
-            &command) ==
-                LegacyHolyStonePacketKind::UnrelatedOrNavigation &&
-        !TryReadLegacyHolyStoneCommand(
-            packet,
-            sizeof(packet),
-            &command),
-        "Advanced Drill page transition did not remain untagged");
-
-    Write32(packet + 20 + 6 * 4, 205);
-    checks->Require(
-        ClassifyLegacyHolyStonePacket(
-            packet,
-            sizeof(packet),
-            &command) ==
-                LegacyHolyStonePacketKind::InvalidMutation &&
-        !TryReadLegacyHolyStoneCommand(
-            packet,
-            sizeof(packet),
-            &command),
-        "Unknown Advanced Drill commit shape did not fail closed");
-
-    Write32(packet + 20 + 6 * 4, 0xFFFFFFFFU);
-    Write16(packet, LegacyHolyStoneActionPacketBytes - 1);
-    checks->Require(
-        ClassifyLegacyHolyStonePacket(
-            packet,
-            sizeof(packet),
-            &command) ==
-                LegacyHolyStonePacketKind::InvalidMutation,
-        "Malformed Advanced Drill length did not fail closed");
-
-    Write16(packet, LegacyHolyStoneActionPacketBytes);
-    Write32(packet + 8, LegacyHolyStoneDialog + 1);
-    checks->Require(
-        ClassifyLegacyHolyStonePacket(
-            packet,
-            sizeof(packet),
-            &command) ==
-                LegacyHolyStonePacketKind::InvalidMutation,
-        "Malformed Advanced Drill dialog did not fail closed");
-}
-
 void CheckStrictShapeRejections(Checks* checks) {
     std::uint8_t valid[LegacyHolyStoneActionPacketBytes]{};
     std::uint8_t changed[LegacyHolyStoneActionPacketBytes]{};
@@ -529,7 +468,8 @@ void CheckStrictShapeRejections(Checks* checks) {
         for (const auto action : {
                  LegacyHolyStoneAction::Mount,
                  LegacyHolyStoneAction::Remove,
-                 LegacyHolyStoneAction::Drill}) {
+                 LegacyHolyStoneAction::Drill,
+                 LegacyHolyStoneAction::AdvancedDrill}) {
             BuildHolyStonePacket(
                 changed,
                 action,
@@ -538,7 +478,10 @@ void CheckStrictShapeRejections(Checks* checks) {
                     ? 107
                     : action == LegacyHolyStoneAction::Remove
                         ? 1
-                        : -1);
+                        : action ==
+                                LegacyHolyStoneAction::AdvancedDrill
+                            ? 107
+                            : -1);
             checks->Require(
                 ClassifyLegacyHolyStonePacket(
                     changed,
@@ -568,7 +511,6 @@ int RunSecureHolyStoneParserTests() {
     CheckCapturedGoldenVectors(&checks);
     CheckCitiesAndBoundaries(&checks);
     CheckNavigationAndForeignActions(&checks);
-    CheckUnsupportedAdvancedDrillBoundary(&checks);
     CheckStrictShapeRejections(&checks);
     return checks.failures;
 }

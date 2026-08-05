@@ -20,12 +20,17 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
     private readonly short _maximumOutboxAttempts;
     private readonly IPostgresHolyStoneCommandProbe? _probe;
     private readonly GameplayItemContent _itemContent;
+    private readonly IHolyStoneUpgradeRandomSource _upgradeRandomSource;
+    private readonly IHolySpiritEffectivenessRandomSource
+        _holySpiritRandomSource;
 
     public PostgresHolyStoneCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
         GameplayItemContent itemContent,
-        IPostgresHolyStoneCommandProbe? probe = null)
+        IPostgresHolyStoneCommandProbe? probe = null,
+        IHolyStoneUpgradeRandomSource? upgradeRandomSource = null,
+        IHolySpiritEffectivenessRandomSource? holySpiritRandomSource = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -40,6 +45,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
         _maximumOutboxAttempts =
             checked((short)options.MaximumDeliveryAttempts);
         _probe = probe;
+        _upgradeRandomSource = upgradeRandomSource ??
+            new CryptographicHolyStoneUpgradeRandomSource();
+        _holySpiritRandomSource = holySpiritRandomSource ??
+            new CryptographicHolySpiritEffectivenessRandomSource();
     }
 
     public async Task<HolyStoneExecutionResult> ExecuteAsync(
@@ -374,7 +383,11 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
         IsCanonicalCompactState(
             command.ExpectedTargetCompactItemState) &&
         IsCanonicalCompactState(
-            command.ExpectedStoneCompactItemState);
+            command.ExpectedStoneCompactItemState) &&
+        IsCanonicalCompactState(
+            command.ExpectedCatalystCompactItemState) &&
+        IsCanonicalCompactState(
+            command.ExpectedThirdMaterialCompactItemState);
 
     private static bool IsCanonicalCompactState(string value)
     {
@@ -464,6 +477,8 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
     private sealed record LockedCommandItems(
         LockedItem? Target,
         LockedItem? Stone,
+        LockedItem? Catalyst,
+        LockedItem? ThirdMaterial,
         IReadOnlyDictionary<short, LockedItem> KitBag);
 
     private sealed record HolyStonePlan(
@@ -477,6 +492,13 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
         short? RemovedLevel,
         int GoldSpent)
     {
+        public CompactItemEntry CatalystAfter { get; init; } =
+            CompactItemEntry.Empty;
+        public CompactItemEntry ThirdMaterialAfter { get; init; } =
+            CompactItemEntry.Empty;
+        public int? UpgradeRoll { get; init; }
+        public int? UpgradeSuccessRate { get; init; }
+
         public bool IsSuccess =>
             HolyStoneNativeResults.IsSuccess(Status);
     }

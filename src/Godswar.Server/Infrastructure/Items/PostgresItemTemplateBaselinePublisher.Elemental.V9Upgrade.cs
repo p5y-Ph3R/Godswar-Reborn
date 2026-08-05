@@ -57,12 +57,23 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 cancellationToken);
         }
 
+        var definitions = await ReplaceReviewedElementalStoneItemsAsync(
+            connection,
+            transaction,
+            prior.Definitions,
+            cancellationToken);
+        definitions = await AppendMissingReviewedSocketSpellsAsync(
+            connection,
+            transaction,
+            definitions,
+            cancellationToken);
+        definitions = await ReconcileReviewedHolyStoneMaterialsAsync(
+            connection,
+            transaction,
+            definitions,
+            cancellationToken);
         return new V9PublicationSnapshot(
-            await ReplaceReviewedElementalStoneItemsAsync(
-                connection,
-                transaction,
-                prior.Definitions,
-                cancellationToken),
+            definitions,
             prior.Policies with
             {
                 // The fourteen former family-specific stones stay as item

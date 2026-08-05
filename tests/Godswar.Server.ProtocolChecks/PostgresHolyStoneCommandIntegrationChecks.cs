@@ -3,6 +3,7 @@ using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -21,6 +22,8 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
 
     public static async Task RunAsync()
     {
+        AssertDrillEligibilityPolicy();
+
         var connectionString =
             Environment.GetEnvironmentVariable(ConnectionStringVariable);
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -53,8 +56,15 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         }
 
         await AssertMountSemanticsAsync(connectionString);
+        await AssertHolySpiritTransactionsAsync(connectionString);
         await AssertTerminalSafetyAsync(connectionString);
         await AssertDrillAndRemoveAsync(connectionString);
+        await AssertAdvancedDrillAsync(connectionString);
+        await AssertLegacyAdvancedDrillStackConsumptionAsync(
+            connectionString);
+        await AssertUpgradeTransactionsAsync(connectionString);
+        await AssertCombinationTransactionsAsync(connectionString);
+        await AssertRawLocalUpgradeAtomicPathAsync(connectionString);
         await AssertReplayConflictAndConcurrencyAsync(connectionString);
         await AssertStoredEvidenceBindingAsync(connectionString);
         await AssertFaultRecoveryAsync(connectionString);
@@ -62,12 +72,17 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
 
     private static PostgresHolyStoneCommandExecutor CreateExecutor(
         NpgsqlDataSource dataSource,
-        IPostgresHolyStoneCommandProbe? probe = null) =>
+        IPostgresHolyStoneCommandProbe? probe = null,
+        IHolyStoneUpgradeRandomSource? upgradeRandomSource = null,
+        IHolySpiritEffectivenessRandomSource?
+            holySpiritRandomSource = null) =>
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
             TestItemContent.Content,
-            probe);
+            probe,
+            upgradeRandomSource,
+            holySpiritRandomSource);
 
     private static async Task<HolyStoneExecutionResult> ExecuteAsync(
         PostgresHolyStoneCommandExecutor executor,
@@ -88,10 +103,14 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
                 fixture.TargetSlot,
                 expectedTarget ?? fixture.TargetState,
                 socketIndex,
-                operation == HolyStoneCommandOperation.Mount
+                operation is
+                    HolyStoneCommandOperation.Mount or
+                    HolyStoneCommandOperation.AdvancedDrill
                     ? fixture.StoneSlot
                     : HolyStoneCommandEnvelope.NoStoneKitBagSlot,
-                operation == HolyStoneCommandOperation.Mount
+                operation is
+                    HolyStoneCommandOperation.Mount or
+                    HolyStoneCommandOperation.AdvancedDrill
                     ? expectedStone ?? fixture.StoneState
                     : "[]",
                 out var command))

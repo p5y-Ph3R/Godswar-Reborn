@@ -22,7 +22,6 @@ internal sealed partial class GameClientHandler : IClientHandler
     private const uint LocalPlayerObjectId = 0x00001448;
     private const int HolyStoneMountSuccess = 800;
     private const int HolyStoneRemoveSuccess = 1200;
-    private const int HolyStoneInsufficientFunds = 1400;
     private const int HolyStoneDrillSuccess = 1500;
     private static readonly TimeSpan PendingUnequipFollowupTtl = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ForgeSelectionTtl = TimeSpan.FromMinutes(2);
@@ -53,6 +52,8 @@ internal sealed partial class GameClientHandler : IClientHandler
     private bool _characterSnapshotBootstrapPending;
     private PendingUnequipFollowup? _pendingUnequipFollowup;
     private GearEnhancerSelectionContext? _gearEnhancerSelectionContext;
+    private HolyStoneCombinationSelectionContext?
+        _holyStoneCombinationSelectionContext;
     private int? _gearMentorOperationPageSubId;
     private ForgeSlotSelection? _forgeEquipment;
     private ForgeSlotSelection? _forgePrimaryMaterial;

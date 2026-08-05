@@ -66,7 +66,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         bool installNpcRoute = true,
         bool projectionFails = false,
         bool providerUnavailable = false,
-        uint requestNpcId = HolyStoneProtocol.SpartaNpcId)
+        uint requestNpcId = HolyStoneProtocol.SpartaNpcId,
+        HolyStoneCommandOperation expectedOperation =
+            HolyStoneCommandOperation.Mount)
     {
         var baseSnapshot =
             CharacterSnapshotContractChecks.CreateValidSnapshot();
@@ -105,7 +107,8 @@ internal static partial class HolyStoneDurableHandlerChecks
             ? null
             : new HolyStoneExecutor(
                 replayResult,
-                executeResult ?? replayResult);
+                executeResult ?? replayResult,
+                expectedOperation);
         var snapshots = new HolyStoneSnapshotReader(
             afterSnapshot,
             projectionFails);
@@ -372,12 +375,23 @@ internal static partial class HolyStoneDurableHandlerChecks
 
     private sealed class HolyStoneExecutor(
         HolyStoneExecutionResult replayResult,
-        HolyStoneExecutionResult executeResult) :
+        HolyStoneExecutionResult executeResult,
+        HolyStoneCommandOperation expectedOperation) :
         IHolyStoneCommandExecutor
     {
         public int ReplayCount { get; private set; }
         public int ExecuteCount { get; private set; }
         public HolyStoneCommand? ExecutedCommand { get; private set; }
+        public CommandEnvelope<HolyStoneCommand>? ExecutedEnvelope
+        {
+            get;
+            private set;
+        }
+        public HolyStoneExecutionResult? ReplayResultAfterExecution
+        {
+            get;
+            set;
+        }
 
         public Task<HolyStoneExecutionResult> TryReplayAsync(
             CommandSubject subject,
@@ -391,14 +405,17 @@ internal static partial class HolyStoneDurableHandlerChecks
             Check.Equal(7, subject.AccountId, "Holy Stone replay account");
             Check.Equal(19, subject.CharacterId, "Holy Stone replay character");
             Check.Equal(
-                (int)HolyStoneCommandOperation.Mount,
+                (int)expectedOperation,
                 (int)operation,
                 "Holy Stone replay operation");
             Check.Equal(
                 OperationId,
                 clientOperationId,
                 "Holy Stone replay UUID");
-            return Task.FromResult(replayResult);
+            return Task.FromResult(
+                ExecuteCount > 0 && ReplayResultAfterExecution is not null
+                    ? ReplayResultAfterExecution
+                    : replayResult);
         }
 
         public Task<HolyStoneExecutionResult> ExecuteAsync(
@@ -407,6 +424,7 @@ internal static partial class HolyStoneDurableHandlerChecks
         {
             cancellationToken.ThrowIfCancellationRequested();
             ExecuteCount++;
+            ExecutedEnvelope = envelope;
             ExecutedCommand = envelope.Command;
             return Task.FromResult(executeResult);
         }

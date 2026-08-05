@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            57,
+            60,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -112,6 +112,9 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260803_053_class_suit_attribute_slots",
         "20260803_054_elemental_class_suit_attributes",
         "20260803_055_elemental_stone_icon_content",
-        "20260803_056_canonical_elemental_stone_content"
+        "20260803_056_canonical_elemental_stone_content",
+        "20260804_057_socket_spell_item_templates",
+        "20260804_058_stock_holy_stone_material_templates",
+        "20260805_059_holy_spirit_effectiveness_values"
     ];
 }

@@ -152,6 +152,10 @@ internal static partial class PacketBuilder
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket3Level));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket4EffectId));
         AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket4Level));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket1Value));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket2Value));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket3Value));
+        AddInspectIdentityValue(ref hash, NullableInspectIdentityValue(item.Socket4Value));
 
         return hash is 0 or uint.MaxValue ? 0x3E000001u : hash;
     }
@@ -223,6 +227,20 @@ internal static partial class PacketBuilder
                 item.Exp);
         }
 
+        if (record.Length >= 60 && IsNativePreStone(item.Id))
+        {
+            // The stock PreStone tooltip reads the dword at record offset 56
+            // and renders (value % 100) + 1 as its level. Grade is the durable
+            // server level, so encode its zero-based native representation.
+            var encodedLevel = Math.Clamp(
+                item.Grade,
+                (short)HolyStoneUpgradePolicy.MinimumLevel,
+                (short)HolyStoneUpgradePolicy.MaximumLevel) - 1;
+            BinaryPrimitives.WriteInt32LittleEndian(
+                record.Slice(56, 4),
+                encodedLevel);
+        }
+
         // Captured item records pack holy suit and holy-stone socket count into one dword.
         BinaryPrimitives.WriteInt16LittleEndian(
             record.Slice(32, 2),
@@ -292,32 +310,62 @@ internal static partial class PacketBuilder
     private static bool IsNativeHolyBox(uint itemId) =>
         itemId is >= 9020 and <= 9024;
 
+    private static bool IsNativePreStone(uint itemId) =>
+        itemId is
+            HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
+            HolyStoneUpgradePolicy.CooledHolyStoneItemId;
+
     private static void WriteHolyStoneValueRows(Span<byte> record, CompactItemEntry item)
     {
         var socketCount = Math.Clamp(item.SocketCount, (short)0, NativeClientHolyStoneSocketCount);
         if (socketCount > 0)
         {
-            WriteHolyStoneSlot(record, 0, item.Socket1EffectId, item.Socket1Level);
+            WriteHolyStoneSlot(
+                record,
+                0,
+                item.Socket1EffectId,
+                item.Socket1Level,
+                item.Socket1Value);
         }
 
         if (socketCount > 1)
         {
-            WriteHolyStoneSlot(record, 1, item.Socket2EffectId, item.Socket2Level);
+            WriteHolyStoneSlot(
+                record,
+                1,
+                item.Socket2EffectId,
+                item.Socket2Level,
+                item.Socket2Value);
         }
 
         if (socketCount > 2)
         {
-            WriteHolyStoneSlot(record, 2, item.Socket3EffectId, item.Socket3Level);
+            WriteHolyStoneSlot(
+                record,
+                2,
+                item.Socket3EffectId,
+                item.Socket3Level,
+                item.Socket3Value);
         }
 
         if (socketCount > 3)
         {
-            WriteHolyStoneSlot(record, 3, item.Socket4EffectId, item.Socket4Level);
+            WriteHolyStoneSlot(
+                record,
+                3,
+                item.Socket4EffectId,
+                item.Socket4Level,
+                item.Socket4Value);
         }
 
     }
 
-    private static void WriteHolyStoneSlot(Span<byte> record, int slot, short? effectId, short? level)
+    private static void WriteHolyStoneSlot(
+        Span<byte> record,
+        int slot,
+        short? effectId,
+        short? level,
+        short? effectivenessValue)
     {
         var effectOffset = 36 + (slot * 2);
         var valueOffset = 44 + (slot * 2);
@@ -327,7 +375,9 @@ internal static partial class PacketBuilder
         }
 
         BinaryPrimitives.WriteInt16LittleEndian(record.Slice(effectOffset, 2), HolyStoneEffectCode(effectId, level));
-        BinaryPrimitives.WriteInt16LittleEndian(record.Slice(valueOffset, 2), HolyStoneValue(effectId, level));
+        BinaryPrimitives.WriteInt16LittleEndian(
+            record.Slice(valueOffset, 2),
+            HolyStoneValue(effectId, level, effectivenessValue));
     }
 
     private static short HolyStoneEffectCode(short? effectId, short? level)
@@ -344,57 +394,27 @@ internal static partial class PacketBuilder
         return (short)Math.Clamp(code, 0, short.MaxValue);
     }
 
-    private static short HolyStoneValue(short? effectId, short? level)
+    private static short HolyStoneValue(
+        short? effectId,
+        short? level,
+        short? effectivenessValue)
     {
         if (!effectId.HasValue || !level.HasValue)
         {
             return 0;
         }
 
-        var safeLevel = Math.Clamp(level.Value, (short)1, (short)10);
-        var values = effectId.Value switch
+        if (effectivenessValue.HasValue)
         {
-            // Captured working records: effect 2 L9=748, effect 2 L10=796..800.
-            1 or 2 => HolyStonePercentHigh,
-
-            // Percent-based offensive stones.
-            3 or 4 => HolyStonePercentHigh,
-
-            // Flat offensive stones.
-            5 or 6 => HolyStoneFlatHigh,
-
-            // Captured working records: effect 7 L10=596..598.
-            7 => HolyStonePercentMedium,
-
-            // Captured working records: effect 8 L9=937, effect 8 L10=991.
-            8 => HolyStoneFlatCrit,
-
-            // Captured working records: effect 9 L8=477..481, L9=506..515; effect 10 L8=463..471.
-            9 or 10 or 13 or 15 or 17 or 19 => HolyStonePercentMedium,
-
-            // Captured working records: effect 12 L8=303..311.
-            11 or 12 or 14 or 16 or 18 or 20 => HolyStoneFlatLow,
-
-            _ => HolyStonePercentMedium
-        };
-
-        return values[safeLevel - 1];
+            return effectivenessValue.Value;
+        }
+        return HolySpiritLegacyEffectiveness.TryResolve(
+                effectId.Value,
+                level.Value,
+                out var legacyValue)
+            ? legacyValue
+            : (short)0;
     }
-
-    private static readonly short[] HolyStonePercentHigh =
-        [110, 170, 240, 320, 410, 500, 650, 850, 1100, 1400];
-
-    private static readonly short[] HolyStonePercentMedium =
-        [80, 120, 170, 230, 300, 370, 500, 700, 950, 1200];
-
-    private static readonly short[] HolyStoneFlatHigh =
-        [120, 190, 280, 380, 500, 620, 850, 1200, 1650, 2200];
-
-    private static readonly short[] HolyStoneFlatCrit =
-        [150, 240, 340, 460, 590, 720, 950, 1300, 1800, 2400];
-
-    private static readonly short[] HolyStoneFlatLow =
-        [60, 90, 130, 170, 210, 250, 350, 500, 700, 950];
 
     private static void WriteNullableInt32(Span<byte> destination, int? value)
     {
@@ -405,4 +425,5 @@ internal static partial class PacketBuilder
     {
         return (byte)Math.Clamp(value, byte.MinValue, byte.MaxValue);
     }
+
 }

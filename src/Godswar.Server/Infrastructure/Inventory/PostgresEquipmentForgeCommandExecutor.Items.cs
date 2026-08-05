@@ -54,6 +54,10 @@ internal sealed partial class PostgresEquipmentForgeCommandExecutor
                 holy_socket5_level = @holySocket5Level,
                 holy_socket6_effect_id = @holySocket6EffectId,
                 holy_socket6_level = @holySocket6Level,
+                holy_socket1_value = @holySocket1Value,
+                holy_socket2_value = @holySocket2Value,
+                holy_socket3_value = @holySocket3Value,
+                holy_socket4_value = @holySocket4Value,
                 updated_at = now()
             WHERE id = @itemInstanceId
               AND user_id = @characterId

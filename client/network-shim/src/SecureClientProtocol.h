@@ -100,6 +100,10 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     ClassSuitUpgradeTierIV = 38,
     ClassSuitAddAttribute = 39,
     ClassSuitDeleteAttribute = 40,
+    HolyStoneAdvancedDrill = 41,
+    HolyStoneUpgrade = 42,
+    HolyStoneCombine = 43,
+    HolyStoneImplementSpirit = 44,
 };
 
 struct SecureLegacyCommandResult final {

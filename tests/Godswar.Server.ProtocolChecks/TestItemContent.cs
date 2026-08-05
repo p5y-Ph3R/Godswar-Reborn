@@ -79,6 +79,7 @@ internal static class TestItemContent
                 static value => value.ToItemTemplateSeed()))
             .Concat(GearMentorMaterialCatalog.AttributeDusts.Select(
                 static value => value.ToItemTemplateSeed()))
+            .Concat(SocketSpellItemContentBaseline.ItemTemplates)
             .Concat(ClassSuitItemContentBaseline.PromotionalInsignias);
         if (includeHolySuit)
         {

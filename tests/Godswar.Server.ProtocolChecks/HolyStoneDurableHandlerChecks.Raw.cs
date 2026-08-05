@@ -29,8 +29,11 @@ internal static partial class HolyStoneDurableHandlerChecks
         await CheckRawNavigationAsync();
         CheckExactDrillCostPolicy();
         await CheckJsonRawDrillGoldDebitAsync();
+        await CheckRawAdvancedDrillFallbackAsync();
         await CheckRawStoreMaterialAndSocketRulesAsync();
         await CheckRawSettlementOrderingAsync();
+        await CheckRawUpgradeBridgeAsync();
+        await CheckRawCombinationBridgeAsync();
     }
 
     private static async Task CheckRawMountAsync(
@@ -40,7 +43,21 @@ internal static partial class HolyStoneDurableHandlerChecks
         int stoneSlot,
         string description)
     {
-        await using var fixture = await CreateRawFixtureAsync();
+        var bag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            targetSlot,
+            WeaponBefore.ToCompactString());
+        bag = KitBagSlots.SetSlot(
+            bag,
+            stoneSlot,
+            StoneBefore.ToCompactString());
+        await using var fixture = await CreateRawFixtureAsync(
+            initialKitBag: bag,
+            durableExecutionResult:
+                HolyStoneExecutionResult.InvalidIntent(),
+            durableOperation: HolyStoneCommandOperation.Mount,
+            requiresDurablePlayerCommands: true,
+            hasLocalLegacyAuthenticationAccess: true);
         var packet = HolyStoneCommandContractChecks.CreatePacket(
             HolyStoneProtocol.SpartaNpcId,
             HolyStoneProtocol.MountSubId,
@@ -55,25 +72,41 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         await InvokeAsync(fixture.Handler, packet);
 
-        var call = fixture.Store.LastCall ??
+        var command = fixture.Executor?.ExecutedCommand ??
             throw new InvalidOperationException(
-                $"{description} did not reach the raw store.");
+                $"{description} did not reach the durable executor.");
         Check.Equal(
-            (int)HolyStoneOperation.MountStone,
-            (int)call.Operation,
+            (int)HolyStoneCommandOperation.Mount,
+            (int)command.Operation,
             $"{description} operation");
         Check.Equal(
-            (int)expectedMode,
-            (int)call.TargetMode,
+            (int)(expectedMode == HolyStoneTargetMode.KitBag
+                ? HolyStoneTargetLocation.KitBag
+                : HolyStoneTargetLocation.Equipment),
+            (int)command.TargetLocation,
             $"{description} target mode");
-        Check.Equal(targetSlot, call.TargetSlot, $"{description} target");
-        Check.Equal(stoneSlot, call.StoneSlot, $"{description} stone");
-        Check.Equal(-1, call.SocketIndex, $"{description} socket");
+        Check.Equal(targetSlot, command.TargetSlot, $"{description} target");
+        Check.Equal(stoneSlot, command.StoneKitBagSlot, $"{description} stone");
+        Check.Equal(-1, command.SocketIndex, $"{description} socket");
+        Check.Equal(
+            0,
+            fixture.Store.HolyStoneCount,
+            $"{description} never reaches retry-ambiguous legacy storage");
     }
 
     private static async Task CheckRawRemoveAsync()
     {
-        await using var fixture = await CreateRawFixtureAsync();
+        var bag = KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            23,
+            WeaponBefore.ToCompactString());
+        await using var fixture = await CreateRawFixtureAsync(
+            initialKitBag: bag,
+            durableExecutionResult:
+                HolyStoneExecutionResult.InvalidIntent(),
+            durableOperation: HolyStoneCommandOperation.Remove,
+            requiresDurablePlayerCommands: true,
+            hasLocalLegacyAuthenticationAccess: true);
         var packet = HolyStoneCommandContractChecks.CreatePacket(
             HolyStoneProtocol.SpartaNpcId,
             HolyStoneProtocol.RemoveSubId,
@@ -86,19 +119,31 @@ internal static partial class HolyStoneDurableHandlerChecks
 
         await InvokeAsync(fixture.Handler, packet);
 
-        var call = fixture.Store.LastCall!.Value;
+        var command = fixture.Executor?.ExecutedCommand ??
+            throw new InvalidOperationException(
+                "raw Remove did not reach the durable executor");
         Check.Equal(
-            (int)HolyStoneTargetMode.KitBag,
-            (int)call.TargetMode,
+            (int)HolyStoneTargetLocation.KitBag,
+            (int)command.TargetLocation,
             "raw Remove uses exact bag target");
-        Check.Equal(23, call.TargetSlot, "raw Remove target slot");
-        Check.Equal(3, call.SocketIndex, "raw Remove selected socket");
-        Check.Equal(-1, call.StoneSlot, "raw Remove has no material");
+        Check.Equal(23, command.TargetSlot, "raw Remove target slot");
+        Check.Equal(3, command.SocketIndex, "raw Remove selected socket");
+        Check.Equal(
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            command.StoneKitBagSlot,
+            "raw Remove has no material");
+        Check.Equal(
+            0,
+            fixture.Store.HolyStoneCount,
+            "raw Remove never reaches retry-ambiguous legacy storage");
     }
 
     private static async Task CheckRawDrillAsync()
     {
-        await using var fixture = await CreateRawFixtureAsync();
+        await using var fixture = await CreateRawFixtureAsync(
+            initialKitBag: DrillTargetBag(
+                itemId: 1035,
+                socketCount: 0));
         var packet = HolyStoneCommandContractChecks.CreatePacket(
             HolyStoneProtocol.SpartaNpcId,
             HolyStoneProtocol.DrillSubId,
@@ -182,50 +227,85 @@ internal static partial class HolyStoneDurableHandlerChecks
 
     private static void CheckExactDrillCostPolicy()
     {
-        var kitBag = KitBagSlots.SetSlot(
-            GameDefaults.EmptyKitBag,
-            WeaponSlot,
-            (WeaponBefore with
-            {
-                SocketCount = 0
-            }).ToCompactString());
-        Check.True(
-            HolyStoneItemMutator.TryGetDrillGoldCost(
-                GameDefaults.DefaultEquipment(profession: 0),
-                kitBag,
-                profession: 0,
-                HolyStoneTargetMode.KitBag,
-                WeaponSlot,
-                out var firstCost),
-            "raw first bagged-weapon Drill resolves a Gold cost");
-        Check.Equal(
-            HolyStoneDrillCostPolicy.FirstSocketGoldCost,
-            firstCost,
-            "raw first Drill Gold cost");
+        foreach (var (itemId, description) in new (uint, string)[]
+                 {
+                     (1035, "weapon"),
+                     (2113, "armor"),
+                     (2834, "gloves")
+                 })
+        {
+            var firstBag = DrillTargetBag(itemId, socketCount: 0);
+            Check.True(
+                HolyStoneItemMutator.TryGetDrillGoldCost(
+                    TestItemContent.Catalog,
+                    GameDefaults.DefaultEquipment(profession: 0),
+                    firstBag,
+                    profession: 0,
+                    HolyStoneTargetMode.KitBag,
+                    WeaponSlot,
+                    out var firstCost),
+                $"raw first bagged-{description} Drill resolves a Gold cost");
+            Check.Equal(
+                HolyStoneDrillCostPolicy.FirstSocketGoldCost,
+                firstCost,
+                $"raw first {description} Drill Gold cost");
 
-        kitBag = KitBagSlots.SetSlot(
-            kitBag,
-            WeaponSlot,
-            (WeaponBefore with
-            {
-                SocketCount = 1
-            }).ToCompactString());
-        Check.True(
-            HolyStoneItemMutator.TryGetDrillGoldCost(
-                GameDefaults.DefaultEquipment(profession: 0),
-                kitBag,
-                profession: 0,
-                HolyStoneTargetMode.KitBag,
-                WeaponSlot,
-                out var secondCost),
-            "raw second bagged-weapon Drill resolves a Gold cost");
-        Check.Equal(
-            HolyStoneDrillCostPolicy.SecondSocketGoldCost,
-            secondCost,
-            "raw second Drill Gold cost");
+            var secondBag = DrillTargetBag(itemId, socketCount: 1);
+            Check.True(
+                HolyStoneItemMutator.TryGetDrillGoldCost(
+                    TestItemContent.Catalog,
+                    GameDefaults.DefaultEquipment(profession: 0),
+                    secondBag,
+                    profession: 0,
+                    HolyStoneTargetMode.KitBag,
+                    WeaponSlot,
+                    out var secondCost),
+                $"raw second bagged-{description} Drill resolves a Gold cost");
+            Check.Equal(
+                HolyStoneDrillCostPolicy.SecondSocketGoldCost,
+                secondCost,
+                $"raw second {description} Drill Gold cost");
+        }
+
+        foreach (var (itemId, description) in new (uint, string)[]
+                 {
+                     (9030, "non-equipment"),
+                     (8000, "stylish"),
+                     (6000, "mount"),
+                     (14500, "mount gear")
+                 })
+        {
+            Check.True(
+                !HolyStoneItemMutator.TryGetDrillGoldCost(
+                    TestItemContent.Catalog,
+                    GameDefaults.DefaultEquipment(profession: 0),
+                    DrillTargetBag(itemId, socketCount: 0),
+                    profession: 0,
+                    HolyStoneTargetMode.KitBag,
+                    WeaponSlot,
+                    out _),
+                $"raw Drill rejects {description}");
+        }
     }
 
     private static async Task CheckJsonRawDrillGoldDebitAsync()
+    {
+        foreach (var (itemId, description) in new (uint, string)[]
+                 {
+                     (1035, "weapon"),
+                     (2113, "armor"),
+                     (2834, "gloves")
+                 })
+        {
+            await CheckJsonRawDrillGoldDebitAsync(
+                itemId,
+                description);
+        }
+    }
+
+    private static async Task CheckJsonRawDrillGoldDebitAsync(
+        uint itemId,
+        string description)
     {
         var dataPath = Path.Combine(
             Path.GetTempPath(),
@@ -243,6 +323,7 @@ internal static partial class HolyStoneDurableHandlerChecks
                 WeaponSlot,
                 (WeaponBefore with
                 {
+                    Id = itemId,
                     SocketCount = 0
                 }).ToCompactString());
             var character = await store.CreateCharacterAsync(
@@ -268,13 +349,13 @@ internal static partial class HolyStoneDurableHandlerChecks
                 5_000 -
                     HolyStoneDrillCostPolicy.FirstSocketGoldCost,
                 first!.Gold,
-                "raw JSON first Drill debits Gold atomically");
+                $"raw JSON first {description} Drill debits Gold atomically");
             Check.Equal(
                 (short)1,
                 KitBagSlots.GetItem(
                     first.KitBag,
                     WeaponSlot).SocketCount,
-                "raw JSON first Drill mutates the selected bagged weapon");
+                $"raw JSON first Drill mutates the selected bagged {description}");
 
             var second = await store.ApplyWeaponHolyStoneAsync(
                 account.Id,
@@ -290,13 +371,13 @@ internal static partial class HolyStoneDurableHandlerChecks
                     HolyStoneDrillCostPolicy.FirstSocketGoldCost -
                     HolyStoneDrillCostPolicy.SecondSocketGoldCost,
                 second!.Gold,
-                "raw JSON second Drill debits Gold atomically");
+                $"raw JSON second {description} Drill debits Gold atomically");
             Check.Equal(
                 (short)2,
                 KitBagSlots.GetItem(
                     second.KitBag,
                     WeaponSlot).SocketCount,
-                "raw JSON second Drill mutates the selected bagged weapon");
+                $"raw JSON second Drill mutates the selected bagged {description}");
 
             var third = await store.ApplyWeaponHolyStoneAsync(
                 account.Id,
@@ -309,20 +390,20 @@ internal static partial class HolyStoneDurableHandlerChecks
                 destinationKitBagSlot: -1);
             Check.True(
                 third is null,
-                "raw JSON Drill cannot create a third basic socket");
+                $"raw JSON {description} Drill cannot create a third basic socket");
             var persisted = await store.GetFirstCharacterAsync(account.Id)
                 ?? throw new InvalidDataException(
                     "raw JSON Drill character disappeared");
             Check.Equal(
                 second.Gold,
                 persisted.Gold,
-                "rejected third raw Drill cannot spend Gold");
+                $"rejected third raw {description} Drill cannot spend Gold");
             Check.Equal(
                 (short)2,
                 KitBagSlots.GetItem(
                     persisted.KitBag,
                     WeaponSlot).SocketCount,
-                "rejected third raw Drill cannot mutate the bagged weapon");
+                $"rejected third raw Drill cannot mutate the bagged {description}");
         }
         finally
         {
@@ -332,4 +413,16 @@ internal static partial class HolyStoneDurableHandlerChecks
             }
         }
     }
+
+    private static string DrillTargetBag(
+        uint itemId,
+        short socketCount) =>
+        KitBagSlots.SetSlot(
+            GameDefaults.EmptyKitBag,
+            WeaponSlot,
+            (WeaponBefore with
+            {
+                Id = itemId,
+                SocketCount = socketCount
+            }).ToCompactString());
 }

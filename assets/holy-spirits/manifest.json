@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "source_atlas": "Icon3.gwo",
+  "target_atlas": "Icon5.gwo",
+  "sprite_width": 36,
+  "sprite_height": 36,
+  "entries": [
+    {
+      "slug": "aether-renewal",
+      "display_name": "Aether Spirit of Renewal",
+      "status": "existing-item-redesign",
+      "item_id": 9068,
+      "x": 0,
+      "y": 0,
+      "source_sha256": "12d17fe1b74db4d7566162bcb41ee9c4c43a370237f75fc57cbe00349a69a40a"
+    },
+    {
+      "slug": "aether-ichor",
+      "display_name": "Aether Spirit of Ichor",
+      "status": "existing-item-redesign",
+      "item_id": 9069,
+      "x": 36,
+      "y": 0,
+      "source_sha256": "1b575ea1be4af8f905ff881b3ce2feb57030113e27e5b214d48d3973c067b81a"
+    },
+    {
+      "slug": "aether-flow",
+      "display_name": "Aether Spirit of Flow",
+      "status": "existing-item-redesign",
+      "item_id": 9088,
+      "x": 72,
+      "y": 0,
+      "source_sha256": "b4062ec7a76474b2d3216db7b94f15bfbfd1b326927e63f59a5320c3ea578529"
+    },
+    {
+      "slug": "aether-serenity",
+      "display_name": "Aether Spirit of Serenity",
+      "status": "existing-item-redesign",
+      "item_id": 9089,
+      "x": 108,
+      "y": 0,
+      "source_sha256": "8a04927b22c3d14576231cf190b37dd986e91f824ab7da584e2846f1c59d2c95"
+    },
+    {
+      "slug": "ares-prowess",
+      "display_name": "Ares Spirit of Prowess",
+      "status": "proposed-item",
+      "proposed_item_id": 9070,
+      "x": 144,
+      "y": 0,
+      "source_sha256": "9f5da4f12277ac8b37fc1c788555af2caa1afc979056439bc1fafca23746ee2c"
+    },
+    {
+      "slug": "hecate-nullification",
+      "display_name": "Hecate Spirit of Nullification",
+      "status": "proposed-item",
+      "proposed_item_id": 9071,
+      "x": 180,
+      "y": 0,
+      "source_sha256": "41c005565f49a6e9c8d771dc0266cde754e42e3d0ff717e10b27b52ef3b6a851"
+    },
+    {
+      "slug": "tyche-fortune",
+      "display_name": "Tyche Spirit of Fortune",
+      "status": "proposed-item",
+      "proposed_item_id": 9072,
+      "x": 216,
+      "y": 0,
+      "source_sha256": "57f364298ba3f9fcc0d35795246617c4f995d58d4ed07dbd7b33e25afb7019f0"
+    },
+    {
+      "slug": "aegis-anchoring",
+      "display_name": "Aegis Spirit of Anchoring",
+      "status": "proposed-item",
+      "proposed_item_id": 9073,
+      "x": 252,
+      "y": 0,
+      "source_sha256": "8d7c8b7b1116e09ab897a9bfbc708da3fcc95ddb1929d582e7a03fb878500fc0"
+    },
+    {
+      "slug": "nemesis-reckoning",
+      "display_name": "Nemesis Spirit of Reckoning",
+      "status": "proposed-item",
+      "proposed_item_id": 9074,
+      "x": 288,
+      "y": 0,
+      "source_sha256": "48d53e856ed97a4e323f33b53d2521bd35daa4766e2fff3a11cb370efa86e2da"
+    },
+    {
+      "slug": "aether-conservation",
+      "display_name": "Aether Spirit of Conservation",
+      "status": "proposed-item",
+      "proposed_item_id": 9075,
+      "x": 324,
+      "y": 0,
+      "source_sha256": "c9fc8d262edecb09ee47a0b3e880d181a26aaedd9f6447a070f902d44a0f7ee7"
+    },
+    {
+      "slug": "gaia-stability",
+      "display_name": "Gaia Spirit of Stability",
+      "status": "proposed-item",
+      "proposed_item_id": 9076,
+      "x": 360,
+      "y": 0,
+      "source_sha256": "666bf5eea3d21915136da9f9751f6316ba52bc6ec49e947e3f56d8e5f1948694"
+    },
+    {
+      "slug": "zephyr-reprieve",
+      "display_name": "Zephyr Spirit of Reprieve",
+      "status": "proposed-item",
+      "proposed_item_id": 9077,
+      "x": 396,
+      "y": 0,
+      "source_sha256": "76fc570c3173b3a79ba2aaf7fc366461ccaf6c52375acd0bc82f1cdc5e5a2d21"
+    },
+    {
+      "slug": "helios-purity",
+      "display_name": "Helios Spirit of Purity",
+      "status": "proposed-item",
+      "proposed_item_id": 9078,
+      "x": 432,
+      "y": 0,
+      "source_sha256": "ed9945e6f9731e6dc292a56d1fa15f21eb7b9f6b3192c6e4dfac6c25559104ef"
+    },
+    {
+      "slug": "nyx-exhaustion",
+      "display_name": "Nyx Spirit of Exhaustion",
+      "status": "proposed-item",
+      "proposed_item_id": 9079,
+      "x": 468,
+      "y": 0,
+      "source_sha256": "1a49a7f5f23c03b876f0ecdc7f43edaa05c6beeb70a63a989e5f222895e685b1"
+    },
+    {
+      "slug": "nyx-lethargy",
+      "display_name": "Nyx Spirit of Lethargy",
+      "status": "proposed-item",
+      "proposed_item_id": 9090,
+      "x": 504,
+      "y": 0,
+      "source_sha256": "6d727773d246203b1f2b71af1dcca9e11567ce6b98219066426aead2dfe351cf"
+    },
+    {
+      "slug": "astrape-disruption",
+      "display_name": "Astrape Spirit of Disruption",
+      "status": "proposed-item",
+      "proposed_item_id": 9091,
+      "x": 540,
+      "y": 0,
+      "source_sha256": "72d08370155814f8fef4999027f2c35bc2bdd8d512e3f56094320ae1c9e81026"
+    },
+    {
+      "slug": "chronos-delay",
+      "display_name": "Chronos Spirit of Delay",
+      "status": "proposed-item",
+      "proposed_item_id": 9092,
+      "x": 576,
+      "y": 0,
+      "source_sha256": "dc6a47c3db21ac97f06da974857e3f1b7d30521492244cfc7733b0cd47615428"
+    }
+  ]
+}

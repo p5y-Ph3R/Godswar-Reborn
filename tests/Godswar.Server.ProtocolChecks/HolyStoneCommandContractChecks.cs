@@ -16,7 +16,10 @@ internal static partial class HolyStoneCommandContractChecks
         CheckFamiliesAndIdentity();
         CheckMissingStateCommands();
         CheckCanonicalIdentity();
+        CheckRawLocalUpgradeIdentity();
+        CheckCombinationContract();
         CheckExactWireShapes();
+        CheckAdvancedDrillContract();
         CheckWireShapeRejections();
         CheckReceiptEvidence();
         return Task.CompletedTask;

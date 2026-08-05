@@ -11,7 +11,14 @@ internal static partial class
     {
         var fixture = await CreateFixtureAsync(
             connectionString,
-            "success");
+            "success",
+            Item(4212, 2) with
+            {
+                SocketCount = 1,
+                Socket1EffectId = 2,
+                Socket1Level = 10,
+                Socket1Value = 797
+            });
         var operationId = Guid.NewGuid();
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);

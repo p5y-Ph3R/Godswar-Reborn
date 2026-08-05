@@ -87,6 +87,58 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
             HolyStonePersistenceCodec.Encode(receipt));
         await consumer.ConsumeAsync(message);
 
+        var advancedEventId = Guid.NewGuid();
+        var advancedBefore = before with { SocketCount = 2 };
+        var advancedAfter = before with { SocketCount = 3 };
+        var socketSpell = CompactItemEntry.Empty with
+        {
+            Id = 4272,
+            Quality = 1,
+            Grade = 1,
+            Bound = 1,
+            Stack = 2
+        };
+        var advancedReceipt = new HolyStoneExecutionReceipt(
+            CharacterId,
+            HolyStoneCommandOperation.AdvancedDrill,
+            HolyStoneCommandEnvelope.SpartaNpcId,
+            HolyStoneCommandEnvelope.DialogIndex,
+            HolyStoneCommandResultStatus.Drilled,
+            HolyStoneNativeResults.DrilledSubId,
+            HolyStoneTargetLocation.KitBag,
+            targetSlot: 16,
+            socketIndex: 2,
+            targetItemInstanceId: 201,
+            advancedBefore.ToCompactString(),
+            advancedBefore.ToCompactString(),
+            advancedAfter.ToCompactString(),
+            stoneKitBagSlot: 11,
+            stoneItemInstanceId: 202,
+            socketSpell.ToCompactString(),
+            socketSpell.ToCompactString(),
+            (socketSpell with { Stack = 1 }).ToCompactString(),
+            outputKitBagSlot: -1,
+            outputItemInstanceId: null,
+            outputBeforeCompactItemState: null,
+            outputAfterCompactItemState: null,
+            goldSpent: 0,
+            goldBefore: 777,
+            goldAfter: 777,
+            walletRevision: 3,
+            inventoryRevision: 17,
+            auditReference: "holy-stone-advanced:17",
+            advancedEventId);
+        await consumer.ConsumeAsync(new OutboxEventMessage(
+            advancedEventId,
+            HolyStonePersistenceCodec.ConsumerKey,
+            HolyStonePersistenceCodec.AggregateType,
+            HolyStonePersistenceCodec.AggregateKey(CharacterId),
+            advancedReceipt.InventoryRevision,
+            HolyStonePersistenceCodec.EventType,
+            HolyStonePersistenceCodec.ContractVersion,
+            DateTimeOffset.UtcNow,
+            HolyStonePersistenceCodec.Encode(advancedReceipt)));
+
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(
                 CopyHolyStoneMessage(
