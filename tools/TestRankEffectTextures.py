@@ -60,6 +60,8 @@ def main() -> None:
     concept_root = ROOT / "assets" / "rank-effects" / "concepts"
     required_concepts = {
         "armor-weapon-rank-redesign-reference.png",
+        "armor-rank-redesign-v2-role-aware.png",
+        "weapon-rank10-redesign-v2-role-aware.png",
         "weapon-rank10-class-reference.png",
     }
     if {path.name for path in concept_root.glob("*.png")} != required_concepts:

@@ -1,10 +1,23 @@
-# Client armor and weapon rank-effect redesign
+# Client armor and weapon rank-effect redesign (v1 rejected)
 
-## Active design
+## Current status
 
-The local development client now has distinct armor effects above the stock
-AR9 butterfly effect and a class-specific effect at the WR10 cap. Rank score
-thresholds and server effect IDs are unchanged.
+The design documented below was installed for an in-game review and rejected.
+It mixed animated-mesh roles and used generic palettes that did not respect the
+native UV-atlas layout. The local development client has been restored from
+`C:\Reborn\backups\rank-effects-20260808T060956Z`, and all 188 transactional
+targets were verified against their pre-install state.
+
+After that clean restoration, the isolated AR14/Warrior-WR10 v2 prototype was
+installed transactionally for visual review. Its state and separate rollback
+are recorded in [`client-rank-effect-v2-role-map.md`](client-rank-effect-v2-role-map.md).
+
+Do not reinstall or extend this v1 package. The evidence-based replacement is
+documented in [`client-rank-effect-v2-role-map.md`](client-rank-effect-v2-role-map.md).
+The separate quality/grade/elemental text palette was not part of this rollback
+and remains unchanged.
+
+## Rejected v1 design
 
 | Rank | Score | Identity | Visual direction |
 |---|---:|---|---|
@@ -25,7 +38,7 @@ WR8 and WR9 remain unchanged. WR10 keeps the native IDs already selected by
 | Priest | one-hand `0209` | Apollo's Radiance |
 | Mage | two-hand `0059` | Hecate's Aether |
 
-## Why AR9 needs compatibility handling
+## Historical AR9 compatibility handling
 
 The stock AR9 JCS geometry refers to texture names also used by later armor
 ranks. Directly replacing those shared files changes AR9 as a side effect.
@@ -38,7 +51,7 @@ byte-for-byte protected.
 
 The client formats are:
 
-- `.jcs`: MSZIP-compressed binary XOF emitter/geometry data.
+- `.jcs`: MSZIP-compressed binary-X animated mesh/geometry data.
 - `.gwo` and `.tga`: 24-bit or 32-bit TGA image payloads.
 
 The package covers both `Characters\effect` and `Characters_New\effect`, and
@@ -47,7 +60,7 @@ owned by its effect record. Protected files, package hashes, model structure,
 TGA bounds, target names, and active-client state are checked before a
 transactional install.
 
-## Source and tooling
+## Historical source and tooling
 
 - `assets/rank-effects/rank-effect-manifest.json` is the package entry point.
 - `assets/rank-effects/README.md` records the reviewed geometry source plan.
@@ -60,7 +73,8 @@ transactional install.
 - `tools/RankEffectPackages.py` validates, preflights, installs, verifies, and
   restores the package.
 
-Validation commands:
+These commands describe the historical package mechanics and are retained for
+forensics and rollback testing. They are not approval to install v1:
 
 ```powershell
 python tools/TestRankEffectTextures.py
@@ -70,15 +84,16 @@ python tools/RankEffectPackages.py --client-root "C:\Godswar Origin" --preflight
 python tools/RankEffectPackages.py --client-root "C:\Godswar Origin" --verify-installed
 ```
 
-The 2026-08-08 local development install has rollback backup
+The rejected 2026-08-08 local development install used rollback backup
 `C:\Reborn\backups\rank-effects-20260808T060956Z`. This backup is workstation
-state and is intentionally excluded from Git. The B20H client and observation
-containers were not changed.
+state and is intentionally excluded from Git. It has now been restored. The
+B20H client and observation containers were not changed.
 
-## Visual acceptance
+## Why automated validation was insufficient
 
-Automated checks prove package integrity, structural distinction, palette
+Automated checks proved package integrity, structural distinction, palette
 distinction, lower-rank protection, dual-tree coverage, and rollback behavior.
-They cannot prove that particle scale and readability look ideal in motion.
-Final acceptance therefore requires an in-game pass at AR9 through AR14 and
-WR8 through WR10 for each class, using `C:\Godswar Origin\Launch.exe`.
+They did not prove that a source slot still performed the same visual role or
+that a replacement texture respected that slot's UV region. The in-game pass
+caught that failure. V2 therefore validates role semantics before expanding
+beyond one armor and one weapon prototype.

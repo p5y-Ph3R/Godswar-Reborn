@@ -1,10 +1,44 @@
 # Rank-effect concept references
 
 These sheets are visual targets, not files consumed directly by the client.
-The production assets are deterministic 64x64 TGA payloads stored with the
-client's `.gwo` extension under `../generated/`.
+They are not texture atlases. A production texture must preserve the native
+64x64 atlas regions, UV usage, transparency, and mesh-card role documented in
+`../../../docs/client-rank-effect-v2-role-map.md`.
 
-Both references were generated with the built-in image-generation tool.
+All references were generated with the built-in image-generation tool.
+
+## V2 role-aware armor direction
+
+Output: `armor-rank-redesign-v2-role-aware.png`
+
+Prompt summary:
+
+> Show AR10 through AR14 as readable ancient-Greek MMORPG character auras,
+> constrained to the client's three native roles: animated core shell, static
+> outer silhouette, and animated inner rune. Keep AR9's butterfly identity out
+> of later ranks and make the progression distinct without hiding the player.
+
+This is a composition and silhouette reference only. It must not be resized,
+cropped, or copied into a `.gwo`/`.tga` atlas.
+
+## V2 role-aware WR10 direction
+
+Output: `weapon-rank10-redesign-v2-role-aware.png`
+
+Prompt summary:
+
+> Show class-specific Warrior, Champion, Priest, and Mage WR10 effects while
+> retaining the native weapon model and attachment. Limit the authored effect
+> vocabulary to the supported static outer corona and animated travelling
+> spark/stream roles, with compact combat-readable class identities.
+
+This is also concept-only. V2 preserves the native WR10 JCS models and authors
+only supported corona and travelling-spark visual regions.
+
+## Rejected v1 references
+
+The following sheets belong to the rejected v1 direction. They remain for
+history and must not be treated as implementation targets.
 
 ## Armor and progression reference
 
