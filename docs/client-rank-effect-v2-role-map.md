@@ -1,4 +1,4 @@
-# Client rank effects: v2 role map and prototype gate
+# Client rank effects: v2 role map and complete armor package
 
 ## Status
 
@@ -12,13 +12,20 @@ separate patch and was not rolled back.
 The v1 package and its builder remain in the repository as historical tooling.
 They are not an approved visual design and must not be installed.
 
-The first v2 gate is now built and transactionally installed only in
-`C:\Godswar Origin`: AR14 plus native Warrior WR10. The package passed its
-offline role-contract test, the existing package-framework test, validation,
-and a 60-target preflight. Post-install verification also passed. Rollback is
-`C:\Reborn\backups\rank-effects-20260808T091548Z`. The B20H client and runtime
-were not touched. AR10 through AR13 and the other three WR10 classes remain
-unimplemented until this prototype passes an in-game visual review.
+The complete v2 armor package is now built and transactionally installed only
+in `C:\Godswar Origin`: AR10 through AR14 plus the reviewed native Warrior
+WR10. It contains 24 effect records and 124 owned assets; preflight and install
+covered 140 transactional targets including the AR9 compatibility layer.
+Offline role-contract, package-framework, texture, source-size, install, and
+post-install verification all pass. Rollback is
+`C:\Reborn\backups\rank-effects-20260808T094523Z`. The three other class WR10
+effects remain outside this package. The B20H client and runtime were not
+touched.
+
+The separate cap-label palette is also corrected in the development client:
+Boundless is electric magenta and G25 is diamond cyan instead of near-white.
+Its rollback is
+`C:\Reborn\backups\client-gear-palette-20260808-214529681`.
 
 ## What v1 got wrong
 
@@ -52,7 +59,30 @@ not a recolour.
 
 AR9 is deliberately different. Its slot 1 has 976 vertices and 848 faces,
 uses U `0.392..0.496` and V `0.030..0.472`, and forms the compact butterfly.
-AR9 must remain byte-for-byte protected; it is not a source for v2 ranks.
+AR9 geometry and atlas payloads remain protected; its JCS texture-name tokens
+are transactionally redirected to exact legacy atlas copies so AR10 can safely
+own the formerly shared canonical names. AR9 is not a source for v2 ranks.
+
+### Authored AR10--AR14 progression
+
+Every rank uses the coherent native AR12 three-slot family. Slots 0 and 2 keep
+their native structure and animation. Only the 40 disconnected cards in slot 1
+are repositioned as intact cards, so no card is stretched across its atlas
+detail. The per-rank atlas tint preserves the stock luminance, alpha mask,
+footer, and semantic layout.
+
+| Rank | Identity | Palette | Deliberate silhouette role |
+|---:|---|---|---|
+| AR10 | Solar Aegis | solar blue and warm gold | Compact, broad, low shoulder guard that clearly starts the post-butterfly progression. |
+| AR11 | Aether Veil | violet and pale aether blue | Narrow rising veil with the upper cards lifted above the shoulder line. |
+| AR12 | Gaia Laurel | emerald and laurel gold | Grounded open wreath with wider living branches. |
+| AR13 | Ares War Mantle | crimson, ember, and bronze | Widest angular mantle, weighted toward aggressive outer shoulders. |
+| AR14 | Olympian Plume | celestial blue, white, and refined gold | Tall cap-rank crown with raised inner plumes and a stable outer frame. |
+
+The authoring catalogue enforces distinct structural fingerprints for all five
+ranks, bounded local card scaling, eight stable anchor cards, lateral symmetry,
+finite palette inputs, and safe per-rank silhouette envelopes. AR9's butterfly
+geometry remains the protected predecessor and is never used as a donor.
 
 ### The 64x64 armor atlas is a layout, not a canvas
 
@@ -101,7 +131,8 @@ indices, and existing effect IDs remain native.
 
 ## Non-negotiable safety constraints
 
-- Preserve AR9 and WR1 through WR9 exactly.
+- Preserve AR9 structure/appearance and WR1 through WR9 exactly. The only AR9
+  byte change allowed is the reviewed shared-texture token remap above.
 - Do not mix unrelated low-rank JCS slots into a high-rank effect.
 - Do not replace all texture dependencies with one generic texture.
 - Preserve mesh topology, UVs, vertex colours, normals, material-face indices,
@@ -119,38 +150,49 @@ indices, and existing effect IDs remain native.
   the separate quality/grade/elemental text palette in this work.
 - Never install experiments into the B20H client or its observation runtime.
 
-## Prototype-first test plan
+## Completed verification and renderer review
 
-1. Build only one armor prototype (AR14, because test2 exposes the cap). Keep
-   slots 0 and 2 from the coherent base; sculpt or re-author only the
-   high-rank slot 1 silhouette, then make role-preserving atlas edits if the
-   silhouette needs them.
-2. Build only one weapon prototype (Warrior WR10). Preserve the native `0009`
-   files and author only the outer-corona and travelling-spark texture regions.
-3. Run offline gates: MSZIP round trip, token parsing, resolved references,
-   texture bounds, unchanged topology/UV/material/animation fingerprints,
-   dead-material usage, protected-rank hashes, and exact rollback.
-4. Install transactionally in the normal development client only, never the
-   B20H client. Record and verify the rollback before launching.
-5. Review in the original renderer at idle, walking, mounted, normal attack,
-   skill casting, near/far camera distances, and crowded backgrounds. Compare
-   AR9 versus AR14 and WR9 versus WR10 so progression remains readable without
-   overwhelming the character or weapon.
-6. Obtain explicit visual approval for those two prototypes before producing
-   the remaining AR10-AR13 ranks or the remaining three WR10 classes.
-7. Expand one rank/class at a time, repeating the same offline and in-game
-   gates. Install into the normal development client only after final approval.
+The package builder starts from a clean client state, pins protected AR9 and
+WR1--WR9 assets, authors five bounded armor shards plus one Warrior shard, and
+fails before promotion on incomplete references, shared private assets,
+duplicate rank structures/palettes, role-contract drift, unsafe silhouettes,
+or changed protected files. The final package passed:
+
+1. all four native AR12 source combinations (two character roots and two
+   genders) for the AR10--AR14 mantle-design test;
+2. 24 effect / 124 asset package validation and 90 role contracts;
+3. MSZIP parsing, topology, UV, material-face, animation, texture, alpha,
+   atlas-region, and source-size checks;
+4. the generic package-framework and deterministic-texture regressions;
+5. a 140-target read-only preflight, transactional install, exact installed
+   verification, and a zero-change second palette plan.
+
+The remaining acceptance gate is visual review in the original renderer at
+idle, walking, mounted, normal attack, skill casting, near/far camera distances,
+and crowded backgrounds. Compare AR9 through AR14 and WR9 versus Warrior WR10.
+The other three WR10 class families require the same native-role review before
+being added; no generic Warrior assets should be copied onto those classes.
 
 Static SVG/texture inspection can verify geometry and atlas intent, but only
 the original client renderer can validate blending, billboarding, depth,
 attachment, UV animation, and movement readability.
 
-The current local prototype was produced with:
+The current local package was produced with:
 
 ```powershell
-python tools/BuildRankEffectV2Prototype.py `
+python tools/BuildRankEffectV2Package.py `
   --client-root "C:\Godswar Origin" `
-  --output-root "C:\Reborn\artifacts\rank-effect-v2-prototype-20260808-03"
+  --output-root "C:\Reborn\artifacts\rank-effect-v2-full-20260808-02"
 python tools/TestRankEffectV2Prototype.py `
-  --package-root "C:\Reborn\artifacts\rank-effect-v2-prototype-20260808-03"
+  --package-root "C:\Reborn\artifacts\rank-effect-v2-full-20260808-02"
+python tools/RankEffectPackages.py `
+  --package-root "C:\Reborn\artifacts\rank-effect-v2-full-20260808-02" `
+  --client-root "C:\Godswar Origin" `
+  --verify-installed
 ```
+
+The builder deliberately fails closed against an already-installed v2 client,
+because canonical AR12 is both the reviewed donor and one of the final targets.
+For a future rebuild, first use a disposable clean client copy or restore the
+recorded pre-install rank backup; do not layer a new baseline over installed
+private texture references.

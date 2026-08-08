@@ -18,7 +18,8 @@ $script:QualityPalette = @(
     @{ Name = 'QUALITY_Q17'; Label = 'Transcendent'; R = 255; G = 202; B = 58 },
     @{ Name = 'QUALITY_Q18'; Label = 'Ancient'; R = 255; G = 67; B = 91 },
     @{ Name = 'QUALITY_Q19'; Label = 'Primordial'; R = 167; G = 105; B = 255 },
-    @{ Name = 'QUALITY_Q20'; Label = 'Boundless'; R = 255; G = 250; B = 225 }
+    # Cap quality must read as a rarity color, not as Common/white text.
+    @{ Name = 'QUALITY_Q20'; Label = 'Boundless'; R = 255; G = 72; B = 226 }
 )
 
 $script:GradePalette = @(
@@ -46,7 +47,9 @@ $script:GradePalette = @(
     @{ Name = 'GRADE_G22'; Family = 'Solar'; R = 240; G = 140; B = 30 },
     @{ Name = 'GRADE_G23'; Family = 'Solar'; R = 250; G = 155; B = 34 },
     @{ Name = 'GRADE_G24'; Family = 'Solar'; R = 255; G = 174; B = 45 },
-    @{ Name = 'GRADE_G25'; Family = 'Diamond'; R = 255; G = 248; B = 213 }
+    # The terminal grade uses diamond cyan so it remains distinct from both
+    # Common and Boundless when the two labels appear in the same tooltip.
+    @{ Name = 'GRADE_G25'; Family = 'Diamond'; R = 56; G = 232; B = 255 }
 )
 
 $script:ElementalSentinels = @(

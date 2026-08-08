@@ -1,10 +1,11 @@
 # Client gear quality and grade palette
 
 Status: generated, validated, and applied to the local development client at
-`C:\Godswar Origin`. The B20H client was not modified. The first local apply
-created rollback backup
-`C:\Reborn\backups\client-gear-palette-20260808-175043990`; a second plan
-reported zero pending changes.
+`C:\Godswar Origin`. The revised Boundless/G25 apply created rollback backup
+`C:\Reborn\backups\client-gear-palette-20260808-214529681`; its second plan
+reported zero pending changes. The earlier white-gold palette backup remains at
+`C:\Reborn\backups\client-gear-palette-20260808-175043990`. The B20H client was
+not modified.
 
 ## Scope
 
@@ -47,15 +48,16 @@ The same definitions are written to both `en_us` and `zh_cn` resources.
 | 17 | Transcendent | `QUALITY_Q17` | 255, 202, 58 |
 | 18 | Ancient | `QUALITY_Q18` | 255, 67, 91 |
 | 19 | Primordial | `QUALITY_Q19` | 167, 105, 255 |
-| 20 | Boundless | `QUALITY_Q20` | 255, 250, 225 |
+| 20 | Boundless | `QUALITY_Q20` | 255, 72, 226 |
 
-Boundless is deliberately bright diamond white-gold. It replaces the current
-dark ruby color, which is difficult to read on the client tooltip background.
+Boundless uses saturated electric magenta. The former white-gold value
+(`255, 250, 225`) was too close to Common (`220, 224, 232`) in the actual client
+and made capped equipment look ordinary.
 
 ## Grade palette
 
 Each four-grade milestone has a recognizable color family and becomes brighter
-inside that family. G25 has its own diamond white-gold finish.
+inside that family. G25 has its own saturated diamond-cyan finish.
 
 | Grades | Family | Constants | RGB progression |
 |---|---|---|---|
@@ -65,10 +67,14 @@ inside that family. G25 has its own diamond white-gold finish.
 | 13–16 | Amethyst | `GRADE_G13`–`GRADE_G16` | 150/86/218 → 201/115/255 |
 | 17–20 | Crimson | `GRADE_G17`–`GRADE_G20` | 210/52/78 → 255/76/102 |
 | 21–24 | Solar | `GRADE_G21`–`GRADE_G24` | 230/126/28 → 255/174/45 |
-| 25 | Diamond | `GRADE_G25` | 255, 248, 213 |
+| 25 | Diamond | `GRADE_G25` | 56, 232, 255 |
 
 The exact per-grade values are the authoritative entries in
 `tools/PatchClientGearPalette/Palette.ps1`.
+
+The patch validation requires both terminal colors to have high chroma, remain
+far from Common/white, and remain far from each other. This protects the two
+independent cap labels when they appear together on a Q20/G25 tooltip.
 
 ## Usage
 

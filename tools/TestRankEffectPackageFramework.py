@@ -32,7 +32,7 @@ from rank_effect_packages.installer import (
     verify_installed,
     verify_new_silhouettes,
 )
-from rank_effect_packages.package import load_package
+from rank_effect_packages.package import EffectRecord, LoadedPackage, load_package
 from rank_effect_packages.safety import require_origin_closed
 
 
@@ -176,6 +176,37 @@ def _expect_error(action, label: str) -> None:
     raise AssertionError(f"Expected RankEffectError: {label}")
 
 
+def _armor_effect(rank: int, structure: str) -> EffectRecord:
+    stem = f"female_body_effect_{rank:04d}"
+    root = Path("Characters") / "effect"
+    return EffectRecord(
+        f"armor:{rank}:body:Characters:female",
+        "armor",
+        rank,
+        "Characters",
+        "female",
+        None,
+        tuple(root / f"{stem}_{slot}.jcs" for slot in range(3)),
+        root / f"{stem}.gwo",
+        (root / f"reborn_body_effect_{rank:04d}.tga",),
+        structure,
+    )
+
+
+def _adjacent_package(effects: tuple[EffectRecord, ...]) -> LoadedPackage:
+    baseline = {
+        "files": [
+            {
+                "path": f"Characters/effect/female_body_effect_0009_{slot}.jcs",
+                "sha256": str(slot) * 64,
+                "structural_sha256": str(slot + 1) * 64,
+            }
+            for slot in range(3)
+        ]
+    }
+    return LoadedPackage(Path("."), {}, {}, effects, baseline)
+
+
 def main() -> int:
     checks = 0
     for bits in (24, 32):
@@ -184,6 +215,26 @@ def main() -> int:
     _expect_error(
         lambda: validate_tga_texture(_tga(1) + b"junk", "trailing junk"),
         "trailing TGA data",
+    )
+    checks += 1
+
+    sequential = _adjacent_package(
+        (_armor_effect(10, "a" * 64), _armor_effect(11, "b" * 64))
+    )
+    verify_new_silhouettes(sequential)
+    _expect_error(
+        lambda: verify_new_silhouettes(
+            _adjacent_package(
+                (_armor_effect(10, "a" * 64), _armor_effect(11, "a" * 64))
+            )
+        ),
+        "adjacent armor silhouette reuse",
+    )
+    _expect_error(
+        lambda: verify_new_silhouettes(
+            _adjacent_package((_armor_effect(12, "c" * 64),))
+        ),
+        "missing preceding package armor rank",
     )
     checks += 1
 

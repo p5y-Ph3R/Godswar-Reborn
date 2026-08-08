@@ -158,6 +158,16 @@ try {
                 '(?m)^GRADE_G\d{2}='
             ).Count) 25 "$locale grade constants"
         if (-not $font.Contains(
+                'QUALITY_Q20={r=255,g=72,b=226,a=255}'
+            )) {
+            throw "$locale Boundless cap color is not electric magenta."
+        }
+        if (-not $font.Contains(
+                'GRADE_G25={r=56,g=232,b=255,a=255}'
+            )) {
+            throw "$locale G25 cap color is not diamond cyan."
+        }
+        if (-not $font.Contains(
                 'UNRELATED_UI_COLOR={r=1,g=2,b=3,a=255}'
             )) {
             throw "$locale unrelated font color changed."

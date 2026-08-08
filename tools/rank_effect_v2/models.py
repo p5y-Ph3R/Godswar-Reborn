@@ -1,4 +1,4 @@
-"""Role audit and conservative mantle sculpting for prototype JCS models."""
+"""Structural role audits for v2 JCS models."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from xmodel_sculpt.binary_x import (
     integer_list,
     parse_tokens,
 )
-from xmodel_sculpt.mesh import MeshData, Vector3, discover_meshes
+from xmodel_sculpt.mesh import Vector3, discover_meshes
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,92 +89,3 @@ def audit_model(encoded: bytes, label: str) -> ModelAudit:
             for axis in range(3)
         ),  # type: ignore[arg-type]
     )
-
-
-class MantleTransform:
-    """Re-space intact AR12 mesh cards into a taller Olympian mantle.
-
-    Body-effect coordinates use X vertically, Y across the character, and Z
-    for depth.  Moving each disconnected card as one unit avoids stretching
-    its sampled atlas detail.  The low anchor stays in place while the inner
-    cards rise into a visibly different cap-rank plume silhouette.
-    """
-
-    def __init__(self) -> None:
-        self._outputs: dict[int, tuple[Vector3, ...]] = {}
-
-    @staticmethod
-    def _plan(mesh: MeshData) -> tuple[Vector3, ...]:
-        adjacency = [set() for _ in mesh.vertices]
-        for face in mesh.faces:
-            for left, right in zip(face, face[1:] + face[:1]):
-                adjacency[left].add(right)
-                adjacency[right].add(left)
-
-        components: list[list[int]] = []
-        vertex_component: dict[int, int] = {}
-        visited: set[int] = set()
-        for start in range(len(mesh.vertices)):
-            if start in visited:
-                continue
-            pending = [start]
-            visited.add(start)
-            component: list[int] = []
-            while pending:
-                current = pending.pop()
-                component.append(current)
-                for neighbour in adjacency[current]:
-                    if neighbour not in visited:
-                        visited.add(neighbour)
-                        pending.append(neighbour)
-            component_index = len(components)
-            components.append(component)
-            for vertex in component:
-                vertex_component[vertex] = component_index
-
-        if len(components) != 40 or len(vertex_component) != len(mesh.vertices):
-            raise ValueError("AR12 mantle no longer has the reviewed 40-card layout")
-
-        centers: list[Vector3] = []
-        targets: list[Vector3] = []
-        for component in components:
-            center = tuple(
-                sum(mesh.vertices[index][axis] for index in component) / len(component)
-                for axis in range(3)
-            )
-            centers.append(center)  # type: ignore[arg-type]
-            x, y, z = center
-            radial = abs(y)
-            if x > 0.70 and radial > 0.90:
-                lift, width = 0.10, 1.12  # outer upper plume
-            elif x > 0.70:
-                lift, width = 0.55, 0.90  # tall inner plume
-            elif x > 0.35:
-                lift, width = 0.30, 1.05  # middle plume
-            elif x > 0.10:
-                lift, width = 0.70, 0.95  # highest inner crest
-            else:
-                lift, width = 0.0, 1.10  # keep the low attachment anchored
-            targets.append((x + lift, y * width, z))
-
-        output: list[Vector3] = []
-        for index, point in enumerate(mesh.vertices):
-            component = vertex_component[index]
-            center = centers[component]
-            target = targets[component]
-            local = tuple(point[axis] - center[axis] for axis in range(3))
-            output.append(
-                (
-                    target[0] + local[0] * 0.94,
-                    target[1] + local[1] * 0.94,
-                    target[2] + local[2] * 0.98,
-                )
-            )
-        return tuple(output)
-
-    def __call__(self, mesh: MeshData, index: int, _point: Vector3) -> Vector3:
-        outputs = self._outputs.get(mesh.index)
-        if outputs is None:
-            outputs = self._plan(mesh)
-            self._outputs[mesh.index] = outputs
-        return outputs[index]

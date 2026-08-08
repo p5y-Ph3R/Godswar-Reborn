@@ -1,4 +1,4 @@
-"""Compatibility entry point for the complete v2 rank-effect package."""
+"""Build and validate the complete role-aware v2 rank-effect package."""
 
 from __future__ import annotations
 

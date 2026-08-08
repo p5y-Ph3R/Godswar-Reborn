@@ -153,12 +153,31 @@ def _combined_structure(entries: list[dict[str, object]]) -> str:
 
 
 def verify_new_silhouettes(package: LoadedPackage) -> None:
-    """Reject exact structural reuse of the immediately preceding rank."""
+    """Reject exact structural reuse of each immediately preceding rank."""
 
     baseline = _baseline_entries(package)
+    armor_effects = {
+        (effect.asset_root, effect.gender, effect.rank): effect
+        for effect in package.effects
+        if effect.kind == "armor"
+    }
     for effect in package.effects:
         prior_texture: Path | None = None
         if effect.kind == "armor":
+            if effect.rank > 10:
+                prior = armor_effects.get(
+                    (effect.asset_root, effect.gender, effect.rank - 1)
+                )
+                if prior is None:
+                    raise RankEffectError(
+                        f"No preceding package rank for {effect.key}"
+                    )
+                if prior.structural_sha256 == effect.structural_sha256:
+                    raise RankEffectError(
+                        f"AR{effect.rank} reuses AR{effect.rank - 1} silhouette: "
+                        f"{effect.key}"
+                    )
+                continue
             prior_stem = f"{effect.gender}_body_effect_0009_"
         else:
             assert effect.class_name is not None

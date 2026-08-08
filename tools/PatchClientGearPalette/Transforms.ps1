@@ -38,6 +38,40 @@ function Assert-PaletteDefinitions {
             throw "Grade palette entry $level must be named $expected."
         }
     }
+
+    # Terminal quality and grade are both displayed beside pale Common text in
+    # the legacy UI. Keep them saturated and mutually distinct so a future
+    # palette edit cannot silently turn either cap back into off-white.
+    $common = $script:QualityPalette[0]
+    $boundless = $script:QualityPalette[19]
+    $grade25 = $script:GradePalette[24]
+    foreach ($terminal in @($boundless, $grade25)) {
+        $channels = @(
+            [int]$terminal.R,
+            [int]$terminal.G,
+            [int]$terminal.B
+        )
+        $channelRange = $channels | Measure-Object -Maximum -Minimum
+        if (($channelRange.Maximum - $channelRange.Minimum) -lt 120) {
+            throw "$($terminal.Name) must remain a saturated cap color."
+        }
+
+        $distanceFromCommon =
+            [Math]::Pow(([int]$terminal.R - [int]$common.R), 2) +
+            [Math]::Pow(([int]$terminal.G - [int]$common.G), 2) +
+            [Math]::Pow(([int]$terminal.B - [int]$common.B), 2)
+        if ($distanceFromCommon -lt 10000) {
+            throw "$($terminal.Name) is too close to Common/white."
+        }
+    }
+
+    $terminalDistance =
+        [Math]::Pow(([int]$boundless.R - [int]$grade25.R), 2) +
+        [Math]::Pow(([int]$boundless.G - [int]$grade25.G), 2) +
+        [Math]::Pow(([int]$boundless.B - [int]$grade25.B), 2)
+    if ($terminalDistance -lt 10000) {
+        throw 'Boundless and G25 must remain visually distinct.'
+    }
 }
 
 function Set-SingleXmlAttributeText(
