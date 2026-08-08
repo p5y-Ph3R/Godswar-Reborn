@@ -1,0 +1,171 @@
+{
+  "effects": [
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/female_weapononehand_effect_0209.gwo",
+      "class": "priest",
+      "gender": "female",
+      "kind": "weapon",
+      "models": [
+        "Characters/effect/female_weapononehand_effect_0209_right_0.jcs",
+        "Characters/effect/female_weapononehand_effect_0209_right_1.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_wr10_priest_female_base_00.tga",
+        "Characters/effect/reborn_wr10_priest_female_base_01.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/male_weapononehand_effect_0209.gwo",
+      "class": "priest",
+      "gender": "male",
+      "kind": "weapon",
+      "models": [
+        "Characters/effect/male_weapononehand_effect_0209_right_0.jcs",
+        "Characters/effect/male_weapononehand_effect_0209_right_1.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_wr10_priest_male_base_00.tga",
+        "Characters/effect/reborn_wr10_priest_male_base_01.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/female_weapononehand_effect_0209.gwo",
+      "class": "priest",
+      "gender": "female",
+      "kind": "weapon",
+      "models": [
+        "Characters_New/effect/female_weapononehand_effect_0209_right_0.jcs",
+        "Characters_New/effect/female_weapononehand_effect_0209_right_1.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_wr10_priest_female_base_00.tga",
+        "Characters_New/effect/reborn_wr10_priest_female_base_01.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/male_weapononehand_effect_0209.gwo",
+      "class": "priest",
+      "gender": "male",
+      "kind": "weapon",
+      "models": [
+        "Characters_New/effect/male_weapononehand_effect_0209_right_0.jcs",
+        "Characters_New/effect/male_weapononehand_effect_0209_right_1.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_wr10_priest_male_base_00.tga",
+        "Characters_New/effect/reborn_wr10_priest_male_base_01.tga"
+      ],
+      "rank": 10
+    }
+  ],
+  "files": [
+    {
+      "sha256": "a640bcb9585a4933ccdd5d96af6aefbf9ed73b69b32511da6356072ce80d2caa",
+      "source": "package/Characters/effect/female_weapononehand_effect_0209.gwo",
+      "target": "Characters/effect/female_weapononehand_effect_0209.gwo"
+    },
+    {
+      "sha256": "8094b9950eb25b180821db1b65fc661a584bf241869b4c1e185dfdd667a3ee3a",
+      "source": "package/Characters/effect/female_weapononehand_effect_0209_right_0.jcs",
+      "target": "Characters/effect/female_weapononehand_effect_0209_right_0.jcs"
+    },
+    {
+      "sha256": "f853918dd93ad32fa9d032fbeea4f9eb8f06a0e46f03a9db15c55a6df1712779",
+      "source": "package/Characters/effect/female_weapononehand_effect_0209_right_1.jcs",
+      "target": "Characters/effect/female_weapononehand_effect_0209_right_1.jcs"
+    },
+    {
+      "sha256": "a640bcb9585a4933ccdd5d96af6aefbf9ed73b69b32511da6356072ce80d2caa",
+      "source": "package/Characters/effect/male_weapononehand_effect_0209.gwo",
+      "target": "Characters/effect/male_weapononehand_effect_0209.gwo"
+    },
+    {
+      "sha256": "501cdd1a6ce65d0fbf28767e15e4f47bd466f11028ae0c8ce609e34f0fc0fcc9",
+      "source": "package/Characters/effect/male_weapononehand_effect_0209_right_0.jcs",
+      "target": "Characters/effect/male_weapononehand_effect_0209_right_0.jcs"
+    },
+    {
+      "sha256": "09af1ee77ea1876b88c105f81b56452f040579b1d05bc6311ec2c733164fcbcb",
+      "source": "package/Characters/effect/male_weapononehand_effect_0209_right_1.jcs",
+      "target": "Characters/effect/male_weapononehand_effect_0209_right_1.jcs"
+    },
+    {
+      "sha256": "08081c8a168f1bfc44dc239926b0ea4f147c7a3039d534ccdd15218f3d93969d",
+      "source": "package/Characters/effect/reborn_wr10_priest_female_base_00.tga",
+      "target": "Characters/effect/reborn_wr10_priest_female_base_00.tga"
+    },
+    {
+      "sha256": "146773fa1147e259a89e00998a32a10bc08c7c4b21f89a612ee84737f2f91de3",
+      "source": "package/Characters/effect/reborn_wr10_priest_female_base_01.tga",
+      "target": "Characters/effect/reborn_wr10_priest_female_base_01.tga"
+    },
+    {
+      "sha256": "08081c8a168f1bfc44dc239926b0ea4f147c7a3039d534ccdd15218f3d93969d",
+      "source": "package/Characters/effect/reborn_wr10_priest_male_base_00.tga",
+      "target": "Characters/effect/reborn_wr10_priest_male_base_00.tga"
+    },
+    {
+      "sha256": "146773fa1147e259a89e00998a32a10bc08c7c4b21f89a612ee84737f2f91de3",
+      "source": "package/Characters/effect/reborn_wr10_priest_male_base_01.tga",
+      "target": "Characters/effect/reborn_wr10_priest_male_base_01.tga"
+    },
+    {
+      "sha256": "a640bcb9585a4933ccdd5d96af6aefbf9ed73b69b32511da6356072ce80d2caa",
+      "source": "package/Characters_New/effect/female_weapononehand_effect_0209.gwo",
+      "target": "Characters_New/effect/female_weapononehand_effect_0209.gwo"
+    },
+    {
+      "sha256": "8094b9950eb25b180821db1b65fc661a584bf241869b4c1e185dfdd667a3ee3a",
+      "source": "package/Characters_New/effect/female_weapononehand_effect_0209_right_0.jcs",
+      "target": "Characters_New/effect/female_weapononehand_effect_0209_right_0.jcs"
+    },
+    {
+      "sha256": "f853918dd93ad32fa9d032fbeea4f9eb8f06a0e46f03a9db15c55a6df1712779",
+      "source": "package/Characters_New/effect/female_weapononehand_effect_0209_right_1.jcs",
+      "target": "Characters_New/effect/female_weapononehand_effect_0209_right_1.jcs"
+    },
+    {
+      "sha256": "a640bcb9585a4933ccdd5d96af6aefbf9ed73b69b32511da6356072ce80d2caa",
+      "source": "package/Characters_New/effect/male_weapononehand_effect_0209.gwo",
+      "target": "Characters_New/effect/male_weapononehand_effect_0209.gwo"
+    },
+    {
+      "sha256": "501cdd1a6ce65d0fbf28767e15e4f47bd466f11028ae0c8ce609e34f0fc0fcc9",
+      "source": "package/Characters_New/effect/male_weapononehand_effect_0209_right_0.jcs",
+      "target": "Characters_New/effect/male_weapononehand_effect_0209_right_0.jcs"
+    },
+    {
+      "sha256": "09af1ee77ea1876b88c105f81b56452f040579b1d05bc6311ec2c733164fcbcb",
+      "source": "package/Characters_New/effect/male_weapononehand_effect_0209_right_1.jcs",
+      "target": "Characters_New/effect/male_weapononehand_effect_0209_right_1.jcs"
+    },
+    {
+      "sha256": "08081c8a168f1bfc44dc239926b0ea4f147c7a3039d534ccdd15218f3d93969d",
+      "source": "package/Characters_New/effect/reborn_wr10_priest_female_base_00.tga",
+      "target": "Characters_New/effect/reborn_wr10_priest_female_base_00.tga"
+    },
+    {
+      "sha256": "146773fa1147e259a89e00998a32a10bc08c7c4b21f89a612ee84737f2f91de3",
+      "source": "package/Characters_New/effect/reborn_wr10_priest_female_base_01.tga",
+      "target": "Characters_New/effect/reborn_wr10_priest_female_base_01.tga"
+    },
+    {
+      "sha256": "2edd2134f1dea009d765346c2a36ab6e267b87e47ae87099b76514714b3d11e2",
+      "source": "package/Characters_New/effect/reborn_wr10_priest_male_base_00.tga",
+      "target": "Characters_New/effect/reborn_wr10_priest_male_base_00.tga"
+    },
+    {
+      "sha256": "146773fa1147e259a89e00998a32a10bc08c7c4b21f89a612ee84737f2f91de3",
+      "source": "package/Characters_New/effect/reborn_wr10_priest_male_base_01.tga",
+      "target": "Characters_New/effect/reborn_wr10_priest_male_base_01.tga"
+    }
+  ],
+  "format": "reborn-rank-effect-package-shard-v1"
+}

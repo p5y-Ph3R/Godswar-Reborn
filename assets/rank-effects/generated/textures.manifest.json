@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "textures": [
+    {
+      "file": "armor-rank-10-helios-aegis.gwo",
+      "kind": "armor",
+      "rank": 10,
+      "identity": "helios-aegis",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 32,
+      "bytes": 16428,
+      "sha256": "17f2d116d5174f72e6134d8b8ca65d07820ea7910f240f5f85e22380f0e96b39"
+    },
+    {
+      "file": "armor-rank-11-hecates-veil.gwo",
+      "kind": "armor",
+      "rank": 11,
+      "identity": "hecates-veil",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 32,
+      "bytes": 16428,
+      "sha256": "dd3d68bdcf83f680b961b7e4f3ddea0731359426feec4d52e4624ef4005dbb5b"
+    },
+    {
+      "file": "armor-rank-12-gaias-laurel.gwo",
+      "kind": "armor",
+      "rank": 12,
+      "identity": "gaias-laurel",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 32,
+      "bytes": 16428,
+      "sha256": "2073756e22e0b0e89ccf44110b680298dddbc33d94c43d44cf31c374d8308897"
+    },
+    {
+      "file": "armor-rank-13-ares-eclipse.gwo",
+      "kind": "armor",
+      "rank": 13,
+      "identity": "ares-eclipse",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c"
+    },
+    {
+      "file": "armor-rank-14-olympian-apotheosis.gwo",
+      "kind": "armor",
+      "rank": 14,
+      "identity": "olympian-apotheosis",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "66f55c747dedc122bf53cc181b24b4a4ada316e17b8913dc91710a9a6cc0adb3"
+    },
+    {
+      "file": "weapon-rank-10-warrior-ares-emberblade.gwo",
+      "kind": "weapon-warrior",
+      "rank": 10,
+      "identity": "ares-emberblade",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "9e82e4c050215f48b434264a525f8534e6bcf6e1688ab6338908acb3c42eb28c"
+    },
+    {
+      "file": "weapon-rank-10-champion-zeus-stormlance.gwo",
+      "kind": "weapon-champion",
+      "rank": 10,
+      "identity": "zeus-stormlance",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "2eeeca3f1bb8739a80b4b74a59eaf06bb8ac8297e0e253e0533d6d74a638bd84"
+    },
+    {
+      "file": "weapon-rank-10-priest-apollo-radiance.gwo",
+      "kind": "weapon-priest",
+      "rank": 10,
+      "identity": "apollo-radiance",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "a640bcb9585a4933ccdd5d96af6aefbf9ed73b69b32511da6356072ce80d2caa"
+    },
+    {
+      "file": "weapon-rank-10-mage-hecates-aether.gwo",
+      "kind": "weapon-mage",
+      "rank": 10,
+      "identity": "hecates-aether",
+      "width": 64,
+      "height": 64,
+      "bits_per_pixel": 24,
+      "bytes": 12332,
+      "sha256": "52f1aaf89605e8a7446d1f9f0c85dc56dfebfc628277d8c28d36185a218ab633"
+    }
+  ]
+}

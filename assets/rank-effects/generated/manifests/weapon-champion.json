@@ -1,0 +1,159 @@
+{
+  "effects": [
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/female_weapontwohand_effect_0009.gwo",
+      "class": "champion",
+      "gender": "female",
+      "kind": "weapon",
+      "models": [
+        "Characters/effect/female_weapontwohand_effect_0009_0.jcs",
+        "Characters/effect/female_weapontwohand_effect_0009_1.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_wr10_champion_female_base_00.tga",
+        "Characters/effect/reborn_wr10_champion_female_base_01.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/male_weapontwohand_effect_0009.gwo",
+      "class": "champion",
+      "gender": "male",
+      "kind": "weapon",
+      "models": [
+        "Characters/effect/male_weapontwohand_effect_0009_0.jcs",
+        "Characters/effect/male_weapontwohand_effect_0009_1.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_wr10_champion_male_base_00.tga",
+        "Characters/effect/reborn_wr10_champion_male_base_01.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/female_weapontwohand_effect_0009.gwo",
+      "class": "champion",
+      "gender": "female",
+      "kind": "weapon",
+      "models": [
+        "Characters_New/effect/female_weapontwohand_effect_0009_0.jcs",
+        "Characters_New/effect/female_weapontwohand_effect_0009_1.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_wr10_champion_female_base_00.tga"
+      ],
+      "rank": 10
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/male_weapontwohand_effect_0009.gwo",
+      "class": "champion",
+      "gender": "male",
+      "kind": "weapon",
+      "models": [
+        "Characters_New/effect/male_weapontwohand_effect_0009_0.jcs",
+        "Characters_New/effect/male_weapontwohand_effect_0009_1.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_wr10_champion_male_base_00.tga"
+      ],
+      "rank": 10
+    }
+  ],
+  "files": [
+    {
+      "sha256": "2eeeca3f1bb8739a80b4b74a59eaf06bb8ac8297e0e253e0533d6d74a638bd84",
+      "source": "package/Characters/effect/female_weapontwohand_effect_0009.gwo",
+      "target": "Characters/effect/female_weapontwohand_effect_0009.gwo"
+    },
+    {
+      "sha256": "351045ecd1f36d99dce19c1dcc766dd201a97c1c8308cb5a77373fea239b50de",
+      "source": "package/Characters/effect/female_weapontwohand_effect_0009_0.jcs",
+      "target": "Characters/effect/female_weapontwohand_effect_0009_0.jcs"
+    },
+    {
+      "sha256": "8cae4dfaa4383c73ab67cfe17f5335aac50c3db7c48c3c3e1476ae2affbafefb",
+      "source": "package/Characters/effect/female_weapontwohand_effect_0009_1.jcs",
+      "target": "Characters/effect/female_weapontwohand_effect_0009_1.jcs"
+    },
+    {
+      "sha256": "2eeeca3f1bb8739a80b4b74a59eaf06bb8ac8297e0e253e0533d6d74a638bd84",
+      "source": "package/Characters/effect/male_weapontwohand_effect_0009.gwo",
+      "target": "Characters/effect/male_weapontwohand_effect_0009.gwo"
+    },
+    {
+      "sha256": "6f3d469aae764e7801d3042f49e4ad04fdc558c2e873c925fc49c8af10b35bd6",
+      "source": "package/Characters/effect/male_weapontwohand_effect_0009_0.jcs",
+      "target": "Characters/effect/male_weapontwohand_effect_0009_0.jcs"
+    },
+    {
+      "sha256": "e5e2aeb157f3bc05807f0794e7d3d408c266b07396064c823ab1dd8b27852751",
+      "source": "package/Characters/effect/male_weapontwohand_effect_0009_1.jcs",
+      "target": "Characters/effect/male_weapontwohand_effect_0009_1.jcs"
+    },
+    {
+      "sha256": "3f3177b8b83b1d79ac0fce34530cc74d4fe95d34e14aecd4ce780aa46639d0d1",
+      "source": "package/Characters/effect/reborn_wr10_champion_female_base_00.tga",
+      "target": "Characters/effect/reborn_wr10_champion_female_base_00.tga"
+    },
+    {
+      "sha256": "f392506c1a18f12eeaa1bbd29f0444d367354bd46aceba0bd079c2dc049bca71",
+      "source": "package/Characters/effect/reborn_wr10_champion_female_base_01.tga",
+      "target": "Characters/effect/reborn_wr10_champion_female_base_01.tga"
+    },
+    {
+      "sha256": "3f3177b8b83b1d79ac0fce34530cc74d4fe95d34e14aecd4ce780aa46639d0d1",
+      "source": "package/Characters/effect/reborn_wr10_champion_male_base_00.tga",
+      "target": "Characters/effect/reborn_wr10_champion_male_base_00.tga"
+    },
+    {
+      "sha256": "f392506c1a18f12eeaa1bbd29f0444d367354bd46aceba0bd079c2dc049bca71",
+      "source": "package/Characters/effect/reborn_wr10_champion_male_base_01.tga",
+      "target": "Characters/effect/reborn_wr10_champion_male_base_01.tga"
+    },
+    {
+      "sha256": "2eeeca3f1bb8739a80b4b74a59eaf06bb8ac8297e0e253e0533d6d74a638bd84",
+      "source": "package/Characters_New/effect/female_weapontwohand_effect_0009.gwo",
+      "target": "Characters_New/effect/female_weapontwohand_effect_0009.gwo"
+    },
+    {
+      "sha256": "915349ffc3306db3d16a3e6c0497da329ca44fa16bbba734c2a33d07834890e6",
+      "source": "package/Characters_New/effect/female_weapontwohand_effect_0009_0.jcs",
+      "target": "Characters_New/effect/female_weapontwohand_effect_0009_0.jcs"
+    },
+    {
+      "sha256": "d6973929e966cf3aa5e3c481c2bd33779a97a61237a75d445614a473a12514d3",
+      "source": "package/Characters_New/effect/female_weapontwohand_effect_0009_1.jcs",
+      "target": "Characters_New/effect/female_weapontwohand_effect_0009_1.jcs"
+    },
+    {
+      "sha256": "2eeeca3f1bb8739a80b4b74a59eaf06bb8ac8297e0e253e0533d6d74a638bd84",
+      "source": "package/Characters_New/effect/male_weapontwohand_effect_0009.gwo",
+      "target": "Characters_New/effect/male_weapontwohand_effect_0009.gwo"
+    },
+    {
+      "sha256": "a36c3f59a0809e7a05ab402d3c3edf92d7146b6e52417f958edf4ffa2761e6d4",
+      "source": "package/Characters_New/effect/male_weapontwohand_effect_0009_0.jcs",
+      "target": "Characters_New/effect/male_weapontwohand_effect_0009_0.jcs"
+    },
+    {
+      "sha256": "7bd0d4a4be1b5d47403d954f78e0fc0963c804e4a291fdce2baa90cbc97208ba",
+      "source": "package/Characters_New/effect/male_weapontwohand_effect_0009_1.jcs",
+      "target": "Characters_New/effect/male_weapontwohand_effect_0009_1.jcs"
+    },
+    {
+      "sha256": "120cdc3c5e67ad399f452511f643f6263cd3661fbcca99fce08c8509d6f4ca9e",
+      "source": "package/Characters_New/effect/reborn_wr10_champion_female_base_00.tga",
+      "target": "Characters_New/effect/reborn_wr10_champion_female_base_00.tga"
+    },
+    {
+      "sha256": "120cdc3c5e67ad399f452511f643f6263cd3661fbcca99fce08c8509d6f4ca9e",
+      "source": "package/Characters_New/effect/reborn_wr10_champion_male_base_00.tga",
+      "target": "Characters_New/effect/reborn_wr10_champion_male_base_00.tga"
+    }
+  ],
+  "format": "reborn-rank-effect-package-shard-v1"
+}

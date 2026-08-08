@@ -1,0 +1,116 @@
+{
+  "files": [
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0206.gwo",
+      "sha256": "888be1dc5c98b724ceb74ae39999d97e8742718ad9da07e684d8ac719d1a64d8"
+    },
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0206_right_0.jcs",
+      "sha256": "ad845c263a6c901129c17ef3678fc13dc41ac1993002529f016c6b368a187137",
+      "structural_sha256": "6699844bbcee5c8e6a137e6235f84303fc21fed07220d3884fc62387575c5dad"
+    },
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0206_right_1.jcs",
+      "sha256": "d454577563b6411a124b5f9da2a5a3497d9c6afbb7a1cb01681bb98650595312",
+      "structural_sha256": "81e066d99dcc3af596285d4e87120d0d780fe2523584447a12227b2761ec0283"
+    },
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0208.gwo",
+      "sha256": "d447e52e17b1df67b8457907bdb57881e20e051182e7ed7836117c83c9c12ca4"
+    },
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0208_right_0.jcs",
+      "sha256": "1f030c2b6967fe90df7dd2c931bdf868af399654897304b3a82e360948695481",
+      "structural_sha256": "ff3cf7cbceda28c06cb088e27e22cb06fb956bd7bdf8312b3a6ee8d6432057ca"
+    },
+    {
+      "path": "Characters_New/effect/female_weapononehand_effect_0208_right_1.jcs",
+      "sha256": "d454577563b6411a124b5f9da2a5a3497d9c6afbb7a1cb01681bb98650595312",
+      "structural_sha256": "81e066d99dcc3af596285d4e87120d0d780fe2523584447a12227b2761ec0283"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0006.gwo",
+      "sha256": "97ac309c014f27fb96ba2f9bee339db34066f7b7c3ba5efe7464cf684097f0d8"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0006_0.jcs",
+      "sha256": "225754db04a3c6319096df089c28255b933360b60297bf8cbe664103ced6bec9",
+      "structural_sha256": "14090ddc8d483b9b8e4bf53b3126de3b823b86342026f6649ee16e1ba332b85c"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0006_1.jcs",
+      "sha256": "eb1e6586dfa62a2e959da54c07e35bd1cf2cfe8736f49d102f1e7cc2afe9eadd",
+      "structural_sha256": "c24fa9a3bca10c6d839ac5673041a6b5d601a48fc74750a3e3c32fb4c12bc5a4"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0008.gwo",
+      "sha256": "e0969ffc3ae9cc0ded13eec8c4e0641d73828680dbbd7fe4b2dcbf52e75b2863"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0008_0.jcs",
+      "sha256": "0b36472fbd6e3b7665d373bb1b9dee91ecaea9876e429ae1952799e8597f7528",
+      "structural_sha256": "4cbb03454af5d39118410979b843456f43a9147d72a3244e14814c1d66ffe4d8"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0008_1.jcs",
+      "sha256": "ed554070bf4c3a497ba80c9cdaaa84ded77129511920249971b90c49c5cb2c70",
+      "structural_sha256": "e6feedf108c1e9ce7c455306ed7a3a913f1319598400383e724a43004d6a3170"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0056.gwo",
+      "sha256": "97ac309c014f27fb96ba2f9bee339db34066f7b7c3ba5efe7464cf684097f0d8"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0056_0.jcs",
+      "sha256": "34a767659b4f617cc3459fc2051de9bf27035eb3bc48ca587bf0a35c628879a4",
+      "structural_sha256": "4fb64c29b6ade909a80587b75c20ccb409161d646c9dbfa05c8a624250639614"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0056_1.jcs",
+      "sha256": "2f24df19eeb66458fba25b15b306706cb243f386a9e03443c8fc8d36149a5e48",
+      "structural_sha256": "5cc8d7d173a114524b8a8713bfdf58d6ecfd840c8524385a0ec4ba1c555e03ca"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0058.gwo",
+      "sha256": "bc7f8e6d6517f9b96346f33e0d863c7a34027657e008bbaf815146cd4586430e"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0058_0.jcs",
+      "sha256": "ef79894ffd4c199d8adce82adfae265f762c273f8d341ca27c9de2638b676b44",
+      "structural_sha256": "80d2d655c66c8a641c28e7a0a22fe3a27e0a54dbd1f37b9d088d810b3c88f5ae"
+    },
+    {
+      "path": "Characters_New/effect/female_weapontwohand_effect_0058_1.jcs",
+      "sha256": "c6c56cc57ccbf3c90d5acb1182ef90c6d46c2b341907f2698bbb33732db9aa5e",
+      "structural_sha256": "a2dd3947e2a5648c4cb38faa67ab81b91910fc08e92addd00200b7fb581d85bf"
+    },
+    {
+      "path": "Characters_New/effect/male_body_effect_0009.gwo",
+      "sha256": "0167bf3a56b55cd360a3a59ceb7331f3f369ec4ebe784e990fd855458283cadf"
+    },
+    {
+      "path": "Characters_New/effect/male_body_effect_0009_0.jcs",
+      "sha256": "131c6d32d1d99def46ce4c38de8e3fbc7dbea6818f2ab4f9b60fc0495b376537",
+      "structural_sha256": "558628f87eb52aff06c0113714c8fdf20c3104581c4519d3c8e9aad8eba34982"
+    },
+    {
+      "path": "Characters_New/effect/male_body_effect_0009_1.jcs",
+      "sha256": "256e837ad4580472f8873f979844f7a681af42fa5a0119217dabca30cbf7b3a7",
+      "structural_sha256": "82bb71925b3a0e5589eb19df3b35de2407ee6139387a8a708cd8c0fdd54669cd"
+    },
+    {
+      "path": "Characters_New/effect/male_body_effect_0009_2.jcs",
+      "sha256": "bdbc1a5994fd05701fe0112b736a33b88f7ec77f89b7bda7645ddf047c76908f",
+      "structural_sha256": "b63a5fdc4e1759b63d60641bb9a7bece52980c551e8ea075ad1d81f1b1fb673c"
+    },
+    {
+      "path": "Characters_New/effect/male_weapononehand_effect_0002.gwo",
+      "sha256": "146773fa1147e259a89e00998a32a10bc08c7c4b21f89a612ee84737f2f91de3"
+    },
+    {
+      "path": "Characters_New/effect/male_weapononehand_effect_0006.gwo",
+      "sha256": "97ac309c014f27fb96ba2f9bee339db34066f7b7c3ba5efe7464cf684097f0d8"
+    }
+  ],
+  "format": "reborn-rank-effect-protected-files-v1"
+}

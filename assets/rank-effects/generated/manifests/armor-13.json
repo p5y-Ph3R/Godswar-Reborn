@@ -1,0 +1,161 @@
+{
+  "effects": [
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/female_body_effect_0013.gwo",
+      "class": null,
+      "gender": "female",
+      "kind": "armor",
+      "models": [
+        "Characters/effect/female_body_effect_0013_0.jcs",
+        "Characters/effect/female_body_effect_0013_1.jcs",
+        "Characters/effect/female_body_effect_0013_2.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_body_effect_0013_palette.tga"
+      ],
+      "rank": 13
+    },
+    {
+      "asset_root": "Characters",
+      "canonical_texture": "Characters/effect/male_body_effect_0013.gwo",
+      "class": null,
+      "gender": "male",
+      "kind": "armor",
+      "models": [
+        "Characters/effect/male_body_effect_0013_0.jcs",
+        "Characters/effect/male_body_effect_0013_1.jcs",
+        "Characters/effect/male_body_effect_0013_2.jcs"
+      ],
+      "private_textures": [
+        "Characters/effect/reborn_body_effect_0013_palette.tga"
+      ],
+      "rank": 13
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/female_body_effect_0013.gwo",
+      "class": null,
+      "gender": "female",
+      "kind": "armor",
+      "models": [
+        "Characters_New/effect/female_body_effect_0013_0.jcs",
+        "Characters_New/effect/female_body_effect_0013_1.jcs",
+        "Characters_New/effect/female_body_effect_0013_2.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_body_effect_0013_palette.tga"
+      ],
+      "rank": 13
+    },
+    {
+      "asset_root": "Characters_New",
+      "canonical_texture": "Characters_New/effect/male_body_effect_0013.gwo",
+      "class": null,
+      "gender": "male",
+      "kind": "armor",
+      "models": [
+        "Characters_New/effect/male_body_effect_0013_0.jcs",
+        "Characters_New/effect/male_body_effect_0013_1.jcs",
+        "Characters_New/effect/male_body_effect_0013_2.jcs"
+      ],
+      "private_textures": [
+        "Characters_New/effect/reborn_body_effect_0013_palette.tga"
+      ],
+      "rank": 13
+    }
+  ],
+  "files": [
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters/effect/female_body_effect_0013.gwo",
+      "target": "Characters/effect/female_body_effect_0013.gwo"
+    },
+    {
+      "sha256": "32e108c2546d0946281ec3f63de044841bd608cdc033a3fdfbcd59ceaf9fcb83",
+      "source": "package/Characters/effect/female_body_effect_0013_0.jcs",
+      "target": "Characters/effect/female_body_effect_0013_0.jcs"
+    },
+    {
+      "sha256": "30a5cccc77fed10b7cb9bd08e71a386f06a1748397f4651e6bed75a79fd7afb0",
+      "source": "package/Characters/effect/female_body_effect_0013_1.jcs",
+      "target": "Characters/effect/female_body_effect_0013_1.jcs"
+    },
+    {
+      "sha256": "54df0c02d877e7481a4942934c6d8b9d44494ec0231353a32edbcfb68db65a01",
+      "source": "package/Characters/effect/female_body_effect_0013_2.jcs",
+      "target": "Characters/effect/female_body_effect_0013_2.jcs"
+    },
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters/effect/male_body_effect_0013.gwo",
+      "target": "Characters/effect/male_body_effect_0013.gwo"
+    },
+    {
+      "sha256": "32e108c2546d0946281ec3f63de044841bd608cdc033a3fdfbcd59ceaf9fcb83",
+      "source": "package/Characters/effect/male_body_effect_0013_0.jcs",
+      "target": "Characters/effect/male_body_effect_0013_0.jcs"
+    },
+    {
+      "sha256": "30a5cccc77fed10b7cb9bd08e71a386f06a1748397f4651e6bed75a79fd7afb0",
+      "source": "package/Characters/effect/male_body_effect_0013_1.jcs",
+      "target": "Characters/effect/male_body_effect_0013_1.jcs"
+    },
+    {
+      "sha256": "54df0c02d877e7481a4942934c6d8b9d44494ec0231353a32edbcfb68db65a01",
+      "source": "package/Characters/effect/male_body_effect_0013_2.jcs",
+      "target": "Characters/effect/male_body_effect_0013_2.jcs"
+    },
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters/effect/reborn_body_effect_0013_palette.tga",
+      "target": "Characters/effect/reborn_body_effect_0013_palette.tga"
+    },
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters_New/effect/female_body_effect_0013.gwo",
+      "target": "Characters_New/effect/female_body_effect_0013.gwo"
+    },
+    {
+      "sha256": "32e108c2546d0946281ec3f63de044841bd608cdc033a3fdfbcd59ceaf9fcb83",
+      "source": "package/Characters_New/effect/female_body_effect_0013_0.jcs",
+      "target": "Characters_New/effect/female_body_effect_0013_0.jcs"
+    },
+    {
+      "sha256": "30a5cccc77fed10b7cb9bd08e71a386f06a1748397f4651e6bed75a79fd7afb0",
+      "source": "package/Characters_New/effect/female_body_effect_0013_1.jcs",
+      "target": "Characters_New/effect/female_body_effect_0013_1.jcs"
+    },
+    {
+      "sha256": "54df0c02d877e7481a4942934c6d8b9d44494ec0231353a32edbcfb68db65a01",
+      "source": "package/Characters_New/effect/female_body_effect_0013_2.jcs",
+      "target": "Characters_New/effect/female_body_effect_0013_2.jcs"
+    },
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters_New/effect/male_body_effect_0013.gwo",
+      "target": "Characters_New/effect/male_body_effect_0013.gwo"
+    },
+    {
+      "sha256": "32e108c2546d0946281ec3f63de044841bd608cdc033a3fdfbcd59ceaf9fcb83",
+      "source": "package/Characters_New/effect/male_body_effect_0013_0.jcs",
+      "target": "Characters_New/effect/male_body_effect_0013_0.jcs"
+    },
+    {
+      "sha256": "30a5cccc77fed10b7cb9bd08e71a386f06a1748397f4651e6bed75a79fd7afb0",
+      "source": "package/Characters_New/effect/male_body_effect_0013_1.jcs",
+      "target": "Characters_New/effect/male_body_effect_0013_1.jcs"
+    },
+    {
+      "sha256": "54df0c02d877e7481a4942934c6d8b9d44494ec0231353a32edbcfb68db65a01",
+      "source": "package/Characters_New/effect/male_body_effect_0013_2.jcs",
+      "target": "Characters_New/effect/male_body_effect_0013_2.jcs"
+    },
+    {
+      "sha256": "886a61da0200fa92902567b5e6177590ac1ed030bef3541b71ff97df3414355c",
+      "source": "package/Characters_New/effect/reborn_body_effect_0013_palette.tga",
+      "target": "Characters_New/effect/reborn_body_effect_0013_palette.tga"
+    }
+  ],
+  "format": "reborn-rank-effect-package-shard-v1"
+}

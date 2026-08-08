@@ -1,0 +1,44 @@
+{
+  "armor_rank_9_compatibility": {
+    "mappings": [
+      {
+        "from": "female_body_effect_0010.tga",
+        "to": "legacy_body_effect_0010.tga"
+      },
+      {
+        "from": "female_body_effect_0011.tga",
+        "to": "legacy_body_effect_0011.tga"
+      }
+    ],
+    "mode": "runtime_token_remap"
+  },
+  "coverage": {
+    "armor_ranks": [
+      10,
+      11,
+      12,
+      13,
+      14
+    ],
+    "weapon_classes": [
+      "warrior",
+      "champion",
+      "priest",
+      "mage"
+    ]
+  },
+  "effect_manifests": [
+    "generated/manifests/armor-10.json",
+    "generated/manifests/armor-11.json",
+    "generated/manifests/armor-12.json",
+    "generated/manifests/armor-13.json",
+    "generated/manifests/armor-14.json",
+    "generated/manifests/weapon-warrior.json",
+    "generated/manifests/weapon-champion.json",
+    "generated/manifests/weapon-priest.json",
+    "generated/manifests/weapon-mage.json"
+  ],
+  "format": "reborn-rank-effect-package-v1",
+  "package_id": "reborn-greek-rank-effects-v1",
+  "protected_baseline": "generated/protected-stock.json"
+}

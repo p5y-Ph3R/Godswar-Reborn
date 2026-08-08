@@ -1,0 +1,29 @@
+{
+  "coverage": {
+    "armor_ranks": [
+      10,
+      11,
+      12,
+      13,
+      14
+    ],
+    "weapon_classes": [
+      "champion",
+      "mage",
+      "priest",
+      "warrior"
+    ]
+  },
+  "file_manifests": [
+    "baselines/protected-files-01.json",
+    "baselines/protected-files-02.json",
+    "baselines/protected-files-03.json",
+    "baselines/protected-files-04.json",
+    "baselines/protected-files-05.json"
+  ],
+  "format": "reborn-rank-effect-protected-baseline-v1",
+  "unresolved_texture_references": [
+    "hex:ceb4b1eacce22d3120b8b1b1be2e746761",
+    "test07.tga"
+  ]
+}
