@@ -173,8 +173,8 @@ internal sealed partial class ServerOptions
                 "GODSWAR_RUNTIME_PROFILE") ??
             RuntimeProfile;
         Storage.Provider = Environment.GetEnvironmentVariable("GODSWAR_STORAGE_PROVIDER") ?? Storage.Provider;
-        Storage.PostgresConnectionString = Environment.GetEnvironmentVariable("GODSWAR_POSTGRES_CONNECTION_STRING")
-            ?? Storage.PostgresConnectionString;
+        Storage.PostgresConnectionString = ResolvePostgresConnectionString(
+            Storage.PostgresConnectionString);
         Storage.Outbox.Enabled = ReadBool(
             "GODSWAR_OUTBOX_ENABLED",
             Storage.Outbox.Enabled);

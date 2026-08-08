@@ -1,0 +1,181 @@
+name: reborn-dev
+
+# Isolated local development topology. This file is intentionally standalone:
+# it must never inherit names, ports, networks, or volumes from the monitored
+# `reborn` Compose project.
+services:
+  postgres:
+    image: postgres@sha256:c7526c0f6c3f30260a563d7bcf8ad778effac59a44f8ffa86678c35418338609
+    container_name: godswar-dev-postgres
+    environment:
+      POSTGRES_DB: godswar
+      POSTGRES_USER: godswar
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - source: dev-postgres-password
+        target: postgres_password
+    ports:
+      - "127.0.0.1:${GODSWAR_DEV_POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - godswar-dev-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U godswar -d godswar"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    labels:
+      com.reborn.environment.scope: isolated-development
+      com.reborn.data.role: cloned-nonproduction-authority
+    restart: unless-stopped
+
+  redis-coordination:
+    image: redis@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    container_name: godswar-dev-redis-coordination
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+    user: redis
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /data:rw,noexec,nosuid,nodev,size=16m
+    volumes:
+      - ./ops/redis/redis-coordination.local.conf:/usr/local/etc/redis/redis.conf:ro
+    secrets:
+      - source: dev-redis-acl
+        target: redis_acl
+      - source: dev-redis-password
+        target: redis_password
+    expose:
+      - "6379"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          REDISCLI_AUTH="$$(cat /run/secrets/redis_password)"
+          redis-cli --user godswar_runtime ping | grep -qx PONG
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 3s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 384m
+    cpus: 1.0
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
+    labels:
+      com.reborn.environment.scope: isolated-development
+      com.reborn.data.role: disposable-coordination
+    restart: unless-stopped
+
+  server:
+    image: reborn-server:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GODSWAR_SOURCE_COMMIT: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
+    container_name: godswar-dev-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-coordination:
+        condition: service_healthy
+    entrypoint:
+      - dotnet
+      - Godswar.Server.dll
+      - /app/config/redis-coordinated-worker.json
+    command: []
+    volumes:
+      - ./deploy/local/redis-coordinated-worker.json:/app/config/redis-coordinated-worker.json:ro
+    secrets:
+      - source: dev-postgres-connection-string
+        target: postgres_connection_string
+      - source: dev-redis-connection-string
+        target: redis_connection_string
+    environment:
+      GODSWAR_RUNTIME_PROFILE: LocalDevelopment
+      GODSWAR_STORAGE_PROVIDER: postgres
+      GODSWAR_POSTGRES_CONNECTION_STRING_FILE: /run/secrets/postgres_connection_string
+      GODSWAR_LOGIN_BIND_HOST: 0.0.0.0
+      GODSWAR_LOGIN_PORT: "5999"
+      GODSWAR_GAME_BIND_HOST: 0.0.0.0
+      GODSWAR_GAME_PORT: "7000"
+      GODSWAR_GAME_PUBLIC_HOST: 127.1.1.111
+      GODSWAR_GAME_PUBLIC_PORT: ${GODSWAR_DEV_GAME_HOST_PORT:-7000}
+      GODSWAR_MONSTER_RUNTIME: Ecs
+      GODSWAR_PLAYER_RUNTIME: Ecs
+      GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: "true"
+      GODSWAR_DEVELOPER_COMMANDS_ENABLED: "true"
+      GODSWAR_DEVELOPER_ACCOUNT_IDS: ${GODSWAR_DEV_DEVELOPER_ACCOUNT_IDS:-3,7,13,347}
+      GODSWAR_MANAGEMENT_ENABLED: "true"
+      GODSWAR_MANAGEMENT_BIND_HOST: 127.0.0.1
+      GODSWAR_MANAGEMENT_PORT: "9090"
+      GODSWAR_COORDINATION_PROVIDER: Redis
+      GODSWAR_COORDINATION_ENVIRONMENT: tempest-dev
+      GODSWAR_REDIS_CONNECTION_STRING_FILE: /run/secrets/redis_connection_string
+      GODSWAR_REDIS_REQUIRE_TLS: "false"
+      GODSWAR_REDIS_DATABASE: "0"
+      GODSWAR_COORDINATION_CAPACITY: "4096"
+      GODSWAR_REDIS_MAXIMUM_CONCURRENT_OPERATIONS: "128"
+      GODSWAR_REDIS_QUEUE_ADMISSION_TIMEOUT_MILLISECONDS: "25"
+      GODSWAR_REDIS_OPERATION_TIMEOUT_MILLISECONDS: "250"
+      GODSWAR_REDIS_CONNECT_TIMEOUT_MILLISECONDS: "1000"
+      GODSWAR_REDIS_CIRCUIT_FAILURE_THRESHOLD: "5"
+      GODSWAR_REDIS_CIRCUIT_OPEN_MILLISECONDS: "5000"
+      GODSWAR_COORDINATION_SERVER_HEARTBEAT_SECONDS: "5"
+      GODSWAR_COORDINATION_SERVER_TTL_SECONDS: "20"
+      GODSWAR_COORDINATION_PLAYER_LEASE_RENEWAL_SECONDS: "10"
+      GODSWAR_COORDINATION_PLAYER_LEASE_TTL_SECONDS: "30"
+      GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID: tempest-dev-openworld-01
+    ports:
+      - "127.1.1.111:${GODSWAR_DEV_LOGIN_HOST_PORT:-5998}:5999"
+      - "127.1.1.111:${GODSWAR_DEV_GAME_HOST_PORT:-7000}:7000"
+    healthcheck:
+      test: ["CMD", "/app/secure-healthcheck.sh"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 30s
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      com.reborn.environment.scope: isolated-development
+      com.reborn.network.profile: legacy-raw-isolated-development
+      com.reborn.source.commit: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
+    restart: unless-stopped
+
+secrets:
+  dev-postgres-password:
+    file: "${GODSWAR_DEV_POSTGRES_PASSWORD_FILE:?Run tools/NewDevelopmentStackConfiguration.ps1}"
+  dev-postgres-connection-string:
+    file: "${GODSWAR_DEV_POSTGRES_CONNECTION_STRING_FILE:?Run tools/NewDevelopmentStackConfiguration.ps1}"
+  dev-redis-acl:
+    file: "${GODSWAR_DEV_REDIS_ACL_FILE:?Run tools/NewDevelopmentStackConfiguration.ps1}"
+  dev-redis-password:
+    file: "${GODSWAR_DEV_REDIS_PASSWORD_FILE:?Run tools/NewDevelopmentStackConfiguration.ps1}"
+  dev-redis-connection-string:
+    file: "${GODSWAR_DEV_REDIS_CONNECTION_STRING_FILE:?Run tools/NewDevelopmentStackConfiguration.ps1}"
+
+volumes:
+  godswar-dev-postgres-data:
+    name: godswar-dev-postgres-data
+    labels:
+      com.reborn.environment.scope: isolated-development
+      com.reborn.data.role: cloned-nonproduction-authority
+
+networks:
+  default:
+    name: reborn_dev_runtime
+    labels:
+      com.reborn.environment.scope: isolated-development

@@ -1,0 +1,126 @@
+[CmdletBinding()]
+param(
+    [string]$ConfigurationDirectory,
+    [switch]$RefreshDatabaseFromMain,
+    [switch]$SkipBuild
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'DevelopmentStack.Common.psm1') -Force
+
+$configurationRoot = Get-DevelopmentConfigurationDirectory `
+    $ConfigurationDirectory
+$environmentPath = Get-DevelopmentEnvironmentPath $ConfigurationDirectory
+if (-not (Test-Path -LiteralPath $environmentPath -PathType Leaf)) {
+    & (Join-Path $PSScriptRoot 'NewDevelopmentStackConfiguration.ps1') `
+        -OutputDirectory $configurationRoot | Out-Host
+}
+else {
+    $connectionSecretPath = $null
+    try {
+        $connectionSecretPath = Get-DotEnvValue `
+            $environmentPath `
+            'GODSWAR_DEV_POSTGRES_CONNECTION_STRING_FILE'
+    }
+    catch {
+        $connectionSecretPath = $null
+    }
+    if ([string]::IsNullOrWhiteSpace($connectionSecretPath) -or
+        -not (Test-Path -LiteralPath $connectionSecretPath -PathType Leaf)) {
+        & (Join-Path $PSScriptRoot 'NewDevelopmentStackConfiguration.ps1') `
+            -OutputDirectory $configurationRoot `
+            -UpgradeExisting | Out-Host
+    }
+}
+
+$repositoryRoot = Get-DevelopmentRepositoryRoot
+$head = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $head -cnotmatch '^[0-9a-f]{40}$') {
+    throw 'Could not determine the development source revision.'
+}
+$dirty = & git -C $repositoryRoot status --porcelain
+if ($LASTEXITCODE -ne 0) {
+    throw 'Could not determine development worktree state.'
+}
+$sourceRevision = if ([string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
+    $head
+} else {
+    "$head-dirty"
+}
+
+$savedRevision = $env:GODSWAR_DEV_SOURCE_REVISION
+$env:GODSWAR_DEV_SOURCE_REVISION = $sourceRevision
+$mainBefore = $null
+$mainGuardVerified = $false
+try {
+    $mainBefore = Get-MainObservationGuard
+    & (Join-Path $PSScriptRoot 'TestDevelopmentStackIsolation.ps1') `
+        -ConfigurationDirectory $configurationRoot | Out-Host
+
+    $compose = Get-DevelopmentComposeArguments $environmentPath
+    & docker @($compose + @(
+        'up', '--detach', '--wait', '--wait-timeout', '120',
+        'postgres', 'redis-coordination')) | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Development PostgreSQL/Redis startup failed.'
+    }
+
+    $cloneParameters = @{
+        ConfigurationDirectory = $configurationRoot
+    }
+    if ($RefreshDatabaseFromMain) {
+        $cloneParameters.AllowDevelopmentDataReplacement = $true
+    }
+    $databaseResult = & (
+        Join-Path $PSScriptRoot 'CopyMainDatabaseToDevelopment.ps1'
+    ) @cloneParameters
+    $databaseResult | Out-Host
+
+    $serverArguments = @(
+        'up', '--detach', '--wait', '--wait-timeout', '300', '--no-deps'
+    )
+    if ($SkipBuild) {
+        $serverArguments += @('--no-build', '--pull', 'never')
+    }
+    else {
+        $serverArguments += '--build'
+    }
+    $serverArguments += 'server'
+    & docker @($compose + $serverArguments) | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Development game-server startup failed.'
+    }
+
+    $isolation = & (
+        Join-Path $PSScriptRoot 'TestDevelopmentStackIsolation.ps1'
+    ) -ConfigurationDirectory $configurationRoot -RequireLive
+    $mainAfter = Assert-MainObservationGuardUnchanged $mainBefore
+    $mainGuardVerified = $true
+
+    [pscustomobject]@{
+        Status = 'running_isolated'
+        SourceRevision = $sourceRevision
+        LoginEndpoint = '127.1.1.111:5998'
+        GameEndpoint = '127.1.1.111:7000'
+        PostgreSqlEndpoint = '127.0.0.1:55432'
+        DatabaseStatus = [string]$databaseResult.Status
+        B20HStatus = if ($null -eq $mainAfter.ObservationStatus) {
+            'not_active'
+        } else {
+            [string]$mainAfter.ObservationStatus.CurrentStatus
+        }
+        IsolationStatus = [string]$isolation.Status
+        ClientLauncher = 'C:\Godswar Origin\Launch.exe'
+    }
+}
+finally {
+    try {
+        if ($null -ne $mainBefore -and -not $mainGuardVerified) {
+            Assert-MainObservationGuardUnchanged $mainBefore | Out-Null
+        }
+    }
+    finally {
+        $env:GODSWAR_DEV_SOURCE_REVISION = $savedRevision
+    }
+}

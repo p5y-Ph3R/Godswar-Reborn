@@ -8,6 +8,9 @@ internal static class DataArchitectureCheckCatalog
             "Data-boundary architecture ratchet",
             DataBoundaryArchitectureChecks.RunAsync),
         (
+            PostgresConnectionStringSecretFileChecks.CheckName,
+            PostgresConnectionStringSecretFileChecks.RunAsync),
+        (
             B20LegacyPersistenceArchitectureChecks.CheckName,
             B20LegacyPersistenceArchitectureChecks.RunAsync),
         (
