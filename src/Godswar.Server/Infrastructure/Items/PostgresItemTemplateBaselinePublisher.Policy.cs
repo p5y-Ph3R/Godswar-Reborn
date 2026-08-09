@@ -133,11 +133,14 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 
     private static void ValidateReviewedSkillBookConflicts()
     {
-        var baseline = ItemTemplateSeeds.All
+        var baseline = ReviewedItemTemplateSeeds()
             .Select(ToDefinition)
             .ToArray();
         _ = AppendMissingReviewedSkillBooks(baseline);
     }
+
+    private static IReadOnlyList<ItemTemplateSeed>
+        ReviewedItemTemplateSeeds() => ItemTemplateSeeds.All;
 
     private static ItemTemplateDefinition ToDefinition(
         ItemTemplateSeed seed) =>

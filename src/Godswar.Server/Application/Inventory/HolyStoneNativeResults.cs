@@ -30,6 +30,7 @@ internal static class HolyStoneNativeResults
     public const int UpgradeFailedProtectedSubId = 2300;
     public const int SignetMismatchSubId = 2400;
     public const int SignetProtectionUnavailableSubId = 3400;
+    public const int TargetNotMountGearSubId = 3500;
     public const int CombinationSucceededSubId = 2500;
     public const int CombinationSelectionRequiredSubId = 2600;
     public const int CombinationNotAllowedSubId = 2700;
@@ -133,6 +134,13 @@ internal static class HolyStoneNativeResults
             return DrillPrerequisiteSubId;
         }
 
+        if (operation == HolyStoneCommandOperation.MountGearDrill &&
+            status is HolyStoneCommandResultStatus.TargetNotEquipment or
+                HolyStoneCommandResultStatus.TargetMissing)
+        {
+            return TargetNotMountGearSubId;
+        }
+
         return status switch
         {
             HolyStoneCommandResultStatus.Mounted => MountedSubId,
@@ -208,6 +216,15 @@ internal static class HolyStoneNativeResults
                     HolyStoneCommandResultStatus.MaximumSockets or
                     HolyStoneCommandResultStatus.InsufficientFunds or
                     HolyStoneCommandResultStatus.DrillPrerequisite or
+                    HolyStoneCommandResultStatus.StaleTarget or
+                    HolyStoneCommandResultStatus.TargetMissing,
+            HolyStoneCommandOperation.MountGearDrill =>
+                status is
+                    HolyStoneCommandResultStatus.Drilled or
+                    HolyStoneCommandResultStatus.WrongSelection or
+                    HolyStoneCommandResultStatus.TargetNotEquipment or
+                    HolyStoneCommandResultStatus.MaximumSockets or
+                    HolyStoneCommandResultStatus.InsufficientFunds or
                     HolyStoneCommandResultStatus.StaleTarget or
                     HolyStoneCommandResultStatus.TargetMissing,
             HolyStoneCommandOperation.AdvancedDrill =>

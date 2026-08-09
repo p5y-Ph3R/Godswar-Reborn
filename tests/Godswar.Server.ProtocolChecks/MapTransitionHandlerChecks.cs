@@ -52,6 +52,11 @@ internal static partial class MapTransitionHandlerChecks
             SpartaMapId,
             x: 190f,
             z: -120f);
+        character.Equipment = EquipmentSlots.SetSlot(
+            character.Equipment,
+            character.Profession,
+            EquipmentSlots.Stylish,
+            "[8068,,,,,,1,1,1,1,0]");
         var pet = CreateSummonedPet(character);
         var store = new MapTransitionStore(character, [pet]);
         var registry = new GameSessionRegistry(
@@ -228,6 +233,23 @@ internal static partial class MapTransitionHandlerChecks
             actorSocket,
             PacketBuilder.PlayerStatusUpdate(character, 1f),
             "reverse pre-ready player status");
+        if (GameClientHandler.HasEquippedFashion(character))
+        {
+            await AssertNextPacketAsync(
+                actorSocket,
+                PacketBuilder.EquipmentVisualRefresh(
+                    character,
+                    LocalPlayerObjectId,
+                    TestItemContent.Content.FashionAppearances),
+                "reverse pre-ready self Fashion appearance");
+            await AssertNextPacketAsync(
+                actorSocket,
+                PacketBuilder.EquipmentEffectVisibility(
+                    LocalPlayerObjectId,
+                    GameClientHandler.ResolveEquipmentEffectProjection(
+                        character)),
+                "reverse pre-ready self Fashion effects");
+        }
         AssertHiddenDestination(
             registry,
             actorSocket.Session,
@@ -315,7 +337,8 @@ internal static partial class MapTransitionHandlerChecks
             CharacterSnapshotReaderTestFixtures.Unused,
             store.WorldContent,
             mapTransitionReadyTimeout:
-                mapTransitionReadyTimeout);
+                mapTransitionReadyTimeout,
+            itemContent: TestItemContent.Content);
         SetField(
             handler,
             "_account",

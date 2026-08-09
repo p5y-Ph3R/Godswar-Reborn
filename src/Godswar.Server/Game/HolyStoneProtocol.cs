@@ -27,6 +27,7 @@ internal static partial class HolyStoneProtocol
     public const int ImplementSpiritSubId = 501;
     public const int CombineSubId = 601;
     public const int AdvancedDrillSubId = 701;
+    public const int MountGearDrillSubId = 801;
     public const int MountAliasOneSubId = 106;
     public const int MountAliasTwoSubId = 206;
     public const int MountAliasThreeSubId = 306;
@@ -253,6 +254,8 @@ internal static partial class HolyStoneProtocol
             DrillSubId => HolyStoneCommandOperation.Drill,
             AdvancedDrillSubId =>
                 HolyStoneCommandOperation.AdvancedDrill,
+            MountGearDrillSubId =>
+                HolyStoneCommandOperation.MountGearDrill,
             UpgradeSubId => HolyStoneCommandOperation.Upgrade,
             CombineSubId => HolyStoneCommandOperation.Combine,
             ImplementSpiritSubId =>
@@ -374,6 +377,7 @@ internal static partial class HolyStoneProtocol
                 break;
 
             case HolyStoneCommandOperation.Drill:
+            case HolyStoneCommandOperation.MountGearDrill:
                 if (!OnlyArgumentsUsed(
                         args,
                         TargetArgumentIndex))
@@ -517,6 +521,8 @@ internal static partial class HolyStoneProtocol
             DrillSubId => HolyStoneCommandOperation.Drill,
             AdvancedDrillSubId =>
                 HolyStoneCommandOperation.AdvancedDrill,
+            MountGearDrillSubId =>
+                HolyStoneCommandOperation.MountGearDrill,
             UpgradeSubId => HolyStoneCommandOperation.Upgrade,
             CombineSubId => HolyStoneCommandOperation.Combine,
             ImplementSpiritSubId =>

@@ -109,27 +109,27 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
         NpcDialoguePublicationResult result)
     {
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedRevision,
+            NpcDialogueBaselineV3.ExpectedRevision,
             result.Revision,
             "dialogue release revision");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedSpawnRevision,
+            NpcDialogueBaselineV3.ExpectedSpawnRevision,
             result.SpawnRevision,
             "dialogue release spawn dependency");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedTextCount,
+            NpcDialogueBaselineV3.ExpectedTextCount,
             result.TextCount,
             "dialogue release text count");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedProfileCount,
+            NpcDialogueBaselineV3.ExpectedProfileCount,
             result.ProfileCount,
             "dialogue release profile count");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedRouteCount,
+            NpcDialogueBaselineV3.ExpectedRouteCount,
             result.RouteCount,
             "dialogue release route count");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedMenuEntryCount,
+            NpcDialogueBaselineV3.ExpectedMenuEntryCount,
             result.MenuEntryCount,
             "dialogue release menu count");
     }
@@ -141,11 +141,11 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             manifest.NpcDialogues.Family,
             "dialogue manifest family");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedRevision,
+            NpcDialogueBaselineV3.ExpectedRevision,
             manifest.NpcDialogues.Sha256,
             "dialogue manifest revision");
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedHashedEntryCount,
+            NpcDialogueBaselineV3.ExpectedHashedEntryCount,
             manifest.NpcDialogues.EntryCount,
             "dialogue manifest hashed entry count");
     }
@@ -153,7 +153,7 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
     private static async Task AssertRoutesAsync(
         IWorldContentReader reader)
     {
-        var expected = NpcDialogueBaselineV2.CreateRoutes()
+        var expected = NpcDialogueBaselineV3.CreateRoutes()
             .GroupBy(static route => route.NpcKey, StringComparer.Ordinal)
             .ToDictionary(
                 static group => group.Key,
@@ -237,10 +237,10 @@ internal static partial class PostgresNpcDialoguePublicationIntegrationChecks
             "dialogue publication exists");
         var expected = new[]
         {
-            NpcDialogueBaselineV2.ExpectedTextCount,
-            NpcDialogueBaselineV2.ExpectedProfileCount,
-            NpcDialogueBaselineV2.ExpectedRouteCount,
-            NpcDialogueBaselineV2.ExpectedMenuEntryCount
+            NpcDialogueBaselineV3.ExpectedTextCount,
+            NpcDialogueBaselineV3.ExpectedProfileCount,
+            NpcDialogueBaselineV3.ExpectedRouteCount,
+            NpcDialogueBaselineV3.ExpectedMenuEntryCount
         };
         for (var index = 0; index < expected.Length; index++)
         {

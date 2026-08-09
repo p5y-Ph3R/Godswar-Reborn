@@ -7,12 +7,14 @@ namespace Godswar.Server.Application.Items;
 /// <summary>
 /// The deliberately narrow developer-grant allowlist for one immutable item
 /// content revision. Existing material grants are delegated to their native
-/// catalog; empty Holy Boxes are derived from the same published Holy Suit
-/// revision used by gameplay.
+/// catalog; empty Holy Boxes and the reviewed permanent costume are derived
+/// from the same published item revision used by gameplay.
 /// </summary>
 internal sealed class PinnedDeveloperItemGrantCatalog :
     IDeveloperItemGrantCatalog
 {
+    internal const uint PermanentChristmasCostumeItemId = 8068;
+
     private readonly IItemMaterialCatalog _materials;
     private readonly FrozenDictionary<uint, DeveloperGrantMaterialDefinition>
         _holyBoxesById;
@@ -22,6 +24,10 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         _socketSpellsById;
     private readonly FrozenDictionary<string, DeveloperGrantMaterialDefinition>
         _socketSpellsByAlias;
+    private readonly FrozenDictionary<uint, DeveloperGrantMaterialDefinition>
+        _costumesById;
+    private readonly FrozenDictionary<string, DeveloperGrantMaterialDefinition>
+        _costumesByAlias;
 
     public PinnedDeveloperItemGrantCatalog(IItemTemplateCatalog templates)
     {
@@ -46,6 +52,13 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
             static value => value.Grant);
         _socketSpellsByAlias = CreateSocketSpellAliases(socketSpells)
             .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+        var costumes = CreateCostumeGrants(templates);
+        _costumesById = costumes.ToFrozenDictionary(
+            static value => value.ItemId,
+            static value => value.Grant);
+        _costumesByAlias = CreateCostumeAliases(costumes)
+            .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 
     public bool TryResolveDeveloper(
@@ -53,14 +66,107 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         out DeveloperGrantMaterialDefinition item) =>
         _materials.TryResolveDeveloper(itemId, out item!) ||
         _holyBoxesById.TryGetValue(itemId, out item!) ||
-        _socketSpellsById.TryGetValue(itemId, out item!);
+        _socketSpellsById.TryGetValue(itemId, out item!) ||
+        _costumesById.TryGetValue(itemId, out item!);
 
     public bool TryResolveDeveloper(
         string alias,
         out DeveloperGrantMaterialDefinition item) =>
         _materials.TryResolveDeveloper(alias, out item!) ||
         _holyBoxesByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
-        _socketSpellsByAlias.TryGetValue(NormalizeAlias(alias), out item!);
+        _socketSpellsByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
+        _costumesByAlias.TryGetValue(NormalizeAlias(alias), out item!);
+
+    private static IReadOnlyList<CostumeDeveloperGrant>
+        CreateCostumeGrants(IItemTemplateCatalog templates)
+    {
+        if (!templates.TryGet(
+                PermanentChristmasCostumeItemId,
+                out var template))
+        {
+            return [];
+        }
+
+        ValidatePermanentChristmasCostume(template);
+        return
+        [
+            new CostumeDeveloperGrant(
+                template.Id,
+                new DeveloperGrantMaterialDefinition(
+                    template.Id,
+                    template.DisplayName,
+                    StackCap: 1,
+                    GrantedBound: 1))
+        ];
+    }
+
+    private static void ValidatePermanentChristmasCostume(
+        ItemTemplateDefinition template)
+    {
+        if (!template.Kind.Equals("stylish", StringComparison.Ordinal) ||
+            !template.NameKey.Equals("Maid8068", StringComparison.Ordinal) ||
+            !template.DisplayName.Equals(
+                "Christmas Suit(perpetual)",
+                StringComparison.Ordinal) ||
+            template.EquipmentSlot != 12 ||
+            !template.ClassIds.SequenceEqual(
+                new short[] { 0, 1, 2, 3 }) ||
+            template.MinLevel != 1 ||
+            template.MaxLevel != 200 ||
+            template.Hand.HasValue ||
+            template.SkillFlag != 19 ||
+            !template.Texture.Equals(
+                "./Localization/en_us/UI/Texture/Icon.gwo",
+                StringComparison.Ordinal) ||
+            !template.Icon.Equals("720,180", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Costume {template.Id} does not match stock-client content.");
+        }
+
+        using var document = JsonDocument.Parse(template.StatsJson);
+        var root = document.RootElement;
+        if (!HasString(root, "ID", "8068") ||
+            !HasString(root, "Type", "stylish") ||
+            !HasString(root, "Overlap", "1") ||
+            !HasString(root, "BindType", "2") ||
+            !HasString(root, "Equip", "1") ||
+            !HasString(
+                root,
+                "PartId",
+                "8061,0,8062,8063,8064,0,8065,8066,0,0,0,0") ||
+            root.TryGetProperty("ExpiredTime", out _) ||
+            root.TryGetProperty("SexBind", out _))
+        {
+            throw new InvalidOperationException(
+                $"Costume {template.Id} is not the reviewed permanent unisex costume.");
+        }
+    }
+
+    private static bool HasString(
+        JsonElement root,
+        string property,
+        string expected) =>
+        root.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() == expected;
+
+    private static Dictionary<string, DeveloperGrantMaterialDefinition>
+        CreateCostumeAliases(
+            IReadOnlyList<CostumeDeveloperGrant> costumes)
+    {
+        var aliases = new Dictionary<string, DeveloperGrantMaterialDefinition>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var costume in costumes)
+        {
+            AddAlias(aliases, "christmassuit", costume.Grant);
+            AddAlias(aliases, "christmassuitperpetual", costume.Grant);
+            AddAlias(aliases, $"costume{costume.ItemId}", costume.Grant);
+            AddAlias(aliases, costume.Grant.DisplayName, costume.Grant);
+        }
+
+        return aliases;
+    }
 
     private static IReadOnlyList<SocketSpellDeveloperGrant>
         CreateSocketSpellGrants(IItemTemplateCatalog templates)
@@ -244,5 +350,9 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
     private sealed record SocketSpellDeveloperGrant(
         uint ItemId,
         int Ordinal,
+        DeveloperGrantMaterialDefinition Grant);
+
+    private sealed record CostumeDeveloperGrant(
+        uint ItemId,
         DeveloperGrantMaterialDefinition Grant);
 }

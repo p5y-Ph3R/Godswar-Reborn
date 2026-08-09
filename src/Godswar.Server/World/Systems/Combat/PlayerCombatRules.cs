@@ -67,10 +67,30 @@ internal static class PlayerCombatRules
     public static bool IsHostileAreaSkill(
         in PlayerCombatSkillSnapshot skill)
     {
+        return IsHostileSelfAreaSkill(skill) ||
+               IsHostileGroundAreaSkill(skill);
+    }
+
+    public static bool IsHostileSelfAreaSkill(
+        in PlayerCombatSkillSnapshot skill)
+    {
         const int targetSelf = 1;
         const int targetMonster = 8;
+        const int targetPosition = 16;
         return (skill.Target & targetSelf) != 0 &&
+               (skill.Target & targetPosition) == 0 &&
                (skill.AffectObject & targetMonster) != 0 &&
+               skill.AreaRadius > 0f;
+    }
+
+    public static bool IsHostileGroundAreaSkill(
+        in PlayerCombatSkillSnapshot skill)
+    {
+        const int targetPosition = 16;
+        const int targetMonster = 8;
+        return (skill.Target & targetPosition) != 0 &&
+               (skill.AffectObject & targetMonster) != 0 &&
+               skill.Distance > 0f &&
                skill.AreaRadius > 0f;
     }
 
@@ -124,6 +144,19 @@ internal static class PlayerCombatRules
             targetX,
             targetZ,
             Math.Max(0f, skill.Distance) + TargetCollisionAllowance);
+
+    public static bool IsWithinGroundTargetRange(
+        float casterX,
+        float casterZ,
+        float targetX,
+        float targetZ,
+        in PlayerCombatSkillSnapshot skill) =>
+        IsWithinInclusiveRange(
+            casterX,
+            casterZ,
+            targetX,
+            targetZ,
+            Math.Max(0f, skill.Distance));
 
     public static bool IsWithinArea(
         float centerX,

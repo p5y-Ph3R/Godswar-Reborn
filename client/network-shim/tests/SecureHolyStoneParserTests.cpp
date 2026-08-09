@@ -130,6 +130,11 @@ void CheckCapturedGoldenVectors(Checks* checks) {
 void CheckCitiesAndBoundaries(Checks* checks) {
     std::uint8_t packet[LegacyHolyStoneActionPacketBytes]{};
     LegacyHolyStoneCommand command{};
+    checks->Require(
+        LegacyHolyStoneMountGearDrillSubId == 801 &&
+        static_cast<std::uint8_t>(
+            LegacyHolyStoneAction::MountGearDrill) == 8,
+        "Mount Gear Drill changed its stable wire values");
     BuildHolyStonePacket(
         packet,
         LegacyHolyStoneAction::Mount,
@@ -172,6 +177,26 @@ void CheckCitiesAndBoundaries(Checks* checks) {
             command.action == LegacyHolyStoneAction::Drill &&
             command.targetReference == 53,
         "Page-two Holy Stone reference was not normalized");
+
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::MountGearDrill,
+        205,
+        -1,
+        LegacyAthensHolyStoneNpc);
+    checks->Require(
+        ClassifyLegacyHolyStonePacket(
+            packet,
+            sizeof(packet),
+            &command) == LegacyHolyStonePacketKind::Commit &&
+        TryReadLegacyHolyStoneCommand(
+            packet,
+            sizeof(packet),
+            &command) &&
+        command.action == LegacyHolyStoneAction::MountGearDrill &&
+        command.targetReference == 53 &&
+        command.secondaryValue == -1,
+        "Mount Gear Drill did not parse its one target argument");
 
     BuildHolyStonePacket(
         packet,
@@ -243,7 +268,8 @@ void CheckNavigationAndForeignActions(Checks* checks) {
 
     for (const auto action : {
              LegacyHolyStoneAction::Remove,
-             LegacyHolyStoneAction::Drill}) {
+             LegacyHolyStoneAction::Drill,
+             LegacyHolyStoneAction::MountGearDrill}) {
         BuildHolyStonePacket(
             packet,
             action,
@@ -257,7 +283,7 @@ void CheckNavigationAndForeignActions(Checks* checks) {
                 sizeof(packet),
                 &command) ==
                 LegacyHolyStonePacketKind::InvalidMutation,
-            "Empty Remove or Drill mutation did not fail closed");
+            "Empty target-only Holy Stone mutation did not fail closed");
     }
 
     for (const std::int32_t subId : {106, 206, 306, 406}) {
@@ -463,13 +489,32 @@ void CheckStrictShapeRejections(Checks* checks) {
             &command),
         "Holy Stone Drill accepted stray arguments");
 
+    BuildHolyStonePacket(
+        valid,
+        LegacyHolyStoneAction::MountGearDrill,
+        107,
+        -1);
+    std::memcpy(changed, valid, sizeof(changed));
+    Write32(changed + 20 + 7 * 4, 108);
+    checks->Require(
+        ClassifyLegacyHolyStonePacket(
+            changed,
+            sizeof(changed),
+            &command) == LegacyHolyStonePacketKind::InvalidMutation &&
+        !TryReadLegacyHolyStoneCommand(
+            changed,
+            sizeof(changed),
+            &command),
+        "Mount Gear Drill accepted a second item argument");
+
     for (const int invalidReference :
          {24, 99, 124, 195, 199, 224, 299, 324}) {
         for (const auto action : {
                  LegacyHolyStoneAction::Mount,
                  LegacyHolyStoneAction::Remove,
                  LegacyHolyStoneAction::Drill,
-                 LegacyHolyStoneAction::AdvancedDrill}) {
+                 LegacyHolyStoneAction::AdvancedDrill,
+                 LegacyHolyStoneAction::MountGearDrill}) {
             BuildHolyStonePacket(
                 changed,
                 action,

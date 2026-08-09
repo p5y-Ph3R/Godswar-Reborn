@@ -174,9 +174,17 @@ internal static class HolySpiritEffectivenessPolicy
         new(
             definition.ItemId,
             LegacyName(definition.ItemId),
-            definition.Affinity == HolySpiritImplementationAffinity.Heated
-                ? HolyStoneAffinity.Heated
-                : HolyStoneAffinity.Cooled,
+            definition.Affinity switch
+            {
+                HolySpiritImplementationAffinity.Heated =>
+                    HolyStoneAffinity.Heated,
+                HolySpiritImplementationAffinity.Cooled =>
+                    HolyStoneAffinity.Cooled,
+                HolySpiritImplementationAffinity.Zephyr =>
+                    HolyStoneAffinity.Zephyr,
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(definition))
+            },
             definition.EffectId,
             definition.GradeOneMinimumValue,
             definition.GradeOneMaximumValue,
@@ -204,6 +212,10 @@ internal static class HolySpiritEffectivenessPolicy
             9085 => "Water Spirit of Frost",
             9086 => "Water Spirit of Intent",
             9087 => "Water Spirit of Resilience",
+            9090 => "Daedalus Spirit of Attunement",
+            9091 => "Hephaestus Spirit of Tempering",
+            9092 => "Mnemosyne Spirit of Preservation",
+            9093 => "Themis Spirit of Continuity",
             _ => throw new ArgumentOutOfRangeException(nameof(itemId))
         };
 }

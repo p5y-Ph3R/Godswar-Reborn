@@ -58,6 +58,7 @@ internal static partial class PostgresDeveloperItemGrantIntegrationChecks
             connectionString);
         await AssertEmptyHolyBoxGrantAsync(connectionString);
         await AssertSocketSpellGrantsAsync(connectionString);
+        await AssertPermanentCostumeGrantAsync(connectionString);
         await AssertLegacyEmptyHolyBoxGrantAsync(connectionString);
         await AssertConcurrentExecutorsAsync(connectionString);
         await AssertInsufficientCapacityAsync(connectionString);

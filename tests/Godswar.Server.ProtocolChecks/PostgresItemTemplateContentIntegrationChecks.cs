@@ -31,6 +31,9 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
 
         await using var dataSource =
             NpgsqlDataSource.Create(connectionString);
+        await AssertMountSpeedPublicationAsync(
+            dataSource,
+            first.Revision.Sha256);
         await AssertSocketSpellPublicationAsync(dataSource, first);
         await AssertHolyStoneMaterialPublicationAsync(dataSource, first);
         await AssertClassSuitV6PublicationAsync(

@@ -19,6 +19,7 @@ internal static class WorldContentReaderDialogueChecks
         CheckMalformedDialogueRejections();
         CheckReviewedRouteCapabilities();
         CheckReviewedMultiRouteRelease();
+        CheckReviewedMountGearDrillRelease();
         await CheckGeneratedBaselineAsync();
     }
 
@@ -379,6 +380,50 @@ internal static class WorldContentReaderDialogueChecks
                 mentorRoutes[1].Behavior == NpcDialogueBehavior.ClassSuit &&
                 mentorRoutes[1].DialogIndex == 37,
                 $"{npcKey} publishes Gear Mentor and Class Suit functions");
+        }
+    }
+
+    private static void CheckReviewedMountGearDrillRelease()
+    {
+        var publishedNpcKeys = NpcContentBaselineV1.LoadDefinitions()
+            .Select(static npc => npc.NpcKey)
+            .ToHashSet(StringComparer.Ordinal);
+        var texts = NpcTemplateSeeds.Texts
+            .Where(text => publishedNpcKeys.Contains(text.NpcKey))
+            .Select(static text => new NpcTextDefinition(
+                text.NpcKey,
+                text.SceneKey,
+                text.DisplayName,
+                text.Description))
+            .OrderBy(static text => text.NpcKey, StringComparer.Ordinal)
+            .ToArray();
+        var routes = NpcDialogueBaselineV3.CreateRoutes();
+        var revision = WorldContentRevisionHasher.HashNpcDialogues(
+            texts,
+            routes);
+
+        Check.Equal(
+            NpcDialogueBaselineV3.ExpectedTextCount,
+            texts.Length,
+            "V3 dialogue text count");
+        Check.Equal(
+            NpcDialogueBaselineV3.ExpectedHashedEntryCount,
+            revision.EntryCount,
+            "V3 dialogue hashed-entry count");
+        Check.Equal(
+            NpcDialogueBaselineV3.ExpectedRevision,
+            revision.Sha256,
+            "V3 NPC-dialogue canonical revision golden vector");
+        foreach (var npcKey in new[] { "Athens_086", "Sparta_086" })
+        {
+            var artisanRoute = routes.Single(
+                route => route.NpcKey == npcKey);
+            Check.True(
+                artisanRoute.Behavior ==
+                    NpcDialogueBehavior.HolyStone &&
+                artisanRoute.InitialMenuSubIds.SequenceEqual(
+                    [101, 201, 301, 401, 501, 601, 701, 801]),
+                $"{npcKey} publishes Mount Gear Drilling action 801");
         }
     }
 

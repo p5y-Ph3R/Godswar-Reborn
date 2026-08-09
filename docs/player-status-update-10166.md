@@ -21,6 +21,8 @@ Known fields:
 44-47  f32   position_x
 52-55  f32   position_z
 56-59  f32   movement_speed_multiplier  1.0 walking; 1 + mount speed bonus
+60-63  f32   equipped_riding_speed_bonus 0.0 no mount; 0.25 = +25%
+64-67  i32   credit                     existing reputation field; never reuse
 92-95  i32    profession                 1 Champion
 100-103 i32   level                      200
 104-107 i32   current_hp                 43023
@@ -50,7 +52,7 @@ Unknown/template fields and current local values:
 ```text
 41-43   bytes  00 00 00
 48-51   u32    0            hex 00000000
-60-83   i32x6  0,0,0,0,0,0  hex 000000000000000000000000000000000000000000000000
+68-83   i32x4  0,0,0,0      hex 00000000000000000000000000000000
 84-87   i32    40           hex 28000000
 88-91   i32    1            hex 01000000
 96-99   i32    0            hex 00000000
@@ -72,3 +74,23 @@ Captured walking packets carry `1.0` at offset 56; a 24% mounted character
 carries `1.24`, matching the observed movement-step ratio. Continue comparing
 84/88, 112-119, and 212-235 against working captures.
 ```
+
+## Local movement fields and interaction safety
+
+The client handler at VA `0x004E9273` copies wire offset 8 to
+`GameData+0x25C` for `0x22` dwords. Therefore wire offset 56 maps to
+`GameData+0x28C`, offset 60 maps to `GameData+0x290`, and offset 64 maps to
+`GameData+0x294`. PersonalInfo reads `GameData+0x294` as Credit, so offset 64
+must remain untouched.
+
+Wire offset 60 is **not available for extensions**. Native NPC targeting reads
+byte `GameData+0x292`, which is the third byte of this dword, as the local
+interaction identity/faction. For example, encoding the riding bonus `0.54f`
+produces bytes `71 3D 0A 3F`, changes that identity byte to `10`, and makes the
+client reject every NPC before it emits opcode `10067`.
+
+The replacement server therefore keeps all four bytes at offset 60 zero for
+local and remote status packets. Equipped Riding Speed must be calculated in
+client-owned UI state or sent through a separately validated extension; it
+must never be stored at `GameData+0x290`. Packet length and opcode remain
+unchanged.

@@ -36,8 +36,9 @@ internal sealed partial class GameClientHandler
             ValidateCommittedHolyStoneProjection(
                 hydrated.Character,
                 committedReceipt);
-            if (committedReceipt.Operation ==
-                    HolyStoneCommandOperation.Drill &&
+            if (committedReceipt.Operation is (
+                    HolyStoneCommandOperation.Drill or
+                    HolyStoneCommandOperation.MountGearDrill) &&
                 committedReceipt.Status ==
                     HolyStoneCommandResultStatus.Drilled &&
                 hydrated.Character.Gold !=
@@ -408,13 +409,17 @@ internal sealed partial class GameClientHandler
             "HolyStoneWeaponRefresh");
         await SendKitBagRefreshAsync(cancellationToken);
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character!),
+            PacketBuilder.EquipmentVisualRefresh(
+                _character!,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "HolyStoneVisualRefresh");
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character!)),
             cancellationToken,
-            "HolyStoneDetailRefresh");
+            "HolyStoneEquipmentEffectVisibility");
         await BroadcastEquipmentRefreshAsync(
             $"holy-stone-{reason}",
             cancellationToken);

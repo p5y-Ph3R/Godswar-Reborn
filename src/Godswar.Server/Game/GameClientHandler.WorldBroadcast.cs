@@ -33,10 +33,21 @@ internal sealed partial class GameClientHandler
         {
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.EquipmentVisualRefresh(_character, objectId),
+                PacketBuilder.EquipmentVisualRefresh(
+                    _character,
+                    objectId,
+                    _itemContent?.FashionAppearances),
                 cancellationToken,
                 _session,
                 "PlayerEquipmentVisualRefresh");
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.EquipmentEffectVisibility(
+                    objectId,
+                    ResolveEquipmentEffectProjection(_character)),
+                cancellationToken,
+                _session,
+                "PlayerEquipmentEffectVisibility");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
                 PacketBuilder.PlayerAppearanceExtras(_character, objectId),
@@ -51,17 +62,14 @@ internal sealed partial class GameClientHandler
                 "PlayerTitleInfoRefresh");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.PlayerInspectEquipmentStatusBundle(_character, objectId),
+                PacketBuilder.PlayerInspectEquipmentStatusBundle(
+                    _character,
+                    objectId,
+                    statusSnapshot.Aggregate),
                 cancellationToken,
                 _session,
                 "PlayerInspectEquipmentStatusBroadcast",
                 framed: false);
-            await _registry.BroadcastToMapAsync(
-                _character.CurrentMap,
-                PacketBuilder.PlayerDetailRefreshAck(objectId),
-                cancellationToken,
-                _session,
-                "PlayerInspectDetailRefreshAck");
         }
 
         if (recipients > 0)
@@ -227,9 +235,20 @@ internal sealed partial class GameClientHandler
                 $"[world] announcing player to map character={_character.Name} object={objectId} wr={_character.WeaponRank}/aura{_character.WeaponAuraEffect} ar={_character.ArmorRank}/aura{_character.ArmorAuraEffect} equipment={PacketBuilder.EnterEquipmentSummary(_character)} recipients={spawnRecipients}");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.EquipmentVisualRefresh(_character, objectId),
+                PacketBuilder.EquipmentVisualRefresh(
+                    _character,
+                    objectId,
+                    _itemContent?.FashionAppearances),
                 cancellationToken,
                 _session);
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.EquipmentEffectVisibility(
+                    objectId,
+                    ResolveEquipmentEffectProjection(_character)),
+                cancellationToken,
+                _session,
+                "PlayerEquipmentEffectVisibility");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
                 PacketBuilder.PlayerAppearanceExtras(_character, objectId),
@@ -247,7 +266,10 @@ internal sealed partial class GameClientHandler
                 _session);
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.PlayerStatusUpdate(_character, objectId),
+                PacketBuilder.PlayerStatusUpdate(
+                    _character,
+                    objectId,
+                    statusSnapshot.Aggregate),
                 cancellationToken,
                 _session,
                 "VisiblePlayerStatus");

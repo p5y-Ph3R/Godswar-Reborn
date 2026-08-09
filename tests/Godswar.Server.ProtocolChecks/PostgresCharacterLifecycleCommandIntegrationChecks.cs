@@ -120,6 +120,9 @@ internal static partial class
             starter.EconomyBaselineSilver == 10_000 &&
             starter.EconomyBaselineGold == 10,
             "secure creation preserves legacy starter gameplay and economy defaults");
+        await AssertStarterFashionSlotAsync(
+            dataSource,
+            first.CharacterId);
 
         var createConflict = await executor.ExecuteAsync(
             CreateEnvelope(

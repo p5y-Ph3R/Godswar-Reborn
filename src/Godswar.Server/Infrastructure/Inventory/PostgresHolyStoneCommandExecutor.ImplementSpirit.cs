@@ -15,9 +15,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         CompactItemEntry goddessStone)
     {
         if (holyStone.Stack != 1 ||
-            holyStone.Id is not (
-                HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
-                HolyStoneUpgradePolicy.CooledHolyStoneItemId) ||
+            !HolyStoneUpgradePolicy.IsHolyStone(holyStone.Id) ||
             holyStone.Grade is
                 < HolySpiritEffectivenessPolicy.MinimumHolyStoneGrade or
                 > HolySpiritEffectivenessPolicy.MaximumHolyStoneGrade)
@@ -117,9 +115,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         CompactItemEntry target,
         CompactItemEntry stone)
     {
-        if (stone.Id is not (
-                HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
-                HolyStoneUpgradePolicy.CooledHolyStoneItemId) ||
+        if (!HolyStoneUpgradePolicy.IsHolyStone(stone.Id) ||
             stone.Stack != 1)
         {
             return Rejected(
@@ -140,7 +136,15 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target,
                 stone);
         }
-        if (targetTemplate.MinLevel is null or < 100 ||
+        var isZephyr =
+            stone.Id == HolyStoneUpgradePolicy.ZephyrHolyStoneItemId;
+        var eligibleTargetKind = isZephyr
+            ? EquipmentEligibility.IsMountGearKind(targetTemplate.Kind)
+            : EquipmentSlots.IsEquipmentKind(targetTemplate.Kind) &&
+              targetTemplate.EquipmentSlot is
+                  >= EquipmentSlots.Head and <= EquipmentSlots.Shield;
+        if (!eligibleTargetKind ||
+            (!isZephyr && targetTemplate.MinLevel is null or < 100) ||
             !HolyStoneEquipmentEligibility.IsCompatibleWithHolyStone(
                 targetTemplate.EquipmentSlot,
                 stone.Id))
@@ -169,6 +173,10 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
         }
 
         var socketIndex = FindFirstEmptyOpenedSocket(target);
+        if (isZephyr && socketIndex >= 2)
+        {
+            socketIndex = -1;
+        }
         if (socketIndex < 0)
         {
             return Rejected(

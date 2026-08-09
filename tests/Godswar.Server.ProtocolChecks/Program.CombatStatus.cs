@@ -67,6 +67,94 @@ internal static partial class Program
         Check.True(
             !SkillCombatResolver.IsWithinArea(10f, 10f, 20f, 10f, meteorBlast),
             "Meteor Blast excludes monsters on its strict area boundary");
+
+        Check.True(
+            GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(
+                564,
+                out var thundercloud),
+            "Thundercloud 5 combat data exists");
+        Check.True(
+            SkillCombatResolver.IsHostileMonsterGroundAreaSkill(
+                thundercloud),
+            "Thundercloud uses the hostile ground-target area path");
+        Check.True(
+            SkillCombatResolver.TryResolveHostileMonsterAreaCenter(
+                0f,
+                0f,
+                11f,
+                0f,
+                thundercloud,
+                out var thundercloudX,
+                out var thundercloudZ),
+            "Thundercloud accepts a cursor target inside cast range");
+        Check.Equal(11f, thundercloudX,
+            "Thundercloud area is centred on the cursor X");
+        Check.Equal(0f, thundercloudZ,
+            "Thundercloud area is centred on the cursor Z");
+        Check.True(
+            !SkillCombatResolver.TryResolveHostileMonsterAreaCenter(
+                0f,
+                0f,
+                11.01f,
+                0f,
+                thundercloud,
+                out _,
+                out _),
+            "Thundercloud rejects a cursor target beyond its exact ground-cast distance");
+
+        Check.True(
+            GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(
+                574,
+                out var flameBlast),
+            "Flame Blast 5 combat data exists");
+        Check.True(
+            SkillCombatResolver.IsHostileMonsterGroundAreaSkill(flameBlast),
+            "Flame Blast Target=63 resolves as ground-targeted");
+        Check.True(
+            !SkillCombatResolver.IsHostileMonsterSelfAreaSkill(flameBlast),
+            "Flame Blast is not misclassified as self-centred");
+
+        Check.True(
+            GameplayContentTestFixtures.Runtime.SkillCombat.TryGet(
+                584,
+                out var fireBlast),
+            "Fire Blast 5 combat data exists");
+        Check.True(
+            SkillCombatResolver.IsHostileMonsterSelfAreaSkill(fireBlast),
+            "Fire Blast remains self-centred");
+
+        var fiveStarForms = new[]
+        {
+            (SkillId: 590, StatusId: 230u, Priority: 1, Reduction: 0.08m),
+            (SkillId: 591, StatusId: 231u, Priority: 2, Reduction: 0.10m),
+            (SkillId: 592, StatusId: 232u, Priority: 3, Reduction: 0.12m),
+            (SkillId: 593, StatusId: 233u, Priority: 4, Reduction: 0.15m),
+            (SkillId: 594, StatusId: 234u, Priority: 5, Reduction: 0.20m)
+        };
+        foreach (var item in fiveStarForms)
+        {
+            Check.True(
+                SkillStatusEffectCatalog.TryGet(
+                    item.SkillId,
+                    out var definition),
+                $"Five-star Form {item.SkillId} status definition exists");
+            Check.Equal(item.StatusId, definition.StatusId,
+                $"Five-star Form {item.SkillId} status ID");
+            Check.Equal(8, definition.Kind,
+                $"Five-star Form {item.SkillId} status kind");
+            Check.Equal(item.Priority, definition.Priority,
+                $"Five-star Form {item.SkillId} priority");
+            Check.Equal(TimeSpan.FromSeconds(600), definition.Duration,
+                $"Five-star Form {item.SkillId} duration");
+            Check.Equal(TimeSpan.FromSeconds(10), definition.Cooldown,
+                $"Five-star Form {item.SkillId} cooldown");
+            Check.Equal(item.Reduction,
+                definition.PhysicalDamageReduction,
+                $"Five-star Form {item.SkillId} physical mitigation");
+            Check.Equal(item.Reduction,
+                definition.MagicDamageReduction,
+                $"Five-star Form {item.SkillId} magical mitigation");
+        }
         return Task.CompletedTask;
     }
 

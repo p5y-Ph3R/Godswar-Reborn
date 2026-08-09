@@ -124,6 +124,8 @@ inline void BuildHolyStonePacket(
         subId = LegacyHolyStoneImplementSpiritSubId;
     } else if (action == LegacyHolyStoneAction::Combine) {
         subId = LegacyHolyStoneCombineSubId;
+    } else if (action == LegacyHolyStoneAction::MountGearDrill) {
+        subId = LegacyHolyStoneMountGearDrillSubId;
     }
     Write32(packet + 16, static_cast<std::uint32_t>(subId));
     if (navigation) {
@@ -145,7 +147,8 @@ inline void BuildHolyStonePacket(
         Write32(
             packet + 20 + 10 * 4,
             static_cast<std::uint32_t>(secondaryValue));
-    } else if (action == LegacyHolyStoneAction::Drill) {
+    } else if (action == LegacyHolyStoneAction::Drill ||
+               action == LegacyHolyStoneAction::MountGearDrill) {
         Write32(
             packet + 20 + 6 * 4,
             static_cast<std::uint32_t>(targetReference));

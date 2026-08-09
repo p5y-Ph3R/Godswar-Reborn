@@ -6,10 +6,10 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
+internal static class PostgresNpcDialogueV3UpgradeIntegrationChecks
 {
     public const string CheckName =
-        "PostgreSQL NPC dialogue V2 multi-route upgrade";
+        "PostgreSQL NPC dialogue V3 mount-gear drilling upgrade";
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
 
@@ -52,43 +52,46 @@ internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
                 rollbackMentor.Routes.Count == 1 &&
                 rollbackMentor.Route?.Behavior ==
                 NpcDialogueBehavior.GearMentor,
-                "schema V2 can still pin the immutable V1 rollback release");
+                "schema V3 can still pin the immutable V1 rollback release");
         }
         var publication = await PostgresNpcDialogueBaselinePublisher
             .EnsurePublishedAsync(connectionString);
         Check.Equal(
-            NpcDialogueBaselineV2.ExpectedRevision,
+            NpcDialogueBaselineV3.ExpectedRevision,
             publication.Revision,
-            "V2 dialogue revision is published");
+            "V3 dialogue revision is published");
 
-        if (string.Equals(
+        if (beforeRevision is not null &&
+            !string.Equals(
                 beforeRevision,
-                NpcDialogueBaselineV1.ExpectedRevision,
+                NpcDialogueBaselineV3.ExpectedRevision,
                 StringComparison.Ordinal))
         {
-            await AssertV1RollbackReleaseRemainsAsync(dataSource);
+            await AssertPreviousReleaseRemainsAsync(
+                dataSource,
+                beforeRevision);
             Check.True(
                 publication.Created,
-                "V1 publication is promoted to immutable V2");
+                "previous publication is promoted to immutable V3");
         }
 
-        await AssertGearMentorRoutesAsync(dataSource);
+        await AssertHolyStoneRoutesAsync(dataSource);
         var pinned = await PostgresWorldContentReaderLoader.LoadAsync(
             connectionString);
-        foreach (var npcKey in new[] { "Athens_070", "Sparta_070" })
+        foreach (var npcKey in new[] { "Athens_086", "Sparta_086" })
         {
             var dialogue = await pinned.ReadNpcDialogueAsync(npcKey);
             Check.True(
-                dialogue.Routes.Count == 2 &&
+                dialogue.Routes.Count == 1 &&
                 dialogue.Routes[0].Behavior ==
-                NpcDialogueBehavior.GearMentor &&
-                dialogue.Routes[1].Behavior ==
-                NpcDialogueBehavior.ClassSuit,
-                $"{npcKey} loader pins both ordered functions");
+                    NpcDialogueBehavior.HolyStone &&
+                dialogue.Routes[0].InitialMenuSubIds.SequenceEqual(
+                    [101, 201, 301, 401, 501, 601, 701, 801]),
+                $"{npcKey} loader pins Mount Gear Drilling action 801");
         }
         var repeat = await PostgresNpcDialogueBaselinePublisher
             .EnsurePublishedAsync(connectionString);
-        Check.True(!repeat.Created, "V2 repeat publication is a no-op");
+        Check.True(!repeat.Created, "V3 repeat publication is a no-op");
     }
 
     private static async Task<string?> ReadPublishedRevisionAsync(
@@ -103,8 +106,9 @@ internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
         return (string?)await command.ExecuteScalarAsync();
     }
 
-    private static async Task AssertV1RollbackReleaseRemainsAsync(
-        NpgsqlDataSource dataSource)
+    private static async Task AssertPreviousReleaseRemainsAsync(
+        NpgsqlDataSource dataSource,
+        string revision)
     {
         await using var command = dataSource.CreateCommand(
             """
@@ -114,14 +118,14 @@ internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
             """);
         command.Parameters.AddWithValue(
             "revision",
-            NpcDialogueBaselineV1.ExpectedRevision);
+            revision);
         Check.Equal(
             1,
             (int)(await command.ExecuteScalarAsync() ?? 0),
-            "immutable V1 dialogue rows remain available for rollback");
+            "immutable previous dialogue rows remain available for rollback");
     }
 
-    private static async Task AssertGearMentorRoutesAsync(
+    private static async Task AssertHolyStoneRoutesAsync(
         NpgsqlDataSource dataSource)
     {
         await using var command = dataSource.CreateCommand(
@@ -141,7 +145,7 @@ internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
               ON entry.revision = profile.revision
              AND entry.profile_key = profile.profile_key
             WHERE publication.family = 'npc-dialogues'
-              AND binding.npc_key IN ('Athens_070', 'Sparta_070')
+              AND binding.npc_key IN ('Athens_086', 'Sparta_086')
             GROUP BY binding.npc_key,
                      binding.route_order,
                      profile.dialog_index,
@@ -152,33 +156,21 @@ internal static class PostgresNpcDialogueV2UpgradeIntegrationChecks
         var rows = 0;
         while (await reader.ReadAsync())
         {
-            var expectedOrder = rows % 2;
             Check.Equal(
-                expectedOrder,
+                0,
                 (int)reader.GetInt16(1),
-                "Gear Mentor route order");
-            if (expectedOrder == 0)
-            {
-                Check.True(
-                    reader.GetInt32(2) == 4 &&
-                    reader.GetInt16(3) ==
-                    (short)NpcDialogueBehavior.GearMentor,
-                    "primary Gear Mentor function remains dialog 4");
-            }
-            else
-            {
-                Check.True(
-                    reader.GetInt32(2) == 37 &&
-                    reader.GetInt16(3) ==
-                    (short)NpcDialogueBehavior.ClassSuit &&
-                    reader.GetFieldValue<int[]>(4).SequenceEqual(
-                        [100, 101, 102, 103, 104, 105, 106, 107, 108]),
-                    "secondary Class Suit function uses stock dialog 37");
-            }
+                "Holy Stone Artisan route order");
+            Check.True(
+                reader.GetInt32(2) == 30 &&
+                reader.GetInt16(3) ==
+                    (short)NpcDialogueBehavior.HolyStone &&
+                reader.GetFieldValue<int[]>(4).SequenceEqual(
+                    [101, 201, 301, 401, 501, 601, 701, 801]),
+                "Holy Stone Artisan publishes action 801 on dialog 30");
 
             rows++;
         }
 
-        Check.Equal(4, rows, "both city Gear Mentors expose two functions");
+        Check.Equal(2, rows, "both city Holy Stone Artisans expose action 801");
     }
 }

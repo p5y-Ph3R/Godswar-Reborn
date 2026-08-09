@@ -65,9 +65,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 60
+    expectedMigrationCount = 61
     expectedMigrationHead =
-        '20260805_059_holy_spirit_effectiveness_values'
+        '20260810_060_fashion_slot_consistency'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -300,7 +300,7 @@ try {
         -Name 'PostgreSQL migration-prefix fixture' `
         -GeneralConnectionString (
             New-TestConnectionString $databaseNames.SmokeTemplate) `
-        -MigrationPrefix '20260805_059_holy_spirit_effectiveness_values'
+        -MigrationPrefix '20260810_060_fashion_slot_consistency'
 
     # Repository integration checks own their content publication and fixture
     # setup. Clone a schema-only database rather than the empty-install

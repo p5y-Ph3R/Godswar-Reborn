@@ -50,7 +50,8 @@ internal enum CommandFamily : ushort
     HolyStoneAdvancedDrill = 41,
     HolyStoneUpgrade = 42,
     HolyStoneCombine = 43,
-    HolyStoneImplementSpirit = 44
+    HolyStoneImplementSpirit = 44,
+    MountGearDrill = 45
 }
 
 internal enum CommandIdentityStrength : byte

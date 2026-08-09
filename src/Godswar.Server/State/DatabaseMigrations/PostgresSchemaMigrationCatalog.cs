@@ -242,6 +242,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateItemContentV9Release(),
         CreateSocketSpellItemTemplates(),
         ReconcileStockHolyStoneMaterialTemplates(),
-        CreateHolySpiritEffectivenessValues()
+        CreateHolySpiritEffectivenessValues(),
+        CreateFashionSlotConsistency()
     ];
 }

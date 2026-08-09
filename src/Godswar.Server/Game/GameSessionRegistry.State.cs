@@ -148,6 +148,9 @@ internal sealed partial class GameSessionRegistry
 
         public string? LastFingerprint { get; set; }
 
+        public ClientStatusAggregate LastPublishedAggregate { get; set; } =
+            ClientStatusAggregate.Empty;
+
         public long Revision { get; set; }
 
         public CancellationTokenSource Lifetime { get; } = new();

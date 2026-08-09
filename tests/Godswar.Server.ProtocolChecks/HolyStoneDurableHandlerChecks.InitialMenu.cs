@@ -7,7 +7,7 @@ namespace Godswar.Server.ProtocolChecks;
 internal static partial class HolyStoneDurableHandlerChecks
 {
     private static readonly int[] HolyStoneInitialMenuSubIds =
-        [101, 201, 301, 401, 501, 601, 701];
+        [101, 201, 301, 401, 501, 601, 701, 801];
 
     private static async Task CheckRawInitialMenuNavigationAsync()
     {

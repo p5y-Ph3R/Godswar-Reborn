@@ -93,7 +93,5 @@ internal static class HolySpiritNativeResult
     }
 
     private static bool IsHolyStone(uint itemId) =>
-        itemId is
-            HolySpiritImplementationPolicy.HeatedHolyStoneItemId or
-            HolySpiritImplementationPolicy.CooledHolyStoneItemId;
+        HolySpiritImplementationPolicy.IsHolyStoneItem(itemId);
 }

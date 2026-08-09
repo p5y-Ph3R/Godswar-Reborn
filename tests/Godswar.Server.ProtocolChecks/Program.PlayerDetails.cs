@@ -163,6 +163,7 @@ internal static partial class Program
 
     private static Task CheckPlayerStatusUpdateAsync()
     {
+        PlayerMovementSpeedStatusChecks.Run();
         var character = CreateCharacter();
         const uint objectId = 0x7135B24E;
         var packet = PacketBuilder.PlayerStatusUpdate(character, objectId);
@@ -199,6 +200,26 @@ internal static partial class Program
         Check.Equal(character.CalculatedStats.Dodge, ReadInt32(packet, 180), "PlayerStatusUpdate dodge");
         Check.Equal(character.CalculatedStats.Critical, ReadInt32(packet, 184), "PlayerStatusUpdate critical");
         Check.Equal(character.CalculatedStats.CriticalResistance, ReadInt32(packet, 188), "PlayerStatusUpdate critical resistance");
+        Check.Equal(
+            character.CalculatedStats.PhysicalDamageBonus / 10000f,
+            ReadSingle(packet, 192),
+            "PlayerStatusUpdate physical damage bonus");
+        Check.Equal(
+            character.CalculatedStats.MagicDamageBonus / 10000f,
+            ReadSingle(packet, 196),
+            "PlayerStatusUpdate magic damage bonus");
+        Check.Equal(
+            character.CalculatedStats.DamageAbsorb,
+            ReadInt32(packet, 200),
+            "PlayerStatusUpdate damage absorb");
+        Check.Equal(
+            character.CalculatedStats.BeCureBonus / 10000f,
+            ReadSingle(packet, 204),
+            "PlayerStatusUpdate healing received");
+        Check.Equal(
+            character.CalculatedStats.CureBonus / 10000f,
+            ReadSingle(packet, 208),
+            "PlayerStatusUpdate outgoing healing");
         Check.Equal(character.TalentPoints, ReadInt32(packet, 228), "PlayerStatusUpdate talent points");
 
         character.Silver = 10_010_000;

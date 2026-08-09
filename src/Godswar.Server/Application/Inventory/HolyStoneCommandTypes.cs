@@ -8,7 +8,8 @@ internal enum HolyStoneCommandOperation : byte
     AdvancedDrill = 4,
     Upgrade = 5,
     Combine = 6,
-    ImplementSpirit = 7
+    ImplementSpirit = 7,
+    MountGearDrill = 8
 }
 
 internal enum HolyStoneTargetLocation : byte

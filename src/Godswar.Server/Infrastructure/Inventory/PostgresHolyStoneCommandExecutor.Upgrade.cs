@@ -8,9 +8,7 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
     private static HolyStoneCommandResultStatus MissingUpgradeMaterialStatus(
         CompactItemEntry target)
     {
-        if (target.Id is not (
-                HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
-                HolyStoneUpgradePolicy.CooledHolyStoneItemId) ||
+        if (!HolyStoneUpgradePolicy.IsHolyStone(target.Id) ||
             target.Grade is < HolyStoneUpgradePolicy.MinimumLevel or
                 > HolyStoneUpgradePolicy.MaximumLevel)
         {

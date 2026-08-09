@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Items;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
@@ -368,8 +369,11 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
                 catalogItem.ItemId,
                 catalogItem.StackCap,
                 catalogItem.GrantedBound,
-                itemId is >= FirstSocketSpellItemId and
-                    <= LastSocketSpellItemId
+                itemId == PinnedDeveloperItemGrantCatalog
+                    .PermanentChristmasCostumeItemId
+                    ? "developer_costume_grant"
+                    : itemId is >= FirstSocketSpellItemId and
+                        <= LastSocketSpellItemId
                     ? "developer_socket_spell_grant"
                     : "developer_empty_holy_box_grant");
             return true;

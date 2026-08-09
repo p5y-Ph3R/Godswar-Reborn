@@ -139,6 +139,56 @@ internal static partial class CharacterInventoryOutboxConsumerChecks
             DateTimeOffset.UtcNow,
             HolyStonePersistenceCodec.Encode(advancedReceipt)));
 
+        var mountGearEventId = Guid.NewGuid();
+        var mountGearBefore = before with
+        {
+            Id = 14504,
+            SocketCount = 0,
+            Socket1EffectId = null,
+            Socket1Level = null
+        };
+        var mountGearAfter = mountGearBefore with { SocketCount = 1 };
+        var mountGearReceipt = new HolyStoneExecutionReceipt(
+            CharacterId,
+            HolyStoneCommandOperation.MountGearDrill,
+            HolyStoneCommandEnvelope.SpartaNpcId,
+            HolyStoneCommandEnvelope.DialogIndex,
+            HolyStoneCommandResultStatus.Drilled,
+            HolyStoneNativeResults.DrilledSubId,
+            HolyStoneTargetLocation.KitBag,
+            targetSlot: 16,
+            HolyStoneCommandEnvelope.ServerSelectedSocketIndex,
+            targetItemInstanceId: 301,
+            mountGearBefore.ToCompactString(),
+            mountGearBefore.ToCompactString(),
+            mountGearAfter.ToCompactString(),
+            HolyStoneCommandEnvelope.NoStoneKitBagSlot,
+            stoneItemInstanceId: null,
+            "[]",
+            "[]",
+            "[]",
+            outputKitBagSlot: -1,
+            outputItemInstanceId: null,
+            outputBeforeCompactItemState: null,
+            outputAfterCompactItemState: null,
+            goldSpent: HolyStoneExecutionReceipt.FirstDrillGoldCost,
+            goldBefore: 777,
+            goldAfter: 547,
+            walletRevision: 4,
+            inventoryRevision: 18,
+            auditReference: "mount-gear-drill:18",
+            mountGearEventId);
+        await consumer.ConsumeAsync(new OutboxEventMessage(
+            mountGearEventId,
+            HolyStonePersistenceCodec.ConsumerKey,
+            HolyStonePersistenceCodec.AggregateType,
+            HolyStonePersistenceCodec.AggregateKey(CharacterId),
+            mountGearReceipt.InventoryRevision,
+            HolyStonePersistenceCodec.EventType,
+            HolyStonePersistenceCodec.ContractVersion,
+            DateTimeOffset.UtcNow,
+            HolyStonePersistenceCodec.Encode(mountGearReceipt)));
+
         await CheckThrowsAsync<InvalidDataException>(
             () => consumer.ConsumeAsync(
                 CopyHolyStoneMessage(

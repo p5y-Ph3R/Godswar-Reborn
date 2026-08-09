@@ -7,7 +7,8 @@ internal enum HolyStoneCombinationEligibilityFailure : byte
     MaterialNotHolyStone,
     InvalidTargetStack,
     InvalidLevel,
-    LevelMismatch
+    LevelMismatch,
+    AffinityMismatch
 }
 
 internal readonly record struct HolyStoneCombinationPlan(
@@ -59,6 +60,12 @@ internal static class HolyStoneCombinationPolicy
         {
             return HolyStoneCombinationEligibilityFailure.LevelMismatch;
         }
+        if (firstMaterial.Id != target.Id ||
+            secondMaterial.Id != target.Id ||
+            thirdMaterial.Id != target.Id)
+        {
+            return HolyStoneCombinationEligibilityFailure.AffinityMismatch;
+        }
 
         plan = new HolyStoneCombinationPlan(
             target with
@@ -78,9 +85,7 @@ internal static class HolyStoneCombinationPolicy
     }
 
     public static bool IsHolyStone(uint itemId) =>
-        itemId is
-            HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
-            HolyStoneUpgradePolicy.CooledHolyStoneItemId;
+        HolyStoneUpgradePolicy.IsHolyStone(itemId);
 
     private static CompactItemEntry ConsumeOne(CompactItemEntry item) =>
         item.Stack == 1

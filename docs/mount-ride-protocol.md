@@ -42,6 +42,11 @@ Opcode `10167` offset 324 describes the composed movement multiplier in the
 status snapshot. The client does not use that field alone for local movement.
 Opcode `10166` float offset 56 updates the local `GameData` locomotion
 multiplier: `1.0` while walking and, for example, `1.24` on a 24% mount.
+Offset 60 must remain zero. Its third byte becomes the native local-player
+interaction identity used by NPC targeting; treating the dword as a riding
+bonus suppresses NPC clicks. Riding Speed display data requires a separate,
+validated client-owned channel. Offset 64 is the existing Credit field and is
+also deliberately preserved.
 Every later local `10166` refresh (forging, progression, talent, equipment,
 inventory, NPC enhancement, and self-detail refreshes) must reuse the active
 status aggregate. Sending the packet's `1.0` walking default while Ride is

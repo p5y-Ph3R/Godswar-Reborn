@@ -86,6 +86,9 @@ internal sealed partial class PlayerCombatEcsAdapter
                     selectedTarget?.HealthRevision ?? 0,
                     request.ReportedAttackerX,
                     request.ReportedAttackerZ,
+                    request.HasReportedTargetPosition,
+                    request.ReportedTargetX,
+                    request.ReportedTargetZ,
                     request.Skill));
             scheduler.RunTick(TimeSpan.Zero);
 

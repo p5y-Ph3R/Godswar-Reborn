@@ -72,6 +72,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             transaction,
             definitions,
             cancellationToken);
+        definitions = await ReplaceReviewedMountDefinitionsAsync(
+            connection,
+            transaction,
+            definitions,
+            cancellationToken);
         return new V9PublicationSnapshot(
             definitions,
             prior.Policies with

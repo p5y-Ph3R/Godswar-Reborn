@@ -135,7 +135,7 @@
       "slug": "nyx-lethargy",
       "display_name": "Nyx Spirit of Lethargy",
       "status": "proposed-item",
-      "proposed_item_id": 9090,
+      "proposed_item_id": 9094,
       "x": 504,
       "y": 0,
       "source_sha256": "6d727773d246203b1f2b71af1dcca9e11567ce6b98219066426aead2dfe351cf"
@@ -144,7 +144,7 @@
       "slug": "astrape-disruption",
       "display_name": "Astrape Spirit of Disruption",
       "status": "proposed-item",
-      "proposed_item_id": 9091,
+      "proposed_item_id": 9095,
       "x": 540,
       "y": 0,
       "source_sha256": "72d08370155814f8fef4999027f2c35bc2bdd8d512e3f56094320ae1c9e81026"
@@ -153,10 +153,55 @@
       "slug": "chronos-delay",
       "display_name": "Chronos Spirit of Delay",
       "status": "proposed-item",
-      "proposed_item_id": 9092,
+      "proposed_item_id": 9096,
       "x": 576,
       "y": 0,
       "source_sha256": "dc6a47c3db21ac97f06da974857e3f1b7d30521492244cfc7733b0cd47615428"
+    },
+    {
+      "slug": "zephyr-holy-stone",
+      "display_name": "Zephyr Holy Stone",
+      "status": "mount-gear-item",
+      "item_id": 9032,
+      "x": 612,
+      "y": 0,
+      "source_sha256": "863165bb207db9301350c28ac2244d743f59874e7e1980fdb157cfbc6b077c98"
+    },
+    {
+      "slug": "daedalus-attunement",
+      "display_name": "Daedalus Spirit of Attunement",
+      "status": "mount-gear-item",
+      "item_id": 9090,
+      "x": 648,
+      "y": 0,
+      "source_sha256": "bac7580bd11d35a47f14249ee7d576b39818bbaac42c02a347a364b3e8348746"
+    },
+    {
+      "slug": "hephaestus-tempering",
+      "display_name": "Hephaestus Spirit of Tempering",
+      "status": "mount-gear-item",
+      "item_id": 9091,
+      "x": 684,
+      "y": 0,
+      "source_sha256": "3f852f1183dae3a9188508001b94587967f62f7d6f86e19cf00fc756a2fb773e"
+    },
+    {
+      "slug": "mnemosyne-preservation",
+      "display_name": "Mnemosyne Spirit of Preservation",
+      "status": "mount-gear-item",
+      "item_id": 9092,
+      "x": 720,
+      "y": 0,
+      "source_sha256": "0ce76e66092affc4e8d0219c32e2b8cb552365141c336c90020307003d19e2b1"
+    },
+    {
+      "slug": "themis-continuity",
+      "display_name": "Themis Spirit of Continuity",
+      "status": "mount-gear-item",
+      "item_id": 9093,
+      "x": 756,
+      "y": 0,
+      "source_sha256": "cb1a2218ba99e33a83db218a75348b9e0ad37e966b76af33f5ef80f4edd9e982"
     }
   ]
 }

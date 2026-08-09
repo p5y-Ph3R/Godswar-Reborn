@@ -22,7 +22,8 @@ internal sealed partial class GameClientHandler
                 HolyStoneCommandOperation.Remove or
                 HolyStoneCommandOperation.Upgrade or
                 HolyStoneCommandOperation.Combine or
-                HolyStoneCommandOperation.ImplementSpirit))
+                HolyStoneCommandOperation.ImplementSpirit or
+                HolyStoneCommandOperation.MountGearDrill))
         {
             return;
         }

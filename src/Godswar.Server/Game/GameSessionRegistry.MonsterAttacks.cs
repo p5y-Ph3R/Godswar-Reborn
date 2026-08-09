@@ -67,9 +67,16 @@ internal sealed partial class GameSessionRegistry
         // Runtime statuses have their own gate. Snapshot the mitigation before
         // taking the registry gate so status publication and a monster attack
         // cannot acquire those locks in opposite order.
-        var physicalDamageReduction = statusContext is null
-            ? 0m
-            : GetRuntimePhysicalDamageReduction(statusContext.Session, damageResolvedAt);
+        var physicalDamageReduction = 0m;
+        var physicalDefenseBonus = 0;
+        if (statusContext is not null)
+        {
+            TryGetRuntimePhysicalDamageReduction(
+                statusContext.Session,
+                damageResolvedAt,
+                out physicalDamageReduction,
+                out physicalDefenseBonus);
+        }
         uint damage;
         var killed = false;
         long? deathLifeRevision = null;
@@ -90,6 +97,7 @@ internal sealed partial class GameSessionRegistry
                     !ReferenceEquals(statusContext.Session, targetContext.Session))
                 {
                     physicalDamageReduction = 0m;
+                    physicalDefenseBonus = 0;
                 }
 
                 lock (targetContext.Character.VitalsSync)
@@ -104,7 +112,8 @@ internal sealed partial class GameSessionRegistry
                         damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
                             attack.Monster.Definition.Tier,
                             targetContext.Character,
-                            physicalDamageReduction);
+                            physicalDamageReduction,
+                            physicalDefenseBonus);
                         var beforeHealth = targetContext.Character.CurrentHp;
                         killed = damage >= (uint)beforeHealth;
                         if (killed)

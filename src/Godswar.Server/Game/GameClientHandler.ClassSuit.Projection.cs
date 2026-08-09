@@ -106,13 +106,17 @@ internal sealed partial class GameClientHandler
         }
         await SendKitBagRefreshAsync(cancellationToken);
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character!),
+            PacketBuilder.EquipmentVisualRefresh(
+                _character!,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "ClassSuitVisualRefresh");
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character!)),
             cancellationToken,
-            "ClassSuitDetailRefresh");
+            "ClassSuitEquipmentEffectVisibility");
         await BroadcastEquipmentRefreshAsync(
             $"class-suit-{reason}",
             cancellationToken);

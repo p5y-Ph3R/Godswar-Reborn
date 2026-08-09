@@ -18,27 +18,37 @@ INSERT INTO item_templates (
     min_level, max_level, hand, skill_flag, texture, icon, stats
 )
 SELECT
-    id,
+    tiers.id,
     'mount',
-    'Ride' || id,
+    'Ride' || tiers.id,
     'Erebus Lion',
     20,
     ARRAY[0, 1, 2, 3]::smallint[],
-    required_level,
+    tiers.required_level,
     200,
     NULL,
     20,
     './Localization/en_us/UI/Texture/Icon4.gwo',
     '396,0',
     jsonb_build_object(
-        'ID', id::text,
+        'ID', tiers.id::text,
         'Type', 'mount',
         'Texture', './Localization/en_us/UI/Texture/Icon4.gwo',
         'Icon', '396,0',
         'Random', '0',
         'Distribution', '0,0',
-        'Speed', array_to_string(array_fill(speed, ARRAY[20]), ','),
-        'MaxHP', array_to_string(array_fill(max_hp, ARRAY[20]), ','),
+        'Speed', (
+            SELECT string_agg(
+                (tiers.speed::numeric + bonus)::text,
+                ',' ORDER BY ordinal)
+            FROM unnest(ARRAY[
+                0.00, 0.01, 0.02, 0.03, 0.04,
+                0.05, 0.06, 0.07, 0.08, 0.10,
+                0.12, 0.14, 0.16, 0.18, 0.20,
+                0.22, 0.24, 0.26, 0.28, 0.30
+            ]::numeric[]) WITH ORDINALITY AS quality(bonus, ordinal)
+        ),
+        'MaxHP', array_to_string(array_fill(tiers.max_hp, ARRAY[20]), ','),
         'MainAttribute', attribute_source.stats->>'MainAttribute',
         'Money', '0',
         'Overlap', '1',
@@ -46,7 +56,7 @@ SELECT
         'Use', '1',
         'SkillFlag', '20',
         'Class', '0,1,2,3',
-        'PlayLv', required_level::text || ',200'
+        'PlayLv', tiers.required_level::text || ',200'
     )
 FROM tiers
 JOIN item_templates attribute_source ON attribute_source.id = tiers.attribute_source_id

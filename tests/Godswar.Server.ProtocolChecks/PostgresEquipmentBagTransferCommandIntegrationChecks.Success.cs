@@ -12,6 +12,7 @@ internal static partial class
         await AssertEquipAsync(connectionString);
         await AssertUnequipAsync(connectionString);
         await AssertSecondRingSlotAsync(connectionString);
+        await AssertPermanentFashionRoundTripAsync(connectionString);
     }
 
     private static async Task AssertEquipAsync(

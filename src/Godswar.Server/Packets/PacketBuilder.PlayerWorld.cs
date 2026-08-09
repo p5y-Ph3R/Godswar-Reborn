@@ -9,10 +9,34 @@ internal static partial class PacketBuilder
 {
     public static byte[] EquipmentVisualRefresh(GameCharacter character)
     {
-        return EquipmentVisualRefresh(character, LocalPlayerObjectId);
+        return EquipmentVisualRefresh(
+            character,
+            LocalPlayerObjectId,
+            fashionAppearances: null);
     }
 
     public static byte[] EquipmentVisualRefresh(GameCharacter character, uint objectId)
+    {
+        return EquipmentVisualRefresh(
+            character,
+            objectId,
+            fashionAppearances: null);
+    }
+
+    public static byte[] EquipmentVisualRefresh(
+        GameCharacter character,
+        FashionAppearanceCatalog? fashionAppearances)
+    {
+        return EquipmentVisualRefresh(
+            character,
+            LocalPlayerObjectId,
+            fashionAppearances);
+    }
+
+    public static byte[] EquipmentVisualRefresh(
+        GameCharacter character,
+        uint objectId,
+        FashionAppearanceCatalog? fashionAppearances)
     {
         var packet = new byte[64];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
@@ -20,10 +44,42 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
         // Captured 0x27D9 packets carry the avatar hair/model byte followed by
         // the one-based gender, not a constant hair id and profession.
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), character.Hair);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(12, 4), (uint)character.Gender + 1u);
 
         var equipment = ParseEquipment(character);
+        var stylish = EquipmentSlots.GetItem(
+            EquipmentFor(character),
+            character.Profession,
+            EquipmentSlots.Stylish);
+        if (!character.FashionHidden &&
+            !stylish.IsEmpty &&
+            fashionAppearances is not null &&
+            fashionAppearances.TryGet(stylish.Id, out var fashion))
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(8, 4),
+                fashion.ResolveHair(character.Hair));
+            for (var index = 0; index < FashionAppearanceCatalog.PartCount; index++)
+            {
+                var itemId = fashion.PartIds[index];
+                // Native 0x27D9 indices 10 and 11 are the separately rendered
+                // held weapon and shield. Stock fashion definitions leave both
+                // at zero, so retain the authoritative equipped held items while
+                // letting the fashion definition exclusively own body indices.
+                if (index is EquipmentSlots.Weapon or EquipmentSlots.Shield)
+                {
+                    itemId = index < equipment.Length ? equipment[index].Id : 0;
+                }
+
+                BinaryPrimitives.WriteUInt32LittleEndian(
+                    packet.AsSpan(16 + (index * sizeof(uint)), sizeof(uint)),
+                    itemId);
+            }
+
+            return packet;
+        }
+
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), character.Hair);
         for (var slot = EquipmentSlots.Head; slot <= EquipmentSlots.Shield; slot++)
         {
             var itemId = slot < equipment.Length ? equipment[slot].Id : 0;

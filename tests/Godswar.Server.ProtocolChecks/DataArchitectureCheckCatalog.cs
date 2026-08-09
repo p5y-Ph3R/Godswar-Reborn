@@ -44,6 +44,9 @@ internal static class DataArchitectureCheckCatalog
             HolySpiritEffectivenessPolicyChecks.CheckName,
             HolySpiritEffectivenessPolicyChecks.RunAsync),
         (
+            MountGearPassiveChecks.CheckName,
+            MountGearPassiveChecks.RunAsync),
+        (
             HolySpiritPersistenceSurfaceChecks.CheckName,
             HolySpiritPersistenceSurfaceChecks.RunAsync),
         (

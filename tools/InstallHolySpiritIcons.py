@@ -66,8 +66,8 @@ def load_manifest(asset_root: Path) -> dict[str, object]:
     if manifest.get("sprite_width") != 36 or manifest.get("sprite_height") != 36:
         raise InstallError("Holy Spirit client sprites must be 36x36")
     entries = manifest.get("entries")
-    if not isinstance(entries, list) or len(entries) != 17:
-        raise InstallError("The Holy Spirit icon manifest must contain 17 entries")
+    if not isinstance(entries, list) or len(entries) != 22:
+        raise InstallError("The Holy Spirit icon manifest must contain 22 entries")
     return manifest
 
 

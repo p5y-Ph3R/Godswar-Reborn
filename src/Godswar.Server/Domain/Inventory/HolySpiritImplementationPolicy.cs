@@ -3,7 +3,8 @@ namespace Godswar.Server.Domain.Inventory;
 internal enum HolySpiritImplementationAffinity : byte
 {
     Heated = 1,
-    Cooled = 2
+    Cooled = 2,
+    Zephyr = 3
 }
 
 internal enum HolySpiritImplementationValueKind : byte
@@ -31,6 +32,7 @@ internal static class HolySpiritImplementationPolicy
     public const short MaximumHolyStoneGrade = 10;
     public const uint HeatedHolyStoneItemId = 9030;
     public const uint CooledHolyStoneItemId = 9031;
+    public const uint ZephyrHolyStoneItemId = 9032;
 
     private static readonly HolySpiritImplementationDefinition[] Definitions =
     [
@@ -65,7 +67,15 @@ internal static class HolySpiritImplementationPolicy
         Percent(9086, CooledHolyStoneItemId,
             HolySpiritImplementationAffinity.Cooled, 13, 28, 70),
         Flat(9087, CooledHolyStoneItemId,
-            HolySpiritImplementationAffinity.Cooled, 14, 40, 100)
+            HolySpiritImplementationAffinity.Cooled, 14, 40, 100),
+        Percent(9090, ZephyrHolyStoneItemId,
+            HolySpiritImplementationAffinity.Zephyr, 21, 15, 30),
+        Percent(9091, ZephyrHolyStoneItemId,
+            HolySpiritImplementationAffinity.Zephyr, 22, 10, 20),
+        Percent(9092, ZephyrHolyStoneItemId,
+            HolySpiritImplementationAffinity.Zephyr, 23, 100, 200),
+        Percent(9093, ZephyrHolyStoneItemId,
+            HolySpiritImplementationAffinity.Zephyr, 24, 75, 150)
     ];
 
     private static readonly IReadOnlyDictionary<uint,
@@ -85,6 +95,12 @@ internal static class HolySpiritImplementationPolicy
         uint holyStoneItemId) =>
         TryGetDefinition(spiritItemId, out var definition) &&
         definition.HolyStoneItemId == holyStoneItemId;
+
+    public static bool IsHolyStoneItem(uint itemId) =>
+        itemId is
+            HeatedHolyStoneItemId or
+            CooledHolyStoneItemId or
+            ZephyrHolyStoneItemId;
 
     public static bool TryGetGradeBracket(
         uint spiritItemId,

@@ -14,6 +14,7 @@ internal static class HolyStoneUpgradePolicyChecks
         AssertExactSignetsProtectFailure();
         AssertHighLevelSignetsAreUnavailable();
         AssertOutcomeBoundariesAndConsumption();
+        AssertZephyrUsesSharedUpgradeRules();
         return Task.CompletedTask;
     }
 
@@ -215,6 +216,24 @@ internal static class HolyStoneUpgradePolicyChecks
                 HolyStoneUpgradeOutcome.FailedProtected &&
             floorFailure.TargetAfter.Grade == 1,
             "level-one failure reports no-downgrade outcome at the floor");
+    }
+
+    private static void AssertZephyrUsesSharedUpgradeRules()
+    {
+        Check.True(
+            HolyStoneUpgradePolicy.IsHolyStone(9032) &&
+            HolyStoneCombinationPolicy.IsHolyStone(9032),
+            "Zephyr is a native Holy Stone across upgrade policies");
+        var failure = HolyStoneUpgradePolicy.TryPrepare(
+            Item(9032, 4),
+            Item(9041),
+            Item(9051),
+            out var attempt);
+        Check.True(
+            failure == HolyStoneUpgradeEligibilityFailure.None &&
+            attempt.SuccessRatePercent == 35 &&
+            attempt.PreventsDowngrade,
+            "Zephyr uses the reviewed Eclipse and signet rules");
     }
 
     private static CompactItemEntry Item(

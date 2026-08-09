@@ -256,7 +256,9 @@ internal sealed partial class PlayerCombatIntentSystem
     private static ImmutableArray<PlayerCombatReservedTarget>
         SelectAreaTargets(
             EcsWorld world,
-            in PlayerCombatTransformComponent transform,
+            byte mapId,
+            float centerX,
+            float centerZ,
             float radius,
             uint requestedDamage)
     {
@@ -265,11 +267,11 @@ internal sealed partial class PlayerCombatIntentSystem
         foreach (var entity in world.Query<PlayerCombatTargetComponent>())
         {
             var target = world.Get<PlayerCombatTargetComponent>(entity);
-            if (target.MapId == transform.MapId &&
+            if (target.MapId == mapId &&
                 IsAvailable(target) &&
                 PlayerCombatRules.IsWithinArea(
-                    transform.X,
-                    transform.Z,
+                    centerX,
+                    centerZ,
                     target.X,
                     target.Z,
                     radius))

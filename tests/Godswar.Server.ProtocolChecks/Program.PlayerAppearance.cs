@@ -277,6 +277,8 @@ internal static partial class Program
             title.AsSpan(8).IndexOfAnyExcept((byte)0) < 0,
             "PlayerTitleInfo untitled body is zero");
 
+        CheckFashionAppearanceProjection();
+
         return Task.CompletedTask;
     }
 }

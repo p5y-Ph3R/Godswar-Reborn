@@ -44,21 +44,46 @@ internal sealed partial class GameClientHandler
         Func<CancellationToken, Task> publishStartAsync;
         if (SkillCombatResolver.IsHostileMonsterAreaSkill(combat))
         {
+            var isGroundTargeted =
+                SkillCombatResolver.IsHostileMonsterGroundAreaSkill(combat);
+            if (isGroundTargeted && !cast.HasTargetPosition ||
+                !SkillCombatResolver.TryResolveHostileMonsterAreaCenter(
+                    character.PositionX,
+                    character.PositionZ,
+                    cast.TargetX,
+                    cast.TargetZ,
+                    combat,
+                    out _,
+                    out _))
+            {
+                Console.WriteLine(
+                    $"[skill] rejected invalid intonation area target " +
+                    $"character={character.Name} skill={cast.SkillId}");
+                return;
+            }
             var worldObjectId =
                 WorldObjectIds.ForPlayer(character.Id);
             publishStartAsync = async token =>
             {
                 await _session.SendAsync(
-                    PacketBuilder.SelfTargetSkillCastVisual(
-                        packet.Buffer,
-                        LocalPlayerObjectId),
+                    isGroundTargeted
+                        ? PacketBuilder.SkillCastVisual(
+                            packet.Buffer,
+                            LocalPlayerObjectId)
+                        : PacketBuilder.SelfTargetSkillCastVisual(
+                            packet.Buffer,
+                            LocalPlayerObjectId),
                     token,
                     "IntonedAreaSkillCastSelf");
                 await _registry.BroadcastToMapAsync(
                     character.CurrentMap,
-                    PacketBuilder.SelfTargetSkillCastVisual(
-                        packet.Buffer,
-                        worldObjectId),
+                    isGroundTargeted
+                        ? PacketBuilder.SkillCastVisual(
+                            packet.Buffer,
+                            worldObjectId)
+                        : PacketBuilder.SelfTargetSkillCastVisual(
+                            packet.Buffer,
+                            worldObjectId),
                     token,
                     _session,
                     "IntonedAreaSkillCastWorld");
@@ -165,7 +190,16 @@ internal sealed partial class GameClientHandler
 
         if (SkillCombatResolver.IsHostileMonsterAreaSkill(combat))
         {
-            return true;
+            return (!SkillCombatResolver.IsHostileMonsterGroundAreaSkill(combat) ||
+                    cast.HasTargetPosition) &&
+                   SkillCombatResolver.TryResolveHostileMonsterAreaCenter(
+                character.PositionX,
+                character.PositionZ,
+                cast.TargetX,
+                cast.TargetZ,
+                combat,
+                out _,
+                out _);
         }
 
         return _registry.TryGetMonsterSnapshot(

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using Godswar.Server.Infrastructure.Items;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -6,17 +7,21 @@ namespace Godswar.Server.ProtocolChecks;
 internal static class HolyStoneMaterialItemContentChecks
 {
     public const string CheckName =
-        "Immutable stock Holy Stone material content";
+        "Immutable Holy Stone material content";
 
     public static Task RunAsync()
     {
         var seeds = HolyStoneMaterialItemContentBaseline.ItemTemplates;
-        Check.Equal(32, seeds.Count, "stock Holy Stone material count");
+        Check.Equal(
+            ExpectedItems.Length,
+            seeds.Count,
+            "reviewed Holy Stone material count");
         Check.True(
-            seeds.Select(static value => value.Id).Distinct().Count() == 32 &&
+            seeds.Select(static value => value.Id).Distinct().Count() ==
+                ExpectedItems.Length &&
             seeds.Select(static value => value.Id)
-                .SequenceEqual(seeds.Select(static value => value.Id).Order()),
-            "stock Holy Stone materials have unique ordered IDs");
+                .SequenceEqual(ExpectedItems.Select(static value => value.Id)),
+            "reviewed Holy Stone materials have the exact unique ordered IDs");
 
         foreach (var expected in ExpectedItems)
         {
@@ -62,19 +67,177 @@ internal static class HolyStoneMaterialItemContentChecks
                 $"Holy Stone material {expected.Id} has no invented stats");
         }
 
+        AssertClientItemsUseNativeItemSections();
+        AssertZephyrResultLocalization();
+        AssertZephyrResultDecoderInstaller();
+        AssertZephyrSocketDisplayMetadata();
+
         return Task.CompletedTask;
+    }
+
+    private static void AssertZephyrResultLocalization()
+    {
+        var root = FindRepositoryRoot();
+        var lines = File.ReadLines(Path.Combine(
+            root,
+            "Localization",
+            "en_us",
+            "UI",
+            "Base",
+            "LuaText.lua"));
+        var keys = lines
+            .Select(static line => line.Split('=', 2)[0].Trim())
+            .Where(static key => key.Length > 0)
+            .GroupBy(static key => key, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.Count(),
+                StringComparer.Ordinal);
+
+        foreach (var key in ZephyrLuaTextKeys)
+        {
+            Check.True(
+                keys.TryGetValue(key, out var count) && count == 1,
+                $"Zephyr client result key {key} exists exactly once");
+        }
+    }
+
+    private static void AssertZephyrResultDecoderInstaller()
+    {
+        var installer = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "tools",
+            "PatchClientMountGearZephyrItems.ps1"));
+        foreach (var fragment in ZephyrDecoderFragments)
+        {
+            Check.True(
+                installer.Contains(fragment, StringComparison.Ordinal),
+                $"Zephyr result decoder installer owns {fragment}");
+        }
+    }
+
+    private static void AssertZephyrSocketDisplayMetadata()
+    {
+        var root = FindRepositoryRoot();
+        var document = XDocument.Load(Path.Combine(
+            root,
+            "Localization",
+            "en_us",
+            "Settings",
+            "Sys",
+            "EquipStoneInfo.xml"));
+
+        foreach (var expected in ZephyrSocketMetadata)
+        {
+            var matches = document.Root!
+                .Elements()
+                .Where(element =>
+                    (string?)element.Attribute("ID") == expected.Id)
+                .ToArray();
+            Check.True(
+                matches.Length == 1 &&
+                matches[0].Name.LocalName == expected.Name &&
+                (string?)matches[0].Attribute("Percent") == "1" &&
+                (string?)matches[0].Attribute("Texture") ==
+                    "./Localization/en_us/UI/Texture/Icon5.gwo" &&
+                (string?)matches[0].Attribute("IconPos") == expected.Icon,
+                $"Zephyr socket effect {expected.Id} has exact client display metadata");
+        }
+
+        var contentInstaller = File.ReadAllText(Path.Combine(
+            root,
+            "tools",
+            "PatchClientMountGearZephyrItems.ps1"));
+        Check.True(
+            contentInstaller.Contains(
+                "PatchClientZephyrSocketDisplay.ps1",
+                StringComparison.Ordinal),
+            "Zephyr content installer owns socket display installation");
+    }
+
+    private static void AssertClientItemsUseNativeItemSections()
+    {
+        var root = FindRepositoryRoot();
+        var document = XDocument.Load(Path.Combine(
+            root,
+            "Localization",
+            "en_us",
+            "Settings",
+            "Sys",
+            "ItemBaseAttribute.xml"));
+
+        foreach (var expected in ExpectedItems)
+        {
+            var matches = document
+                .Descendants()
+                .Where(element =>
+                    (string?)element.Attribute("ID") ==
+                    expected.Id.ToString())
+                .ToArray();
+            Check.True(
+                matches.Length == 1 &&
+                matches[0].Parent?.Name.LocalName == "Item",
+                $"Holy Stone material {expected.Id} is a native Item child");
+        }
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "GodswarServer.sln")))
+                return directory.FullName;
+        }
+
+        throw new InvalidOperationException("Could not locate GodswarServer.sln.");
     }
 
     private const string Icon =
         "./Localization/en_us/UI/Texture/Icon.gwo";
     private const string Icon2 =
         "./Localization/en_us/UI/Texture/Icon2.gwo";
+    private const string Icon5 =
+        "./Localization/en_us/UI/Texture/Icon5.gwo";
+
+    private static readonly string[] ZephyrLuaTextKeys =
+    [
+        "hallo_9032",
+        "NF_L0_ZBXQ2103",
+        "NF_L0_ZBXQ2203",
+        "NF_L0_ZBXQ2303",
+        "NF_L0_ZBXQ2403",
+        "NF_L0_ZBXQ903204",
+        "NF_L0_ZBXQ903205"
+    ];
+
+    private static readonly string[] ZephyrDecoderFragments =
+    [
+        "[21]={15,30},[22]={10,20},[23]={100,200},[24]={75,150}",
+        "[21]=NF_L0_ZBXQ2103, [22]=NF_L0_ZBXQ2203, " +
+            "[23]=NF_L0_ZBXQ2303, [24]=NF_L0_ZBXQ2403",
+        "stil_2 ==21 or stil_2 ==22 or stil_2 ==23 or stil_2 ==24",
+        "-ZephyrTextKey 'NF_L0_ZBXQ903204'",
+        "-ZephyrTextKey 'NF_L0_ZBXQ903205'"
+    ];
+
+    private static readonly (string Id, string Name, string Icon)[]
+        ZephyrSocketMetadata =
+    [
+        ("21", "ZephyrAttunement", "620,8"),
+        ("22", "ZephyrTempering", "620,8"),
+        ("23", "ZephyrManaBurnResistance", "620,8"),
+        ("24", "ZephyrCooldownExtensionResistance", "620,8")
+    ];
 
     private static readonly ExpectedItem[] ExpectedItems =
     [
         E(9030, "Stone9030", "Heated Holy Stone", Icon2, "252,0", "1",
             "PreStone"),
         E(9031, "Stone9031", "Cooled Holy Stone", Icon2, "288,0", "1",
+            "PreStone"),
+        E(9032, "Stone9032", "Zephyr Holy Stone", Icon5, "612,0", "1",
             "PreStone"),
         E(9040, "Stone9040", "Level 1 Eclipse Stone", Icon, "828,900"),
         E(9041, "Stone9041", "Level 2 Eclipse Stone", Icon, "864,900"),
@@ -116,7 +279,15 @@ internal static class HolyStoneMaterialItemContentChecks
             "828,0"),
         E(9088, "Firegholiness9", "Fire Spirit of Flow", Icon2, "828,36"),
         E(9089, "Firegholiness10", "Fire Spirit of Tranquility", Icon2,
-            "864,36")
+            "864,36"),
+        E(9090, "Zephyrholiness1", "Daedalus Spirit of Attunement",
+            Icon5, "648,0"),
+        E(9091, "Zephyrholiness2", "Hephaestus Spirit of Tempering",
+            Icon5, "684,0"),
+        E(9092, "Zephyrholiness3", "Mnemosyne Spirit of Preservation",
+            Icon5, "720,0"),
+        E(9093, "Zephyrholiness4", "Themis Spirit of Continuity",
+            Icon5, "756,0")
     ];
 
     private static ExpectedItem E(

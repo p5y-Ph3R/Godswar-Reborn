@@ -17,8 +17,10 @@ internal static class NpcDialogueBehaviorRegistry
     private static readonly int[] OriginEnhancerMenu = [2, 3, 6];
     private static readonly int[] HolySuitDesignMenu =
         [101, 201, 301, 401];
-    private static readonly int[] HolyStoneMenu =
+    private static readonly int[] LegacyHolyStoneMenu =
         [101, 201, 301, 401, 501, 601, 701];
+    private static readonly int[] HolyStoneMenu =
+        [101, 201, 301, 401, 501, 601, 701, 801];
     private static readonly int[] ClassSuitMenu =
         [100, 101, 102, 103, 104, 105, 106, 107, 108];
 
@@ -61,7 +63,8 @@ internal static class NpcDialogueBehaviorRegistry
                     ("Athens_085", HolySuitDesignProtocol.AthensNpcId),
             NpcDialogueBehavior.HolyStone =>
                 route.DialogIndex == ExpectedHolyStoneDialogIndex &&
-                HasExactMenu(route, HolyStoneMenu) &&
+                (HasExactMenu(route, HolyStoneMenu) ||
+                 HasExactMenu(route, LegacyHolyStoneMenu)) &&
                 (npc.NpcKey, npc.InteractionId) is
                     ("Sparta_086", SpartaHolyStoneNpcId) or
                     ("Athens_086", AthensHolyStoneNpcId),

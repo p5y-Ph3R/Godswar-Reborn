@@ -333,6 +333,43 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
             return;
         }
 
+        var areaCenterX = transform.X;
+        var areaCenterZ = transform.Z;
+        if (PlayerCombatRules.IsHostileGroundAreaSkill(intent.Skill))
+        {
+            if (!intent.HasReportedTargetPosition ||
+                !float.IsFinite(intent.ReportedTargetX) ||
+                !float.IsFinite(intent.ReportedTargetZ))
+            {
+                Reject(
+                    context,
+                    player,
+                    intent,
+                    ref resources,
+                    PlayerCombatRejectionReason.InvalidCoordinates);
+                return;
+            }
+
+            if (!PlayerCombatRules.IsWithinGroundTargetRange(
+                    transform.X,
+                    transform.Z,
+                    intent.ReportedTargetX,
+                    intent.ReportedTargetZ,
+                    intent.Skill))
+            {
+                Reject(
+                    context,
+                    player,
+                    intent,
+                    ref resources,
+                    PlayerCombatRejectionReason.OutOfRange);
+                return;
+            }
+
+            areaCenterX = intent.ReportedTargetX;
+            areaCenterZ = intent.ReportedTargetZ;
+        }
+
         var manaCost = Math.Max(0, intent.Skill.ManaCost);
         if (resources.CurrentMp < manaCost)
         {
@@ -352,7 +389,9 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
             ? ImmutableArray<PlayerCombatReservedTarget>.Empty
             : SelectAreaTargets(
                 context.World,
-                transform,
+                transform.MapId,
+                areaCenterX,
+                areaCenterZ,
                 intent.Skill.AreaRadius,
                 requestedDamage);
         ReserveAndPublish(

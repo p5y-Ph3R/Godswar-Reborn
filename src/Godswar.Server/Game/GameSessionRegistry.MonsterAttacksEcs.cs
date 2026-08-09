@@ -34,11 +34,13 @@ internal sealed partial class GameSessionRegistry
         // Match the legacy lock order: runtime status first, then registry,
         // then character vitals inside the lifecycle-owned ECS adapter.
         var physicalDamageReduction = 0m;
+        var physicalDefenseBonus = 0;
         if (statusContext is not null &&
             !TryGetRuntimePhysicalDamageReduction(
                 statusContext.Session,
                 damageResolvedAt,
-                out physicalDamageReduction))
+                out physicalDamageReduction,
+                out physicalDefenseBonus))
         {
             throw new MonsterAttackTargetUnavailableException(
                 targetCharacterId);
@@ -60,6 +62,7 @@ internal sealed partial class GameSessionRegistry
                         targetContext.Session))
                 {
                     physicalDamageReduction = 0m;
+                    physicalDefenseBonus = 0;
                 }
 
                 lock (targetContext.Character.VitalsSync)
@@ -69,7 +72,8 @@ internal sealed partial class GameSessionRegistry
                             .CalculateMonsterPhysicalAttack(
                                 attack.Monster.Definition.Tier,
                                 targetContext.Character,
-                                physicalDamageReduction);
+                                physicalDamageReduction,
+                                physicalDefenseBonus);
                     var currentLifeRevision =
                         _playerLifeRevisions.GetOrAdd(
                             targetContext.Session,

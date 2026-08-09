@@ -5,6 +5,15 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
+    internal Task PersistPlayerVitalsAsync(
+        int accountId,
+        GameCharacter character,
+        CancellationToken cancellationToken) =>
+        PersistRoutineVitalsAsync(
+            accountId,
+            character,
+            cancellationToken);
+
     private Task PersistRoutineVitalsAsync(
         GameSessionContext context,
         CancellationToken cancellationToken)

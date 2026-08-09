@@ -61,8 +61,12 @@ internal static class Opcodes
     // into or removed from its three operation controls. The 12-byte payload
     // carries bag page, page slot, and a one-byte selected flag.
     public const ushort GearEnhancerItemSelection = 10193;
+    // Native 10200 is overloaded: it participates in login/map-detail
+    // readiness and carries the Fashion Show checkbox in its final DWORD.
     public const ushort PlayerDetailRequest = 10200;
-    public const ushort PlayerDetailAckRequest = 10202;
+    // Native Fashion Effect sends a 16-byte request. The server publishes a
+    // 12-byte per-avatar effect-visibility projection on the same opcode.
+    public const ushort FashionEffectVisibility = 10202;
     public const ushort PlayerInspectVisualRequest = 10279;
     public const ushort PetTakeRequest = 10239;
     public const ushort PetCallOutRequest = 10240;
@@ -131,7 +135,7 @@ internal static class Opcodes
             PlayerInspectRequest => nameof(PlayerInspectRequest),
             GearEnhancerItemSelection => nameof(GearEnhancerItemSelection),
             PlayerDetailRequest => nameof(PlayerDetailRequest),
-            PlayerDetailAckRequest => nameof(PlayerDetailAckRequest),
+            FashionEffectVisibility => nameof(FashionEffectVisibility),
             PlayerInspectVisualRequest => nameof(PlayerInspectVisualRequest),
             PetTakeRequest => nameof(PetTakeRequest),
             PetCallOutRequest => nameof(PetCallOutRequest),

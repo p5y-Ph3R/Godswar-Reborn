@@ -20,8 +20,8 @@ internal static partial class PostgresItemTemplateBaselinePublisher
 {
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
-        "items-v9+holy-suit-v3+elemental-v1+socket-spells-v1+" +
-        "holy-stone-materials-v1";
+        "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
+        "zephyr-v1+mount-speed-v3";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -80,10 +80,17 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+            var hasMountSpeedProfile =
+                await PublishedMountSpeedProfileIsCurrentAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
             if (hasClassSuitItems &&
                 hasElementalContent &&
                 hasSocketSpells &&
                 hasHolyStoneMaterials &&
+                hasMountSpeedProfile &&
                 publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
             {
@@ -102,6 +109,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     upgradeFromV8Revision: null,
+                    cancellationToken);
+                await EnsureHolyStoneMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
                     cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return new ItemTemplatePublicationResult(
@@ -182,6 +194,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             existing is { ManifestVersion: 8 }
                 ? existing.Revision
                 : null,
+            cancellationToken);
+        await EnsureHolyStoneMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
             cancellationToken);
         await PublishRevisionAsync(
             connection,

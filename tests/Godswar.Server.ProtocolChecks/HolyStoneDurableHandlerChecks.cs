@@ -26,6 +26,7 @@ internal static partial class HolyStoneDurableHandlerChecks
         await CheckSettlementEvictionsAsync();
         await CheckRawExactWireSemanticsAsync();
         await CheckAdvancedDrillRoutingAsync();
+        await CheckMountGearDrillRoutingAsync();
         await CheckUpgradeSelectionRoutingAsync();
     }
 

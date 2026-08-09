@@ -8,21 +8,25 @@ make the item detail path read beyond the authored data.
 `mountarmor`, `mountsoul`, `mountornament`, and `mountamulet` numeric quality
 vector to 20 entries in both client locales.
 
-Q1 through Q10 are the stock client values. Q11 through Q20 are a local design,
-because no native Q11-through-Q20 mount data is present. Mount gear uses the
-average slope from the full authored Q1-through-Q10 prefix. Each extended value
-is calculated directly from that unrounded slope; integer stats are rounded
-away from zero. This avoids both cumulative rounding drift and cross-tier
-inversions caused by extending one unusually large or small terminal step.
-The patch fails if any vector decreases or a higher-level mount-gear tier would
-fall below the preceding tier at any extended quality.
+Q1 through Q10 remain the stock client values except for the deliberately
+redesigned mount `Speed` vector described below. Q11 through Q20 are a local
+design because no native Q11-through-Q20 mount data is present. Mount gear uses
+the average slope from the full authored Q1-through-Q10 prefix. Each extended
+value is calculated directly from that unrounded slope; integer stats are
+rounded away from zero. This avoids both cumulative rounding drift and
+cross-tier inversions caused by extending one unusually large or small terminal
+step. The patch fails if any vector decreases or a higher-level mount-gear tier
+would fall below the preceding tier at any extended quality.
 
 Native mount Speed and MaxHP vectors are flat within each item, but the client
-authors clear progression between the level tiers of each mount family. The
-Q11-through-Q20 mount tail distributes the family's smallest positive tier
-step over ten qualities. Boundless therefore ends exactly one conservative
-family tier above Common while Q1-through-Q10 remain byte-for-byte unchanged.
-The same delta is applied across a family, preserving its authored tier order.
+authors clear progression between the level tiers of each mount family. MaxHP
+keeps the conservative family-step extension. Speed uses a reviewed local
+balance curve across all twenty qualities: `+0,+1,+2,+3,+4,+5,+6,+7,+8,+10,
++12,+14,+16,+18,+20,+22,+24,+26,+28,+30` percentage points. Every mount keeps
+its authored Common base, so family and level distinctions remain intact.
+Boundless adds 30 points rather than borrowing the next level tier's 1-point
+increase. The fastest native 50% special mounts therefore cap at 80%, before
+separately governed status effects, instead of growing without a ceiling.
 
 The resulting level-80 Valorheart set is:
 
@@ -54,8 +58,8 @@ The level-80 Erebus Lion base progression is:
 | Quality | Speed bonus | Max HP |
 | ---: | ---: | ---: |
 | Q1 Common | 0.24 | 3,700 |
-| Q10 | 0.24 | 3,700 |
-| Q20 Boundless | 0.25 | 4,000 |
+| Q10 Mystic | 0.34 | 3,700 |
+| Q20 Boundless | 0.54 | 4,000 |
 
 Mount-gear append attributes use the same grade-indexed values as ordinary
 character gear. G1 through G12 remain the stock client prefix. The local
@@ -112,10 +116,10 @@ stock mount:
   offensive attributes `343`, `363`, `403`, and `423`;
 - suffix 7 remains invalid for level 80 even when the mount is Q20/Boundless;
 - G25 drives the permitted attribute values;
-- Erebus speed and base HP preserve the native flat Q1-through-Q10 prefix, then
-  rise to `0.25` and `4,000` at Q20;
+- Erebus base HP preserves the native flat Q1-through-Q10 prefix and rises to
+  `4,000` at Q20; Speed follows the shared additive quality curve;
 - the server resolves Ride speed from the equipped item's quality, so Q1 uses
-  `0.24` while Q20 authoritatively publishes a `1.25` movement multiplier.
+  `0.24` while Q20 authoritatively publishes a `1.54` riding multiplier.
 
 `character_stat_summary` reads every equipped `character_items` row, including
 slots 15 through 20. The item snapshot writes all five attribute IDs plus the

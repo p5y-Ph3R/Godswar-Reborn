@@ -99,7 +99,7 @@ internal sealed partial class GameClientHandler
         if (cast.SkillId <= int.MaxValue &&
             SkillStatusEffectCatalog.TryGet((int)cast.SkillId, out var statusEffect))
         {
-            await HandleSelfStatusSkillCastAsync(
+            await HandleBeneficialStatusSkillCastAsync(
                 packet,
                 cast,
                 statusEffect,
@@ -110,8 +110,40 @@ internal sealed partial class GameClientHandler
         if (cast.SkillId > int.MaxValue ||
             !_gameplayCatalogs.SkillCombat.TryGet(
                 (int)cast.SkillId,
-                out var combat) ||
-            !SkillCombatResolver.IsHostileMonsterSkill(combat))
+                out var combat))
+        {
+            Console.WriteLine(
+                $"[skill] rejected unsupported combat skill character={_character.Name} skill={cast.SkillId}");
+            return;
+        }
+
+        if (PriestHealingSkillCatalog.TryResolve(
+                combat,
+                out var healing))
+        {
+            if (!intonationCompleted &&
+                combat.CastTime > TimeSpan.Zero)
+            {
+                await BeginIntonedPriestHealingSkillCastAsync(
+                    packet,
+                    cast,
+                    combat,
+                    healing,
+                    cancellationToken);
+                return;
+            }
+
+            await HandlePriestHealingSkillCastAsync(
+                packet,
+                cast,
+                combat,
+                healing,
+                publishCastVisual: !intonationCompleted,
+                cancellationToken);
+            return;
+        }
+
+        if (!SkillCombatResolver.IsHostileMonsterSkill(combat))
         {
             Console.WriteLine(
                 $"[skill] rejected unsupported combat skill character={_character.Name} skill={cast.SkillId}");

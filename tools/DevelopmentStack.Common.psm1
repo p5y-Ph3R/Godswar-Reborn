@@ -299,8 +299,23 @@ function Get-MainObservationGuard {
     if ($observationActive) {
         $status = & (Join-Path $PSScriptRoot 'GetB20HDockerObservation.ps1') |
             ConvertFrom-Json
-        if ($status.CurrentStatus -cne 'current_healthy') {
-            throw "Active B20H observation is not healthy: $($status.CurrentStatus)"
+        $continuityHealthy =
+            [int]$status.TargetUp -eq 1 -and
+            [int]$status.ObserverReady -eq 1 -and
+            [int]$status.RedisCoordinationReady -eq 1 -and
+            [bool]$status.RevisionMatchesApproval -and
+            [bool]$status.ServerIdentityMatchesStart -and
+            [bool]$status.PrometheusIdentityMatchesStart -and
+            [bool]$status.PostgreSqlVolumeMatchesStart -and
+            [bool]$status.ObservationArtifactHashesMatch -and
+            [bool]$status.ComposeInputHashesMatch -and
+            [bool]$status.ServerRedisTopologyMatchesStart -and
+            [bool]$status.RedisIdentityMatchesStart -and
+            [string]$status.RedisHealth -ceq 'healthy'
+        if (-not $continuityHealthy) {
+            throw (
+                'Active B20H observation continuity is not healthy: ' +
+                [string]$status.CurrentStatus)
         }
     }
 

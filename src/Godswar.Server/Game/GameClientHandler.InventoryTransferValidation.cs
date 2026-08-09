@@ -32,13 +32,17 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "RejectedStorageKitBagIndexRefresh");
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character),
+            PacketBuilder.EquipmentVisualRefresh(
+                _character,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "RejectedStorageEquipmentVisualRefresh");
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character)),
             cancellationToken,
-            "RejectedStoragePlayerDetailRefreshAck");
+            "RejectedStorageEquipmentEffectVisibility");
     }
 
     private async Task SendEquipRejectionRefreshAsync(

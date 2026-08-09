@@ -83,6 +83,7 @@ internal static class HolyStoneUpgradePolicy
     public const int SignetBonusPercent = 10;
     public const uint HeatedHolyStoneItemId = 9030;
     public const uint CooledHolyStoneItemId = 9031;
+    public const uint ZephyrHolyStoneItemId = 9032;
     public const uint GoddessStoneItemId = 9050;
 
     public static HolyStoneUpgradeEligibilityFailure TryPrepare(
@@ -92,8 +93,7 @@ internal static class HolyStoneUpgradePolicy
         out HolyStoneUpgradeAttempt attempt)
     {
         attempt = default;
-        if (target.Id is not (
-                HeatedHolyStoneItemId or CooledHolyStoneItemId) ||
+        if (!IsHolyStone(target.Id) ||
             target.Stack != 1)
         {
             return HolyStoneUpgradeEligibilityFailure.TargetNotHolyStone;
@@ -178,4 +178,10 @@ internal static class HolyStoneUpgradePolicy
             >= 7 and <= 9 => 10,
             _ => 0
         };
+
+    public static bool IsHolyStone(uint itemId) =>
+        itemId is
+            HeatedHolyStoneItemId or
+            CooledHolyStoneItemId or
+            ZephyrHolyStoneItemId;
 }

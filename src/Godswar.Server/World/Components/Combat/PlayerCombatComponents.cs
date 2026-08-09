@@ -128,6 +128,9 @@ internal readonly record struct PlayerCombatIntentComponent(
     ulong ExpectedTargetHealthRevision,
     float ReportedAttackerX,
     float ReportedAttackerZ,
+    bool HasReportedTargetPosition,
+    float ReportedTargetX,
+    float ReportedTargetZ,
     PlayerCombatSkillSnapshot Skill);
 
 internal readonly record struct PlayerCombatReservedTarget(

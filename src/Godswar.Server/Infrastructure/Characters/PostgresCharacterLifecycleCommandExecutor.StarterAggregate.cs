@@ -52,7 +52,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                         1::smallint, 1::smallint, 1::smallint),
                     (0::smallint, 10::smallint, @weaponId, 1::smallint,
                         1::smallint, 1::smallint, 1::smallint),
-                    (0::smallint, 13::smallint, 8040, 1::smallint,
+                    (0::smallint, 12::smallint, 8040, 1::smallint,
                         1::smallint, 1::smallint, 1::smallint),
                     (1::smallint, 0::smallint, 4000, 0::smallint,
                         10::smallint, 1::smallint, 1::smallint),

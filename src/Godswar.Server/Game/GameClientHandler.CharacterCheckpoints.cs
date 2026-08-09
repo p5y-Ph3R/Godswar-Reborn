@@ -498,6 +498,12 @@ internal sealed partial class GameClientHandler
                 current.CheckpointOwnerId;
             updated.CheckpointOwnerGeneration =
                 current.CheckpointOwnerGeneration;
+            updated.FashionHidden =
+                ResolveFashionHiddenAfterEquipmentChange(
+                    current,
+                    updated);
+            updated.EquipmentEffectsVisible =
+                current.EquipmentEffectsVisible;
         }
 
         _character = updated;

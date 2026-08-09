@@ -145,19 +145,27 @@ internal static partial class PacketBuilder
             stats.PhysicalAttack);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsPhysicalDefenseOffset, sizeof(int)),
-            stats.PhysicalDefense);
+            SaturatingStatusValue(
+                stats.PhysicalDefense,
+                aggregate.PhysicalDefense));
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsMagicAttackOffset, sizeof(int)),
             stats.MagicAttack);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsMagicDefenseOffset, sizeof(int)),
-            stats.MagicDefense);
+            SaturatingStatusValue(
+                stats.MagicDefense,
+                aggregate.MagicDefense));
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsDodgeOffset, sizeof(int)),
-            stats.Dodge);
+            SaturatingStatusValue(
+                stats.Dodge,
+                aggregate.Dodge));
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsCriticalResistanceOffset, sizeof(int)),
-            stats.CriticalResistance);
+            SaturatingStatusValue(
+                stats.CriticalResistance,
+                aggregate.CriticalResistance));
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusEffectsPhysicalDamageBonusOffset, sizeof(float)),
             ToClientPercent(stats.PhysicalDamageBonus));
@@ -196,6 +204,14 @@ internal static partial class PacketBuilder
             aggregate.ExperienceBonus);
         return packet;
     }
+
+    private static int SaturatingStatusValue(
+        int baseValue,
+        int modifier) =>
+        (int)Math.Clamp(
+            (long)baseValue + modifier,
+            int.MinValue,
+            int.MaxValue);
 
     /// <summary>
     /// Builds the same complete status-map envelope for a non-player world

@@ -39,35 +39,55 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] PlayerDetailAck(ReadOnlySpan<byte> requestPayload)
+    public static byte[] EquipmentEffectVisibility(
+        uint objectId,
+        bool visible)
     {
         var packet = new byte[12];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerDetailAckOpcode);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, 2),
+            FashionEffectVisibilityOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(8, 4),
+            visible ? 1u : 0u);
+        return packet;
+    }
+
+    public static byte[] PlayerDetailAck(
+        ReadOnlySpan<byte> requestPayload)
+    {
+        var packet = new byte[12];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, 2),
+            (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, 2),
+            PlayerDetailAckOpcode);
         if (requestPayload.Length >= 4)
         {
             requestPayload[..4].CopyTo(packet.AsSpan(4, 4));
         }
         else
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), LocalPlayerObjectId);
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(4, 4),
+                LocalPlayerObjectId);
         }
 
         return packet;
     }
 
-    public static byte[] PlayerDetailRefreshAck()
-    {
-        return PlayerDetailRefreshAck(LocalPlayerObjectId);
-    }
-
     public static byte[] PlayerDetailRefreshAck(uint objectId)
     {
-        var packet = new byte[12];
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerDetailAckOpcode);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), 1);
+        var packet = PlayerDetailAck([]);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(4, 4),
+            objectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(8, 4),
+            1);
         return packet;
     }
 

@@ -35,9 +35,18 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "VisiblePlayerSpawn");
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(player.Character, player.ObjectId),
+            PacketBuilder.EquipmentVisualRefresh(
+                player.Character,
+                player.ObjectId,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "VisiblePlayerEquipment");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentEffectVisibility(
+                player.ObjectId,
+                ResolveEquipmentEffectProjection(player.Character)),
+            cancellationToken,
+            "VisiblePlayerEquipmentEffects");
         await _session.SendAsync(
             PacketBuilder.PlayerAppearanceExtras(player.Character, player.ObjectId),
             cancellationToken,
@@ -51,7 +60,10 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "VisiblePlayerPosition");
         await _session.SendAsync(
-            PacketBuilder.PlayerStatusUpdate(player.Character, player.ObjectId),
+            PacketBuilder.PlayerStatusUpdate(
+                player.Character,
+                player.ObjectId,
+                statusSnapshot.Aggregate),
             cancellationToken,
             "VisiblePlayerStatus");
         await _registry.SendStatusSnapshotToViewerAsync(
@@ -68,18 +80,55 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var requestedA = request.Payload.Length >= 4
-            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload[..4])
-            : 0;
-        var requestedB = request.Payload.Length >= 8
-            ? BinaryPrimitives.ReadUInt32LittleEndian(request.Payload.Slice(4, 4))
-            : 0;
-        if (!_characterSnapshotBootstrapPending)
+        if (!TryReadFashionVisibilityRequest(
+                request.Payload,
+                out var fashionHidden))
+        {
+            Console.WriteLine(
+                $"[fashion] ignored malformed Show visibility packet " +
+                $"character={_character.Name} bytes={request.Payload.Length}");
+            return;
+        }
+
+        var requiresDetailFlow =
+            !_playerDetailSent ||
+            _characterSnapshotBootstrapPending ||
+            IsMapTransitionPending;
+        var visibilityChanged =
+            HasEquippedFashion(_character) &&
+            _character.FashionHidden != fashionHidden;
+        var rateLimited =
+            visibilityChanged &&
+            !TryReserveFashionVisibilityTransition(DateTimeOffset.UtcNow);
+        if (rateLimited)
+        {
+            Console.WriteLine(
+                $"[fashion] rate-limited Show visibility transition " +
+                $"character={_character.Name}");
+            visibilityChanged = false;
+        }
+
+        var publishVisibility =
+            visibilityChanged && _worldPresenceAnnounced;
+        if (visibilityChanged)
+        {
+            _character.FashionHidden = fashionHidden;
+            if (publishVisibility)
+            {
+                _registry.UpdateCharacter(
+                    _session,
+                    _character,
+                    advanceWorldRevision: true);
+            }
+        }
+
+        if (requiresDetailFlow && !_characterSnapshotBootstrapPending)
         {
             await RefreshActiveCharacterStatsAsync(
                 "player-detail",
                 cancellationToken);
         }
+
         var packet = PacketBuilder.PlayerDetail(_character);
         if (packet.Length == 0)
         {
@@ -88,12 +137,26 @@ internal sealed partial class GameClientHandler
         }
 
         Console.WriteLine(
-            $"[game] sending self player detail character={_character.Name} requestA={requestedA} requestB={requestedB} level={_character.Level} bytes={packet.Length}");
+            $"[game] sending self player detail character={_character.Name} " +
+            $"fashionHidden={fashionHidden} " +
+            $"level={_character.Level} bytes={packet.Length}");
         await _session.SendAsync(packet, cancellationToken, "PlayerDetail", framed: false);
         await _session.SendAsync(
             BuildLocalPlayerStatusUpdate(),
             cancellationToken,
             "PlayerStatusUpdate");
+        await PublishFashionVisibilityIfNeededAsync(
+            visibilityChanged,
+            publishVisibility,
+            rateLimited,
+            forceSelfProjection: HasEquippedFashion(_character),
+            cancellationToken: cancellationToken);
+
+        if (!requiresDetailFlow)
+        {
+            return;
+        }
+
         if (await HandleMapTransitionPlayerDetailSentAsync(
                 cancellationToken))
         {
@@ -218,10 +281,17 @@ internal sealed partial class GameClientHandler
 
         var inspectDetailObjectId = target.ObjectId;
         await RefreshCharacterStatsAsync(target.Character, target.AccountId, "inspect-target", cancellationToken);
+        var statusSnapshot = await _registry.GetStatusSnapshotAsync(
+            target.Session,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
         Console.WriteLine(
             $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
         await _session.SendAsync(
-            PacketBuilder.PlayerInspectEquipmentStatusBundle(target.Character, inspectDetailObjectId),
+            PacketBuilder.PlayerInspectEquipmentStatusBundle(
+                target.Character,
+                inspectDetailObjectId,
+                statusSnapshot.Aggregate),
             cancellationToken,
             "PlayerInspectEquipmentStatusBundle",
             framed: false);
@@ -257,9 +327,18 @@ internal sealed partial class GameClientHandler
         string labelPrefix)
     {
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(target.Character, target.ObjectId),
+            PacketBuilder.EquipmentVisualRefresh(
+                target.Character,
+                target.ObjectId,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             $"{labelPrefix}Equipment");
+        await _session.SendAsync(
+            PacketBuilder.EquipmentEffectVisibility(
+                target.ObjectId,
+                ResolveEquipmentEffectProjection(target.Character)),
+            cancellationToken,
+            $"{labelPrefix}EquipmentEffects");
         await _session.SendAsync(
             PacketBuilder.PlayerAppearanceExtras(target.Character, target.ObjectId),
             cancellationToken,

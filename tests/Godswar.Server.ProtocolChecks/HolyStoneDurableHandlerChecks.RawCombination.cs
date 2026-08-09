@@ -99,9 +99,9 @@ internal static partial class HolyStoneDurableHandlerChecks
         foreach (var (slot, itemId) in new (int Slot, uint ItemId)[]
                  {
                      (WeaponSlot, 9030),
-                     (StoneSlot, 9031),
+                     (StoneSlot, 9030),
                      (8, 9030),
-                     (9, 9031)
+                     (9, 9030)
                  })
         {
             var item = CompactItemEntry.Empty with

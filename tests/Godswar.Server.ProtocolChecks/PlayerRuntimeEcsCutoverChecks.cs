@@ -176,6 +176,11 @@ internal static partial class PlayerRuntimeEcsCutoverChecks
             "ecs-status-201",
             CancellationToken.None);
         _ = await socket.ReadPacketAsync(340);
+        var appliedGameData = await socket.ReadPacketAsync(236);
+        AssertAppliedRuntimeGameData(
+            appliedGameData,
+            character,
+            laterId);
         await registry.ApplyRuntimeStatusAndPublishAsync(
             socket.Session,
             earlierId,
@@ -204,10 +209,12 @@ internal static partial class PlayerRuntimeEcsCutoverChecks
             Start.AddSeconds(10),
             CancellationToken.None);
         var expired = await socket.ReadPacketAsync(340);
+        var expiredGameData = await socket.ReadPacketAsync(236);
         Check.Equal(
             1.24f,
             ReadSingle(expired, 324),
             "expiring other statuses preserves mount multiplier");
+        AssertExpiredRuntimeGameData(expiredGameData, character);
         var diagnostics =
             registry.GetPlayerStatusEcsDiagnostics(socket.Session)
             ?? throw new InvalidOperationException(

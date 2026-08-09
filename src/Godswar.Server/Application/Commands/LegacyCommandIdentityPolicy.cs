@@ -28,6 +28,8 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.HolyStoneAdvancedDrill or
             CommandFamily.HolyStoneUpgrade or
             CommandFamily.HolyStoneCombine or
+            CommandFamily.HolyStoneImplementSpirit or
+            CommandFamily.MountGearDrill or
             CommandFamily.HolySuitStoreExperience or
             CommandFamily.HolySuitTransferExperience or
             CommandFamily.HolySuitConsumeWare or

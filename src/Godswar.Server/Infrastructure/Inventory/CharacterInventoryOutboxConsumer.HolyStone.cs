@@ -13,7 +13,9 @@ internal sealed partial class CharacterInventoryOutboxConsumer
             message.Payload.Span);
         var walletEvidenceValid =
             receipt.Status == HolyStoneCommandResultStatus.Drilled &&
-            receipt.Operation == HolyStoneCommandOperation.Drill
+            receipt.Operation is (
+                HolyStoneCommandOperation.Drill or
+                HolyStoneCommandOperation.MountGearDrill)
                 ? receipt.GoldSpent > 0 &&
                   receipt.GoldAfter ==
                       receipt.GoldBefore - receipt.GoldSpent &&

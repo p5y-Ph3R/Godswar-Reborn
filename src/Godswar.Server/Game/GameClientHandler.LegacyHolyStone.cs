@@ -35,7 +35,8 @@ internal sealed partial class GameClientHandler
                 HolyStoneCommandOperation.Remove or
                 HolyStoneCommandOperation.Upgrade or
                 HolyStoneCommandOperation.Combine or
-                HolyStoneCommandOperation.ImplementSpirit)
+                HolyStoneCommandOperation.ImplementSpirit or
+                HolyStoneCommandOperation.MountGearDrill)
         {
             await HandleRawDurableHolyStoneAsync(
                 npcId,
@@ -187,13 +188,17 @@ internal sealed partial class GameClientHandler
         }
 
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character),
+            PacketBuilder.EquipmentVisualRefresh(
+                _character,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "EquipmentVisualRefresh");
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character)),
             cancellationToken,
-            "PlayerDetailRefreshAck");
+            "EquipmentEffectVisibility");
         await BroadcastEquipmentRefreshAsync(
             $"holy-stone-{operation}",
             cancellationToken);

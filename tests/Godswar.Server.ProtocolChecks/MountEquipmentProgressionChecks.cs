@@ -28,6 +28,14 @@ internal static class MountEquipmentProgressionChecks
         256m, 280m, 305m, 332m, 365m, 400m
     ];
 
+    private static readonly decimal[] MountSpeedQualityBonuses =
+    [
+        0.00m, 0.01m, 0.02m, 0.03m, 0.04m,
+        0.05m, 0.06m, 0.07m, 0.08m, 0.10m,
+        0.12m, 0.14m, 0.16m, 0.18m, 0.20m,
+        0.22m, 0.24m, 0.26m, 0.28m, 0.30m
+    ];
+
     // These are the complete native G13-G25 tails whose values exceed the
     // ordinary profile at one or more grades. All other native tails are
     // below the profile floor and therefore need no separate exception data.
@@ -68,9 +76,9 @@ internal static class MountEquipmentProgressionChecks
         CheckVector(14804, "MaxHP", 1_110m, 2_220m, 3_453m);
         CheckVector(14904, "Miss", 12m, 24m, 37m);
 
-        // Native mount base vectors remain flat through Q10. Q11-Q20 then
-        // distribute one conservative, level-family tier of progression.
-        CheckVector(16204, "Speed", 0.24m, 0.24m, 0.25m);
+        // Speed uses the reviewed additive quality curve while every mount
+        // retains its authored Common base and family/level distinction.
+        CheckVector(16204, "Speed", 0.24m, 0.34m, 0.54m);
         CheckVector(16204, "MaxHP", 3_700m, 3_700m, 4_000m);
     }
 
@@ -176,30 +184,51 @@ internal static class MountEquipmentProgressionChecks
                     continue;
                 }
 
-                var nativeValues = members
-                    .Select(static member => member.Values[0])
-                    .Distinct()
-                    .Order()
-                    .ToArray();
-                var familyDelta = Enumerable.Range(1, nativeValues.Length - 1)
-                    .Select(index => nativeValues[index] - nativeValues[index - 1])
-                    .Where(static delta => delta > 0m)
-                    .DefaultIfEmpty(0m)
-                    .Min();
-
                 foreach (var member in members)
                 {
                     Check.Equal(
                         20,
                         member.Values.Length,
                         $"{member.Id} {key} quality vector length");
-                    Check.True(
-                        member.Values.Take(10).All(value => value == member.Values[0]),
-                        $"{member.Id} {key} preserves its flat native Q1-Q10 prefix");
-                    Check.Equal(
-                        member.Values[0] + familyDelta,
-                        member.Values[19],
-                        $"{member.Id} {key} Q20 gains exactly one family-tier step");
+                    if (key == "Speed")
+                    {
+                        for (var qualityIndex = 0;
+                             qualityIndex < MountSpeedQualityBonuses.Length;
+                             qualityIndex++)
+                        {
+                            Check.Equal(
+                                member.Values[0] +
+                                MountSpeedQualityBonuses[qualityIndex],
+                                member.Values[qualityIndex],
+                                $"{member.Id} Speed Q{qualityIndex + 1} additive quality bonus");
+                        }
+                        Check.True(
+                            member.Values[19] <= 0.80m,
+                            $"{member.Id} Boundless Speed respects the reviewed 80% ceiling");
+                    }
+                    else
+                    {
+                        var nativeValues = members
+                            .Select(static value => value.Values[0])
+                            .Distinct()
+                            .Order()
+                            .ToArray();
+                        var familyDelta = Enumerable
+                            .Range(1, nativeValues.Length - 1)
+                            .Select(index =>
+                                nativeValues[index] - nativeValues[index - 1])
+                            .Where(static delta => delta > 0m)
+                            .DefaultIfEmpty(0m)
+                            .Min();
+                        Check.True(
+                            member.Values.Take(10).All(
+                                value => value == member.Values[0]),
+                            $"{member.Id} {key} preserves its flat native Q1-Q10 prefix");
+                        Check.Equal(
+                            member.Values[0] + familyDelta,
+                            member.Values[19],
+                            $"{member.Id} {key} Q20 gains one family-tier step");
+                    }
                 }
 
                 for (var index = 1; index < members.Length; index++)

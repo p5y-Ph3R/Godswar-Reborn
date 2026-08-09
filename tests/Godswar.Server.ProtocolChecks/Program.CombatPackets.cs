@@ -38,6 +38,21 @@ internal static partial class Program
         Check.Equal(165.53f, parsed.CasterZ, "client skill cast caster Z");
         Check.Equal(44.75f, parsed.TargetX, "client skill cast target X");
         Check.Equal(166.25f, parsed.TargetZ, "client skill cast target Z");
+        Check.True(parsed.HasTargetPosition,
+            "40-byte skill cast declares a target position");
+
+        var shortDeclaredCast = clientCast.ToArray();
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            shortDeclaredCast.AsSpan(0, 2),
+            20);
+        Check.True(
+            SkillCastRequest.TryParse(shortDeclaredCast, out var shortParsed),
+            "short declared skill cast parses its declared fields");
+        Check.True(!shortParsed.HasTargetPosition,
+            "trailing bytes cannot inject an undeclared ground target");
+        Check.True(float.IsNaN(shortParsed.TargetX) &&
+                   float.IsNaN(shortParsed.TargetZ),
+            "undeclared ground coordinates remain unavailable");
 
         var visual = PacketBuilder.SkillCastVisual(clientCast, remoteCasterId);
         Check.Equal(remoteCasterId, ReadUInt32(visual, 4), "cast visual patches only the caster identity");
@@ -71,12 +86,55 @@ internal static partial class Program
         Check.Equal(44.75f, ReadSingle(damage, 24), "skill damage target X");
         Check.Equal(166.25f, ReadSingle(damage, 28), "skill damage target Z");
 
+        var capturedSingleHeal = Convert.FromHexString(
+            "20003D2770030000FA0300000101000047F3FFFFF00200004C501A43D0E925C3");
+        var singleHeal = PacketBuilder.SkillHealing(
+            healerObjectId: 0x370,
+            targetObjectId: 0x3FA,
+            healing: 3_257,
+            skillId: 752,
+            targetX: ReadSingle(capturedSingleHeal, 24),
+            targetZ: ReadSingle(capturedSingleHeal, 28));
+        Check.True(
+            singleHeal.SequenceEqual(capturedSingleHeal),
+            "Priest single-target healing matches the original capture byte-for-byte");
+        Check.Equal(0x101u, ReadUInt32(singleHeal, 12),
+            "Priest healing uses the captured healing-result flags");
+        Check.Equal(-3_257, ReadInt32(singleHeal, 16),
+            "Priest healing encodes a signed negative combat-text amount");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => _ = PacketBuilder.SkillHealing(
+                remoteCasterId,
+                localObjectId,
+                healing: 0,
+                skillId: 750,
+                targetX: 0,
+                targetZ: 0),
+            "Priest healing rejects a zero combat-text amount");
+
         var areaCast = clientCast.ToArray();
         BinaryPrimitives.WriteUInt32LittleEndian(areaCast.AsSpan(8, 4), 334);
         BinaryPrimitives.WriteUInt32LittleEndian(areaCast.AsSpan(16, 4), localObjectId);
         var areaVisual = PacketBuilder.SelfTargetSkillCastVisual(areaCast, remoteCasterId);
         Check.Equal(remoteCasterId, ReadUInt32(areaVisual, 4), "area cast visual patches caster identity");
         Check.Equal(remoteCasterId, ReadUInt32(areaVisual, 16), "area cast visual patches self-target identity");
+
+        var groundAreaCast = clientCast.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            groundAreaCast.AsSpan(8, 4),
+            564);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            groundAreaCast.AsSpan(16, 4),
+            uint.MaxValue);
+        var groundAreaVisual = PacketBuilder.SkillCastVisual(
+            groundAreaCast,
+            remoteCasterId);
+        Check.Equal(uint.MaxValue, ReadUInt32(groundAreaVisual, 16),
+            "ground area visual preserves the position-target sentinel");
+        Check.Equal(44.75f, ReadSingle(groundAreaVisual, 32),
+            "ground area visual preserves cursor X");
+        Check.Equal(166.25f, ReadSingle(groundAreaVisual, 36),
+            "ground area visual preserves cursor Z");
 
         var emptyCluster = PacketBuilder.SkillClusterDamage(
             localObjectId,
@@ -116,6 +174,41 @@ internal static partial class Program
         Check.True(
             reproducedMeteorBlastCluster.SequenceEqual(capturedMeteorBlastCluster),
             "Meteor Blast area damage matches the original capture byte-for-byte");
+
+        var capturedAreaHeal = Convert.FromHexString(
+            "7D003F277003000009000000F902000000" +
+            "14000000010000004AFCFFFF" +
+            "F403000001000000E6FAFFFF" +
+            "700300000100000069FBFFFF" +
+            "F40400000100000098FBFFFF" +
+            "9704000001000000E6FAFFFF" +
+            "FA0300000100000006FCFFFF" +
+            "3005000001000000E6FAFFFF" +
+            "13010000010000004AFCFFFF" +
+            "9F02000001000000EBFBFFFF");
+        var areaHeal = PacketBuilder.SkillClusterHealing(
+            healerObjectId: 0x370,
+            skillId: 761,
+            [
+                new SkillClusterHealingEntry(20, 950),
+                new SkillClusterHealingEntry(1012, 1_306),
+                new SkillClusterHealingEntry(880, 1_175),
+                new SkillClusterHealingEntry(1268, 1_128),
+                new SkillClusterHealingEntry(1175, 1_306),
+                new SkillClusterHealingEntry(1018, 1_018),
+                new SkillClusterHealingEntry(1328, 1_306),
+                new SkillClusterHealingEntry(275, 950),
+                new SkillClusterHealingEntry(671, 1_045)
+            ]);
+        Check.True(
+            areaHeal.SequenceEqual(capturedAreaHeal),
+            "Priest area healing matches the original capture byte-for-byte");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => _ = PacketBuilder.SkillClusterHealing(
+                remoteCasterId,
+                skillId: 760,
+                [new SkillClusterHealingEntry(localObjectId, 0)]),
+            "Priest area healing rejects a zero combat-text amount");
 
         var mana = PacketBuilder.PlayerManaUpdate(remoteCasterId, 165);
         Check.Equal(12, mana.Length, "mana update length");

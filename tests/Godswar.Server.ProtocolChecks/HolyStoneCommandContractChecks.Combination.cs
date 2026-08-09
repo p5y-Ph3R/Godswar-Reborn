@@ -9,9 +9,9 @@ internal static partial class HolyStoneCommandContractChecks
     private static void CheckCombinationContract()
     {
         var target = CombinationStone(9030, grade: 4);
-        var first = CombinationStone(9031, grade: 4, stack: 2);
+        var first = CombinationStone(9030, grade: 4, stack: 2);
         var second = CombinationStone(9030, grade: 4);
-        var third = CombinationStone(9031, grade: 4, stack: 3);
+        var third = CombinationStone(9030, grade: 4, stack: 3);
         Check.True(
             HolyStoneCommandEnvelope.TryCreateCommand(
                 OperationId,

@@ -56,7 +56,9 @@ internal sealed partial record HolyStoneExecutionReceipt
                 .TryGetGoldCostFromCompactTargetState(
             targetBefore,
             out var expectedCost);
-        if (operation != HolyStoneCommandOperation.Drill ||
+        if (operation is not (
+                HolyStoneCommandOperation.Drill or
+                HolyStoneCommandOperation.MountGearDrill) ||
             !hasGoldCost ||
             goldSpent != expectedCost ||
             walletRevision <= 0)

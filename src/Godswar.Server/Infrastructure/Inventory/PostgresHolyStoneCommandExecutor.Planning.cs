@@ -8,8 +8,6 @@ namespace Godswar.Server.Infrastructure.Inventory;
 internal sealed partial class PostgresHolyStoneCommandExecutor
 {
     private const int MaximumUsableSockets = 4;
-    private const int HeatedHolyStoneItemId = 9030;
-
     private async Task<HolyStonePlan> CreatePlanAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
@@ -182,18 +180,38 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 target.Item,
                 stone?.Item ?? CompactItemEntry.Empty);
         }
-        var targetIsEligible =
-            context.Command.Operation is
-                HolyStoneCommandOperation.Mount or
-                HolyStoneCommandOperation.Remove or
-                HolyStoneCommandOperation.Drill or
-                HolyStoneCommandOperation.AdvancedDrill
-                ? HolyStoneEquipmentEligibility.IsNormalCharacterGear(
+        var targetIsEligible = context.Command.Operation switch
+        {
+            HolyStoneCommandOperation.Mount
+                when stone!.Item.Id ==
+                    HolyStoneUpgradePolicy.ZephyrHolyStoneItemId =>
+                HolyStoneEquipmentEligibility.IsMountGear(
                     _itemContent.Templates,
-                    target.Item.Id)
-                : HolyStoneEquipmentEligibility.IsWeapon(
+                    target.Item.Id),
+            HolyStoneCommandOperation.Mount =>
+                HolyStoneEquipmentEligibility.IsNormalCharacterGear(
                     _itemContent.Templates,
-                    target.Item.Id);
+                    target.Item.Id),
+            HolyStoneCommandOperation.Remove =>
+                HolyStoneEquipmentEligibility.IsNormalCharacterGear(
+                    _itemContent.Templates,
+                    target.Item.Id) ||
+                HolyStoneEquipmentEligibility.IsMountGear(
+                    _itemContent.Templates,
+                    target.Item.Id),
+            HolyStoneCommandOperation.MountGearDrill =>
+                HolyStoneEquipmentEligibility.IsMountGear(
+                    _itemContent.Templates,
+                    target.Item.Id),
+            HolyStoneCommandOperation.Drill or
+            HolyStoneCommandOperation.AdvancedDrill =>
+                HolyStoneEquipmentEligibility.IsNormalCharacterGear(
+                    _itemContent.Templates,
+                    target.Item.Id),
+            _ => HolyStoneEquipmentEligibility.IsWeapon(
+                _itemContent.Templates,
+                target.Item.Id)
+        };
         if (!targetIsEligible)
         {
             return Rejected(
@@ -211,7 +229,9 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 "The eligible Holy Stone target has no item template.");
         }
 
-        ValidateSocketState(target.Item);
+        var isMountGear = EquipmentEligibility.IsMountGearKind(
+            targetTemplate.Kind);
+        ValidateSocketState(target.Item, isMountGear);
         return context.Command.Operation switch
         {
             HolyStoneCommandOperation.Mount =>
@@ -226,6 +246,11 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 PlanDrill(
                     context,
                     targetTemplate,
+                    target.Item,
+                    character.Gold),
+            HolyStoneCommandOperation.MountGearDrill =>
+                PlanMountGearDrill(
+                    context,
                     target.Item,
                     character.Gold),
             HolyStoneCommandOperation.AdvancedDrill =>
@@ -482,32 +507,6 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
             }
         }
         return false;
-    }
-
-    private static void ValidateSocketState(CompactItemEntry item)
-    {
-        if (item.SocketCount is < 0 or > MaximumUsableSockets)
-        {
-            throw new InvalidDataException(
-                "The target weapon socket count is outside the " +
-                "supported client contract.");
-        }
-
-        for (var index = 0; index < 6; index++)
-        {
-            var (effectId, level, value) = GetSocket(item, index);
-            if (effectId.HasValue != level.HasValue ||
-                value.HasValue && !effectId.HasValue ||
-                value is <= 0 ||
-                effectId is <= 0 ||
-                level is < 1 or > 10 ||
-                index >= item.SocketCount &&
-                (effectId.HasValue || level.HasValue || value.HasValue))
-            {
-                throw new InvalidDataException(
-                    "The target weapon has corrupt Holy Stone state.");
-            }
-        }
     }
 
     private static (short? EffectId, short? Level, short? Value) GetSocket(

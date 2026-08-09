@@ -1,4 +1,5 @@
 using Godswar.Server.Packets;
+using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
@@ -19,8 +20,6 @@ internal sealed partial class GameClientHandler
         var status = _registry.GetRuntimeStatusAggregate(
             _session,
             DateTimeOffset.UtcNow);
-        return PacketBuilder.PlayerStatusUpdate(
-            _character,
-            status.MovementSpeedMultiplier);
+        return PacketBuilder.PlayerStatusUpdate(_character, status);
     }
 }

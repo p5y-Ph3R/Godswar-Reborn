@@ -258,7 +258,8 @@ internal static partial class HolyStoneDurableHandlerChecks
                         401,
                         501,
                         601,
-                        701))
+                        701,
+                        801))
             ]);
 
     private static HolyStoneExecutionReceipt CreateMountReceipt(

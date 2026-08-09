@@ -9,7 +9,8 @@ internal static class HolyStoneCombinationPolicyChecks
 
     public static Task RunAsync()
     {
-        AssertSupportedGradeTransitionsAndMixedTemperatures();
+        AssertSupportedGradeTransitionsAndMatchingAffinities();
+        AssertMixedAffinitiesAreRejected();
         AssertUnsupportedGrades();
         AssertEveryMaterialMustMatchTheTargetGrade();
         AssertStackPreconditions();
@@ -19,31 +20,54 @@ internal static class HolyStoneCombinationPolicyChecks
         return Task.CompletedTask;
     }
 
-    private static void AssertSupportedGradeTransitionsAndMixedTemperatures()
+    private static void AssertSupportedGradeTransitionsAndMatchingAffinities()
     {
         for (short sourceGrade = 4; sourceGrade <= 9; sourceGrade++)
         {
-            var targetId = sourceGrade % 2 == 0 ? 9030u : 9031u;
-            var target = Item(targetId, sourceGrade);
-            var failure = HolyStoneCombinationPolicy.TryPrepare(
-                target,
-                Item(9031, sourceGrade),
-                Item(9030, sourceGrade),
-                Item(9031, sourceGrade),
-                out var plan);
+            foreach (var targetId in new[] { 9030u, 9031u, 9032u })
+            {
+                var target = Item(targetId, sourceGrade);
+                var failure = HolyStoneCombinationPolicy.TryPrepare(
+                    target,
+                    Item(targetId, sourceGrade),
+                    Item(targetId, sourceGrade),
+                    Item(targetId, sourceGrade),
+                    out var plan);
 
+                Check.Equal(
+                    (int)HolyStoneCombinationEligibilityFailure.None,
+                    (int)failure,
+                    $"grade {sourceGrade} stone {targetId} combines with matching materials");
+                Check.Equal(
+                    checked((short)(sourceGrade + 1)),
+                    plan.TargetAfter.Grade,
+                    $"grade {sourceGrade} combines into grade {sourceGrade + 1}");
+                Check.Equal(
+                    targetId,
+                    plan.TargetAfter.Id,
+                    $"grade {sourceGrade} retains the primary stone type");
+            }
+        }
+    }
+
+    private static void AssertMixedAffinitiesAreRejected()
+    {
+        foreach (var mismatchedId in new[] { 9030u, 9031u })
+        {
+            var failure = HolyStoneCombinationPolicy.TryPrepare(
+                Item(9032, 6),
+                Item(9032, 6),
+                Item(mismatchedId, 6),
+                Item(9032, 6),
+                out var plan);
             Check.Equal(
-                (int)HolyStoneCombinationEligibilityFailure.None,
+                (int)HolyStoneCombinationEligibilityFailure.AffinityMismatch,
                 (int)failure,
-                $"grade {sourceGrade} combination accepts mixed temperatures");
+                "combination materials must be the same Holy Stone item");
             Check.Equal(
-                checked((short)(sourceGrade + 1)),
-                plan.TargetAfter.Grade,
-                $"grade {sourceGrade} combines into grade {sourceGrade + 1}");
-            Check.Equal(
-                targetId,
-                plan.TargetAfter.Id,
-                $"grade {sourceGrade} retains the primary stone type");
+                default(HolyStoneCombinationPlan),
+                plan,
+                "mixed affinities cannot create a mutation plan");
         }
     }
 
@@ -146,7 +170,7 @@ internal static class HolyStoneCombinationPolicyChecks
             (int)HolyStoneCombinationPolicy.TryPrepare(
                 Item(9030, 5),
                 Item(9030, 5, 1),
-                Item(9031, 5, 2),
+                Item(9030, 5, 2),
                 Item(9030, 5, short.MaxValue),
                 out _),
             "positive material stacks are accepted");
@@ -154,7 +178,7 @@ internal static class HolyStoneCombinationPolicyChecks
 
     private static void AssertTargetPreservationAndMaterialConsumption()
     {
-        var target = Item(9031, 8) with
+        var target = Item(9032, 8) with
         {
             Attribute1 = 101,
             Attribute2 = 102,
@@ -182,18 +206,18 @@ internal static class HolyStoneCombinationPolicyChecks
             ClassAttribute1 = 200,
             ElementalAttribute1 = 300
         };
-        var firstMaterial = Item(9030, 8, 1) with
+        var firstMaterial = Item(9032, 8, 1) with
         {
             Bound = 1,
             Exp = 111
         };
-        var secondMaterial = Item(9031, 8, 2) with
+        var secondMaterial = Item(9032, 8, 2) with
         {
             Attribute1 = 202,
             Bound = 1,
             Exp = 222
         };
-        var thirdMaterial = Item(9030, 8, 5) with
+        var thirdMaterial = Item(9032, 8, 5) with
         {
             Attribute2 = 303,
             Quality = 7,
@@ -246,9 +270,9 @@ internal static class HolyStoneCombinationPolicyChecks
         {
             var materials = new[]
             {
-                Item(9030, 5),
                 Item(9031, 5),
-                Item(9030, 5)
+                Item(9031, 5),
+                Item(9031, 5)
             };
             materials[invalidMaterialIndex] = Item(9040, 5);
 
@@ -271,9 +295,9 @@ internal static class HolyStoneCombinationPolicyChecks
             (int)HolyStoneCombinationEligibilityFailure.None,
             (int)HolyStoneCombinationPolicy.TryPrepare(
                 unbound,
-                Item(9031, 6) with { Bound = 0 },
+                Item(9030, 6) with { Bound = 0 },
                 Item(9030, 6) with { Bound = 1 },
-                Item(9031, 6) with { Bound = 0 },
+                Item(9030, 6) with { Bound = 0 },
                 out var boundPlan),
             "bound fodder can participate in a Combination");
         Check.Equal(
@@ -283,9 +307,9 @@ internal static class HolyStoneCombinationPolicyChecks
 
         HolyStoneCombinationPolicy.TryPrepare(
             unbound,
-            Item(9031, 6) with { Bound = 0 },
             Item(9030, 6) with { Bound = 0 },
-            Item(9031, 6) with { Bound = 0 },
+            Item(9030, 6) with { Bound = 0 },
+            Item(9030, 6) with { Bound = 0 },
             out var unboundPlan);
         Check.Equal(
             0,

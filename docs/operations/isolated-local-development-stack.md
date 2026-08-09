@@ -59,7 +59,9 @@ Running the same command after source edits rebuilds/recreates only
 `godswar-dev-server`. Existing development database changes are preserved.
 The command captures the monitored container identities before work and fails
 if the B20H server, Redis, Prometheus, or authoritative PostgreSQL identity
-changes.
+changes. A gameplay/acceptance alert in the pinned B20H run remains visible in
+the returned status but does not block isolated development when every
+continuity, identity, topology, and health guard still passes.
 
 Use the existing image without rebuilding only when that is intentional:
 
@@ -122,8 +124,11 @@ created for exercising the pinned B20H server:
 C:\Godswar Origin B20H\Launch.exe
 ```
 
-That snapshot targets `127.1.1.110:5998`. The endpoint switcher makes a
-verified backup and modifies only `config.ini`:
+That snapshot targets `127.1.1.110:5998`. The endpoint switcher makes verified
+backups of `config.ini` and `Launch.exe`, then updates both the configuration
+and the launcher's three fixed-length region endpoints. Launcher mutation is
+hash- and offset-gated, reversible, and prevents `Launch.exe` from silently
+rewriting a development target back to the B20H address:
 
 ```powershell
 ./tools/SetDevelopmentClientTarget.ps1 `

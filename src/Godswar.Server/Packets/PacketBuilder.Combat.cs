@@ -115,6 +115,24 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] SkillHealing(
+        uint healerObjectId,
+        uint targetObjectId,
+        int healing,
+        uint skillId,
+        float targetX,
+        float targetZ)
+    {
+        return SkillDamage(
+            healerObjectId,
+            targetObjectId,
+            resultFlags: 0x101,
+            damage: EncodeHealingAmount(healing),
+            skillId,
+            targetX,
+            targetZ);
+    }
+
     public static byte[] SkillClusterDamage(
         uint attackerObjectId,
         uint skillId,
@@ -155,6 +173,28 @@ internal static partial class PacketBuilder
         }
 
         return packet;
+    }
+
+    public static byte[] SkillClusterHealing(
+        uint healerObjectId,
+        uint skillId,
+        IReadOnlyList<SkillClusterHealingEntry> heals)
+    {
+        ArgumentNullException.ThrowIfNull(heals);
+
+        var encoded = new SkillClusterDamageEntry[heals.Count];
+        for (var index = 0; index < heals.Count; index++)
+        {
+            var heal = heals[index];
+            encoded[index] = new SkillClusterDamageEntry(
+                heal.TargetObjectId,
+                EncodeHealingAmount(heal.Healing));
+        }
+
+        return SkillClusterDamage(
+            healerObjectId,
+            skillId,
+            encoded);
     }
 
     public static byte[] PhysicalDamage(
@@ -323,6 +363,21 @@ internal static partial class PacketBuilder
 
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(offset, 4), objectId);
     }
+
+    private static uint EncodeHealingAmount(int healing)
+    {
+        if (healing <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(healing),
+                healing,
+                "A healing combat-text amount must be positive.");
+        }
+
+        // The stock client uses the damage field as a signed integer. A
+        // negative value plus result flag 0x101 renders green +healing text.
+        return unchecked((uint)-healing);
+    }
 }
 
 internal readonly record struct SkillClusterDamageEntry(
@@ -330,3 +385,7 @@ internal readonly record struct SkillClusterDamageEntry(
     uint Damage,
     byte AttackType = 1,
     byte DamageType = 0);
+
+internal readonly record struct SkillClusterHealingEntry(
+    uint TargetObjectId,
+    int Healing);

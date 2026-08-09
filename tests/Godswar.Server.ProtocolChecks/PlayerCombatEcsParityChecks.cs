@@ -38,12 +38,24 @@ internal static partial class PlayerCombatEcsParityChecks
         Power1: 0.25m,
         Power2: 4m);
 
+    private static readonly PlayerCombatSkillSnapshot GroundAreaSkill = new(
+        SkillId: 564,
+        Target: 16,
+        AffectObject: 28,
+        Distance: 11f,
+        AreaRadius: 3f,
+        ManaCost: 40,
+        Property: 1,
+        Power1: 0.5m,
+        Power2: 20m);
+
     public static Task RunAsync()
     {
         CheckResolverParity();
         CheckRequiredRejections();
         CheckSingleTargetReservationRefund();
         CheckAreaOrderingAndReservation();
+        CheckGroundAreaSelectionAndRange();
         CheckCommittedProgressionProjection();
         return Task.CompletedTask;
     }
@@ -278,6 +290,9 @@ internal static partial class PlayerCombatEcsParityChecks
                 ExpectedTargetHealthRevision: 0,
                 ReportedAttackerX: 0f,
                 ReportedAttackerZ: 0f,
+                HasReportedTargetPosition: false,
+                ReportedTargetX: float.NaN,
+                ReportedTargetZ: float.NaN,
                 AreaSkill));
         fixture.Scheduler.RunTick(TimeSpan.Zero);
 
@@ -319,6 +334,66 @@ internal static partial class PlayerCombatEcsParityChecks
         Check.Equal(70, fixture.World
             .Get<PlayerCombatResourceComponent>(fixture.Player)
             .CurrentMp, "area mana remains committed after a rejected target");
+    }
+
+    private static void CheckGroundAreaSelectionAndRange()
+    {
+        var fixture = CreateFixture();
+        AddTarget(fixture, objectId: 610, x: 1f);
+        AddTarget(fixture, objectId: 620, x: 12f);
+
+        PlayerCombatEcsBoundary.QueueIntent(
+            fixture.World,
+            fixture.Player,
+            new PlayerCombatIntentComponent(
+                IntentId: 21,
+                PlayerCombatIntentKind.AreaSkill,
+                Start,
+                TargetObjectId: uint.MaxValue,
+                ExpectedTargetSpawnGeneration: 0,
+                ExpectedTargetHealthRevision: 0,
+                ReportedAttackerX: 0f,
+                ReportedAttackerZ: 0f,
+                HasReportedTargetPosition: true,
+                ReportedTargetX: 10f,
+                ReportedTargetZ: 0f,
+                GroundAreaSkill));
+        fixture.Scheduler.RunTick(TimeSpan.Zero);
+
+        var intents = Events<PlayerCombatDamageIntentEvent>(fixture);
+        Check.Equal(1, intents.Length,
+            "ground area selects from the validated cursor centre");
+        Check.Equal(620u, intents[0].TargetObjectId,
+            "ground area excludes a monster near only the caster");
+        Check.Equal(60, fixture.World
+            .Get<PlayerCombatResourceComponent>(fixture.Player)
+            .CurrentMp, "ground area reserves mana once");
+
+        var outOfRange = CreateFixture();
+        PlayerCombatEcsBoundary.QueueIntent(
+            outOfRange.World,
+            outOfRange.Player,
+            new PlayerCombatIntentComponent(
+                IntentId: 22,
+                PlayerCombatIntentKind.AreaSkill,
+                Start,
+                TargetObjectId: uint.MaxValue,
+                ExpectedTargetSpawnGeneration: 0,
+                ExpectedTargetHealthRevision: 0,
+                ReportedAttackerX: 0f,
+                ReportedAttackerZ: 0f,
+                HasReportedTargetPosition: true,
+                ReportedTargetX: 12f,
+                ReportedTargetZ: 0f,
+                GroundAreaSkill));
+        outOfRange.Scheduler.RunTick(TimeSpan.Zero);
+        AssertRejected(
+            outOfRange,
+            PlayerCombatRejectionReason.OutOfRange,
+            "ground area cursor range");
+        Check.Equal(100, outOfRange.World
+            .Get<PlayerCombatResourceComponent>(outOfRange.Player)
+            .CurrentMp, "rejected ground area does not reserve mana");
     }
 
     private static void CheckCommittedProgressionProjection()

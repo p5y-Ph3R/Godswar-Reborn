@@ -30,9 +30,9 @@ internal static partial class Program
             TestItemContent.Content.Mounts.TryGetEquippedRideDefinition(character, out var boundlessErebus),
             "Boundless level-80 Erebus resolves its quality-aware Ride definition");
         Check.Equal(
-            0.25f,
+            0.54f,
             boundlessErebus.SpeedBonus,
-            "Boundless Erebus gains one family-tier speed step");
+            "Boundless Erebus gains the reviewed 30-point quality bonus");
         Check.True(
             boundlessErebus.SpeedBonus > commonErebus.SpeedBonus,
             "Boundless Erebus moves faster than Common");

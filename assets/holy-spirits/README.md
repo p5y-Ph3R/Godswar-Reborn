@@ -1,8 +1,9 @@
 # Holy Spirit Icon Set
 
-This directory contains the reviewed artwork for the four Aether effects and
-the thirteen additional Spirits proposed in
-`docs/holy-spirit-combat-roadmap.md`.
+This directory contains the reviewed artwork for the four Aether effects, the
+thirteen additional Spirits proposed in `docs/holy-spirit-combat-roadmap.md`,
+and the five published Zephyr mount-gear items described in
+`docs/mount-gear-spirit-roadmap.md`.
 
 The original sixteen offensive and defensive Spirits keep their stock icons
 in `Icon2.gwo`. The new art is isolated in `Icon5.gwo` so it does not overwrite
@@ -19,9 +20,10 @@ the Level-5 forging assets in `Icon4.gwo`.
   and proposed future item-ID reservations.
 
 The four existing Aether item IDs are 9068, 9069, 9088, and 9089. The thirteen
-currently unused client IDs 9070-9079 and 9090-9092 are recorded only as
+currently unused client IDs 9070-9079 and 9094-9096 are recorded only as
 proposed reservations. They must not be published as obtainable items until
-their authoritative combat behavior and activation gates are complete.
+their authoritative combat behavior and activation gates are complete. IDs
+9032 and 9090-9093 are published Zephyr mount-gear content, not reservations.
 
 ## Rebuild and verify
 
@@ -53,8 +55,8 @@ the following shared production brief:
 > frame.
 
 The stock Holy Spirit contact sheet was used only as loose stylistic context.
-`Aether Spirit of Renewal` became the consistency anchor for the other sixteen
-new images.
+`Aether Spirit of Renewal` became the consistency anchor for the remaining
+images.
 
 ## Per-icon visual identity
 
@@ -77,6 +79,11 @@ new images.
 | Nyx Lethargy | Bound sword and wand beneath a crescent moon | Violet, midnight blue, silver |
 | Astrape Disruption | Lightning bolt splitting an active spell circle | Electric blue, cyan, violet |
 | Chronos Delay | Hourglass suspending a red damage shard over delayed sparks | Bronze, crimson, cyan |
+| Zephyr Holy Stone | Winged sky-blue stone within a Greek-key talisman | Sky blue, turquoise, antique gold |
+| Daedalus Attunement | Geared labyrinth surrounding a focused blue core | Cobalt, cyan, antique gold |
+| Hephaestus Tempering | Hammer and anvil over a tempered orange core | Ember orange, bronze, steel |
+| Mnemosyne Preservation | Sealed amphora preserving a luminous mana droplet | Sapphire, violet, antique gold |
+| Themis Continuity | Balanced scales protecting an unbroken time ring | Ivory, teal, antique gold |
 
 The images deliberately communicate mechanics rather than stone level. Holy
 Stone level remains data and tooltip state; it does not require ten duplicate

@@ -311,9 +311,7 @@ internal static partial class PacketBuilder
         itemId is >= 9020 and <= 9024;
 
     private static bool IsNativePreStone(uint itemId) =>
-        itemId is
-            HolyStoneUpgradePolicy.HeatedHolyStoneItemId or
-            HolyStoneUpgradePolicy.CooledHolyStoneItemId;
+        HolyStoneUpgradePolicy.IsHolyStone(itemId);
 
     private static void WriteHolyStoneValueRows(Span<byte> record, CompactItemEntry item)
     {

@@ -51,7 +51,8 @@ bool IsMutationSubId(std::int32_t subId) noexcept {
         subId == LegacyHolyStoneUpgradeSubId ||
         subId == LegacyHolyStoneImplementSpiritSubId ||
         subId == LegacyHolyStoneCombineSubId ||
-        subId == LegacyHolyStoneAdvancedDrillSubId;
+        subId == LegacyHolyStoneAdvancedDrillSubId ||
+        subId == LegacyHolyStoneMountGearDrillSubId;
 }
 
 bool IsLegacyMutationAlias(std::int32_t subId) noexcept {
@@ -242,12 +243,15 @@ LegacyHolyStonePacketKind ClassifyLegacyHolyStonePacket(
             parsed.secondaryValue = arguments[10];
             break;
         case LegacyHolyStoneDrillSubId:
+        case LegacyHolyStoneMountGearDrillSubId:
             if (!TryDecodeBagReference(
                     arguments[6], &targetBagSlot) ||
                 !HasOnlyExpectedArguments(arguments, 6)) {
                 return LegacyHolyStonePacketKind::InvalidMutation;
             }
-            parsed.action = LegacyHolyStoneAction::Drill;
+            parsed.action = subId == LegacyHolyStoneDrillSubId
+                ? LegacyHolyStoneAction::Drill
+                : LegacyHolyStoneAction::MountGearDrill;
             parsed.targetReference = targetBagSlot;
             parsed.secondaryValue = -1;
             break;

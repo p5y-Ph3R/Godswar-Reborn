@@ -123,8 +123,8 @@ internal static partial class Program
                 "PostgreSQL official NPC dialogue publication",
                 PostgresNpcDialoguePublicationIntegrationChecks.RunAsync),
             (
-                PostgresNpcDialogueV2UpgradeIntegrationChecks.CheckName,
-                PostgresNpcDialogueV2UpgradeIntegrationChecks.RunAsync),
+                PostgresNpcDialogueV3UpgradeIntegrationChecks.CheckName,
+                PostgresNpcDialogueV3UpgradeIntegrationChecks.RunAsync),
             (
                 "PostgreSQL captured-monster ECS parity",
                 PostgresMonsterEcsParityIntegrationChecks.RunAsync),

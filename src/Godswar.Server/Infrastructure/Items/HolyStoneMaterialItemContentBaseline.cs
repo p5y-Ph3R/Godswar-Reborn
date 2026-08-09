@@ -5,9 +5,9 @@ using Godswar.Server.State;
 namespace Godswar.Server.Infrastructure.Items;
 
 /// <summary>
-/// Reviewed stock-client Holy Stone material definitions used only while
-/// publishing immutable item content. Runtime code consumes the sealed
-/// PostgreSQL projection rather than these compiled seeds.
+/// Reviewed stock-client and locally authored Holy Stone material definitions
+/// used only while publishing immutable item content. Runtime code consumes
+/// the sealed PostgreSQL projection rather than these compiled seeds.
 /// </summary>
 internal static class HolyStoneMaterialItemContentBaseline
 {
@@ -16,6 +16,8 @@ internal static class HolyStoneMaterialItemContentBaseline
         "./Localization/en_us/UI/Texture/Icon.gwo";
     public const string Icon2Texture =
         "./Localization/en_us/UI/Texture/Icon2.gwo";
+    public const string Icon5Texture =
+        "./Localization/en_us/UI/Texture/Icon5.gwo";
 
     private static readonly ReviewedItem[] ReviewedItems =
     [
@@ -23,6 +25,8 @@ internal static class HolyStoneMaterialItemContentBaseline
             "252,0", 1, "PreStone"),
         new(9031, "Stone9031", "Cooled Holy Stone", Icon2Texture,
             "288,0", 1, "PreStone"),
+        new(9032, "Stone9032", "Zephyr Holy Stone", Icon5Texture,
+            "612,0", 1, "PreStone"),
         new(9040, "Stone9040", "Level 1 Eclipse Stone", IconTexture,
             "828,900", 99),
         new(9041, "Stone9041", "Level 2 Eclipse Stone", IconTexture,
@@ -82,7 +86,15 @@ internal static class HolyStoneMaterialItemContentBaseline
         new(9088, "Firegholiness9", "Fire Spirit of Flow",
             Icon2Texture, "828,36", 99),
         new(9089, "Firegholiness10", "Fire Spirit of Tranquility",
-            Icon2Texture, "864,36", 99)
+            Icon2Texture, "864,36", 99),
+        new(9090, "Zephyrholiness1", "Daedalus Spirit of Attunement",
+            Icon5Texture, "648,0", 99),
+        new(9091, "Zephyrholiness2", "Hephaestus Spirit of Tempering",
+            Icon5Texture, "684,0", 99),
+        new(9092, "Zephyrholiness3", "Mnemosyne Spirit of Preservation",
+            Icon5Texture, "720,0", 99),
+        new(9093, "Zephyrholiness4", "Themis Spirit of Continuity",
+            Icon5Texture, "756,0", 99)
     ];
 
     public static IReadOnlyList<ItemTemplateSeed> ItemTemplates { get; } =

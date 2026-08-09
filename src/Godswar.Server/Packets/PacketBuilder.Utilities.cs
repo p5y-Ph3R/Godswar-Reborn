@@ -157,10 +157,13 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 160, 4), defensePierceStats.DamageAbsorb);
         }
 
-        if (packet.Length >= fieldBase + 172 && character.CalculatedStats is { } pierceStats)
+        if (packet.Length >= fieldBase + 172 && character.CalculatedStats is { } healingStats)
         {
-            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 164, 4), ToClientPercent(pierceStats.IgnorePhysicalDefense));
-            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 168, 4), ToClientPercent(pierceStats.IgnoreMagicDefense));
+            // The legacy GameData fields immediately following DamageAbsorb
+            // are healing received (AcceptCure) and outgoing healing (Cure).
+            // PersonalInfoUI reads its Healing value from the latter field.
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 164, 4), ToClientPercent(healingStats.BeCureBonus));
+            BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 168, 4), ToClientPercent(healingStats.CureBonus));
         }
     }
 

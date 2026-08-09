@@ -57,9 +57,8 @@ internal static class HolySpiritImplementationReceiptEvidence
             catalystBeforeState);
         var catalystAfter = HolyStoneCompactItemEvidence.Parse(
             catalystAfterState);
-        if (targetBefore.Id is not (
-                HolySpiritImplementationPolicy.HeatedHolyStoneItemId or
-                HolySpiritImplementationPolicy.CooledHolyStoneItemId) ||
+        if (!HolySpiritImplementationPolicy.IsHolyStoneItem(
+                targetBefore.Id) ||
             targetBefore.Stack != 1 ||
             targetAfter.Id != targetBefore.Id ||
             targetAfter.Grade != targetBefore.Grade ||

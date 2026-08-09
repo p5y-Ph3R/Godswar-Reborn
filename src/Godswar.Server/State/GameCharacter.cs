@@ -120,6 +120,19 @@ internal sealed class GameCharacter
 
     public int ArmorAuraEffect { get; set; }
 
+    // The stock client owns this preference in BagSet.xml and resends it on
+    // login (opcode 10200). It affects only world appearance projection: the
+    // equipped Fashion item and all authoritative item state remain intact.
+    [JsonIgnore]
+    public bool FashionHidden { get; set; }
+
+    // The stock client owns the Fashion Effect preference in BagSet.xml and
+    // resends it through opcode 10202. The native renderer uses this one flag
+    // for both armor/body and held-weapon aura effects. It is presentation-only
+    // and must never change the equipped items, their ranks, or persisted stats.
+    [JsonIgnore]
+    public bool EquipmentEffectsVisible { get; set; } = true;
+
     public float PositionX { get; set; } = GameDefaults.StartingPositionX;
 
     public float PositionZ { get; set; } = GameDefaults.StartingPositionZ;

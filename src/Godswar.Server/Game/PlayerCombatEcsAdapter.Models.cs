@@ -11,6 +11,9 @@ internal readonly record struct PlayerCombatEcsRequest(
     uint TargetObjectId,
     float ReportedAttackerX,
     float ReportedAttackerZ,
+    bool HasReportedTargetPosition,
+    float ReportedTargetX,
+    float ReportedTargetZ,
     PlayerCombatSkillSnapshot Skill,
     uint? ExpectedTargetSpawnGeneration = null)
 {
@@ -25,6 +28,9 @@ internal readonly record struct PlayerCombatEcsRequest(
             targetObjectId,
             reportedAttackerX,
             reportedAttackerZ,
+            HasReportedTargetPosition: false,
+            ReportedTargetX: float.NaN,
+            ReportedTargetZ: float.NaN,
             Skill: default);
 
     public static PlayerCombatEcsRequest HostileSkill(
@@ -32,13 +38,19 @@ internal readonly record struct PlayerCombatEcsRequest(
         DateTimeOffset requestedAt,
         uint targetObjectId,
         in SkillCombatDefinition skill,
-        uint? expectedTargetSpawnGeneration = null) =>
+        uint? expectedTargetSpawnGeneration = null,
+        bool hasTargetPosition = false,
+        float areaCenterX = 0f,
+        float areaCenterZ = 0f) =>
         new(
             kind,
             requestedAt,
             targetObjectId,
             ReportedAttackerX: 0f,
             ReportedAttackerZ: 0f,
+            HasReportedTargetPosition: hasTargetPosition,
+            ReportedTargetX: areaCenterX,
+            ReportedTargetZ: areaCenterZ,
             new PlayerCombatSkillSnapshot(
                 checked((uint)skill.SkillId),
                 skill.Target,

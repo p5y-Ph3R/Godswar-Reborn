@@ -1978,6 +1978,8 @@
         <Congregation6 ID="9025" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="216,72" Random="2" Distribution="150,200" Money="0" Overlap="99"/>
         <Stone9030 ID="9030" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="252,0" Random="0" Distribution="0,0" Money="0" Overlap="1" SpecialFlag="PreStone"/>
         <Stone9031 ID="9031" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="288,0" Random="0" Distribution="0,0" Money="0" Overlap="1" SpecialFlag="PreStone"/>
+        <Stone9032 ID="9032" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon5.gwo" Icon="612,0" Random="0" Distribution="0,0" Money="0" Overlap="1" SpecialFlag="PreStone"/>
+
         <Stone9040 ID="9040" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon.gwo" Icon="828,900" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Stone9041 ID="9041" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon.gwo" Icon="864,900" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Stone9042 ID="9042" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon.gwo" Icon="900,900" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
@@ -1998,6 +2000,11 @@
         <Firegholiness8 ID="9067" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="900,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Firegholiness9 ID="9088" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="828,36" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Firegholiness10 ID="9089" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="864,36" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
+        <Zephyrholiness1 ID="9090" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon5.gwo" Icon="648,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
+        <Zephyrholiness2 ID="9091" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon5.gwo" Icon="684,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
+        <Zephyrholiness3 ID="9092" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon5.gwo" Icon="720,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
+        <Zephyrholiness4 ID="9093" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon5.gwo" Icon="756,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
+
         <Waterholiness1 ID="9080" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="576,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Waterholiness2 ID="9081" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="612,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>
         <Waterholiness3 ID="9082" Type="consume item" Texture="./Localization/en_us/UI/Texture/Icon2.gwo" Icon="648,0" Random="0" Distribution="0,0" Money="0" Overlap="99"/>

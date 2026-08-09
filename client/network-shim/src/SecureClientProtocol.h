@@ -104,6 +104,7 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     HolyStoneUpgrade = 42,
     HolyStoneCombine = 43,
     HolyStoneImplementSpirit = 44,
+    MountGearDrill = 45,
 };
 
 struct SecureLegacyCommandResult final {

@@ -59,6 +59,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         await AssertHolySpiritTransactionsAsync(connectionString);
         await AssertTerminalSafetyAsync(connectionString);
         await AssertDrillAndRemoveAsync(connectionString);
+        await AssertMountGearDrillAsync(connectionString);
         await AssertAdvancedDrillAsync(connectionString);
         await AssertLegacyAdvancedDrillStackConsumptionAsync(
             connectionString);

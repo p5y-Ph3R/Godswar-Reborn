@@ -14,6 +14,7 @@ internal sealed class GameplayItemContent
         DeveloperItems = new PinnedDeveloperItemGrantCatalog(templates);
         DeveloperMounts = new DeveloperMountCatalog(templates);
         Mounts = new MountCatalog(templates, DeveloperMounts);
+        FashionAppearances = new FashionAppearanceCatalog(templates);
         HolySuit = templates.HolySuit;
     }
 
@@ -24,6 +25,8 @@ internal sealed class GameplayItemContent
     public DeveloperMountCatalog DeveloperMounts { get; }
 
     public MountCatalog Mounts { get; }
+
+    public FashionAppearanceCatalog FashionAppearances { get; }
 
     public IHolySuitContentCatalog HolySuit { get; }
 }

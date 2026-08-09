@@ -146,6 +146,58 @@ internal sealed partial class GameSessionRegistry
         return context is not null;
     }
 
+    internal bool TryGetCurrentWorldSessionByObjectId(
+        ClientSession routingSession,
+        byte mapId,
+        uint objectId,
+        out GameSessionContext context)
+    {
+        if (!_sessions.TryGetValue(
+                routingSession,
+                out var route) ||
+            route.MapId != mapId ||
+            !TryGetWorldInstance(route, out var runtime))
+        {
+            context = default!;
+            return false;
+        }
+
+        context = SnapshotReadySessions(
+                runtime,
+                excludeSession: null)
+            .FirstOrDefault(candidate =>
+                candidate.ObjectId == objectId)!;
+        return context is not null;
+    }
+
+    internal bool IsCurrentWorldSessionSnapshot(
+        ClientSession routingSession,
+        GameSessionContext expected)
+    {
+        ArgumentNullException.ThrowIfNull(routingSession);
+        ArgumentNullException.ThrowIfNull(expected);
+        lock (_gate)
+        {
+            return _sessions.TryGetValue(
+                       routingSession,
+                       out var route) &&
+                   route.WorldReady &&
+                   route.WorldInstanceId == expected.WorldInstanceId &&
+                   _sessions.TryGetValue(
+                       expected.Session,
+                       out var current) &&
+                   current.WorldReady &&
+                   current.WorldInstanceId == expected.WorldInstanceId &&
+                   current.WorldRevision == expected.WorldRevision &&
+                   current.CharacterId == expected.CharacterId &&
+                   current.ObjectId == expected.ObjectId &&
+                   current.Ownership == expected.Ownership &&
+                   ReferenceEquals(
+                       current.Character,
+                       expected.Character);
+        }
+    }
+
     public bool TryGetMapSessionByCharacterId(
         byte mapId,
         int characterId,

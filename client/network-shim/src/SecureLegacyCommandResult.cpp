@@ -65,6 +65,8 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::HolyStoneImplementSpirit ||
         family ==
+            SecureLegacyCommandFamily::MountGearDrill ||
+        family ==
             SecureLegacyCommandFamily::
                 ZodiacSkillGridUpgrade ||
         family ==

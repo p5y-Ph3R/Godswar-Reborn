@@ -43,6 +43,9 @@ internal static partial class
         await AssertOccupiedEquipmentSwapAsync(
             dataSource,
             executor);
+        await AssertStylishEquipmentAsync(
+            dataSource,
+            executor);
         await AssertRideConstraintDurabilityAsync(
             dataSource,
             executor);

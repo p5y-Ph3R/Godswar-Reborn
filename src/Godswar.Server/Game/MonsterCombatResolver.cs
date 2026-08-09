@@ -24,14 +24,21 @@ internal static class MonsterCombatResolver
     public static uint CalculateMonsterPhysicalAttack(
         uint tier,
         GameCharacter target,
-        decimal receivedDamageReduction = 0m)
+        decimal receivedDamageReduction = 0m,
+        int physicalDefenseBonus = 0)
     {
         var boundedTier = (int)Math.Clamp(tier, 1u, 10_000u);
         // Captures establish tier 1/2/3 base attacks of 24/27/31. Keep the
         // extrapolation isolated here until higher-tier combat data is captured.
         var baseAttack = 21 + (3 * boundedTier) + (boundedTier / 3);
         var stats = target.CalculatedStats ?? CharacterStats.FromCharacter(target);
-        var damageAfterDefense = Math.Max(1, baseAttack - Math.Max(0, stats.PhysicalDefense));
+        var effectivePhysicalDefense = Math.Clamp(
+            (long)stats.PhysicalDefense + physicalDefenseBonus,
+            0L,
+            int.MaxValue);
+        var damageAfterDefense = Math.Max(
+            1L,
+            baseAttack - effectivePhysicalDefense);
         var boundedReduction = Math.Clamp(receivedDamageReduction, 0m, 1m);
         var reducedDamage = decimal.ToInt32(decimal.Truncate(
             damageAfterDefense * (1m - boundedReduction)));

@@ -199,7 +199,14 @@ internal sealed partial class GameSessionRegistry
                     new ClientStatusAggregate(
                         definition.HitBonus,
                         definition.CriticalAppendBonus,
-                        0f),
+                        0f,
+                        PhysicalDefense:
+                            definition.PhysicalDefenseBonus,
+                        MagicDefense:
+                            definition.MagicDefenseBonus,
+                        Dodge: definition.DodgeBonus,
+                        CriticalResistance:
+                            definition.CriticalResistanceBonus),
                     checked(++state.Revision),
                     definition.PhysicalDamageReduction,
                     definition.MagicDamageReduction);
@@ -347,7 +354,7 @@ internal sealed partial class GameSessionRegistry
                 force: true,
                 broadcast: true,
                 cancellationToken,
-                synchronizeLocalMovementSpeed:
+                forceLocalGameDataSynchronization:
                     kind == MountCatalog.RuntimeStatusKind);
             return true;
         }

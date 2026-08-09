@@ -7,8 +7,19 @@ internal static partial class PacketBuilder
 {
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
     private const int PlayerStatusMovementSpeedMultiplierOffset = 56;
+    // Wire offset 60 is copied to GameData+0x290. Although that dword looks
+    // unused in the status panel, the native NPC interaction path reads byte
+    // GameData+0x292 as the local interaction identity/faction. Writing a
+    // float here can therefore make every NPC unselectable client-side.
+    private const int PlayerStatusInteractionIdentityOffset = 60;
     private const int PlayerStatusSilverOffset = 120;
     private const int PlayerStatusGoldOffset = 124;
+    private const int PlayerStatusPhysicalDefenseOffset = 164;
+    private const int PlayerStatusMagicDefenseOffset = 172;
+    private const int PlayerStatusHitOffset = 176;
+    private const int PlayerStatusDodgeOffset = 180;
+    private const int PlayerStatusCriticalOffset = 184;
+    private const int PlayerStatusCriticalResistanceOffset = 188;
     private const int PlayerStatusTalentPointsOffset = 228;
 
     private static readonly byte[] PlayerStatusUpdateTemplate = Convert.FromHexString(
@@ -21,7 +32,10 @@ internal static partial class PacketBuilder
 
     public static byte[] PlayerStatusUpdate(GameCharacter character, uint objectId)
     {
-        return PlayerStatusUpdate(character, objectId, movementSpeedMultiplier: 1f);
+        return PlayerStatusUpdate(
+            character,
+            objectId,
+            ClientStatusAggregate.Empty);
     }
 
     public static byte[] PlayerStatusUpdate(
@@ -31,7 +45,10 @@ internal static partial class PacketBuilder
         return PlayerStatusUpdate(
             character,
             LocalPlayerObjectId,
-            movementSpeedMultiplier);
+            ClientStatusAggregate.Empty with
+            {
+                MovementSpeedMultiplier = movementSpeedMultiplier
+            });
     }
 
     public static byte[] PlayerStatusUpdate(
@@ -39,13 +56,46 @@ internal static partial class PacketBuilder
         uint objectId,
         float movementSpeedMultiplier)
     {
-        if (!float.IsFinite(movementSpeedMultiplier) ||
-            movementSpeedMultiplier <= 0f)
+        return PlayerStatusUpdate(
+            character,
+            objectId,
+            ClientStatusAggregate.Empty with
+            {
+                MovementSpeedMultiplier = movementSpeedMultiplier
+            });
+    }
+
+    public static byte[] PlayerStatusUpdate(
+        GameCharacter character,
+        ClientStatusAggregate aggregate)
+    {
+        return PlayerStatusUpdate(
+            character,
+            LocalPlayerObjectId,
+            aggregate);
+    }
+
+    public static byte[] PlayerStatusUpdate(
+        GameCharacter character,
+        uint objectId,
+        ClientStatusAggregate aggregate)
+    {
+        if (!float.IsFinite(aggregate.MovementSpeedMultiplier) ||
+            aggregate.MovementSpeedMultiplier <= 0f)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(movementSpeedMultiplier),
-                movementSpeedMultiplier,
+                nameof(aggregate),
+                aggregate.MovementSpeedMultiplier,
                 "The movement-speed multiplier must be finite and positive.");
+        }
+
+        if (!float.IsFinite(aggregate.EquippedRidingSpeedBonus) ||
+            aggregate.EquippedRidingSpeedBonus is < 0f or > 9f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(aggregate),
+                aggregate.EquippedRidingSpeedBonus,
+                "The equipped riding-speed bonus must be finite and between zero and nine.");
         }
 
         var packet = PlayerStatusUpdateTemplate.ToArray();
@@ -58,7 +108,45 @@ internal static partial class PacketBuilder
         // update the locomotion value used by client movement prediction.
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusMovementSpeedMultiplierOffset, 4),
-            movementSpeedMultiplier);
+            aggregate.MovementSpeedMultiplier);
+        // Preserve the stock-zero interaction identity dword for both local
+        // and remote status packets. Riding speed must use a separately proven
+        // client channel; encoding it here suppresses opcode 10067 at source.
+        packet.AsSpan(PlayerStatusInteractionIdentityOffset, sizeof(uint)).Clear();
+        var stats = character.CalculatedStats ??
+            CharacterStats.FromCharacter(character);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusPhysicalDefenseOffset, sizeof(int)),
+            SaturatingStatusValue(
+                stats.PhysicalDefense,
+                aggregate.PhysicalDefense));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusMagicDefenseOffset, sizeof(int)),
+            SaturatingStatusValue(
+                stats.MagicDefense,
+                aggregate.MagicDefense));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusHitOffset, sizeof(int)),
+            SaturatingStatusValue(
+                stats.Hit,
+                aggregate.Hit));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusDodgeOffset, sizeof(int)),
+            SaturatingStatusValue(
+                stats.Dodge,
+                aggregate.Dodge));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerStatusCriticalOffset, sizeof(int)),
+            SaturatingStatusValue(
+                stats.Critical,
+                aggregate.CriticalAppend));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(
+                PlayerStatusCriticalResistanceOffset,
+                sizeof(int)),
+            SaturatingStatusValue(
+                stats.CriticalResistance,
+                aggregate.CriticalResistance));
         if (objectId == LocalPlayerObjectId)
         {
             // MSG_SYN_GAMEDATA copies these wire fields into the local

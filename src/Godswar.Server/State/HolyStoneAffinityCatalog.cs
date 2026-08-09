@@ -3,7 +3,8 @@ namespace Godswar.Server.State;
 internal enum HolyStoneAffinity : byte
 {
     Heated = 1,
-    Cooled = 2
+    Cooled = 2,
+    Zephyr = 3
 }
 
 internal readonly record struct HolyStoneAffinityDefinition(
@@ -41,6 +42,16 @@ internal static class HolyStoneAffinityCatalog
                 EquipmentSlots.Shoes,
                 EquipmentSlots.Leggings,
                 EquipmentSlots.Shield
+            ]),
+        new(
+            HolyStoneUpgradePolicy.ZephyrHolyStoneItemId,
+            HolyStoneAffinity.Zephyr,
+            [
+                EquipmentSlots.MountHead,
+                EquipmentSlots.MountArmor,
+                EquipmentSlots.MountSoul,
+                EquipmentSlots.MountOrnament,
+                EquipmentSlots.MountAmulet
             ])
     ];
 

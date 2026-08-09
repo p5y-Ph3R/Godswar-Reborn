@@ -286,9 +286,17 @@ internal sealed partial class GameClientHandler
                     cancellationToken,
                     "DurablePetEquipmentRefresh");
                 await _session.SendAsync(
-                    PacketBuilder.EquipmentVisualRefresh(_character),
+                    PacketBuilder.EquipmentVisualRefresh(
+                        _character,
+                        _itemContent?.FashionAppearances),
                     cancellationToken,
                     "DurablePetEquipmentVisualRefresh");
+                await _session.SendAsync(
+                    PacketBuilder.EquipmentEffectVisibility(
+                        LocalPlayerObjectId,
+                        ResolveEquipmentEffectProjection(_character)),
+                    cancellationToken,
+                    "DurablePetEquipmentEffectVisibility");
                 await BroadcastEquipmentRefreshAsync(
                     "durable_bag_activation",
                     cancellationToken);

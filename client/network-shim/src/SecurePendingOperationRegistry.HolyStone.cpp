@@ -26,6 +26,9 @@ bool TryGetHolyStoneFamily(
             *family =
                 SecureLegacyCommandFamily::HolyStoneAdvancedDrill;
             return true;
+        case LegacyHolyStoneAction::MountGearDrill:
+            *family = SecureLegacyCommandFamily::MountGearDrill;
+            return true;
         default:
             return false;
     }
@@ -50,8 +53,10 @@ SecurePendingOperationRegistry::DescribeHolyStoneCommand(
         command.secondaryValue,
         -1,
         -1};
-    const std::size_t identityCount =
-        command.action == LegacyHolyStoneAction::Drill ? 1 : 2;
+    const bool hasTargetOnly =
+        command.action == LegacyHolyStoneAction::Drill ||
+        command.action == LegacyHolyStoneAction::MountGearDrill;
+    const std::size_t identityCount = hasTargetOnly ? 1 : 2;
 
     AcquireSRWLockExclusive(&lock_);
     Prune(now);

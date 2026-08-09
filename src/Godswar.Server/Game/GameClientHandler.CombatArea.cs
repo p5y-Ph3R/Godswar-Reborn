@@ -23,12 +23,31 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var isGroundTargeted =
+            SkillCombatResolver.IsHostileMonsterGroundAreaSkill(combat);
+        if (isGroundTargeted && !cast.HasTargetPosition ||
+            !SkillCombatResolver.TryResolveHostileMonsterAreaCenter(
+                character.PositionX,
+                character.PositionZ,
+                cast.TargetX,
+                cast.TargetZ,
+                combat,
+                out var areaCenterX,
+                out var areaCenterZ))
+        {
+            Console.WriteLine(
+                $"[skill] rejected invalid area target character={character.Name} skill={cast.SkillId}");
+            return;
+        }
+
         if (_registry.PlayerRuntimeMode == PlayerRuntimeMode.Ecs)
         {
             await HandleHostileMonsterAreaSkillCastEcsAsync(
                 packet,
                 cast,
                 combat,
+                areaCenterX,
+                areaCenterZ,
                 publishCastVisual,
                 cancellationToken);
             return;
@@ -82,8 +101,8 @@ internal sealed partial class GameClientHandler
                     monster.ObjectId,
                     monster.SpawnGeneration) &&
                 SkillCombatResolver.IsWithinArea(
-                    character.PositionX,
-                    character.PositionZ,
+                    areaCenterX,
+                    areaCenterZ,
                     monster.X,
                     monster.Z,
                     combat))
@@ -133,15 +152,19 @@ internal sealed partial class GameClientHandler
             }
         }
 
-        var selfVisual = PacketBuilder.SelfTargetSkillCastVisual(
-            packet.Buffer,
-            LocalPlayerObjectId);
+        var selfVisual = isGroundTargeted
+            ? PacketBuilder.SkillCastVisual(
+                packet.Buffer,
+                LocalPlayerObjectId)
+            : PacketBuilder.SelfTargetSkillCastVisual(
+                packet.Buffer,
+                LocalPlayerObjectId);
         var selfImpact = PacketBuilder.SkillCastImpact(
             LocalPlayerObjectId,
             uint.MaxValue,
             cast.SkillId,
-            character.PositionX,
-            character.PositionZ);
+            areaCenterX,
+            areaCenterZ);
         var selfCluster = PacketBuilder.SkillClusterDamage(
             LocalPlayerObjectId,
             cast.SkillId,
@@ -195,15 +218,20 @@ internal sealed partial class GameClientHandler
         }
 
         var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldVisual = isGroundTargeted
+            ? PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId)
+            : PacketBuilder.SelfTargetSkillCastVisual(
+                packet.Buffer,
+                worldObjectId);
         var areaRecipients = await _registry.BroadcastMonsterAreaDamageToViewersAsync(
             character.CurrentMap,
-            PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, worldObjectId),
+            worldVisual,
             PacketBuilder.SkillCastImpact(
                 worldObjectId,
                 uint.MaxValue,
                 cast.SkillId,
-                character.PositionX,
-                character.PositionZ),
+                areaCenterX,
+                areaCenterZ),
             worldObjectId,
             cast.SkillId,
             hits.Select(static hit => new MonsterAreaDamageBroadcastHit(
@@ -247,7 +275,7 @@ internal sealed partial class GameClientHandler
             0UL,
             static (total, hit) => total + hit.Result.BeforeHealth - hit.Result.AfterHealth);
         Console.WriteLine(
-            $"[skill] area damage character={character.Name} skill={cast.SkillId} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
+            $"[skill] area damage character={character.Name} skill={cast.SkillId} center={areaCenterX:F2},{areaCenterZ:F2} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
     }
 
 }

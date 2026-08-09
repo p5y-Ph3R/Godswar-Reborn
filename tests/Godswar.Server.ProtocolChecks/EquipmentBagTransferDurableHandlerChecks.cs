@@ -12,6 +12,8 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
     {
         await CheckCommittedUnequipAsync();
         await CheckCommittedEquipAsync();
+        await CheckCommittedFashionUnequipRestoresAuraAsync();
+        await CheckCommittedFashionEquipDefaultsShowAsync();
         await CheckReplayPrecedesDirectionInferenceAsync();
         await CheckDuplicateEquipReconcilesWithoutAckAsync();
         await CheckDurableTerminalRejectionsAsync();

@@ -126,6 +126,8 @@ void CheckIdentityAndCrossCityRetry(Checks* checks) {
 
     LegacyPacketDescriptor remove{};
     LegacyPacketDescriptor drill{};
+    LegacyPacketDescriptor mountGearDrill{};
+    LegacyPacketDescriptor athensMountGearDrill{};
     LegacyPacketDescriptor advancedDrill{};
     LegacyPacketDescriptor changedAdvancedSpell{};
     LegacyPacketDescriptor athensAdvancedDrill{};
@@ -154,9 +156,27 @@ void CheckIdentityAndCrossCityRetry(Checks* checks) {
             LegacySpartaHolyStoneNpc,
             &advancedDrill) ==
                 SecureOperationRegistryResult::Success &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::MountGearDrill,
+            205,
+            -1,
+            LegacySpartaHolyStoneNpc,
+            &mountGearDrill) ==
+                SecureOperationRegistryResult::Success &&
+        DescribeHolyStone(
+            &registry,
+            LegacyHolyStoneAction::MountGearDrill,
+            205,
+            -1,
+            LegacyAthensHolyStoneNpc,
+            &athensMountGearDrill) ==
+                SecureOperationRegistryResult::Success &&
         !SameOperation(sparta, remove) &&
         !SameOperation(remove, drill) &&
         !SameOperation(drill, advancedDrill) &&
+        !SameOperation(drill, mountGearDrill) &&
+        SameOperation(mountGearDrill, athensMountGearDrill) &&
         DescribeHolyStone(
             &registry,
             LegacyHolyStoneAction::AdvancedDrill,
@@ -291,6 +311,10 @@ void CheckPrincipalAndCharacterIsolation(Checks* checks) {
 }
 
 void CheckSettlementAndResultCodec(Checks* checks) {
+    checks->Require(
+        static_cast<std::uint16_t>(
+            SecureLegacyCommandFamily::MountGearDrill) == 45,
+        "Mount Gear Drill changed its stable command family");
     struct FamilyCase final {
         LegacyHolyStoneAction action;
         SecureLegacyCommandFamily family;
@@ -316,6 +340,11 @@ void CheckSettlementAndResultCodec(Checks* checks) {
             LegacyHolyStoneAction::AdvancedDrill,
             SecureLegacyCommandFamily::HolyStoneAdvancedDrill,
             307,
+        },
+        {
+            LegacyHolyStoneAction::MountGearDrill,
+            SecureLegacyCommandFamily::MountGearDrill,
+            -1,
         },
     };
 
@@ -455,6 +484,15 @@ void CheckInvalidLookalikeAndCapacity(Checks* checks) {
     Write32(packet + 20 + 10 * 4, 1);
     requireRejected(
         "Invalid Drill lookalike did not fail closed");
+
+    BuildHolyStonePacket(
+        packet,
+        LegacyHolyStoneAction::MountGearDrill,
+        205,
+        -1);
+    Write32(packet + 20 + 7 * 4, 107);
+    requireRejected(
+        "Invalid Mount Gear Drill lookalike did not fail closed");
 
     BuildHolyStonePacket(
         packet,

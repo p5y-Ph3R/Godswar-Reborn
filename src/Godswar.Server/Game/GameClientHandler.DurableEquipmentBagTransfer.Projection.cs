@@ -70,7 +70,12 @@ internal sealed partial class GameClientHandler
                 "calculated stats.");
         }
 
+        var fashionHidden =
+            ResolveFashionHiddenAfterEquipmentChange(
+                liveCharacter,
+                persistedCharacter);
         liveCharacter.Equipment = persistedCharacter.Equipment;
+        liveCharacter.FashionHidden = fashionHidden;
         liveCharacter.KitBag = persistedCharacter.KitBag;
         liveCharacter.HolySuitPoints =
             persistedCharacter.HolySuitPoints;

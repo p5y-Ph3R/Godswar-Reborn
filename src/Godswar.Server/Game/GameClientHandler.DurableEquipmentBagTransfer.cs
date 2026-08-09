@@ -385,13 +385,17 @@ internal sealed partial class GameClientHandler
             "DurableEquipmentBagTransferEquipmentRefresh");
         await SendKitBagRefreshAsync(cancellationToken);
         await _session.SendAsync(
-            PacketBuilder.EquipmentVisualRefresh(_character),
+            PacketBuilder.EquipmentVisualRefresh(
+                _character,
+                _itemContent?.FashionAppearances),
             cancellationToken,
             "DurableEquipmentBagTransferVisualRefresh");
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character)),
             cancellationToken,
-            "DurableEquipmentBagTransferDetailRefresh");
+            "DurableEquipmentBagTransferEffectVisibility");
         await BroadcastEquipmentRefreshAsync(
             receiptStatus?.ToString() ?? "rejected",
             cancellationToken);

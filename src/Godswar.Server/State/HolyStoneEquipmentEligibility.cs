@@ -28,6 +28,18 @@ internal static class HolyStoneEquipmentEligibility
                 StringComparison.OrdinalIgnoreCase);
     }
 
+    public static bool IsMountGear(
+        IItemTemplateCatalog templates,
+        uint itemId)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        return templates.TryGet(itemId, out var template) &&
+            EquipmentEligibility.IsMountGearKind(template.Kind) &&
+            template.EquipmentSlot is
+                >= EquipmentSlots.MountHead and
+                <= EquipmentSlots.MountAmulet;
+    }
+
     public static bool IsCompatibleWithHolyStone(
         int equipmentSlot,
         uint holyStoneItemId) =>

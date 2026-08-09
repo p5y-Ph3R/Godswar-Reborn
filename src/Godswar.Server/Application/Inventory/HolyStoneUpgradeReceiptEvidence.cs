@@ -1,3 +1,5 @@
+using Godswar.Server.Domain.Inventory;
+
 namespace Godswar.Server.Application.Inventory;
 
 internal static class HolyStoneUpgradeReceiptEvidence
@@ -138,7 +140,7 @@ internal static class HolyStoneUpgradeReceiptEvidence
     {
         successRate = 0;
         preventsDowngrade = false;
-        if (target.Id is not (9030 or 9031) ||
+        if (!HolySpiritImplementationPolicy.IsHolyStoneItem(target.Id) ||
             target.Stack != 1 ||
             target.Grade is < 1 or >= 10 ||
             eclipse.Id != RequiredEclipse(target.Grade) ||

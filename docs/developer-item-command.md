@@ -7,14 +7,15 @@ allowlist described below.
 The item command is disabled by default and is authorized by exact account ID.
 It can only grant item IDs present in the server's narrow developer-item
 allowlist; arbitrary item IDs are rejected. The allowlist combines the
-forging/Gear Enhancement materials below with four stock Socket Spells and the
-five Holy Boxes published by the active database-backed item-content revision.
+forging/Gear Enhancement materials below with four stock Socket Spells, the
+five Holy Boxes, and one reviewed permanent costume published by the active
+database-backed item-content revision.
 
 The allowlist contains 23 ordinary forging materials, all 51 shipped Gear
 Enhancement materials, the seven reviewed Greek-themed elemental stones, all
-21 native Attribute Dusts, and the four stock Socket Spells. Their type,
-texture, icon, native stack cap, and binding state are resolved again inside
-the store; command text cannot override them.
+21 native Attribute Dusts, the four stock Socket Spells, and permanent costume
+8068. Their type, texture, icon, native stack cap, and binding state are
+resolved again inside the store; command text cannot override them.
 
 The checked-in configuration keeps it disabled. This workstation's ignored
 `.env` enables it for the local test accounts `3`, `7`, `13`, and `347`. To
@@ -56,7 +57,16 @@ Use the local chat box with either a native ID or material alias:
 /item add socketspell4 99
 /item add holybox1 1
 /item add emptyholybox5 1
+/item add christmassuit 1
+/item add costume8068 1
 ```
+
+Costume `8068`, `Christmas Suit(perpetual)`, is the only costume in the
+developer-item allowlist. It is a permanent, unisex, bound Fashion-slot item
+with a native stack cap of one. The aliases `christmassuit`,
+`christmassuitperpetual`, and `costume8068` resolve to the same published item.
+Timed costumes and the adjacent costume IDs remain rejected until their expiry
+and gender policies are implemented and reviewed.
 
 ### Dedicated Ruby command
 

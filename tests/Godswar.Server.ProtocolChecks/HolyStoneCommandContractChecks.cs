@@ -20,6 +20,7 @@ internal static partial class HolyStoneCommandContractChecks
         CheckCombinationContract();
         CheckExactWireShapes();
         CheckAdvancedDrillContract();
+        CheckMountGearDrillContract();
         CheckWireShapeRejections();
         CheckReceiptEvidence();
         return Task.CompletedTask;

@@ -74,6 +74,9 @@ internal static partial class Program
             ("JSON provider starter skill", CheckJsonProviderStarterSkillAsync),
             ("Skill combat catalog", CheckSkillCombatCatalogAsync),
             ("Skill combat cast and cooldown timing", SkillCombatTimingCatalogChecks.RunAsync),
+            (
+                PriestHealingSkillCatalogChecks.CheckName,
+                PriestHealingSkillCatalogChecks.RunAsync),
             ("Ordinary intoned combat skill lifecycle", IntonedCombatSkillHandlerChecks.RunAsync),
             ("Native mount Ride status and spawn protocol", CheckMountRideProtocolAsync),
             ("Mount and mount-gear Q20/G25 stat progression", MountEquipmentProgressionChecks.RunAsync),
@@ -81,6 +84,7 @@ internal static partial class Program
             ("Atomic mount Ride activation commit", CheckAtomicMountRideActivationAsync),
             ("Sacred Zeal runtime-status composition", CheckSacredZealStatusCompositionAsync),
             ("Holy Ward runtime-status mitigation", CheckHolyWardStatusCompositionAsync),
+            ("Priest Gaia Care and Mana Shield statuses", CheckPriestDefensiveStatusCompositionAsync),
             ("Skill cast target and impact layout", CheckSkillCastTargetAndImpactAsync),
             ("Native skill-cast interruption packet", SkillCastInterruptPacketChecks.RunAsync),
             (
@@ -128,6 +132,9 @@ internal static partial class Program
             (
                 DeveloperHolyBoxGrantChecks.CheckName,
                 DeveloperHolyBoxGrantChecks.RunAsync),
+            (
+                DeveloperCostumeGrantChecks.CheckName,
+                DeveloperCostumeGrantChecks.RunAsync),
             ("Developer mount catalog, command, and JSON grant", DeveloperMountCommandChecks.RunAsync),
             ("PostgreSQL developer mount grant and audit", PostgresDeveloperMountIntegrationChecks.RunAsync),
             ("PostgreSQL developer clear-bag scope and audit", PostgresKitBagClearIntegrationChecks.RunAsync),
@@ -308,42 +315,5 @@ internal static partial class Program
 
         Console.WriteLine($"Protocol checks: {checks.Length - failures} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
-    }
-}
-
-internal static class Check
-{
-    public static void Equal<T>(T expected, T actual, string description)
-        where T : IEquatable<T>
-    {
-        if (!expected.Equals(actual))
-        {
-            throw new InvalidOperationException(
-                $"{description}: expected {expected}, actual {actual}.");
-        }
-    }
-
-    public static void True(bool condition, string description)
-    {
-        if (!condition)
-        {
-            throw new InvalidOperationException($"Assertion failed: {description}.");
-        }
-    }
-
-    public static void Throws<TException>(Action action, string description)
-        where TException : Exception
-    {
-        try
-        {
-            action();
-        }
-        catch (TException)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            $"Assertion failed: {description}; expected {typeof(TException).Name}.");
     }
 }

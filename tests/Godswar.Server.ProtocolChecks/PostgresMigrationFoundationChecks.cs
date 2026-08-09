@@ -7,6 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     public static async Task RunAsync()
     {
         CheckForwardOnlyCatalog();
+        CheckFashionSlotConsistencyMigration();
         await PostgresNpcContentMigrationChecks.RunAsync();
         await PostgresNpcDialogueMigrationChecks.RunAsync();
         await PostgresNpcDialogueMultiRouteMigrationChecks.RunAsync();

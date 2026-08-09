@@ -129,7 +129,7 @@ internal sealed partial class GameSessionRegistry
                 force: true,
                 broadcast: true,
                 cancellationToken,
-                synchronizeLocalMovementSpeed: true);
+                forceLocalGameDataSynchronization: true);
             return new MountRideActivationCommit(character, currentMana, StatusChanged: true);
         }
         finally
@@ -175,7 +175,7 @@ internal sealed partial class GameSessionRegistry
                 force: true,
                 broadcast: true,
                 cancellationToken,
-                synchronizeLocalMovementSpeed:
+                forceLocalGameDataSynchronization:
                     kind == MountCatalog.RuntimeStatusKind);
             return true;
         }
@@ -219,12 +219,11 @@ internal sealed partial class GameSessionRegistry
             var active = state.RuntimeStatuses.Values
                 .Where(status => status.ExpiresAt > now)
                 .ToArray();
-            return new ClientStatusAggregate(
-                active.Sum(static status => status.Modifiers.Hit),
-                active.Sum(static status => status.Modifiers.CriticalAppend),
-                0f,
-                1f + active.Sum(static status => status.MovementSpeedBonus),
-                active.Any(static status => status.Kind == MountCatalog.RuntimeStatusKind));
+            return PlayerStatusComposer.Compose(
+                    ExperienceBoostState.Empty,
+                    active,
+                    now)
+                .Aggregate;
         }
         finally
         {
@@ -246,9 +245,21 @@ internal sealed partial class GameSessionRegistry
     internal bool TryGetRuntimePhysicalDamageReduction(
         ClientSession session,
         DateTimeOffset now,
-        out decimal reduction)
+        out decimal reduction) =>
+        TryGetRuntimePhysicalDamageReduction(
+            session,
+            now,
+            out reduction,
+            out _);
+
+    internal bool TryGetRuntimePhysicalDamageReduction(
+        ClientSession session,
+        DateTimeOffset now,
+        out decimal reduction,
+        out int physicalDefenseBonus)
     {
         reduction = 0m;
+        physicalDefenseBonus = 0;
         if (!_playerStatusStates.TryGetValue(session, out var state))
         {
             if (_playerRuntimeMode != PlayerRuntimeMode.Ecs)
@@ -299,6 +310,13 @@ internal sealed partial class GameSessionRegistry
                         status.PhysicalDamageReduction),
                 0m,
                 1m);
+            physicalDefenseBonus = (int)Math.Clamp(
+                statuses.Aggregate(
+                    0L,
+                    static (sum, status) =>
+                        sum + status.Modifiers.PhysicalDefense),
+                int.MinValue,
+                int.MaxValue);
             return true;
         }
         finally

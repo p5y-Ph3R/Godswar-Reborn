@@ -7,8 +7,10 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $utf8Bom = [Text.UTF8Encoding]::new($true)
-$nativeQualityCount = 10
-$targetQualityCount = 20
+$corePath = Join-Path $PSScriptRoot 'PatchClientMountQualityVectors.Core.ps1'
+. $corePath
+$nativeQualityCount = $script:NativeMountQualityCount
+$targetQualityCount = $script:TargetMountQualityCount
 $allowedItemCounts = @(385, 395)
 $mountTypes = @(
     'mount',
@@ -25,154 +27,6 @@ $qualityVectors = @(
     'PhysicalDamageAbsorb', 'MagicDamageAbsorb', 'Speed', 'FuryAddAk',
     'FuryAddRec', 'InjureImbibe'
 )
-
-function Get-AttributeValue([string]$Element, [string]$Name) {
-    $match = [regex]::Match(
-        $Element,
-        ('(?<=\s){0}="([^"]*)"' -f [regex]::Escape($Name))
-    )
-    if (-not $match.Success) { return $null }
-    return $match.Groups[1].Value
-}
-
-function Set-AttributeValue([string]$Element, [string]$Name, [string]$Value) {
-    $pattern = '(?<=\s){0}="[^"]*"' -f [regex]::Escape($Name)
-    $match = [regex]::Match($Element, $pattern)
-    if (-not $match.Success) { throw "Required attribute '$Name' is missing." }
-    $replacement = $Name + '="' + $Value + '"'
-    return $Element.Substring(0, $match.Index) + $replacement +
-        $Element.Substring($match.Index + $match.Length)
-}
-
-function Format-Decimal([decimal]$Value) {
-    return $Value.ToString(
-        '0.############',
-        [Globalization.CultureInfo]::InvariantCulture
-    )
-}
-
-function Get-MinimumPositiveDelta([object[]]$Values) {
-    $ordered = @($Values | Sort-Object -Unique)
-    $minimum = [decimal]0
-    for ($index = 1; $index -lt $ordered.Count; $index++) {
-        $delta = [decimal]$ordered[$index] - [decimal]$ordered[$index - 1]
-        if ($delta -gt 0 -and ($minimum -eq 0 -or $delta -lt $minimum)) {
-            $minimum = $delta
-        }
-    }
-    return $minimum
-}
-
-function Extend-ByNativeAverageSlope([string]$Value, [int]$TargetCount) {
-    $parts = @(
-        $Value.Split(',', [StringSplitOptions]::RemoveEmptyEntries) |
-            ForEach-Object { $_.Trim() }
-    )
-    if ($parts.Count -gt $TargetCount) {
-        throw "Refusing to shrink a $($parts.Count)-entry mount vector to $TargetCount."
-    }
-    if ($parts.Count -lt $nativeQualityCount) {
-        throw "Mount vector has only $($parts.Count) values; expected the native Q1-Q$nativeQualityCount prefix."
-    }
-
-    $numbers = [Collections.Generic.List[decimal]]::new()
-    foreach ($part in ($parts | Select-Object -First $nativeQualityCount)) {
-        $numbers.Add([decimal]::Parse(
-            $part,
-            [Globalization.CultureInfo]::InvariantCulture
-        ))
-    }
-
-    for ($index = 1; $index -lt $numbers.Count; $index++) {
-        if ($numbers[$index] -lt $numbers[$index - 1]) {
-            throw 'Refusing to extend a decreasing mount quality vector.'
-        }
-    }
-
-    $result = [Collections.Generic.List[string]]::new()
-    foreach ($part in ($parts | Select-Object -First $nativeQualityCount)) {
-        $result.Add($part)
-    }
-
-    $averageSlope = (
-        $numbers[$nativeQualityCount - 1] - $numbers[0]
-    ) / ($nativeQualityCount - 1)
-    $integerOnly = @(
-        $numbers |
-            Where-Object { $_ -ne [decimal]::Truncate($_) }
-    ).Count -eq 0
-    $extensionCount = $TargetCount - $nativeQualityCount
-    for ($step = 1; $step -le $extensionCount; $step++) {
-        # Compute every point from the unrounded slope. Reusing a rounded
-        # prior value would accumulate drift through Q20.
-        $valueAtQuality =
-            $numbers[$nativeQualityCount - 1] + ($averageSlope * $step)
-        if ($integerOnly) {
-            $valueAtQuality = [decimal]::Round(
-                $valueAtQuality,
-                0,
-                [MidpointRounding]::AwayFromZero
-            )
-        }
-        $result.Add((Format-Decimal $valueAtQuality))
-    }
-    return ($result -join ',')
-}
-
-function Extend-FlatMountByFamilyDelta(
-    [string]$Value,
-    [int]$TargetCount,
-    [decimal]$FamilyDelta
-) {
-    $parts = @(
-        $Value.Split(',', [StringSplitOptions]::RemoveEmptyEntries) |
-            ForEach-Object { $_.Trim() }
-    )
-    if ($parts.Count -gt $TargetCount) {
-        throw "Refusing to shrink a $($parts.Count)-entry mount vector to $TargetCount."
-    }
-    if ($parts.Count -lt $nativeQualityCount) {
-        throw "Mount vector has only $($parts.Count) values; expected the native Q1-Q$nativeQualityCount prefix."
-    }
-
-    $numbers = @(
-        $parts |
-            Select-Object -First $nativeQualityCount |
-            ForEach-Object {
-                [decimal]::Parse(
-                    $_,
-                    [Globalization.CultureInfo]::InvariantCulture
-                )
-            }
-    )
-    for ($index = 1; $index -lt $numbers.Count; $index++) {
-        if ($numbers[$index] -lt $numbers[$index - 1]) {
-            throw 'Refusing to extend a decreasing mount quality vector.'
-        }
-    }
-    if (@($numbers | Sort-Object -Unique).Count -gt 1) {
-        return Extend-ByNativeAverageSlope $Value $TargetCount
-    }
-
-    $result = [Collections.Generic.List[string]]::new()
-    foreach ($part in ($parts | Select-Object -First $nativeQualityCount)) {
-        $result.Add($part)
-    }
-
-    $baseValue = $numbers[0]
-    $extensionCount = $TargetCount - $nativeQualityCount
-    for ($step = 1; $step -le $extensionCount; $step++) {
-        $valueAtQuality = $baseValue
-        if ($baseValue -gt 0 -and $FamilyDelta -gt 0) {
-            # Boundless gains exactly one conservative family-tier step. The
-            # step is distributed over Q11-Q20 so the native flat Q1-Q10
-            # prefix remains byte-for-byte unchanged.
-            $valueAtQuality += $FamilyDelta * $step / $extensionCount
-        }
-        $result.Add((Format-Decimal $valueAtQuality))
-    }
-    return ($result -join ',')
-}
 
 function Patch-ItemBaseText([string]$Text, [string]$Locale) {
     $state = @{ Rows = 0; Changed = 0; Vectors = 0 }
@@ -257,7 +111,10 @@ function Patch-ItemBaseText([string]$Text, [string]$Locale) {
             if ($null -eq $value) { continue }
             $foundVector = $true
             $state.Vectors++
-            $extended = if ($type -ceq 'mount') {
+            $extended = if ($type -ceq 'mount' -and $name -ceq 'Speed') {
+                Set-MountSpeedQualityCurve $value $targetQualityCount
+            }
+            elseif ($type -ceq 'mount') {
                 $id = [int](Get-AttributeValue $element 'ID')
                 $familyId = [int](($id - ($id % 10)) / 10)
                 $familyKey = "$familyId|$name"
@@ -310,8 +167,15 @@ function Patch-ItemBaseText([string]$Text, [string]$Locale) {
                 throw "$Locale item $($node.ID) $name has $($parts.Count) entries after patching."
             }
 
+            $nativePrefix = $nativePrefixes["$($node.ID)|$name"]
             $prefix = ($parts | Select-Object -First $nativeQualityCount) -join ','
-            if ($prefix -cne $nativePrefixes["$($node.ID)|$name"]) {
+            if ($node.Type -ceq 'mount' -and $name -ceq 'Speed') {
+                $nativeCommon = ($nativePrefix -split ',')[0]
+                if ([decimal]$parts[0] -ne [decimal]$nativeCommon) {
+                    throw "$Locale mount $($node.ID) Speed changed its Common value."
+                }
+            }
+            elseif ($prefix -cne $nativePrefix) {
                 throw "$Locale item $($node.ID) $name changed its native Q1-Q10 prefix."
             }
 
@@ -332,7 +196,19 @@ function Patch-ItemBaseText([string]$Text, [string]$Locale) {
             }
 
             if ($node.Type -ceq 'mount') {
-                if (@($numbers[0..9] | Sort-Object -Unique).Count -eq 1) {
+                if ($name -ceq 'Speed') {
+                    for ($qualityIndex = 0;
+                         $qualityIndex -lt $targetQualityCount;
+                         $qualityIndex++) {
+                        $expected = $numbers[0] +
+                            $script:MountSpeedQualityBonuses[$qualityIndex]
+                        if ($numbers[$qualityIndex] -ne $expected) {
+                            $quality = $qualityIndex + 1
+                            throw "$Locale mount $($node.ID) Speed Q$quality does not match the reviewed additive profile."
+                        }
+                    }
+                }
+                elseif (@($numbers[0..9] | Sort-Object -Unique).Count -eq 1) {
                     $id = [int]$node.ID
                     $familyId = [int](($id - ($id % 10)) / 10)
                     $familyKey = "$familyId|$name"

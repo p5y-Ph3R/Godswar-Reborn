@@ -411,8 +411,10 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.PlayerDetailRequest:
                 await HandlePlayerDetailRequestAsync(packet, cancellationToken);
                 break;
-            case Opcodes.PlayerDetailAckRequest:
-                await _session.SendAsync(PacketBuilder.PlayerDetailAck(packet.Payload), cancellationToken, "PlayerDetailAck");
+            case Opcodes.FashionEffectVisibility:
+                await HandleFashionEffectVisibilityAsync(
+                    packet,
+                    cancellationToken);
                 break;
             case Opcodes.EnterUiReady:
                 _enterUiReadyReceived = true;

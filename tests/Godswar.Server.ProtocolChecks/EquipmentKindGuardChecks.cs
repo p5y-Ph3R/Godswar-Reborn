@@ -13,6 +13,7 @@ internal static partial class EquipmentKindGuardChecks
     public static async Task RunAsync()
     {
         CheckKindCatalog();
+        CheckFashionSlotConsistency();
         CheckMountSnapshotProjection();
         await CheckJsonStoreAsync();
         await CheckPostgresStoreAsync();

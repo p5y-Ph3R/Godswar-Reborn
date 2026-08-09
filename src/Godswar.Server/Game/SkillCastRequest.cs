@@ -9,7 +9,8 @@ internal readonly record struct SkillCastRequest(
     float CasterX,
     float CasterZ,
     float TargetX,
-    float TargetZ)
+    float TargetZ,
+    bool HasTargetPosition)
 {
     public static bool TryParse(ReadOnlySpan<byte> packet, out SkillCastRequest request)
     {
@@ -25,18 +26,19 @@ internal readonly record struct SkillCastRequest(
             return false;
         }
 
-        var casterX = packet.Length >= 32
+        var casterX = declaredLength >= 32
             ? BinaryPrimitives.ReadSingleLittleEndian(packet.Slice(24, 4))
             : float.NaN;
-        var casterZ = packet.Length >= 32
+        var casterZ = declaredLength >= 32
             ? BinaryPrimitives.ReadSingleLittleEndian(packet.Slice(28, 4))
             : float.NaN;
-        var targetX = packet.Length >= 40
+        var hasTargetPosition = declaredLength >= 40;
+        var targetX = hasTargetPosition
             ? BinaryPrimitives.ReadSingleLittleEndian(packet.Slice(32, 4))
-            : casterX;
-        var targetZ = packet.Length >= 40
+            : float.NaN;
+        var targetZ = hasTargetPosition
             ? BinaryPrimitives.ReadSingleLittleEndian(packet.Slice(36, 4))
-            : casterZ;
+            : float.NaN;
 
         request = new SkillCastRequest(
             BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(4, 4)),
@@ -45,7 +47,8 @@ internal readonly record struct SkillCastRequest(
             casterX,
             casterZ,
             targetX,
-            targetZ);
+            targetZ,
+            hasTargetPosition);
         return true;
     }
 }

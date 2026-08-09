@@ -89,6 +89,19 @@ internal static class PlayerStatusComposer
         var criticalAppend = activeRuntime.Aggregate(
             0L,
             static (sum, status) => sum + status.Modifiers.CriticalAppend);
+        var physicalDefense = activeRuntime.Aggregate(
+            0L,
+            static (sum, status) => sum + status.Modifiers.PhysicalDefense);
+        var magicDefense = activeRuntime.Aggregate(
+            0L,
+            static (sum, status) => sum + status.Modifiers.MagicDefense);
+        var dodge = activeRuntime.Aggregate(
+            0L,
+            static (sum, status) => sum + status.Modifiers.Dodge);
+        var criticalResistance = activeRuntime.Aggregate(
+            0L,
+            static (sum, status) =>
+                sum + status.Modifiers.CriticalResistance);
         var movementSpeedBonus = activeRuntime.Aggregate(
             0d,
             static (sum, status) => sum + status.MovementSpeedBonus);
@@ -99,7 +112,14 @@ internal static class PlayerStatusComposer
             (int)Math.Clamp(criticalAppend, int.MinValue, int.MaxValue),
             (float)(experienceBonusBasisPoints / 10_000d),
             (float)Math.Clamp(1d + movementSpeedBonus, 0.1d, 10d),
-            isRiding);
+            isRiding,
+            (int)Math.Clamp(physicalDefense, int.MinValue, int.MaxValue),
+            (int)Math.Clamp(magicDefense, int.MinValue, int.MaxValue),
+            (int)Math.Clamp(dodge, int.MinValue, int.MaxValue),
+            (int)Math.Clamp(
+                criticalResistance,
+                int.MinValue,
+                int.MaxValue));
 
         // Remaining seconds intentionally do not participate. Otherwise the
         // periodic reconciliation loop would resend an unchanged status set.
@@ -113,12 +133,19 @@ internal static class PlayerStatusComposer
             activeRuntime.Select(static status =>
                 $"runtime:{status.StatusId}:{status.Kind}:{status.Priority}:{status.Beneficial}:" +
                 $"{status.ExpiresAt.UtcTicks}:{status.Modifiers.Hit}:" +
-                $"{status.Modifiers.CriticalAppend}:{status.PhysicalDamageReduction}:" +
+                $"{status.Modifiers.CriticalAppend}:" +
+                $"{status.Modifiers.PhysicalDefense}:" +
+                $"{status.Modifiers.MagicDefense}:" +
+                $"{status.Modifiers.Dodge}:" +
+                $"{status.Modifiers.CriticalResistance}:" +
+                $"{status.PhysicalDamageReduction}:" +
                 $"{status.MagicDamageReduction}:{status.MovementSpeedBonus:R}:" +
                 $"{status.Revision}"));
         var fingerprint = $"{experienceFingerprint}#{runtimeFingerprint}#" +
             $"{aggregate.Hit}:{aggregate.CriticalAppend}:{aggregate.ExperienceBonus:R}:" +
-            $"{aggregate.MovementSpeedMultiplier:R}:{aggregate.IsRiding}";
+            $"{aggregate.MovementSpeedMultiplier:R}:{aggregate.IsRiding}:" +
+            $"{aggregate.PhysicalDefense}:{aggregate.MagicDefense}:" +
+            $"{aggregate.Dodge}:{aggregate.CriticalResistance}";
 
         return new PlayerStatusSnapshot(effects, aggregate, fingerprint);
     }

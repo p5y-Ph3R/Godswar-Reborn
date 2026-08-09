@@ -20,6 +20,22 @@ internal static partial class MapTransitionHandlerChecks
             socket,
             PacketBuilder.PlayerStatusUpdate(character, 1f),
             $"{description} detail status");
+        if (GameClientHandler.HasEquippedFashion(character))
+        {
+            await AssertNextPacketAsync(
+                socket,
+                PacketBuilder.EquipmentVisualRefresh(
+                    character,
+                    TestItemContent.Content.FashionAppearances),
+                $"{description} self Fashion appearance");
+            await AssertNextPacketAsync(
+                socket,
+                PacketBuilder.EquipmentEffectVisibility(
+                    LocalPlayerObjectId,
+                    GameClientHandler.ResolveEquipmentEffectProjection(
+                        character)),
+                $"{description} self Fashion effects");
+        }
         await AssertNextPacketAsync(
             socket,
             PacketBuilder.PetWorldPresence(
@@ -45,9 +61,16 @@ internal static partial class MapTransitionHandlerChecks
         string description)
     {
         var actual = await socket.ReadPacketAsync(expected.Length);
+        var firstMismatch = actual
+            .Zip(expected)
+            .Select((pair, index) => (pair.First, pair.Second, index))
+            .FirstOrDefault(value => value.First != value.Second);
         Check.True(
             actual.SequenceEqual(expected),
-            $"{description} matches byte-for-byte");
+            $"{description} matches byte-for-byte " +
+            $"(first mismatch offset={firstMismatch.index}, " +
+            $"actual=0x{firstMismatch.First:X2}, " +
+            $"expected=0x{firstMismatch.Second:X2})");
     }
 
     private static void AssertPersistedPosition(

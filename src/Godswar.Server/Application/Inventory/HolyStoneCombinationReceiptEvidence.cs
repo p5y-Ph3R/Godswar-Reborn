@@ -1,5 +1,7 @@
 using System.Text;
 
+using Godswar.Server.Domain.Inventory;
+
 namespace Godswar.Server.Application.Inventory;
 
 internal sealed record HolyStoneCombinationReceiptEvidence(
@@ -137,6 +139,9 @@ internal sealed record HolyStoneCombinationReceiptEvidence(
             target.Stack != 1 ||
             first.Stack < 1 || second.Stack < 1 || third.Stack < 1 ||
             target.Grade is < 4 or > 9 ||
+            first.Id != target.Id ||
+            second.Id != target.Id ||
+            third.Id != target.Id ||
             first.Grade != target.Grade ||
             second.Grade != target.Grade ||
             third.Grade != target.Grade ||
@@ -159,7 +164,7 @@ internal sealed record HolyStoneCombinationReceiptEvidence(
             <= HolyStoneCommandEnvelope.MaximumKitBagSlot;
 
     private static bool IsHolyStone(uint itemId) =>
-        itemId is 9030 or 9031;
+        HolySpiritImplementationPolicy.IsHolyStoneItem(itemId);
 
     private static bool IsValidInstanceId(long? value) =>
         !value.HasValue || value.Value > 0;

@@ -80,6 +80,7 @@ internal static partial class PacketBuilder
     private const ushort PlayerVitalsUpdateOpcode = 0x2771;
     private const ushort PlayerUnknown10098Opcode = 0x2772;
     private const ushort PlayerDetailAckOpcode = 0x27DA;
+    private const ushort FashionEffectVisibilityOpcode = 0x27DA;
     private const int PlayerWorldVisualFlagsOffset = 81;
     private const int PlayerWorldVisualFlagsLength = 18;
     private const int PlayerWorldAttributeCountsOffset = 102;

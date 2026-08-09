@@ -24,12 +24,12 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
     {
         const short secondMaterialSlot = 11;
         const short thirdMaterialSlot = 12;
-        var firstMaterial = SimpleItem(9031, grade: 4, stack: 2) with
+        var firstMaterial = SimpleItem(9030, grade: 4, stack: 2) with
         {
             Bound = 0
         };
         var secondMaterial = SimpleItem(9030, grade: 4);
-        var thirdMaterial = SimpleItem(9031, grade: 4, stack: 3) with
+        var thirdMaterial = SimpleItem(9030, grade: 4, stack: 3) with
         {
             Bound = 0
         };
@@ -134,12 +134,12 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         const short secondMaterialSlot = 13;
         const short thirdMaterialSlot = 14;
         var secondMaterial = SimpleItem(9030, grade: 5);
-        var thirdMaterial = SimpleItem(9031, grade: 4);
+        var thirdMaterial = SimpleItem(9030, grade: 4);
         var fixture = await CreateFixtureAsync(
             connectionString,
             "cmbbad",
             target: SimpleItem(9030, grade: 4),
-            stone: SimpleItem(9031, grade: 4),
+            stone: SimpleItem(9030, grade: 4),
             additionalBagItems:
             [
                 (secondMaterialSlot, secondMaterial),
@@ -184,9 +184,9 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
     {
         const short secondMaterialSlot = 15;
         const short thirdMaterialSlot = 17;
-        var firstMaterial = SimpleItem(9030, grade: 7, stack: 2);
+        var firstMaterial = SimpleItem(9031, grade: 7, stack: 2);
         var secondMaterial = SimpleItem(9031, grade: 7, stack: 2);
-        var thirdMaterial = SimpleItem(9030, grade: 7, stack: 2);
+        var thirdMaterial = SimpleItem(9031, grade: 7, stack: 2);
         var fixture = await CreateFixtureAsync(
             connectionString,
             "cmbroll",
@@ -270,12 +270,12 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         const short secondMaterialSlot = 18;
         const short thirdMaterialSlot = 19;
         var second = SimpleItem(9030, grade: 4);
-        var third = SimpleItem(9031, grade: 4);
+        var third = SimpleItem(9030, grade: 4);
         var staleFixture = await CreateFixtureAsync(
             connectionString,
             "cmbstl",
             target: SimpleItem(9030, grade: 4),
-            stone: SimpleItem(9031, grade: 4),
+            stone: SimpleItem(9030, grade: 4),
             additionalBagItems:
             [
                 (secondMaterialSlot, second),
@@ -306,7 +306,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             connectionString,
             "cmbmis",
             target: SimpleItem(9030, grade: 4),
-            stone: SimpleItem(9031, grade: 4),
+            stone: SimpleItem(9030, grade: 4),
             additionalBagItems:
             [
                 (secondMaterialSlot, second)

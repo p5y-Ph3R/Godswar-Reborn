@@ -213,7 +213,7 @@ internal sealed partial class GameClientHandler
             $"[skill] stun character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId} status={definition.StatusId} duration={definition.Duration.TotalSeconds:F0} cooldown={definition.Cooldown.TotalSeconds:F0} status-odds={definition.StatusOdds} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(statusRecipients, impactRecipients))}");
     }
 
-    private async Task HandleSelfStatusSkillCastAsync(
+    private async Task HandleBeneficialStatusSkillCastAsync(
         GamePacket packet,
         SkillCastRequest cast,
         SkillStatusEffectDefinition definition,
@@ -294,12 +294,27 @@ internal sealed partial class GameClientHandler
         // AddStatus on the working server publishes the complete MSG_STATUS map
         // before MAGIC_PERFORM. The registry composer preserves every active EXP
         // source while adding/replacing this skill's same-kind runtime status.
-        var statusApplied = await _registry.ApplyRuntimeStatusAndPublishAsync(
-            _session,
-            definition,
-            now,
-            $"skill-{definition.SkillId}",
-            cancellationToken);
+        var statusTargets = ResolveBeneficialStatusTargets(combat);
+        var appliedTargetCount = 0;
+        foreach (var statusTarget in statusTargets)
+        {
+            if (!CanApplyBeneficialStatusTarget(
+                    statusTarget,
+                    combat))
+            {
+                continue;
+            }
+
+            if (await _registry.ApplyRuntimeStatusAndPublishAsync(
+                    statusTarget.Session,
+                    definition,
+                    now,
+                    $"skill-{definition.SkillId}",
+                    cancellationToken))
+            {
+                appliedTargetCount++;
+            }
+        }
 
         await _session.SendAsync(
             PacketBuilder.SkillCastImpact(
@@ -358,7 +373,87 @@ internal sealed partial class GameClientHandler
         }
 
         Console.WriteLine(
-            $"[skill] self status character={character.Name} skill={cast.SkillId} status={definition.StatusId} applied={statusApplied} duration={definition.Duration.TotalSeconds:F0} mp={currentMana}/{character.MaxMp} viewers={Math.Max(visualRecipients, impactRecipients)}");
+            $"[skill] beneficial status character={character.Name} " +
+            $"skill={cast.SkillId} status={definition.StatusId} " +
+            $"targets={appliedTargetCount}/{statusTargets.Count} " +
+            $"duration={definition.Duration.TotalSeconds:F0} " +
+            $"mp={currentMana}/{character.MaxMp} " +
+            $"viewers={Math.Max(visualRecipients, impactRecipients)}");
     }
+
+    private List<BeneficialStatusTarget> ResolveBeneficialStatusTargets(
+        SkillCombatDefinition combat)
+    {
+        var character = _character!;
+        var targets = new List<BeneficialStatusTarget>
+        {
+            new(_session, IsCaster: true, WorldContext: null)
+        };
+        if (combat.AffectObj != 3 || combat.Range <= 0f)
+        {
+            return targets;
+        }
+
+        foreach (var context in _registry.GetMapSessions(
+                     character.CurrentMap,
+                     _session))
+        {
+            if (!IsLivingFriendlyTarget(
+                    character,
+                    context.Character) ||
+                !SkillCombatResolver.IsWithinArea(
+                    character.PositionX,
+                    character.PositionZ,
+                    context.Character.PositionX,
+                    context.Character.PositionZ,
+                    combat))
+            {
+                continue;
+            }
+
+            targets.Add(new BeneficialStatusTarget(
+                context.Session,
+                IsCaster: false,
+                context));
+        }
+
+        return targets;
+    }
+
+    private bool CanApplyBeneficialStatusTarget(
+        BeneficialStatusTarget target,
+        SkillCombatDefinition combat)
+    {
+        if (target.IsCaster)
+        {
+            return RevalidateCurrentWorldEffectOwnership(
+                "beneficial_status_target");
+        }
+
+        var character = _character!;
+        if (target.WorldContext is not { } context ||
+            !_registry.IsCurrentWorldSessionSnapshot(
+                _session,
+                context) ||
+            !IsLivingFriendlyTarget(
+                character,
+                context.Character))
+        {
+            return false;
+        }
+
+        return combat.AffectObj == 3 &&
+               SkillCombatResolver.IsWithinArea(
+                   character.PositionX,
+                   character.PositionZ,
+                   context.Character.PositionX,
+                   context.Character.PositionZ,
+                   combat);
+    }
+
+    private readonly record struct BeneficialStatusTarget(
+        ClientSession Session,
+        bool IsCaster,
+        GameSessionContext? WorldContext);
 
 }

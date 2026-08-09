@@ -32,6 +32,23 @@ internal static partial class CharacterSnapshotHandlerChecks
     private static async Task CheckCompleteBootstrapAsync()
     {
         var source = CharacterSnapshotContractChecks.CreateValidSnapshot();
+        var sourceCharacter = source.Character ??
+            throw new InvalidOperationException(
+                "The handler fixture requires a character.");
+        source = source with
+        {
+            Character = sourceCharacter with
+            {
+                Loadout = sourceCharacter.Loadout with
+                {
+                    Equipment = EquipmentSlots.SetSlot(
+                        sourceCharacter.Loadout.Equipment,
+                        sourceCharacter.Appearance.Profession,
+                        EquipmentSlots.Stylish,
+                        "[8068,,,,,,1,1,1,1,0]")
+                }
+            }
+        };
         var hydrated = CharacterLoadSnapshotHydrator.Hydrate(source) ??
             throw new InvalidOperationException(
                 "The handler fixture did not hydrate.");
@@ -72,6 +89,7 @@ internal static partial class CharacterSnapshotHandlerChecks
                 new GameHandlerCheckpointCoordinatorStub(
                     source.Character!.Location.PositionRevision,
                     source.Character.Vitals.Revision),
+            itemContent: TestItemContent.Content,
             petContent: PetContentTestCatalog.Instance);
 
         await InvokePacketAsync(
@@ -85,6 +103,45 @@ internal static partial class CharacterSnapshotHandlerChecks
             handler,
             CreatePacket(Opcodes.PlayerDetailRequest, payloadLength: 8));
         await InvokePacketAsync(handler, CreatePacket(Opcodes.EnterUiReady));
+
+        var detailPacket = PacketBuilder.PlayerDetail(hydrated.Character);
+        var beforeCompatibilityRequests = Decrypt(
+            transport.WrittenBytes);
+        var detailCountBefore = CountOccurrences(
+            beforeCompatibilityRequests,
+            detailPacket);
+
+        await InvokePacketAsync(
+            handler,
+            CreatePacket(Opcodes.PlayerDetailRequest, payloadLength: 8));
+        await InvokePacketAsync(
+            handler,
+            CreatePacket(Opcodes.PlayerDetailRequest, payloadLength: 8));
+
+        var afterDetailRequests = Decrypt(transport.WrittenBytes);
+        Check.Equal(
+            detailCountBefore + 2,
+            CountOccurrences(afterDetailRequests, detailPacket),
+            "every in-world 10200 request receives PlayerDetail compatibility response");
+
+        var effectsDisabled = PacketBuilder.EquipmentEffectVisibility(
+            0x0000_1448u,
+            visible: false);
+        var disabledEffectsBefore = CountOccurrences(
+            afterDetailRequests,
+            effectsDisabled);
+        await InvokePacketAsync(
+            handler,
+            CreatePacket(Opcodes.FashionEffectVisibility, payloadLength: 12));
+        await InvokePacketAsync(
+            handler,
+            CreatePacket(Opcodes.FashionEffectVisibility, payloadLength: 12));
+
+        var afterEffectRequests = Decrypt(transport.WrittenBytes);
+        Check.Equal(
+            disabledEffectsBefore + 2,
+            CountOccurrences(afterEffectRequests, effectsDisabled),
+            "every valid 10202 request receives one compatibility response, including duplicates");
 
         Check.Equal(
             2,
@@ -121,6 +178,18 @@ internal static partial class CharacterSnapshotHandlerChecks
                 clearBytes,
                 PacketBuilder.SkillList(hydrated.Skills)),
             "the client receives snapshot-backed learned skills");
+        var fashionAppearance = PacketBuilder.EquipmentVisualRefresh(
+            hydrated.Character,
+            TestItemContent.Content.FashionAppearances);
+        var fashionEffects = PacketBuilder.EquipmentEffectVisibility(
+            0x0000_1448u,
+            GameClientHandler.ResolveEquipmentEffectProjection(
+                hydrated.Character));
+        Check.True(
+            Contains(
+                clearBytes,
+                fashionAppearance.Concat(fashionEffects).ToArray()),
+            "login detail sends self Fashion appearance immediately before effects");
     }
 
     private static async Task CheckSnapshotFailureIsFailClosedAsync()
@@ -235,6 +304,35 @@ internal static partial class CharacterSnapshotHandlerChecks
         }
 
         return false;
+    }
+
+    private static byte[] Decrypt(byte[] encrypted)
+    {
+        new PacketCipher().Transform(encrypted);
+        return encrypted;
+    }
+
+    private static int CountOccurrences(
+        ReadOnlySpan<byte> source,
+        ReadOnlySpan<byte> value)
+    {
+        if (value.IsEmpty || value.Length > source.Length)
+        {
+            return 0;
+        }
+
+        var count = 0;
+        for (var index = 0;
+             index <= source.Length - value.Length;
+             index++)
+        {
+            if (source.Slice(index, value.Length).SequenceEqual(value))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private sealed class CountingSnapshotReader(

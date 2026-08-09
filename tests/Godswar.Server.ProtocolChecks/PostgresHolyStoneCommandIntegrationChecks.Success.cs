@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -9,7 +10,53 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
         string connectionString)
     {
         await AssertImplementedMountAsync(connectionString);
+        await AssertZephyrMountGearAsync(connectionString);
         await AssertSingleStoneDeletionAsync(connectionString);
+    }
+
+    private static async Task AssertZephyrMountGearAsync(
+        string connectionString)
+    {
+        var mountGear = SimpleItem(14504) with { SocketCount = 2 };
+        var fixture = await CreateFixtureAsync(
+            connectionString,
+            "zephyr",
+            target: mountGear,
+            stone: ImplementedStone(9090, grade: 10));
+        await using var dataSource =
+            NpgsqlDataSource.Create(connectionString);
+        var receipt = RequireReceipt(
+            await ExecuteAsync(
+                CreateExecutor(dataSource),
+                fixture,
+                Guid.NewGuid(),
+                HolyStoneCommandOperation.Mount),
+            HolyStoneExecutionDisposition.Committed,
+            HolyStoneCommandResultStatus.Mounted,
+            "Zephyr mount-gear mount");
+        Check.Equal(0, receipt.SocketIndex,
+            "Zephyr uses the first native mount-gear socket");
+
+        var target = (await ReadItemAsync(
+            connectionString,
+            fixture.CharacterId,
+            checked((short)fixture.TargetLocation),
+            fixture.TargetSlot))!.Value.Item;
+        Check.True(
+            target.Id == 14504 &&
+            target.SocketCount == 2 &&
+            target.Socket1EffectId ==
+                ZephyrSpiritEffects.DaedalusAttunement &&
+            target.Socket1Level == 10 &&
+            target.Socket1Value == 150,
+            "Zephyr mounts its persisted roll without changing socket capacity");
+        Check.True(
+            await ReadItemAsync(
+                connectionString,
+                fixture.CharacterId,
+                1,
+                fixture.StoneSlot) is null,
+            "Zephyr mount consumes the individualized implemented stone");
     }
 
     private static async Task AssertImplementedMountAsync(

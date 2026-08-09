@@ -37,6 +37,8 @@ internal static partial class HolyStonePersistenceCodec
             HolyStoneCommandOperation.Combine => "holy_stone_combine",
             HolyStoneCommandOperation.ImplementSpirit =>
                 "holy_spirit_implement",
+            HolyStoneCommandOperation.MountGearDrill =>
+                "mount_gear_drill",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
 
@@ -53,6 +55,8 @@ internal static partial class HolyStonePersistenceCodec
             HolyStoneCommandOperation.Combine => "holy_stone_combine",
             HolyStoneCommandOperation.ImplementSpirit =>
                 "holy_spirit_implement",
+            HolyStoneCommandOperation.MountGearDrill =>
+                "mount_gear_drill",
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
 

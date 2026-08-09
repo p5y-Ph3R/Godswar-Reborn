@@ -102,7 +102,7 @@ internal static class HolySpiritEffectivenessPolicyChecks
 
     private static void AssertReviewedCatalog()
     {
-        Check.Equal(2, HolyStoneAffinityCatalog.All.Count,
+        Check.Equal(3, HolyStoneAffinityCatalog.All.Count,
             "reviewed Holy Stone affinity count");
         Check.True(
             HolyStoneAffinityCatalog.TryGetByItemId(9030, out var heated) &&
@@ -117,7 +117,16 @@ internal static class HolySpiritEffectivenessPolicyChecks
             !cooled.AllowedEquipmentSlots.Contains(EquipmentSlots.Weapon),
             "Cooled Holy Stone owns defensive equipment slots");
         Check.True(
-            !HolyStoneAffinityCatalog.TryGetByItemId(9032, out _) &&
+            HolyStoneAffinityCatalog.TryGetByItemId(9032, out var zephyr) &&
+            zephyr.Affinity == HolyStoneAffinity.Zephyr &&
+            zephyr.AllowedEquipmentSlots.Contains(
+                EquipmentSlots.MountHead) &&
+            zephyr.AllowedEquipmentSlots.Contains(
+                EquipmentSlots.MountAmulet) &&
+            !zephyr.AllowedEquipmentSlots.Contains(EquipmentSlots.Weapon),
+            "Zephyr Holy Stone owns only mount-gear slots");
+        Check.True(
+            !HolyStoneAffinityCatalog.TryGetByItemId(9033, out _) &&
             !HolyStoneAffinityCatalog.TryGetItemId(
                 (HolyStoneAffinity)byte.MaxValue,
                 out _) &&
@@ -159,20 +168,28 @@ internal static class HolySpiritEffectivenessPolicyChecks
             E(9086, HolyStoneAffinity.Cooled, 13, 28, 70,
                 HolySpiritValueKind.HundredthPercent),
             E(9087, HolyStoneAffinity.Cooled, 14, 40, 100,
-                HolySpiritValueKind.Flat)
+                HolySpiritValueKind.Flat),
+            E(9090, HolyStoneAffinity.Zephyr, 21, 15, 30,
+                HolySpiritValueKind.HundredthPercent),
+            E(9091, HolyStoneAffinity.Zephyr, 22, 10, 20,
+                HolySpiritValueKind.HundredthPercent),
+            E(9092, HolyStoneAffinity.Zephyr, 23, 100, 200,
+                HolySpiritValueKind.HundredthPercent),
+            E(9093, HolyStoneAffinity.Zephyr, 24, 75, 150,
+                HolySpiritValueKind.HundredthPercent)
         };
 
-        Check.Equal(16, HolySpiritEffectivenessPolicy.All.Count,
+        Check.Equal(20, HolySpiritEffectivenessPolicy.All.Count,
             "reviewed Holy Spirit definition count");
         Check.Equal(
-            16,
+            20,
             HolySpiritEffectivenessPolicy.All
                 .Select(static value => value.ItemId)
                 .Distinct()
                 .Count(),
             "Holy Spirit item IDs are unique");
         Check.Equal(
-            16,
+            20,
             HolySpiritEffectivenessPolicy.All
                 .Select(static value => value.EffectId)
                 .Distinct()
@@ -206,11 +223,18 @@ internal static class HolySpiritEffectivenessPolicyChecks
                 .All(static value => value.ItemId is >= 9080 and <= 9087),
             "defensive spirits retain cooled-stone affinity");
         Check.True(
+            HolySpiritEffectivenessPolicy.All
+                .Where(static value => value.Affinity == HolyStoneAffinity.Zephyr)
+                .All(static value => value.ItemId is >= 9090 and <= 9093),
+            "mount-gear spirits retain Zephyr-stone affinity");
+        Check.True(
             HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9060, 9030) &&
             !HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9060, 9031) &&
             HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9080, 9031) &&
-            !HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9080, 9030),
-            "heated and cooled compatibility is authoritative");
+            !HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9080, 9030) &&
+            HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9090, 9032) &&
+            !HolySpiritEffectivenessPolicy.IsCompatibleWithHolyStone(9090, 9030),
+            "heated, cooled, and Zephyr compatibility is authoritative");
         Check.True(
             !HolySpiritEffectivenessPolicy.TryGetDefinition(9068, out _) &&
             !HolySpiritEffectivenessPolicy.TryGetDefinition(9069, out _) &&

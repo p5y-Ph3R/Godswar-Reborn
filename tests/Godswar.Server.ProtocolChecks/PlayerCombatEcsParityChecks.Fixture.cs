@@ -89,6 +89,9 @@ internal static partial class PlayerCombatEcsParityChecks
                 target.HealthRevision,
                 ReportedAttackerX: 0f,
                 ReportedAttackerZ: 0f,
+                HasReportedTargetPosition: false,
+                ReportedTargetX: float.NaN,
+                ReportedTargetZ: float.NaN,
                 Skill: default));
     }
 
@@ -114,6 +117,9 @@ internal static partial class PlayerCombatEcsParityChecks
             target.HealthRevision,
             ReportedAttackerX: 0f,
             ReportedAttackerZ: 0f,
+            HasReportedTargetPosition: false,
+            ReportedTargetX: float.NaN,
+            ReportedTargetZ: float.NaN,
             SingleSkill);
 
     private static void AssertRejected(

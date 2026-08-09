@@ -64,7 +64,7 @@ internal sealed partial class GameSessionRegistry
         bool force,
         bool broadcast,
         CancellationToken cancellationToken,
-        bool synchronizeLocalMovementSpeed = false)
+        bool forceLocalGameDataSynchronization = false)
     {
         if (!_sessions.TryGetValue(session, out var context))
         {
@@ -114,15 +114,21 @@ internal sealed partial class GameSessionRegistry
             cancellationToken,
             "PlayerStatusEffects");
 
-        if (synchronizeLocalMovementSpeed)
+        var synchronizeLocalGameData =
+            forceLocalGameDataSynchronization ||
+            HasLocalGameDataAggregateChanged(
+                state.LastPublishedAggregate,
+                snapshot.Aggregate);
+        if (synchronizeLocalGameData)
         {
-            // The working server follows Ride's 10167 status snapshot with
-            // 10166. Its float at offset 56 is what actually changes local
-            // movement from the normal 1.0 multiplier to the mount value.
+            // 10167 owns the native status list, while PersonalInfo reads its
+            // displayed derived values from the local 10166 GameData copy.
+            // Publish both whenever a runtime modifier changes, including on
+            // expiry, so the panel cannot retain either base or buffed values.
             await session.SendAsync(
                 PacketBuilder.PlayerStatusUpdate(
                     context.Character,
-                    snapshot.Aggregate.MovementSpeedMultiplier),
+                    snapshot.Aggregate),
                 cancellationToken,
                 "PlayerMovementSpeed");
         }
@@ -141,11 +147,23 @@ internal sealed partial class GameSessionRegistry
                 "PlayerStatusEffectsWorld");
         }
 
+        state.LastPublishedAggregate = snapshot.Aggregate;
         state.LastFingerprint = snapshot.Fingerprint;
         Console.WriteLine(
-            $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} exp={snapshot.Aggregate.ExperienceBonus:R} speed={snapshot.Aggregate.MovementSpeedMultiplier:R}");
+            $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} pdef={snapshot.Aggregate.PhysicalDefense} mdef={snapshot.Aggregate.MagicDefense} dodge={snapshot.Aggregate.Dodge} critical-resistance={snapshot.Aggregate.CriticalResistance} exp={snapshot.Aggregate.ExperienceBonus:R} speed={snapshot.Aggregate.MovementSpeedMultiplier:R} game-data={synchronizeLocalGameData}");
         return true;
     }
+
+    private static bool HasLocalGameDataAggregateChanged(
+        ClientStatusAggregate previous,
+        ClientStatusAggregate current) =>
+        previous.Hit != current.Hit ||
+        previous.CriticalAppend != current.CriticalAppend ||
+        previous.MovementSpeedMultiplier != current.MovementSpeedMultiplier ||
+        previous.PhysicalDefense != current.PhysicalDefense ||
+        previous.MagicDefense != current.MagicDefense ||
+        previous.Dodge != current.Dodge ||
+        previous.CriticalResistance != current.CriticalResistance;
 
     private bool TryGetOrCreatePlayerStatusState(
         ClientSession session,

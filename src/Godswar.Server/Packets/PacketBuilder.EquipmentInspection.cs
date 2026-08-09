@@ -53,8 +53,22 @@ internal static partial class PacketBuilder
 
     public static byte[] PlayerInspectEquipmentStatusBundle(GameCharacter character, uint objectId)
     {
+        return PlayerInspectEquipmentStatusBundle(
+            character,
+            objectId,
+            ClientStatusAggregate.Empty);
+    }
+
+    public static byte[] PlayerInspectEquipmentStatusBundle(
+        GameCharacter character,
+        uint objectId,
+        ClientStatusAggregate aggregate)
+    {
         var inspectEquipment = PlayerInspectEquipment(character, objectId);
-        var inspectStatus = PlayerStatusUpdate(character, objectId);
+        var inspectStatus = PlayerStatusUpdate(
+            character,
+            objectId,
+            aggregate);
         var bundle = new byte[inspectEquipment.Length + inspectStatus.Length];
         inspectEquipment.CopyTo(bundle, 0);
         inspectStatus.CopyTo(bundle, inspectEquipment.Length);
@@ -210,7 +224,10 @@ internal static partial class PacketBuilder
         var equipment = ParseEquipment(character);
         var populated = Enumerable.Range(0, equipment.Length)
             .Select(slot => (Slot: slot, Item: equipment[slot]))
-            .Where(static entry => !entry.Item.IsEmpty)
+            .Where(entry =>
+                !entry.Item.IsEmpty &&
+                !(character.FashionHidden &&
+                  entry.Slot == EquipmentSlots.Stylish))
             .ToArray();
 
         if (populated.Length <= PlayerWorldEquipmentIdsLength)

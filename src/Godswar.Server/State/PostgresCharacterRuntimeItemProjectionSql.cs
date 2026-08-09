@@ -9,7 +9,9 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
 {
     public static readonly string CalculatedStatsForCharacter =
         $$"""
-        WITH equipment_stat_values AS (
+        WITH
+        {{PostgresMountGearPassiveProjectionSql.CommonTableExpressions}}
+        equipment_stat_values AS (
             SELECT
                 equipment.user_id,
                 stat.stat_name,
@@ -234,6 +236,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             WHERE stat_name IS NOT NULL
             UNION ALL SELECT * FROM talent_stat_values
             UNION ALL SELECT * FROM holy_suit_stat_values
+            UNION ALL SELECT * FROM mount_gear_spirit_stat_values
         ),
         stat_totals AS (
             SELECT

@@ -172,8 +172,10 @@ internal sealed partial class GameClientHandler
             "HolySuitPlayerStatus");
         await SendKitBagRefreshAsync(cancellationToken);
         await _session.SendAsync(
-            PacketBuilder.PlayerDetailRefreshAck(),
+            PacketBuilder.EquipmentEffectVisibility(
+                LocalPlayerObjectId,
+                ResolveEquipmentEffectProjection(_character!)),
             cancellationToken,
-            "HolySuitPlayerDetailRefresh");
+            "HolySuitEquipmentEffectVisibility");
     }
 }
