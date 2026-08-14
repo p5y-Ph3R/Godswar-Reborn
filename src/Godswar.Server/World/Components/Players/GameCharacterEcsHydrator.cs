@@ -205,7 +205,14 @@ internal static class GameCharacterEcsHydrator
             stats.MagicDamageReduction,
             stats.CriticalDamageReduction,
             stats.LifeAbsorption,
-            stats.DamageRebound);
+            stats.DamageRebound,
+            stats.Profession,
+            stats.PhysicalFlatAbsorption,
+            stats.MagicFlatAbsorption,
+            stats.CriticalDamageFlatReduction,
+            stats.DamageReboundFlat,
+            stats.BasicAttackIntervalMilliseconds,
+            stats.BasicAttackRange);
 }
 
 internal readonly record struct PlayerTransformOverride(

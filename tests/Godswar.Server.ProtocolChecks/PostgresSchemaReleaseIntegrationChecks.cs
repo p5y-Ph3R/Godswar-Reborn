@@ -127,6 +127,8 @@ internal static partial class PostgresSchemaReleaseIntegrationChecks
                                             'inventory_revision',
                                             'progression_reward_revision',
                                             'fighter_level_sealed',
+                                            'pet_shed_capacity',
+                                            'pet_shed_revision',
                                             'position_revision',
                                             'checkpoint_owner_id',
                                             'checkpoint_owner_generation',

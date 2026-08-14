@@ -6,7 +6,7 @@ using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetHealingTalentEcsChecks
+internal static partial class PetHealingTalentEcsChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 8, 11, 1, 0, 0, TimeSpan.Zero);
@@ -15,6 +15,7 @@ internal static class PetHealingTalentEcsChecks
     {
         CheckVersionedPolicy();
         CheckThresholdBoundary();
+        CheckWitheredHealing();
         CheckCooldownAndReplayGuards();
         CheckEligibilityAndLethalGuards();
         CheckBoundedCooldownLedger();
@@ -263,7 +264,8 @@ internal static class PetHealingTalentEcsChecks
         Fixture fixture,
         ulong eventId,
         uint damage,
-        DateTimeOffset resolvedAt)
+        DateTimeOffset resolvedAt,
+        int healingReceivedBasisPoints = 10_000)
     {
         var vitals = fixture.World.Get<PlayerVitalsComponent>(
             fixture.Player.Entity);
@@ -279,7 +281,9 @@ internal static class PetHealingTalentEcsChecks
                 ExpectedLifeRevision: 0,
                 ExpectedVitalsRevision: vitals.Revision,
                 ResolvedDamage: damage,
-                ResolvedAt: resolvedAt));
+                ResolvedAt: resolvedAt,
+                HealingReceivedBasisPoints:
+                    healingReceivedBasisPoints));
     }
 
     private static PetHealingAppliedEvent[] Heals(Fixture fixture) =>

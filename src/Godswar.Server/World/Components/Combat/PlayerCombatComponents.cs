@@ -53,7 +53,18 @@ internal readonly record struct PlayerCombatOffenseComponent(
     int PhysicalDamageBonus,
     int MagicDamageBonus,
     int PhysicalAppendDamage,
-    int MagicAppendDamage);
+    int MagicAppendDamage)
+{
+    public int Level { get; init; } = 1;
+    public int Hit { get; init; }
+    public int Critical { get; init; }
+    public int IgnorePhysicalDefenseBasisPoints { get; init; }
+    public int IgnoreMagicDefenseBasisPoints { get; init; }
+    public int CriticalDamageBasisPoints { get; init; }
+    public int CriticalDamageFlat { get; init; }
+    public int LifeAbsorptionBasisPoints { get; init; }
+    public int BasicAttackIntervalMilliseconds { get; init; } = 1500;
+}
 
 internal struct PlayerCombatResourceComponent
 {
@@ -103,7 +114,22 @@ internal readonly record struct PlayerCombatTargetComponent(
     bool IsVisible,
     uint SpawnGeneration,
     ulong HealthRevision,
-    float BasicAttackRange);
+    float BasicAttackRange)
+{
+    public int Level { get; init; } = 1;
+    public int PhysicalDefense { get; init; }
+    public int MagicDefense { get; init; }
+    public int Dodge { get; init; }
+    public int CriticalResistance { get; init; }
+    public int PhysicalDamageReductionBasisPoints { get; init; }
+    public int MagicDamageReductionBasisPoints { get; init; }
+    public int CriticalDamageReductionBasisPoints { get; init; }
+    public int PhysicalFlatAbsorption { get; init; }
+    public int MagicFlatAbsorption { get; init; }
+    public int CriticalDamageFlatReduction { get; init; }
+    public int DamageReboundBasisPoints { get; init; }
+    public int DamageReboundFlat { get; init; }
+}
 
 /// <summary>
 /// Scalar copy of the combat fields used by SkillCombatResolver.
@@ -150,7 +176,8 @@ internal struct PlayerCombatReservationComponent
         int reservedMana,
         DateTimeOffset previousNextBasicAttackAt,
         bool refundOnRejectedTarget,
-        ImmutableArray<PlayerCombatReservedTarget> targets)
+        ImmutableArray<PlayerCombatReservedTarget> targets,
+        int acceptedTargetCount = 0)
     {
         IntentId = intentId;
         Kind = kind;
@@ -160,7 +187,7 @@ internal struct PlayerCombatReservationComponent
         RefundOnRejectedTarget = refundOnRejectedTarget;
         Targets = targets;
         NextOutcomeIndex = 0;
-        AcceptedTargetCount = 0;
+        AcceptedTargetCount = acceptedTargetCount;
         RejectedTargetCount = 0;
     }
 

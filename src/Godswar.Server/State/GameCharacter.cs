@@ -171,9 +171,11 @@ internal sealed class GameCharacter
         return PositionRevision;
     }
 
-    private static IEnumerable<CompactItemEntry> ParseEquipment(
+    private static IEnumerable<ElementalEquippedItem> ParseEquipment(
         string equipment) =>
-        equipment.Split('#', StringSplitOptions.RemoveEmptyEntries)
+        equipment.Split('#', StringSplitOptions.None)
             .Take(EquipmentSlots.Shield + 1)
-            .Select(CompactItemEntry.Parse);
+            .Select((entry, slot) => new ElementalEquippedItem(
+                slot,
+                CompactItemEntry.Parse(entry)));
 }

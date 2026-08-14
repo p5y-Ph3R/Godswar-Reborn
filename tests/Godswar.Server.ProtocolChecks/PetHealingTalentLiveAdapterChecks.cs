@@ -4,13 +4,14 @@ using Godswar.Server.World.Components.Combat;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetHealingTalentLiveAdapterChecks
+internal static partial class PetHealingTalentLiveAdapterChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 8, 11, 2, 0, 0, TimeSpan.Zero);
 
     public static async Task RunAsync()
     {
+        await CheckWitheredHealingAsync();
         await using var socket =
             await RuntimePolicySessionSocket.CreateAsync();
         var registry = new GameSessionRegistry(

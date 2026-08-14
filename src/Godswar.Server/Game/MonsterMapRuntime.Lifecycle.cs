@@ -123,7 +123,8 @@ internal sealed partial class MonsterMapRuntime
         monster.TargetX = targetX;
         monster.TargetZ = targetZ;
         monster.Facing = MathF.Atan2(velocityX, velocityZ);
-        monster.NextMovementStepAt = now + TickInterval;
+        monster.NextMovementStepAt =
+            now + ElementalMovementInterval(monster);
     }
 
     private static MonsterRuntimeState CreateRespawnedState(

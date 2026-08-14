@@ -8,55 +8,81 @@ namespace Godswar.Server.World.Systems.Combat;
 /// </summary>
 internal static class PlayerCombatRules
 {
-    public const float DefaultBasicAttackRange = 2.5f;
+    public const float DefaultBasicAttackRange = 1.7f;
     public const float MaximumBasicAttackPositionCorrection = 0.5f;
     public const float TargetCollisionAllowance = 3f;
 
     public static readonly TimeSpan BasicAttackCooldown =
         TimeSpan.FromMilliseconds(1475);
 
+    public static TimeSpan ResolveBasicAttackCooldown(
+        int attackIntervalMilliseconds)
+    {
+        const int schedulingAllowanceMilliseconds = 25;
+        var boundedInterval = Math.Clamp(
+            attackIntervalMilliseconds,
+            250,
+            ushort.MaxValue);
+        return TimeSpan.FromMilliseconds(
+            Math.Max(
+                1,
+                boundedInterval - schedulingAllowanceMilliseconds));
+    }
+
+    public static float ResolveBasicAttackRange(float authoredRange) =>
+        float.IsFinite(authoredRange)
+            ? Math.Clamp(authoredRange, 0.5f, 10f)
+            : DefaultBasicAttackRange;
+
     public static uint CalculateBasicAttack(
         in PlayerCombatOffenseComponent offense)
     {
-        var attack = offense.Profession is 2 or 3
-            ? offense.MagicAttack
-            : offense.PhysicalAttack;
-        return (uint)Math.Max(1, attack);
+        var attacker = CombatCharacterStatsAdapter.FromOffense(offense);
+        return AuthoredCombatV1.ResolveBasicAttackForOutcome(
+            attacker,
+            target: default,
+            CombatHitOutcome.Normal).Damage;
     }
 
     public static uint CalculateSkillDamage(
         in PlayerCombatOffenseComponent offense,
         in PlayerCombatSkillSnapshot skill)
     {
-        var usesMagicAttack = skill.Property == 1;
-        var attack = usesMagicAttack
-            ? offense.MagicAttack
-            : offense.PhysicalAttack;
-        var damageBonus = usesMagicAttack
-            ? offense.MagicDamageBonus
-            : offense.PhysicalDamageBonus;
-        var appendDamage = usesMagicAttack
-            ? offense.MagicAppendDamage
-            : offense.PhysicalAppendDamage;
-
-        var attackCoefficient = Math.Max(0m, 1m + skill.Power1);
-        var rawDamage = (attackCoefficient * Math.Max(0, attack)) +
-                        skill.Power2;
-        rawDamage *= 1m + (Math.Max(0, damageBonus) / 10_000m);
-        rawDamage += Math.Max(0, appendDamage);
-        if (rawDamage <= 0)
-        {
-            return 0;
-        }
-
-        return (uint)Math.Clamp(
-            decimal.ToInt64(decimal.Round(
-                rawDamage,
-                0,
-                MidpointRounding.AwayFromZero)),
-            1L,
-            uint.MaxValue);
+        var attacker = CombatCharacterStatsAdapter.FromOffense(offense);
+        return AuthoredCombatV1.ResolveSkillDamageForOutcome(
+            attacker,
+            target: default,
+            skill.Property,
+            skill.Power1,
+            skill.Power2,
+            CombatHitOutcome.Normal).Damage;
     }
+
+    public static CombatResolution ResolveBasicAttack(
+        in CombatAttackerStats attacker,
+        in CombatTargetStats target,
+        ulong eventId,
+        int targetOrder = 0) =>
+        AuthoredCombatV1.ResolveBasicAttack(
+            attacker,
+            target,
+            eventId,
+            targetOrder);
+
+    public static CombatResolution ResolveSkillDamage(
+        in CombatAttackerStats attacker,
+        in CombatTargetStats target,
+        in PlayerCombatSkillSnapshot skill,
+        ulong eventId,
+        int targetOrder = 0) =>
+        AuthoredCombatV1.ResolveSkillDamage(
+            attacker,
+            target,
+            skill.Property,
+            skill.Power1,
+            skill.Power2,
+            eventId,
+            targetOrder);
 
     public static bool IsHostileSingleTargetSkill(
         in PlayerCombatSkillSnapshot skill) =>

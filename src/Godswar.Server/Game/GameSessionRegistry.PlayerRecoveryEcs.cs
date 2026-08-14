@@ -1,4 +1,5 @@
 using Godswar.Server.Packets;
+using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
 
@@ -27,33 +28,29 @@ internal sealed partial class GameSessionRegistry
                 var recoveryStartedAt =
                     nextRecoveryAt - PlayerRecoveryInterval;
                 var character = current.Character;
-                lock (character.VitalsSync)
+                var decision = GetPlayerRuntimeEcs(
+                        current.Session)
+                    .Recovery
+                    .Evaluate(
+                        character,
+                        current.ObjectId,
+                        recoveryStartedAt,
+                        now);
+                _nextPlayerRecoveryAt[current.CharacterId] =
+                    decision.NextPulseAt;
+                if (!decision.PulseAccepted)
                 {
-                    var decision = GetPlayerRuntimeEcs(
-                            current.Session)
-                        .Recovery
-                        .Evaluate(
-                            character,
-                            current.ObjectId,
-                            recoveryStartedAt,
-                            now);
-                    _nextPlayerRecoveryAt[current.CharacterId] =
-                        decision.NextPulseAt;
-                    if (!decision.Recovered)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    character.CurrentHp = decision.CurrentHp;
-                    character.CurrentMp = decision.CurrentMp;
-                    character.MarkVitalsChanged();
-                    if (character.VitalsRevision !=
-                        decision.VitalsRevision)
-                    {
-                        throw new InvalidOperationException(
-                            "ECS recovery revision diverged from the " +
-                            "authoritative character revision.");
-                    }
+                var recovery = ApplyAuthoritativeRecoveryPulseLocked(
+                    current,
+                    now,
+                    PlayerRecoveryCatalog.GetTotalHp(character),
+                    PlayerRecoveryCatalog.GetTotalMp(character));
+                if (!recovery.VitalsChanged)
+                {
+                    continue;
                 }
 
                 recovered.Add(current);

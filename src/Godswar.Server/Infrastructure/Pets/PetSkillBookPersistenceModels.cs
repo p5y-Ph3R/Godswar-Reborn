@@ -9,7 +9,8 @@ internal sealed record LockedSkillBookPet(
     bool IsSummoned,
     short OpenedSkillSlots,
     short AvailableSkillSlots,
-    string? InitialSavvySourceVersion);
+    string? InitialSavvySourceVersion,
+    byte SoulContractStage);
 
 internal sealed record LockedSkillBookSkill(
     int SkillId,

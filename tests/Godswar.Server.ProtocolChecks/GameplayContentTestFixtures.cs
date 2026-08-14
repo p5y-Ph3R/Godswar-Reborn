@@ -22,7 +22,8 @@ internal static class GameplayContentTestFixtures
                     map.MapId,
                     map.SceneKey,
                     map.DisplayName,
-                    map.ClientSceneId))
+                    map.ClientSceneId,
+                    map.MapMode))
                 .ToArray(),
             MapTemplateSeeds.AddressPoints
                 .Select(static point =>
@@ -50,6 +51,7 @@ internal static class GameplayContentTestFixtures
                         monster.IsBoss,
                         monster.IsElite,
                         monster.IsPet,
+                        monster.AttackType,
                         monster.CollisionRange))
                 .ToArray(),
             CreateWorldBosses(),

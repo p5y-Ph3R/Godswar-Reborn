@@ -240,7 +240,19 @@ internal sealed partial class JsonGameStore :
             stats.ArmorScore,
             stats.ArmorRank,
             stats.ArmorAuraEffect,
-            learnedSkillCount);
+            learnedSkillCount,
+            stats.PhysicalDamageReduction,
+            stats.MagicDamageReduction,
+            stats.CriticalDamageReduction,
+            stats.LifeAbsorption,
+            stats.DamageRebound,
+            stats.Profession,
+            stats.PhysicalFlatAbsorption,
+            stats.MagicFlatAbsorption,
+            stats.CriticalDamageFlatReduction,
+            stats.DamageReboundFlat,
+            stats.BasicAttackIntervalMilliseconds,
+            stats.BasicAttackRange);
     }
 
     private static ImmutableArray<CharacterSkillSnapshot> MapSkills(

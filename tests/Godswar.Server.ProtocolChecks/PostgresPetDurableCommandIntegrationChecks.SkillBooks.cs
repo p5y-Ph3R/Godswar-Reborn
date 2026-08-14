@@ -141,6 +141,7 @@ internal static partial class
             evidence.LearnedRuntimeSkillId == 3_904 &&
             evidence.SkillSlot == 0 &&
             evidence.TraitRequirement.Strength == 64m &&
+            evidence.TraitsAtLearnTime.Strength == 64m &&
             evidence.ItemContentRevision ==
                 itemContent.Templates.Revision.Sha256 &&
             evidence.LearnedSkillContentRevision == learned.Revision.Sha256,
@@ -230,6 +231,8 @@ internal static partial class
             """
             UPDATE public.character_pets
             SET species_id = 25,
+                has_soul_contract = true,
+                soul_contract_stage = 6,
                 updated_at = transaction_timestamp()
             WHERE id = @petId
               AND user_id = @characterId
@@ -263,7 +266,7 @@ internal static partial class
         await using (var trait = new NpgsqlCommand(
             """
             UPDATE public.character_pet_stat_values
-            SET initial_savvy = 100
+            SET initial_savvy = 56
             WHERE pet_id = @petId
               AND stat_code = 2;
             """,
@@ -272,7 +275,7 @@ internal static partial class
         {
             trait.Parameters.AddWithValue("petId", petId);
             Check.Equal(1, await trait.ExecuteNonQueryAsync(),
-                "skill-book fixture satisfies the Strength-64 threshold");
+                "Soul Contract +8 satisfies the Strength-64 threshold");
         }
         var itemId = await SeedBagItemAsync(
             connection,

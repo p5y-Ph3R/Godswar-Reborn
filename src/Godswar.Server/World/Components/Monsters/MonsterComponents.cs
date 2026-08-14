@@ -66,6 +66,7 @@ internal struct MonsterMovementComponent
     public uint RemainingMovementTicks;
     public DateTimeOffset NextMovementAt;
     public DateTimeOffset NextMovementStepAt;
+    public int MovementSpeedBasisPoints;
 }
 
 internal struct MonsterCombatComponent

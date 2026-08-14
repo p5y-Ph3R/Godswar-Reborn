@@ -7,7 +7,7 @@ using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PlayerCombatEcsLiveAdapterChecks
+internal static partial class PlayerCombatEcsLiveAdapterChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
@@ -33,6 +33,10 @@ internal static class PlayerCombatEcsLiveAdapterChecks
             character.CurrentMap,
             monsters,
             Start);
+        StabilizeLiveSkillFixtureCharacterId(
+            registry,
+            character,
+            monsters);
         registry.JoinMap(
             socket.Session,
             character.AccountId,
@@ -73,6 +77,8 @@ internal static class PlayerCombatEcsLiveAdapterChecks
             character,
             monsters[0].ObjectId);
         registry.Remove(socket.Session);
+        await CheckLiveBasicAttackResolutionAsync();
+        await CheckReconnectSafeCombatAdmissionAsync();
     }
 
     private static void CheckLiveAtomicHealthRevisionGuard(

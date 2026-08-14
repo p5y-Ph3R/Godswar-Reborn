@@ -47,4 +47,11 @@ internal readonly record struct PlayerCalculatedStatsComponent(
     int MagicDamageReduction,
     int CriticalDamageReduction,
     int LifeAbsorption,
-    int DamageRebound);
+    int DamageRebound,
+    byte Profession,
+    int PhysicalFlatAbsorption,
+    int MagicFlatAbsorption,
+    int CriticalDamageFlatReduction,
+    int DamageReboundFlat,
+    int BasicAttackIntervalMilliseconds,
+    float BasicAttackRange);

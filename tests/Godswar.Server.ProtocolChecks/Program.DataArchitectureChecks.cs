@@ -132,6 +132,9 @@ internal static partial class Program
                 "PostgreSQL pinned world-content baseline",
                 PostgresWorldContentReaderIntegrationChecks.RunAsync),
             (
+                PostgresGameplayV3UpgradeIntegrationChecks.CheckName,
+                PostgresGameplayV3UpgradeIntegrationChecks.RunAsync),
+            (
                 "PostgreSQL consistent character snapshot reader",
                 PostgresCharacterSnapshotReaderIntegrationChecks.RunAsync),
             (

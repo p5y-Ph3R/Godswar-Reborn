@@ -7,7 +7,7 @@ internal static partial class WorldContentRevisionHasher
     public static WorldContentFamilyRevision HashGameplay(
         GameplayContentCatalog content)
     {
-        using var hash = new CanonicalHashBuilder("gameplay-v2");
+        using var hash = new CanonicalHashBuilder("gameplay-v3");
         HashMaps(hash, content.Maps);
         HashAddressPoints(hash, content.AddressPoints);
         HashLinks(hash, content.Links);
@@ -51,6 +51,7 @@ internal static partial class WorldContentRevisionHasher
             {
                 hash.AppendInt32(value.ClientSceneId.Value);
             }
+            hash.AppendInt32(value.MapMode ?? int.MinValue);
         }
     }
 
@@ -108,6 +109,7 @@ internal static partial class WorldContentRevisionHasher
             hash.AppendInt32(value.IsBoss ? 1 : 0);
             hash.AppendInt32(value.IsElite ? 1 : 0);
             hash.AppendInt32(value.IsPet ? 1 : 0);
+            hash.AppendInt32(value.AttackType ?? int.MinValue);
             hash.AppendInt32(value.CollisionRange.HasValue ? 1 : 0);
             if (value.CollisionRange.HasValue)
             {

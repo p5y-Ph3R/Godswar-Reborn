@@ -22,7 +22,26 @@ internal sealed record GameSessionContext(
 
     public bool PetOwnerMergeActive { get; init; }
 
+    public Func<MonsterDamageResult,
+        Task<PreparedPveMonsterKillReward?>>?
+        PreparePveMonsterKillReward { get; init; }
+
     public string DisplayName => string.IsNullOrWhiteSpace(CharacterName)
         ? $"character:{CharacterId}"
         : CharacterName;
+}
+
+internal sealed class PreparedPveMonsterKillReward
+{
+    private readonly Func<CancellationToken, Task> _publish;
+
+    public PreparedPveMonsterKillReward(
+        Func<CancellationToken, Task> publish)
+    {
+        ArgumentNullException.ThrowIfNull(publish);
+        _publish = publish;
+    }
+
+    public Task PublishAsync(CancellationToken cancellationToken) =>
+        _publish(cancellationToken);
 }

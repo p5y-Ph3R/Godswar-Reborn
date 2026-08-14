@@ -10,6 +10,7 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
 {
     public static async Task RunAsync()
     {
+        CheckGaiaPassiveRefreshAfterDurableEquip();
         await CheckCommittedUnequipAsync();
         await CheckCommittedEquipAsync();
         await CheckCommittedFashionUnequipRestoresAuraAsync();
@@ -235,7 +236,13 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             magicDamageReduction: 902,
             criticalDamageReduction: 903,
             lifeAbsorption: 904,
-            damageRebound: 905);
+            damageRebound: 905,
+            physicalFlatAbsorption: 906,
+            magicFlatAbsorption: 907,
+            criticalDamageFlatReduction: 908,
+            damageReboundFlat: 909,
+            basicAttackIntervalMilliseconds: 2_300,
+            basicAttackRange: 2.5f);
 
         GameClientHandler.ApplyDurableEquipmentBagTransferProjection(
             live,
@@ -262,9 +269,15 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
                 MagicDamageReduction: 902,
                 CriticalDamageReduction: 903,
                 LifeAbsorption: 904,
-                DamageRebound: 905
+                DamageRebound: 905,
+                PhysicalFlatAbsorption: 906,
+                MagicFlatAbsorption: 907,
+                CriticalDamageFlatReduction: 908,
+                DamageReboundFlat: 909,
+                BasicAttackIntervalMilliseconds: 2_300,
+                BasicAttackRange: 2.5f
             },
-            "equipment refresh preserves all Merge-only stat channels");
+            "equipment refresh preserves typed combat and weapon channels");
 
         var zeroManaLive = CreateProjectedCharacter(transferred: false);
         zeroManaLive.CurrentMp = 100;

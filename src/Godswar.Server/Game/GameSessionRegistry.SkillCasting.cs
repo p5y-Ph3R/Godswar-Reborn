@@ -60,6 +60,11 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(session);
+        if (HasActiveElementalShock(session, now))
+        {
+            return PlayerSkillCastControl.Stunned;
+        }
+
         if (!_playerStatusStates.TryGetValue(session, out var state))
         {
             return PlayerSkillCastControl.None;
@@ -89,6 +94,39 @@ internal sealed partial class GameSessionRegistry
         }
 
         return resolved;
+    }
+
+    private bool HasActiveElementalShock(
+        ClientSession session,
+        DateTimeOffset now)
+    {
+        ElementalCombatSessionFence fence;
+        lock (_gate)
+        {
+            if (!_sessions.TryGetValue(session, out var context) ||
+                !context.WorldReady ||
+                !context.Ownership.IsValid)
+            {
+                return false;
+            }
+
+            fence = new(
+                context.CharacterId,
+                context.MapId,
+                context.Ownership);
+        }
+
+        return TryGetElementalStatusAdjustment(
+                session,
+                fence,
+                now.ToUnixTimeMilliseconds(),
+                movementSpeed: 0,
+                physicalDefense: 0,
+                magicDefense: 0,
+                hitRating: 0,
+                healingReceived: 0,
+                out var adjustment) &&
+            !adjustment.MovementAllowed;
     }
 
     private static void RefreshSkillCastControlSnapshot(

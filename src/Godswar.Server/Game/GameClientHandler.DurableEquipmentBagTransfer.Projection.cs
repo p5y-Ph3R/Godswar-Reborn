@@ -82,6 +82,9 @@ internal sealed partial class GameClientHandler
         ApplyDurableEquipmentStatsProjection(
             liveCharacter,
             persistedCharacter.CalculatedStats);
+        ApplyElementalPassiveStats(
+            liveCharacter,
+            persistedCharacter.CalculatedStats);
     }
 
     private static void ApplyDurableEquipmentStatsProjection(
@@ -105,6 +108,7 @@ internal sealed partial class GameClientHandler
                 CharacterId = persistedStats.CharacterId,
                 AccountId = persistedStats.AccountId,
                 Name = persistedStats.Name,
+                Profession = persistedStats.Profession,
                 Level = persistedStats.Level,
                 MaxHp = maxHp,
                 MaxMp = maxMp,
@@ -147,6 +151,16 @@ internal sealed partial class GameClientHandler
                     persistedStats.CriticalDamageReduction,
                 LifeAbsorption = persistedStats.LifeAbsorption,
                 DamageRebound = persistedStats.DamageRebound,
+                PhysicalFlatAbsorption =
+                    persistedStats.PhysicalFlatAbsorption,
+                MagicFlatAbsorption =
+                    persistedStats.MagicFlatAbsorption,
+                CriticalDamageFlatReduction =
+                    persistedStats.CriticalDamageFlatReduction,
+                DamageReboundFlat = persistedStats.DamageReboundFlat,
+                BasicAttackIntervalMilliseconds =
+                    persistedStats.BasicAttackIntervalMilliseconds,
+                BasicAttackRange = persistedStats.BasicAttackRange,
                 WeaponScore = persistedStats.WeaponScore,
                 WeaponRank = persistedStats.WeaponRank,
                 WeaponAuraEffect = persistedStats.WeaponAuraEffect,

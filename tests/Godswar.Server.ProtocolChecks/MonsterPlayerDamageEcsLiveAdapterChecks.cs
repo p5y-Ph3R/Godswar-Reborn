@@ -60,6 +60,9 @@ internal static partial class MonsterPlayerDamageEcsLiveAdapterChecks
         registry.Remove(socket.Session);
 
         await CheckHolyWardMitigatesLiveMonsterAttackAsync();
+        await CheckDeterministicMonsterMissAsync();
+        await CheckMonsterReboundParityAsync();
+        await CheckIncomingElementalMonsterParityAsync();
         await CheckRemovalDuringMitigationEvaluationAsync();
     }
 

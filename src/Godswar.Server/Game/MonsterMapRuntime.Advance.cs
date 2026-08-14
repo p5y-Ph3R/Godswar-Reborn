@@ -74,7 +74,8 @@ internal sealed partial class MonsterMapRuntime
 
                     monster.StunnedUntil = null;
                     monster.NextAttackAt = now + TickInterval;
-                    monster.NextMovementStepAt = now + TickInterval;
+                    monster.NextMovementStepAt =
+                        now + ElementalMovementInterval(monster);
                 }
 
                 if (monster.AggroCharacterId is { } aggroCharacterId)
@@ -116,7 +117,8 @@ internal sealed partial class MonsterMapRuntime
                         monster.CurrentX += monster.VelocityX;
                         monster.CurrentZ += monster.VelocityZ;
                         monster.RemainingMovementTicks--;
-                        monster.NextMovementStepAt += TickInterval;
+                        monster.NextMovementStepAt +=
+                            ElementalMovementInterval(monster);
                         positionsChanged = true;
 
                         if (monster.RemainingMovementTicks != 0)

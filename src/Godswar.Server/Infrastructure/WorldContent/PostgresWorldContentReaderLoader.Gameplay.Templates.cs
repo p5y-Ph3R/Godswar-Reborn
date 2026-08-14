@@ -18,7 +18,7 @@ internal static partial class PostgresWorldContentReaderLoader
             """
             SELECT source_key, source_kind, source_map_id, scene_key,
                    template_key, display_name, rank, is_boss, is_elite,
-                   is_pet, collision_range
+                   is_pet, attack_type, collision_range
             FROM gameplay_monster_templates
             WHERE revision = @revision
             ORDER BY source_key, template_key;
@@ -41,7 +41,8 @@ internal static partial class PostgresWorldContentReaderLoader
                 reader.GetBoolean(7),
                 reader.GetBoolean(8),
                 reader.GetBoolean(9),
-                reader.IsDBNull(10) ? null : reader.GetFloat(10)));
+                reader.IsDBNull(10) ? null : reader.GetInt16(10),
+                reader.IsDBNull(11) ? null : reader.GetFloat(11)));
         }
 
         return values.ToArray();

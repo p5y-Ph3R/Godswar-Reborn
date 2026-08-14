@@ -3,6 +3,7 @@ using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Combat;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -32,21 +33,51 @@ internal sealed partial class GameClientHandler
         var isGroundTargeted =
             SkillCombatResolver.IsHostileMonsterGroundAreaSkill(combat);
         var manaCost = Math.Max(0, combat.Mp);
-        var decision = _registry.ResolvePlayerCombatEcs(
-            _session,
-            character,
-            LocalPlayerObjectId,
-            _nextBasicAttackAt,
-            PlayerCombatEcsRequest.HostileSkill(
-                PlayerCombatIntentKind.AreaSkill,
-                DateTimeOffset.UtcNow,
-                uint.MaxValue,
+        var observedAt = DateTimeOffset.UtcNow;
+        using var elementalAuthority =
+            CapturePveElementalCommitAuthority(character);
+        if (elementalAuthority is null)
+        {
+            Console.WriteLine(
+                $"[skill] rejected stale elemental authority character={character.Name} skill={cast.SkillId}");
+            return;
+        }
+
+        if (!TryClaimHostileSkillCooldown(
+                character,
                 combat,
-                hasTargetPosition: isGroundTargeted,
-                areaCenterX: areaCenterX,
-                areaCenterZ: areaCenterZ));
+                observedAt,
+                out var cooldownLease))
+        {
+            return;
+        }
+
+        PlayerCombatEcsDecision decision;
+        try
+        {
+            decision = _registry.ResolvePlayerCombatEcs(
+                _session,
+                character,
+                LocalPlayerObjectId,
+                _nextBasicAttackAt,
+                PlayerCombatEcsRequest.HostileSkill(
+                    PlayerCombatIntentKind.AreaSkill,
+                    observedAt,
+                    uint.MaxValue,
+                    combat,
+                    hasTargetPosition: isGroundTargeted,
+                    areaCenterX: areaCenterX,
+                    areaCenterZ: areaCenterZ));
+        }
+        catch
+        {
+            ReleaseHostileSkillCooldown(cooldownLease);
+            throw;
+        }
         if (!decision.IntentAccepted)
         {
+            RequireRejectedEcsSkillResourcesClosed(decision);
+            ReleaseHostileSkillCooldown(cooldownLease);
             if (decision.RejectionReason ==
                 PlayerCombatRejectionReason.InsufficientMana)
             {
@@ -68,26 +99,41 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (decision.Resolutions.Length !=
+            decision.SelectedTargetCount)
+        {
+            throw new InvalidOperationException(
+                "An accepted ECS area skill did not retain every " +
+                "authoritative target resolution.");
+        }
+
         var hits = decision.Hits;
+        var misses = decision.Resolutions.Count(static resolved =>
+            !resolved.Resolution.Hit);
+        var lifeAbsorption = CommitPveLifeAbsorption(
+            character,
+            CreatePveCommittedMonsterDamage(decision));
+        var elementalCommit = CommitPveElementalHits(
+            elementalAuthority,
+            CombatEventProvenance.DirectSkill,
+            CreatePveElementalCommittedHits(decision));
         _registry.UpdateCharacter(
             _session,
             character,
             advanceWorldRevision: false);
         var pendingRewards = new List<PendingMonsterKillReward>();
-        foreach (var hit in hits)
+        foreach (var hit in hits.Where(static hit => hit.Result.Killed))
         {
-            if (!hit.Result.Killed)
+            var pending = await PrepareMonsterKillRewardAsync(hit.Result);
+            if (pending is not null)
             {
-                continue;
-            }
-
-            var pendingReward =
-                await PrepareMonsterKillRewardAsync(hit.Result);
-            if (pendingReward is not null)
-            {
-                pendingRewards.Add(pendingReward);
+                pendingRewards.Add(pending);
             }
         }
+        var elementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                elementalAuthority,
+                elementalCommit);
 
         var selfVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(
@@ -196,17 +242,29 @@ internal sealed partial class GameClientHandler
                 "AreaSkill",
                 publishCastVisual);
 
+        await PublishPveLifeAbsorptionAsync(
+            character,
+            lifeAbsorption,
+            cancellationToken,
+            persistVitals: false);
+
+        await PublishPveElementalCommitAsync(
+            elementalAuthority,
+            elementalCommit,
+            elementalRewards,
+            cancellationToken);
+
+        await PersistSkillVitalsAsync(
+            character,
+            areaSkill: true,
+            cancellationToken);
+
         foreach (var pendingReward in pendingRewards)
         {
             await PublishMonsterKillRewardAsync(
                 pendingReward,
                 cancellationToken);
         }
-
-        await PersistSkillVitalsAsync(
-            character,
-            areaSkill: true,
-            cancellationToken);
 
         int currentMana;
         lock (character.VitalsSync)
@@ -224,6 +282,6 @@ internal sealed partial class GameClientHandler
             ? 0
             : hits[0].ReportedDamage;
         Console.WriteLine(
-            $"[skill] area damage character={character.Name} skill={cast.SkillId} center={areaCenterX:F2},{areaCenterZ:F2} radius={combat.Range:F2} candidates={decision.SelectedTargetCount} hits={hits.Length} resolved-each={reportedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
+            $"[skill] area damage character={character.Name} skill={cast.SkillId} center={areaCenterX:F2},{areaCenterZ:F2} radius={combat.Range:F2} candidates={decision.SelectedTargetCount} hits={hits.Length} misses={misses} first-resolved={reportedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
     }
 }

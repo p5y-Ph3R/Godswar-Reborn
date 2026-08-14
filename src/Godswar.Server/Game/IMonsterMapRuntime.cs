@@ -22,6 +22,19 @@ internal interface IMonsterMapRuntime
         DateTimeOffset now,
         out MonsterDamageResult result);
 
+    bool TryApplyPeriodicDamage(
+        uint objectId,
+        uint damage,
+        int sourceCharacterId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset now,
+        out MonsterDamageResult result);
+
+    bool TrySetMovementSpeedBasisPoints(
+        uint objectId,
+        uint expectedSpawnGeneration,
+        int speedBasisPoints);
+
     bool TryApplyStun(
         uint objectId,
         int attackerCharacterId,

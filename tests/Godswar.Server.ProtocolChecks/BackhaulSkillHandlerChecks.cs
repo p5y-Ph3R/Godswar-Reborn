@@ -49,6 +49,7 @@ internal static partial class BackhaulSkillHandlerChecks
         await CheckUnlearnedCastRejectedAsync();
         await CheckNativeCastInterruptionAsync();
         await CheckMovementCastInterruptionAsync();
+        await CheckDeadMovementAndReviveAuthorityAsync();
         await CheckBasicAttackCastInterruptionAsync();
         await CheckInterruptionBroadcastIdentityAsync();
         await CheckControlStatusCastInterruptionsAsync();
@@ -253,7 +254,8 @@ internal static partial class BackhaulSkillHandlerChecks
             WorldContentReaderTestFixtures.Empty,
             mapTransitionReadyTimeout: TimeSpan.FromSeconds(5),
             backhaulSkillCastTime:
-                backhaulSkillCastTime ?? TimeSpan.Zero);
+                backhaulSkillCastTime ?? TimeSpan.Zero,
+            petContent: PetContentTestCatalog.Instance);
         SetField(
             handler,
             "_account",
@@ -269,12 +271,13 @@ internal static partial class BackhaulSkillHandlerChecks
         return handler;
     }
 
-    private static GameSessionRegistry CreateRegistry() =>
+    private static GameSessionRegistry CreateRegistry(
+        PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs) =>
         new(
             store: null,
             zodiacEnergyOptions: null,
             monsterRuntimeMode: MonsterRuntimeMode.Ecs,
-            playerRuntimeMode: PlayerRuntimeMode.Ecs,
+            playerRuntimeMode,
             gameplayCatalogs: GameplayContentTestFixtures.Runtime);
 
     private static GameCharacter CreateCharacter(string name) =>

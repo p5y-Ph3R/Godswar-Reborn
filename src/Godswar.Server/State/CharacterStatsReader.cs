@@ -10,6 +10,7 @@ internal static class CharacterStatsReader
             CharacterId = reader.GetInt32(0),
             AccountId = reader.GetInt32(1),
             Name = reader.GetString(2),
+            Profession = checked((byte)reader.GetInt16(3)),
             Level = reader.GetInt32(4),
             MaxHp = reader.GetInt32(5),
             MaxMp = reader.GetInt32(6),
@@ -47,6 +48,12 @@ internal static class CharacterStatsReader
             MagicDamageReduction = reader.GetInt32(38),
             CriticalDamageReduction = reader.GetInt32(39),
             LifeAbsorption = reader.GetInt32(40),
-            DamageRebound = reader.GetInt32(41)
+            DamageRebound = reader.GetInt32(41),
+            PhysicalFlatAbsorption = reader.GetInt32(42),
+            MagicFlatAbsorption = reader.GetInt32(43),
+            CriticalDamageFlatReduction = reader.GetInt32(44),
+            DamageReboundFlat = reader.GetInt32(45),
+            BasicAttackIntervalMilliseconds = reader.GetInt32(46),
+            BasicAttackRange = reader.GetFloat(47)
         };
 }

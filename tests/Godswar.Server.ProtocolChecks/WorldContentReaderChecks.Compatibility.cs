@@ -19,6 +19,7 @@ internal static partial class WorldContentReaderChecks
                 false,
                 false,
                 false,
+                1,
                 2f));
 
         _ = PinnedWorldContentReader.Create(
@@ -55,7 +56,7 @@ internal static partial class WorldContentReaderChecks
     private static GameplayContentCatalog CreateGameplay(
         GameplayMonsterTemplateDefinition monster) =>
         new(
-            [new GameplayMapDefinition(1, "Athens", "Athens", 1)],
+            [new GameplayMapDefinition(1, "Athens", "Athens", 1, 5)],
             [],
             [],
             [monster],

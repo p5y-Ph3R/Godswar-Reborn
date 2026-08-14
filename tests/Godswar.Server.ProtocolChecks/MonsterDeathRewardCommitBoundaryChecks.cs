@@ -82,23 +82,9 @@ internal static class MonsterDeathRewardCommitBoundaryChecks
                 $"{relativePath} uses prepare-before-publish reward ordering");
 
             var successfulMutationBoundary = source.LastIndexOf(
-                "_registry.UpdateCharacter",
+                "CommitPveLifeAbsorption(",
                 prepare,
                 StringComparison.Ordinal);
-            if (successfulMutationBoundary < 0)
-            {
-                successfulMutationBoundary = source.LastIndexOf(
-                    "var damageResult = hit.Result;",
-                    prepare,
-                    StringComparison.Ordinal);
-            }
-            if (successfulMutationBoundary < 0)
-            {
-                successfulMutationBoundary = source.LastIndexOf(
-                    "out var damageResult",
-                    prepare,
-                    StringComparison.Ordinal);
-            }
 
             Check.True(
                 successfulMutationBoundary >= 0,

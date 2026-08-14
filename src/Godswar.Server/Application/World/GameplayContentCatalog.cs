@@ -38,7 +38,8 @@ internal sealed record GameplayMapDefinition(
     short MapId,
     string SceneKey,
     string DisplayName,
-    int? ClientSceneId);
+    int? ClientSceneId,
+    short? MapMode);
 
 internal sealed record GameplayMapAddressPointDefinition(
     short MapId,
@@ -85,6 +86,7 @@ internal sealed record GameplayMonsterTemplateDefinition(
     bool IsBoss,
     bool IsElite,
     bool IsPet,
+    short? AttackType,
     float? CollisionRange);
 
 internal sealed record GameplayWorldBossDefinition(

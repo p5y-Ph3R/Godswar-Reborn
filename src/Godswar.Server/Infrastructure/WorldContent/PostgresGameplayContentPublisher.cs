@@ -9,7 +9,8 @@ internal sealed record GameplayContentPublicationResult(
     string Revision,
     int EntryCount,
     string Source,
-    bool Created);
+    bool Created,
+    string Publisher);
 
 /// <summary>
 /// One-time promotion boundary from the reviewed legacy relational catalog to
@@ -64,12 +65,25 @@ internal static partial class PostgresGameplayContentPublisher
             cancellationToken);
         if (current is not null)
         {
-            _ = await PostgresWorldContentReaderLoader
-                .LoadPublishedGameplayContentAsync(
+            try
+            {
+                _ = await PostgresWorldContentReaderLoader
+                    .LoadPublishedGameplayContentAsync(
+                        connection,
+                        transaction,
+                        cancellationToken);
+                return current with { Created = false };
+            }
+            catch (WorldContentUnavailableException error)
+                when (error.Reason ==
+                    WorldContentFailureReason.RevisionMismatch)
+            {
+                return await UpgradeLegacyV2PublicationAsync(
                     connection,
                     transaction,
+                    current,
                     cancellationToken);
-            return current with { Created = false };
+            }
         }
 
         var canonical = await ReadCanonicalSourceContentAsync(
@@ -109,7 +123,8 @@ internal static partial class PostgresGameplayContentPublisher
             revision.Sha256,
             revision.EntryCount,
             Source,
-            Created: true);
+            Created: true,
+            Publisher: Publisher);
     }
 
     /// <summary>
@@ -172,7 +187,8 @@ internal static partial class PostgresGameplayContentPublisher
                        release.class_count + release.talent_effect_count +
                        release.talent_count + release.skill_count +
                        release.skill_book_count,
-                   release.source
+                   release.source,
+                   publication.publisher
             FROM gameplay_content_publication publication
             JOIN gameplay_content_revisions release
               ON release.revision = publication.revision
@@ -191,7 +207,8 @@ internal static partial class PostgresGameplayContentPublisher
             reader.GetString(0),
             reader.GetInt32(1),
             reader.GetString(2),
-            Created: false);
+            Created: false,
+            reader.GetString(3));
     }
 
     internal static async Task<bool> InsertReleaseAsync(

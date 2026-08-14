@@ -1,9 +1,19 @@
 using Godswar.Server.State;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
 internal static class SkillCombatResolver
 {
+    // No stored capture proves hostile player-skill result flags, miss
+    // encoding, area entries, or local/world target translation.
+    internal const bool HostilePlayerSkillWireSupported = false;
+
+    public static bool MustRejectHostilePlayerTarget(
+        bool selectedTargetIsOtherPlayer) =>
+        selectedTargetIsOtherPlayer &&
+        !HostilePlayerSkillWireSupported;
+
     // Captured skill distance is measured to the target's collision boundary,
     // while runtime positions are object centers. This covers the largest normal
     // monster collision radius in the Sparta client definitions.
@@ -159,28 +169,32 @@ internal static class SkillCombatResolver
 
     public static uint CalculateDamage(GameCharacter character, SkillCombatDefinition skill)
     {
-        var stats = character.CalculatedStats ?? CharacterStats.FromCharacter(character);
-        var usesMagicAttack = skill.Property == 1;
-        var attack = usesMagicAttack ? stats.MagicAttack : stats.PhysicalAttack;
-        var damageBonus = usesMagicAttack ? stats.MagicDamageBonus : stats.PhysicalDamageBonus;
-        var appendDamage = usesMagicAttack ? stats.MagicAppendDamage : stats.PhysicalAppendDamage;
+        var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
+        return AuthoredCombatV1.ResolveSkillDamageForOutcome(
+            attacker,
+            target: default,
+            skill.Property,
+            skill.Power1,
+            skill.Power2,
+            CombatHitOutcome.Normal).Damage;
+    }
 
-        // The original CalculateAttackDamage treats Power1 as an adjustment to
-        // the full attack coefficient: (attack - defence) * (1 + Power1) +
-        // Power2. Monster defence is not modeled yet, so use the full attack as
-        // the pre-defence value while preserving that coefficient exactly.
-        var attackCoefficient = Math.Max(0m, 1m + skill.Power1);
-        var rawDamage = (attackCoefficient * Math.Max(0, attack)) + skill.Power2;
-        rawDamage *= 1m + (Math.Max(0, damageBonus) / 10_000m);
-        rawDamage += Math.Max(0, appendDamage);
-        if (rawDamage <= 0)
-        {
-            return 0;
-        }
-
-        return (uint)Math.Clamp(
-            decimal.ToInt64(decimal.Round(rawDamage, 0, MidpointRounding.AwayFromZero)),
-            1L,
-            uint.MaxValue);
+    public static CombatResolution ResolveDamage(
+        GameCharacter character,
+        SkillCombatDefinition skill,
+        in CombatTargetStats target,
+        ulong combatEventId,
+        int targetOrder = 0)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
+        return AuthoredCombatV1.ResolveSkillDamage(
+            attacker,
+            target,
+            skill.Property,
+            skill.Power1,
+            skill.Power2,
+            combatEventId,
+            targetOrder);
     }
 }

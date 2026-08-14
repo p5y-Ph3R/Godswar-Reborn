@@ -19,7 +19,31 @@ internal static partial class PostgresWorldContentReaderLoader
             connection,
             transaction,
             header,
+            useLegacyV2Hash: false,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// Loads the current publication through the exact gameplay-v2 hash domain.
+    /// This seam is intentionally restricted to the one-time v2-to-v3 publisher
+    /// transition; ordinary runtime reads always validate with the current hash.
+    /// </summary>
+    internal static async Task<GameplayContentCatalog>
+        LoadPublishedGameplayV2ForUpgradeAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction transaction,
+            CancellationToken cancellationToken)
+    {
+        var header = await ReadGameplayHeaderAsync(
+            connection,
+            transaction,
             cancellationToken);
+        return await LoadGameplayRevisionAsync(
+            connection,
+            transaction,
+            header,
+            useLegacyV2Hash: true,
+            cancellationToken: cancellationToken);
     }
 
     internal static Task<GameplayContentCatalog> LoadGameplayRevisionAsync(
@@ -44,13 +68,15 @@ internal static partial class PostgresWorldContentReaderLoader
                 expectedShape.Talents.Count,
                 expectedShape.SkillCombatDefinitions.Count,
                 expectedShape.SkillBooks.Count),
-            cancellationToken);
+            useLegacyV2Hash: false,
+            cancellationToken: cancellationToken);
 
     private static async Task<GameplayContentCatalog>
         LoadGameplayRevisionAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             PublishedGameplayHeader header,
+            bool useLegacyV2Hash,
             CancellationToken cancellationToken)
     {
         ValidateGameplayHeader(header);
@@ -137,7 +163,9 @@ internal static partial class PostgresWorldContentReaderLoader
             [],
             gameplay: content);
         var canonical = validator.Gameplay;
-        var revision = WorldContentRevisionHasher.HashGameplay(canonical);
+        var revision = useLegacyV2Hash
+            ? WorldContentRevisionHasher.HashGameplayV2ForUpgrade(canonical)
+            : WorldContentRevisionHasher.HashGameplay(canonical);
         if (!string.Equals(
                 revision.Sha256,
                 header.Revision,
@@ -215,7 +243,7 @@ internal static partial class PostgresWorldContentReaderLoader
         var values = new List<GameplayMapDefinition>();
         await using var command = RevisionCommand(
             """
-            SELECT map_id, scene_key, display_name, client_scene_id
+            SELECT map_id, scene_key, display_name, client_scene_id, map_mode
             FROM gameplay_map_definitions
             WHERE revision = @revision
             ORDER BY map_id;
@@ -231,7 +259,8 @@ internal static partial class PostgresWorldContentReaderLoader
                 reader.GetInt16(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetInt32(3)));
+                reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetInt16(4)));
         }
 
         return values.ToArray();

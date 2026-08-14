@@ -63,6 +63,11 @@ internal sealed partial class GameSessionRegistry
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        PruneHostileSkillCooldowns(now);
+        await AdvanceElementalPeriodicDamageOnceAsync(
+            now,
+            cancellationToken);
+
         if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
         {
             await AdvancePlayerRuntimeEcsOnceAsync(
@@ -85,7 +90,12 @@ internal sealed partial class GameSessionRegistry
                 }
 
                 _nextPlayerRecoveryAt[current.CharacterId] = now + PlayerRecoveryInterval;
-                if (PlayerRecoveryCatalog.TryApply(current.Character))
+                var recovery = ApplyAuthoritativeRecoveryPulseLocked(
+                    current,
+                    now,
+                    PlayerRecoveryCatalog.GetTotalHp(current.Character),
+                    PlayerRecoveryCatalog.GetTotalMp(current.Character));
+                if (recovery.VitalsChanged)
                 {
                     recovered.Add(current);
                 }

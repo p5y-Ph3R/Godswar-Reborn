@@ -8,6 +8,7 @@ using Godswar.Server.World.Systems.Players;
 namespace Godswar.Server.Game;
 
 internal readonly record struct PlayerRecoveryEcsDecision(
+    bool PulseAccepted,
     bool Recovered,
     int CurrentHp,
     int CurrentMp,
@@ -95,6 +96,9 @@ internal sealed class PlayerRecoveryEcsAdapter
             world.Set(
                 _entity,
                 new PlayerRuntimeTimeSourceComponent(observedAt));
+            var previousPulses = world
+                .Get<PlayerRecoveryTimerComponent>(_entity)
+                .PulsesObserved;
             scheduler.RunTick(TimeSpan.Zero);
 
             var recovered = scheduler.Events
@@ -109,6 +113,7 @@ internal sealed class PlayerRecoveryEcsAdapter
             var clock = world.Get<PlayerRuntimeClockComponent>(_entity);
             var timer = world.Get<PlayerRecoveryTimerComponent>(_entity);
             var decision = new PlayerRecoveryEcsDecision(
+                timer.PulsesObserved > previousPulses,
                 recovered.Length == 1,
                 vitals.CurrentHp,
                 vitals.CurrentMp,

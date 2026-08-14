@@ -16,7 +16,9 @@ internal readonly record struct PlayerMonsterDamageEcsRequest(
     long ExpectedLifeRevision,
     long ExpectedVitalsRevision,
     uint ResolvedDamage,
-    DateTimeOffset ResolvedAt = default);
+    DateTimeOffset ResolvedAt = default,
+    int HealingReceivedBasisPoints =
+        ElementalBasisPointMath.Denominator);
 
 internal readonly record struct PlayerPetHealingEcsDecision(
     long PetId,
@@ -163,7 +165,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                         request.ExpectedLifeRevision,
                         request.ExpectedVitalsRevision,
                         request.ResolvedDamage,
-                        request.ResolvedAt));
+                        request.ResolvedAt,
+                        request.HealingReceivedBasisPoints));
                 scheduler.RunTick(TimeSpan.Zero);
 
                 var applied = scheduler.Events

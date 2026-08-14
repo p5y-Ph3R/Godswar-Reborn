@@ -13,6 +13,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
         {{PostgresMountGearPassiveProjectionSql.CommonTableExpressions}}
         {{PostgresCharacterPetOwnerMergeProjectionSql.CommonTableExpression}}
         {{PostgresCharacterPetLearnedSkillProjectionSql.CommonTableExpression}}
+        {{PostgresCharacterHolySpiritCombatProjectionSql.CommonTableExpressions}}
         equipment_stat_values AS (
             SELECT
                 equipment.user_id,
@@ -23,12 +24,19 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                         array_length(stat_values.values, 1))
                 ], '')::numeric, 0::numeric) * stat.scale AS stat_value
             FROM character_items equipment
+            JOIN character_base owner
+              ON owner.id = equipment.user_id
             JOIN item_template_content_revisions revision
               ON revision.revision = @itemContentRevision
              AND revision.sealed_at IS NOT NULL
             JOIN item_template_content_definitions template
-              ON template.revision = revision.revision
+             ON template.revision = revision.revision
              AND template.id = equipment.prop_id
+             AND (
+                 template.equipment_slot = equipment.slot_index
+                 OR template.kind = 'ring'
+                    AND equipment.slot_index IN (8, 9)
+             )
             CROSS JOIN (
                 VALUES
                     ('MaxHP', 'max_hp', 1::numeric),
@@ -63,6 +71,17 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 WHERE template.stats ? stat.source_key
             ) stat_values ON true
             WHERE equipment.item_location = 0
+              AND equipment.user_id = @characterId
+              AND owner.fighter_job_lv >=
+                  COALESCE(template.min_level, 1)
+              AND (
+                  template.max_level IS NULL
+                  OR owner.fighter_job_lv <= template.max_level
+              )
+              AND (
+                  cardinality(template.class_ids) = 0
+                  OR owner.profession = ANY(template.class_ids)
+              )
         ),
         attribute_stat_values AS (
             SELECT
@@ -73,6 +92,19 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     ELSE attribute_value.value
                 END AS stat_value
             FROM character_items equipment
+            JOIN character_base owner
+              ON owner.id = equipment.user_id
+            JOIN item_template_content_revisions revision
+              ON revision.revision = @itemContentRevision
+             AND revision.sealed_at IS NOT NULL
+            JOIN item_template_content_definitions equipment_template
+              ON equipment_template.revision = revision.revision
+             AND equipment_template.id = equipment.prop_id
+             AND (
+                 equipment_template.equipment_slot = equipment.slot_index
+                 OR equipment_template.kind = 'ring'
+                    AND equipment.slot_index IN (8, 9)
+             )
             CROSS JOIN LATERAL (
                 VALUES
                     (equipment.attribute1),
@@ -100,7 +132,9 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     (23, 'physical_append_damage'),
                     (24, 'magic_append_damage'),
                     (25, 'critical_damage_percent'),
-                    (26, 'critical_damage_flat')
+                    (26, 'critical_damage_flat'),
+                    (27, 'life_absorption'),
+                    (28, 'damage_rebound')
             ) stat(stat_type, stat_name)
               ON stat.stat_type = attribute_template.stat_type
             CROSS JOIN LATERAL (
@@ -113,57 +147,20 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 ] AS value
             ) attribute_value
             WHERE equipment.item_location = 0
+              AND equipment.user_id = @characterId
+              AND owner.fighter_job_lv >=
+                  COALESCE(equipment_template.min_level, 1)
+              AND (
+                  equipment_template.max_level IS NULL
+                  OR owner.fighter_job_lv <= equipment_template.max_level
+              )
+              AND (
+                  cardinality(equipment_template.class_ids) = 0
+                  OR owner.profession = ANY(equipment_template.class_ids)
+              )
               AND attribute.attribute_id IS NOT NULL
               AND attribute.attribute_id >= 0
               AND attribute_value.value IS NOT NULL
-        ),
-        holy_stone_stat_values AS (
-            SELECT
-                equipment.user_id,
-                CASE
-                    WHEN socket.effect_id IN (9,10,11,12,13,14,19,20)
-                        THEN 'damage_absorb'
-                    WHEN socket.effect_id = 3 THEN 'physical_damage_bonus'
-                    WHEN socket.effect_id = 4 THEN 'magic_damage_bonus'
-                    WHEN socket.effect_id IN (15,16) THEN 'hp_recovery'
-                    WHEN socket.effect_id IN (17,18) THEN 'mp_recovery'
-                    WHEN socket.effect_id = 1 THEN 'ignore_physical_defense'
-                    WHEN socket.effect_id = 2 THEN 'ignore_magic_defense'
-                    WHEN socket.effect_id = 5 THEN 'physical_append_damage'
-                    WHEN socket.effect_id = 6 THEN 'magic_append_damage'
-                    WHEN socket.effect_id = 7 THEN 'critical_damage_percent'
-                    WHEN socket.effect_id = 8 THEN 'critical_damage_flat'
-                END AS stat_name,
-                COALESCE(
-                    socket.effectiveness_value::numeric,
-                    CASE
-                    WHEN socket.effect_id IN (1,2,3,4) THEN
-                        (ARRAY[110,170,240,320,410,500,650,850,1100,1400]::numeric[])[socket_level.safe_level]
-                    WHEN socket.effect_id IN (5,6) THEN
-                        (ARRAY[120,190,280,380,500,620,850,1200,1650,2200]::numeric[])[socket_level.safe_level]
-                    WHEN socket.effect_id = 8 THEN
-                        (ARRAY[150,240,340,460,590,720,950,1300,1800,2400]::numeric[])[socket_level.safe_level]
-                    WHEN socket.effect_id IN (11,12,14,16,18,20) THEN
-                        (ARRAY[60,90,130,170,210,250,350,500,700,950]::numeric[])[socket_level.safe_level]
-                    ELSE
-                        (ARRAY[80,120,170,230,300,370,500,700,950,1200]::numeric[])[socket_level.safe_level]
-                    END) AS stat_value
-            FROM character_items equipment
-            CROSS JOIN LATERAL (
-                VALUES
-                    (equipment.holy_socket1_effect_id, equipment.holy_socket1_level, equipment.holy_socket1_value),
-                    (equipment.holy_socket2_effect_id, equipment.holy_socket2_level, equipment.holy_socket2_value),
-                    (equipment.holy_socket3_effect_id, equipment.holy_socket3_level, equipment.holy_socket3_value),
-                    (equipment.holy_socket4_effect_id, equipment.holy_socket4_level, equipment.holy_socket4_value)
-            ) socket(effect_id, effect_level, effectiveness_value)
-            CROSS JOIN LATERAL (
-                SELECT LEAST(
-                    GREATEST(COALESCE(socket.effect_level, 1)::integer, 1),
-                    10) AS safe_level
-            ) socket_level
-            WHERE equipment.item_location = 0
-              AND socket.effect_id IS NOT NULL
-              AND socket.effect_id > 0
         ),
         talent_stat_values AS (
             SELECT
@@ -231,6 +228,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             ) stat(effect_key, stat_name)
               ON stat.effect_key = effect.effect_key
         ),
+        {{PostgresCharacterCombatSecondaryProjectionSql.CommonTableExpressions}}
         all_stat_values AS (
             SELECT * FROM equipment_stat_values
             UNION ALL SELECT * FROM attribute_stat_values
@@ -241,6 +239,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             UNION ALL SELECT * FROM mount_gear_spirit_stat_values
             UNION ALL SELECT * FROM pet_owner_merge_stat_values
             UNION ALL SELECT * FROM pet_learned_skill_stat_values
+            UNION ALL SELECT * FROM combat_secondary_stat_values
         ),
         stat_totals AS (
             SELECT
@@ -272,7 +271,11 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_damage_reduction'), 0) AS magic_damage_reduction,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_reduction'), 0) AS critical_damage_reduction,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'life_absorption'), 0) AS life_absorption,
-                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_rebound'), 0) AS damage_rebound
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_rebound'), 0) AS damage_rebound,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'physical_flat_absorption'), 0) AS physical_flat_absorption,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_flat_absorption'), 0) AS magic_flat_absorption,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_flat_reduction'), 0) AS critical_damage_flat_reduction,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_rebound_flat'), 0) AS damage_rebound_flat
             FROM all_stat_values
             GROUP BY user_id
         )
@@ -322,10 +325,17 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             ROUND(COALESCE(stats.magic_damage_reduction, 0))::integer AS magic_damage_reduction,
             ROUND(COALESCE(stats.critical_damage_reduction, 0))::integer AS critical_damage_reduction,
             ROUND(COALESCE(stats.life_absorption, 0))::integer AS life_absorption,
-            ROUND(COALESCE(stats.damage_rebound, 0))::integer AS damage_rebound
+            ROUND(COALESCE(stats.damage_rebound, 0))::integer AS damage_rebound,
+            ROUND(COALESCE(stats.physical_flat_absorption, 0))::integer AS physical_flat_absorption,
+            ROUND(COALESCE(stats.magic_flat_absorption, 0))::integer AS magic_flat_absorption,
+            ROUND(COALESCE(stats.critical_damage_flat_reduction, 0))::integer AS critical_damage_flat_reduction,
+            ROUND(COALESCE(stats.damage_rebound_flat, 0))::integer AS damage_rebound_flat,
+            weapon_combat_projection.basic_attack_interval_milliseconds,
+            weapon_combat_projection.basic_attack_range
         FROM character_base cb
         LEFT JOIN stat_totals stats ON stats.user_id = cb.id
         {{RankLateralJoinForCharacterAlias}}
+        {{PostgresCharacterWeaponCombatProjectionSql.LateralJoinForCharacterAlias}}
         WHERE cb.account_id = @accountId
           AND cb.id = @characterId
           AND cb.lifecycle_state = 'active';

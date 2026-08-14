@@ -55,6 +55,7 @@ internal static class PetSkillBookActivationPolicyChecks
             "unreviewed neighboring items fail closed");
         CheckTamperedMetadataFailsClosed(items, skills);
         CheckReceiptRoundTrip(items, skills);
+        CheckSoulContractTraitThreshold(skills);
 
         Check.True(
             PetSkillFamilyCatalog.TryGetByInitialRuntimeSkillId(
@@ -64,6 +65,41 @@ internal static class PetSkillBookActivationPolicyChecks
             PetSkillFamilyCatalog.BookBackedFamilyCount == 58,
             "Wild Bump is included in the reviewed book-backed catalog");
         return Task.CompletedTask;
+    }
+
+    private static void CheckSoulContractTraitThreshold(
+        IPetLearnedSkillContentCatalog skills)
+    {
+        var raw = new PetSavvy(
+            Agility: 0m,
+            Strength: 56m,
+            Accuracy: 0m,
+            Technique: 0m,
+            Wisdom: 0m,
+            Luck: 0m);
+        var effective = PetSoulContractPolicy.ResolveDisplayedTotal(
+            raw,
+            stage: 6);
+        Check.True(
+            !PetLearnedSkillResolver.CanLearn(
+                skills,
+                familyType: 408,
+                targetPriority: 2,
+                currentlyLearnedPriority: 1,
+                raw,
+                out var rawRejection) &&
+            rawRejection ==
+                PetSkillLearnRejection.TraitRequirementNotMet &&
+            PetLearnedSkillResolver.CanLearn(
+                skills,
+                familyType: 408,
+                targetPriority: 2,
+                currentlyLearnedPriority: 1,
+                effective,
+                out var effectiveRejection) &&
+            effectiveRejection == PetSkillLearnRejection.None &&
+            effective.Strength == 64m,
+            "Soul Contract displayed Savvy satisfies skill-book Trait thresholds");
     }
 
     private static void CheckTamperedMetadataFailsClosed(

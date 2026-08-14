@@ -17,9 +17,10 @@ internal sealed partial class GameClientHandler
         // later 10166 refresh. Sending the packet builder's walking default
         // after forging, progression, equipment, or inspection silently
         // cancels the client's mount-speed change.
-        var status = _registry.GetRuntimeStatusAggregate(
-            _session,
-            DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        var status = ApplyElementalMovementStatus(
+            _registry.GetRuntimeStatusAggregate(_session, now),
+            now);
         return PacketBuilder.PlayerStatusUpdate(_character, status);
     }
 }

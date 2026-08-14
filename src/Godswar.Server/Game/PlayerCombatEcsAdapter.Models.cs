@@ -69,6 +69,12 @@ internal sealed record PlayerCombatEcsHit(
     uint ReportedDamage,
     PlayerCombatKillGuard? KillGuard);
 
+internal readonly record struct PlayerCombatEcsResolvedTarget(
+    uint TargetObjectId,
+    uint SpawnGeneration,
+    ulong HealthRevision,
+    CombatResolution Resolution);
+
 internal sealed record PlayerCombatEcsDecision(
     ulong IntentId,
     PlayerCombatIntentKind Kind,
@@ -82,10 +88,17 @@ internal sealed record PlayerCombatEcsDecision(
     int CurrentMana,
     long VitalsRevision,
     DateTimeOffset NextBasicAttackAt,
-    ImmutableArray<PlayerCombatEcsHit> Hits)
+    ImmutableArray<PlayerCombatEcsHit> Hits,
+    ImmutableArray<PlayerCombatEcsResolvedTarget> Resolutions)
 {
     public bool IntentAccepted =>
         RejectionReason == PlayerCombatRejectionReason.None;
+
+    public PlayerCombatEcsResolvedTarget? BasicAttackResolution =>
+        Kind == PlayerCombatIntentKind.BasicAttack &&
+        Resolutions is [var resolution]
+            ? resolution
+            : null;
 }
 
 internal readonly record struct PlayerCombatEcsProjectionDecision(

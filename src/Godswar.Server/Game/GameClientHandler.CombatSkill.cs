@@ -5,6 +5,7 @@ using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -150,6 +151,21 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var selectedTargetIsOtherPlayer =
+            _registry.TryGetCurrentWorldSessionByObjectId(
+                _session,
+                _character.CurrentMap,
+                cast.TargetObjectId,
+                out var selectedPlayer) &&
+            !ReferenceEquals(selectedPlayer.Character, _character);
+        if (SkillCombatResolver.MustRejectHostilePlayerTarget(
+                selectedTargetIsOtherPlayer))
+        {
+            Console.WriteLine(
+                $"[skill] rejected uncaptured hostile player target character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
         if (!intonationCompleted &&
             combat.CastTime > TimeSpan.Zero)
         {
@@ -242,25 +258,31 @@ internal sealed partial class GameClientHandler
         }
 
         var manaCost = Math.Max(0, combat.Mp);
-        int currentMana;
-        var manaReserved = false;
-        lock (_character.VitalsSync)
+        var observedAt = DateTimeOffset.UtcNow;
+        using var elementalAuthority =
+            CapturePveElementalCommitAuthority(_character);
+        if (elementalAuthority is null)
         {
-            currentMana = _character.CurrentMp;
-            if (currentMana >= manaCost)
-            {
-                _character.CurrentMp = currentMana - manaCost;
-                currentMana = _character.CurrentMp;
-                if (manaCost > 0)
-                {
-                    _character.MarkVitalsChanged();
-                }
-                manaReserved = true;
-            }
+            Console.WriteLine(
+                $"[skill] rejected stale elemental authority character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
         }
+
+        var manaReserved = TryReserveLegacyHostileSkill(
+            _character,
+            combat,
+            observedAt,
+            out var currentMana,
+            out var cooldownLease,
+            out var cooldownRejected);
 
         if (!manaReserved)
         {
+            if (cooldownRejected)
+            {
+                return;
+            }
+
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={_character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
             await _session.SendAsync(
@@ -270,7 +292,30 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var requestedDamage = SkillCombatResolver.CalculateDamage(_character, combat);
+        var admittedCombatRevision =
+            checked((ulong)NextAdmittedLegacyCombatRevision());
+        var resolution = ResolveHostileMonsterSkillDamage(
+            _character,
+            combat,
+            target,
+            admittedCombatRevision,
+            targetOrder: 0,
+            observedAt);
+        if (!resolution.Hit)
+        {
+            await PublishUnreportedHostileMonsterSkillMissAsync(
+                packet,
+                cast,
+                combat,
+                target.SpawnGeneration,
+                publishCastVisual: !intonationCompleted,
+                currentMana,
+                resolution,
+                cancellationToken);
+            return;
+        }
+
+        var requestedDamage = resolution.Damage;
         if (requestedDamage == 0 ||
             !RevalidateCurrentWorldEffectOwnership(
                 "single_skill_damage") ||
@@ -284,6 +329,7 @@ internal sealed partial class GameClientHandler
                 out var damageResult) ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
+            ReleaseHostileSkillCooldown(cooldownLease);
             if (manaCost > 0)
             {
                 lock (_character.VitalsSync)
@@ -319,137 +365,49 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
+        var lifeAbsorption = CommitPveLifeAbsorption(
+            _character,
+            [CreatePveCommittedMonsterDamage(
+                resolution,
+                damageResult)]);
+        var elementalCommit = CommitPveElementalHit(
+            elementalAuthority,
+            CombatEventProvenance.DirectSkill,
+            resolution,
+            damageResult);
         var pendingReward = damageResult.Killed
             ? await PrepareMonsterKillRewardAsync(damageResult)
             : null;
+        var elementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                elementalAuthority,
+                elementalCommit);
+        _registry.UpdateCharacter(_session, _character, advanceWorldRevision: false);
 
-        var appliedDamage = damageResult.BeforeHealth - damageResult.AfterHealth;
-        // The working server reports the resolved hit amount even when it exceeds
-        // the monster's remaining HP. Shared runtime health is still clamped at 0.
-        var reportedDamage = requestedDamage;
-        var targetX = damageResult.Monster.X;
-        var targetZ = damageResult.Monster.Z;
-        var publishCastVisual = !intonationCompleted;
-        var selfVisual = PacketBuilder.SkillCastVisual(
-            packet.Buffer,
-            LocalPlayerObjectId);
-        var selfDamage = PacketBuilder.SkillDamage(
-            attackerObjectId: LocalPlayerObjectId,
-            targetObjectId: cast.TargetObjectId,
-            resultFlags: 1,
-            damage: reportedDamage,
-            skillId: cast.SkillId,
-            targetX: targetX,
-            targetZ: targetZ);
-        var selfImpact = PacketBuilder.SkillCastImpact(
-            LocalPlayerObjectId,
-            cast.TargetObjectId,
-            cast.SkillId,
-            targetX,
-            targetZ);
-
-        var casterNotified = true;
-        try
-        {
-            if (publishCastVisual)
-            {
-                await _registry.DeliverMonsterPacketToViewerAsync(
-                    _session,
-                    _character.CurrentMap,
-                    cast.TargetObjectId,
-                    selfVisual,
-                    damageResult.Monster.SpawnGeneration,
-                    cancellationToken,
-                    "SkillCastSelf");
-            }
-            await _registry.DeliverMonsterHealthPacketToViewerAsync(
-                _session,
-                _character.CurrentMap,
-                cast.TargetObjectId,
-                selfDamage,
-                damageResult.HealthMutation!.Value,
-                cancellationToken,
-                "SkillDamageSelf");
-            await _registry.DeliverMonsterPacketToViewerAsync(
-                _session,
-                _character.CurrentMap,
-                cast.TargetObjectId,
-                selfImpact,
-                damageResult.Monster.SpawnGeneration,
-                cancellationToken,
-                "SkillCastImpactSelf");
-            if (manaCost > 0)
-            {
-                lock (_character.VitalsSync)
-                {
-                    currentMana = _character.CurrentMp;
-                }
-
-                await _session.SendAsync(
-                    PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
-                    cancellationToken,
-                    "SkillManaSelf");
-            }
-        }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
-        {
-            // The hit already changed shared state. Continue notifying the other
-            // viewers even if the caster disconnected during its own response.
-            casterNotified = false;
-            Console.WriteLine(
-                $"[skill] caster notification failed character={_character.Name} target={cast.TargetObjectId}: {ex.Message}");
-        }
-
-        var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
-        var visualRecipients = publishCastVisual
-            ? await _registry.BroadcastToMonsterViewersAsync(
-                _character.CurrentMap,
-                cast.TargetObjectId,
-                PacketBuilder.SkillCastVisual(
-                    packet.Buffer,
-                    worldObjectId),
-                cancellationToken,
-                _session,
-                "SkillCastWorld",
-                expectedSpawnGeneration:
-                    damageResult.Monster.SpawnGeneration)
-            : 0;
-        var damageRecipients = await _registry.BroadcastToMonsterViewersAsync(
-            _character.CurrentMap,
-            cast.TargetObjectId,
-            PacketBuilder.SkillDamage(
-                attackerObjectId: worldObjectId,
-                targetObjectId: cast.TargetObjectId,
-                resultFlags: 1,
-                damage: reportedDamage,
-                skillId: cast.SkillId,
-                targetX: targetX,
-                targetZ: targetZ),
-            cancellationToken,
-            _session,
-            "SkillDamageWorld",
-            healthMutation: damageResult.HealthMutation);
-        var impactRecipients = await _registry.BroadcastToMonsterViewersAsync(
-            _character.CurrentMap,
-            cast.TargetObjectId,
-            PacketBuilder.SkillCastImpact(
-                worldObjectId,
-                cast.TargetObjectId,
-                cast.SkillId,
-                targetX,
-                targetZ),
-            cancellationToken,
-            _session,
-            "SkillCastImpactWorld",
-            expectedSpawnGeneration: damageResult.Monster.SpawnGeneration);
-
-        if (pendingReward is not null)
-        {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
+        var reportedDamage = resolution.CapturedDamageValue;
+        var publication =
+            await PublishLegacyHostileMonsterSkillHitAsync(
+                packet,
+                cast,
+                damageResult,
+                reportedDamage,
+                manaCost,
+                currentMana,
+                publishCastVisual: !intonationCompleted,
                 cancellationToken);
-        }
+        currentMana = publication.CurrentMana;
+
+        await PublishPveLifeAbsorptionAsync(
+            _character,
+            lifeAbsorption,
+            cancellationToken,
+            persistVitals: false);
+
+        await PublishPveElementalCommitAsync(
+            elementalAuthority,
+            elementalCommit,
+            elementalRewards,
+            cancellationToken);
 
         if (_account is not null)
         {
@@ -469,13 +427,20 @@ internal sealed partial class GameClientHandler
             }
         }
 
+        if (pendingReward is not null)
+        {
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
+                cancellationToken);
+        }
+
         lock (_character.VitalsSync)
         {
             currentMana = _character.CurrentMp;
         }
 
         Console.WriteLine(
-            $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+            $"[skill] damage character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId} event={resolution.EventId} outcome={resolution.Outcome} resolved={reportedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{_character.MaxMp} caster-notified={publication.CasterNotified} viewers={publication.ViewerCount}");
     }
 
 }

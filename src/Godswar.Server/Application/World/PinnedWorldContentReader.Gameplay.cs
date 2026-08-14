@@ -26,6 +26,7 @@ internal sealed partial class PinnedWorldContentReader
             if (map.MapId < 0 ||
                 !IsGameplayText(map.SceneKey, 96) ||
                 !IsGameplayText(map.DisplayName, 128) ||
+                (map.MapMode.HasValue && map.MapMode.Value is < 0 or > 5) ||
                 !mapIds.Add(map.MapId))
             {
                 throw Invalid(
@@ -110,6 +111,8 @@ internal sealed partial class PinnedWorldContentReader
                 !IsGameplayText(monster.TemplateKey, 128) ||
                 !IsOptionalGameplayText(monster.DisplayName, 255) ||
                 !IsGameplayText(monster.Rank, 16) ||
+                (monster.AttackType.HasValue &&
+                 monster.AttackType.Value is not (1 or 2 or 3)) ||
                 (monster.CollisionRange.HasValue &&
                  (!float.IsFinite(monster.CollisionRange.Value) ||
                   monster.CollisionRange.Value < 0f)) ||

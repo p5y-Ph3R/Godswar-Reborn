@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Game;
 
@@ -7,12 +8,15 @@ internal readonly record struct ReviveRequest(
     int ReviveType)
 {
     private const int PacketLength = 12;
+    internal const int FreeReviveType = 2;
 
     public static bool TryParse(ReadOnlySpan<byte> packet, out ReviveRequest request)
     {
         request = default;
-        if (packet.Length < PacketLength ||
-            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != PacketLength)
+        if (packet.Length != PacketLength ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != PacketLength ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet.Slice(2, 2)) !=
+                Opcodes.Revive)
         {
             return false;
         }

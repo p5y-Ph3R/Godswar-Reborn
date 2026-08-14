@@ -12,8 +12,10 @@ internal readonly record struct BasicAttackRequest(
     public static bool TryParse(ReadOnlySpan<byte> packet, out BasicAttackRequest request)
     {
         request = default;
-        if (packet.Length < 32 ||
-            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != 32)
+        if (packet.Length != 32 ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != 32 ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet.Slice(2, 2)) !=
+                Protocol.Opcodes.BasicAttack)
         {
             return false;
         }

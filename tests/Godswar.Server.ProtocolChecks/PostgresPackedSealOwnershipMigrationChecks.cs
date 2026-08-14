@@ -16,9 +16,10 @@ internal static class PostgresPackedSealOwnershipMigrationChecks
                 "20260814_092_packed_seal_ownership_hardening");
         var sql = position.migration.Sql;
         Check.True(
-            position.index == migrations.Count - 1 &&
             migrations[position.index - 1].Id ==
                 "20260813_091_pet_phoenix_rebirth_bracket" &&
+            migrations[position.index + 1].Id ==
+                "20260814_093_monster_combat_authority" &&
             sql.Contains(
                 "ADD COLUMN pet_bound_snapshot boolean",
                 StringComparison.Ordinal) &&

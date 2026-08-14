@@ -15,6 +15,8 @@ The current project-authored balance is `PetHealingTalentPolicy.Version = 2`:
 - Resolve a percentage of owner maximum HP from aptitude and pet level.
 - A level-1 pet receives 50% of its aptitude rate; effectiveness increases
   linearly to 100% at pet level 120.
+- Apply the owner's authoritative Wither healing-received multiplier to that
+  resolved amount at the incoming-hit timestamp.
 - Clamp the applied amount to the owner's missing HP.
 - Start a 180-second cooldown only after a positive heal is applied.
 - Do not trigger from rejected, duplicate, stale, zero-damage, or lethal

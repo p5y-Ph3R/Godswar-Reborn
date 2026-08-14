@@ -8,7 +8,7 @@ internal static partial class WorldContentReaderChecks
     {
         var mapWithoutScene = GameplayContentCatalog.Empty with
         {
-            Maps = [new GameplayMapDefinition(1, "map", "Map", null)]
+            Maps = [new GameplayMapDefinition(1, "map", "Map", null, 0)]
         };
         var mapWithFormerSentinel = mapWithoutScene with
         {
@@ -18,7 +18,8 @@ internal static partial class WorldContentReaderChecks
                     1,
                     "map",
                     "Map",
-                    int.MinValue)
+                    int.MinValue,
+                    0)
             ]
         };
         Check.True(
@@ -42,6 +43,7 @@ internal static partial class WorldContentReaderChecks
                     false,
                     false,
                     false,
+                    1,
                     null)
             ]
         };

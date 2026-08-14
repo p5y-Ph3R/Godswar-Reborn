@@ -2,6 +2,7 @@ using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.World.Components.Combat;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -37,16 +38,36 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
+        if (_registry.GetPlayerSkillCastControl(_session, now) ==
+            PlayerSkillCastControl.Stunned)
+        {
+            Console.WriteLine(
+                $"[attack] rejected stunned character={character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        using var elementalAuthority =
+            CapturePveElementalCommitAuthority(character);
+        if (elementalAuthority is null)
+        {
+            Console.WriteLine(
+                $"[attack] rejected stale elemental authority character={character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        var interruptAdmittedCast = false;
         var decision = _registry.ResolvePlayerCombatEcs(
             _session,
             character,
             LocalPlayerObjectId,
             _nextBasicAttackAt,
             PlayerCombatEcsRequest.BasicAttack(
-                DateTimeOffset.UtcNow,
+                now,
                 attack.TargetObjectId,
                 attack.AttackerX,
-                attack.AttackerZ));
+                attack.AttackerZ),
+            onAdmittedAttempt: () => interruptAdmittedCast = true);
         _nextBasicAttackAt = decision.NextBasicAttackAt;
 
         if (!decision.IntentAccepted)
@@ -55,6 +76,62 @@ internal sealed partial class GameClientHandler
                 character,
                 attack,
                 decision.RejectionReason);
+            return;
+        }
+
+        if (decision.BasicAttackResolution is not { } resolvedTarget ||
+            resolvedTarget.TargetObjectId != attack.TargetObjectId)
+        {
+            Console.WriteLine(
+                $"[attack] rejected unresolved monster character={character.Name} target={attack.TargetObjectId}");
+            return;
+        }
+
+        var resolution = resolvedTarget.Resolution;
+        var attackSelector = character.Profession is 2 or 3
+            ? (byte)5
+            : (byte)3;
+        if (!resolution.Hit)
+        {
+            if (!decision.Hits.IsEmpty)
+            {
+                throw new InvalidOperationException(
+                    "A missed ECS basic attack produced a health mutation.");
+            }
+
+            if (interruptAdmittedCast)
+            {
+                await InterruptPendingSkillCastAsync(
+                    SkillCastInterruptionReason.Replaced,
+                    cancellationToken);
+            }
+            var selfMiss = BuildResolvedBasicAttackPacket(
+                LocalPlayerObjectId,
+                attack.TargetObjectId,
+                attackSelector,
+                resolution);
+            await _registry.DeliverMonsterPacketToViewerAsync(
+                _session,
+                character.CurrentMap,
+                attack.TargetObjectId,
+                selfMiss,
+                resolvedTarget.SpawnGeneration,
+                cancellationToken,
+                "BasicAttackMissSelf");
+            var missViewers = await _registry.BroadcastToMonsterViewersAsync(
+                character.CurrentMap,
+                attack.TargetObjectId,
+                BuildResolvedBasicAttackPacket(
+                    WorldObjectIds.ForPlayer(character.Id),
+                    attack.TargetObjectId,
+                    attackSelector,
+                    resolution),
+                cancellationToken,
+                _session,
+                "BasicAttackMissWorld",
+                expectedSpawnGeneration: resolvedTarget.SpawnGeneration);
+            Console.WriteLine(
+                $"[attack] miss character={character.Name} target={attack.TargetObjectId} event={resolution.EventId} hit={resolution.Rolls.HitRollBasisPoints}/{resolution.Rolls.HitChanceBasisPoints} viewers={missViewers}");
             return;
         }
 
@@ -67,21 +144,44 @@ internal sealed partial class GameClientHandler
 
         var hit = decision.Hits[0];
         var damageResult = hit.Result;
-        var reportedDamage = hit.ReportedDamage;
+        if (hit.ReportedDamage != resolution.Damage)
+        {
+            throw new InvalidOperationException(
+                "The ECS basic-attack mutation diverged from its resolution.");
+        }
+
+        var lifeAbsorption = CommitPveLifeAbsorption(
+            character,
+            [new PveCommittedMonsterDamage(
+                resolution.EventId,
+                damageResult.ObjectId,
+                damageResult.Monster.SpawnGeneration,
+                damageResult.BeforeHealth - damageResult.AfterHealth)]);
+        var elementalCommit = CommitPveElementalHit(
+            elementalAuthority,
+            CombatEventProvenance.DirectBasicAttack,
+            resolution,
+            damageResult);
         var pendingReward = damageResult.Killed
             ? await PrepareMonsterKillRewardAsync(damageResult)
             : null;
-        var attackSelector = character.Profession is 2 or 3
-            ? (byte)5
-            : (byte)3;
-        var selfPacket = PacketBuilder.PhysicalDamage(
+        var elementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                elementalAuthority,
+                elementalCommit);
+
+        if (interruptAdmittedCast)
+        {
+            await InterruptPendingSkillCastAsync(
+                SkillCastInterruptionReason.Replaced,
+                cancellationToken);
+        }
+        var reportedDamage = resolution.CapturedDamageValue;
+        var selfPacket = BuildResolvedBasicAttackPacket(
             LocalPlayerObjectId,
-            0f,
-            0f,
-            0f,
             attack.TargetObjectId,
-            reportedDamage,
-            result: attackSelector);
+            attackSelector,
+            resolution);
         var casterNotified = true;
         try
         {
@@ -106,18 +206,26 @@ internal sealed partial class GameClientHandler
         var viewers = await _registry.BroadcastToMonsterViewersAsync(
             character.CurrentMap,
             attack.TargetObjectId,
-            PacketBuilder.PhysicalDamage(
+            BuildResolvedBasicAttackPacket(
                 worldObjectId,
-                0f,
-                0f,
-                0f,
                 attack.TargetObjectId,
-                reportedDamage,
-                result: attackSelector),
+                attackSelector,
+                resolution),
             cancellationToken,
             _session,
             "BasicAttackWorld",
             healthMutation: damageResult.HealthMutation);
+
+        await PublishPveLifeAbsorptionAsync(
+            character,
+            lifeAbsorption,
+            cancellationToken);
+
+        await PublishPveElementalCommitAsync(
+            elementalAuthority,
+            elementalCommit,
+            elementalRewards,
+            cancellationToken);
 
         if (pendingReward is not null)
         {
@@ -127,8 +235,23 @@ internal sealed partial class GameClientHandler
         }
 
         Console.WriteLine(
-            $"[attack] damage character={character.Name} target={attack.TargetObjectId} resolved={reportedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} caster-notified={casterNotified} viewers={viewers}");
+            $"[attack] damage character={character.Name} target={attack.TargetObjectId} event={resolution.EventId} outcome={resolution.Outcome} resolved={reportedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} caster-notified={casterNotified} viewers={viewers}");
     }
+
+    internal static byte[] BuildResolvedBasicAttackPacket(
+        uint attackerObjectId,
+        uint targetObjectId,
+        byte attackSelector,
+        in CombatResolution resolution) =>
+        PacketBuilder.PhysicalDamage(
+            attackerObjectId,
+            attackerX: 0f,
+            attackerY: 0f,
+            attackerZ: 0f,
+            targetObjectId,
+            resolution.CapturedDamageValue,
+            result: attackSelector,
+            damageType: (byte)resolution.Outcome);
 
     private void LogBasicAttackEcsRejection(
         State.GameCharacter character,

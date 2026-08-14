@@ -181,7 +181,19 @@ internal static partial class FocusedGameplayProjectionCompatibility
             stats.ArmorScore,
             stats.ArmorRank,
             stats.ArmorAuraEffect,
-            stats.LearnedSkillCount);
+            stats.LearnedSkillCount,
+            stats.PhysicalDamageReduction,
+            stats.MagicDamageReduction,
+            stats.CriticalDamageReduction,
+            stats.LifeAbsorption,
+            stats.DamageRebound,
+            stats.Profession,
+            stats.PhysicalFlatAbsorption,
+            stats.MagicFlatAbsorption,
+            stats.CriticalDamageFlatReduction,
+            stats.DamageReboundFlat,
+            stats.BasicAttackIntervalMilliseconds,
+            stats.BasicAttackRange);
 
     public static CharacterPetSnapshot ToApplication(
         PetBootstrapSnapshot pet) =>

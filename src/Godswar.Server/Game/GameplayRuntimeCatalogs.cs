@@ -13,14 +13,18 @@ internal sealed record GameplayRuntimeCatalogs(
     MapTraversalCatalog MapTraversal,
     WorldBossCatalog WorldBosses,
     SkillCombatCatalog SkillCombat,
-    MonsterCombatRangeCatalog MonsterCombatRanges)
+    MonsterCombatRangeCatalog MonsterCombatRanges,
+    MonsterCombatProfileCatalog MonsterCombatProfiles,
+    PvpWorldAuthorityCatalog PvpWorldAuthority)
 {
     public static GameplayRuntimeCatalogs Empty { get; } = new(
         GameplayContentCatalog.Empty,
         MapTraversalCatalog.Empty,
         WorldBossCatalog.Empty,
         SkillCombatCatalog.Empty,
-        MonsterCombatRangeCatalog.Empty);
+        MonsterCombatRangeCatalog.Empty,
+        MonsterCombatProfileCatalog.Empty,
+        PvpWorldAuthorityCatalog.Empty);
 
     public static GameplayRuntimeCatalogs Create(
         GameplayContentCatalog content)
@@ -43,6 +47,8 @@ internal sealed record GameplayRuntimeCatalogs(
             MapTraversalCatalog.Create(content),
             WorldBossCatalog.Create(content),
             SkillCombatCatalog.Create(content),
-            MonsterCombatRangeCatalog.Create(content));
+            MonsterCombatRangeCatalog.Create(content),
+            MonsterCombatProfileCatalog.Create(content),
+            PvpWorldAuthorityCatalog.Create(content));
     }
 }

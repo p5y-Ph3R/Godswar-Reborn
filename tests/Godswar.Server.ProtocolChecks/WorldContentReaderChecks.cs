@@ -18,6 +18,8 @@ internal static partial class WorldContentReaderChecks
         CheckMonsterSpawnGameplayCompatibility();
         CheckExpectedRevisionGuard();
         CheckGameplayHashDomainSeparation();
+        CheckMonsterCombatAuthority();
+        CheckPvpWorldAuthority();
         await CheckSafeBootstrapParityAsync();
         await CheckMetricsAsync();
         await WorldContentReaderDialogueChecks.RunAsync();
@@ -93,7 +95,7 @@ internal static partial class WorldContentReaderChecks
             first.Manifest.EnterBootstrap.Sha256,
             "bootstrap-family canonical revision golden vector");
         Check.Equal(
-            "A7338B37CE560E2D276248A646A72CA71D8116DE5F08DEC7C75320A725C862DF",
+            "BA19F5AB76820A9939385700F14E88EC9582ADEEA5D92449C922EC887542E852",
             first.Manifest.Revision,
             "combined content-manifest canonical revision golden vector");
         Check.Equal(2, first.Manifest.Maps.EntryCount, "duplicate map IDs are canonicalized");

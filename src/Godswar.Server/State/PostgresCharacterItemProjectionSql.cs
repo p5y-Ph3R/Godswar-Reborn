@@ -101,8 +101,11 @@ internal static class PostgresCharacterItemProjectionSql
                             COALESCE(ci.holy_socket1_value::text, '') || ',' ||
                             COALESCE(ci.holy_socket2_value::text, '') || ',' ||
                             COALESCE(ci.holy_socket3_value::text, '') || ',' ||
-                            COALESCE(ci.holy_socket4_value::text, '') || ',' ||
-                            COALESCE(sealed_link.pet_id::text, '')
+                            COALESCE(ci.holy_socket4_value::text, '') ||
+                            CASE
+                                WHEN sealed_link.pet_id IS NULL THEN ''
+                                ELSE ',' || sealed_link.pet_id::text
+                            END
                     END ||
                     ']' AS compact_entry
                 FROM character_items ci

@@ -12,6 +12,7 @@ internal static class MonsterEcsDamageSystem
         uint damage,
         int? attackerCharacterId,
         uint? expectedSpawnGeneration,
+        bool periodic,
         DateTimeOffset now,
         Queue<MonsterRuntimeUpdate> pendingUpdates,
         out MonsterDamageResult result)
@@ -33,8 +34,10 @@ internal static class MonsterEcsDamageSystem
         if (!vitals.IsAlive ||
             !vitals.IsSpawned ||
             damage == 0 ||
-            combat.Phase is MonsterCombatPhase.Returning or
-                MonsterCombatPhase.AwaitingRetirement)
+            !periodic &&
+            combat.Phase is (
+                MonsterCombatPhase.Returning or
+                MonsterCombatPhase.AwaitingRetirement))
         {
             result = new MonsterDamageResult(
                 world.Get<MonsterIdentityComponent>(entity).Definition.ObjectId,
@@ -66,7 +69,8 @@ internal static class MonsterEcsDamageSystem
                 MonsterRuntimeUpdateKind.Died,
                 MonsterEcsState.Snapshot(world, entity)));
         }
-        else if (attackerCharacterId is > 0 &&
+        else if (!periodic &&
+                 attackerCharacterId is > 0 &&
                  combat.AggroCharacterId != attackerCharacterId)
         {
             combat.AggroCharacterId = attackerCharacterId;
@@ -148,7 +152,8 @@ internal static class MonsterEcsStunSystem
         combat.NextAttackAt =
             stunnedUntil + MonsterEcsRules.TickInterval;
         movement.NextMovementStepAt =
-            stunnedUntil + MonsterEcsRules.TickInterval;
+            stunnedUntil + MonsterEcsState.ElementalMovementInterval(
+                in movement);
 
         if (wasMoving)
         {

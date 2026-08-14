@@ -132,6 +132,7 @@ internal static partial class CharacterLoadSnapshotHydrator
             CharacterId = stats.CharacterId,
             AccountId = stats.AccountId,
             Name = stats.Name,
+            Profession = stats.Profession,
             Level = stats.Level,
             MaxHp = stats.MaxHp,
             MaxMp = stats.MaxMp,
@@ -163,6 +164,14 @@ internal static partial class CharacterLoadSnapshotHydrator
             CriticalDamageReduction = stats.CriticalDamageReduction,
             LifeAbsorption = stats.LifeAbsorption,
             DamageRebound = stats.DamageRebound,
+            PhysicalFlatAbsorption = stats.PhysicalFlatAbsorption,
+            MagicFlatAbsorption = stats.MagicFlatAbsorption,
+            CriticalDamageFlatReduction =
+                stats.CriticalDamageFlatReduction,
+            DamageReboundFlat = stats.DamageReboundFlat,
+            BasicAttackIntervalMilliseconds =
+                stats.BasicAttackIntervalMilliseconds,
+            BasicAttackRange = stats.BasicAttackRange,
             WeaponScore = stats.WeaponScore,
             WeaponRank = stats.WeaponRank,
             WeaponAuraEffect = stats.WeaponAuraEffect,

@@ -8,6 +8,8 @@ internal sealed class CharacterStats
 
     public string Name { get; init; } = string.Empty;
 
+    public byte Profession { get; init; }
+
     public int Level { get; init; }
 
     public int MaxHp { get; init; }
@@ -60,8 +62,7 @@ internal sealed class CharacterStats
 
     public int CriticalDamageFlat { get; init; }
 
-    // Typed now so persisted Merge channels cannot disappear silently.
-    // Combat application remains a separate, explicitly balanced slice.
+    // Percentage combat channels use basis points (100 = 1%).
     public int PhysicalDamageReduction { get; init; }
 
     public int MagicDamageReduction { get; init; }
@@ -71,6 +72,19 @@ internal sealed class CharacterStats
     public int LifeAbsorption { get; init; }
 
     public int DamageRebound { get; init; }
+
+    // Flat combat channels use whole HP/damage units.
+    public int PhysicalFlatAbsorption { get; init; }
+
+    public int MagicFlatAbsorption { get; init; }
+
+    public int CriticalDamageFlatReduction { get; init; }
+
+    public int DamageReboundFlat { get; init; }
+
+    public int BasicAttackIntervalMilliseconds { get; init; } = 1500;
+
+    public float BasicAttackRange { get; init; } = 1.7f;
 
     public int WeaponScore { get; init; }
 
@@ -124,6 +138,7 @@ internal sealed class CharacterStats
             CharacterId = character.Id,
             AccountId = character.AccountId,
             Name = character.Name,
+            Profession = character.Profession,
             Level = character.Level,
             MaxHp = character.MaxHp,
             MaxMp = character.MaxMp,
@@ -132,7 +147,9 @@ internal sealed class CharacterStats
             WeaponRank = character.WeaponRank,
             WeaponAuraEffect = character.WeaponAuraEffect,
             ArmorRank = character.ArmorRank,
-            ArmorAuraEffect = character.ArmorAuraEffect
+            ArmorAuraEffect = character.ArmorAuraEffect,
+            BasicAttackIntervalMilliseconds = 1500,
+            BasicAttackRange = 1.7f
         };
     }
 }

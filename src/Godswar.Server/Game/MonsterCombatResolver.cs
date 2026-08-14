@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using Godswar.Server.Application.World;
 using Godswar.Server.State;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -16,11 +17,26 @@ internal static class MonsterCombatResolver
 
     public static uint CalculatePlayerBasicAttack(GameCharacter character)
     {
-        var stats = character.CalculatedStats ?? CharacterStats.FromCharacter(character);
-        var attack = character.Profession is 2 or 3
-            ? stats.MagicAttack
-            : stats.PhysicalAttack;
-        return (uint)Math.Max(1, attack);
+        var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
+        return AuthoredCombatV1.ResolveBasicAttackForOutcome(
+            attacker,
+            target: default,
+            CombatHitOutcome.Normal).Damage;
+    }
+
+    public static CombatResolution ResolvePlayerBasicAttack(
+        GameCharacter character,
+        in CombatTargetStats target,
+        ulong combatEventId,
+        int targetOrder = 0)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
+        return AuthoredCombatV1.ResolveBasicAttack(
+            attacker,
+            target,
+            combatEventId,
+            targetOrder);
     }
 
     public static uint CalculateMonsterPhysicalAttack(

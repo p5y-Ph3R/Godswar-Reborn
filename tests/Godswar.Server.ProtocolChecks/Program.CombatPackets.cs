@@ -228,6 +228,7 @@ internal static partial class Program
         Check.Equal(ReadSingle(clientAttack, 12), parsed.AttackerY, "basic attack Y");
         Check.Equal(ReadSingle(clientAttack, 16), parsed.AttackerZ, "basic attack Z");
         Check.Equal(10013u, parsed.TargetObjectId, "basic attack target");
+        CheckBasicAttackRequestFraming(clientAttack, parsed);
 
         var freeRevive = Convert.FromHexString("0C0023274814000002000000");
         Check.True(ReviveRequest.TryParse(freeRevive, out var revive), "original free-revive request parses");

@@ -19,7 +19,6 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler : IClientHandler
 {
-    private const uint LocalPlayerObjectId = 0x00001448;
     private const int HolyStoneMountSuccess = 800;
     private const int HolyStoneRemoveSuccess = 1200;
     private const int HolyStoneDrillSuccess = 1500;
@@ -282,6 +281,10 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.WalkBegin:
             case Opcodes.WalkEnd:
             case Opcodes.Walk:
+                if (RejectDeadLegacyMovement(packet))
+                {
+                    break;
+                }
                 if (IsMapTransitionPending)
                 {
                     break;
@@ -318,9 +321,6 @@ internal sealed partial class GameClientHandler : IClientHandler
                 await HandlePlayerStateActionAsync(packet, cancellationToken);
                 break;
             case Opcodes.BasicAttack:
-                await InterruptPendingSkillCastAsync(
-                    SkillCastInterruptionReason.Replaced,
-                    cancellationToken);
                 await HandleBasicAttackAsync(packet, cancellationToken);
                 break;
             case Opcodes.Revive:

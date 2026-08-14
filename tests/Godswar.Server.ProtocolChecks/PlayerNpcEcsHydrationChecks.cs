@@ -116,9 +116,16 @@ internal static class PlayerNpcEcsHydrationChecks
                 MagicDamageReduction: 902,
                 CriticalDamageReduction: 903,
                 LifeAbsorption: 904,
-                DamageRebound: 905
+                DamageRebound: 905,
+                Profession: 3,
+                PhysicalFlatAbsorption: 906,
+                MagicFlatAbsorption: 907,
+                CriticalDamageFlatReduction: 908,
+                DamageReboundFlat: 909,
+                BasicAttackIntervalMilliseconds: 2_300,
+                BasicAttackRange: 2.5f
             },
-            "all Merge-only channels survive ECS hydration and snapshot adaptation");
+            "typed combat and weapon channels survive ECS snapshot adaptation");
         Check.True(
             expectedSpawn.SequenceEqual(
                 PacketBuilder.PlayerWorldSpawn(
@@ -331,6 +338,7 @@ internal static class PlayerNpcEcsHydrationChecks
                 CharacterId = 731,
                 AccountId = 17,
                 Name = "EcsProtocolHero",
+                Profession = 3,
                 Level = 89,
                 MaxHp = 234_567,
                 MaxMp = 34_567,
@@ -368,7 +376,13 @@ internal static class PlayerNpcEcsHydrationChecks
                 MagicDamageReduction = 902,
                 CriticalDamageReduction = 903,
                 LifeAbsorption = 904,
-                DamageRebound = 905
+                DamageRebound = 905,
+                PhysicalFlatAbsorption = 906,
+                MagicFlatAbsorption = 907,
+                CriticalDamageFlatReduction = 908,
+                DamageReboundFlat = 909,
+                BasicAttackIntervalMilliseconds = 2_300,
+                BasicAttackRange = 2.5f
             }
         };
     }

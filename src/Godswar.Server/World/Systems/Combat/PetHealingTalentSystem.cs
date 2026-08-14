@@ -66,7 +66,16 @@ internal sealed class PetHealingTalentSystem : IEcsSystem
                 pet.Level,
                 vitals.CurrentHp,
                 vitals.MaximumHp);
-            if (amount.Applied <= 0 ||
+            var intent = context.World.Get<
+                MonsterPlayerDamageIntentComponent>(damage.Player);
+            var resolvedHealing = checked((int)
+                ElementalBasisPointMath.Portion(
+                    amount.Resolved,
+                    intent.HealingReceivedBasisPoints));
+            var appliedHealing = Math.Min(
+                resolvedHealing,
+                Math.Max(0, vitals.MaximumHp - vitals.CurrentHp));
+            if (appliedHealing <= 0 ||
                 !_cooldowns.TryClaim(
                     new PetHealingCooldownKey(
                         identity.CharacterId,
@@ -81,7 +90,7 @@ internal sealed class PetHealingTalentSystem : IEcsSystem
             var beforeHealth = vitals.CurrentHp;
             var beforeRevision = vitals.Revision;
             vitals.CurrentHp = checked(
-                vitals.CurrentHp + amount.Applied);
+                vitals.CurrentHp + appliedHealing);
             vitals.Revision = checked(vitals.Revision + 1);
             context.Events.Publish(
                 new PetHealingAppliedEvent(
@@ -91,8 +100,8 @@ internal sealed class PetHealingTalentSystem : IEcsSystem
                     identity.ObjectId,
                     pet.PetId,
                     PetHealingTalentPolicy.Version,
-                    amount.Resolved,
-                    amount.Applied,
+                    resolvedHealing,
+                    appliedHealing,
                     beforeHealth,
                     vitals.CurrentHp,
                     beforeRevision,

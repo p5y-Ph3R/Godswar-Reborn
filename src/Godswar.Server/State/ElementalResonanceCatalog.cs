@@ -121,10 +121,10 @@ internal sealed record ElementalResonanceTierDefinition(
 
 internal static class ElementalResonanceCatalog
 {
-    // These definitions establish server-owned entitlement and exact balance
-    // parameters. Gameplay systems must opt in through a separately tested
-    // execution patch; merely calculating a profile does not apply an effect.
-    public const bool GameplayExecutionEnabled = false;
+    // The deterministic policy/state-machine implementation consumes these
+    // definitions. Runtime adapters still opt in explicitly; profile
+    // calculation alone never applies an effect or admits a PvP target.
+    public const bool GameplayExecutionEnabled = true;
 
     public static IReadOnlyList<ElementalResonanceTierDefinition> All { get; } =
     [

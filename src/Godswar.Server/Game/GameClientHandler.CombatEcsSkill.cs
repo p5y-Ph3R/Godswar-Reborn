@@ -3,6 +3,7 @@ using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Combat;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -29,20 +30,50 @@ internal sealed partial class GameClientHandler
         }
 
         var manaCost = Math.Max(0, combat.Mp);
-        var decision = _registry.ResolvePlayerCombatEcs(
-            _session,
-            character,
-            LocalPlayerObjectId,
-            _nextBasicAttackAt,
-            PlayerCombatEcsRequest.HostileSkill(
-                PlayerCombatIntentKind.SingleTargetSkill,
-                DateTimeOffset.UtcNow,
-                cast.TargetObjectId,
+        var observedAt = DateTimeOffset.UtcNow;
+        using var elementalAuthority =
+            CapturePveElementalCommitAuthority(character);
+        if (elementalAuthority is null)
+        {
+            Console.WriteLine(
+                $"[skill] rejected stale elemental authority character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
+        if (!TryClaimHostileSkillCooldown(
+                character,
                 combat,
-                expectedTargetSpawnGeneration));
+                observedAt,
+                out var cooldownLease))
+        {
+            return;
+        }
+
+        PlayerCombatEcsDecision decision;
+        try
+        {
+            decision = _registry.ResolvePlayerCombatEcs(
+                _session,
+                character,
+                LocalPlayerObjectId,
+                _nextBasicAttackAt,
+                PlayerCombatEcsRequest.HostileSkill(
+                    PlayerCombatIntentKind.SingleTargetSkill,
+                    observedAt,
+                    cast.TargetObjectId,
+                    combat,
+                    expectedTargetSpawnGeneration));
+        }
+        catch
+        {
+            ReleaseHostileSkillCooldown(cooldownLease);
+            throw;
+        }
 
         if (!decision.IntentAccepted)
         {
+            RequireRejectedEcsSkillResourcesClosed(decision);
+            ReleaseHostileSkillCooldown(cooldownLease);
             if (decision.ResourcesRefunded && manaCost > 0)
             {
                 await PersistAndSendSkillManaRefundAsync(
@@ -59,8 +90,45 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (decision.Resolutions is not [var resolvedTarget] ||
+            resolvedTarget.TargetObjectId != cast.TargetObjectId)
+        {
+            throw new InvalidOperationException(
+                "An accepted ECS single-target skill did not retain its " +
+                "authoritative resolution.");
+        }
+
+        var resolution = resolvedTarget.Resolution;
+        if (!resolution.Hit)
+        {
+            if (!decision.Hits.IsEmpty)
+            {
+                throw new InvalidOperationException(
+                    "A missed ECS hostile skill produced a health mutation.");
+            }
+
+            await PublishUnreportedHostileMonsterSkillMissAsync(
+                packet,
+                cast,
+                combat,
+                resolvedTarget.SpawnGeneration,
+                publishCastVisual,
+                decision.CurrentMana,
+                resolution,
+                cancellationToken);
+            return;
+        }
+
         if (decision.Hits.Length != 1)
         {
+            if (!decision.ResourcesRefunded)
+            {
+                throw new InvalidOperationException(
+                    "An accepted ECS single-target mutation disappeared " +
+                    "without closing its mana reservation.");
+            }
+
+            ReleaseHostileSkillCooldown(cooldownLease);
             if (decision.ResourcesRefunded && manaCost > 0)
             {
                 await PersistAndSendSkillManaRefundAsync(
@@ -76,15 +144,34 @@ internal sealed partial class GameClientHandler
 
         var hit = decision.Hits[0];
         var damageResult = hit.Result;
-        var reportedDamage = hit.ReportedDamage;
+        if (hit.ReportedDamage != resolution.Damage)
+        {
+            throw new InvalidOperationException(
+                "The ECS hostile-skill mutation diverged from its resolution.");
+        }
+
+        var lifeAbsorption = CommitPveLifeAbsorption(
+            character,
+            [CreatePveCommittedMonsterDamage(
+                resolution,
+                damageResult)]);
+        var elementalCommit = CommitPveElementalHit(
+            elementalAuthority,
+            CombatEventProvenance.DirectSkill,
+            resolution,
+            damageResult);
+        var pendingReward = damageResult.Killed
+            ? await PrepareMonsterKillRewardAsync(damageResult)
+            : null;
+        var elementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                elementalAuthority,
+                elementalCommit);
+        var reportedDamage = resolution.CapturedDamageValue;
         _registry.UpdateCharacter(
             _session,
             character,
             advanceWorldRevision: false);
-        var pendingReward = damageResult.Killed
-            ? await PrepareMonsterKillRewardAsync(damageResult)
-            : null;
-
         var appliedDamage =
             damageResult.BeforeHealth - damageResult.AfterHealth;
         var targetX = damageResult.Monster.X;
@@ -207,17 +294,29 @@ internal sealed partial class GameClientHandler
                 expectedSpawnGeneration:
                     damageResult.Monster.SpawnGeneration);
 
+        await PublishPveLifeAbsorptionAsync(
+            character,
+            lifeAbsorption,
+            cancellationToken,
+            persistVitals: false);
+
+        await PublishPveElementalCommitAsync(
+            elementalAuthority,
+            elementalCommit,
+            elementalRewards,
+            cancellationToken);
+
+        await PersistSkillVitalsAsync(
+            character,
+            areaSkill: false,
+            cancellationToken);
+
         if (pendingReward is not null)
         {
             await PublishMonsterKillRewardAsync(
                 pendingReward,
                 cancellationToken);
         }
-
-        await PersistSkillVitalsAsync(
-            character,
-            areaSkill: false,
-            cancellationToken);
 
         int currentMana;
         lock (character.VitalsSync)
@@ -226,7 +325,7 @@ internal sealed partial class GameClientHandler
         }
 
         Console.WriteLine(
-            $"[skill] damage character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
+            $"[skill] damage character={character.Name} skill={cast.SkillId} target={cast.TargetObjectId} event={resolution.EventId} outcome={resolution.Outcome} resolved={reportedDamage} applied={appliedDamage} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={Math.Max(visualRecipients, Math.Max(damageRecipients, impactRecipients))}");
     }
 
     private async Task HandleSingleSkillEcsRejectionAsync(
@@ -337,6 +436,17 @@ internal sealed partial class GameClientHandler
             var area = areaSkill ? " area" : string.Empty;
             Console.WriteLine(
                 $"[skill]{area} vitals persistence deferred character={character.Name}: {ex.Message}");
+        }
+    }
+
+    private static void RequireRejectedEcsSkillResourcesClosed(
+        PlayerCombatEcsDecision decision)
+    {
+        if (decision.ReservedMana > 0 &&
+            !decision.ResourcesRefunded)
+        {
+            throw new InvalidOperationException(
+                "A rejected ECS hostile skill retained a mana reservation.");
         }
     }
 }

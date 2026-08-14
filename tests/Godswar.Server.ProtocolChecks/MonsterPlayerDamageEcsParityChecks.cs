@@ -189,6 +189,34 @@ internal static class MonsterPlayerDamageEcsParityChecks
             zero,
             MonsterPlayerDamageRejectionReason.ZeroDamage,
             "zero resolved damage");
+        var zeroVitals = zero.World.Get<PlayerVitalsComponent>(
+            zero.Player.Entity);
+        var zeroDamageState = zero.World.Get<
+            MonsterPlayerDamageStateComponent>(zero.Player.Entity);
+        Check.Equal(
+            100,
+            zeroVitals.CurrentHp,
+            "zero-damage miss does not mutate HP");
+        Check.Equal(
+            7L,
+            zeroVitals.Revision,
+            "zero-damage miss does not advance vitals revision");
+        Check.Equal(
+            1UL,
+            zeroDamageState.LastAttackEventId,
+            "zero-damage miss consumes its attack event ID");
+
+        Queue(zero, eventId: 1, damage: 21);
+        zero.Scheduler.RunTick(TimeSpan.Zero);
+        AssertRejected(
+            zero,
+            MonsterPlayerDamageRejectionReason.DuplicateAttackEvent,
+            "replayed zero-damage miss event");
+        Check.Equal(
+            100,
+            zero.World.Get<PlayerVitalsComponent>(
+                zero.Player.Entity).CurrentHp,
+            "replayed miss event cannot later apply HP damage");
     }
 
     private static void CheckLethalDamage()

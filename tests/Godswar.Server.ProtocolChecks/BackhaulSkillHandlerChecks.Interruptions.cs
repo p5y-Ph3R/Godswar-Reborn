@@ -80,27 +80,6 @@ internal static partial class BackhaulSkillHandlerChecks
             "movement followed by native cancel emits one interruption");
     }
 
-    private static async Task CheckBasicAttackCastInterruptionAsync()
-    {
-        await using var fixture = await InterruptFixture.CreateAsync(
-            "BasicAttackInterruptedBackhaul");
-
-        await fixture.BeginCastAsync();
-        await AssertCastStartedAsync(
-            fixture,
-            "basic-attack interruption");
-
-        // The interruption is authoritative even if the following attack
-        // request is malformed or has no valid target.
-        await InvokePacketAsync(
-            fixture.Handler,
-            CreateControlPacket(Opcodes.BasicAttack));
-
-        await AssertInterruptedAsync(
-            fixture,
-            "basic-attack interruption");
-    }
-
     private static async Task CheckControlStatusCastInterruptionsAsync()
     {
         foreach (var statusId in Enumerable.Range(299, 7)
@@ -357,7 +336,9 @@ internal static partial class BackhaulSkillHandlerChecks
         public GameClientHandler Handler { get; }
 
         public static async Task<InterruptFixture> CreateAsync(
-            string characterName)
+            string characterName,
+            PlayerRuntimeMode playerRuntimeMode =
+                PlayerRuntimeMode.Ecs)
         {
             var socket = await BackhaulSessionSocket.CreateAsync();
             var character = CreateCharacter(characterName);
@@ -369,7 +350,7 @@ internal static partial class BackhaulSkillHandlerChecks
                         BackhaulSkillCatalog.CitySkillId),
                     Level = 1
                 }]);
-            var registry = CreateRegistry();
+            var registry = CreateRegistry(playerRuntimeMode);
             GameHandlerOwnershipTestFences.Bind(
                 registry,
                 socket.Session,

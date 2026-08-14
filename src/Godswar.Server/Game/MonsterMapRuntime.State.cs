@@ -65,5 +65,6 @@ internal sealed partial class MonsterMapRuntime
         public bool HasSentInitialChase { get; set; }
         public DateTimeOffset NextAttackAt { get; set; }
         public DateTimeOffset? StunnedUntil { get; set; }
+        public int MovementSpeedBasisPoints { get; set; } = 10_000;
     }
 }

@@ -1,11 +1,10 @@
 # Class Suit elemental attribute roadmap
 
-Status: implementation contract for the seven Greek-themed elemental stones,
+Status: implemented contract for the seven Greek-themed elemental stones,
 their 21 gear-slot-derived attributes, authoritative item persistence, typed
-stat profile, and unique 3/6/10 resonance definitions. The authoritative
-equipment profile exposes active cumulative definitions and their exact
-parameters. Executing those effects remains a separately tested milestone.
-The eight non-elemental prototypes remain roadmap-only.
+stat profile, live status execution, and unique 3/6/10 resonances. Equipment,
+combat, movement, recovery, death, and reconnect paths consume one pinned
+server-owned profile. The eight non-elemental prototypes remain roadmap-only.
 
 ## Repository evidence and boundary
 
@@ -109,18 +108,19 @@ points and Application Chance is `20 * grade` basis points. Clamp grade to
 typed elemental-effect totals. They are not a license to add the same
 percentage to current global physical or magical fields.
 
-The intended execution meanings are deliberately narrow. Burn is periodic
-damage. Drench slows authoritative movement. Shock prevents movement for a
-bounded paralyze duration. Fracture reduces physical and magical defense. Gale
-is a movement-speed boost for the equipped player. Dazzle reduces hit rate,
-and Wither reduces healing received. Burn, Drench, Shock, Fracture, Dazzle,
-and Wither roll their chance only after an authoritative attack has committed;
-rejected, cancelled, or purely visual attacks cannot trigger them. Gale is the
-exception: it rolls after authoritative movement is accepted and activates the
-self movement-speed boost. Chance rolls, durations, caps, boss immunity, and
-resistance are all server-owned. These labels define the future execution
-contract only: the combat, crowd-control, healing, and movement processors
-remain disabled in this slice.
+The execution meanings are deliberately narrow. Burn is periodic damage.
+Drench slows authoritative movement and uses the stronger Water or Wind slow
+resistance without stacking both. Shock prevents movement for a bounded
+duration. Fracture reduces physical and magical defense. Gale boosts the
+equipped player's movement speed. Dazzle reduces hit rate, and Wither reduces
+healing received. Burn, Drench, Shock, Fracture, Dazzle, and Wither roll only
+after an authoritative direct hit commits; rejected, cancelled, missed, or
+purely visual attacks cannot trigger them. Gale instead rolls after accepted
+movement. Direct hits select at most one eligible source element by highest
+potency, then chance, then stable element order; client packets cannot select an
+element or trigger every equipped element. Durations, caps, resistance, boss
+rules, ownership/map/life fences, and deterministic event identities are all
+server-owned.
 
 ## Elemental resonance at 3/6/10
 
@@ -154,8 +154,10 @@ generic values to the grade-scaled elemental-effect totals.
 `ElementalResonanceCatalog` is the one typed
 definition source, while `ElementalEquipmentProfile.ActiveResonanceTiers`
 projects the active `[3]`, `[3,6]`, or `[3,6,10]` definitions for each element.
-The projection defines entitlement and exact parameters; it does not claim that
-the combat, recovery, movement, or crowd-control execution paths are wired yet.
+The projection defines entitlement and exact parameters. Runtime policies then
+apply those definitions to committed direct hits, incoming mitigation,
+movement, recovery, periodic damage, control, kill recovery, and reflection;
+derived damage is non-recursive and source events are replay-fenced.
 
 ## GWA3 item-record contract
 
@@ -184,34 +186,25 @@ bits before any dereference. It must test the exact legacy `GWA2` marker path
 first. A partial tag pattern, unknown marker, or unknown ID renders no extension
 instead of dereferencing attacker-controlled data.
 
-## Separately gated combat patch
+## Combat execution boundary
 
-This slice owns content identity, authoritative item state, typed elemental
-totals, resonance entitlement/parameter calculation, protocol projection, and
-UI presentation only.
-Skills and ordinary attacks do not yet carry an authoritative element, so the
-server must not silently reinterpret Effect Potency as global physical/magic
-damage, Effect Resistance as global absorption, or Application Chance as an
-existing critical, hit, or defense-ignore field.
+Elemental execution is an authored Reborn V1 rule, not a recovered retail
+formula. It consumes the locked catalog instead of copying balance constants
+into handlers. Effect Potency is not global physical/magic damage, Effect
+Resistance is not generic absorption, and Application Chance is not hit,
+critical, or defense-ignore. Deterministic rolls use authenticated identities
+and server-owned event revisions, never packet fields or wall time.
 
-A later execution patch must consume the locked definitions without copying
-their constants into gameplay systems. It requires a separate review and must:
-
-1. let skill/content data, never the client packet, choose the attack element;
-2. define Neutral behavior for unclassified skills and ordinary attacks;
-3. select and test all-source caps independently for Effect Potency, Effect
-   Resistance, and Application Chance before any typed total affects combat;
-4. define counter reset, death, reconnect, dispel, boss-immunity, target-order,
-   and attribution behavior for every unique resonance trigger;
-5. guarantee resistance cannot invert an effect and application chance cannot
-   exceed its reviewed authoritative cap;
-6. apply the elemental stage exactly once at a documented point in the current
-   physical/magic damage pipeline; and
-7. ship PvE/PvP telemetry and rollback controls with that activation.
+Committed PvE basic attacks and hostile single/area skills, plus admitted PvP
+basic attacks, enter the same status/resonance policy. Hostile PvP skills remain
+default-denied because available captures do not establish their result flags,
+miss representation, area entries, or status presentation. The stock client has
+no proven generic icon/animation contract for every new status, so server-side
+movement, healing, damage, and control authority remains primary when a status
+has no dedicated visual marker.
 
 Snapshots and tooltips remain projections. Equip, add, delete, conversion, and
-the future combat resolver always reread authoritative item state and the
-pinned content revision.
+combat reread authoritative item state and the pinned content revision.
 
 The implementation must reject duplicate attribute IDs on one item, a second
 profession-specific or third elemental Class Suit attribute, elemental
@@ -259,6 +252,6 @@ destroying already persisted player value.
   boundary transitions, stale requests, and retries.
 - Character inspection and relog show the same two fields, names, values, and
   colors; another player sees the same authoritative result.
-- Before combat activation, dedicated tests must demonstrate that matching
-  resistance never inverts an effect, application chance cannot exceed its
-  reviewed cap, and no elemental modifier is applied twice.
+- Runtime tests demonstrate that matching resistance never inverts an effect,
+  application chance cannot exceed its reviewed cap, deterministic retries do
+  not reroll, and no elemental modifier or terminal effect is applied twice.

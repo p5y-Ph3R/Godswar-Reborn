@@ -60,6 +60,9 @@ internal sealed partial class GameClientHandler
             new MapTraversalPosition(
                 decision.AuthoritativeX,
                 decision.AuthoritativeZ));
+        CommitAcceptedElementalMovement(
+            acceptedSegment,
+            DateTimeOffset.UtcNow);
         if (!RevalidateCurrentWorldEffectOwnership(
                 "realtime_map_transition"))
         {

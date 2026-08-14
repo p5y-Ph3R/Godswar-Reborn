@@ -53,6 +53,12 @@ internal static class DataArchitectureCheckCatalog
             HolySpiritPersistenceSurfaceChecks.CheckName,
             HolySpiritPersistenceSurfaceChecks.RunAsync),
         (
+            CombatSecondaryProjectionChecks.CheckName,
+            CombatSecondaryProjectionChecks.RunAsync),
+        (
+            PvpBasicAttackRuntimeChecks.CheckName,
+            PvpBasicAttackRuntimeChecks.RunAsync),
+        (
             HolyStoneCombinationSelectionChecks.CheckName,
             HolyStoneCombinationSelectionChecks.RunAsync),
         (

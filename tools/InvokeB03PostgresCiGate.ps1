@@ -41,6 +41,7 @@ $databaseNames = [ordered]@{
         "godswar_b03_${runToken}_lifecycle_preflight"
     RealmAuthority =
         "godswar_b03_${runToken}_realm_authority"
+    GameplayV3 = "godswar_b03_${runToken}_gameplay_v3"
     Prefix = "godswar_b03_${runToken}_prefix"
     Restored = "godswar_b03_${runToken}_restored"
 }
@@ -65,9 +66,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 91
+    expectedMigrationCount = 94
     expectedMigrationHead =
-        '20260813_090_bag_consumable_cooldown_state'
+        '20260814_093_monster_combat_authority'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -191,6 +192,23 @@ try {
             [long]$realmAuthorityWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'fresh-database-advanced-to-prefix-034'
 
+    $failureCategory = 'gameplay-v3-publication-upgrade'
+    New-DisposableDatabase $databaseNames.GameplayV3
+    $gameplayV3Watch = [Diagnostics.Stopwatch]::StartNew()
+    Invoke-RequiredProtocolCheck `
+        -Phase 'gameplay-v3-publication-upgrade' `
+        -Name 'PostgreSQL gameplay v2-to-v3 publication upgrade' `
+        -GeneralConnectionString (
+            New-TestConnectionString $databaseNames.GameplayV3)
+    $gameplayV3State = Get-MigrationState $databaseNames.GameplayV3
+    $gameplayV3Watch.Stop()
+    Add-ScenarioResult `
+        -Name 'gameplay-v2-publication-to-v3' `
+        -InitialMigrationCount 0 `
+        -FinalState $gameplayV3State `
+        -DurationMs ([long]$gameplayV3Watch.Elapsed.TotalMilliseconds) `
+        -FixtureKind 'genuine-pre-093-published-gameplay-v2'
+
     $failureCategory = 'historical-fixture'
     New-DisposableDatabase $databaseNames.Prefix
     $prefixConnection = New-TestConnectionString $databaseNames.Prefix
@@ -286,7 +304,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 91 `
+        -InitialMigrationCount 94 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -300,7 +318,7 @@ try {
         -Name 'PostgreSQL migration-prefix fixture' `
         -GeneralConnectionString (
             New-TestConnectionString $databaseNames.SmokeTemplate) `
-        -MigrationPrefix '20260813_090_bag_consumable_cooldown_state'
+        -MigrationPrefix '20260814_093_monster_combat_authority'
 
     $databaseNames['HatchEvidenceTemplate'] =
         "godswar_b03_${runToken}_hatch_evidence_template"

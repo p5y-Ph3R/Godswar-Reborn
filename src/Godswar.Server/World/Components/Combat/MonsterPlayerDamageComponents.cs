@@ -48,7 +48,8 @@ internal readonly record struct MonsterPlayerDamageIntentComponent(
     long ExpectedLifeRevision,
     long ExpectedVitalsRevision,
     uint ResolvedDamage,
-    DateTimeOffset ResolvedAt = default);
+    DateTimeOffset ResolvedAt = default,
+    int HealingReceivedBasisPoints = 10_000);
 
 internal readonly record struct MonsterPlayerDamageHydrationSnapshot(
     int CharacterId,

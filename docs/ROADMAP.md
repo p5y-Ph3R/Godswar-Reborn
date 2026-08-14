@@ -48,8 +48,12 @@ now pass locally; production activation remains open. Records:
 - Build a `CharacterStats` calculation pipeline from class, level, gear, item quality, item grade, append attributes, holy suit, skills, and talents.
 - Use derived stats in enter-game, player status refresh, player detail, combat, and item/talent updates.
 - Keep database tables as source-of-truth and avoid duplicated stat mirrors unless they are generated compatibility views.
-- Track experimental append attributes that are not fully wired into combat yet: vampiric/life-steal, damage reflect, attack speed percent, movement speed percent, cooldown reduction, boss damage, monster damage, player damage, player damage reduction, skill damage, normal attack damage, elemental damage/resistance, shield block, armor/magic penetration, tenacity percent, critical damage resistance, debuff duration reduction, buff duration bonus, holy damage, gold drop, item drop, and experience gain.
-- Prototype `VampiricPer` and `ReflectDamagePer` in `ItemAppendAttribute.xml`; they must remain server/data-visible first, then be consumed by the combat resolver once combat damage is implemented.
+- Life absorption and damage rebound now execute from damage actually committed,
+  with exact-once source-event claims, missing-HP caps, and non-recursive reflected
+  damage. Typed physical/magic reductions, flat absorption, critical resistance,
+  weapon cadence/range, and reviewed pet/Holy/Owner-Merge channels feed the shared
+  resolver. The remaining experimental append attributes stay data-visible only
+  until each receives an authored cap, ordering rule, and replay-safe producer.
 - Armor rank progression is extended past AR10: AR11 at `12000`, AR12 at `17000`, AR13 at `22000`, and AR14 at `25300`.
 - Equipment rank ceilings are profession-neutral and item-template-driven. The previous apparent Warrior WR7 limit came from comparing starter sword `1000` with Champion endgame spear `1435`; the level-135-only patch family had left starter and mid-tier rank tables on their native short curves.
 - `tools/PatchClientGlobalEquipmentRanks.ps1` is the authoritative all-tier correction. Every ordinary forgeable weapon except special GM Spear `1499` shares the canonical Q20/G25 rank-score curve and reaches WR10 at score `8050` with five attributes; four attributes deliberately reach only `6780`/WR9. Physical classes use the physical aura-effect family, Priest the `201` family, and Mage the `51` family.
@@ -75,14 +79,24 @@ now pass locally; production activation remains open. Records:
 
 ## 5. Mobs, Bosses, And Combat
 
+- Base-combat evidence and the authored V1 contract are tracked in
+  [the base-combat roadmap](base-combat-roadmap.md). Death/revive fencing,
+  equipment-derived cadence/range, deterministic hit/critical resolution,
+  physical/magic mitigation, hostile skills, typed secondary effects, and
+  default-deny PvP basic attacks are implemented. Hostile PvP skills remain
+  blocked until their result-packet semantics are captured.
+
 - Captured map-0 monster appearances now use the working server's `32x32` sector grid: bootstrap sends only the player's `3x3` neighborhood, and movement sends global-object removals before newly visible raw `10020` appearances.
 - Capture ingestion recognizes the observed monster appearance-type variants by their shared low-byte `0x12` discriminator, but the current PostgreSQL baseline is still limited to 270 static Sparta/map-0 snapshots.
 - Capture tools now require an explicit monster map for spawn upserts (`--monster-map-id` in the live proxy). The historical importer additionally requires `-CaptureSessionId` with `-MonsterMapId`, preventing template-only map guesses and cross-session mixing. Deriving the active map automatically from protocol session state remains future work.
 - Captured spawns now feed one shared server-owned runtime per map. Monsters roam within an eight-unit home radius, cross visibility sectors live, retain authoritative HP, leave a timed corpse, and respawn at home.
-- Aggroed monsters now leash at the same eight-unit home boundary. A lost or escaped target starts a smooth authoritative return leg; the monster evades during the reset, reaches its exact home position, restores full health, and only becomes attackable after the movement-end and health refresh have been serialized to viewers.
+- Aggroed monsters may chase to the 32-unit combat leash, independently of the eight-unit idle-roam radius. A lost or escaped target starts a smooth authoritative return leg; the monster evades during reset, reaches home, restores full health, and becomes attackable only after viewers receive movement-end and health refresh.
 - Skill and ordinary `10026` attacks share monster HP and award one atomic kill reward. Fighter EXP uses the original 200-level threshold table with carry and `10030` level-up notices; normal-monster EXP and Talent EXP are persisted together.
-- Ordinary melee attacks accept the exact 2.5-unit collision boundary and reconcile at most 0.5 units of the client-reported auto-approach position. This fixes legitimate warrior hits lost between the final attack animation and the last movement sample without trusting arbitrary client coordinates.
-- Normal monsters are passive until damaged, then chase the attacker, strike on the captured cadence, persist player damage/death, and clear aggro on death, disconnect, map change, or leash failure. The original `10019` free-revive path returns dead players to their camp map with 10% HP/MP.
+- Ordinary attacks use the reviewed equipped weapon's grade-specific range and
+  cadence, with `1.7` units and `1500 ms` as the unarmed fallback. At most `0.5`
+  units of client-reported auto-approach is reconciled; arbitrary client
+  coordinates and request-tail bytes remain untrusted.
+- Normal monsters are passive until damaged, then chase the attacker, strike on the captured cadence, persist player damage/death, and clear aggro on death, disconnect, map change, or leash failure. The preserved original `10019` type-2 free revive validates the local dead player before returning them to camp with 10% HP/MP; unsupported revive modes do not mutate state.
 - Higher-tier monster attack extrapolation is isolated in `MonsterCombatResolver`; the captured normal-monster EXP multiplier and original tier curve are isolated in `MonsterRewardCatalog`; fighter thresholds live in `PlayerExperienceCatalog`. Update those catalogs when broader working-server captures replace the current normal-field assumptions.
 - Fighter EXP modifiers use the original additive cross-kind rule. The server persists mutually exclusive consumable, weekend, event, and guild modifiers; resolves account-wide Bronze/Silver/Gold/Platinum VIP rates at 5/10/15/20 percent; and conditionally adds the 25-percent faction-area benefit. Talent EXP remains separate.
 - Active EXP effects are composed into the native full-status snapshot on opcode `10167`; custom client statuses `1500` through `1504` identify the VIP tiers and faction-area control.
@@ -112,10 +126,19 @@ now pass locally; production activation remains open. Records:
 - The allowlisted `/gmitem add` chat command grants only catalogued materials, fills same-item/same-binding stacks first, allocates empty slots second, and rejects the entire operation when capacity is insufficient.
 - PostgreSQL grants lock the character inventory but update only matching authoritative rows and new empty slots. They do not rewrite the compatibility loadout projection, preserving unrelated extended quality, grade, attributes, holy stones, and holy-suit data.
 - Ordinary equipment forging now handles the native `10110` selection, `10109` Start/result, and `10117` session-reset messages. It imports all 611 shipped `EquipForge.xml` rules and the native `BijouForge.xml` material rules instead of inventing recipes.
-- Ruby changes the equipment template, Sapphire raises quality through Q20/Boundless, Emerald raises an existing append-attribute grade through G25, and up to 25 Crystals add their probability bonus. The native loader reads `Round` as exactly two inclusive endpoints. Level-4 Sapphire remains `8,12` and Level-4 Emerald remains `10,17`; local Level-5 Sapphire is `8,19` at `+32`, Level-5 Emerald is `10,24` at `+32`, and Level-5 Crystal contributes `+25` per selected crystal. The added Q13..Q19 probability tail is `-255,-265,-275,-285,-295,-305,-315`, its silver multipliers are `35,40,45,50,55,60,65`, and Q20 is the zero terminal. The added G18..G24 tail is `-395,-420,-445,-470,-495,-520,-545`, its multipliers are `55,60,65,70,75,80,85`, and G25 is the zero terminal. At G24, 24 Level-5 Crystals produce raw `87%`; 25 produce raw `112%`, clamped to `100%`. Every legitimate roll atomically consumes the selected materials and silver; only a successful roll changes the equipment.
+- Ruby changes the template, Sapphire raises quality through Q20, Emerald raises an append-attribute grade through G25, and up to 25 Crystals improve the roll. Exact ranges, tails, multipliers, and clamps live in `docs/player-inspection-equipment-protocol.md`. Every legitimate roll consumes materials and silver atomically; only success changes equipment.
 - PostgreSQL locks the character wallet and authoritative bag rows for each attempt. Stale selections, replays, invalid recipes, and insufficient funds are rejected without consuming anything.
-- `tools/PatchClientForgeBoundlessGrade25.ps1` is the authoritative idempotent Q20/G25 client-data/executable patch. It extends every core numeric quality vector (including physical and magic damage absorption) and `BaseFraction` to 20 entries, extends only the grade-indexed `AppFraction` to 25, updates all eleven progression/candidate gates, changes 22 quality/base constructor counts to 20, and changes the `AppFraction` count at `0x373E0` to 25. `MainAttribute` is an allowed-attribute list; `ArmEffFraction`/`ArmEff` and `DefendFraction`/`DefendEff` are independent rank tables. Their XML and constructor counts remain byte-for-byte unchanged, because padding them can inflate aura/rank calculations. The full ceiling checklist is recorded in `docs/player-inspection-equipment-protocol.md`; the older Q13/G18 scripts are superseded and must not downgrade this installation.
+- `tools/PatchClientForgeBoundlessGrade25.ps1` is the authoritative idempotent Q20/G25 client patch. It changes only the reviewed vectors, gates, and constructor counts documented in `docs/player-inspection-equipment-protocol.md`; independent rank tables remain unchanged. The older Q13/G18 scripts are superseded.
 - Apply `tools/PatchClientGlobalEquipmentRanks.ps1` after the ordinary-forge ceiling patch when reconstructing a client. This second guarded patch deliberately redesigns the independent rank tables and score tails across every ordinary item tier, keeps GM Spear `1499` and GM Armor `2190` untouched, and must be followed by `tools/GenerateItemTemplates.ps1` so PostgreSQL and generated server data use the same curves.
 - Gear attribute enhancement reuses the client's shipped Gear Mentor and Origin Enhancer workflows for Add/Enhance/Delete. The Gear Mentor also authoritatively implements Decompose, Make Attribute Stones, Crystal downgrade transformation, and Level-4/5 piece combination. Instructions and Wash Dust remain reserved without inventory mutation. The forge modal hardcodes four native tabs, so an XML-only fifth tab or label-only rename would dispatch the wrong behavior. UI ownership and material recipes are recorded in `docs/gear-enhancement-ui.md` and `docs/gear-mentor-material-workflows.md`.
-- Class Suit III/IV gear keeps five ordinary attributes, one profession-specific Class Suit attribute, and two different-element fields. Elemental catalog/persistence/profile/UI are the current scope; combat activation and eight non-elemental stone prototypes remain gated in [the elemental attribute roadmap](class-suit-elemental-attribute-roadmap.md).
+- Class Suit III/IV gear keeps five ordinary attributes, one profession-specific
+  Class Suit attribute, and two different-element fields. The seven elemental
+  status families and their cumulative 3/6/10 resonances execute through
+  server-owned combat, movement, recovery, death, and reconnect state. The eight
+  non-elemental stone prototypes remain gated in
+  [the elemental attribute roadmap](class-suit-elemental-attribute-roadmap.md).
 - Next: recover material-combination mode 1 and equipment-combination mode 2. Ordinary forging does not guess their result fields or economy rules.
+
+## 8. Signed Client Updates — After Base Combat
+
+- After base combat is stable, follow the [client update roadmap](client-launcher-updater-roadmap.md); stock binaries and live Git pulls remain forbidden.

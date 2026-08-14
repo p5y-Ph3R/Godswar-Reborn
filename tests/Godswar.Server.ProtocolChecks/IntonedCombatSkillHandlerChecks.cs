@@ -48,6 +48,14 @@ internal static partial class IntonedCombatSkillHandlerChecks
         await CheckMovementInterruptionAsync(combat);
         await CheckTargetGenerationRefreshInterruptionAsync(combat);
         await CheckSuccessfulDelayedCompletionAsync(combat);
+        await CheckCooldownRejectedCompletionAsync(
+            combat,
+            PlayerRuntimeMode.Ecs);
+        await CheckCooldownRejectedCompletionAsync(
+            combat,
+            PlayerRuntimeMode.Legacy);
+        await CheckConcurrentManaRiseRetainsCooldownAsync(combat);
+        await CheckLifeAbsorptionCompletionAsync(combat);
     }
 
     private static async Task CheckNativeInterruptionAsync(
@@ -318,7 +326,10 @@ internal static partial class IntonedCombatSkillHandlerChecks
         public GameClientHandler Handler { get; }
 
         public static async Task<Fixture> CreateAsync(
-            string characterName)
+            string characterName,
+            int currentHp = 500,
+            int lifeAbsorption = 0,
+            PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs)
         {
             var socket =
                 await RuntimePolicySessionSocket.CreateAsync();
@@ -334,13 +345,14 @@ internal static partial class IntonedCombatSkillHandlerChecks
                 PositionZ = 0f,
                 Profession = 3,
                 Level = 80,
-                CurrentHp = 500,
+                CurrentHp = currentHp,
                 MaxHp = 500,
                 CurrentMp = InitialMana,
                 MaxMp = InitialMana,
                 CalculatedStats = new CharacterStats
                 {
-                    MagicAttack = 100
+                    MagicAttack = 100,
+                    LifeAbsorption = lifeAbsorption
                 }
             };
             var store = new CombatStore();
@@ -348,7 +360,7 @@ internal static partial class IntonedCombatSkillHandlerChecks
                 store: null,
                 zodiacEnergyOptions: null,
                 MonsterRuntimeMode.Ecs,
-                PlayerRuntimeMode.Ecs);
+                playerRuntimeMode);
             registry.InitializeMapMonsters(
                 character.CurrentMap,
                 [CreateMonster()],

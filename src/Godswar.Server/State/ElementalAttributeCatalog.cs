@@ -41,7 +41,7 @@ internal enum ElementalAttributeRole : byte
     // A compatibility role with effect-specific trigger semantics. Burn,
     // Drench, Shock, Fracture, Dazzle, and Wither roll only after an
     // authoritative attack commits. Gale rolls after accepted movement and
-    // activates a self movement-speed boost. Execution remains disabled.
+    // activates a self movement-speed boost after accepted movement.
     ApplicationChance = 2
 }
 
@@ -134,6 +134,10 @@ internal readonly record struct ElementalEffectTotals(
         };
 }
 
+internal readonly record struct ElementalEquippedItem(
+    int SlotIndex,
+    CompactItemEntry Item);
+
 internal sealed record ElementalEquipmentProfile(
     IReadOnlyDictionary<ElementKind, ElementalEffectTotals> RawEffects,
     IReadOnlyDictionary<ElementKind, int> EquippedSetCounts,
@@ -159,6 +163,11 @@ internal sealed record ElementalEquipmentProfile(
 
 internal static class ElementalAttributeCatalog
 {
+    // The typed, deterministic policy/state-machine implementation is live.
+    // Resolver, movement, and recovery adapters still opt in explicitly; this
+    // flag is not player-target admission or packet-handler wiring.
+    public const bool GameplayExecutionEnabled = true;
+
     public const int MinimumAttributeId = 480;
     public const int MaximumAttributeId = 500;
     public const uint MinimumStoneItemId = 16300;
@@ -328,7 +337,7 @@ internal static class ElementalAttributeCatalog
     }
 
     public static ElementalEquipmentProfile CalculateEquippedProfile(
-        IEnumerable<CompactItemEntry> equippedItems)
+        IEnumerable<ElementalEquippedItem> equippedItems)
     {
         ArgumentNullException.ThrowIfNull(equippedItems);
         var stats = Enum.GetValues<ElementKind>()
@@ -336,12 +345,14 @@ internal static class ElementalAttributeCatalog
         var counts = Enum.GetValues<ElementKind>()
             .ToDictionary(static value => value, static _ => 0);
 
-        foreach (var item in equippedItems)
+        foreach (var equipped in equippedItems)
         {
+            var item = equipped.Item;
             if (item.IsEmpty ||
                 !ClassSuitConversionCatalog.IsTierThreeOrFourItem(item.Id) ||
                 item.Grade is < 1 or > 25 ||
-                !HasCanonicalDedicatedAttributeShape(item))
+                !HasCanonicalDedicatedAttributeShape(item) ||
+                !AttributesMatchEquippedSlot(equipped))
             {
                 continue;
             }
@@ -363,6 +374,31 @@ internal static class ElementalAttributeCatalog
                     counts[value]));
         return new ElementalEquipmentProfile(stats, counts, activeResonances);
     }
+
+    private static bool AttributesMatchEquippedSlot(
+        ElementalEquippedItem equipped)
+    {
+        if (!TryGetFamilyForEquipmentSlot(
+                equipped.SlotIndex,
+                out var expectedFamily))
+        {
+            return false;
+        }
+
+        return MatchesFamily(
+                equipped.Item.ElementalAttribute1,
+                expectedFamily) &&
+            MatchesFamily(
+                equipped.Item.ElementalAttribute2,
+                expectedFamily);
+    }
+
+    private static bool MatchesFamily(
+        int? attributeId,
+        ElementalStatFamily expectedFamily) =>
+        !attributeId.HasValue ||
+        TryGetAttribute(attributeId.Value, out var definition) &&
+        definition.Family == expectedFamily;
 
     private static void Add(
         int? attributeId,

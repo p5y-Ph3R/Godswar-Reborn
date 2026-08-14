@@ -21,6 +21,8 @@ internal sealed partial class GameSessionRegistry
                 continue;
             }
 
+            SyncPveMonsterElementalMovement(runtime, now);
+
             var tick = InvokeWorldOwner(
                 runtime,
                 map => _playerRuntimeMode ==

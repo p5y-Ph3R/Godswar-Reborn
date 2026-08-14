@@ -6,88 +6,21 @@ namespace Godswar.Server.World.Systems.Combat;
 
 internal sealed partial class PlayerCombatIntentSystem
 {
-    private static void ReserveAndPublish(
-        EcsSystemContext context,
-        EntityId player,
-        in PlayerCombatIntentComponent intent,
-        ref PlayerCombatResourceComponent resources,
-        int manaCost,
-        ImmutableArray<PlayerCombatReservedTarget> targets,
-        bool refundOnRejectedTarget)
-    {
-        var previousNextBasicAttackAt = resources.NextBasicAttackAt;
-        ReserveResources(intent, manaCost, ref resources);
-        context.Events.Publish(new PlayerCombatResourceReservedEvent(
-            NextSequence(ref resources),
-            player,
-            intent.IntentId,
-            intent.Kind,
-            manaCost,
-            resources.CurrentMp,
-            resources.VitalsRevision,
-            resources.NextBasicAttackAt,
-            resources.CombatRevision,
-            targets.Length));
-
-        var identity = context.World
-            .Get<PlayerCombatIdentityComponent>(player);
-        var mapId = context.World
-            .Get<PlayerCombatTransformComponent>(player)
-            .MapId;
-        foreach (var target in targets)
-        {
-            context.Events.Publish(new PlayerCombatDamageIntentEvent(
-                NextSequence(ref resources),
-                player,
-                identity.CharacterId,
-                identity.ObjectId,
-                mapId,
-                intent.IntentId,
-                intent.Kind,
-                intent.Skill.SkillId,
-                target.TargetOrder,
-                targets.Length,
-                target.ObjectId,
-                target.RequestedDamage,
-                target.ExpectedSpawnGeneration,
-                target.ExpectedHealthRevision));
-        }
-
-        if (targets.IsEmpty)
-        {
-            context.Events.Publish(new PlayerCombatReservationCompletedEvent(
-                NextSequence(ref resources),
-                player,
-                intent.IntentId,
-                intent.Kind,
-                AcceptedTargetCount: 0,
-                RejectedTargetCount: 0,
-                ResourcesRefunded: false));
-            return;
-        }
-
-        context.Commands.Add(
-            player,
-            new PlayerCombatReservationComponent(
-                intent.IntentId,
-                intent.Kind,
-                intent.Skill.SkillId,
-                manaCost,
-                previousNextBasicAttackAt,
-                refundOnRejectedTarget,
-                targets));
-    }
-
     private static void ReserveAndImmediatelyRefundZeroDamage(
         EcsSystemContext context,
         EntityId player,
         in PlayerCombatIntentComponent intent,
         ref PlayerCombatResourceComponent resources,
         int manaCost,
+        ulong admittedCombatRevision,
         in PlayerCombatTargetComponent target)
     {
         var previousNextBasicAttackAt = resources.NextBasicAttackAt;
-        ReserveResources(intent, manaCost, ref resources);
+        ReserveResources(
+            intent,
+            manaCost,
+            admittedCombatRevision,
+            ref resources);
         context.Events.Publish(new PlayerCombatResourceReservedEvent(
             NextSequence(ref resources),
             player,
@@ -134,7 +67,9 @@ internal sealed partial class PlayerCombatIntentSystem
     private static void ReserveResources(
         in PlayerCombatIntentComponent intent,
         int manaCost,
-        ref PlayerCombatResourceComponent resources)
+        ulong admittedCombatRevision,
+        ref PlayerCombatResourceComponent resources,
+        int basicAttackIntervalMilliseconds = 1500)
     {
         resources.CurrentMp -= manaCost;
         if (manaCost > 0)
@@ -146,11 +81,17 @@ internal sealed partial class PlayerCombatIntentSystem
         if (intent.Kind == PlayerCombatIntentKind.BasicAttack)
         {
             resources.NextBasicAttackAt =
-                intent.RequestedAt + PlayerCombatRules.BasicAttackCooldown;
+                intent.RequestedAt +
+                PlayerCombatRules.ResolveBasicAttackCooldown(
+                    basicAttackIntervalMilliseconds);
         }
 
-        resources.CombatRevision =
-            checked(resources.CombatRevision + 1);
+        // Refund bookkeeping historically advances this local diagnostic
+        // counter as well. The process-owned admitted revision remains the
+        // event-identity authority, while the ECS copy must stay monotonic.
+        resources.CombatRevision = Math.Max(
+            resources.CombatRevision,
+            admittedCombatRevision);
     }
 
     internal static void RefundResources(
@@ -253,14 +194,13 @@ internal sealed partial class PlayerCombatIntentSystem
         return true;
     }
 
-    private static ImmutableArray<PlayerCombatReservedTarget>
+    private static ImmutableArray<PlayerCombatTargetComponent>
         SelectAreaTargets(
             EcsWorld world,
             byte mapId,
             float centerX,
             float centerZ,
-            float radius,
-            uint requestedDamage)
+            float radius)
     {
         var candidates =
             new List<(EntityId Entity, PlayerCombatTargetComponent Target)>();
@@ -290,18 +230,12 @@ internal sealed partial class PlayerCombatIntentSystem
         });
 
         var targets =
-            ImmutableArray.CreateBuilder<PlayerCombatReservedTarget>(
+            ImmutableArray.CreateBuilder<PlayerCombatTargetComponent>(
                 candidates.Count);
         for (var index = 0; index < candidates.Count; index++)
         {
             var target = candidates[index].Target;
-            targets.Add(new PlayerCombatReservedTarget(
-                index,
-                target.ObjectId,
-                target.CurrentHealth,
-                target.SpawnGeneration,
-                target.HealthRevision,
-                requestedDamage));
+            targets.Add(target);
         }
 
         return targets.MoveToImmutable();

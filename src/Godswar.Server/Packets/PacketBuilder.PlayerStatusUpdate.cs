@@ -20,6 +20,8 @@ internal static partial class PacketBuilder
     private const int PlayerStatusDodgeOffset = 180;
     private const int PlayerStatusCriticalOffset = 184;
     private const int PlayerStatusCriticalResistanceOffset = 188;
+    private const int PlayerStatusAttackIntervalShortOffset = 114;
+    private const int PlayerStatusAttackIntervalDwordOffset = 224;
     private const int PlayerStatusTalentPointsOffset = 228;
 
     private static readonly byte[] PlayerStatusUpdateTemplate = Convert.FromHexString(
@@ -147,6 +149,18 @@ internal static partial class PacketBuilder
             SaturatingStatusValue(
                 stats.CriticalResistance,
                 aggregate.CriticalResistance));
+        var attackInterval = (ushort)Math.Clamp(
+            stats.BasicAttackIntervalMilliseconds,
+            1,
+            ushort.MaxValue);
+        // The stock handler copies the same authored interval from both wire
+        // locations into native GameData. Neither field is an attack range.
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(PlayerStatusAttackIntervalShortOffset, 2),
+            attackInterval);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(PlayerStatusAttackIntervalDwordOffset, 4),
+            attackInterval);
         if (objectId == LocalPlayerObjectId)
         {
             // MSG_SYN_GAMEDATA copies these wire fields into the local

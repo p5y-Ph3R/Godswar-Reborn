@@ -81,7 +81,7 @@ internal static partial class PostgresGameplayContentPublisher
         var values = new List<GameplayMapDefinition>();
         await using var command = new NpgsqlCommand(
             """
-            SELECT map_id, scene_key, display_name, client_scene_id
+            SELECT map_id, scene_key, display_name, client_scene_id, map_mode
             FROM map_templates
             ORDER BY map_id;
             """,
@@ -95,7 +95,8 @@ internal static partial class PostgresGameplayContentPublisher
                 reader.GetInt16(0),
                 reader.GetString(1),
                 reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetInt32(3)));
+                reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetInt16(4)));
         }
 
         return values.ToArray();
@@ -182,7 +183,7 @@ internal static partial class PostgresGameplayContentPublisher
             """
             SELECT source_key, source_kind, source_map_id, scene_key,
                    template_key, display_name, rank, is_boss, is_elite,
-                   is_pet, collision_range
+                   is_pet, attack_type, collision_range
             FROM monster_templates
             ORDER BY source_key, template_key;
             """,
@@ -203,7 +204,8 @@ internal static partial class PostgresGameplayContentPublisher
                 reader.GetBoolean(7),
                 reader.GetBoolean(8),
                 reader.GetBoolean(9),
-                reader.IsDBNull(10) ? null : reader.GetFloat(10)));
+                reader.IsDBNull(10) ? null : reader.GetInt16(10),
+                reader.IsDBNull(11) ? null : reader.GetFloat(11)));
         }
 
         return values.ToArray();

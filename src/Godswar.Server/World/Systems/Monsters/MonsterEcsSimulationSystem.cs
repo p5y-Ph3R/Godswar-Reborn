@@ -58,7 +58,8 @@ internal sealed class MonsterEcsSimulationSystem(
                 combat.NextAttackAt =
                     frame.Now + MonsterEcsRules.TickInterval;
                 movement.NextMovementStepAt =
-                    frame.Now + MonsterEcsRules.TickInterval;
+                    frame.Now + MonsterEcsState.ElementalMovementInterval(
+                        in movement);
             }
 
             if (combat.AggroCharacterId is { } aggroCharacterId)
@@ -214,7 +215,8 @@ internal sealed class MonsterEcsSimulationSystem(
         movement = new MonsterMovementComponent
         {
             NextMovementAt = frame.Now +
-                MonsterEcsRandom.NextIdleDelay(ref random)
+                MonsterEcsRandom.NextIdleDelay(ref random),
+            MovementSpeedBasisPoints = 10_000
         };
         combat = new MonsterCombatComponent();
         lifecycle.DespawnAt = null;

@@ -251,7 +251,7 @@ internal static class PlayerOwnershipArchitectureChecks
             ["src/Godswar.Server/Game/" +
              "GameClientHandler.MovementCombat.cs"] =
             [
-                "basic_attack_damage",
+                "basic_attack_resolution",
                 "RevalidateCurrentWorldEffectOwnership"
             ],
             ["src/Godswar.Server/Game/" +

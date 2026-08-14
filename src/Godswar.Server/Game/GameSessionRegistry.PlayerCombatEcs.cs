@@ -10,7 +10,8 @@ internal sealed partial class GameSessionRegistry
         GameCharacter character,
         uint objectId,
         DateTimeOffset nextBasicAttackAt,
-        in PlayerCombatEcsRequest request)
+        in PlayerCombatEcsRequest request,
+        Action? onAdmittedAttempt = null)
     {
         if (_playerRuntimeMode != PlayerRuntimeMode.Ecs)
         {
@@ -24,7 +25,8 @@ internal sealed partial class GameSessionRegistry
             character,
             objectId,
             nextBasicAttackAt,
-            request);
+            request,
+            onAdmittedAttempt);
     }
 
     internal PlayerCombatEcsProjectionDecision

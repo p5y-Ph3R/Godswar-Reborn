@@ -5,6 +5,7 @@ using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -59,27 +60,32 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var manaCost = Math.Max(0, combat.Mp);
-        int currentMana;
-        var manaReserved = false;
-        lock (character.VitalsSync)
+        using var elementalAuthority =
+            CapturePveElementalCommitAuthority(character);
+        if (elementalAuthority is null)
         {
-            currentMana = character.CurrentMp;
-            if (currentMana >= manaCost)
-            {
-                character.CurrentMp = currentMana - manaCost;
-                currentMana = character.CurrentMp;
-                if (manaCost > 0)
-                {
-                    character.MarkVitalsChanged();
-                }
-
-                manaReserved = true;
-            }
+            Console.WriteLine(
+                $"[skill] rejected stale elemental authority character={character.Name} skill={cast.SkillId}");
+            return;
         }
+
+        var manaCost = Math.Max(0, combat.Mp);
+        var observedAt = DateTimeOffset.UtcNow;
+        var manaReserved = TryReserveLegacyHostileSkill(
+            character,
+            combat,
+            observedAt,
+            out var currentMana,
+            out _,
+            out var cooldownRejected);
 
         if (!manaReserved)
         {
+            if (cooldownRejected)
+            {
+                return;
+            }
+
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
             await _session.SendAsync(
@@ -89,7 +95,6 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var requestedDamage = SkillCombatResolver.CalculateDamage(character, combat);
         var candidates = _registry.GetMapMonsterSnapshots(
                 _session,
                 character.CurrentMap)
@@ -108,49 +113,90 @@ internal sealed partial class GameClientHandler
                     combat))
             .OrderBy(static monster => monster.ObjectId)
             .ToArray();
-        var hits = new List<(MonsterDamageResult Result, uint ReportedDamage)>(candidates.Length);
-        if (requestedDamage > 0)
+        var hits = new List<(
+            MonsterDamageResult Result,
+            uint ReportedDamage,
+            ulong CombatEventId)>(candidates.Length);
+        var admittedCombatRevision =
+            checked((ulong)NextAdmittedLegacyCombatRevision());
+        var misses = 0;
+        for (var targetOrder = 0;
+             targetOrder < candidates.Length;
+             targetOrder++)
         {
-            foreach (var candidate in candidates)
+            var candidate = candidates[targetOrder];
+            var resolution = ResolveHostileMonsterSkillDamage(
+                character,
+                combat,
+                candidate,
+                admittedCombatRevision,
+                targetOrder,
+                observedAt);
+            if (!resolution.Hit)
             {
-                if (!RevalidateCurrentWorldEffectOwnership(
-                        "area_skill_damage"))
-                {
-                    break;
-                }
-
-                if (_registry.TryApplyMonsterDamage(
-                        character.CurrentMap,
-                        candidate.ObjectId,
-                        requestedDamage,
-                        character.Id,
-                        candidate.SpawnGeneration,
-                        out var damageResult) &&
-                    damageResult.BeforeHealth != damageResult.AfterHealth)
-                {
-                    // The original protocol reports resolved damage, even if the
-                    // target had less health remaining.
-                    hits.Add((damageResult, requestedDamage));
-                }
+                misses++;
+                continue;
             }
-        }
 
-        _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
-        var pendingRewards = new List<PendingMonsterKillReward>();
-        foreach (var hit in hits)
-        {
-            if (!hit.Result.Killed)
+            if (resolution.Damage == 0)
             {
                 continue;
             }
 
-            var pendingReward =
-                await PrepareMonsterKillRewardAsync(hit.Result);
-            if (pendingReward is not null)
+            if (!RevalidateCurrentWorldEffectOwnership(
+                    "area_skill_damage"))
             {
-                pendingRewards.Add(pendingReward);
+                break;
+            }
+
+            if (_registry.TryApplyMonsterDamage(
+                    character.CurrentMap,
+                    candidate.ObjectId,
+                    resolution.Damage,
+                    character.Id,
+                    candidate.SpawnGeneration,
+                    out var damageResult) &&
+                damageResult.BeforeHealth != damageResult.AfterHealth)
+            {
+                // The original protocol reports resolved damage, even if the
+                // target had less health remaining.
+                hits.Add((
+                    damageResult,
+                    resolution.CapturedDamageValue,
+                    resolution.EventId));
             }
         }
+
+        var lifeAbsorption = CommitPveLifeAbsorption(
+            character,
+            hits.Select(static hit => new PveCommittedMonsterDamage(
+                    hit.CombatEventId,
+                    hit.Result.ObjectId,
+                    hit.Result.Monster.SpawnGeneration,
+                    hit.Result.BeforeHealth - hit.Result.AfterHealth))
+                .ToArray());
+        var elementalCommit = CommitPveElementalHits(
+            elementalAuthority,
+            CombatEventProvenance.DirectSkill,
+            hits.Select((hit, index) => new PveElementalCommittedHit(
+                    hit.CombatEventId,
+                    index,
+                    hit.Result))
+                .ToArray());
+        _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+        var pendingRewards = new List<PendingMonsterKillReward>();
+        foreach (var hit in hits.Where(static hit => hit.Result.Killed))
+        {
+            var pending = await PrepareMonsterKillRewardAsync(hit.Result);
+            if (pending is not null)
+            {
+                pendingRewards.Add(pending);
+            }
+        }
+        var elementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                elementalAuthority,
+                elementalCommit);
 
         var selfVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(
@@ -243,12 +289,17 @@ internal sealed partial class GameClientHandler
             "AreaSkill",
             publishCastVisual);
 
-        foreach (var pendingReward in pendingRewards)
-        {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
-        }
+        await PublishPveLifeAbsorptionAsync(
+            character,
+            lifeAbsorption,
+            cancellationToken,
+            persistVitals: false);
+
+        await PublishPveElementalCommitAsync(
+            elementalAuthority,
+            elementalCommit,
+            elementalRewards,
+            cancellationToken);
 
         if (_account is not null)
         {
@@ -271,11 +322,21 @@ internal sealed partial class GameClientHandler
             }
         }
 
+        foreach (var pendingReward in pendingRewards)
+        {
+            await PublishMonsterKillRewardAsync(
+                pendingReward,
+                cancellationToken);
+        }
+
         var appliedDamage = hits.Aggregate(
             0UL,
             static (total, hit) => total + hit.Result.BeforeHealth - hit.Result.AfterHealth);
+        var firstReportedDamage = hits.Count == 0
+            ? 0u
+            : hits[0].ReportedDamage;
         Console.WriteLine(
-            $"[skill] area damage character={character.Name} skill={cast.SkillId} center={areaCenterX:F2},{areaCenterZ:F2} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} resolved-each={requestedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
+            $"[skill] area damage character={character.Name} skill={cast.SkillId} cast-revision={admittedCombatRevision} center={areaCenterX:F2},{areaCenterZ:F2} radius={combat.Range:F2} candidates={candidates.Length} hits={hits.Count} misses={misses} first-resolved={firstReportedDamage} applied-total={appliedDamage} mp={currentMana}/{character.MaxMp} caster-notified={casterNotified} viewers={areaRecipients}");
     }
 
 }

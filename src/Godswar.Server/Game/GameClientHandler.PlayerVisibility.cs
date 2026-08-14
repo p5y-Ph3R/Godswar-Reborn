@@ -431,6 +431,7 @@ internal sealed partial class GameClientHandler
         }
 
         stats.ApplyTo(character);
+        ApplyElementalPassiveStats(character, stats);
         Console.WriteLine($"[stats] refreshed reason={reason} character={character.Name} {stats.ToLogSummary()}");
     }
 

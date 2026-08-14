@@ -244,7 +244,8 @@ internal sealed partial class GameClientHandler
             results.Add(ApplyPriestHeal(
                 target,
                 healing.HealAmount,
-                outgoingHealingBonus));
+                outgoingHealingBonus,
+                now));
         }
 
         // The HP/MP mutation is authoritative before any socket write. Queue
@@ -506,12 +507,25 @@ internal sealed partial class GameClientHandler
         }
     }
 
-    private static PriestHealResult ApplyPriestHeal(
+    private PriestHealResult ApplyPriestHeal(
         PriestHealTarget target,
         int baseHeal,
-        int outgoingHealingBonusBasisPoints)
+        int outgoingHealingBonusBasisPoints,
+        DateTimeOffset authoritativeAt)
     {
         var character = target.Character;
+        var resolved = PriestHealingMath.ResolveHealAmount(
+            baseHeal,
+            outgoingHealingBonusBasisPoints,
+            character.CalculatedStats?.BeCureBonus ?? 0);
+        resolved = checked((int)Math.Clamp(
+            _registry.AdjustElementalHealingReceived(
+                target.Session,
+                character,
+                authoritativeAt,
+                resolved),
+            0,
+            int.MaxValue));
         lock (character.VitalsSync)
         {
             var before = character.CurrentHp;
@@ -526,10 +540,6 @@ internal sealed partial class GameClientHandler
                     CombatTextAmount: 0);
             }
 
-            var resolved = PriestHealingMath.ResolveHealAmount(
-                baseHeal,
-                outgoingHealingBonusBasisPoints,
-                character.CalculatedStats?.BeCureBonus ?? 0);
             var maximum = Math.Max(1, character.MaxHp);
             var after = (int)Math.Min(
                 maximum,

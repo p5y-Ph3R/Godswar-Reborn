@@ -6,6 +6,7 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
 {
+    private const uint LocalPlayerObjectId = 0x00001448;
     private readonly bool _requiresDurablePlayerCommands;
 
     private bool TryBindCurrentPlayerOwnership<TCommand>(

@@ -11,6 +11,18 @@ namespace Godswar.Server.World.Systems.Combat;
 internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
 {
     public const int SystemOrder = 500;
+    private readonly Func<ulong>? _nextAdmittedCombatRevision;
+
+    public PlayerCombatIntentSystem()
+    {
+    }
+
+    public PlayerCombatIntentSystem(
+        Func<ulong> nextAdmittedCombatRevision)
+    {
+        ArgumentNullException.ThrowIfNull(nextAdmittedCombatRevision);
+        _nextAdmittedCombatRevision = nextAdmittedCombatRevision;
+    }
 
     public int Order => SystemOrder;
 
@@ -107,7 +119,7 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
         }
     }
 
-    private static void ProcessBasicAttack(
+    private void ProcessBasicAttack(
         EcsSystemContext context,
         EntityId player,
         in PlayerCombatIntentComponent intent,
@@ -188,25 +200,20 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
             return;
         }
 
-        var requestedDamage = PlayerCombatRules.CalculateBasicAttack(offense);
-        var targets = ImmutableArray.Create(new PlayerCombatReservedTarget(
-            TargetOrder: 0,
-            target.ObjectId,
-            target.CurrentHealth,
-            target.SpawnGeneration,
-            target.HealthRevision,
-            requestedDamage));
-        ReserveAndPublish(
+        var admittedCombatRevision = NextAdmittedCombatRevision(
+            resources);
+        ResolveAndReserveBasicAttack(
             context,
             player,
             intent,
+            offense,
+            target,
+            admittedCombatRevision,
             ref resources,
-            manaCost: 0,
-            targets,
-            refundOnRejectedTarget: true);
+            offense.BasicAttackIntervalMilliseconds);
     }
 
-    private static void ProcessSingleTargetSkill(
+    private void ProcessSingleTargetSkill(
         EcsSystemContext context,
         EntityId player,
         in PlayerCombatIntentComponent intent,
@@ -282,39 +289,20 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
             return;
         }
 
-        var requestedDamage = PlayerCombatRules.CalculateSkillDamage(
-            offense,
-            intent.Skill);
-        if (requestedDamage == 0)
-        {
-            ReserveAndImmediatelyRefundZeroDamage(
-                context,
-                player,
-                intent,
-                ref resources,
-                manaCost,
-                target);
-            return;
-        }
-
-        var targets = ImmutableArray.Create(new PlayerCombatReservedTarget(
-            TargetOrder: 0,
-            target.ObjectId,
-            target.CurrentHealth,
-            target.SpawnGeneration,
-            target.HealthRevision,
-            requestedDamage));
-        ReserveAndPublish(
+        var admittedCombatRevision = NextAdmittedCombatRevision(
+            resources);
+        ResolveAndReserveSingleTargetSkill(
             context,
             player,
             intent,
+            offense,
+            target,
+            admittedCombatRevision,
             ref resources,
-            manaCost,
-            targets,
-            refundOnRejectedTarget: true);
+            manaCost);
     }
 
-    private static void ProcessAreaSkill(
+    private void ProcessAreaSkill(
         EcsSystemContext context,
         EntityId player,
         in PlayerCombatIntentComponent intent,
@@ -382,25 +370,23 @@ internal sealed partial class PlayerCombatIntentSystem : IEcsSystem
             return;
         }
 
-        var requestedDamage = PlayerCombatRules.CalculateSkillDamage(
-            offense,
-            intent.Skill);
-        var candidates = requestedDamage == 0
-            ? ImmutableArray<PlayerCombatReservedTarget>.Empty
-            : SelectAreaTargets(
-                context.World,
-                transform.MapId,
-                areaCenterX,
-                areaCenterZ,
-                intent.Skill.AreaRadius,
-                requestedDamage);
-        ReserveAndPublish(
+        var admittedCombatRevision = NextAdmittedCombatRevision(
+            resources);
+        ResolveAndReserveAreaSkill(
             context,
             player,
             intent,
+            transform.MapId,
+            areaCenterX,
+            areaCenterZ,
+            offense,
+            admittedCombatRevision,
             ref resources,
-            manaCost,
-            candidates,
-            refundOnRejectedTarget: false);
+            manaCost);
     }
+
+    private ulong NextAdmittedCombatRevision(
+        in PlayerCombatResourceComponent resources) =>
+        _nextAdmittedCombatRevision?.Invoke() ??
+        checked(resources.CombatRevision + 1UL);
 }

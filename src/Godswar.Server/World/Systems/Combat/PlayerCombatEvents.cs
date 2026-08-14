@@ -41,6 +41,18 @@ internal readonly record struct PlayerCombatDamageIntentEvent(
     uint ExpectedSpawnGeneration,
     ulong ExpectedHealthRevision);
 
+internal readonly record struct PlayerCombatTargetResolvedEvent(
+    ulong Sequence,
+    EntityId Player,
+    ulong IntentId,
+    PlayerCombatIntentKind Kind,
+    int TargetOrder,
+    int TargetCount,
+    uint TargetObjectId,
+    uint ExpectedSpawnGeneration,
+    ulong ExpectedHealthRevision,
+    CombatResolution Resolution);
+
 internal readonly record struct PlayerCombatMutationOutcomeIgnoredEvent(
     ulong Sequence,
     EntityId Player,

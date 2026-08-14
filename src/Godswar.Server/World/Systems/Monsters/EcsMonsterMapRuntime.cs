@@ -145,6 +145,71 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
         uint? expectedSpawnGeneration,
         DateTimeOffset now,
         out MonsterDamageResult result)
+        => TryApplyDamageCore(
+            objectId,
+            damage,
+            attackerCharacterId,
+            expectedSpawnGeneration,
+            periodic: false,
+            now,
+            out result);
+
+    public bool TryApplyPeriodicDamage(
+        uint objectId,
+        uint damage,
+        int sourceCharacterId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset now,
+        out MonsterDamageResult result) =>
+        TryApplyDamageCore(
+            objectId,
+            damage,
+            sourceCharacterId,
+            expectedSpawnGeneration,
+            periodic: true,
+            now,
+            out result);
+
+    public bool TrySetMovementSpeedBasisPoints(
+        uint objectId,
+        uint expectedSpawnGeneration,
+        int speedBasisPoints)
+    {
+        if (speedBasisPoints is <= 0 or > 10_000)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(speedBasisPoints));
+        }
+
+        lock (_gate)
+        {
+            if (!_entities.TryGetValue(objectId, out var entity))
+            {
+                return false;
+            }
+
+            ref var vitals =
+                ref _world.Get<MonsterVitalsComponent>(entity);
+            if (vitals.SpawnGeneration != expectedSpawnGeneration)
+            {
+                return false;
+            }
+
+            ref var movement =
+                ref _world.Get<MonsterMovementComponent>(entity);
+            movement.MovementSpeedBasisPoints = speedBasisPoints;
+            return true;
+        }
+    }
+
+    private bool TryApplyDamageCore(
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        uint? expectedSpawnGeneration,
+        bool periodic,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
     {
         lock (_gate)
         {
@@ -160,6 +225,7 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
                 damage,
                 attackerCharacterId,
                 expectedSpawnGeneration,
+                periodic,
                 now,
                 _pendingUpdates,
                 out result);

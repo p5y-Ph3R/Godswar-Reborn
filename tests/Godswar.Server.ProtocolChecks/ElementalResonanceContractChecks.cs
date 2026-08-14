@@ -2,7 +2,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class ElementalResonanceContractChecks
+internal static partial class ElementalResonanceContractChecks
 {
     public static void Run()
     {
@@ -14,13 +14,14 @@ internal static class ElementalResonanceContractChecks
         CheckAeolus();
         CheckApollo();
         CheckHades();
+        CheckDeterministicExecution();
     }
 
     private static void CheckShapeAndActivation()
     {
         Check.True(
-            !ElementalResonanceCatalog.GameplayExecutionEnabled,
-            "typed resonance entitlement does not pretend effect execution is wired");
+            ElementalResonanceCatalog.GameplayExecutionEnabled,
+            "typed resonance execution policy is enabled without implicit handler wiring");
         Check.Equal(21, ElementalResonanceCatalog.All.Count,
             "seven elements each have three resonance tiers");
         foreach (var element in Enum.GetValues<ElementKind>())

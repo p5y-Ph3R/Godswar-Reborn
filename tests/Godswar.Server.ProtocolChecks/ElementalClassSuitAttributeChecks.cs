@@ -3,20 +3,24 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class ElementalClassSuitAttributeChecks
+internal static partial class ElementalClassSuitAttributeChecks
 {
     public const string CheckName =
         "Elemental Class Suit content and runtime profile";
 
-    public static Task RunAsync()
+    public static async Task RunAsync()
     {
         CheckLockedCatalog();
         CheckGradeValues();
         CheckSetThresholds();
         ElementalResonanceContractChecks.Run();
         CheckDualElementAndInvalidGrade();
+        CheckEquippedRoleAuthority();
         CheckRuntimeRefreshAndRegularSlotBoundary();
-        return Task.CompletedTask;
+        CheckElementalExecutionAndPvpGate();
+        CheckElementalRuntimeRegistry();
+        await CheckCrossDomainCombatIdentityAsync();
+        await CheckElementalLiveHandlersAsync();
     }
 
     private static void CheckLockedCatalog()
@@ -316,8 +320,7 @@ internal static class ElementalClassSuitAttributeChecks
         foreach (var count in new[] { 0, 2, 3, 5, 6, 9, 10, 12 })
         {
             var profile = ElementalAttributeCatalog.CalculateEquippedProfile(
-                Enumerable.Range(0, count)
-                    .Select(static _ => ElementalGear(480, grade: 1)));
+                EquippedElementalGear(count, grade: 1));
             var expectedCount = Math.Min(count, 10);
             var expectedThreshold = expectedCount >= 10
                 ? 10
@@ -330,8 +333,7 @@ internal static class ElementalClassSuitAttributeChecks
                 $"Fire display count at {count} equipped items");
             Check.Equal(expectedThreshold, profile.HighestThresholdFor(ElementKind.Fire),
                 $"Fire set threshold at {count} equipped items");
-            Check.Equal(count * 40, effects.EffectPotencyBasisPoints,
-                $"Fire Burn potency at {count} equipped items");
+            CheckFireEffectsForSlots(effects, count);
             Check.True(
                 active.Select(static value => value.RequiredPieces)
                     .SequenceEqual(expectedThreshold switch
@@ -342,10 +344,6 @@ internal static class ElementalClassSuitAttributeChecks
                         _ => Array.Empty<int>()
                     }),
                 $"Fire exposes cumulative resonance tiers at {count} items");
-            Check.True(
-                effects.EffectResistanceBasisPoints == 0 &&
-                effects.ApplicationChanceBasisPoints == 0,
-                $"resonance does not mutate Fire effect totals at {count} items");
         }
     }
 
@@ -353,14 +351,15 @@ internal static class ElementalClassSuitAttributeChecks
     {
         var dual = ElementalGear(481, 25) with
         {
-            ElementalAttribute2 = 485
+            ElementalAttribute2 = 484
         };
-        var profile = ElementalAttributeCatalog.CalculateEquippedProfile([dual]);
+        var profile = ElementalAttributeCatalog.CalculateEquippedProfile(
+            [At(EquipmentSlots.Armor, dual)]);
         Check.True(
             profile.CountFor(ElementKind.Fire) == 1 &&
             profile.EffectsFor(ElementKind.Fire).EffectResistanceBasisPoints == 1_000 &&
             profile.CountFor(ElementKind.Water) == 1 &&
-            profile.EffectsFor(ElementKind.Water).ApplicationChanceBasisPoints == 500,
+            profile.EffectsFor(ElementKind.Water).EffectResistanceBasisPoints == 1_000,
             "one dual-element item contributes once to each matching set");
         Check.True(
             !ElementalAttributeCatalog.HasValidPair(480, 481) &&
@@ -370,7 +369,7 @@ internal static class ElementalClassSuitAttributeChecks
         foreach (var grade in new short[] { 0, 26 })
         {
             var invalid = ElementalAttributeCatalog.CalculateEquippedProfile(
-                [ElementalGear(480, grade)]);
+                [At(EquipmentSlots.Weapon, ElementalGear(480, grade))]);
             Check.True(
                 invalid.CountFor(ElementKind.Fire) == 0 &&
                 invalid.EffectsFor(ElementKind.Fire) == default,
@@ -388,7 +387,7 @@ internal static class ElementalClassSuitAttributeChecks
                  })
         {
             var invalid = ElementalAttributeCatalog.CalculateEquippedProfile(
-                [corrupt]);
+                [At(EquipmentSlots.Weapon, corrupt)]);
             Check.True(
                 invalid.CountFor(ElementKind.Fire) == 0 &&
                 invalid.EffectsFor(ElementKind.Fire) == default,

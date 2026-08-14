@@ -35,6 +35,9 @@ internal sealed partial class GameClientHandler
                 worldReady);
         }
 
+        _registry.RegisterPveMonsterKillRewardPreparer(
+            _session,
+            PreparePveDerivedKillRewardAsync);
         _registry.UpdateActivePetHealingRuntime(
             _session,
             _characterLoadSnapshot?.Pets ??

@@ -164,6 +164,9 @@ internal sealed partial class GameClientHandler
                         var currentHp = _character.CurrentHp;
                         var currentMp = _character.CurrentMp;
                         refreshedStats.ApplyTo(_character);
+                        ApplyElementalPassiveStats(
+                            _character,
+                            refreshedStats);
                         _character.CurrentHp = Math.Clamp(currentHp, 0, _character.MaxHp);
                         _character.CurrentMp = Math.Clamp(currentMp, 0, _character.MaxMp);
                         _character.MarkVitalsChanged();

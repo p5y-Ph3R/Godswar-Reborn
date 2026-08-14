@@ -203,64 +203,6 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
                     : UnequipBeforeState,
                 PersistedPhysicalAttack))!.Character;
 
-    private static CharacterStats CopyStats(
-        CharacterStats source,
-        int maxHp,
-        int maxMp,
-        int physicalAttack,
-        int? physicalDamageReduction = null,
-        int? magicDamageReduction = null,
-        int? criticalDamageReduction = null,
-        int? lifeAbsorption = null,
-        int? damageRebound = null) =>
-        new()
-        {
-            CharacterId = source.CharacterId,
-            AccountId = source.AccountId,
-            Name = source.Name,
-            Level = source.Level,
-            MaxHp = maxHp,
-            MaxMp = maxMp,
-            CurrentHp = source.CurrentHp,
-            CurrentMp = source.CurrentMp,
-            PhysicalAttack = physicalAttack,
-            PhysicalDefense = source.PhysicalDefense,
-            MagicAttack = source.MagicAttack,
-            MagicDefense = source.MagicDefense,
-            Hit = source.Hit,
-            Dodge = source.Dodge,
-            Critical = source.Critical,
-            CriticalResistance = source.CriticalResistance,
-            DamageAbsorb = source.DamageAbsorb,
-            PhysicalDamageBonus = source.PhysicalDamageBonus,
-            MagicDamageBonus = source.MagicDamageBonus,
-            CureBonus = source.CureBonus,
-            BeCureBonus = source.BeCureBonus,
-            HpRecovery = source.HpRecovery,
-            MpRecovery = source.MpRecovery,
-            IgnorePhysicalDefense = source.IgnorePhysicalDefense,
-            IgnoreMagicDefense = source.IgnoreMagicDefense,
-            PhysicalAppendDamage = source.PhysicalAppendDamage,
-            MagicAppendDamage = source.MagicAppendDamage,
-            CriticalDamagePercent = source.CriticalDamagePercent,
-            CriticalDamageFlat = source.CriticalDamageFlat,
-            PhysicalDamageReduction =
-                physicalDamageReduction ?? source.PhysicalDamageReduction,
-            MagicDamageReduction =
-                magicDamageReduction ?? source.MagicDamageReduction,
-            CriticalDamageReduction =
-                criticalDamageReduction ?? source.CriticalDamageReduction,
-            LifeAbsorption = lifeAbsorption ?? source.LifeAbsorption,
-            DamageRebound = damageRebound ?? source.DamageRebound,
-            WeaponScore = source.WeaponScore,
-            WeaponRank = source.WeaponRank,
-            WeaponAuraEffect = source.WeaponAuraEffect,
-            ArmorScore = source.ArmorScore,
-            ArmorRank = source.ArmorRank,
-            ArmorAuraEffect = source.ArmorAuraEffect,
-            LearnedSkillCount = source.LearnedSkillCount
-        };
-
     private static EquipmentBagTransferExecutionReceipt
         CreateUnequipReceipt() =>
         CreateReceipt(

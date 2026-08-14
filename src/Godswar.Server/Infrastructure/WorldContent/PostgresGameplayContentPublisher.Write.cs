@@ -11,12 +11,54 @@ internal static partial class PostgresGameplayContentPublisher
         NpgsqlTransaction transaction,
         string revision,
         GameplayContentCatalog content,
-        CancellationToken cancellationToken)
-    {
-        await CopyAsync(
+        CancellationToken cancellationToken) =>
+        await CopyDefinitionsAsync(
             connection,
             transaction,
             revision,
+            content,
+            includeCombatAuthority: true,
+            cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Historical publisher seam used by the disposable migration regression
+    /// before migration 093 adds the combat-authority columns.
+    /// </summary>
+    internal static async Task CopyLegacyV2DefinitionsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string revision,
+        GameplayContentCatalog content,
+        CancellationToken cancellationToken) =>
+        await CopyDefinitionsAsync(
+            connection,
+            transaction,
+            revision,
+            content,
+            includeCombatAuthority: false,
+            cancellationToken: cancellationToken);
+
+    private static async Task CopyDefinitionsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        string revision,
+        GameplayContentCatalog content,
+        bool includeCombatAuthority,
+        CancellationToken cancellationToken)
+    {
+        var mapSql = includeCombatAuthority
+            ?
+            """
+            INSERT INTO gameplay_map_definitions (
+                revision, map_id, scene_key, display_name, client_scene_id,
+                map_mode
+            )
+            SELECT @revision, map_id, scene_key, display_name, client_scene_id,
+                   map_mode
+            FROM map_templates
+            ORDER BY map_id;
+            """
+            :
             """
             INSERT INTO gameplay_map_definitions (
                 revision, map_id, scene_key, display_name, client_scene_id
@@ -24,7 +66,12 @@ internal static partial class PostgresGameplayContentPublisher
             SELECT @revision, map_id, scene_key, display_name, client_scene_id
             FROM map_templates
             ORDER BY map_id;
-            """,
+            """;
+        await CopyAsync(
+            connection,
+            transaction,
+            revision,
+            mapSql,
             content.Maps.Count,
             "maps",
             cancellationToken);
@@ -62,10 +109,21 @@ internal static partial class PostgresGameplayContentPublisher
             content.Links.Count,
             "map links",
             cancellationToken);
-        await CopyAsync(
-            connection,
-            transaction,
-            revision,
+        var monsterSql = includeCombatAuthority
+            ?
+            """
+            INSERT INTO gameplay_monster_templates (
+                revision, source_key, source_kind, source_map_id, scene_key,
+                template_key, display_name, rank, is_boss, is_elite, is_pet,
+                attack_type, collision_range
+            )
+            SELECT @revision, source_key, source_kind, source_map_id, scene_key,
+                   template_key, display_name, rank, is_boss, is_elite, is_pet,
+                   attack_type, collision_range
+            FROM monster_templates
+            ORDER BY source_key, template_key;
+            """
+            :
             """
             INSERT INTO gameplay_monster_templates (
                 revision, source_key, source_kind, source_map_id, scene_key,
@@ -77,7 +135,12 @@ internal static partial class PostgresGameplayContentPublisher
                    collision_range
             FROM monster_templates
             ORDER BY source_key, template_key;
-            """,
+            """;
+        await CopyAsync(
+            connection,
+            transaction,
+            revision,
+            monsterSql,
             content.MonsterTemplates.Count,
             "monster templates",
             cancellationToken);

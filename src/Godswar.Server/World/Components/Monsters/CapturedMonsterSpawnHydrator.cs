@@ -93,7 +93,8 @@ internal static class CapturedMonsterSpawnHydrator
         var movement = new MonsterMovementComponent
         {
             NextMovementAt = initializedAt +
-                MonsterEcsRandom.NextIdleDelay(ref random)
+                MonsterEcsRandom.NextIdleDelay(ref random),
+            MovementSpeedBasisPoints = 10_000
         };
 
         var entity = world.CreateEntity();

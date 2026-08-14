@@ -169,6 +169,7 @@ internal sealed partial class GameSessionRegistry
                 throw;
             }
             _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
+            RemoveElementalCombatSession(session);
             RemovePlayerRuntimeEcs(session);
             if (!preservePlayerStatus &&
                 _playerStatusStates.TryRemove(session, out var statusState))
@@ -331,6 +332,7 @@ internal sealed partial class GameSessionRegistry
                 static (_, revision) => revision + 1);
             if (_sessions.TryGetValue(session, out var context))
             {
+                ClearElementalCombatLifeState(session);
                 _nextPlayerRecoveryAt[context.CharacterId] =
                     advancedAt + PlayerRecoveryInterval;
                 ResetPlayerRecoveryEcs(session);

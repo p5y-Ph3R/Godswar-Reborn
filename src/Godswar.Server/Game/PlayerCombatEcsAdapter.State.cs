@@ -12,6 +12,7 @@ internal sealed partial class PlayerCombatEcsAdapter
 {
 
     private void EnsureAttached(
+        GameSessionRegistry registry,
         GameCharacter character,
         uint objectId,
         DateTimeOffset nextBasicAttackAt)
@@ -50,7 +51,13 @@ internal sealed partial class PlayerCombatEcsAdapter
                     Revision: 0,
                     LastProjectionId: 0)));
         var scheduler = new EcsSystemScheduler(world);
-        scheduler.AddSystem(new PlayerCombatIntentSystem());
+        var accountId = character.AccountId;
+        var characterId = character.Id;
+        scheduler.AddSystem(new PlayerCombatIntentSystem(
+            () => AdmitCombatAttempt(
+                registry,
+                accountId,
+                characterId)));
         scheduler.AddSystem(new PlayerCombatMutationOutcomeSystem());
         scheduler.AddSystem(
             new MonsterKillProgressionProjectionSystem());
@@ -63,6 +70,18 @@ internal sealed partial class PlayerCombatEcsAdapter
         _killGuards.Clear();
         _lastDecision = null;
         _lastProjection = null;
+    }
+
+    private ulong AdmitCombatAttempt(
+        GameSessionRegistry registry,
+        int accountId,
+        int characterId)
+    {
+        var revision = registry.NextAdmittedCombatRevision(
+            accountId,
+            characterId);
+        _onAdmittedAttempt?.Invoke();
+        return revision;
     }
 
     private PlayerCombatResourceSnapshot SynchronizePlayer(
@@ -108,8 +127,7 @@ internal sealed partial class PlayerCombatEcsAdapter
         GameSessionRegistry registry,
         ClientSession session,
         GameCharacter character,
-        PlayerCombatIntentKind kind,
-        uint targetObjectId)
+        in PlayerCombatEcsRequest request)
     {
         var world = _world!;
         foreach (var entity in _targetEntities)
@@ -119,14 +137,14 @@ internal sealed partial class PlayerCombatEcsAdapter
 
         _targetEntities.Clear();
         MonsterRuntimeSnapshot? selected = null;
-        var snapshots = kind == PlayerCombatIntentKind.AreaSkill
+        var snapshots = request.Kind == PlayerCombatIntentKind.AreaSkill
             ? registry.GetMapMonsterSnapshots(
                 session,
                 character.CurrentMap)
             : registry.TryGetMonsterSnapshot(
                 session,
                 character.CurrentMap,
-                targetObjectId,
+                request.TargetObjectId,
                 out var target)
                 ? [target]
                 : [];
@@ -136,6 +154,15 @@ internal sealed partial class PlayerCombatEcsAdapter
                 session,
                 snapshot.ObjectId,
                 snapshot.SpawnGeneration);
+            var combatProfile = registry.GameplayCatalogs
+                .MonsterCombatProfiles
+                .Resolve(snapshot.Definition)
+                .ToTargetStats();
+            combatProfile = registry.AdjustPveMonsterTargetStats(
+                session,
+                snapshot,
+                request.RequestedAt,
+                combatProfile);
             var entity = PlayerCombatEcsBoundary.HydrateTarget(
                 world,
                 new PlayerCombatTargetComponent(
@@ -149,16 +176,40 @@ internal sealed partial class PlayerCombatEcsAdapter
                     visible,
                     snapshot.SpawnGeneration,
                     snapshot.HealthRevision,
-                    kind == PlayerCombatIntentKind.BasicAttack
-                        ? MonsterCombatResolver
-                            .ResolvePlayerBasicAttackRange(
-                                snapshot.Definition,
-                                registry.GameplayCatalogs
-                                    .MonsterCombatRanges)
+                    request.Kind == PlayerCombatIntentKind.BasicAttack
+                        ? PlayerCombatRules.ResolveBasicAttackRange(
+                            (character.CalculatedStats ??
+                             CharacterStats.FromCharacter(character))
+                            .BasicAttackRange)
                         : PlayerCombatRules
-                            .DefaultBasicAttackRange));
+                            .DefaultBasicAttackRange)
+                {
+                    Level = combatProfile.Level,
+                    PhysicalDefense = combatProfile.PhysicalDefense,
+                    MagicDefense = combatProfile.MagicDefense,
+                    Dodge = combatProfile.Dodge,
+                    CriticalResistance =
+                        combatProfile.CriticalResistance,
+                    PhysicalDamageReductionBasisPoints =
+                        combatProfile
+                            .PhysicalDamageReductionBasisPoints,
+                    MagicDamageReductionBasisPoints =
+                        combatProfile.MagicDamageReductionBasisPoints,
+                    CriticalDamageReductionBasisPoints =
+                        combatProfile
+                            .CriticalDamageReductionBasisPoints,
+                    PhysicalFlatAbsorption =
+                        combatProfile.PhysicalFlatAbsorption,
+                    MagicFlatAbsorption =
+                        combatProfile.MagicFlatAbsorption,
+                    CriticalDamageFlatReduction =
+                        combatProfile.CriticalDamageFlatReduction,
+                    DamageReboundBasisPoints =
+                        combatProfile.DamageReboundBasisPoints,
+                    DamageReboundFlat = combatProfile.DamageReboundFlat
+                });
             _targetEntities.Add(entity);
-            if (snapshot.ObjectId == targetObjectId)
+            if (snapshot.ObjectId == request.TargetObjectId)
             {
                 selected = snapshot;
             }
@@ -285,7 +336,20 @@ internal sealed partial class PlayerCombatEcsAdapter
             stats.PhysicalDamageBonus,
             stats.MagicDamageBonus,
             stats.PhysicalAppendDamage,
-            stats.MagicAppendDamage);
+            stats.MagicAppendDamage)
+        {
+            Level = character.Level,
+            Hit = stats.Hit,
+            Critical = stats.Critical,
+            IgnorePhysicalDefenseBasisPoints =
+                stats.IgnorePhysicalDefense,
+            IgnoreMagicDefenseBasisPoints = stats.IgnoreMagicDefense,
+            CriticalDamageBasisPoints = stats.CriticalDamagePercent,
+            CriticalDamageFlat = stats.CriticalDamageFlat,
+            LifeAbsorptionBasisPoints = stats.LifeAbsorption,
+            BasicAttackIntervalMilliseconds =
+                stats.BasicAttackIntervalMilliseconds
+        };
     }
 
     private static void MirrorResourceDelta(

@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            93,
+            94,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -63,6 +63,27 @@ internal static partial class PostgresMigrationFoundationChecks
                 "'pet_rebirth'",
                 StringComparison.Ordinal),
             "pet durable evidence exposes native Merge and Rebirth commands");
+        var monsterCombat = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260814_093_monster_combat_authority");
+        Check.Equal(
+            "054B080ABAEEFCC3E88085CF5CF3C288D34E08E86BE3D90890C880D31F0E7803",
+            monsterCombat.Checksum,
+            "monster-combat authority migration checksum is pinned");
+        Check.True(
+            monsterCombat.Sql.Contains(
+                "ADD COLUMN attack_type smallint",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "attack_type IN (1, 2, 3)",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "ADD COLUMN map_mode smallint",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "map_mode BETWEEN 0 AND 5",
+                StringComparison.Ordinal),
+            "sealed gameplay content retains constrained monster attack and map-mode PvP authority");
     }
 
     private static readonly string[] ExpectedMigrationIds =
@@ -159,6 +180,7 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260813_089_pet_manager_utility",
         "20260813_090_bag_consumable_cooldown_state",
         "20260813_091_pet_phoenix_rebirth_bracket",
-        "20260814_092_packed_seal_ownership_hardening"
+        "20260814_092_packed_seal_ownership_hardening",
+        "20260814_093_monster_combat_authority"
     ];
 }

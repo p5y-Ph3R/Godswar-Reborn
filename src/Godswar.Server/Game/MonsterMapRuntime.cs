@@ -108,10 +108,13 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
         uint objectId,
         uint damage,
         DateTimeOffset now,
-        out MonsterDamageResult result)
-    {
-        return TryApplyDamage(objectId, damage, attackerCharacterId: null, now, out result);
-    }
+        out MonsterDamageResult result) =>
+        TryApplyDamage(
+            objectId,
+            damage,
+            attackerCharacterId: null,
+            now,
+            out result);
 
     public bool TryApplyDamage(
         uint objectId,
@@ -136,6 +139,39 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
         uint? expectedSpawnGeneration,
         DateTimeOffset now,
         out MonsterDamageResult result)
+        => TryApplyDamageCore(
+            objectId,
+            damage,
+            attackerCharacterId,
+            expectedSpawnGeneration,
+            periodic: false,
+            now,
+            out result);
+
+    public bool TryApplyPeriodicDamage(
+        uint objectId,
+        uint damage,
+        int sourceCharacterId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset now,
+        out MonsterDamageResult result) =>
+        TryApplyDamageCore(
+            objectId,
+            damage,
+            sourceCharacterId,
+            expectedSpawnGeneration,
+            periodic: true,
+            now,
+            out result);
+
+    private bool TryApplyDamageCore(
+        uint objectId,
+        uint damage,
+        int? attackerCharacterId,
+        uint? expectedSpawnGeneration,
+        bool periodic,
+        DateTimeOffset now,
+        out MonsterDamageResult result)
     {
         lock (_gate)
         {
@@ -152,8 +188,10 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
             if (!monster.IsAlive ||
                 !monster.IsSpawned ||
                 damage == 0 ||
-                monster.CombatPhase is MonsterCombatPhase.Returning or
-                    MonsterCombatPhase.AwaitingRetirement)
+                !periodic &&
+                monster.CombatPhase is (
+                    MonsterCombatPhase.Returning or
+                    MonsterCombatPhase.AwaitingRetirement))
             {
                 result = new MonsterDamageResult(
                     objectId,
@@ -189,7 +227,8 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                     MonsterRuntimeUpdateKind.Died,
                     CreateSnapshot(monster)));
             }
-            else if (attackerCharacterId is > 0 &&
+            else if (!periodic &&
+                     attackerCharacterId is > 0 &&
                      monster.AggroCharacterId != attackerCharacterId)
             {
                 monster.AggroCharacterId = attackerCharacterId;
@@ -300,7 +339,8 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
             monster.HasSentInitialChase = false;
             monster.StunnedUntil = stunnedUntil;
             monster.NextAttackAt = stunnedUntil + TickInterval;
-            monster.NextMovementStepAt = stunnedUntil + TickInterval;
+            monster.NextMovementStepAt =
+                stunnedUntil + ElementalMovementInterval(monster);
 
             if (wasMoving)
             {

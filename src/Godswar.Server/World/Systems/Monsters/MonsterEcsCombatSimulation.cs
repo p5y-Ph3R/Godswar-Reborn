@@ -84,7 +84,8 @@ internal static class MonsterEcsCombatSimulation
                 ref movement,
                 target);
             movement.NextMovementStepAt =
-                now + MonsterEcsRules.TickInterval;
+                now + MonsterEcsState.ElementalMovementInterval(
+                    in movement);
             Publish(
                 events,
                 new MonsterRuntimeUpdate(
@@ -144,7 +145,7 @@ internal static class MonsterEcsCombatSimulation
             transform.X = nextX;
             transform.Z = nextZ;
             movement.NextMovementStepAt +=
-                MonsterEcsRules.TickInterval;
+                MonsterEcsState.ElementalMovementInterval(in movement);
             positionsChanged = true;
 
             distance = Math.Sqrt(MonsterEcsState.DistanceSquared(
@@ -227,7 +228,7 @@ internal static class MonsterEcsCombatSimulation
             transform.Z += movement.VelocityZ;
             movement.RemainingMovementTicks--;
             movement.NextMovementStepAt +=
-                MonsterEcsRules.TickInterval;
+                MonsterEcsState.ElementalMovementInterval(in movement);
             positionsChanged = true;
         }
 

@@ -26,6 +26,7 @@ internal sealed partial class PlayerCombatEcsAdapter
     private uint _objectId;
     private ulong _nextIntentId;
     private ulong _nextProjectionId;
+    private Action? _onAdmittedAttempt;
     private PlayerCombatEcsDecision? _lastDecision;
     private PlayerCombatEcsProjectionDecision? _lastProjection;
 
@@ -51,7 +52,8 @@ internal sealed partial class PlayerCombatEcsAdapter
         GameCharacter character,
         uint objectId,
         DateTimeOffset nextBasicAttackAt,
-        in PlayerCombatEcsRequest request)
+        in PlayerCombatEcsRequest request,
+        Action? onAdmittedAttempt = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(session);
@@ -59,7 +61,11 @@ internal sealed partial class PlayerCombatEcsAdapter
 
         lock (_gate)
         {
-            EnsureAttached(character, objectId, nextBasicAttackAt);
+            EnsureAttached(
+                registry,
+                character,
+                objectId,
+                nextBasicAttackAt);
             var world = _world!;
             var scheduler = _scheduler!;
             var mirroredResources = SynchronizePlayer(
@@ -69,8 +75,7 @@ internal sealed partial class PlayerCombatEcsAdapter
                 registry,
                 session,
                 character,
-                request.Kind,
-                request.TargetObjectId);
+                request);
             var intentId = NextIntentId();
             PlayerCombatEcsBoundary.QueueIntent(
                 world,
@@ -90,7 +95,15 @@ internal sealed partial class PlayerCombatEcsAdapter
                     request.ReportedTargetX,
                     request.ReportedTargetZ,
                     request.Skill));
-            scheduler.RunTick(TimeSpan.Zero);
+            _onAdmittedAttempt = onAdmittedAttempt;
+            try
+            {
+                scheduler.RunTick(TimeSpan.Zero);
+            }
+            finally
+            {
+                _onAdmittedAttempt = null;
+            }
 
             var rejection = SingleOrDefault<
                 PlayerCombatIntentRejectedEvent>(
@@ -107,6 +120,19 @@ internal sealed partial class PlayerCombatEcsAdapter
             var damageIntents = scheduler.Events
                 .Read<PlayerCombatDamageIntentEvent>()
                 .ToArray();
+            var resolvedTargets = scheduler.Events
+                .Read<PlayerCombatTargetResolvedEvent>()
+                .ToArray()
+                .OrderBy(static value => value.TargetOrder)
+                .ToArray();
+            AdjustElementalPveDamageReservations(
+                registry,
+                session,
+                character,
+                request,
+                intentId,
+                resolvedTargets,
+                damageIntents);
             var resourcesRefunded =
                 scheduler.Events.Count<
                     PlayerCombatResourceRefundedEvent>() > 0;
@@ -232,7 +258,14 @@ internal sealed partial class PlayerCombatEcsAdapter
                 currentMana,
                 vitalsRevision,
                 finalResources.NextBasicAttackAt,
-                hits.ToImmutable());
+                hits.ToImmutable(),
+                resolvedTargets.Select(static resolved =>
+                        new PlayerCombatEcsResolvedTarget(
+                            resolved.TargetObjectId,
+                            resolved.ExpectedSpawnGeneration,
+                            resolved.ExpectedHealthRevision,
+                            resolved.Resolution))
+                    .ToImmutableArray());
             _lastDecision = decision;
             return decision;
         }

@@ -52,6 +52,9 @@ internal static partial class PlayerCombatEcsParityChecks
     public static Task RunAsync()
     {
         CheckResolverParity();
+        CheckAuthoredCombatV1();
+        CheckEcsBasicAttackResolution();
+        CheckEcsHostileSkillResolution();
         CheckRequiredRejections();
         CheckSingleTargetReservationRefund();
         CheckAreaOrderingAndReservation();
@@ -401,10 +404,10 @@ internal static partial class PlayerCombatEcsParityChecks
         var fixture = CreateFixture();
         var target = AddTarget(
             fixture,
-            objectId: 500,
+            objectId: 200,
             currentHealth: 50,
-            spawnGeneration: 4,
-            healthRevision: 20);
+            spawnGeneration: 3,
+            healthRevision: 7);
         QueueSingle(fixture, target, SingleSkill);
         fixture.Scheduler.RunTick(TimeSpan.Zero);
         var damage = Events<PlayerCombatDamageIntentEvent>(fixture).Single();

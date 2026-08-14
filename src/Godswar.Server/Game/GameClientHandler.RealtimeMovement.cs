@@ -185,19 +185,24 @@ internal sealed partial class GameClientHandler
                     acceptanceCorrectionInputId =
                         ingress.Input.InputId;
                 }
-                var status =
-                    _registry.GetRuntimeStatusAggregate(
-                        _session,
-                        DateTimeOffset.UtcNow);
+                var movementObservedAt = DateTimeOffset.UtcNow;
+                var status = _registry.GetRuntimeStatusAggregate(
+                    _session,
+                    movementObservedAt);
+                var elementalMovement =
+                    ResolveElementalMovementAuthority(
+                        status.MovementSpeedMultiplier,
+                        movementObservedAt);
                 var world =
                     new AuthoritativePlayerMovementWorldContext(
                         input.TransportEpoch,
                         _realtimeWorldGeneration,
                         _character.CurrentMap,
                         LocalPlayerObjectId,
-                        IsReady: !forceAcceptanceCorrection,
+                        IsReady: !forceAcceptanceCorrection &&
+                            elementalMovement.MovementAllowed,
                         IsAlive: _character.CurrentHp > 0,
-                        status.MovementSpeedMultiplier,
+                        elementalMovement.MovementMultiplier,
                         AuthoritativePlayerMovementSource.Tls |
                         AuthoritativePlayerMovementSource.Udp);
                 decision = movement.ProcessLatest(

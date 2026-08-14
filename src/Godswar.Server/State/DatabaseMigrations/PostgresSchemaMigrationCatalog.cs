@@ -275,6 +275,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreatePetManagerUtility(),
         CreateBagConsumableCooldownState(),
         CreatePetPhoenixRebirthBracket(),
-        CreatePackedSealOwnershipHardening()
+        CreatePackedSealOwnershipHardening(),
+        CreateMonsterCombatAuthority()
     ];
 }

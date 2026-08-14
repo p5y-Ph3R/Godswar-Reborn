@@ -73,7 +73,19 @@ internal static class MonsterEcsState
         movement.TargetX = targetX;
         movement.TargetZ = targetZ;
         transform.Facing = MathF.Atan2(velocityX, velocityZ);
-        movement.NextMovementStepAt = now + MonsterEcsRules.TickInterval;
+        movement.NextMovementStepAt =
+            now + ElementalMovementInterval(in movement);
+    }
+
+    public static TimeSpan ElementalMovementInterval(
+        in MonsterMovementComponent movement)
+    {
+        var configured = movement.MovementSpeedBasisPoints;
+        var scale = configured <= 0
+            ? 10_000
+            : Math.Clamp(configured, 1, 10_000);
+        return TimeSpan.FromTicks(checked(
+            (MonsterEcsRules.TickInterval.Ticks * 10_000L) / scale));
     }
 
     public static void SetCombatVelocity(

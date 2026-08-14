@@ -59,7 +59,8 @@ internal sealed partial class MonsterMapRuntime
             monster.MovementTicks = 1;
             monster.RemainingMovementTicks = 1;
             SetCombatVelocity(monster, target);
-            monster.NextMovementStepAt = now + TickInterval;
+            monster.NextMovementStepAt =
+                now + ElementalMovementInterval(monster);
             updates.Add(new MonsterRuntimeUpdate(
                 MonsterRuntimeUpdateKind.Started,
                 CreateSnapshot(monster),
@@ -96,7 +97,8 @@ internal sealed partial class MonsterMapRuntime
 
             monster.CurrentX = nextX;
             monster.CurrentZ = nextZ;
-            monster.NextMovementStepAt += TickInterval;
+            monster.NextMovementStepAt +=
+                ElementalMovementInterval(monster);
             positionsChanged = true;
 
             distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
@@ -151,7 +153,8 @@ internal sealed partial class MonsterMapRuntime
             monster.CurrentX += monster.VelocityX;
             monster.CurrentZ += monster.VelocityZ;
             monster.RemainingMovementTicks--;
-            monster.NextMovementStepAt += TickInterval;
+            monster.NextMovementStepAt +=
+                ElementalMovementInterval(monster);
             positionsChanged = true;
         }
 

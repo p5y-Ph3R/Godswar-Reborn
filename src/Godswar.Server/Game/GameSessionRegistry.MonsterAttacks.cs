@@ -2,6 +2,7 @@ using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
+using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
 
@@ -67,17 +68,25 @@ internal sealed partial class GameSessionRegistry
         // Runtime statuses have their own gate. Snapshot the mitigation before
         // taking the registry gate so status publication and a monster attack
         // cannot acquire those locks in opposite order.
-        var physicalDamageReduction = 0m;
-        var physicalDefenseBonus = 0;
+        var runtimeMitigation = default(RuntimeIncomingDamageMitigation);
         if (statusContext is not null)
         {
-            TryGetRuntimePhysicalDamageReduction(
+            TryGetRuntimeIncomingDamageMitigation(
                 statusContext.Session,
                 damageResolvedAt,
-                out physicalDamageReduction,
-                out physicalDefenseBonus);
+                out runtimeMitigation);
         }
+        var monsterProfile = _gameplayCatalogs.MonsterCombatProfiles.Resolve(
+            attack.Monster.Definition);
+        var combatEventId = ResolveMonsterAttackEventId(attack);
+        CombatResolution resolution = default;
         uint damage;
+        uint appliedPlayerDamage = 0;
+        uint reboundDamage = 0;
+        var replayRejected = false;
+        var elementalAttempt = default(MonsterIncomingElementalAttempt);
+        var elementalPostCommit =
+            default(MonsterIncomingElementalPostCommit);
         var killed = false;
         long? deathLifeRevision = null;
         var deathInterruptionTask = Task.CompletedTask;
@@ -96,8 +105,7 @@ internal sealed partial class GameSessionRegistry
                 if (statusContext is null ||
                     !ReferenceEquals(statusContext.Session, targetContext.Session))
                 {
-                    physicalDamageReduction = 0m;
-                    physicalDefenseBonus = 0;
+                    runtimeMitigation = default;
                 }
 
                 lock (targetContext.Character.VitalsSync)
@@ -109,43 +117,96 @@ internal sealed partial class GameSessionRegistry
                     }
                     else
                     {
-                        damage = MonsterCombatResolver.CalculateMonsterPhysicalAttack(
-                            attack.Monster.Definition.Tier,
-                            targetContext.Character,
-                            physicalDamageReduction,
-                            physicalDefenseBonus);
-                        var beforeHealth = targetContext.Character.CurrentHp;
-                        killed = damage >= (uint)beforeHealth;
-                        if (killed)
-                        {
-                            // Claim before the lethal vitals commit. The
-                            // handler does no asynchronous work before this
-                            // claim, so a deadline completion and death have
-                            // one authoritative order.
-                            deathInterruptionTask =
-                                RequestSkillCastInterruptionAsync(
-                                    targetContext.Session,
-                                    SkillCastInterruptionReason.Death,
-                                    cancellationToken);
-                        }
-
-                        targetContext.Character.CurrentHp = damage >= (uint)beforeHealth
-                            ? 0
-                            : beforeHealth - (int)damage;
-                        targetContext.Character.MarkVitalsChanged();
-                        if (killed)
-                        {
-                            deathLifeRevision = _playerLifeRevisions.AddOrUpdate(
+                        var targetCombat =
+                            MonsterIncomingCombatPolicy.ResolveTargetStats(
+                                targetContext.Character,
+                                runtimeMitigation);
+                        var effectiveMonsterProfile =
+                            AdjustPveMonsterAttackerProfile(
                                 targetContext.Session,
-                                1,
-                                static (_, revision) => revision + 1);
+                                attack.Monster,
+                                damageResolvedAt,
+                                monsterProfile);
+                        resolution = MonsterIncomingCombatPolicy.ResolveAttack(
+                                effectiveMonsterProfile,
+                                targetContext.Character,
+                                runtimeMitigation,
+                                combatEventId);
+                        if (!TryClaimMonsterIncomingAttack(
+                                targetContext,
+                                attack.Monster,
+                                combatEventId))
+                        {
+                            replayRejected = true;
+                            damage = 0;
+                        }
+                        else
+                        {
+                            resolution =
+                                AdjustMonsterIncomingElementalDamageLocked(
+                                    targetContext,
+                                    attack.Monster,
+                                    combatEventId,
+                                    damageResolvedAt,
+                                    resolution,
+                                    out elementalAttempt);
+                            damage = resolution.Damage;
+                            var beforeHealth =
+                                targetContext.Character.CurrentHp;
+                            killed = resolution.Hit &&
+                                damage >= (uint)beforeHealth;
+                            if (killed)
+                            {
+                                // Claim before the lethal vitals commit. The
+                                // handler does no asynchronous work before this
+                                // claim, so a deadline completion and death have
+                                // one authoritative order.
+                                deathInterruptionTask =
+                                    RequestSkillCastInterruptionAsync(
+                                        targetContext.Session,
+                                        SkillCastInterruptionReason.Death,
+                                        cancellationToken);
+                            }
+
+                            if (resolution.Hit)
+                            {
+                                targetContext.Character.CurrentHp =
+                                    damage >= (uint)beforeHealth
+                                        ? 0
+                                        : beforeHealth - (int)damage;
+                                targetContext.Character.MarkVitalsChanged();
+                                appliedPlayerDamage = checked((uint)(
+                                    beforeHealth -
+                                    targetContext.Character.CurrentHp));
+                                reboundDamage =
+                                    CombatSecondaryEffectPolicy.Resolve(
+                                            appliedPlayerDamage,
+                                            default,
+                                            targetCombat)
+                                        .ReboundDamage;
+                            }
+
+                            elementalPostCommit =
+                                CommitMonsterIncomingElementalLocked(
+                                    targetContext,
+                                    attack.Monster,
+                                    elementalAttempt,
+                                    appliedPlayerDamage);
+                            if (killed)
+                            {
+                                deathLifeRevision =
+                                    _playerLifeRevisions.AddOrUpdate(
+                                        targetContext.Session,
+                                        1,
+                                        static (_, revision) => revision + 1);
+                            }
                         }
                     }
                 }
             }
         }
 
-        if (targetContext is null || damage == 0)
+        if (targetContext is null)
         {
             ClearMonsterAttackAggro(
                 runtime,
@@ -153,6 +214,33 @@ internal sealed partial class GameSessionRegistry
                 DateTimeOffset.UtcNow);
             return;
         }
+
+        if (replayRejected)
+        {
+            Console.WriteLine(
+                $"[monster] replay rejected monster={attack.Monster.ObjectId} target={targetContext.DisplayName} event={combatEventId}");
+            return;
+        }
+
+        var reboundCommit = CommitMonsterRebound(
+            targetContext,
+            attack.Monster,
+            combatEventId,
+            appliedPlayerDamage,
+            reboundDamage);
+        var elementalReflection =
+            CommitMonsterIncomingElementalReflection(
+                targetContext,
+                attack.Monster,
+                elementalPostCommit.Reflection);
+        var preparedReboundReward =
+            await PrepareMonsterReboundRewardAsync(
+                targetContext,
+                reboundCommit);
+        var preparedElementalRewards =
+            await PreparePveElementalKillRewardsAsync(
+                targetContext,
+                elementalReflection);
 
         if (killed)
         {
@@ -184,10 +272,23 @@ internal sealed partial class GameSessionRegistry
                     monster.Y,
                     monster.Z,
                     LocalPlayerObjectId,
-                    damage,
-                    result: 0),
+                    resolution.CapturedDamageValue,
+                    result: 0,
+                    damageType: (byte)resolution.Outcome),
                 cancellationToken,
                 "MonsterAttackDamageSelf");
+            if (elementalPostCommit.RecoveryApplied)
+            {
+                await TrySendWorldInstancePacketAsync(
+                    runtime,
+                    targetContext,
+                    PacketBuilder.PlayerVitalsUpdate(
+                        LocalPlayerObjectId,
+                        elementalPostCommit.AfterHealth,
+                        elementalPostCommit.AfterMana),
+                    cancellationToken,
+                    "MonsterElementalGuardRecoverySelf");
+            }
             if (killed)
             {
                 await TrySendWorldInstancePacketAsync(
@@ -241,10 +342,23 @@ internal sealed partial class GameSessionRegistry
                         monster.Y,
                         monster.Z,
                         worldTargetObjectId,
-                        damage,
-                        result: 0),
+                        resolution.CapturedDamageValue,
+                        result: 0,
+                        damageType: (byte)resolution.Outcome),
                     cancellationToken,
                     "MonsterAttackDamageWorld");
+                if (elementalPostCommit.RecoveryApplied)
+                {
+                    await TrySendWorldInstancePacketAsync(
+                        runtime,
+                        observer,
+                        PacketBuilder.PlayerVitalsUpdate(
+                            worldTargetObjectId,
+                            elementalPostCommit.AfterHealth,
+                            elementalPostCommit.AfterMana),
+                        cancellationToken,
+                        "MonsterElementalGuardRecoveryWorld");
+                }
                 if (killed)
                 {
                     await TrySendWorldInstancePacketAsync(
@@ -265,6 +379,19 @@ internal sealed partial class GameSessionRegistry
                 Remove(observer.Session);
             }
         }
+
+        await PublishMonsterReboundAsync(
+            runtime,
+            targetContext,
+            reboundCommit,
+            preparedReboundReward,
+            cancellationToken);
+        await PublishPveElementalCommitAsync(
+            targetContext.Session,
+            elementalReflection,
+            cancellationToken,
+            capturedSource: targetContext,
+            preparedRewards: preparedElementalRewards);
 
         if (killed && deathLifeRevision is { } expectedLifeRevision)
         {

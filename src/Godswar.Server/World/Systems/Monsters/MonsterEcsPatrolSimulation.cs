@@ -27,7 +27,7 @@ internal static class MonsterEcsPatrolSimulation
                 transform.Z += movement.VelocityZ;
                 movement.RemainingMovementTicks--;
                 movement.NextMovementStepAt +=
-                    MonsterEcsRules.TickInterval;
+                    MonsterEcsState.ElementalMovementInterval(in movement);
                 positionsChanged = true;
 
                 if (movement.RemainingMovementTicks != 0)
