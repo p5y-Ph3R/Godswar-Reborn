@@ -23,11 +23,30 @@ internal interface IPetContentCatalog
 
     IReadOnlyList<PetRebirthStepContentDefinition> RebirthSteps { get; }
 
+    IReadOnlyList<PetMergeSavvyStepContentDefinition> MergeSavvySteps { get; }
+
+    IReadOnlyList<PetMergeSavvyLookupContentDefinition> MergeSavvyLookup
+        { get; }
+
+    IReadOnlyList<PetHatchRankStepContentDefinition> HatchRankSteps { get; }
+
+    IReadOnlyList<PetMergeRankLookupContentDefinition> MergeRankLookup { get; }
+
+    IReadOnlyList<PetMergeRankSpeciesFactorContentDefinition>
+        MergeRankSpeciesFactors { get; }
+
+    IReadOnlyList<PetMergeRankSpiritStepContentDefinition>
+        MergeRankSpiritSteps { get; }
+
     bool TryGetSpecies(
         int speciesId,
         out PetSpeciesContentDefinition definition);
 
     bool TryGetSpeciesByEggItemId(
+        uint itemId,
+        out PetSpeciesContentDefinition definition);
+
+    bool TryGetSpeciesByMagicJadeItemId(
         uint itemId,
         out PetSpeciesContentDefinition definition);
 
@@ -44,12 +63,37 @@ internal interface IPetContentCatalog
         int rebirthNumber,
         out PetRebirthStepContentDefinition definition);
 
+    bool TryGetMergeSavvyStep(
+        int aptitude,
+        int spiritCount,
+        out PetMergeSavvyStepContentDefinition definition);
+
+    bool TryResolveMergeSavvyLookup(
+        int savvyDifferenceHundredths,
+        out PetMergeSavvyLookupContentDefinition definition);
+
+    bool TryResolveMergeRankLookup(
+        int rankDifferenceHundredths,
+        out PetMergeRankLookupContentDefinition definition);
+
+    bool TryGetMergeRankSpeciesFactor(
+        int speciesId,
+        out PetMergeRankSpeciesFactorContentDefinition definition);
+
+    bool TryGetMergeRankSpiritStep(
+        int spiritCount,
+        out PetMergeRankSpiritStepContentDefinition definition);
+
     int RequiredExperienceForNextLevel(int currentLevel);
 
     PetGrowthContentRoll RollGrowth(short aptitude, Random random);
 
     PetSavvyContentRoll RollInitialSavvy(short aptitude, Random random);
 
+    PetHatchRankRoll RollHatchRank(short aptitude, int roll);
+
+    // Historical schema-compatibility policy only. New hatches must use
+    // RollInitialSavvy for Savvy and RollGrowth for Added-value.
     PetSavvyContentRoll RollAddedSavvy(short aptitude, Random random);
 
     bool IsValidRebirthIncrease(

@@ -1,4 +1,4 @@
-using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -29,20 +29,38 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var itemId = KitBagSlots.GetItemId(
+            _character.KitBag,
+            sourceSlot);
+
         if (packet.ClientOperationId is { } operationId)
         {
+            if (itemId == PetItemCatalog.PackedSealJade)
+            {
+                await HandleDurablePetManagerUtilityAsync(
+                    PetCommandOperationIdentity.SecureClient(operationId),
+                    PetManagerUtilityOperation.Unseal,
+                    sourceSlot,
+                    cancellationToken);
+                return;
+            }
             await HandleDurableBagItemActivationAsync(
-                operationId,
+                PetCommandOperationIdentity.SecureClient(operationId),
                 sourceSlot,
                 cancellationToken);
             return;
         }
 
-        var itemId = KitBagSlots.GetItemId(
-            _character.KitBag,
-            sourceSlot);
         var isPetEgg =
             RequirePetContent().TryGetSpeciesByEggItemId(itemId, out _);
+        var isPetShedExpansion = itemId == PetItemCatalog.SpecialPetShed;
+        var isPetSkillCellItem = itemId is
+            PetItemCatalog.PetEnhanceSpring or
+            PetItemCatalog.GoldenAppleJuice;
+        var isPetExperienceItem =
+            PetExperienceItemPolicy.IsMorningDew(itemId);
+        var isReviewedPetSkillBook =
+            PetSkillBookActivationPolicy.IsReviewedItem(itemId);
         var isEquipment =
             EquipmentSlots.TryGetAuthoritativeSlot(
                 RequireItemContent().Templates,
@@ -78,14 +96,45 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (isPetEgg)
+        var isPackedSealJade = itemId == PetItemCatalog.PackedSealJade;
+        if (isPetEgg || isPetShedExpansion || isPetSkillCellItem ||
+            isPetExperienceItem || isReviewedPetSkillBook ||
+            isPackedSealJade)
         {
-            CommandMetrics.RecordUnsupportedLegacyIdentity(
-                CommandFamily.BagItemActivation);
-            Console.WriteLine(
-                "[equip-re] BreakItem ignored: pet hatch requires " +
-                "durable operation identity");
-            await SendKitBagRefreshAsync(cancellationToken);
+                if (!AllowLegacyPlayerMutationFallback(
+                    isPackedSealJade
+                        ? "pet_unseal"
+                        : isPetEgg
+                        ? "pet_egg_hatch"
+                        : isPetShedExpansion
+                            ? "pet_shed_expand"
+                            : isPetSkillCellItem
+                                ? "pet_skill_cell_advance"
+                                : isPetExperienceItem
+                                    ? "pet_experience_item"
+                                    : "pet_skill_book_learn"))
+            {
+                return;
+            }
+
+            var identity = PetCommandOperationIdentity.RawLocalServer(
+                Guid.NewGuid(),
+                _commandConnectionId);
+            if (isPackedSealJade)
+            {
+                await HandleDurablePetManagerUtilityAsync(
+                    identity,
+                    PetManagerUtilityOperation.Unseal,
+                    sourceSlot,
+                    cancellationToken);
+            }
+            else
+            {
+                await HandleDurableBagItemActivationAsync(
+                    identity,
+                    sourceSlot,
+                    cancellationToken);
+            }
             return;
         }
 

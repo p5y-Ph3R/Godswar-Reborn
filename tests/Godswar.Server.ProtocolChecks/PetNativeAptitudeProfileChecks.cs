@@ -87,7 +87,7 @@ internal static class PetNativeAptitudeProfileChecks
             lifetime: 600,
             "aptitude 3");
 
-        var aptitudeNine = RequiredRockElf(PetAptitude.Grumpy);
+        var aptitudeNine = RequiredRockElf(PetAptitude.Zealous);
         Check.Equal(
             new PetSavvy(80m, 450m, 160m, 80m, 200m, 30m),
             aptitudeNine.StartingTraits,
@@ -105,7 +105,7 @@ internal static class PetNativeAptitudeProfileChecks
             lifetime: 800,
             "aptitude 9");
 
-        var aptitudeTen = RequiredRockElf(PetAptitude.Brave);
+        var aptitudeTen = RequiredRockElf(PetAptitude.Smart);
         Check.Equal(
             new PetSavvy(200m, 800m, 400m, 160m, 640m, 300m),
             aptitudeTen.StartingTraits,

@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Packets;
 
@@ -8,7 +9,7 @@ namespace Godswar.Server.Game;
 internal sealed partial class GameClientHandler
 {
     private async Task SendPetLegacyResultAsync(
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         PetDurableReceipt receipt,
         PetDurableExecutionDisposition executionDisposition,
         CancellationToken cancellationToken)
@@ -25,7 +26,7 @@ internal sealed partial class GameClientHandler
             : SecureLegacyCommandDisposition.Rejected;
         CommandMetrics.Record(
             receipt.Family,
-            CommandIdentityStrength.ClientOperationId,
+            identity.Strength,
             executionDisposition switch
             {
                 PetDurableExecutionDisposition.Committed when
@@ -34,14 +35,213 @@ internal sealed partial class GameClientHandler
                     CommandOutcome.Duplicate,
                 _ => CommandOutcome.PreconditionFailed
             });
-        await _session.SendLegacyCommandResultAsync(
-            new SecureLegacyCommandResult(
-                disposition,
-                (ushort)receipt.Family,
-                (uint)receipt.Status,
-                checked((ulong)receipt.AggregateRevision),
-                operationId),
-            cancellationToken);
+        if (identity.IsSecureClient)
+        {
+            await _session.SendLegacyCommandResultAsync(
+                new SecureLegacyCommandResult(
+                    disposition,
+                    (ushort)receipt.Family,
+                    ResolvePetLegacyResultCode(receipt),
+                    checked((ulong)receipt.AggregateRevision),
+                    identity.OperationId),
+                cancellationToken);
+        }
+    }
+
+    internal static uint ResolvePetLegacyResultCode(
+        PetDurableReceipt receipt)
+    {
+        ArgumentNullException.ThrowIfNull(receipt);
+        if (receipt.Family == CommandFamily.PetBind)
+        {
+            return receipt.Status switch
+            {
+                PetDurableReceiptStatus.PetBound =>
+                    PetManagerProtocol.PetBindSucceededResultSubId,
+                PetDurableReceiptStatus.PetAlreadyBound =>
+                    PetManagerProtocol.PetBindAlreadyBoundResultSubId,
+                PetDurableReceiptStatus.PetBindPetNotSummoned =>
+                    PetManagerProtocol.PetBindNoPetResultSubId,
+                _ => throw new InvalidDataException(
+                    "Pet bind receipt has no native terminal result.")
+            };
+        }
+        if (receipt.Family == CommandFamily.PetAppearanceChange)
+        {
+            return receipt.Status switch
+            {
+                PetDurableReceiptStatus.PetAppearanceChanged =>
+                    PetManagerProtocol
+                        .AppearanceChangeSucceededResultSubId,
+                PetDurableReceiptStatus.MagicJadeNotFound =>
+                    PetManagerProtocol
+                        .AppearanceChangeMissingJadeResultSubId,
+                PetDurableReceiptStatus.MagicJadeIncompatible or
+                PetDurableReceiptStatus.PetAppearancePetUnavailable =>
+                    PetManagerProtocol
+                        .AppearanceChangeIncompatibleJadeResultSubId,
+                PetDurableReceiptStatus.PetAppearancePetNotSummoned =>
+                    PetManagerProtocol.AppearanceChangeNoPetResultSubId,
+                PetDurableReceiptStatus.PetAppearancePetUnbound =>
+                    PetManagerProtocol
+                        .AppearanceChangeUnboundPetResultSubId,
+                _ => throw new InvalidDataException(
+                    "Pet appearance-change receipt has no native terminal result.")
+            };
+        }
+        if (receipt.Family == CommandFamily.PetBasicSavvyReset)
+        {
+            return receipt.Status switch
+            {
+                PetDurableReceiptStatus.PetNotTaken =>
+                    PetManagerProtocol.BasicSavvyResetNoPetResultSubId,
+                PetDurableReceiptStatus.FairyFeatherNotFound =>
+                    PetManagerProtocol.BasicSavvyResetMissingFeatherResultSubId,
+                PetDurableReceiptStatus.PetBasicSavvyPreviewed =>
+                    PetManagerProtocol
+                        .BasicSavvyResetPreviewUnavailableResultSubId,
+                PetDurableReceiptStatus.PetBasicSavvyAccepted =>
+                    receipt.BasicSavvyPreview is { IsValid: true }
+                        ? checked((uint)PetManagerProtocol
+                            .BasicSavvyResetSucceededResultSubId)
+                        : checked((uint)PetManagerProtocol
+                            .BasicSavvyResetPreviewUnavailableResultSubId),
+                PetDurableReceiptStatus.PetBasicSavvyPreviewUnavailable =>
+                    PetManagerProtocol
+                        .BasicSavvyResetPreviewUnavailableResultSubId,
+                _ => throw new InvalidDataException(
+                    "Pet Basic-Savvy reset receipt has no native terminal result.")
+            };
+        }
+        if (receipt.Family == CommandFamily.PetGrowthReset)
+        {
+            return receipt.Status switch
+            {
+                PetDurableReceiptStatus.PetNotTaken =>
+                    PetManagerProtocol.GrowthResetNoPetResultSubId,
+                PetDurableReceiptStatus.PhoenixFeatherNotFound =>
+                    PetManagerProtocol.GrowthResetMissingFeatherResultSubId,
+                PetDurableReceiptStatus.PetGrowthReset =>
+                    PetManagerProtocol.GrowthResetSucceededResultSubId,
+                PetDurableReceiptStatus.PetGrowthPreviewed =>
+                    PetManagerProtocol.GrowthResetSucceededResultSubId,
+                PetDurableReceiptStatus.PetGrowthAccepted =>
+                    PetManagerProtocol.GrowthResetSucceededResultSubId,
+                PetDurableReceiptStatus.PetGrowthPreviewUnavailable =>
+                    PetManagerProtocol
+                        .GrowthResetPreviewUnavailableResultSubId,
+                _ => throw new InvalidDataException(
+                    "Pet Growth reset receipt has no native terminal result.")
+            };
+        }
+        if (receipt.Family == CommandFamily.PetManagerUtility)
+        {
+            return ResolvePetManagerUtilityResultCode(receipt);
+        }
+        if (receipt.Family != CommandFamily.PetSkillUnlearn)
+        {
+            return (uint)receipt.Status;
+        }
+
+        // Family 46 completes a stock Pet Manager modal. Its secure result
+        // uses the same terminal sub-ID as opcode 10070, allowing the shim
+        // and native UI to settle one operation with one shared result code.
+        return receipt.Status switch
+        {
+            PetDurableReceiptStatus.PetNotTaken =>
+                PetManagerProtocol.NoSummonedPetResultSubId,
+            PetDurableReceiptStatus.StrongPurgePotionNotFound =>
+                PetManagerProtocol.MissingStrongPurgePotionResultSubId,
+            PetDurableReceiptStatus.PetSkillNotFound =>
+                PetManagerProtocol.EmptySkillSlotResultSubId,
+            PetDurableReceiptStatus.PetSkillUnlearned =>
+                PetManagerProtocol.SkillUnlearnedResultSubId,
+            _ => throw new InvalidDataException(
+                "Pet skill-unlearn receipt has no native terminal result.")
+        };
+    }
+
+    private static uint ResolvePetManagerUtilityResultCode(
+        PetDurableReceipt receipt)
+    {
+        var evidence = receipt.PetManagerUtility ??
+            throw new InvalidDataException(
+                "Pet Manager utility receipt has no operation evidence.");
+        return (evidence.Operation, receipt.Status) switch
+        {
+            (PetManagerUtilityOperation.CheckGrowth,
+                PetDurableReceiptStatus.PetGrowthChecked) =>
+                PetManagerProtocol.GrowthCheckTearSpentResultSubId,
+            (PetManagerUtilityOperation.CheckGrowth,
+                PetDurableReceiptStatus.PetManagerPetNotSummoned) =>
+                PetManagerProtocol.NoSummonedPetResultSubId,
+            (PetManagerUtilityOperation.CheckGrowth,
+                PetDurableReceiptStatus.PetManagerMaterialNotFound) =>
+                PetManagerProtocol.GrowthCheckMissingTearResultSubId,
+
+            (PetManagerUtilityOperation.Seal,
+                PetDurableReceiptStatus.PetSealed) =>
+                PetManagerProtocol.SealSucceededResultSubId,
+            (PetManagerUtilityOperation.Seal,
+                PetDurableReceiptStatus.PetManagerPetNotSummoned) =>
+                PetManagerProtocol.NoSummonedPetResultSubId,
+            (PetManagerUtilityOperation.Seal,
+                PetDurableReceiptStatus.PetManagerMaterialNotFound) =>
+                PetManagerProtocol.SealMissingJadeResultSubId,
+            (PetManagerUtilityOperation.Seal,
+                PetDurableReceiptStatus.PetManagerBagFull) =>
+                PetManagerProtocol.SealBagFullResultSubId,
+            (PetManagerUtilityOperation.Seal,
+                PetDurableReceiptStatus.PetManagerPetBound) =>
+                PetManagerProtocol.SealBoundPetResultSubId,
+
+            (PetManagerUtilityOperation.ClaimPetCall,
+                PetDurableReceiptStatus.PetCallClaimed) =>
+                PetManagerProtocol.PetCallClaimedResultSubId,
+            (PetManagerUtilityOperation.ClaimMerge,
+                PetDurableReceiptStatus.PetMergeClaimed) =>
+                PetManagerProtocol.MergeClaimedResultSubId,
+            (PetManagerUtilityOperation.ClaimPetCall or
+                PetManagerUtilityOperation.ClaimMerge,
+                PetDurableReceiptStatus.PetManagerBagFull) =>
+                PetManagerProtocol.CharmBagFullResultSubId,
+            (PetManagerUtilityOperation.ClaimPetCall or
+                PetManagerUtilityOperation.ClaimMerge,
+                PetDurableReceiptStatus.PetManagerClaimAlreadyHeld) =>
+                PetManagerProtocol.CharmAlreadyHeldResultSubId,
+
+            (PetManagerUtilityOperation.ChangeGender,
+                PetDurableReceiptStatus.PetGenderChanged) =>
+                evidence.NewSex == 1
+                    ? checked((uint)PetManagerProtocol
+                        .GenderChangedMaleResultSubId)
+                    : checked((uint)PetManagerProtocol
+                        .GenderChangedFemaleResultSubId),
+            (PetManagerUtilityOperation.ChangeGender,
+                PetDurableReceiptStatus.PetManagerPetNotSummoned) =>
+                PetManagerProtocol.GenderNoPetResultSubId,
+            (PetManagerUtilityOperation.ChangeGender,
+                PetDurableReceiptStatus.PetManagerMaterialNotFound) =>
+                PetManagerProtocol.GenderMissingReverserResultSubId,
+            (PetManagerUtilityOperation.ChangeGender,
+                PetDurableReceiptStatus.PetManagerGenderUnavailable) =>
+                PetManagerProtocol.GenderUnavailableResultSubId,
+            (PetManagerUtilityOperation.ChangeGender,
+                PetDurableReceiptStatus.PetManagerGenderPetUnbound) =>
+                PetManagerProtocol.GenderUnboundPetResultSubId,
+
+            (_, PetDurableReceiptStatus.PetManagerPetUnavailable or
+                PetDurableReceiptStatus.PetManagerConcurrentConflict) =>
+                evidence.Operation == PetManagerUtilityOperation.ChangeGender
+                    ? checked((uint)PetManagerProtocol
+                        .GenderUnavailableResultSubId)
+                    : checked((uint)PetManagerProtocol
+                        .NoSummonedPetResultSubId),
+            (PetManagerUtilityOperation.Unseal, _) =>
+                checked((uint)receipt.Status),
+            _ => throw new InvalidDataException(
+                "Pet Manager utility receipt has no native terminal result.")
+        };
     }
 
     internal static PetOperationResultCode
@@ -92,12 +292,29 @@ internal sealed partial class GameClientHandler
         return PetOperationResultCode.RecallSucceeded;
     }
 
-    private bool TryCreatePetSubject(out CommandSubject subject)
+    private bool TryCreatePetSubject(
+        PetCommandOperationIdentity identity,
+        out CommandSubject subject)
     {
         subject = default;
-        if (!_session.IsSecure ||
-            _account is null ||
+        if (_account is null ||
             _character is null)
+        {
+            return false;
+        }
+
+        var validTransport = identity.IsSecureClient
+            ? _session.IsSecure
+            : identity.IsRawLocalServer &&
+              !_session.IsSecure &&
+              identity.ConnectionId == _commandConnectionId &&
+              CanUseLegacyPlayerMutationFallback(
+                  _requiresDurablePlayerCommands,
+                  isSecureSession: false,
+                  _legacyAuthenticationAccess is not null) ||
+              identity.IsServerSessionLifecycle &&
+              identity.ConnectionId == _commandConnectionId;
+        if (!validTransport)
         {
             return false;
         }
@@ -106,23 +323,28 @@ internal sealed partial class GameClientHandler
         return true;
     }
 
-    private CommandConnectionCorrelation SecurePetCorrelation() =>
+    private CommandConnectionCorrelation PetCorrelation(
+        PetCommandOperationIdentity identity) =>
         new(
             _commandConnectionId,
-            CommandTransportKind.SecureTlsLegacy);
+            identity.IsSecureClient ||
+            identity.IsServerSessionLifecycle && _session.IsSecure
+                ? CommandTransportKind.SecureTlsLegacy
+                : CommandTransportKind.LegacyTcp);
 
     private void RecordPetProviderUnavailable(
         CommandFamily family,
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         string reason)
     {
         CommandMetrics.Record(
             family,
-            CommandIdentityStrength.ClientOperationId,
+            identity.Strength,
             CommandOutcome.ProviderUnavailable);
         Console.Error.WriteLine(
             "[pet] durable command unresolved; operation remains " +
-            $"pending family={(ushort)family} operation={operationId}: " +
+            $"pending family={(ushort)family} " +
+            $"operation={identity.OperationId}: " +
             reason);
     }
 }

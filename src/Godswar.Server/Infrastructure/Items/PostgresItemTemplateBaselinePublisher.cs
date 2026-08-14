@@ -21,7 +21,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
         "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
-        "zephyr-v1+mount-speed-v3";
+        "zephyr-v1+mount-speed-v3+pets-v4";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -80,6 +80,12 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+            var hasPetItems =
+                await PublishedPetItemsAreCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
             var hasMountSpeedProfile =
                 await PublishedMountSpeedProfileIsCurrentAsync(
                     connection,
@@ -90,6 +96,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 hasElementalContent &&
                 hasSocketSpells &&
                 hasHolyStoneMaterials &&
+                hasPetItems &&
                 hasMountSpeedProfile &&
                 publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
@@ -111,6 +118,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     upgradeFromV8Revision: null,
                     cancellationToken);
                 await EnsureHolyStoneMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+                await EnsurePetItemMutableTemplateCompatibilityAsync(
                     connection,
                     transaction,
                     existing.Revision,
@@ -196,6 +208,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 : null,
             cancellationToken);
         await EnsureHolyStoneMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        await EnsurePetItemMutableTemplateCompatibilityAsync(
             connection,
             transaction,
             revision,

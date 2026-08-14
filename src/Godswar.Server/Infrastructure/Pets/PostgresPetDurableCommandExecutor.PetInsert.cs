@@ -12,29 +12,44 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         int characterId,
         PetSpeciesContentDefinition species,
         short aptitude,
-        int addedSavvyTotal,
+        PetHatchRankEvidence hatchRank,
+        int initialSavvyTotal,
         short sex,
         int lifetime,
         bool bound,
+        short talentMask,
+        short initialSkillSlots,
+        bool isCarried,
+        bool isSummoned,
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand(
             """
             INSERT INTO public.character_pets (
                 user_id, species_id, name, sex, level, experience,
-                aptitude, rarity_added_savvy_baseline_total,
+                aptitude, initial_savvy_baseline_total,
+                initial_savvy_policy_version,
+                rarity_added_savvy_baseline_total,
                 rarity_added_savvy_policy_version,
-                initial_savvy_source_version, rank,
+                initial_savvy_source_version, rank, birth_rank,
+                hatch_rank_roll, hatch_rank_outcome_order,
+                hatch_rank_content_revision,
                 current_energy, maximum_energy, amity, satiety,
                 remaining_lifetime, growth_revealed, bound,
-                activity_state
+                activity_state, talent_mask, has_owner_merge_talent,
+                opened_skill_slots, available_skill_slots,
+                is_carried, is_summoned
             )
             VALUES (
                 @characterId, @speciesId, @name, @sex, 1, 0,
-                @aptitude, @addedSavvyTotal, @addedSavvyPolicy,
-                'growth-x1-v1', 0,
+                @aptitude, @initialSavvyTotal, @initialSavvyPolicy,
+                @initialSavvyTotal, @initialSavvyPolicy,
+                @initialSavvySource, @rank, @rank,
+                @rankRoll, @rankOutcomeOrder, @rankContentRevision,
                 100, 100, 100, 100,
-                @lifetime, false, @bound, 'owned'
+                @lifetime, false, @bound, 'owned', @talentMask,
+                @hasMergeTalent, @initialSkillSlots, @initialSkillSlots,
+                @isCarried, @isSummoned
             )
             RETURNING id;
             """,
@@ -46,13 +61,33 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         command.Parameters.AddWithValue("sex", sex);
         command.Parameters.AddWithValue("aptitude", aptitude);
         command.Parameters.AddWithValue(
-            "addedSavvyTotal",
-            addedSavvyTotal);
+            "initialSavvyTotal",
+            initialSavvyTotal);
         command.Parameters.AddWithValue(
-            "addedSavvyPolicy",
-            _petContent.Settings.AddedSavvyPolicyVersion);
+            "initialSavvyPolicy",
+            _petContent.Settings.InitialSavvyPolicyVersion);
+        command.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
+        command.Parameters.AddWithValue("rank", hatchRank.Rank);
+        command.Parameters.AddWithValue("rankRoll", hatchRank.Roll);
+        command.Parameters.AddWithValue(
+            "rankOutcomeOrder",
+            hatchRank.OutcomeOrder);
+        command.Parameters.AddWithValue(
+            "rankContentRevision",
+            hatchRank.ContentRevision);
         command.Parameters.AddWithValue("lifetime", lifetime);
         command.Parameters.AddWithValue("bound", bound);
+        command.Parameters.AddWithValue("talentMask", talentMask);
+        command.Parameters.AddWithValue(
+            "hasMergeTalent",
+            (talentMask & PetTalentCatalog.Merge.MaskBit) != 0);
+        command.Parameters.AddWithValue(
+            "initialSkillSlots",
+            initialSkillSlots);
+        command.Parameters.AddWithValue("isCarried", isCarried);
+        command.Parameters.AddWithValue("isSummoned", isSummoned);
         return Convert.ToInt64(
             await command.ExecuteScalarAsync(cancellationToken));
     }
@@ -61,19 +96,19 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         long petId,
+        PetSavvy savvy,
         PetSavvy growth,
-        PetSavvy added,
         CancellationToken cancellationToken)
     {
+        var savvyValues = new[]
+        {
+            savvy.Agility, savvy.Strength, savvy.Accuracy,
+            savvy.Technique, savvy.Wisdom, savvy.Luck
+        };
         var growthValues = new[]
         {
             growth.Agility, growth.Strength, growth.Accuracy,
             growth.Technique, growth.Wisdom, growth.Luck
-        };
-        var addedValues = new[]
-        {
-            added.Agility, added.Strength, added.Accuracy,
-            added.Technique, added.Wisdom, added.Luck
         };
         for (short index = 0; index < growthValues.Length; index++)
         {
@@ -85,8 +120,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                     birth_initial_savvy, rarity_added_savvy
                 )
                 VALUES (
-                    @petId, @statCode, @growth, @added,
-                    @growth, 0, @growth, @added
+                    @petId, @statCode, @savvy, @growth,
+                    @growth, 0, @savvy, @savvy
                 );
                 """,
                 connection,
@@ -96,11 +131,11 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 "statCode",
                 checked((short)(index + 1)));
             command.Parameters.AddWithValue(
+                "savvy",
+                savvyValues[index]);
+            command.Parameters.AddWithValue(
                 "growth",
                 growthValues[index]);
-            command.Parameters.AddWithValue(
-                "added",
-                addedValues[index]);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }

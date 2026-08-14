@@ -9,7 +9,8 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
     private static async Task InsertPetStatsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
-        long petId)
+        long petId,
+        short level)
     {
         await using var command = new NpgsqlCommand(
             """
@@ -27,24 +28,25 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             SELECT
                 @petId,
                 stat_code,
-                10 + stat_code * 0.125,
-                100 + stat_code,
+                60 + stat_code,
+                (CASE
+                    WHEN stat_code = 2 THEN 9
+                    ELSE stat_code + 0.125
+                END + 0.5) * @level,
                 CASE
                     WHEN stat_code = 2 THEN 9
                     ELSE stat_code + 0.125
                 END,
-                CASE
-                    WHEN stat_code = 2 THEN 9
-                    ELSE stat_code + 0.125
-                END,
-                100 + stat_code,
-                200 + stat_code + 0.5,
+                47 + stat_code,
+                47 + stat_code,
+                0.5,
                 1000 + stat_code
             FROM generate_series(1, 6) AS stat(stat_code);
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("petId", petId);
+        command.Parameters.AddWithValue("level", level);
         Check.Equal(
             6,
             await command.ExecuteNonQueryAsync(),
@@ -58,10 +60,10 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
     {
         await using var command = new NpgsqlCommand(
             """
-            UPDATE public.character_pets
-            SET initial_savvy_source_version =
-                    'unsupported-test-v1'
-            WHERE id = @petId;
+            UPDATE public.character_pet_stat_values
+            SET base_growth_rate = 0
+            WHERE pet_id = @petId
+              AND stat_code = 1;
             """,
             connection,
             transaction);
@@ -69,7 +71,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         Check.Equal(
             1,
             await command.ExecuteNonQueryAsync(),
-            "malformed pet fixture changes one exact provenance row");
+            "malformed pet fixture zeros one exact Growth baseline");
     }
 
     private static async Task<IReadOnlyList<PetStatState>>
@@ -125,8 +127,8 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         before
             .Select(static stat => stat with
             {
-                InitialSavvy =
-                    stat.InitialSavvy + stat.BaseGrowthRate,
+                AddedSavvy =
+                    (stat.BaseGrowthRate + stat.GrowthAcceleration) * 2,
                 Revision = stat.Revision + 1
             })
             .ToArray();

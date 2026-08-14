@@ -38,6 +38,12 @@ internal static partial class MapTransitionHandlerChecks
         }
         await AssertNextPacketAsync(
             socket,
+            PacketBuilder.PetOperationResult(
+                1,
+                PetOperationResultCode.CallOutSucceeded),
+            $"{description} summoned-pet call-out restore");
+        await AssertNextPacketAsync(
+            socket,
             PacketBuilder.PetWorldPresence(
                 1,
                 LocalPlayerObjectId),

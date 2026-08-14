@@ -338,6 +338,52 @@ internal static partial class Program
                 receivedDamageReduction: 0.25m),
             "Holy Ward 5 reduces a captured monster hit by twenty-five percent");
 
+        var merged = CreateCharacter();
+        merged.CalculatedStats = new CharacterStats
+        {
+            PhysicalDefense = 0,
+            PhysicalDamageReduction = 300
+        };
+        Check.Equal(
+            23u,
+            MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                tier: 1,
+                merged),
+            "merged-pet physical reduction treats 300 as three percent");
+        Check.Equal(
+            20u,
+            MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                tier: 1,
+                merged,
+                receivedDamageReduction: 0.10m),
+            "merged-pet reduction composes additively with Holy Ward before native truncation");
+
+        merged.CalculatedStats = new CharacterStats
+        {
+            PhysicalDefense = 0,
+            PhysicalDamageReduction = -500
+        };
+        Check.Equal(
+            21u,
+            MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                tier: 1,
+                merged,
+                receivedDamageReduction: 0.10m),
+            "negative projected merge reduction is ignored");
+
+        merged.CalculatedStats = new CharacterStats
+        {
+            PhysicalDefense = 0,
+            PhysicalDamageReduction = int.MaxValue
+        };
+        Check.Equal(
+            1u,
+            MonsterCombatResolver.CalculateMonsterPhysicalAttack(
+                tier: 1,
+                merged,
+                receivedDamageReduction: decimal.MaxValue),
+            "combined status and merge reduction is capped and preserves the one-damage floor");
+
         return Task.CompletedTask;
     }
 }

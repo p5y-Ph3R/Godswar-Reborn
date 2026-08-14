@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Npgsql;
 
@@ -17,8 +18,9 @@ internal sealed partial class PostgresGameStore
         short eggQuality,
         int speciesType,
         PetAptitude aptitude,
-        PetSavvy initialSavvy,
-        PetAddedSavvyRoll addedSavvy,
+        PetHatchRankRoll hatchRank,
+        string hatchRankContentRevision,
+        PetInitialSavvyRoll initialSavvy,
         PetGrowthRoll growth,
         short sex,
         int remainingLifetime,
@@ -57,6 +59,10 @@ internal sealed partial class PostgresGameStore
                     'pet_id', @petId,
                     'species_type', @speciesType,
                     'aptitude', @aptitude,
+                    'birth_rank', @birthRank,
+                    'hatch_rank_roll', @hatchRankRoll,
+                    'hatch_rank_outcome_order', @hatchRankOutcomeOrder,
+                    'hatch_rank_content_revision', @hatchRankContentRevision,
                     'sex', @sex,
                     'remaining_lifetime', @remainingLifetime,
                     'bound', @bound,
@@ -89,6 +95,7 @@ internal sealed partial class PostgresGameStore
                     ),
                     'remaining_egg_stack', @remainingStack,
                     'initial_savvy_source', @initialSavvySource,
+                    'initial_savvy_policy', @initialSavvyPolicy,
                     'added_savvy_policy', @addedSavvyPolicy,
                     'growth_policy', @growthPolicy
                 ),
@@ -117,6 +124,14 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue(
             "aptitude",
             checked((short)aptitude));
+        command.Parameters.AddWithValue("birthRank", hatchRank.Rank);
+        command.Parameters.AddWithValue("hatchRankRoll", hatchRank.Roll);
+        command.Parameters.AddWithValue(
+            "hatchRankOutcomeOrder",
+            hatchRank.OutcomeOrder);
+        command.Parameters.AddWithValue(
+            "hatchRankContentRevision",
+            hatchRankContentRevision);
         command.Parameters.AddWithValue("sex", sex);
         command.Parameters.AddWithValue(
             "remainingLifetime",
@@ -124,46 +139,46 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue("bound", isBound);
         command.Parameters.AddWithValue(
             "totalInitialSavvy",
-            growth.TotalGrowth);
+            initialSavvy.TotalSavvy);
         command.Parameters.AddWithValue(
             "initialSavvyAgility",
-            initialSavvy.Agility);
+            initialSavvy.InitialSavvy.Agility);
         command.Parameters.AddWithValue(
             "initialSavvyStrength",
-            initialSavvy.Strength);
+            initialSavvy.InitialSavvy.Strength);
         command.Parameters.AddWithValue(
             "initialSavvyAccuracy",
-            initialSavvy.Accuracy);
+            initialSavvy.InitialSavvy.Accuracy);
         command.Parameters.AddWithValue(
             "initialSavvyTechnique",
-            initialSavvy.Technique);
+            initialSavvy.InitialSavvy.Technique);
         command.Parameters.AddWithValue(
             "initialSavvyWisdom",
-            initialSavvy.Wisdom);
+            initialSavvy.InitialSavvy.Wisdom);
         command.Parameters.AddWithValue(
             "initialSavvyLuck",
-            initialSavvy.Luck);
+            initialSavvy.InitialSavvy.Luck);
         command.Parameters.AddWithValue(
             "totalAddedSavvy",
-            addedSavvy.TotalSavvy);
+            growth.TotalGrowth);
         command.Parameters.AddWithValue(
             "addedSavvyAgility",
-            addedSavvy.AddedSavvy.Agility);
+            growth.BaseGrowthRates.Agility);
         command.Parameters.AddWithValue(
             "addedSavvyStrength",
-            addedSavvy.AddedSavvy.Strength);
+            growth.BaseGrowthRates.Strength);
         command.Parameters.AddWithValue(
             "addedSavvyAccuracy",
-            addedSavvy.AddedSavvy.Accuracy);
+            growth.BaseGrowthRates.Accuracy);
         command.Parameters.AddWithValue(
             "addedSavvyTechnique",
-            addedSavvy.AddedSavvy.Technique);
+            growth.BaseGrowthRates.Technique);
         command.Parameters.AddWithValue(
             "addedSavvyWisdom",
-            addedSavvy.AddedSavvy.Wisdom);
+            growth.BaseGrowthRates.Wisdom);
         command.Parameters.AddWithValue(
             "addedSavvyLuck",
-            addedSavvy.AddedSavvy.Luck);
+            growth.BaseGrowthRates.Luck);
         command.Parameters.AddWithValue(
             "totalGrowth",
             growth.TotalGrowth);
@@ -187,10 +202,13 @@ internal sealed partial class PostgresGameStore
             growth.BaseGrowthRates.Luck);
         command.Parameters.AddWithValue(
             "initialSavvySource",
-            "growth-x1-v1");
+            PetSavvyRuntimeSemantics.SourceVersion);
+        command.Parameters.AddWithValue(
+            "initialSavvyPolicy",
+            PetContent.Settings.InitialSavvyPolicyVersion);
         command.Parameters.AddWithValue(
             "addedSavvyPolicy",
-            PetContent.Settings.AddedSavvyPolicyVersion);
+            PetContent.Settings.GrowthPolicyVersion);
         command.Parameters.AddWithValue(
             "growthPolicy",
             PetContent.Settings.GrowthPolicyVersion);

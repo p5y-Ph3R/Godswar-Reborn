@@ -66,6 +66,13 @@ internal sealed partial class GameClientHandler
                 statusSnapshot.Aggregate),
             cancellationToken,
             "VisiblePlayerStatus");
+        if (player.PetOwnerMergeActive)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PetOwnerMergeStarted(player.ObjectId),
+                cancellationToken,
+                "VisiblePlayerPetOwnerMerge");
+        }
         await _registry.SendStatusSnapshotToViewerAsync(
             player,
             _session,
@@ -216,6 +223,7 @@ internal sealed partial class GameClientHandler
         await SendMapWorldObjectsAsync(cancellationToken);
         await RestorePetPresenceAsync(
             bootstrap.Pets,
+            summonCarriedPet: true,
             cancellationToken);
 
         var skillStates = bootstrap.Skills;
@@ -295,10 +303,6 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "PlayerInspectEquipmentStatusBundle",
             framed: false);
-        await _session.SendAsync(
-            PacketBuilder.PlayerInspectComplete(),
-            cancellationToken,
-            "PlayerInspectComplete");
     }
 
     private async Task HandlePlayerInspectVisualRequestAsync(GamePacket request, CancellationToken cancellationToken)

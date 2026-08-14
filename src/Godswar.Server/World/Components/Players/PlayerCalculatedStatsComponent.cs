@@ -42,4 +42,9 @@ internal readonly record struct PlayerCalculatedStatsComponent(
     int ArmorScore,
     short ArmorRank,
     int ArmorAuraEffect,
-    int LearnedSkillCount);
+    int LearnedSkillCount,
+    int PhysicalDamageReduction,
+    int MagicDamageReduction,
+    int CriticalDamageReduction,
+    int LifeAbsorption,
+    int DamageRebound);

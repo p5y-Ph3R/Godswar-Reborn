@@ -18,6 +18,7 @@ internal static partial class PostgresPetContentBaselinePublisher
             INSERT INTO pet_content_settings (
                 revision, minimum_level, maximum_level,
                 maximum_owned_pet_count, maximum_skill_count,
+                maximum_rank,
                 minimum_merge_level, minimum_owner_merge_amity,
                 maximum_spirit_items, maximum_rebirth_count,
                 required_rebirth_spirit_count, egg_hatch_runtime_skill_id,
@@ -27,7 +28,8 @@ internal static partial class PostgresPetContentBaselinePublisher
                 added_savvy_policy_version, added_savvy_weights)
             VALUES (
                 @revision, @minimumLevel, @maximumLevel,
-                @maximumOwned, @maximumSkills, @minimumMerge,
+                @maximumOwned, @maximumSkills, @maximumRank,
+                @minimumMerge,
                 @minimumAmity, @maximumSpirits, @maximumRebirths,
                 @requiredRebirthSpirits, @eggSkill,
                 @mergeSpirit, @restrictedMergeSpirit,
@@ -46,6 +48,7 @@ internal static partial class PostgresPetContentBaselinePublisher
         command.Parameters.AddWithValue(
             "maximumSkills",
             value.MaximumSkillCount);
+        command.Parameters.AddWithValue("maximumRank", value.MaximumRank);
         command.Parameters.AddWithValue(
             "minimumMerge",
             value.MinimumMergeLevel);

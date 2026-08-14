@@ -95,5 +95,16 @@ internal static partial class PostgresPetContentBaselinePublisher
             connection,
             transaction,
             cancellationToken);
+
+        await InsertMergeSavvyStepsAsync(
+            connection,
+            transaction,
+            baseline,
+            cancellationToken);
+        await InsertMergeSavvyLookupAsync(
+            connection,
+            transaction,
+            baseline,
+            cancellationToken);
     }
 }

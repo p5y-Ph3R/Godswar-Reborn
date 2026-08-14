@@ -16,13 +16,15 @@ internal sealed class PetDurableOutboxConsumer : IOutboxEventConsumer
     {
         ArgumentNullException.ThrowIfNull(message);
         cancellationToken.ThrowIfCancellationRequested();
+        var payloadContractVersion =
+            PetDurablePersistenceCodec.ReadContractVersion(
+                message.Payload.Span);
         var receipt =
             PetDurablePersistenceCodec.Decode(message.Payload.Span);
         if (!receipt.Succeeded ||
             receipt.OutboxEventId != message.EventId ||
             receipt.AggregateRevision != message.AggregateRevision ||
-            message.SchemaVersion !=
-                PetDurablePersistenceCodec.ContractVersion ||
+            message.SchemaVersion != payloadContractVersion ||
             !string.Equals(
                 message.ConsumerKey,
                 ConsumerKey,

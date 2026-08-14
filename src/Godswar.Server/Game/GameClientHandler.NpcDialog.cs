@@ -296,9 +296,7 @@ internal sealed partial class GameClientHandler
 
             if (subId == GearEnhancerProtocol.CombineGemPiecesMenuSubId)
             {
-                // The stock client re-sends menu action 9 when the
-                // server-backed combination page is confirmed. Normalize that
-                // wire alias to operation 201 only while that page is active.
+                // Stock action 9 aliases operation 201 only on this page.
                 if (IsCombineGemPiecesConfirmAlias(
                         subId,
                         _gearMentorOperationPageSubId,
@@ -490,10 +488,7 @@ internal sealed partial class GameClientHandler
                 rawHolyStoneIntent = rawIntent;
             }
 
-            // A UUID-bearing command is an authenticated secure command
-            // boundary. If its body did not pass the exact Holy Stone shape
-            // above, it must never fall through to the non-idempotent legacy
-            // store path.
+            // An invalid UUID-bearing command never reaches the legacy path.
             if (packet.ClientOperationId.HasValue &&
                 _session.IsSecure)
             {
@@ -515,15 +510,15 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (route.Behavior == NpcDialogueBehavior.ClassSuit)
-        {
-            await HandleClassSuitAsync(
+        if (await TryHandleNpcFeatureDialogueAsync(
                 packet,
                 route,
                 npcId,
+                dialogIndex,
                 subId,
                 args,
-                cancellationToken);
+                cancellationToken))
+        {
             return;
         }
 

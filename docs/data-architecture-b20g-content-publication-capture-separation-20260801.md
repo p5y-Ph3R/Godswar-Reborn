@@ -192,7 +192,9 @@ publication/repository checks, and removes its databases in `finally`.
   content-release procedure.
 - Content hot reload is intentionally absent. New content takes effect after a
   new immutable publication and controlled worker restart/drain.
-- Magic Jade IDs 11050-11094 are captured in the pet revision, but the
-  species-change command and its reviewed item family are not implemented.
-  Cross-catalog validation for those IDs is deferred to that explicit release;
-  active egg and merge/rebirth item references already fail closed.
+- Magic Jade IDs 11050-11094 are reviewed item templates and pinned pet facts.
+  Migration 085 exposes the immutable appearance-to-Merge-cap mapping;
+  migration 086 authorizes the separate durable `pet_appearance_change`
+  runtime. Startup validates every Jade across both pinned revisions. The
+  command consumes one selected authoritative bag item and changes species
+  atomically, while the content views remain read-only projections.

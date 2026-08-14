@@ -17,9 +17,6 @@ internal static partial class PostgresSchemaMigrationCatalog
                 (9031, 'Stone9031', 'Cooled Holy Stone',
                     './Localization/en_us/UI/Texture/Icon2.gwo',
                     '288,0', '1', 'PreStone'),
-                (9032, 'Stone9032', 'Zephyr Holy Stone',
-                    './Localization/en_us/UI/Texture/Icon5.gwo',
-                    '612,0', '1', 'PreStone'),
                 (9040, 'Stone9040', 'Level 1 Eclipse Stone',
                     './Localization/en_us/UI/Texture/Icon.gwo',
                     '828,900', '99', NULL),
@@ -109,19 +106,7 @@ internal static partial class PostgresSchemaMigrationCatalog
                     '828,36', '99', NULL),
                 (9089, 'Firegholiness10', 'Fire Spirit of Tranquility',
                     './Localization/en_us/UI/Texture/Icon2.gwo',
-                    '864,36', '99', NULL),
-                (9090, 'Zephyrholiness1', 'Daedalus Spirit of Attunement',
-                    './Localization/en_us/UI/Texture/Icon5.gwo',
-                    '648,0', '99', NULL),
-                (9091, 'Zephyrholiness2', 'Hephaestus Spirit of Tempering',
-                    './Localization/en_us/UI/Texture/Icon5.gwo',
-                    '684,0', '99', NULL),
-                (9092, 'Zephyrholiness3', 'Mnemosyne Spirit of Preservation',
-                    './Localization/en_us/UI/Texture/Icon5.gwo',
-                    '720,0', '99', NULL),
-                (9093, 'Zephyrholiness4', 'Themis Spirit of Continuity',
-                    './Localization/en_us/UI/Texture/Icon5.gwo',
-                    '756,0', '99', NULL)
+                    '864,36', '99', NULL)
         )
         INSERT INTO public.item_templates (
             id, kind, name_key, display_name, equipment_slot, class_ids,

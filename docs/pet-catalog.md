@@ -84,11 +84,11 @@ chosen and tested before egg opening is enabled.
 | 3 | Cowish | Stock client |
 | 4 | Moderate | Stock client |
 | 5 | Rational | Stock client |
-| 6 | Calm | Stock client |
-| 7 | Smart | Stock client |
-| 8 | Zealous | Stock client |
-| 9 | Grumpy | Stock client |
-| 10 | Brave | Stock client |
+| 6 | Calm | Project reorder of stock tier names |
+| 7 | Grumpy | Project reorder of stock tier names |
+| 8 | Brave | Project reorder of stock tier names |
+| 9 | Zealous | Project reorder of stock tier names |
+| 10 | Smart | Project reorder of stock tier names |
 | 11 | Overbearing | Stock client |
 | 12 | Ferocious | Stock client |
 | 13 | Almighty | Stock client |
@@ -96,9 +96,17 @@ chosen and tested before egg opening is enabled.
 | 15 | Celestial | Server extension |
 | 16 | Transcendent | Server extension |
 
-The installed client originally labels values 15 and 16 as `Backup`.
-`Celestial` and `Transcendent` are deliberate project extensions and must be
-kept synchronized between `PetAptitudeCatalog`, `pet_aptitude_templates`, and
-the English client localization. The patched client files are `text.lua`,
-`ItemColor.xml`, `PetDetailProc.lua`, `PetInfoProc.lua`, and
-`PetSamsaraUI.lua`.
+Numeric aptitude IDs remain stable in packets and PostgreSQL. The 6-10 naming
+order is a deliberate project rule and must remain synchronized between
+`PetAptitudeCatalog`, `pet_aptitude_templates`, and client localization. The
+installed client originally labels values 15 and 16 as `Backup`;
+`Celestial` and `Transcendent` are deliberate project extensions. The patched
+client files are `text.lua`, `ItemColor.xml`, `PetDetailProc.lua`,
+`PetInfoProc.lua`, and `PetSamsaraUI.lua`.
+
+## Skills, slots, and talents
+
+The client and server compatibility rules for the 12 learned-skill cells, six
+auto-cast cells, slot-opening items, talent bits, and original Pet Manager
+dialogue are maintained in
+[Pet skills, talents, and manager dialogue](pet-skills-talents.md).

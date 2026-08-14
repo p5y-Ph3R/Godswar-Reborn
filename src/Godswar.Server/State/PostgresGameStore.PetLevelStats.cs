@@ -5,8 +5,6 @@ namespace Godswar.Server.State;
 internal sealed partial class PostgresGameStore
 {
     private const int PetLevelStatCount = 6;
-    private const string PetLevelInitialSavvySourceVersion =
-        "growth-x1-v1";
 
     private static async Task<IReadOnlyList<PetLevelStatRow>>
         LockPetLevelStatsAsync(
@@ -43,7 +41,7 @@ internal sealed partial class PostgresGameStore
             rows.Add(ReadPetLevelStat(reader));
         }
 
-        ValidatePetLevelStats(pet, rows);
+        ValidatePetLevelStats(pet, rows, pet.Level);
         return rows;
     }
 
@@ -52,12 +50,14 @@ internal sealed partial class PostgresGameStore
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             PetLevelRow pet,
+            short nextLevel,
             CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
             """
             UPDATE character_pet_stat_values
-            SET initial_savvy = initial_savvy + base_growth_rate,
+            SET added_savvy =
+                    (base_growth_rate + growth_acceleration) * @level,
                 revision = revision + 1
             WHERE pet_id = @petId
             RETURNING
@@ -73,6 +73,7 @@ internal sealed partial class PostgresGameStore
             connection,
             transaction);
         command.Parameters.AddWithValue("petId", pet.PetId);
+        command.Parameters.AddWithValue("level", nextLevel);
 
         var rows = new List<PetLevelStatRow>(PetLevelStatCount);
         await using var reader =
@@ -84,7 +85,7 @@ internal sealed partial class PostgresGameStore
 
         rows.Sort(static (left, right) =>
             left.StatCode.CompareTo(right.StatCode));
-        ValidatePetLevelStats(pet, rows);
+        ValidatePetLevelStats(pet, rows, nextLevel);
         return rows;
     }
 
@@ -102,16 +103,17 @@ internal sealed partial class PostgresGameStore
 
     private static void ValidatePetLevelStats(
         PetLevelRow pet,
-        IReadOnlyList<PetLevelStatRow> rows)
+        IReadOnlyList<PetLevelStatRow> rows,
+        short expectedLevel)
     {
         if (!string.Equals(
                 pet.InitialSavvySourceVersion,
-                PetLevelInitialSavvySourceVersion,
+                PetSavvyRuntimeSemantics.SourceVersion,
                 StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 $"Pet {pet.PetId} does not have the required " +
-                $"{PetLevelInitialSavvySourceVersion} savvy provenance.");
+                $"{PetSavvyRuntimeSemantics.SourceVersion} savvy provenance.");
         }
 
         if (rows.Count != PetLevelStatCount)
@@ -126,21 +128,30 @@ internal sealed partial class PostgresGameStore
             var row = rows[index];
             var expectedStatCode = checked((short)(index + 1));
             if (row.StatCode != expectedStatCode ||
-                row.InitialSavvy < 0 ||
+                row.InitialSavvy <= 0 ||
                 row.AddedSavvy < 0 ||
                 row.BaseGrowthRate <= 0 ||
                 row.BirthInitialSavvy is null or <= 0 ||
-                row.BirthInitialSavvy != row.BaseGrowthRate ||
-                row.InitialSavvy < row.BirthInitialSavvy ||
                 row.RarityAddedSavvy is null or < 0 ||
-                row.AddedSavvy < row.RarityAddedSavvy ||
+                row.BirthInitialSavvy != row.RarityAddedSavvy ||
                 row.GrowthAcceleration < 0 ||
+                row.AddedSavvy !=
+                    PetSavvyRuntimeSemantics.ResolveLevelScaledAdded(
+                        expectedLevel,
+                        row.BaseGrowthRate,
+                        row.GrowthAcceleration) ||
                 row.Revision < 0)
             {
                 throw new InvalidOperationException(
                     $"Pet {pet.PetId} has malformed level-growth stat " +
                     $"data at stat code {row.StatCode}.");
             }
+        }
+        if (rows.Sum(static row => row.InitialSavvy) <
+            rows.Sum(static row => row.BirthInitialSavvy!.Value))
+        {
+            throw new InvalidOperationException(
+                $"Pet {pet.PetId} has malformed aggregate Basic Savvy data.");
         }
     }
 

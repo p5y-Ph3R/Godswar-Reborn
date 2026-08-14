@@ -69,6 +69,13 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
         Check.True(
             snapshot.Progression.FighterLevelSealed,
             "sealed parity fixture exposes its durable level seal");
+        Check.True(
+            snapshot.PetShed is
+            {
+                OpenedCellCount: 3,
+                Revision: 4
+            },
+            "snapshot preserves pet-shed capacity independently of its one owned pet");
 
         AssertCoreParity(legacyCharacter, snapshot);
         AssertStatsParity(legacyStats, focusedStats);
@@ -114,6 +121,10 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             legacyPets.Count,
             hydrated.Pets.Count,
             "hydration preserves the complete pet count");
+        Check.Equal(
+            snapshot.PetShed,
+            hydrated.PetShed,
+            "hydration preserves the durable pet-shed boundary");
     }
 
     private static async Task AssertScalarSkillParityAsync(

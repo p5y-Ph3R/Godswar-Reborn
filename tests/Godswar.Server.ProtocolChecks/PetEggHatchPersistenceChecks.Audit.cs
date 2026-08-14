@@ -32,7 +32,7 @@ internal static partial class PetEggHatchPersistenceChecks
                 (after_state #>> '{initial_savvy,wisdom}')::numeric,
                 (after_state #>> '{initial_savvy,luck}')::numeric,
                 after_state ->> 'added_savvy_policy',
-                (after_state ->> 'total_added_savvy')::integer,
+                (after_state ->> 'total_added_savvy')::numeric,
                 (after_state #>> '{added_savvy,agility}')::numeric,
                 (after_state #>> '{added_savvy,strength}')::numeric,
                 (after_state #>> '{added_savvy,accuracy}')::numeric,
@@ -78,7 +78,7 @@ internal static partial class PetEggHatchPersistenceChecks
                     reader.GetDecimal(13),
                     reader.GetDecimal(14)),
                 reader.GetString(15),
-                reader.GetInt32(16),
+                reader.GetDecimal(16),
                 new PetSavvy(
                     reader.GetDecimal(17),
                     reader.GetDecimal(18),
@@ -119,11 +119,14 @@ internal static partial class PetEggHatchPersistenceChecks
                 $"hatch audit {expected.PetId} records generated native state");
 
             Check.Equal(
-                "growth-x1-v1",
+                PetSavvyRuntimeSemantics.SourceVersion,
                 row.InitialSavvySource,
                 $"hatch audit {expected.PetId} records its initial-savvy source");
+            var expectedInitialSavvy = expected.InitialSavvyRoll
+                ?? throw new InvalidOperationException(
+                    $"Hatch result {expected.PetId} has no Savvy roll.");
             Check.Equal(
-                expected.Growth!.TotalGrowth,
+                (decimal)expectedInitialSavvy.TotalSavvy,
                 row.TotalInitialSavvy,
                 $"hatch audit {expected.PetId} records total initial savvy");
             Check.Equal(
@@ -131,25 +134,22 @@ internal static partial class PetEggHatchPersistenceChecks
                 row.InitialSavvy,
                 $"hatch audit {expected.PetId} records all six initial-savvy values");
 
-            var expectedAddedSavvy = expected.AddedSavvy
-                ?? throw new InvalidOperationException(
-                    $"Hatch result {expected.PetId} has no added savvy.");
-            Check.Equal(
-                PetAddedSavvyPolicy.Version,
-                row.AddedSavvyPolicy,
-                $"hatch audit {expected.PetId} records its added-savvy policy");
-            Check.Equal(
-                expectedAddedSavvy.TotalSavvy,
-                row.TotalAddedSavvy,
-                $"hatch audit {expected.PetId} records total added savvy");
-            Check.Equal(
-                expectedAddedSavvy.AddedSavvy,
-                row.AddedSavvy,
-                $"hatch audit {expected.PetId} records all six added-savvy values");
-
             var expectedGrowth = expected.Growth
                 ?? throw new InvalidOperationException(
                     $"Hatch result {expected.PetId} has no growth.");
+            Check.Equal(
+                PetGrowthPolicy.Version,
+                row.AddedSavvyPolicy,
+                $"hatch audit {expected.PetId} records its Added-value policy");
+            Check.Equal(
+                expectedGrowth.TotalGrowth,
+                row.TotalAddedSavvy,
+                $"hatch audit {expected.PetId} records total Added-value");
+            Check.Equal(
+                expectedGrowth.BaseGrowthRates,
+                row.AddedSavvy,
+                $"hatch audit {expected.PetId} records all six Added-values");
+
             Check.Equal(
                 PetGrowthPolicy.Version,
                 row.GrowthPolicy,
@@ -187,7 +187,7 @@ internal static partial class PetEggHatchPersistenceChecks
         decimal TotalInitialSavvy,
         PetSavvy InitialSavvy,
         string AddedSavvyPolicy,
-        int TotalAddedSavvy,
+        decimal TotalAddedSavvy,
         PetSavvy AddedSavvy,
         string GrowthPolicy,
         decimal TotalGrowth,

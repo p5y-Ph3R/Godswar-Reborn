@@ -19,7 +19,7 @@ internal static class WorldContentReaderDialogueChecks
         CheckMalformedDialogueRejections();
         CheckReviewedRouteCapabilities();
         CheckReviewedMultiRouteRelease();
-        CheckReviewedMountGearDrillRelease();
+        CheckReviewedCurrentRelease();
         await CheckGeneratedBaselineAsync();
     }
 
@@ -383,7 +383,7 @@ internal static class WorldContentReaderDialogueChecks
         }
     }
 
-    private static void CheckReviewedMountGearDrillRelease()
+    private static void CheckReviewedCurrentRelease()
     {
         var publishedNpcKeys = NpcContentBaselineV1.LoadDefinitions()
             .Select(static npc => npc.NpcKey)
@@ -397,23 +397,23 @@ internal static class WorldContentReaderDialogueChecks
                 text.Description))
             .OrderBy(static text => text.NpcKey, StringComparer.Ordinal)
             .ToArray();
-        var routes = NpcDialogueBaselineV3.CreateRoutes();
+        var routes = NpcDialogueBaselineV5.CreateRoutes();
         var revision = WorldContentRevisionHasher.HashNpcDialogues(
             texts,
             routes);
 
         Check.Equal(
-            NpcDialogueBaselineV3.ExpectedTextCount,
+            NpcDialogueBaselineV5.ExpectedTextCount,
             texts.Length,
-            "V3 dialogue text count");
+            "V5 dialogue text count");
         Check.Equal(
-            NpcDialogueBaselineV3.ExpectedHashedEntryCount,
+            NpcDialogueBaselineV5.ExpectedHashedEntryCount,
             revision.EntryCount,
-            "V3 dialogue hashed-entry count");
+            "V5 dialogue hashed-entry count");
         Check.Equal(
-            NpcDialogueBaselineV3.ExpectedRevision,
+            NpcDialogueBaselineV5.ExpectedRevision,
             revision.Sha256,
-            "V3 NPC-dialogue canonical revision golden vector");
+            "V5 NPC-dialogue canonical revision golden vector");
         foreach (var npcKey in new[] { "Athens_086", "Sparta_086" })
         {
             var artisanRoute = routes.Single(
@@ -424,6 +424,44 @@ internal static class WorldContentReaderDialogueChecks
                 artisanRoute.InitialMenuSubIds.SequenceEqual(
                     [101, 201, 301, 401, 501, 601, 701, 801]),
                 $"{npcKey} publishes Mount Gear Drilling action 801");
+        }
+        foreach (var npcKey in new[] { "Athens_088", "Sparta_088" })
+        {
+            var petManagerRoutes = routes
+                .Where(route => route.NpcKey == npcKey)
+                .ToArray();
+            var petManagerNpc = NpcSpawnDefinitionFactory
+                .Create(
+                    npcKey.StartsWith("Athens", StringComparison.Ordinal)
+                        ? (short)1
+                        : (short)0,
+                    [],
+                    [],
+                    [])
+                .Single(npc => npc.NpcKey == npcKey);
+            Check.True(
+                petManagerRoutes.Length == 2 &&
+                petManagerRoutes[0].RouteOrder == 0 &&
+                petManagerRoutes[0].Behavior ==
+                    NpcDialogueBehavior.PetManager &&
+                petManagerRoutes[0].DialogIndex ==
+                    PetManagerProtocol.DialogIndex &&
+                petManagerRoutes[0].InitialMenuSubIds.SequenceEqual(
+                    Enumerable.Range(1, 11)) &&
+                NpcDialogueBehaviorRegistry.IsAllowed(
+                    petManagerNpc,
+                    petManagerRoutes[0]) &&
+                petManagerRoutes[1].RouteOrder == 1 &&
+                petManagerRoutes[1].Behavior ==
+                    NpcDialogueBehavior.PetPointReset &&
+                petManagerRoutes[1].DialogIndex ==
+                    PetManagerProtocol.PointResetDialogIndex &&
+                petManagerRoutes[1].InitialMenuSubIds.SequenceEqual(
+                    PetManagerProtocol.PointResetInitialMenuSubIds) &&
+                NpcDialogueBehaviorRegistry.IsAllowed(
+                    petManagerNpc,
+                    petManagerRoutes[1]),
+                $"{npcKey} publishes both stock Pet Manager functions");
         }
     }
 

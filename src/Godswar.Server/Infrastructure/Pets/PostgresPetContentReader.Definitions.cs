@@ -15,6 +15,7 @@ internal static partial class PostgresPetContentReader
             """
             SELECT minimum_level, maximum_level,
                    maximum_owned_pet_count, maximum_skill_count,
+                   maximum_rank,
                    minimum_merge_level, minimum_owner_merge_amity,
                    maximum_spirit_items, maximum_rebirth_count,
                    required_rebirth_spirit_count,
@@ -45,20 +46,21 @@ internal static partial class PostgresPetContentReader
             reader.GetInt16(1),
             reader.GetInt16(2),
             reader.GetInt16(3),
-            reader.GetInt16(4),
+            reader.GetDecimal(4),
             reader.GetInt16(5),
             reader.GetInt16(6),
             reader.GetInt16(7),
             reader.GetInt16(8),
-            reader.GetInt32(9),
-            checked((uint)reader.GetInt32(10)),
+            reader.GetInt16(9),
+            reader.GetInt32(10),
             checked((uint)reader.GetInt32(11)),
             checked((uint)reader.GetInt32(12)),
             checked((uint)reader.GetInt32(13)),
-            reader.GetString(14),
+            checked((uint)reader.GetInt32(14)),
             reader.GetString(15),
             reader.GetString(16),
-            Array.AsReadOnly(reader.GetFieldValue<short[]>(17)));
+            reader.GetString(17),
+            Array.AsReadOnly(reader.GetFieldValue<short[]>(18)));
         if (await reader.ReadAsync(cancellationToken))
         {
             throw new InvalidOperationException(
@@ -122,7 +124,8 @@ internal static partial class PostgresPetContentReader
                    maximum_growth_stat_deviation,
                    minimum_initial_savvy, maximum_initial_savvy,
                    maximum_initial_savvy_stat_deviation,
-                   minimum_added_savvy, maximum_added_savvy
+                   minimum_added_savvy, maximum_added_savvy,
+                   innate_talent_mask
             FROM pet_content_aptitude_definitions
             WHERE revision = @revision
             ORDER BY aptitude;
@@ -146,7 +149,8 @@ internal static partial class PostgresPetContentReader
                 reader.GetInt32(8),
                 reader.GetDecimal(9),
                 reader.GetInt32(10),
-                reader.GetInt32(11)));
+                reader.GetInt32(11),
+                reader.GetInt16(12)));
         }
         return values;
     }

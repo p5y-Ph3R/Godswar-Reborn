@@ -36,6 +36,16 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             first.Revision.Sha256);
         await AssertSocketSpellPublicationAsync(dataSource, first);
         await AssertHolyStoneMaterialPublicationAsync(dataSource, first);
+        await AssertPetItemPublicationAsync(dataSource, first);
+        await AssertOfficialPetItemsV9UpgradeAsync(
+            dataSource,
+            first.Revision.Sha256);
+        await AssertOfficialPetItemsV3UpgradeAsync(
+            dataSource,
+            first.Revision.Sha256);
+        await AssertUnreviewedPetItemsV9RejectedAsync(
+            dataSource,
+            first.Revision.Sha256);
         await AssertClassSuitV6PublicationAsync(
             dataSource,
             first.Revision.Sha256);

@@ -52,6 +52,8 @@ internal sealed partial class PinnedPetContentCatalog
         short aptitude,
         Random random)
     {
+        // Retained for historical data/tooling compatibility. This is not a
+        // second hatch roll; current hatches use RollInitialSavvy instead.
         ArgumentNullException.ThrowIfNull(random);
         if (!TryGetAptitude(aptitude, out var bracket))
         {

@@ -139,6 +139,14 @@ internal sealed partial class GameClientHandler
                     persistedStats.CriticalDamagePercent,
                 CriticalDamageFlat =
                     persistedStats.CriticalDamageFlat,
+                PhysicalDamageReduction =
+                    persistedStats.PhysicalDamageReduction,
+                MagicDamageReduction =
+                    persistedStats.MagicDamageReduction,
+                CriticalDamageReduction =
+                    persistedStats.CriticalDamageReduction,
+                LifeAbsorption = persistedStats.LifeAbsorption,
+                DamageRebound = persistedStats.DamageRebound,
                 WeaponScore = persistedStats.WeaponScore,
                 WeaponRank = persistedStats.WeaponRank,
                 WeaponAuraEffect = persistedStats.WeaponAuraEffect,

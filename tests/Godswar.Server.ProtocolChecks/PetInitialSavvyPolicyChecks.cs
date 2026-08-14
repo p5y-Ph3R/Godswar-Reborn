@@ -22,16 +22,16 @@ internal static class PetInitialSavvyPolicyChecks
     {
         var expected = new (int Minimum, int Maximum)[]
         {
-            (250, 349),
-            (350, 449),
-            (450, 574),
-            (575, 699),
-            (700, 849),
-            (850, 1_024),
-            (1_025, 1_224),
-            (1_225, 1_474),
-            (1_475, 1_774),
-            (1_775, 2_124),
+            (25, 34),
+            (35, 44),
+            (45, 54),
+            (55, 69),
+            (70, 84),
+            (85, 104),
+            (105, 124),
+            (125, 149),
+            (150, 174),
+            (175, 200),
             (2_125, 2_524),
             (2_525, 2_974),
             (2_975, 3_474),
@@ -41,7 +41,7 @@ internal static class PetInitialSavvyPolicyChecks
         };
 
         Check.Equal(
-            "project-v1",
+            "project-v3",
             PetInitialSavvyPolicy.Version,
             "initial-savvy policy version");
         Check.Equal(
@@ -76,13 +76,13 @@ internal static class PetInitialSavvyPolicyChecks
         }
 
         Check.Equal(
-            5_075,
+            3_376,
             PetInitialSavvyPolicy.All.Sum(
                 static bracket => bracket.TotalCount),
-            "initial-savvy ranges are contiguous and exhaustive");
+            "initial-savvy ranges contain the intended allowed totals");
         Check.True(
             PetInitialSavvyPolicy.All[^1].MinimumTotalSavvy >
-            PetInitialSavvyPolicy.All[0].MaximumTotalSavvy * 13,
+            PetInitialSavvyPolicy.All[0].MaximumTotalSavvy * 20,
             "top aptitude materially exceeds Weak");
     }
 
@@ -145,7 +145,7 @@ internal static class PetInitialSavvyPolicyChecks
         }
 
         Check.Equal(
-            5_075,
+            3_376,
             cases,
             "every allowed whole-point total was tested");
     }
@@ -215,7 +215,7 @@ internal static class PetInitialSavvyPolicyChecks
         Check.Throws<ArgumentOutOfRangeException>(
             () => PetInitialSavvyPolicy.Distribute(
                 PetAptitude.Weak,
-                249,
+                24,
                 new Random(1)),
             "total below its bracket is rejected");
         Check.Throws<ArgumentOutOfRangeException>(
@@ -232,7 +232,7 @@ internal static class PetInitialSavvyPolicyChecks
         Check.Throws<ArgumentNullException>(
             () => PetInitialSavvyPolicy.Distribute(
                 PetAptitude.Weak,
-                250,
+                25,
                 null!),
             "distribution requires a caller-owned Random");
     }

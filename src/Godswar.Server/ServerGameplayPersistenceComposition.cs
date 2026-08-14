@@ -11,6 +11,7 @@ internal sealed record ServerGameplayPersistenceProviders(
     ICharacterSnapshotReader CharacterSnapshots,
     ICharacterRuntimeProjectionReader CharacterRuntime,
     IOwnedPetSnapshotReader OwnedPets,
+    ISealedPetSnapshotReader SealedPetSnapshots,
     IExperienceBoostStateReader ExperienceBoosts,
     IWorldBossAreaControlStore WorldBossAreaControl,
     IWorldBossRespawnReader WorldBossRespawns,
@@ -29,6 +30,7 @@ internal static class ServerGameplayPersistenceComposition
         var characterRuntime =
             postgresRuntime.CharacterRuntimeProjections;
         var ownedPets = postgresRuntime.OwnedPetSnapshots;
+        var sealedPetSnapshots = postgresRuntime.SealedPetSnapshots;
         var experienceBoosts = postgresRuntime.ExperienceBoosts;
         var worldBossAreaControl = postgresRuntime.WorldBossAreaControl;
         var worldBossRespawns = postgresRuntime.WorldBossRespawns;
@@ -39,6 +41,7 @@ internal static class ServerGameplayPersistenceComposition
             measuredCharacterSnapshots,
             characterRuntime,
             ownedPets,
+            sealedPetSnapshots,
             experienceBoosts,
             worldBossAreaControl,
             worldBossRespawns,

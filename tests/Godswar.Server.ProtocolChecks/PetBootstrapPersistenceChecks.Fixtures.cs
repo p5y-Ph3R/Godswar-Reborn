@@ -1,3 +1,4 @@
+using Godswar.Server.State;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -23,12 +24,20 @@ internal static partial class PetBootstrapPersistenceChecks
                 level,
                 experience,
                 aptitude,
+                initial_savvy_baseline_total,
+                initial_savvy_policy_version,
+                rarity_added_savvy_baseline_total,
+                rarity_added_savvy_policy_version,
+                initial_savvy_source_version,
                 rank,
                 completed_rebirths,
                 rebirths_remaining,
                 completed_pet_merges,
                 has_soul_contract,
                 has_owner_merge_talent,
+                talent_mask,
+                opened_skill_slots,
+                available_skill_slots,
                 current_energy,
                 maximum_energy,
                 amity,
@@ -42,6 +51,10 @@ internal static partial class PetBootstrapPersistenceChecks
                 is_summoned,
                 contributes_to_character,
                 revision,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision,
                 created_at,
                 updated_at
             )
@@ -53,12 +66,20 @@ internal static partial class PetBootstrapPersistenceChecks
                 80,
                 123456789,
                 14,
+                3600,
+                @initialSavvyPolicy,
+                3600,
+                @initialSavvyPolicy,
+                @initialSavvySource,
                 25.5,
                 3,
                 2,
                 7,
                 true,
                 true,
+                31,
+                4,
+                7,
                 90,
                 100,
                 321,
@@ -72,6 +93,18 @@ internal static partial class PetBootstrapPersistenceChecks
                 true,
                 true,
                 12,
+                (SELECT step.rank
+                 FROM public.pet_content_publication publication
+                 JOIN public.pet_content_hatch_rank_steps step
+                   ON step.revision = publication.revision
+                  AND step.aptitude = 14
+                  AND step.outcome_order = 0
+                 WHERE publication.family = 'pets'),
+                0,
+                0,
+                (SELECT revision
+                 FROM public.pet_content_publication
+                 WHERE family = 'pets'),
                 TIMESTAMPTZ '2026-07-28 01:02:03+00',
                 TIMESTAMPTZ '2026-07-28 04:05:06+00'
             )
@@ -80,6 +113,12 @@ internal static partial class PetBootstrapPersistenceChecks
             connection,
             transaction);
         insertPet.Parameters.AddWithValue("characterId", characterId);
+        insertPet.Parameters.AddWithValue(
+            "initialSavvyPolicy",
+            PetInitialSavvyPolicy.Version);
+        insertPet.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
         var petId = (long)(await insertPet.ExecuteScalarAsync()
                            ?? throw new InvalidOperationException(
                                "Pet fixture insert returned no ID."));
@@ -97,6 +136,8 @@ internal static partial class PetBootstrapPersistenceChecks
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
+        await using var transaction =
+            await connection.BeginTransactionAsync();
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO character_pets (
@@ -106,7 +147,16 @@ internal static partial class PetBootstrapPersistenceChecks
                 sex,
                 level,
                 aptitude,
-                activity_state
+                initial_savvy_baseline_total,
+                initial_savvy_policy_version,
+                rarity_added_savvy_baseline_total,
+                rarity_added_savvy_policy_version,
+                initial_savvy_source_version,
+                activity_state,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision
             )
             VALUES (
                 @characterId,
@@ -115,15 +165,45 @@ internal static partial class PetBootstrapPersistenceChecks
                 0,
                 1,
                 1,
-                'owned'
+                30,
+                @initialSavvyPolicy,
+                30,
+                @initialSavvyPolicy,
+                @initialSavvySource,
+                'owned',
+                (SELECT step.rank
+                 FROM public.pet_content_publication publication
+                 JOIN public.pet_content_hatch_rank_steps step
+                   ON step.revision = publication.revision
+                  AND step.aptitude = 1
+                  AND step.outcome_order = 0
+                 WHERE publication.family = 'pets'),
+                0,
+                0,
+                (SELECT revision
+                 FROM public.pet_content_publication
+                 WHERE family = 'pets')
             )
             RETURNING id;
             """,
-            connection);
+            connection,
+            transaction);
         command.Parameters.AddWithValue("characterId", characterId);
-        return (long)(await command.ExecuteScalarAsync()
-                      ?? throw new InvalidOperationException(
-                          "Second pet fixture insert returned no ID."));
+        command.Parameters.AddWithValue(
+            "initialSavvyPolicy",
+            PetInitialSavvyPolicy.Version);
+        command.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
+        var petId = (long)(await command.ExecuteScalarAsync()
+                           ?? throw new InvalidOperationException(
+                               "Second pet fixture insert returned no ID."));
+        await InsertWeakStatValuesAsync(
+            connection,
+            transaction,
+            petId);
+        await transaction.CommitAsync();
+        return petId;
     }
 
     private static async Task SetPetActivityStateAsync(
@@ -165,15 +245,19 @@ internal static partial class PetBootstrapPersistenceChecks
                 initial_savvy,
                 added_savvy,
                 base_growth_rate,
+                birth_initial_savvy,
+                rarity_added_savvy,
                 growth_acceleration,
                 revision
             )
             SELECT
                 @petId,
                 code,
-                code + 0.1,
-                code + 10.2,
-                code + 30.4,
+                600 + code,
+                (30 + code * 1.1) * 80,
+                9.7 + code * 0.1,
+                600,
+                600,
                 code + 20.3,
                 code
             FROM generate_series(1, 6) AS code;
@@ -182,6 +266,45 @@ internal static partial class PetBootstrapPersistenceChecks
             transaction);
         command.Parameters.AddWithValue("petId", petId);
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task InsertWeakStatValuesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        long petId)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO character_pet_stat_values (
+                pet_id,
+                stat_code,
+                initial_savvy,
+                added_savvy,
+                base_growth_rate,
+                birth_initial_savvy,
+                rarity_added_savvy,
+                growth_acceleration,
+                revision
+            )
+            SELECT
+                @petId,
+                code,
+                5,
+                0.01,
+                0.01,
+                5,
+                5,
+                0,
+                0
+            FROM generate_series(1, 6) AS code;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("petId", petId);
+        Check.Equal(
+            6,
+            await command.ExecuteNonQueryAsync(),
+            "weak pet fixture inserts six current-provenance stat rows");
     }
 
     private static async Task InsertCharacterBonusesAsync(

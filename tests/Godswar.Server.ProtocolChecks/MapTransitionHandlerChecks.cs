@@ -267,6 +267,12 @@ internal static partial class MapTransitionHandlerChecks
             CreateControlPacket(Opcodes.ClientReady));
         await AssertNextPacketAsync(
             actorSocket,
+            PacketBuilder.PetOperationResult(
+                checked((uint)pet.PetId),
+                PetOperationResultCode.CallOutSucceeded),
+            "reverse summoned-pet call-out restore");
+        await AssertNextPacketAsync(
+            actorSocket,
             PacketBuilder.PetWorldPresence(
                 checked((uint)pet.PetId),
                 LocalPlayerObjectId),

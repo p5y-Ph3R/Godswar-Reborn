@@ -6,7 +6,7 @@ using Godswar.Server.World.Components.Combat;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class MonsterPlayerDamageEcsLiveAdapterChecks
+internal static partial class MonsterPlayerDamageEcsLiveAdapterChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 7, 23, 12, 0, 0, TimeSpan.Zero);
@@ -59,6 +59,7 @@ internal static class MonsterPlayerDamageEcsLiveAdapterChecks
             objectId);
         registry.Remove(socket.Session);
 
+        await CheckHolyWardMitigatesLiveMonsterAttackAsync();
         await CheckRemovalDuringMitigationEvaluationAsync();
     }
 
@@ -496,7 +497,8 @@ internal static class MonsterPlayerDamageEcsLiveAdapterChecks
     private static CapturedMonsterSpawn CreateMonster(
         uint objectId,
         float x,
-        float z)
+        float z,
+        uint tier = 1)
     {
         const string templateKey = "MitigationRaceMonster";
         var packet = new byte[108];
@@ -514,7 +516,7 @@ internal static class MonsterPlayerDamageEcsLiveAdapterChecks
             objectId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(12, 4),
-            1);
+            tier);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(20, 4),
             237);

@@ -19,11 +19,86 @@ internal static partial class
                     WHERE user_id = @characterId
                 ),
                 (
+                    SELECT pet_shed_capacity
+                    FROM public.character_base
+                    WHERE id = @characterId
+                ),
+                (
+                    SELECT pet_shed_revision
+                    FROM public.character_base
+                    WHERE id = @characterId
+                ),
+                (
                     SELECT count(*)
                     FROM public.character_items
                     WHERE user_id = @characterId
                       AND item_location = 1
                       AND slot_index = @eggSlot
+                ),
+                (
+                    SELECT aptitude
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT opened_skill_slots
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT available_skill_slots
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT count(*)
+                    FROM public.character_pet_skills
+                    WHERE pet_id = @petId
+                ),
+                (
+                    SELECT is_carried
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT is_summoned
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT talent_mask
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT has_owner_merge_talent
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT rank
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT birth_rank
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT hatch_rank_roll
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT hatch_rank_outcome_order
+                    FROM public.character_pets
+                    WHERE id = @petId
+                ),
+                (
+                    SELECT hatch_rank_content_revision
+                    FROM public.character_pets
+                    WHERE id = @petId
                 ),
                 ARRAY(
                     SELECT concat_ws(
@@ -53,8 +128,23 @@ internal static partial class
         }
         return new HatchState(
             reader.GetInt64(0),
-            reader.GetInt64(1),
-            reader.GetFieldValue<string[]>(2));
+            reader.GetInt16(1),
+            reader.GetInt64(2),
+            reader.GetInt64(3),
+            reader.GetInt16(4),
+            reader.GetInt16(5),
+            reader.GetInt16(6),
+            reader.GetInt64(7),
+            reader.GetBoolean(8),
+            reader.GetBoolean(9),
+            reader.GetInt16(10),
+            reader.GetBoolean(11),
+            reader.GetDecimal(12),
+            reader.GetDecimal(13),
+            reader.GetInt16(14),
+            reader.GetInt16(15),
+            reader.GetString(16),
+            reader.GetFieldValue<string[]>(17));
     }
 
     private static async Task<LevelState> ReadLevelStateAsync(
@@ -67,6 +157,16 @@ internal static partial class
                 level,
                 experience,
                 revision,
+                NOT EXISTS (
+                    SELECT 1
+                    FROM public.character_pet_stat_values stat
+                    WHERE stat.pet_id = pet.id
+                      AND stat.added_savvy IS DISTINCT FROM
+                            (
+                                stat.base_growth_rate +
+                                stat.growth_acceleration
+                            ) * pet.level
+                ),
                 ARRAY(
                     SELECT concat_ws(
                         ':',
@@ -92,12 +192,14 @@ internal static partial class
             reader.GetInt16(0),
             reader.GetInt64(1),
             reader.GetInt64(2),
-            reader.GetFieldValue<string[]>(3));
+            reader.GetBoolean(3),
+            reader.GetFieldValue<string[]>(4));
     }
 
     private static async Task<EvidenceState> ReadEvidenceAsync(
         NpgsqlDataSource dataSource,
-        int characterId)
+        int characterId,
+        long[] auditIds)
     {
         var aggregateKey = $"character:{characterId}";
         await using var command = dataSource.CreateCommand(
@@ -107,39 +209,45 @@ internal static partial class
                 (
                     SELECT count(*)
                     FROM public.command_audit
-                    WHERE aggregate_type = 'character_pet_value'
-                      AND aggregate_key = @aggregateKey
+                    WHERE id = ANY(@auditIds)
                 ),
                 (
                     SELECT count(*)
                     FROM public.command_inbox
-                    WHERE aggregate_type = 'character_pet_value'
-                      AND aggregate_key = @aggregateKey
+                    WHERE audit_id = ANY(@auditIds)
                 ),
                 (
                     SELECT count(*)
                     FROM public.outbox_events
                     WHERE aggregate_type = 'character_pet_value'
                       AND aggregate_key = @aggregateKey
+                      AND command_inbox_id IN (
+                          SELECT id
+                          FROM public.command_inbox
+                          WHERE audit_id = ANY(@auditIds)
+                      )
                 ),
                 position.current_version,
                 (
                     SELECT coalesce(sum(duplicate_count), 0)
                     FROM public.command_inbox
-                    WHERE aggregate_type = 'character_pet_value'
-                      AND aggregate_key = @aggregateKey
+                    WHERE audit_id = ANY(@auditIds)
                 ),
                 (
                     SELECT coalesce(sum(request_conflict_count), 0)
                     FROM public.command_inbox
-                    WHERE aggregate_type = 'character_pet_value'
-                      AND aggregate_key = @aggregateKey
+                    WHERE audit_id = ANY(@auditIds)
                 ),
                 ARRAY(
                     SELECT aggregate_version
                     FROM public.outbox_events
                     WHERE aggregate_type = 'character_pet_value'
                       AND aggregate_key = @aggregateKey
+                      AND command_inbox_id IN (
+                          SELECT id
+                          FROM public.command_inbox
+                          WHERE audit_id = ANY(@auditIds)
+                      )
                     ORDER BY aggregate_version
                 )
             FROM public.pet_durable_stream_versions stream
@@ -151,6 +259,7 @@ internal static partial class
             """);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("aggregateKey", aggregateKey);
+        command.Parameters.AddWithValue("auditIds", auditIds);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {
@@ -245,13 +354,29 @@ internal static partial class
 
     private sealed record HatchState(
         long PetCount,
+        short PetShedCapacity,
+        long PetShedRevision,
         long EggCount,
+        short Aptitude,
+        short OpenedSkillSlots,
+        short AvailableSkillSlots,
+        long LearnedSkillCount,
+        bool IsCarried,
+        bool IsSummoned,
+        short TalentMask,
+        bool HasOwnerMergeTalent,
+        decimal Rank,
+        decimal BirthRank,
+        short HatchRankRoll,
+        short HatchRankOutcomeOrder,
+        string HatchRankContentRevision,
         string[] StatValues);
 
     private sealed record LevelState(
         short Level,
         long Experience,
         long Revision,
+        bool HasExactScaledAdded,
         string[] StatValues);
 
     private sealed record EvidenceState(

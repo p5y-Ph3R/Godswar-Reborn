@@ -90,6 +90,22 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             transaction,
             character.Id,
             bonusBasisPoints: 1_000);
+        await using (var shed = new NpgsqlCommand(
+            """
+            UPDATE public.character_base
+            SET pet_shed_capacity = 3,
+                pet_shed_revision = 4
+            WHERE id = @characterId;
+            """,
+            connection,
+            transaction))
+        {
+            shed.Parameters.AddWithValue("characterId", character.Id);
+            Check.Equal(
+                1,
+                await shed.ExecuteNonQueryAsync(),
+                "rich fixture persists pet-shed capacity independently");
+        }
         await transaction.CommitAsync();
 
         return accountFixture with
@@ -184,6 +200,10 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 experience,
                 aptitude,
                 rank,
+                talent_mask,
+                has_owner_merge_talent,
+                opened_skill_slots,
+                available_skill_slots,
                 current_energy,
                 maximum_energy,
                 amity,
@@ -193,9 +213,15 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 bound,
                 activity_state,
                 revision,
+                initial_savvy_baseline_total,
+                initial_savvy_policy_version,
                 rarity_added_savvy_baseline_total,
                 rarity_added_savvy_policy_version,
-                initial_savvy_source_version
+                initial_savvy_source_version,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision
             )
             VALUES (
                 @characterId,
@@ -206,6 +232,10 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 100,
                 15,
                 33.5,
+                31,
+                true,
+                4,
+                8,
                 80,
                 100,
                 77,
@@ -215,9 +245,23 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
                 true,
                 'owned',
                 5,
-                621,
-                'project-v2',
-                'growth-x1-v1'
+                4203,
+                @initialSavvyPolicy,
+                4203,
+                @initialSavvyPolicy,
+                @initialSavvySource,
+                (SELECT step.rank
+                 FROM public.pet_content_publication publication
+                 JOIN public.pet_content_hatch_rank_steps step
+                   ON step.revision = publication.revision
+                  AND step.aptitude = 15
+                  AND step.outcome_order = 0
+                 WHERE publication.family = 'pets'),
+                0,
+                0,
+                (SELECT revision
+                 FROM public.pet_content_publication
+                 WHERE family = 'pets')
             )
             RETURNING id;
             """,
@@ -225,6 +269,12 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             transaction);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("name", name);
+        command.Parameters.AddWithValue(
+            "initialSavvyPolicy",
+            PetInitialSavvyPolicy.Version);
+        command.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
         var petId =
             (long)(await command.ExecuteScalarAsync()
                    ?? throw new InvalidOperationException(
@@ -258,11 +308,11 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             SELECT
                 @petId,
                 stat_code,
-                5 + stat_code,
-                CASE WHEN stat_code = 1 THEN 10 ELSE 20 + stat_code END,
+                700 + stat_code,
+                (3 + 2 * stat_code) * 9,
                 2 + stat_code,
-                2 + stat_code,
-                CASE WHEN stat_code = 1 THEN 10 ELSE 20 + stat_code END,
+                697 + stat_code,
+                697 + stat_code,
                 1 + stat_code,
                 30 + stat_code
             FROM generate_series(1, 6) AS stat(stat_code);

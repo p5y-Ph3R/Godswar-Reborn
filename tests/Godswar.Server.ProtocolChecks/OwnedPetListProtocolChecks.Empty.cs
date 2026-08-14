@@ -6,7 +6,10 @@ internal static partial class OwnedPetListProtocolChecks
 {
     private static void CheckCanonicalEmptyPacket()
     {
-        var packet = PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, []);
+        var packet = PacketBuilder.OwnedPetList(
+            PetContentTestCatalog.Instance,
+            [],
+            openedCellCount: 2);
 
         Check.True(
             packet.SequenceEqual(
@@ -14,17 +17,18 @@ internal static partial class OwnedPetListProtocolChecks
             "empty owned-pet list retains the captured canonical bytes");
     }
 
-    private static void CheckCapacity(int count, byte expectedCapacity)
+    private static void CheckCapacity(int count, byte openedCellCount)
     {
         var packet = PacketBuilder.OwnedPetList(
             PetContentTestCatalog.Instance,
-            CreatePets(count));
+            CreatePets(count),
+            openedCellCount);
         Check.Equal(
             8 + (count * PetRecordLength),
             packet.Length,
             $"owned-pet packet length for {count} pets");
         Check.Equal(
-            expectedCapacity,
+            openedCellCount,
             packet[4],
             $"owned-pet capacity for {count} pets");
         Check.Equal(

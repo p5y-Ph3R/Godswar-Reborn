@@ -64,6 +64,12 @@ internal readonly record struct CompactItemEntry(
 
     public short? Socket4Value { get; init; }
 
+    /// <summary>
+    /// Server-authoritative pet linked to a packed Seal Jade. It is projected
+    /// only for item 10109 and encoded into the native record at offset 56.
+    /// </summary>
+    public long LinkedSealedPetId { get; init; }
+
     public bool IsEmpty => Id == 0;
 
     public short HolySuitType => HolySuitCode <= 0 ? (short)0 : (short)Math.Clamp(HolySuitCode / 100, 0, 7);
@@ -122,7 +128,8 @@ internal readonly record struct CompactItemEntry(
             Socket1Value = ParseNullableInt16(parts, 34),
             Socket2Value = ParseNullableInt16(parts, 35),
             Socket3Value = ParseNullableInt16(parts, 36),
-            Socket4Value = ParseNullableInt16(parts, 37)
+            Socket4Value = ParseNullableInt16(parts, 37),
+            LinkedSealedPetId = ParseInt64(parts, 38, 0)
         };
         return parsed.NormalizeExtendedAttributes();
     }
@@ -205,12 +212,13 @@ internal readonly record struct CompactItemEntry(
             !Socket1Value.HasValue &&
             !Socket2Value.HasValue &&
             !Socket3Value.HasValue &&
-            !Socket4Value.HasValue)
+            !Socket4Value.HasValue &&
+            LinkedSealedPetId == 0)
         {
             return '[' + nativeFields + ']';
         }
 
-        return '[' + nativeFields + ',' +
+        var extendedFields =
             Format(ClassAttribute1) + ',' +
             Format(ClassAttribute2) + ',' +
             Format(ElementalAttribute1) + ',' +
@@ -218,7 +226,15 @@ internal readonly record struct CompactItemEntry(
             Format(Socket1Value) + ',' +
             Format(Socket2Value) + ',' +
             Format(Socket3Value) + ',' +
-            Format(Socket4Value) + ']';
+            Format(Socket4Value);
+
+        // Preserve the established 38-field compact representation for all
+        // ordinary and extended items. The linked pet is a sealed-jade-only
+        // authority extension and is emitted only when it is present.
+        return LinkedSealedPetId == 0
+            ? '[' + nativeFields + ',' + extendedFields + ']'
+            : '[' + nativeFields + ',' + extendedFields + ',' +
+                LinkedSealedPetId.ToString() + ']';
     }
 
     internal CompactItemEntry NormalizeExtendedAttributes()
@@ -389,5 +405,12 @@ internal readonly record struct CompactItemEntry(
     private static int ParseInt32(string[] parts, int index, int fallback)
     {
         return index < parts.Length && int.TryParse(parts[index], out var value) ? value : fallback;
+    }
+
+    private static long ParseInt64(string[] parts, int index, long fallback)
+    {
+        return index < parts.Length && long.TryParse(parts[index], out var value)
+            ? value
+            : fallback;
     }
 }

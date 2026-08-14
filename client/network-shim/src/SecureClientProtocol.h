@@ -105,6 +105,16 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     HolyStoneCombine = 43,
     HolyStoneImplementSpirit = 44,
     MountGearDrill = 45,
+    PetSkillUnlearn = 46,
+    PetGrowthReset = 47,
+    PetOwnerMergeToggle = 48,
+    PetToPetMerge = 49,
+    PetRebirth = 50,
+    PetBasicSavvyReset = 51,
+    PetAppearanceChange = 52,
+    PetBind = 53,
+    PetSoulContract = 54,
+    PetManagerUtility = 55,
 };
 
 struct SecureLegacyCommandResult final {

@@ -106,12 +106,39 @@ internal static class MonsterPlayerDamageEcsBoundary
         state.LifeRevision = snapshot.LifeRevision;
     }
 
+    public static void SynchronizePetHealingTalent(
+        EcsWorld world,
+        in MonsterPlayerDamageEntity player,
+        PetHealingTalentHydrationSnapshot? activePet)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        EnsurePlayer(world, player);
+        if (activePet is not { } pet)
+        {
+            world.Remove<ActivePetHealingTalentComponent>(
+                player.Entity);
+            return;
+        }
+
+        ValidateActivePet(pet);
+        world.Set(
+            player.Entity,
+            new ActivePetHealingTalentComponent(
+                pet.PetId,
+                pet.Level,
+                pet.Aptitude,
+                pet.TalentMask,
+                pet.IsCarried,
+                pet.IsSummoned));
+    }
+
     private static void RegisterComponents(EcsWorld world)
     {
         world.RegisterComponent<PlayerIdentityComponent>();
         world.RegisterComponent<PlayerVitalsComponent>();
         world.RegisterComponent<MonsterPlayerDamageStateComponent>();
         world.RegisterComponent<MonsterPlayerDamageIntentComponent>();
+        world.RegisterComponent<ActivePetHealingTalentComponent>();
     }
 
     private static void EnsurePlayer(
@@ -159,5 +186,23 @@ internal static class MonsterPlayerDamageEcsBoundary
             snapshot.VitalsRevision);
         ArgumentOutOfRangeException.ThrowIfNegative(
             snapshot.LifeRevision);
+    }
+
+    private static void ValidateActivePet(
+        in PetHealingTalentHydrationSnapshot pet)
+    {
+        if (pet.PetId <= 0 ||
+            pet.PetId > uint.MaxValue ||
+            pet.Level <= 0 ||
+            pet.Aptitude is < 1 or > 16 ||
+            pet.TalentMask is < 0 or > 31 ||
+            !pet.IsCarried ||
+            !pet.IsSummoned)
+        {
+            throw new ArgumentException(
+                "An active Healing pet must be a bounded, carried and " +
+                "summoned pet projection.",
+                nameof(pet));
+        }
     }
 }

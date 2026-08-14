@@ -4,6 +4,7 @@ namespace Godswar.Server.State;
 
 internal enum PetItemPurpose
 {
+    ShedCapacity,
     Food,
     AmityRecovery,
     Capture,
@@ -17,7 +18,7 @@ internal enum PetItemPurpose
     SkillSlot,
     SkillUnlock,
     SkillRemoval,
-    Talent,
+    LegacyTalentArtifact,
     Experience,
     Seal,
     Summon,
@@ -50,6 +51,7 @@ internal sealed record PetItemRange(
 /// </summary>
 internal static class PetItemCatalog
 {
+    public const uint SpecialPetShed = 4109;
     public const uint FusedHarpyia = 10097;
     public const uint RebornHarpyia = 10098;
     public const uint PetEnhanceSpring = 10099;
@@ -65,6 +67,11 @@ internal static class PetItemCatalog
     public const uint RestrictedJuiceOfRebirth = 10146;
     public const uint EmptySealJade = 10108;
     public const uint PackedSealJade = 10109;
+    public const uint RandomEventTalentStick = 10110;
+    public const uint QuestDispatchTalentStick = 10111;
+    public const uint WorkTalentStick = 10112;
+    public const uint HealingTalentStick = 10113;
+    public const uint MergeTalentStick = 10114;
     public const uint FairyFeather = 11000;
     public const uint PetCallCharm = 11003;
     public const uint MergeCharm = 11004;
@@ -77,6 +84,7 @@ internal static class PetItemCatalog
         Array.AsReadOnly(
         new PetItemDefinition[]
         {
+            D(SpecialPetShed, "Special Pet Shed", PetItemPurpose.ShedCapacity),
             D(10090, "Effective Water", PetItemPurpose.Lifetime),
             D(FusedHarpyia, "Fused Harpyia", PetItemPurpose.PetMerge, true),
             D(RebornHarpyia, "Reborn Harpyia", PetItemPurpose.Rebirth, true),
@@ -91,11 +99,11 @@ internal static class PetItemCatalog
             D(SpringWater, "Spring Water", PetItemPurpose.Rebirth),
             D(EmptySealJade, "Seal Jade (Empty)", PetItemPurpose.Seal),
             D(PackedSealJade, "Seal Jade (Packed)", PetItemPurpose.Seal),
-            D(10110, "Stick: Random Event", PetItemPurpose.Talent),
-            D(10111, "Stick: Quest Dispatch", PetItemPurpose.Talent),
-            D(10112, "Stick: Work", PetItemPurpose.Talent),
-            D(10113, "Stick: Healing", PetItemPurpose.Talent),
-            D(10114, "Stick: Merge", PetItemPurpose.Talent),
+            D(RandomEventTalentStick, "Stick: Random Event", PetItemPurpose.LegacyTalentArtifact),
+            D(QuestDispatchTalentStick, "Stick: Quest Dispatch", PetItemPurpose.LegacyTalentArtifact),
+            D(WorkTalentStick, "Stick: Work", PetItemPurpose.LegacyTalentArtifact),
+            D(HealingTalentStick, "Stick: Healing", PetItemPurpose.LegacyTalentArtifact),
+            D(MergeTalentStick, "Stick: Merge", PetItemPurpose.LegacyTalentArtifact),
             D(JuiceOfRebirth, "Juice of Rebirth", PetItemPurpose.Rebirth),
             D(RestrictedJuiceOfRebirth, "Juice of Rebirth (Limited)", PetItemPurpose.Rebirth, true),
             D(FairyFeather, "Fairy's Feather", PetItemPurpose.SavvyReset),

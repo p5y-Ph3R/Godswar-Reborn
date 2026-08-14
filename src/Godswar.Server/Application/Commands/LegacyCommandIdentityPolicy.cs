@@ -48,7 +48,16 @@ internal static class LegacyCommandIdentityPolicy
             CommandFamily.CharacterPurge or
             CommandFamily.BagItemActivation or
             CommandFamily.PetPresenceTransition or
-            CommandFamily.PetLevelUpgrade =>
+            CommandFamily.PetLevelUpgrade or
+            CommandFamily.PetSkillUnlearn or
+            CommandFamily.PetGrowthReset or
+            CommandFamily.PetBasicSavvyReset or
+            CommandFamily.PetOwnerMergeToggle or
+            CommandFamily.PetToPetMerge or
+            CommandFamily.PetRebirth or
+            CommandFamily.PetAppearanceChange or
+            CommandFamily.PetBind or
+            CommandFamily.PetSoulContract =>
                 CommandIdentityStrength.ClientOperationId,
             CommandFamily.ZodiacSkillGridSelection =>
                 CommandIdentityStrength.ClientOperationId,

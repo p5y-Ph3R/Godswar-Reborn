@@ -60,6 +60,18 @@ internal sealed class CharacterStats
 
     public int CriticalDamageFlat { get; init; }
 
+    // Typed now so persisted Merge channels cannot disappear silently.
+    // Combat application remains a separate, explicitly balanced slice.
+    public int PhysicalDamageReduction { get; init; }
+
+    public int MagicDamageReduction { get; init; }
+
+    public int CriticalDamageReduction { get; init; }
+
+    public int LifeAbsorption { get; init; }
+
+    public int DamageRebound { get; init; }
+
     public int WeaponScore { get; init; }
 
     public short WeaponRank { get; init; }
@@ -101,6 +113,12 @@ internal sealed class CharacterStats
 
     public static CharacterStats FromCharacter(GameCharacter character)
     {
+        ArgumentNullException.ThrowIfNull(character);
+        if (character.CalculatedStats is { } calculatedStats)
+        {
+            return calculatedStats;
+        }
+
         return new CharacterStats
         {
             CharacterId = character.Id,

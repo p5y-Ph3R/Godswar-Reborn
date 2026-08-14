@@ -84,15 +84,6 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] PlayerInspectComplete()
-    {
-        var packet = new byte[8];
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerInspectCompleteOpcode);
-        BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), 0x00000708);
-        return packet;
-    }
-
     public static byte[] EquipmentItemSnapshot(GameCharacter character, uint objectId)
     {
         var items = EquipmentItemsBySlot(character)

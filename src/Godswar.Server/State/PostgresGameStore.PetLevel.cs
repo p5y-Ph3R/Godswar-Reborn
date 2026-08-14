@@ -131,6 +131,7 @@ internal sealed partial class PostgresGameStore
             connection,
             transaction,
             row,
+            nextLevel,
             cancellationToken);
         var result = new PetLevelUpgradeResult(
             PetLevelUpgradeStatus.Succeeded,
@@ -180,7 +181,8 @@ internal sealed partial class PostgresGameStore
                 experience,
                 activity_state,
                 revision,
-                initial_savvy_source_version
+                initial_savvy_source_version,
+                contributes_to_character
             FROM character_pets
             WHERE id = @petId
               AND user_id = @characterId
@@ -200,7 +202,8 @@ internal sealed partial class PostgresGameStore
                 reader.GetInt64(1),
                 reader.GetString(2),
                 reader.GetInt64(3),
-                reader.IsDBNull(4) ? null : reader.GetString(4))
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.GetBoolean(5))
             : null;
     }
 
@@ -210,7 +213,8 @@ internal sealed partial class PostgresGameStore
         if (!string.Equals(
                 row.ActivityState,
                 "owned",
-                StringComparison.Ordinal))
+                StringComparison.Ordinal) ||
+            row.ContributesToCharacter)
         {
             return PetLevelUpgradeStatus.PetUnavailable;
         }
@@ -350,6 +354,7 @@ internal sealed partial class PostgresGameStore
         long Experience,
         string ActivityState,
         long Revision,
-        string? InitialSavvySourceVersion);
+        string? InitialSavvySourceVersion,
+        bool ContributesToCharacter);
 
 }

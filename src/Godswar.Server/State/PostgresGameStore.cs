@@ -76,13 +76,17 @@ internal sealed partial class PostgresGameStore :
     private readonly PostgresZodiacLevelStore _zodiacLevelStore;
     private GameplayItemContent? _itemContent;
     private IPetContentCatalog? _petContent;
+    private readonly IPetHatchRankRollSource _petHatchRankRollSource;
     private readonly string? _gameplayContentRevision;
+    private readonly string? _petLearnedSkillRevision;
 
     public PostgresGameStore(
         string connectionString,
         GameplayItemContent? itemContent = null,
         string? gameplayContentRevision = null,
-        IPetContentCatalog? petContent = null)
+        IPetContentCatalog? petContent = null,
+        IPetHatchRankRollSource? petHatchRankRollSource = null,
+        IPetLearnedSkillContentCatalog? petLearnedSkillContent = null)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -93,6 +97,9 @@ internal sealed partial class PostgresGameStore :
         _gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateOptional(
                 gameplayContentRevision);
+        _petLearnedSkillRevision =
+            PostgresPetLearnedSkillContentBinding.ValidateOptional(
+                petLearnedSkillContent?.Revision.Sha256);
         _accountStore = new PostgresAccountStore(_dataSource);
         _experienceBoostStateReader =
             new PostgresExperienceBoostStateReader(
@@ -105,6 +112,8 @@ internal sealed partial class PostgresGameStore :
         _zodiacLevelStore = new PostgresZodiacLevelStore(_dataSource);
         _itemContent = itemContent;
         _petContent = petContent;
+        _petHatchRankRollSource = petHatchRankRollSource ??
+            CryptographicPetHatchRankRollSource.Instance;
     }
 
     public GameplayItemContent ItemContent =>
@@ -136,6 +145,20 @@ internal sealed partial class PostgresGameStore :
         parameter.Value = _gameplayContentRevision is null
             ? DBNull.Value
             : _gameplayContentRevision;
+        command.Parameters.Add(parameter);
+    }
+
+    private void AddPetLearnedSkillRevisionParameter(
+        DbCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var parameter = command.CreateParameter();
+        parameter.ParameterName =
+            PostgresPetLearnedSkillContentBinding.ParameterName;
+        parameter.DbType = DbType.String;
+        parameter.Value = _petLearnedSkillRevision is null
+            ? DBNull.Value
+            : _petLearnedSkillRevision;
         command.Parameters.Add(parameter);
     }
 

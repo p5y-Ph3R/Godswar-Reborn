@@ -8,15 +8,35 @@ internal static class BagItemActivationCommandEnvelope
         CommandSubject subject,
         CommandConnectionCorrelation connection,
         DateTimeOffset receivedAt,
+        BagItemActivationCommand command)
+    {
+        RequireSecureProvenance(command.Identity, connection);
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
+    public static CommandEnvelope<BagItemActivationCommand> CreateRawLocal(
+        CommandSubject subject,
+        CommandConnectionCorrelation connection,
+        DateTimeOffset receivedAt,
+        BagItemActivationCommand command)
+    {
+        RequireRawLocalProvenance(command.Identity, connection);
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
+    private static CommandEnvelope<BagItemActivationCommand> CreateCore(
+        CommandSubject subject,
+        CommandConnectionCorrelation connection,
+        DateTimeOffset receivedAt,
         BagItemActivationCommand command) =>
         CommandEnvelopeContract.Create(
             CommandFamily.BagItemActivation,
-            CommandIdentityStrength.ClientOperationId,
+            command.Identity.Strength,
             subject,
             connection,
             receivedAt,
             PetDurableCommandContract.OperationScope(
-                command.ClientOperationId),
+                command.Identity),
             PetDurableCommandContract.CanonicalBagActivation(
                 command.KitBagSlot),
             command);
@@ -24,26 +44,61 @@ internal static class BagItemActivationCommandEnvelope
     public static CommandEnvelopeValidation Validate(
         CommandEnvelope<BagItemActivationCommand> envelope)
     {
-        if (envelope.Command.ClientOperationId == Guid.Empty ||
+        if (!PetDurableCommandContract.IsValidIdentity(
+                envelope.Command.Identity) ||
             envelope.Command.KitBagSlot is <
                 PetDurableCommandContract.MinimumKitBagSlot or >
                 PetDurableCommandContract.MaximumKitBagSlot ||
             !Enum.IsDefined(
-                envelope.Command.ExecutionConstraint) ||
-            !PetDurableCommandContract.IsTrusted(
-                envelope.Connection.Transport))
+                envelope.Command.ExecutionConstraint))
         {
             return CommandEnvelopeValidation.InvalidCommand;
+        }
+        if (!PetDurableCommandContract.HasMatchingProvenance(
+                envelope.Command.Identity,
+                envelope.Connection))
+        {
+            return CommandEnvelopeValidation.InvalidCorrelation;
         }
 
         return CommandEnvelopeContract.Validate(
             envelope,
             CommandFamily.BagItemActivation,
-            CommandIdentityStrength.ClientOperationId,
+            envelope.Command.Identity.Strength,
             PetDurableCommandContract.OperationScope(
-                envelope.Command.ClientOperationId),
+                envelope.Command.Identity),
             PetDurableCommandContract.CanonicalBagActivation(
                 envelope.Command.KitBagSlot));
+    }
+
+    private static void RequireSecureProvenance(
+        PetCommandOperationIdentity identity,
+        CommandConnectionCorrelation connection)
+    {
+        if (!identity.IsSecureClient ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Secure pet commands require a client operation identity " +
+                "on a secure transport.");
+        }
+    }
+
+    private static void RequireRawLocalProvenance(
+        PetCommandOperationIdentity identity,
+        CommandConnectionCorrelation connection)
+    {
+        if (!identity.IsRawLocalServer ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Raw-local pet commands require a server operation " +
+                "identity scoped to the exact legacy connection.");
+        }
     }
 }
 
@@ -53,23 +108,44 @@ internal static class PetLevelUpgradeCommandEnvelope
         CommandSubject subject,
         CommandConnectionCorrelation connection,
         DateTimeOffset receivedAt,
-        PetLevelUpgradeCommand command) =>
-        CreateCore(
+        PetLevelUpgradeCommand command)
+    {
+        RequireSecureProvenance(command.Identity, connection);
+        return CreateCore(
             CommandFamily.PetLevelUpgrade,
             subject,
             connection,
             receivedAt,
-            command.ClientOperationId,
+            command.Identity,
             command.PetId,
             operation: 0,
             command);
+    }
+
+    public static CommandEnvelope<PetLevelUpgradeCommand> CreateRawLocal(
+        CommandSubject subject,
+        CommandConnectionCorrelation connection,
+        DateTimeOffset receivedAt,
+        PetLevelUpgradeCommand command)
+    {
+        RequireRawLocalProvenance(command.Identity, connection);
+        return CreateCore(
+            CommandFamily.PetLevelUpgrade,
+            subject,
+            connection,
+            receivedAt,
+            command.Identity,
+            command.PetId,
+            operation: 0,
+            command);
+    }
 
     public static CommandEnvelopeValidation Validate(
         CommandEnvelope<PetLevelUpgradeCommand> envelope) =>
         ValidateCore(
             envelope,
             CommandFamily.PetLevelUpgrade,
-            envelope.Command.ClientOperationId,
+            envelope.Command.Identity,
             envelope.Command.PetId,
             operation: 0);
 
@@ -78,42 +154,76 @@ internal static class PetLevelUpgradeCommandEnvelope
         CommandSubject subject,
         CommandConnectionCorrelation connection,
         DateTimeOffset receivedAt,
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         long petId,
         byte operation,
         T command) =>
         CommandEnvelopeContract.Create(
             family,
-            CommandIdentityStrength.ClientOperationId,
+            identity.Strength,
             subject,
             connection,
             receivedAt,
-            PetDurableCommandContract.OperationScope(operationId),
+            PetDurableCommandContract.OperationScope(identity),
             PetDurableCommandContract.CanonicalPet(petId, operation),
             command);
 
     internal static CommandEnvelopeValidation ValidateCore<T>(
         CommandEnvelope<T> envelope,
         CommandFamily family,
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         long petId,
         byte operation)
     {
-        if (operationId == Guid.Empty ||
+        if (!PetDurableCommandContract.IsValidIdentity(identity) ||
             petId is <= 0 or >
-                PetDurableCommandContract.MaximumPetId ||
-            !PetDurableCommandContract.IsTrusted(
-                envelope.Connection.Transport))
+                PetDurableCommandContract.MaximumPetId)
         {
             return CommandEnvelopeValidation.InvalidCommand;
+        }
+        if (!PetDurableCommandContract.HasMatchingProvenance(
+                identity,
+                envelope.Connection))
+        {
+            return CommandEnvelopeValidation.InvalidCorrelation;
         }
 
         return CommandEnvelopeContract.Validate(
             envelope,
             family,
-            CommandIdentityStrength.ClientOperationId,
-            PetDurableCommandContract.OperationScope(operationId),
+            identity.Strength,
+            PetDurableCommandContract.OperationScope(identity),
             PetDurableCommandContract.CanonicalPet(petId, operation));
+    }
+
+    internal static void RequireSecureProvenance(
+        PetCommandOperationIdentity identity,
+        CommandConnectionCorrelation connection)
+    {
+        if (!identity.IsSecureClient ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Secure pet commands require a client operation identity " +
+                "on a secure transport.");
+        }
+    }
+
+    internal static void RequireRawLocalProvenance(
+        PetCommandOperationIdentity identity,
+        CommandConnectionCorrelation connection)
+    {
+        if (!identity.IsRawLocalServer ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Raw-local pet commands require a server operation " +
+                "identity scoped to the exact legacy connection.");
+        }
     }
 }
 
@@ -123,15 +233,60 @@ internal static class PetPresenceTransitionCommandEnvelope
         CommandSubject subject,
         CommandConnectionCorrelation connection,
         DateTimeOffset receivedAt,
+        PetPresenceTransitionCommand command)
+    {
+        PetLevelUpgradeCommandEnvelope.RequireSecureProvenance(
+            command.Identity,
+            connection);
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
+    public static CommandEnvelope<PetPresenceTransitionCommand>
+        CreateRawLocal(
+            CommandSubject subject,
+            CommandConnectionCorrelation connection,
+            DateTimeOffset receivedAt,
+            PetPresenceTransitionCommand command)
+    {
+        PetLevelUpgradeCommandEnvelope.RequireRawLocalProvenance(
+            command.Identity,
+            connection);
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
+    public static CommandEnvelope<PetPresenceTransitionCommand>
+        CreateServerSessionLifecycle(
+            CommandSubject subject,
+            CommandConnectionCorrelation connection,
+            DateTimeOffset receivedAt,
+            PetPresenceTransitionCommand command)
+    {
+        if (!command.Identity.IsServerSessionLifecycle ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                command.Identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Server pet-presence lifecycle commands require the " +
+                "owning session correlation.");
+        }
+
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
+    private static CommandEnvelope<PetPresenceTransitionCommand> CreateCore(
+        CommandSubject subject,
+        CommandConnectionCorrelation connection,
+        DateTimeOffset receivedAt,
         PetPresenceTransitionCommand command) =>
         CommandEnvelopeContract.Create(
             CommandFamily.PetPresenceTransition,
-            CommandIdentityStrength.ClientOperationId,
+            command.Identity.Strength,
             subject,
             connection,
             receivedAt,
             PetDurableCommandContract.OperationScope(
-                command.ClientOperationId),
+                command.Identity),
             PetDurableCommandContract.CanonicalPet(
                 command.PetId,
                 checked((byte)((byte)command.Operation + 1))),
@@ -148,7 +303,7 @@ internal static class PetPresenceTransitionCommandEnvelope
         return PetLevelUpgradeCommandEnvelope.ValidateCore(
             envelope,
             CommandFamily.PetPresenceTransition,
-            envelope.Command.ClientOperationId,
+            envelope.Command.Identity,
             envelope.Command.PetId,
             checked((byte)((byte)envelope.Command.Operation + 1)));
     }

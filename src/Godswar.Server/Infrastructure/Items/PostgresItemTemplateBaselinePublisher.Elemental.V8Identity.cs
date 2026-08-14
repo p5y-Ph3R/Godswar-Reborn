@@ -63,7 +63,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
         }
     }
 
-    private static IReadOnlyList<GearEnhancementMaterialDefinition>
+    internal static IReadOnlyList<GearEnhancementMaterialDefinition>
         BuildOfficialV8ElementalMaterials()
     {
         var materials = new List<GearEnhancementMaterialDefinition>(21);

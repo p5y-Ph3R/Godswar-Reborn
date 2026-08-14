@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Packets;
@@ -8,10 +9,70 @@ internal static partial class PacketBuilder
 {
     private const ushort OwnedPetListOpcode = 0x27FD;
     private const ushort PetOperationResultOpcode = 0x2804;
+    private const ushort PetSkillStateOpcode = 0x2807;
+    private const ushort PetShedExpansionResultOpcode = 0x2809;
     private const int OwnedPetListHeaderLength = 8;
     private const int OwnedPetRecordLength = 0xA8;
     private const int OwnedPetNameLength = 32;
     private const int OwnedPetMaximumSkillCount = 12;
+
+    public static byte[] PackedPetDetail(
+        IPetContentCatalog petContent,
+        PetBootstrapSnapshot pet)
+    {
+        ArgumentNullException.ThrowIfNull(petContent);
+        ArgumentNullException.ThrowIfNull(pet);
+        var packet = new byte[sizeof(ushort) * 2 + OwnedPetRecordLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet,
+            checked((ushort)packet.Length));
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(sizeof(ushort)),
+            Opcodes.PackedPetDetailResponse);
+        WriteOwnedPetRecord(
+            petContent,
+            packet.AsSpan(sizeof(ushort) * 2, OwnedPetRecordLength),
+            pet);
+        return packet;
+    }
+
+    /// <summary>
+    /// Builds the stock client's live pet skill-cell refresh (opcode 10247).
+    /// This updates one existing pet bean without rebuilding carry/summon
+    /// presentation state.
+    /// </summary>
+    public static byte[] PetSkillState(PetBootstrapSnapshot pet)
+    {
+        ArgumentNullException.ThrowIfNull(pet);
+        if (pet.PetId is <= 0 or > uint.MaxValue)
+        {
+            throw new InvalidDataException(
+                $"Pet ID {pet.PetId} cannot be represented by the native client.");
+        }
+
+        var activeSkills = pet.Skills
+            .Where(static skill => skill.IsActive)
+            .OrderBy(static skill => skill.SlotIndex)
+            .ToArray();
+        ValidatePetSkillCells(pet, activeSkills);
+
+        var packet = new byte[36];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet, 36);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2),
+            PetSkillStateOpcode);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(4),
+            checked((uint)pet.PetId));
+        packet[8] = checked((byte)pet.AvailableSkillSlots);
+        packet[9] = checked((byte)pet.OpenedSkillSlots);
+        packet[10] = checked((byte)activeSkills.Length);
+        WritePetSkillIds(
+            packet.AsSpan(12, OwnedPetMaximumSkillCount * sizeof(ushort)),
+            pet.PetId,
+            activeSkills);
+        return packet;
+    }
 
     public static byte[] PetOperationResult(
         uint petId,
@@ -37,6 +98,26 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] PetShedExpansionResult(
+        PetShedExpansionResultCode result)
+    {
+        if (!Enum.IsDefined(result))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(result),
+                result,
+                "Unknown native pet-shed expansion result code.");
+        }
+
+        var packet = new byte[5];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet, 5);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2),
+            PetShedExpansionResultOpcode);
+        packet[4] = (byte)result;
+        return packet;
+    }
+
     /// <summary>
     /// Builds the native client's complete owned-pet bootstrap (opcode 10237).
     /// The wire layout is backed by original-server captures and the native
@@ -44,7 +125,8 @@ internal static partial class PacketBuilder
     /// </summary>
     public static byte[] OwnedPetList(
         IPetContentCatalog petContent,
-        IReadOnlyList<PetBootstrapSnapshot> pets)
+        IReadOnlyList<PetBootstrapSnapshot> pets,
+        int openedCellCount)
     {
         ArgumentNullException.ThrowIfNull(petContent);
         ArgumentNullException.ThrowIfNull(pets);
@@ -52,6 +134,13 @@ internal static partial class PacketBuilder
         {
             throw new InvalidDataException(
                 $"The native client supports at most {petContent.Settings.MaximumOwnedPetCount} owned pets.");
+        }
+        if (!PetShedCapacityPolicy.IsValid(openedCellCount) ||
+            openedCellCount > petContent.Settings.MaximumOwnedPetCount ||
+            pets.Count > openedCellCount)
+        {
+            throw new InvalidDataException(
+                "The owned-pet projection exceeds its persisted opened shed cells.");
         }
 
         if (pets.Count(static pet => pet.IsCarried) > 1)
@@ -74,7 +163,7 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet.AsSpan(2, sizeof(ushort)),
             OwnedPetListOpcode);
-        packet[4] = ResolvePetCellCapacity(pets.Count);
+        packet[4] = checked((byte)openedCellCount);
         packet[5] = checked((byte)pets.Count);
 
         var petIds = new HashSet<long>();
@@ -103,6 +192,7 @@ internal static partial class PacketBuilder
         Span<byte> record,
         PetBootstrapSnapshot pet)
     {
+        PetSavvyRuntimeSemantics.ValidateProjectionProvenance(pet);
         if (pet.PetId is <= 0 or > uint.MaxValue)
         {
             throw new InvalidDataException(
@@ -150,20 +240,31 @@ internal static partial class PacketBuilder
                 $"Pet {pet.PetId} exceeds the published " +
                 $"{petContent.Settings.MaximumSkillCount}-skill limit.");
         }
+        ValidatePetSkillCells(pet, activeSkills);
+        if (pet.AvailableSkillSlots >
+                petContent.Settings.MaximumSkillCount ||
+            pet.TalentMask is < 0 or > 31 ||
+            pet.HasOwnerMergeTalent != ((pet.TalentMask & 16) != 0))
+        {
+            throw new InvalidDataException(
+                $"Pet {pet.PetId} has invalid skill-cell or talent state.");
+        }
         WritePetSkills(record, pet.PetId, activeSkills);
 
-        // Native iteration requires learned <= open <= available cells. Until
-        // separate cell progression is persisted, expose exactly the learned
-        // contiguous cells so the client cannot walk beyond encoded skills.
-        var skillCellCount = checked((byte)activeSkills.Length);
-        record[0x2B] = skillCellCount;
-        record[0x2C] = skillCellCount;
+        // Native detail cells distinguish learned, opened/unsealed, and
+        // available boundaries. Pet Enhance Spring raises the available
+        // boundary; Golden Apple Juice raises the opened boundary.
+        record[0x2B] = checked((byte)pet.OpenedSkillSlots);
+        record[0x2C] = checked((byte)pet.AvailableSkillSlots);
         record[0x2D] = ToPercentageByte(pet.Satiety);
         record[0x2E] = ToPercentageByte(pet.Amity);
-        // This captured per-record flag is not the carried-state selector.
-        // The native client selects a carried pet through operation result 1.
+        // Native record parsing copies 0x2F into the pet bean's independent
+        // flag at +0x47. The owned-list handler reads the following byte,
+        // copied to +0x48, to select the carried pet and arm the left-panel
+        // summon/recall paw. Values 3 and 4 are reserved for dispatch/work.
         record[0x2F] = 1;
-        record[0x31] = skillCellCount;
+        record[0x30] = pet.IsCarried ? (byte)1 : (byte)0;
+        record[0x31] = checked((byte)activeSkills.Length);
 
         var currentLifetime = ToUInt16(pet.RemainingLifetime);
         var maximumLifetime = ResolveMaximumPetLifetime(
@@ -189,19 +290,29 @@ internal static partial class PacketBuilder
             record.Slice(0x64, 4),
             ResolveCapturedPetNextLevelExperience(petContent, pet.Level));
 
-        // The six-bit genius/talent mask at 0x68 is deliberately zero until
-        // individual talent-bit assignments are captured.
+        // Stock labels and Message_Pet.dat establish bits 0..4: Random Event,
+        // Quest Dispatch, Work, Healing, and Merge. The database-published
+        // aptitude definition owns the mask. Bit 5 is reserved and stays clear.
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            record.Slice(0x68, sizeof(uint)),
+            checked((uint)pet.TalentMask));
         WritePetSavvy(record.Slice(0x6C, 24), pet, added: false);
         WritePetSavvy(record.Slice(0x84, 24), pet, added: true);
         BinaryPrimitives.WriteUInt16LittleEndian(
             record.Slice(0x9C, sizeof(ushort)),
-            ToFixedPointUInt16(pet.Rank));
+            PetRankWirePolicy.Encode(pet.Rank));
 
         var totalRebirthAllowance = checked(
             (int)pet.CompletedRebirths + pet.RebirthsRemaining);
         record[0x9F] = ToByte(totalRebirthAllowance);
         record[0xA0] = ToByte(pet.CompletedRebirths);
-        record[0xA1] = pet.HasSoulContract ? (byte)1 : (byte)0;
+        var soulContractStage = pet.ProjectedSoulContractStage;
+        if (soulContractStage > PetSoulContractPolicy.MaximumStage)
+        {
+            throw new InvalidDataException(
+                $"Pet {pet.PetId} has invalid Soul Contract stage.");
+        }
+        record[0xA1] = soulContractStage;
         BinaryPrimitives.WriteUInt16LittleEndian(
             record.Slice(0xA2, sizeof(ushort)),
             ToUInt16(pet.CompletedPetMerges));
@@ -213,7 +324,20 @@ internal static partial class PacketBuilder
         long petId,
         IReadOnlyList<PetSkillSnapshot> skills)
     {
-        if (skills.Count > OwnedPetMaximumSkillCount)
+        WritePetSkillIds(
+            record.Slice(0x32, OwnedPetMaximumSkillCount * sizeof(ushort)),
+            petId,
+            skills);
+    }
+
+    private static void WritePetSkillIds(
+        Span<byte> destination,
+        long petId,
+        IReadOnlyList<PetSkillSnapshot> skills)
+    {
+        if (destination.Length !=
+                OwnedPetMaximumSkillCount * sizeof(ushort) ||
+            skills.Count > OwnedPetMaximumSkillCount)
         {
             throw new InvalidDataException(
                 $"Pet {petId} exceeds the native {OwnedPetMaximumSkillCount}-skill limit.");
@@ -230,8 +354,24 @@ internal static partial class PacketBuilder
             }
 
             BinaryPrimitives.WriteUInt16LittleEndian(
-                record.Slice(0x32 + (skill.SlotIndex * sizeof(ushort)), 2),
+                destination.Slice(skill.SlotIndex * sizeof(ushort), 2),
                 checked((ushort)skill.SkillId));
+        }
+    }
+
+    private static void ValidatePetSkillCells(
+        PetBootstrapSnapshot pet,
+        IReadOnlyList<PetSkillSnapshot> activeSkills)
+    {
+        if (pet.OpenedSkillSlots is < 1 or > OwnedPetMaximumSkillCount ||
+            pet.AvailableSkillSlots is < 1 or > OwnedPetMaximumSkillCount ||
+            pet.OpenedSkillSlots > pet.AvailableSkillSlots ||
+            activeSkills.Count > pet.OpenedSkillSlots ||
+            activeSkills.Any(skill =>
+                skill.SlotIndex >= pet.OpenedSkillSlots))
+        {
+            throw new InvalidDataException(
+                $"Pet {pet.PetId} has invalid skill-cell state.");
         }
     }
 
@@ -246,7 +386,7 @@ internal static partial class PacketBuilder
         for (short statCode = 1; statCode <= 6; statCode++)
         {
             var value = values.TryGetValue(statCode, out var stat)
-                ? added ? stat.AddedSavvy : stat.InitialSavvy
+                ? ResolvePetSavvyWireValue(pet.Level, stat, added)
                 : 0m;
             BinaryPrimitives.WriteUInt32LittleEndian(
                 destination.Slice((statCode - 1) * sizeof(uint), sizeof(uint)),
@@ -254,10 +394,22 @@ internal static partial class PacketBuilder
         }
     }
 
-    private static byte ResolvePetCellCapacity(int count) =>
-        count <= 2 ? (byte)2 :
-        count <= 4 ? (byte)4 :
-        (byte)8;
+    private static decimal ResolvePetSavvyWireValue(
+        int petLevel,
+        PetStatValueSnapshot stat,
+        bool added)
+    {
+        return added
+            ? PetSavvyRuntimeSemantics.ResolveNativeAdded(
+                petLevel,
+                stat.AddedSavvy,
+                stat.BaseGrowthRate,
+                stat.GrowthAcceleration,
+                stat.RarityAddedSavvy)
+            : PetSavvyRuntimeSemantics.ResolveNativeBasic(
+                stat.InitialSavvy,
+                stat.RarityAddedSavvy);
+    }
 
     private static ushort ResolveMaximumPetLifetime(
         PetSpeciesContentDefinition species,
@@ -289,12 +441,6 @@ internal static partial class PacketBuilder
     private static uint ToUInt32(long value) =>
         checked((uint)Math.Clamp(value, uint.MinValue, uint.MaxValue));
 
-    private static ushort ToFixedPointUInt16(decimal value) =>
-        checked((ushort)Math.Clamp(
-            decimal.Round(value * 100m, 0, MidpointRounding.AwayFromZero),
-            ushort.MinValue,
-            ushort.MaxValue));
-
     private static uint ToFixedPointUInt32(decimal value) =>
         checked((uint)Math.Clamp(
             decimal.Round(value * 100m, 0, MidpointRounding.AwayFromZero),
@@ -310,4 +456,10 @@ internal enum PetOperationResultCode : byte
     RecallFailed = 6,
     CallOutSucceeded = 7,
     CallOutFailed = 8
+}
+
+internal enum PetShedExpansionResultCode : byte
+{
+    AlreadyMaximum = 2,
+    Succeeded = 11
 }

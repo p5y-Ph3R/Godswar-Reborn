@@ -58,9 +58,12 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue("characterId", characterId);
         AddItemContentRevisionParameter(command);
         AddGameplayContentRevisionParameter(command);
+        AddPetLearnedSkillRevisionParameter(command);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadCharacterStats(reader) : null;
+        return await reader.ReadAsync(cancellationToken)
+            ? CharacterStatsReader.Read(reader)
+            : null;
     }
 
     public async Task<GameCharacter> CreateCharacterAsync(int accountId, GameCharacter character, CancellationToken cancellationToken = default)

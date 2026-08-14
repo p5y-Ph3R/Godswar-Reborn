@@ -20,6 +20,7 @@ internal static class JsonCompatibilityGameplayPersistenceComposition
             store,
             store,
             store,
+            store,
             store);
     }
 }

@@ -168,9 +168,15 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 remaining_lifetime,
                 activity_state,
                 revision,
+                initial_savvy_baseline_total,
+                initial_savvy_policy_version,
                 rarity_added_savvy_baseline_total,
                 rarity_added_savvy_policy_version,
-                initial_savvy_source_version
+                initial_savvy_source_version,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision
             )
             VALUES (
                 @characterId,
@@ -187,9 +193,23 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
                 600,
                 @activityState,
                 @revision,
-                621,
-                'project-v2',
-                'growth-x1-v1'
+                303,
+                @initialSavvyPolicy,
+                303,
+                @initialSavvyPolicy,
+                @initialSavvySource,
+                (SELECT step.rank
+                 FROM public.pet_content_publication publication
+                 JOIN public.pet_content_hatch_rank_steps step
+                   ON step.revision = publication.revision
+                  AND step.aptitude = 1
+                  AND step.outcome_order = 0
+                 WHERE publication.family = 'pets'),
+                0,
+                0,
+                (SELECT revision
+                 FROM public.pet_content_publication
+                 WHERE family = 'pets')
             )
             RETURNING id;
             """,
@@ -203,6 +223,12 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             "activityState",
             activityState);
         command.Parameters.AddWithValue("revision", revision);
+        command.Parameters.AddWithValue(
+            "initialSavvyPolicy",
+            PetInitialSavvyPolicy.Version);
+        command.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
         var petId =
             (long)(await command.ExecuteScalarAsync()
                    ?? throw new InvalidOperationException(
@@ -210,7 +236,8 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
         await InsertPetStatsAsync(
             connection,
             transaction,
-            petId);
+            petId,
+            level);
         return petId;
     }
 

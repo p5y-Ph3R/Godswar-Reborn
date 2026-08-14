@@ -51,7 +51,8 @@ internal static partial class PostgresPetContentBaselinePublisher
                 maximum_total_growth, maximum_growth_stat_deviation,
                 minimum_initial_savvy, maximum_initial_savvy,
                 maximum_initial_savvy_stat_deviation,
-                minimum_added_savvy, maximum_added_savvy)
+                minimum_added_savvy, maximum_added_savvy,
+                innate_talent_mask)
             SELECT @revision,
                    (content->>'Aptitude')::smallint,
                    content->>'NameKey',
@@ -64,7 +65,8 @@ internal static partial class PostgresPetContentBaselinePublisher
                    (content->>'MaximumInitialSavvy')::integer,
                    (content->>'MaximumInitialSavvyStatDeviation')::numeric,
                    (content->>'MinimumAddedSavvy')::integer,
-                   (content->>'MaximumAddedSavvy')::integer
+                   (content->>'MaximumAddedSavvy')::integer,
+                   (content->>'InnateTalentMask')::smallint
             FROM jsonb_array_elements(@payload) content
             ON CONFLICT (revision, aptitude) DO NOTHING;
             """,
@@ -80,6 +82,16 @@ internal static partial class PostgresPetContentBaselinePublisher
             baseline,
             cancellationToken);
         await InsertStepsAsync(
+            connection,
+            transaction,
+            baseline,
+            cancellationToken);
+        await InsertHatchRankStepsAsync(
+            connection,
+            transaction,
+            baseline,
+            cancellationToken);
+        await InsertMergeRankContentAsync(
             connection,
             transaction,
             baseline,

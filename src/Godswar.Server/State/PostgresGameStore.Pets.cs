@@ -151,7 +151,7 @@ internal sealed partial class PostgresGameStore
             reader.GetInt16(9),
             reader.GetInt16(10),
             reader.GetInt32(11),
-            reader.GetBoolean(12),
+            checked((byte)reader.GetInt16(12)),
             reader.GetBoolean(13),
             reader.GetInt32(14),
             reader.GetInt32(15),
@@ -167,7 +167,11 @@ internal sealed partial class PostgresGameStore
             reader.GetBoolean(25),
             reader.GetInt64(26),
             ToUtcOffset(reader.GetDateTime(27)),
-            ToUtcOffset(reader.GetDateTime(28)));
+            ToUtcOffset(reader.GetDateTime(28)),
+            reader.GetInt16(29),
+            reader.GetInt16(30),
+            reader.GetInt16(31),
+            reader.IsDBNull(32) ? null : reader.GetString(32));
 
     private static DateTimeOffset ToUtcOffset(DateTime value) =>
         new(value.ToUniversalTime());
@@ -207,7 +211,7 @@ internal sealed partial class PostgresGameStore
         short CompletedRebirths,
         short RebirthsRemaining,
         int CompletedPetMerges,
-        bool HasSoulContract,
+        byte SoulContractStage,
         bool HasOwnerMergeTalent,
         int CurrentEnergy,
         int MaximumEnergy,
@@ -223,7 +227,11 @@ internal sealed partial class PostgresGameStore
         bool ContributesToCharacter,
         long Revision,
         DateTimeOffset CreatedAt,
-        DateTimeOffset UpdatedAt)
+        DateTimeOffset UpdatedAt,
+        short OpenedSkillSlots,
+        short AvailableSkillSlots,
+        short TalentMask,
+        string? InitialSavvySourceVersion)
     {
         public PetBootstrapSnapshot ToSnapshot(
             IReadOnlyList<PetStatValueSnapshot> statValues,
@@ -243,7 +251,7 @@ internal sealed partial class PostgresGameStore
                 CompletedRebirths,
                 RebirthsRemaining,
                 CompletedPetMerges,
-                HasSoulContract,
+                SoulContractStage > 0,
                 HasOwnerMergeTalent,
                 CurrentEnergy,
                 MaximumEnergy,
@@ -262,7 +270,12 @@ internal sealed partial class PostgresGameStore
                 UpdatedAt,
                 statValues,
                 characterBonuses,
-                skills);
+                skills,
+                OpenedSkillSlots,
+                AvailableSkillSlots,
+                TalentMask,
+                InitialSavvySourceVersion,
+                SoulContractStage);
     }
 
     private const string PetBootstrapQuery =
@@ -280,7 +293,7 @@ internal sealed partial class PostgresGameStore
             cp.completed_rebirths,
             cp.rebirths_remaining,
             cp.completed_pet_merges,
-            cp.has_soul_contract,
+            cp.soul_contract_stage,
             cp.has_owner_merge_talent,
             cp.current_energy,
             cp.maximum_energy,
@@ -296,12 +309,17 @@ internal sealed partial class PostgresGameStore
             cp.contributes_to_character,
             cp.revision,
             cp.created_at,
-            cp.updated_at
+            cp.updated_at,
+            cp.opened_skill_slots,
+            cp.available_skill_slots,
+            cp.talent_mask,
+            cp.initial_savvy_source_version
         FROM character_pets cp
         INNER JOIN character_base cb
             ON cb.id = cp.user_id
            AND cb.account_id = @accountId
         WHERE cp.user_id = @characterId
+          AND cp.activity_state = 'owned'
         ORDER BY cp.id;
 
         SELECT
@@ -321,6 +339,7 @@ internal sealed partial class PostgresGameStore
             ON cb.id = cp.user_id
            AND cb.account_id = @accountId
         WHERE cp.user_id = @characterId
+          AND cp.activity_state = 'owned'
         ORDER BY stat_values.pet_id, stat_values.stat_code;
 
         SELECT
@@ -335,6 +354,7 @@ internal sealed partial class PostgresGameStore
             ON cb.id = cp.user_id
            AND cb.account_id = @accountId
         WHERE cp.user_id = @characterId
+          AND cp.activity_state = 'owned'
         ORDER BY bonuses.pet_id, bonuses.effect_code;
 
         SELECT
@@ -352,6 +372,7 @@ internal sealed partial class PostgresGameStore
             ON cb.id = cp.user_id
            AND cb.account_id = @accountId
         WHERE cp.user_id = @characterId
+          AND cp.activity_state = 'owned'
         ORDER BY skills.pet_id, skills.slot_index, skills.skill_id;
         """;
 }

@@ -38,7 +38,18 @@ internal sealed record PetBootstrapSnapshot(
     DateTimeOffset UpdatedAt,
     IReadOnlyList<PetStatValueSnapshot> StatValues,
     IReadOnlyList<PetCharacterBonusSnapshot> CharacterBonuses,
-    IReadOnlyList<PetSkillSnapshot> Skills);
+    IReadOnlyList<PetSkillSnapshot> Skills,
+    short OpenedSkillSlots = 1,
+    short AvailableSkillSlots = 1,
+    short TalentMask = 0,
+    string? InitialSavvySourceVersion = null,
+    byte SoulContractStage = 0)
+{
+    public byte ProjectedSoulContractStage =>
+        SoulContractStage == 0 && HasSoulContract
+            ? (byte)1
+            : SoulContractStage;
+}
 
 internal sealed record PetStatValueSnapshot(
     short StatCode,

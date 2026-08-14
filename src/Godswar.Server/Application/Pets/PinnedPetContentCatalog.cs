@@ -9,6 +9,8 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         _speciesById;
     private readonly FrozenDictionary<uint, PetSpeciesContentDefinition>
         _speciesByEgg;
+    private readonly FrozenDictionary<uint, PetSpeciesContentDefinition>
+        _speciesByMagicJade;
     private readonly FrozenDictionary<short, PetAptitudeContentDefinition>
         _aptitudesById;
     private readonly FrozenDictionary<
@@ -17,6 +19,17 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
     private readonly FrozenDictionary<short, int> _experienceByLevel;
     private readonly FrozenDictionary<short, PetRebirthStepContentDefinition>
         _rebirthByNumber;
+    private readonly FrozenDictionary<
+        (short Aptitude, short SpiritCount),
+        PetMergeSavvyStepContentDefinition> _mergeSavvyByKey;
+    private readonly PetMergeSavvyLookupContentDefinition[] _mergeSavvyLookup;
+    private readonly PetMergeRankLookupContentDefinition[] _mergeRankLookup;
+    private readonly FrozenDictionary<
+        short,
+        PetMergeRankSpeciesFactorContentDefinition> _mergeRankFactorBySpecies;
+    private readonly FrozenDictionary<
+        short,
+        PetMergeRankSpiritStepContentDefinition> _mergeRankSpiritByCount;
 
     private PinnedPetContentCatalog(
         PetContentRevision revision,
@@ -25,7 +38,13 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         PetAptitudeContentDefinition[] aptitudes,
         PetNativeProfileContentDefinition[] nativeProfiles,
         PetExperienceStepContentDefinition[] experienceSteps,
-        PetRebirthStepContentDefinition[] rebirthSteps)
+        PetRebirthStepContentDefinition[] rebirthSteps,
+        PetMergeSavvyStepContentDefinition[] mergeSavvySteps,
+        PetMergeSavvyLookupContentDefinition[] mergeSavvyLookup,
+        PetHatchRankStepContentDefinition[] hatchRankSteps,
+        PetMergeRankLookupContentDefinition[] mergeRankLookup,
+        PetMergeRankSpeciesFactorContentDefinition[] mergeRankSpeciesFactors,
+        PetMergeRankSpiritStepContentDefinition[] mergeRankSpiritSteps)
     {
         Revision = revision;
         Settings = settings;
@@ -34,12 +53,20 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         NativeProfiles = Array.AsReadOnly(nativeProfiles);
         ExperienceSteps = Array.AsReadOnly(experienceSteps);
         RebirthSteps = Array.AsReadOnly(rebirthSteps);
+        MergeSavvySteps = Array.AsReadOnly(mergeSavvySteps);
+        MergeSavvyLookup = Array.AsReadOnly(mergeSavvyLookup);
+        HatchRankSteps = Array.AsReadOnly(hatchRankSteps);
+        MergeRankLookup = Array.AsReadOnly(mergeRankLookup);
+        MergeRankSpeciesFactors = Array.AsReadOnly(mergeRankSpeciesFactors);
+        MergeRankSpiritSteps = Array.AsReadOnly(mergeRankSpiritSteps);
         _speciesById = species.ToFrozenDictionary(
             static value => value.SpeciesId);
         _speciesByEgg = species
             .Where(static value => value.EggItemId.HasValue)
             .ToFrozenDictionary(
                 static value => value.EggItemId!.Value);
+        _speciesByMagicJade = species.ToFrozenDictionary(
+            static value => value.MagicJadeItemId);
         _aptitudesById = aptitudes.ToFrozenDictionary(
             static value => value.Aptitude);
         _profilesByKey = nativeProfiles.ToFrozenDictionary(
@@ -49,6 +76,14 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
             static value => value.RequiredExperience);
         _rebirthByNumber = rebirthSteps.ToFrozenDictionary(
             static value => value.RebirthNumber);
+        _mergeSavvyByKey = mergeSavvySteps.ToFrozenDictionary(
+            static value => (value.Aptitude, value.SpiritCount));
+        _mergeSavvyLookup = mergeSavvyLookup;
+        _mergeRankLookup = mergeRankLookup;
+        _mergeRankFactorBySpecies = mergeRankSpeciesFactors
+            .ToFrozenDictionary(static value => value.SpeciesId);
+        _mergeRankSpiritByCount = mergeRankSpiritSteps
+            .ToFrozenDictionary(static value => value.SpiritCount);
     }
 
     public PetContentRevision Revision { get; }
@@ -68,6 +103,24 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
     public IReadOnlyList<PetRebirthStepContentDefinition> RebirthSteps
         { get; }
 
+    public IReadOnlyList<PetMergeSavvyStepContentDefinition> MergeSavvySteps
+        { get; }
+
+    public IReadOnlyList<PetMergeSavvyLookupContentDefinition> MergeSavvyLookup
+        { get; }
+
+    public IReadOnlyList<PetHatchRankStepContentDefinition> HatchRankSteps
+        { get; }
+
+    public IReadOnlyList<PetMergeRankLookupContentDefinition> MergeRankLookup
+        { get; }
+
+    public IReadOnlyList<PetMergeRankSpeciesFactorContentDefinition>
+        MergeRankSpeciesFactors { get; }
+
+    public IReadOnlyList<PetMergeRankSpiritStepContentDefinition>
+        MergeRankSpiritSteps { get; }
+
     public bool TryGetSpecies(
         int speciesId,
         out PetSpeciesContentDefinition definition)
@@ -86,6 +139,11 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         uint itemId,
         out PetSpeciesContentDefinition definition) =>
         _speciesByEgg.TryGetValue(itemId, out definition!);
+
+    public bool TryGetSpeciesByMagicJadeItemId(
+        uint itemId,
+        out PetSpeciesContentDefinition definition) =>
+        _speciesByMagicJade.TryGetValue(itemId, out definition!);
 
     public bool TryGetAptitude(
         short aptitude,
@@ -125,6 +183,93 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         return false;
     }
 
+    public bool TryGetMergeSavvyStep(
+        int aptitude,
+        int spiritCount,
+        out PetMergeSavvyStepContentDefinition definition)
+    {
+        if (aptitude is >= short.MinValue and <= short.MaxValue &&
+            spiritCount is >= short.MinValue and <= short.MaxValue &&
+            _mergeSavvyByKey.TryGetValue(
+                ((short)aptitude, (short)spiritCount),
+                out definition!))
+        {
+            return true;
+        }
+
+        definition = null!;
+        return false;
+    }
+
+    public bool TryResolveMergeSavvyLookup(
+        int savvyDifferenceHundredths,
+        out PetMergeSavvyLookupContentDefinition definition)
+    {
+        for (var index = _mergeSavvyLookup.Length - 1; index >= 0; index--)
+        {
+            var candidate = _mergeSavvyLookup[index];
+            if (savvyDifferenceHundredths >=
+                candidate.MinimumSavvyDifference)
+            {
+                definition = candidate;
+                return true;
+            }
+        }
+
+        definition = null!;
+        return false;
+    }
+
+    public bool TryResolveMergeRankLookup(
+        int rankDifferenceHundredths,
+        out PetMergeRankLookupContentDefinition definition)
+    {
+        for (var index = _mergeRankLookup.Length - 1; index >= 0; index--)
+        {
+            var candidate = _mergeRankLookup[index];
+            if (rankDifferenceHundredths >= candidate.MinimumRankDifference)
+            {
+                definition = candidate;
+                return true;
+            }
+        }
+
+        definition = null!;
+        return false;
+    }
+
+    public bool TryGetMergeRankSpeciesFactor(
+        int speciesId,
+        out PetMergeRankSpeciesFactorContentDefinition definition)
+    {
+        if (speciesId is >= short.MinValue and <= short.MaxValue &&
+            _mergeRankFactorBySpecies.TryGetValue(
+                checked((short)speciesId),
+                out definition!))
+        {
+            return true;
+        }
+
+        definition = null!;
+        return false;
+    }
+
+    public bool TryGetMergeRankSpiritStep(
+        int spiritCount,
+        out PetMergeRankSpiritStepContentDefinition definition)
+    {
+        if (spiritCount is >= short.MinValue and <= short.MaxValue &&
+            _mergeRankSpiritByCount.TryGetValue(
+                checked((short)spiritCount),
+                out definition!))
+        {
+            return true;
+        }
+
+        definition = null!;
+        return false;
+    }
+
     public int RequiredExperienceForNextLevel(int currentLevel)
     {
         if (currentLevel < Settings.MinimumLevel ||
@@ -141,17 +286,17 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
             : _experienceByLevel[checked((short)currentLevel)];
     }
 
+    public PetHatchRankRoll RollHatchRank(short aptitude, int roll) =>
+        PetHatchRankContentPolicy.Roll(HatchRankSteps, aptitude, roll);
+
     public void ValidateItemReferences(IItemTemplateCatalog items)
     {
         ArgumentNullException.ThrowIfNull(items);
-        // Egg consumption and the merge/rebirth planners are active runtime
-        // paths. Magic Jade species-change is captured content but has no
-        // implemented command yet, and those 45 client IDs are not part of
-        // the current reviewed item publication. Validate that future command
-        // when its item family is published rather than weakening item pinning.
         var references = Species
             .SelectMany(static value =>
                 value.EggItemId is { } egg ? new[] { egg } : [])
+            .Concat(Species.Select(
+                static value => value.MagicJadeItemId))
             .Concat(
             [
                 Settings.MergeSpiritItemId,
@@ -183,6 +328,14 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         IReadOnlyList<PetNativeProfileContentDefinition> nativeProfiles,
         IReadOnlyList<PetExperienceStepContentDefinition> experienceSteps,
         IReadOnlyList<PetRebirthStepContentDefinition> rebirthSteps,
+        IReadOnlyList<PetMergeSavvyStepContentDefinition> mergeSavvySteps,
+        IReadOnlyList<PetMergeSavvyLookupContentDefinition> mergeSavvyLookup,
+        IReadOnlyList<PetHatchRankStepContentDefinition> hatchRankSteps,
+        IReadOnlyList<PetMergeRankLookupContentDefinition> mergeRankLookup,
+        IReadOnlyList<PetMergeRankSpeciesFactorContentDefinition>
+            mergeRankSpeciesFactors,
+        IReadOnlyList<PetMergeRankSpiritStepContentDefinition>
+            mergeRankSpiritSteps,
         string? expectedRevision = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
@@ -192,6 +345,12 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         ArgumentNullException.ThrowIfNull(nativeProfiles);
         ArgumentNullException.ThrowIfNull(experienceSteps);
         ArgumentNullException.ThrowIfNull(rebirthSteps);
+        ArgumentNullException.ThrowIfNull(mergeSavvySteps);
+        ArgumentNullException.ThrowIfNull(mergeSavvyLookup);
+        ArgumentNullException.ThrowIfNull(hatchRankSteps);
+        ArgumentNullException.ThrowIfNull(mergeRankLookup);
+        ArgumentNullException.ThrowIfNull(mergeRankSpeciesFactors);
+        ArgumentNullException.ThrowIfNull(mergeRankSpiritSteps);
 
         var settingsSnapshot = settings with
         {
@@ -219,6 +378,26 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
         var rebirthSnapshot = rebirthSteps
             .OrderBy(static value => value.RebirthNumber)
             .ToArray();
+        var mergeSavvySnapshot = mergeSavvySteps
+            .OrderBy(static value => value.Aptitude)
+            .ThenBy(static value => value.SpiritCount)
+            .ToArray();
+        var mergeSavvyLookupSnapshot = mergeSavvyLookup
+            .OrderBy(static value => value.MinimumSavvyDifference)
+            .ToArray();
+        var hatchRankSnapshot = hatchRankSteps
+            .OrderBy(static value => value.Aptitude)
+            .ThenBy(static value => value.OutcomeOrder)
+            .ToArray();
+        var mergeRankLookupSnapshot = mergeRankLookup
+            .OrderBy(static value => value.MinimumRankDifference)
+            .ToArray();
+        var mergeRankSpeciesFactorSnapshot = mergeRankSpeciesFactors
+            .OrderBy(static value => value.SpeciesId)
+            .ToArray();
+        var mergeRankSpiritStepSnapshot = mergeRankSpiritSteps
+            .OrderBy(static value => value.SpiritCount)
+            .ToArray();
 
         Validate(
             settingsSnapshot,
@@ -226,14 +405,26 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
             aptitudeSnapshot,
             profileSnapshot,
             experienceSnapshot,
-            rebirthSnapshot);
+            rebirthSnapshot,
+            mergeSavvySnapshot,
+            mergeSavvyLookupSnapshot,
+            hatchRankSnapshot,
+            mergeRankLookupSnapshot,
+            mergeRankSpeciesFactorSnapshot,
+            mergeRankSpiritStepSnapshot);
         var revision = PetContentRevisionHasher.Compute(
             settingsSnapshot,
             speciesSnapshot,
             aptitudeSnapshot,
             profileSnapshot,
             experienceSnapshot,
-            rebirthSnapshot);
+            rebirthSnapshot,
+            mergeSavvySnapshot,
+            mergeSavvyLookupSnapshot,
+            hatchRankSnapshot,
+            mergeRankLookupSnapshot,
+            mergeRankSpeciesFactorSnapshot,
+            mergeRankSpiritStepSnapshot);
         if (expectedRevision is not null &&
             !revision.Equals(expectedRevision, StringComparison.Ordinal))
         {
@@ -249,12 +440,24 @@ internal sealed partial class PinnedPetContentCatalog : IPetContentCatalog
                 profileSnapshot.Length,
                 experienceSnapshot.Length,
                 rebirthSnapshot.Length,
+                mergeSavvySnapshot.Length,
+                mergeSavvyLookupSnapshot.Length,
+                hatchRankSnapshot.Length,
+                mergeRankLookupSnapshot.Length,
+                mergeRankSpeciesFactorSnapshot.Length,
+                mergeRankSpiritStepSnapshot.Length,
                 source),
             settingsSnapshot,
             speciesSnapshot,
             aptitudeSnapshot,
             profileSnapshot,
             experienceSnapshot,
-            rebirthSnapshot);
+            rebirthSnapshot,
+            mergeSavvySnapshot,
+            mergeSavvyLookupSnapshot,
+            hatchRankSnapshot,
+            mergeRankLookupSnapshot,
+            mergeRankSpeciesFactorSnapshot,
+            mergeRankSpiritStepSnapshot);
     }
 }

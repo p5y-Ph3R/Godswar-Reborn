@@ -30,7 +30,11 @@ internal static partial class PostgresPetContentBaselinePublisher
                 connection,
                 transaction,
                 cancellationToken);
-        if (existing is not null)
+        var baseline = PetContentBaseline.Create();
+        if (existing is not null && string.Equals(
+                existing.Revision,
+                baseline.Revision.Sha256,
+                StringComparison.Ordinal))
         {
             var catalog = await PostgresPetContentReader.ReadRevisionAsync(
                 connection,
@@ -44,32 +48,61 @@ internal static partial class PostgresPetContentBaselinePublisher
                 existing.EntryCount,
                 Created: false);
         }
+        if (existing is not null &&
+            existing.Source is not "reviewed-pet-baseline-v1" and
+                not "reviewed-pet-baseline-v2" and
+                not "reviewed-pet-baseline-v3" and
+                not "reviewed-pet-baseline-v4" and
+                not "reviewed-pet-baseline-v5" and
+                not "reviewed-pet-baseline-v6" and
+                not "reviewed-pet-baseline-v7" and
+                not "reviewed-pet-baseline-v8" and
+                not "reviewed-pet-baseline-v9")
+        {
+            throw new InvalidDataException(
+                "The official pet-content revision is not a reviewed V1, " +
+                "V2 through V9 predecessor of the V10 release.");
+        }
 
-        var baseline = PetContentBaseline.Create();
         baseline.ValidateItemReferences(itemCatalog);
-        await InsertRevisionAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
-        await InsertSettingsAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
-        await InsertDefinitionsAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
-
         var insertedManifest = await PostgresPetContentReader
             .ReadRevisionManifestAsync(
                 connection,
                 transaction,
                 baseline.Revision.Sha256,
-                cancellationToken) ?? throw new InvalidOperationException(
-                    "The inserted pet-content revision disappeared.");
+                cancellationToken);
+        var reusedSealedRevision = insertedManifest is not null;
+        if (insertedManifest is null)
+        {
+            await InsertRevisionAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            await InsertSettingsAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            await InsertDefinitionsAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            insertedManifest = await PostgresPetContentReader
+                .ReadRevisionManifestAsync(
+                    connection,
+                    transaction,
+                    baseline.Revision.Sha256,
+                    cancellationToken) ?? throw new InvalidOperationException(
+                        "The inserted pet-content revision disappeared.");
+        }
+        else if (!insertedManifest.Sealed)
+        {
+            throw new InvalidDataException(
+                "An unsealed pet-content V10 revision already exists.");
+        }
+
         if (insertedManifest.SpeciesCount != baseline.Revision.SpeciesCount ||
             insertedManifest.AptitudeCount != baseline.Revision.AptitudeCount ||
             insertedManifest.NativeProfileCount !=
@@ -78,6 +111,18 @@ internal static partial class PostgresPetContentBaselinePublisher
                 baseline.Revision.ExperienceStepCount ||
             insertedManifest.RebirthStepCount !=
                 baseline.Revision.RebirthStepCount ||
+            insertedManifest.MergeSavvyStepCount !=
+                baseline.Revision.MergeSavvyStepCount ||
+            insertedManifest.MergeSavvyLookupCount !=
+                baseline.Revision.MergeSavvyLookupCount ||
+            insertedManifest.HatchRankStepCount !=
+                baseline.Revision.HatchRankStepCount ||
+            insertedManifest.MergeRankLookupCount !=
+                baseline.Revision.MergeRankLookupCount ||
+            insertedManifest.MergeRankSpeciesFactorCount !=
+                baseline.Revision.MergeRankSpeciesFactorCount ||
+            insertedManifest.MergeRankSpiritStepCount !=
+                baseline.Revision.MergeRankSpiritStepCount ||
             !insertedManifest.Source.Equals(
                 baseline.Revision.Source,
                 StringComparison.Ordinal))
@@ -91,7 +136,7 @@ internal static partial class PostgresPetContentBaselinePublisher
             transaction,
             insertedManifest,
             cancellationToken,
-            requireSealed: false);
+            requireSealed: reusedSealedRevision);
         inserted.ValidateItemReferences(itemCatalog);
         await PublishAsync(
             connection,
@@ -141,10 +186,17 @@ internal static partial class PostgresPetContentBaselinePublisher
             INSERT INTO pet_content_revisions (
                 revision, species_count, aptitude_count,
                 native_profile_count, experience_step_count,
-                rebirth_step_count, source)
+                rebirth_step_count, merge_savvy_step_count,
+                merge_savvy_lookup_count,
+                hatch_rank_step_count, merge_rank_lookup_count,
+                merge_rank_species_factor_count,
+                merge_rank_spirit_step_count, source)
             VALUES (
                 @revision, @speciesCount, @aptitudeCount,
-                @profileCount, @experienceCount, @rebirthCount, @source)
+                @profileCount, @experienceCount, @rebirthCount,
+                @mergeSavvyCount, @mergeSavvyLookupCount,
+                @hatchRankCount, @mergeRankLookupCount,
+                @mergeRankFactorCount, @mergeRankSpiritCount, @source)
             ON CONFLICT (revision) DO NOTHING;
             """,
             connection,
@@ -165,6 +217,24 @@ internal static partial class PostgresPetContentBaselinePublisher
         command.Parameters.AddWithValue(
             "rebirthCount",
             baseline.Revision.RebirthStepCount);
+        command.Parameters.AddWithValue(
+            "mergeSavvyCount",
+            baseline.Revision.MergeSavvyStepCount);
+        command.Parameters.AddWithValue(
+            "mergeSavvyLookupCount",
+            baseline.Revision.MergeSavvyLookupCount);
+        command.Parameters.AddWithValue(
+            "hatchRankCount",
+            baseline.Revision.HatchRankStepCount);
+        command.Parameters.AddWithValue(
+            "mergeRankLookupCount",
+            baseline.Revision.MergeRankLookupCount);
+        command.Parameters.AddWithValue(
+            "mergeRankFactorCount",
+            baseline.Revision.MergeRankSpeciesFactorCount);
+        command.Parameters.AddWithValue(
+            "mergeRankSpiritCount",
+            baseline.Revision.MergeRankSpiritStepCount);
         command.Parameters.AddWithValue("source", baseline.Revision.Source);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -178,7 +248,10 @@ internal static partial class PostgresPetContentBaselinePublisher
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO pet_content_publication (family, revision)
-            VALUES ('pets', @revision);
+            VALUES ('pets', @revision)
+            ON CONFLICT (family) DO UPDATE
+            SET revision = EXCLUDED.revision,
+                published_at = now();
             """,
             connection,
             transaction);

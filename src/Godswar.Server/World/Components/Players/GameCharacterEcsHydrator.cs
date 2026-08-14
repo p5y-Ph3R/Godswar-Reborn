@@ -200,7 +200,12 @@ internal static class GameCharacterEcsHydrator
             stats.ArmorScore,
             stats.ArmorRank,
             stats.ArmorAuraEffect,
-            stats.LearnedSkillCount);
+            stats.LearnedSkillCount,
+            stats.PhysicalDamageReduction,
+            stats.MagicDamageReduction,
+            stats.CriticalDamageReduction,
+            stats.LifeAbsorption,
+            stats.DamageRebound);
 }
 
 internal readonly record struct PlayerTransformOverride(

@@ -99,5 +99,66 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(
                 "The right-click mount check cannot change pet presence.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetSkillUnlearnCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot unlearn pet skills.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetGrowthResetCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot reset pet growth.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetBasicSavvyResetCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot reset pet Basic Savvy.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetOwnerMergeToggleCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot toggle owner Merge.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetToPetMergeCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot merge pets.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetRebirthCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot rebirth pets.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetAppearanceChangeCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot change pet appearance.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetBindCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot bind pets.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetSoulContractCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot sign Soul Contracts.");
+
+        public Task<PetDurableExecutionResult> ExecuteAsync(
+            CommandEnvelope<PetManagerUtilityCommand> envelope,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The right-click mount check cannot use Pet Manager utilities.");
     }
+
 }

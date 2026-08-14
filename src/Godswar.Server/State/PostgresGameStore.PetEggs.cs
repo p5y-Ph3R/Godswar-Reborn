@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Data.Common;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Game;
 using Npgsql;
@@ -94,7 +95,18 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        if (pets.Count >= PetContent.Settings.MaximumOwnedPetCount)
+        var petShedCapacity = await ReadPetShedCapacityAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
+        if (!PetShedCapacityPolicy.IsValid(petShedCapacity))
+        {
+            throw new InvalidDataException(
+                "The locked character has an invalid pet-shed capacity.");
+        }
+        if (pets.Count >= petShedCapacity ||
+            pets.Count >= PetContent.Settings.MaximumOwnedPetCount)
         {
             var character = await GetCharacterByIdAsync(
                 connection,
@@ -139,21 +151,34 @@ internal sealed partial class PostgresGameStore
                 character);
         }
 
-        var contentGrowth = PetContent.RollGrowth(
+        var hatchRank = PetContent.RollHatchRank(
             eggAptitude.Aptitude,
+            _petHatchRankRollSource.NextRoll());
+
+        var contentGrowth = PetContent.RollGrowth(
+            checked((short)PetAptitude.Weak),
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
         var growth = new PetGrowthRoll(
             contentGrowth.TotalGrowth,
             ToPetSavvy(contentGrowth.Rates));
-        var initialSavvy = growth.BaseGrowthRates;
-        var contentAddedSavvy = PetContent.RollAddedSavvy(
+        var contentInitialSavvy = PetContent.RollInitialSavvy(
             eggAptitude.Aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
-        var addedSavvy = new PetAddedSavvyRoll(
-            contentAddedSavvy.TotalSavvy,
-            ToPetSavvy(contentAddedSavvy.Values));
+        var initialSavvy = ToPetSavvy(contentInitialSavvy.Values);
+        var initialSavvyRoll = new PetInitialSavvyRoll(
+            contentInitialSavvy.TotalSavvy,
+            initialSavvy);
         var sex = checked((short)RandomNumberGenerator.GetInt32(2));
         var remainingLifetime = nativeProfile.Lifetime;
+        var initialSkillSlots = PetSkillSlotPolicy.CreateHatchState(
+            aptitude).OpenSkillCellCount;
+        var preserveSummonedCompanion = pets.Any(
+            static pet => pet.IsSummoned);
+        await ClearPetPresenceForHatchAsync(
+            connection,
+            transaction,
+            characterId,
+            cancellationToken);
 
         var petId = await InsertHatchedPetAsync(
             connection,
@@ -161,17 +186,22 @@ internal sealed partial class PostgresGameStore
             characterId,
             species,
             aptitude,
-            addedSavvy.TotalSavvy,
+            hatchRank,
+            PetContent.Revision.Sha256,
+            contentInitialSavvy.TotalSavvy,
             sex,
             remainingLifetime,
             egg.Bound != 0,
-            cancellationToken);
+            eggAptitude.InnateTalentMask,
+            initialSkillSlots,
+            isCarried: true,
+            isSummoned: preserveSummonedCompanion,
+            cancellationToken: cancellationToken);
         await InsertHatchedPetStatsAsync(
             connection,
             transaction,
             petId,
             initialSavvy,
-            addedSavvy.AddedSavvy,
             growth.BaseGrowthRates,
             cancellationToken);
         await InsertHatchedPetStarterSkillAsync(
@@ -215,8 +245,9 @@ internal sealed partial class PostgresGameStore
             egg.Quality,
             species.SpeciesId,
             aptitude,
-            initialSavvy,
-            addedSavvy,
+            hatchRank,
+            PetContent.Revision.Sha256,
+            initialSavvyRoll,
             growth,
             sex,
             remainingLifetime,
@@ -230,8 +261,10 @@ internal sealed partial class PostgresGameStore
             petId,
             species.SpeciesId,
             aptitude,
+            hatchRank,
+            PetContent.Revision.Sha256,
             initialSavvy,
-            addedSavvy,
+            initialSavvyRoll,
             growth);
     }
 
@@ -241,10 +274,16 @@ internal sealed partial class PostgresGameStore
         int characterId,
         PetSpeciesContentDefinition species,
         PetAptitude aptitude,
-        int addedSavvyTotal,
+        PetHatchRankRoll hatchRank,
+        string hatchRankContentRevision,
+        int initialSavvyTotal,
         short sex,
         int remainingLifetime,
         bool isBound,
+        short talentMask,
+        short initialSkillSlots,
+        bool isCarried,
+        bool isSummoned,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -257,10 +296,16 @@ internal sealed partial class PostgresGameStore
                 level,
                 experience,
                 aptitude,
+                initial_savvy_baseline_total,
+                initial_savvy_policy_version,
                 rarity_added_savvy_baseline_total,
                 rarity_added_savvy_policy_version,
                 initial_savvy_source_version,
                 rank,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision,
                 current_energy,
                 maximum_energy,
                 amity,
@@ -268,7 +313,13 @@ internal sealed partial class PostgresGameStore
                 remaining_lifetime,
                 growth_revealed,
                 bound,
-                activity_state
+                activity_state,
+                talent_mask,
+                has_owner_merge_talent,
+                opened_skill_slots,
+                available_skill_slots,
+                is_carried,
+                is_summoned
             )
             VALUES (
                 @characterId,
@@ -278,10 +329,16 @@ internal sealed partial class PostgresGameStore
                 1,
                 0,
                 @aptitude,
-                @addedSavvyTotal,
-                @addedSavvyPolicy,
-                'growth-x1-v1',
-                0,
+                @initialSavvyTotal,
+                @initialSavvyPolicy,
+                @initialSavvyTotal,
+                @initialSavvyPolicy,
+                @initialSavvySource,
+                @rank,
+                @rank,
+                @rankRoll,
+                @rankOutcomeOrder,
+                @rankContentRevision,
                 100,
                 100,
                 100,
@@ -289,7 +346,13 @@ internal sealed partial class PostgresGameStore
                 @remainingLifetime,
                 false,
                 @bound,
-                'owned'
+                'owned',
+                @talentMask,
+                @hasMergeTalent,
+                @initialSkillSlots,
+                @initialSkillSlots,
+                @isCarried,
+                @isSummoned
             )
             RETURNING id;
             """,
@@ -305,17 +368,90 @@ internal sealed partial class PostgresGameStore
             "aptitude",
             checked((short)aptitude));
         command.Parameters.AddWithValue(
-            "addedSavvyTotal",
-            addedSavvyTotal);
+            "initialSavvyTotal",
+            initialSavvyTotal);
         command.Parameters.AddWithValue(
-            "addedSavvyPolicy",
-            PetContent.Settings.AddedSavvyPolicyVersion);
+            "initialSavvyPolicy",
+            PetContent.Settings.InitialSavvyPolicyVersion);
+        command.Parameters.AddWithValue(
+            "initialSavvySource",
+            PetSavvyRuntimeSemantics.SourceVersion);
+        command.Parameters.AddWithValue("rank", hatchRank.Rank);
+        command.Parameters.AddWithValue("rankRoll", hatchRank.Roll);
+        command.Parameters.AddWithValue(
+            "rankOutcomeOrder",
+            hatchRank.OutcomeOrder);
+        command.Parameters.AddWithValue(
+            "rankContentRevision",
+            hatchRankContentRevision);
         command.Parameters.AddWithValue(
             "remainingLifetime",
             remainingLifetime);
+        command.Parameters.AddWithValue("talentMask", talentMask);
+        command.Parameters.AddWithValue(
+            "hasMergeTalent",
+            (talentMask & PetTalentCatalog.Merge.MaskBit) != 0);
+        command.Parameters.AddWithValue(
+            "initialSkillSlots",
+            initialSkillSlots);
+        command.Parameters.AddWithValue("isCarried", isCarried);
+        command.Parameters.AddWithValue("isSummoned", isSummoned);
         command.Parameters.AddWithValue("bound", isBound);
         return Convert.ToInt64(
             await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task<short> ReadPetShedCapacityAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT pet_shed_capacity
+            FROM public.character_base
+            WHERE id = @characterId;
+            """;
+        AddPetEggParameter(command, "characterId", characterId);
+        return Convert.ToInt16(
+            await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task ClearPetPresenceForHatchAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE public.character_pets
+            SET is_carried = false,
+                is_summoned = false,
+                contributes_to_character = false,
+                revision = revision + 1,
+                updated_at = transaction_timestamp()
+            WHERE user_id = @characterId
+              AND (is_carried OR is_summoned OR contributes_to_character);
+            """;
+        AddPetEggParameter(command, "characterId", characterId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void AddPetEggParameter(
+        DbCommand command,
+        string name,
+        object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 
     private static async Task InsertHatchedPetStatsAsync(
@@ -323,7 +459,6 @@ internal sealed partial class PostgresGameStore
         NpgsqlTransaction transaction,
         long petId,
         PetSavvy initialSavvy,
-        PetSavvy addedSavvy,
         PetSavvy growth,
         CancellationToken cancellationToken)
     {
@@ -341,28 +476,28 @@ internal sealed partial class PostgresGameStore
             )
             VALUES
                 (
-                    @petId, 1, @savvyAgility, @addedSavvyAgility,
-                    @growthAgility, 0, @savvyAgility, @addedSavvyAgility
+                    @petId, 1, @savvyAgility, @growthAgility,
+                    @growthAgility, 0, @savvyAgility, @savvyAgility
                 ),
                 (
-                    @petId, 2, @savvyStrength, @addedSavvyStrength,
-                    @growthStrength, 0, @savvyStrength, @addedSavvyStrength
+                    @petId, 2, @savvyStrength, @growthStrength,
+                    @growthStrength, 0, @savvyStrength, @savvyStrength
                 ),
                 (
-                    @petId, 3, @savvyAccuracy, @addedSavvyAccuracy,
-                    @growthAccuracy, 0, @savvyAccuracy, @addedSavvyAccuracy
+                    @petId, 3, @savvyAccuracy, @growthAccuracy,
+                    @growthAccuracy, 0, @savvyAccuracy, @savvyAccuracy
                 ),
                 (
-                    @petId, 4, @savvyTechnique, @addedSavvyTechnique,
-                    @growthTechnique, 0, @savvyTechnique, @addedSavvyTechnique
+                    @petId, 4, @savvyTechnique, @growthTechnique,
+                    @growthTechnique, 0, @savvyTechnique, @savvyTechnique
                 ),
                 (
-                    @petId, 5, @savvyWisdom, @addedSavvyWisdom,
-                    @growthWisdom, 0, @savvyWisdom, @addedSavvyWisdom
+                    @petId, 5, @savvyWisdom, @growthWisdom,
+                    @growthWisdom, 0, @savvyWisdom, @savvyWisdom
                 ),
                 (
-                    @petId, 6, @savvyLuck, @addedSavvyLuck,
-                    @growthLuck, 0, @savvyLuck, @addedSavvyLuck
+                    @petId, 6, @savvyLuck, @growthLuck,
+                    @growthLuck, 0, @savvyLuck, @savvyLuck
                 );
             """,
             connection,
@@ -386,24 +521,6 @@ internal sealed partial class PostgresGameStore
         command.Parameters.AddWithValue(
             "savvyLuck",
             initialSavvy.Luck);
-        command.Parameters.AddWithValue(
-            "addedSavvyAgility",
-            addedSavvy.Agility);
-        command.Parameters.AddWithValue(
-            "addedSavvyStrength",
-            addedSavvy.Strength);
-        command.Parameters.AddWithValue(
-            "addedSavvyAccuracy",
-            addedSavvy.Accuracy);
-        command.Parameters.AddWithValue(
-            "addedSavvyTechnique",
-            addedSavvy.Technique);
-        command.Parameters.AddWithValue(
-            "addedSavvyWisdom",
-            addedSavvy.Wisdom);
-        command.Parameters.AddWithValue(
-            "addedSavvyLuck",
-            addedSavvy.Luck);
         command.Parameters.AddWithValue(
             "growthAgility",
             growth.Agility);

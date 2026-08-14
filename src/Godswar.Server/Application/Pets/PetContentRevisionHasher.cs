@@ -13,11 +13,25 @@ internal static class PetContentRevisionHasher
         IReadOnlyList<PetAptitudeContentDefinition> aptitudes,
         IReadOnlyList<PetNativeProfileContentDefinition> nativeProfiles,
         IReadOnlyList<PetExperienceStepContentDefinition> experienceSteps,
-        IReadOnlyList<PetRebirthStepContentDefinition> rebirthSteps)
+        IReadOnlyList<PetRebirthStepContentDefinition> rebirthSteps,
+        IReadOnlyList<PetMergeSavvyStepContentDefinition> mergeSavvySteps,
+        IReadOnlyList<PetMergeSavvyLookupContentDefinition> mergeSavvyLookup,
+        IReadOnlyList<PetHatchRankStepContentDefinition> hatchRankSteps,
+        IReadOnlyList<PetMergeRankLookupContentDefinition> mergeRankLookup,
+        IReadOnlyList<PetMergeRankSpeciesFactorContentDefinition>
+            mergeRankSpeciesFactors,
+        IReadOnlyList<PetMergeRankSpiritStepContentDefinition>
+            mergeRankSpiritSteps)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(mergeSavvySteps);
+        ArgumentNullException.ThrowIfNull(mergeSavvyLookup);
+        ArgumentNullException.ThrowIfNull(hatchRankSteps);
+        ArgumentNullException.ThrowIfNull(mergeRankLookup);
+        ArgumentNullException.ThrowIfNull(mergeRankSpeciesFactors);
+        ArgumentNullException.ThrowIfNull(mergeRankSpiritSteps);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append(hash, "pet-content-manifest-v1");
+        Append(hash, "pet-content-manifest-v5");
         AppendSettings(hash, settings);
 
         Append(hash, species.Count);
@@ -53,6 +67,7 @@ internal static class PetContentRevisionHasher
             Append(hash, value.MaximumInitialSavvyStatDeviation);
             Append(hash, value.MinimumAddedSavvy);
             Append(hash, value.MaximumAddedSavvy);
+            Append(hash, value.InnateTalentMask);
         }
 
         Append(hash, nativeProfiles.Count);
@@ -93,6 +108,61 @@ internal static class PetContentRevisionHasher
             Append(hash, value.MaximumIncreasePerStat);
         }
 
+        Append(hash, mergeSavvySteps.Count);
+        foreach (var value in mergeSavvySteps
+                     .OrderBy(static value => value.Aptitude)
+                     .ThenBy(static value => value.SpiritCount))
+        {
+            Append(hash, value.Aptitude);
+            Append(hash, value.SpiritCount);
+            Append(hash, value.MinimumIncreasePerStat);
+            Append(hash, value.MaximumIncreasePerStat);
+        }
+
+        Append(hash, mergeSavvyLookup.Count);
+        foreach (var value in mergeSavvyLookup.OrderBy(
+                     static value => value.MinimumSavvyDifference))
+        {
+            Append(hash, value.MinimumSavvyDifference);
+            Append(hash, value.BaseIncrease);
+        }
+
+        Append(hash, hatchRankSteps.Count);
+        foreach (var value in hatchRankSteps
+                     .OrderBy(static value => value.Aptitude)
+                     .ThenBy(static value => value.OutcomeOrder))
+        {
+            Append(hash, value.Aptitude);
+            Append(hash, value.OutcomeOrder);
+            Append(hash, value.Rank);
+            Append(hash, value.Weight);
+        }
+
+        Append(hash, mergeRankLookup.Count);
+        foreach (var value in mergeRankLookup.OrderBy(
+                     static value => value.MinimumRankDifference))
+        {
+            Append(hash, value.MinimumRankDifference);
+            Append(hash, value.BaseIncrease);
+        }
+
+        Append(hash, mergeRankSpeciesFactors.Count);
+        foreach (var value in mergeRankSpeciesFactors.OrderBy(
+                     static value => value.SpeciesId))
+        {
+            Append(hash, value.SpeciesId);
+            Append(hash, value.Factor);
+        }
+
+        Append(hash, mergeRankSpiritSteps.Count);
+        foreach (var value in mergeRankSpiritSteps.OrderBy(
+                     static value => value.SpiritCount))
+        {
+            Append(hash, value.SpiritCount);
+            Append(hash, value.MinimumPercent);
+            Append(hash, value.MaximumPercent);
+        }
+
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
@@ -104,6 +174,7 @@ internal static class PetContentRevisionHasher
         Append(hash, value.MaximumLevel);
         Append(hash, value.MaximumOwnedPetCount);
         Append(hash, value.MaximumSkillCount);
+        Append(hash, value.MaximumRank);
         Append(hash, value.MinimumMergeLevel);
         Append(hash, value.MinimumOwnerMergeAmity);
         Append(hash, value.MaximumSpiritItems);
@@ -168,6 +239,13 @@ internal static class PetContentRevisionHasher
     {
         Span<byte> bytes = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, value);
+        hash.AppendData(bytes);
+    }
+
+    private static void Append(IncrementalHash hash, ushort value)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes, value);
         hash.AppendData(bytes);
     }
 

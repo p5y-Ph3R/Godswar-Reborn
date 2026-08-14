@@ -93,12 +93,15 @@ internal static partial class CharacterSnapshotContractChecks
                     12m,
                     0.5m,
                     2,
-                    3m,
-                    4m)),
+                    null,
+                    null)),
             ImmutableArray.Create(
                 new CharacterPetBonusSnapshot(1, 12.5m, 3)),
             ImmutableArray.Create(
-                new CharacterPetSkillSnapshot(501, 0, 2, 600, true, 4)));
+                new CharacterPetSkillSnapshot(501, 0, 2, 600, true, 4)),
+            OpenedSkillSlots: 2,
+            AvailableSkillSlots: 2,
+            TalentMask: 16);
         var character = new CharacterLoadSnapshot(
             new CharacterIdentitySnapshot(
                 characterId,
@@ -145,6 +148,7 @@ internal static partial class CharacterSnapshotContractChecks
             stats,
             ImmutableArray.Create(new CharacterSkillSnapshot(4904, 1)),
             ImmutableArray.Create(new CharacterTalentSnapshot(64, 10, 20, 30)),
+            new CharacterPetShedSnapshot(2, 0),
             ImmutableArray.Create(pet),
             ImmutableArray.Create(
                 new CharacterProgressionBoostSnapshot(
@@ -162,6 +166,28 @@ internal static partial class CharacterSnapshotContractChecks
             FixedUtc,
             CharacterSlotPolicy.SingleCharacterV1,
             character);
+    }
+
+    internal static CharacterAccountSnapshot CreateUnmergedValidSnapshot()
+    {
+        var snapshot = CreateValidSnapshot();
+        var character = snapshot.Character ??
+            throw new InvalidOperationException(
+                "The valid snapshot fixture has no character.");
+        return snapshot with
+        {
+            Character = character with
+            {
+                Pets = character.Pets
+                    .Select(pet => pet with
+                    {
+                        ContributesToCharacter = false,
+                        CharacterBonuses = ImmutableArray<
+                            CharacterPetBonusSnapshot>.Empty
+                    })
+                    .ToImmutableArray()
+            }
+        };
     }
 
     private static CharacterSnapshotUnavailableException CaptureFailure(

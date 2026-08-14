@@ -13,7 +13,7 @@ internal static partial class CharacterSnapshotHandlerChecks
         CheckReplacedSessionCannotStealCheckpointOwnershipAsync()
     {
         var source =
-            CharacterSnapshotContractChecks.CreateValidSnapshot();
+            CharacterSnapshotContractChecks.CreateUnmergedValidSnapshot();
         var character = source.Character ??
             throw new InvalidOperationException(
                 "Checkpoint race fixture has no character.");

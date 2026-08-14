@@ -23,6 +23,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
     ICharacterSnapshotReader,
     ICharacterRuntimeProjectionReader,
     IOwnedPetSnapshotReader,
+    ISealedPetSnapshotReader,
     IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
@@ -30,6 +31,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
     private readonly bool _ownsDataSource;
     private readonly string _itemContentRevision;
     private readonly string? _gameplayContentRevision;
+    private readonly string? _petLearnedSkillRevision;
 
     public PostgresCharacterSnapshotReader(
         string connectionString,
@@ -39,6 +41,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             itemTemplates,
             probe: null,
             gameplayContentRevision: null,
+            petLearnedSkillRevision: null,
             ownsDataSource: true)
     {
     }
@@ -52,6 +55,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             itemTemplates,
             probe,
             gameplayContentRevision: null,
+            petLearnedSkillRevision: null,
             ownsDataSource: true)
     {
     }
@@ -65,6 +69,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             itemTemplates,
             probe,
             gameplayContentRevision: null,
+            petLearnedSkillRevision: null,
             ownsDataSource: false)
     {
     }
@@ -78,6 +83,22 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             itemTemplates,
             probe: null,
             gameplayContentRevision: gameplayContentRevision,
+            petLearnedSkillRevision: null,
+            ownsDataSource: false)
+    {
+    }
+
+    internal PostgresCharacterSnapshotReader(
+        NpgsqlDataSource dataSource,
+        IItemTemplateCatalog itemTemplates,
+        string gameplayContentRevision,
+        string petLearnedSkillRevision)
+        : this(
+            dataSource,
+            itemTemplates,
+            probe: null,
+            gameplayContentRevision,
+            petLearnedSkillRevision,
             ownsDataSource: false)
     {
     }
@@ -87,6 +108,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         IItemTemplateCatalog itemTemplates,
         IPostgresCharacterSnapshotReadProbe? probe,
         string? gameplayContentRevision,
+        string? petLearnedSkillRevision,
         bool ownsDataSource)
     {
         _dataSource = dataSource ??
@@ -96,6 +118,9 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         _gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateOptional(
                 gameplayContentRevision);
+        _petLearnedSkillRevision =
+            PostgresPetLearnedSkillContentBinding.ValidateOptional(
+                petLearnedSkillRevision);
         _probe = probe;
         _ownsDataSource = ownsDataSource;
     }
@@ -223,6 +248,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
                 metadata.ReadAtUtc,
                 _itemContentRevision,
                 _gameplayContentRevision,
+                _petLearnedSkillRevision,
                 cancellationToken);
             snapshot = core.ToSnapshot(related);
         }

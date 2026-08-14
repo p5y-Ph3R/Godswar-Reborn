@@ -192,7 +192,8 @@ internal sealed class MonsterPlayerDamageSystem : IEcsSystem
                 vitals.Revision,
                 beforeLifeRevision,
                 state.LifeRevision,
-                killed));
+                killed,
+                intent.ResolvedAt));
         if (killed)
         {
             context.Events.Publish(

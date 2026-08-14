@@ -113,7 +113,10 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 ImmutableArray.CreateRange(
                     reader.GetFieldValue<int[]>(43)),
                 ImmutableArray.CreateRange(
-                    reader.GetFieldValue<int[]>(44))));
+                    reader.GetFieldValue<int[]>(44))),
+            new CharacterPetShedSnapshot(
+                reader.GetInt16(51),
+                reader.GetInt64(52)));
     }
 
     private static byte ToByte(short value, string field)
@@ -138,7 +141,8 @@ internal sealed partial class PostgresCharacterSnapshotReader
         CharacterVitalsSnapshot Vitals,
         CharacterWalletSnapshot Wallet,
         CharacterLoadoutSnapshot Loadout,
-        CharacterZodiacSnapshot Zodiac)
+        CharacterZodiacSnapshot Zodiac,
+        CharacterPetShedSnapshot PetShed)
     {
         public CharacterLoadSnapshot ToSnapshot(
             CharacterRelatedReadResult related) =>
@@ -154,6 +158,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 related.CalculatedStats,
                 related.Skills,
                 related.Talents,
+                PetShed,
                 related.Pets,
                 related.PersonalBoosts);
     }
@@ -225,7 +230,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cb.lifecycle_version,
             cb.progression_reward_revision,
             cb.inventory_revision,
-            cb.fighter_level_sealed
+            cb.fighter_level_sealed,
+            cb.pet_shed_capacity,
+            cb.pet_shed_revision
         FROM character_base cb
         {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
         WHERE cb.account_id = @accountId

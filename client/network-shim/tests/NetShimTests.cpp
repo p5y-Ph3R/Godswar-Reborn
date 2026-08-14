@@ -1,39 +1,7 @@
-#include "AvatarPreviewGateTests.h"
-#include "AvatarPreloadLifecycleTests.h"
-#include "AvatarPreloadTests.h"
-#include "BoundedChunkQueueTests.h"
 #include "ControlledHostTlsProbe.h"
-#include "EndpointManifestTests.h"
-#include "ExternalTcpConnectorTests.h"
 #include "LoopbackAcceptorTests.h"
-#include "LegacyCommandDescriptorStreamTests.h"
-#include "LoopbackPeerOwnerTests.h"
-#include "NativeClientBridgeTests.h"
-#include "NativeClientCoordinatorTests.h"
-#include "OpaqueDuplexPumpTests.h"
-#include "SchannelClientStreamTests.h"
-#include "SecureClientRuntimeTests.h"
-#include "SecureClientSessionTests.h"
-#include "SecureClientProtocolTests.h"
-#include "SecureCharacterLifecycleIdentityTests.h"
-#include "SecurePetCommandIdentityTests.h"
-#include "SecurePendingOperationRegistryTests.h"
-#include "SecureGameControlTests.h"
-#include "SecureGameGrantRegistryTests.h"
-#include "SecureEconomyIdentityTests.h"
-#include "SecureLegacyCommandResultStreamTests.h"
-#include "SecureRealtimeMovementTests.h"
-#include "SecureRealtimeMovementChannelTests.h"
 #include "SecureManifestProbe.h"
-#include "SecureOuterControlTests.h"
-#include "SecureOuterStreamTests.h"
-#include "SecureOuterUdpGrantTests.h"
-#include "SecureUdpBindingGrantTests.h"
-#include "SecureUdpClientChannelTests.h"
-#include "SecureUdpClientWorkerTests.h"
-#include "SecureUdpProtectedProtocolTests.h"
-#include "VerifiedImageFileTests.h"
-#include "WinSocketByteStreamTests.h"
+#include "NetworkShimTestSuite.h"
 
 #include "../src/LegacyClientApi.h"
 #include "../src/NetClientProxy.h"
@@ -538,42 +506,7 @@ int wmain(int argumentCount, wchar_t** arguments) {
 
     RunProxyUnitChecks();
     RunProxyNoDowngradeChecks();
-    Failures += RunAvatarPreviewGateTests();
-    Failures += RunAvatarPreloadLifecycleTests();
-    Failures += RunAvatarPreloadTests();
-    Failures += RunBoundedChunkQueueTests();
-    Failures += RunEndpointManifestTests();
-    Failures += RunLoopbackPeerOwnerTests();
-    Failures += RunLegacyCommandDescriptorStreamTests();
-    Failures += RunOpaqueDuplexPumpTests();
-    Failures += RunSchannelClientStreamTests(!offline);
-    Failures += RunSecureClientRuntimeTests();
-    Failures += RunSecureClientSessionTests();
-    Failures += RunSecureClientProtocolTests();
-    Failures += RunSecureCharacterLifecycleIdentityTests();
-    Failures += RunSecurePetCommandIdentityTests();
-    Failures += RunSecurePendingOperationRegistryTests();
-    Failures += RunSecureGameControlTests();
-    Failures += RunSecureGameGrantRegistryTests();
-    Failures += RunSecureEconomyIdentityTests();
-    Failures += RunSecureLegacyCommandResultStreamTests();
-    Failures += RunSecureRealtimeMovementTests();
-    Failures += RunSecureRealtimeMovementChannelTests();
-    Failures += RunSecureOuterControlTests();
-    Failures += RunSecureOuterStreamTests();
-    Failures += RunSecureOuterUdpGrantTests();
-    Failures += RunSecureUdpBindingGrantTests();
-    Failures += RunSecureUdpClientChannelTests();
-    Failures += RunSecureUdpClientWorkerTests();
-    Failures += RunSecureUdpProtectedProtocolTests();
-    Failures += RunVerifiedImageFileTests();
-    Failures += RunNativeClientCoordinatorTests();
-    if (!offline) {
-        Failures += RunExternalTcpConnectorTests();
-        Failures += RunWinSocketByteStreamTests();
-        Failures += RunLoopbackAcceptorTests();
-        Failures += RunNativeClientBridgeTests();
-    }
+    Failures += RunNetworkShimTestSuite(offline);
 
     if (probe) {
         RunInstalledShimProbe(arguments[2]);

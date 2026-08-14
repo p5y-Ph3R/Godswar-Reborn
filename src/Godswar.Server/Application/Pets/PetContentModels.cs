@@ -7,6 +7,12 @@ internal sealed record PetContentRevision(
     int NativeProfileCount,
     int ExperienceStepCount,
     int RebirthStepCount,
+    int MergeSavvyStepCount,
+    int MergeSavvyLookupCount,
+    int HatchRankStepCount,
+    int MergeRankLookupCount,
+    int MergeRankSpeciesFactorCount,
+    int MergeRankSpiritStepCount,
     string Source);
 
 internal sealed record PetContentSettings(
@@ -14,6 +20,7 @@ internal sealed record PetContentSettings(
     short MaximumLevel,
     short MaximumOwnedPetCount,
     short MaximumSkillCount,
+    decimal MaximumRank,
     short MinimumMergeLevel,
     short MinimumOwnerMergeAmity,
     short MaximumSpiritItems,
@@ -52,7 +59,8 @@ internal sealed record PetAptitudeContentDefinition(
     int MaximumInitialSavvy,
     decimal MaximumInitialSavvyStatDeviation,
     int MinimumAddedSavvy,
-    int MaximumAddedSavvy);
+    int MaximumAddedSavvy,
+    short InnateTalentMask);
 
 internal readonly record struct PetContentStatVector(
     decimal Agility,
@@ -89,6 +97,12 @@ internal sealed record PetRebirthStepContentDefinition(
     short RequiredPetLevel,
     uint ChanceItemId,
     string ChanceItemName,
+    decimal MinimumIncreasePerStat,
+    decimal MaximumIncreasePerStat);
+
+internal sealed record PetMergeSavvyStepContentDefinition(
+    short Aptitude,
+    short SpiritCount,
     decimal MinimumIncreasePerStat,
     decimal MaximumIncreasePerStat);
 

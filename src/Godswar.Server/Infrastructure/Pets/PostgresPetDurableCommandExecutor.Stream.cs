@@ -166,8 +166,9 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         StoredInbox stored,
         Application.Commands.CommandEnvelope<T> envelope)
     {
-        if (stored.ContractVersion !=
-                PetDurablePersistenceCodec.ContractVersion ||
+        if (!PetDurablePersistenceCodec.IsSupportedContractVersion(
+                envelope.Family,
+                stored.ContractVersion) ||
             !string.Equals(
                 stored.ResultCode,
                 "pet_result",

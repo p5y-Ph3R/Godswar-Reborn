@@ -72,6 +72,26 @@ internal static class Opcodes
     public const ushort PetCallOutRequest = 10240;
     public const ushort PetRecallRequest = 10241;
     public const ushort PetOperationResult = 10244;
+    public const ushort PetExperience = 10261;
+    public const ushort PetToPetMergeRequest = 10268;
+    public const ushort PetToPetMergeResult = 10269;
+    public const ushort PetSoulContractRequest = 10270;
+    public const ushort PetSoulContractResult = 10271;
+    public const ushort PetRebirthRequest = 10272;
+    public const ushort PetRebirthResult = 10273;
+    // Header-only request emitted by the stock client's innate Merge action.
+    // The request carries no pet, item, slot, or stat data; the server resolves
+    // every input from the authenticated character's authoritative state.
+    public const ushort PetOwnerMergeRequest = 10274;
+    // Native pet-unite lifecycle projections recovered independently from
+    // the installed client. Both are fixed eight-byte server-to-client frames.
+    public const ushort PetOwnerMergeStarted = 10275;
+    // Current energy for the locally carried pet. The stock client uses a
+    // fixed 0..1800 scale even though durable state is normalized separately.
+    public const ushort PetEnergy = 10278;
+    public const ushort PetOwnerMergeEnded = 10282;
+    public const ushort PackedPetDetailRequest = 10283;
+    public const ushort PackedPetDetailResponse = 10284;
     public const ushort PetLevelUpgradeRequest = 10285;
     public const ushort PetLevelUpgrade = 10286;
     public const ushort Zodiac = 10297;
@@ -141,6 +161,19 @@ internal static class Opcodes
             PetCallOutRequest => nameof(PetCallOutRequest),
             PetRecallRequest => nameof(PetRecallRequest),
             PetOperationResult => nameof(PetOperationResult),
+            PetExperience => nameof(PetExperience),
+            PetToPetMergeRequest => nameof(PetToPetMergeRequest),
+            PetToPetMergeResult => nameof(PetToPetMergeResult),
+            PetSoulContractRequest => nameof(PetSoulContractRequest),
+            PetSoulContractResult => nameof(PetSoulContractResult),
+            PetRebirthRequest => nameof(PetRebirthRequest),
+            PetRebirthResult => nameof(PetRebirthResult),
+            PetOwnerMergeRequest => nameof(PetOwnerMergeRequest),
+            PetOwnerMergeStarted => nameof(PetOwnerMergeStarted),
+            PetEnergy => nameof(PetEnergy),
+            PetOwnerMergeEnded => nameof(PetOwnerMergeEnded),
+            PackedPetDetailRequest => nameof(PackedPetDetailRequest),
+            PackedPetDetailResponse => nameof(PackedPetDetailResponse),
             PetLevelUpgradeRequest => nameof(PetLevelUpgradeRequest),
             PetLevelUpgrade => nameof(PetLevelUpgrade),
             Zodiac => nameof(Zodiac),

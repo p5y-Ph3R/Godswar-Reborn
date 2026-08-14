@@ -12,6 +12,8 @@ internal static partial class CharacterSnapshotContractChecks
     {
         CheckValidAndEmptySnapshots();
         CheckFiniteFailures();
+        CheckPetRankWireSafety();
+        CheckPetScaledAddedFailures();
         CheckHydration();
         CheckBoundedPostgresProviderToken();
         return Task.CompletedTask;
@@ -134,6 +136,40 @@ internal static partial class CharacterSnapshotContractChecks
             (int)invalidPet.Reason,
             "a null pet row has a typed validation failure");
 
+        var invalidPetShed = valid with
+        {
+            Character = valid.Character! with
+            {
+                PetShed = new CharacterPetShedSnapshot(
+                    OpenedCellCount: 1,
+                    Revision: 0)
+            }
+        };
+        var invalidPetShedFailure = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(invalidPetShed));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.InvalidData,
+            (int)invalidPetShedFailure.Reason,
+            "a pet shed below the two-cell default has a finite invalid-data reason");
+
+        var pet = valid.Character!.Pets[0];
+        var overCapacityPets = valid with
+        {
+            Character = valid.Character! with
+            {
+                Pets = ImmutableArray.Create(
+                    pet,
+                    pet with { PetId = pet.PetId + 1 },
+                    pet with { PetId = pet.PetId + 2 })
+            }
+        };
+        var overCapacityFailure = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(overCapacityPets));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.InvalidData,
+            (int)overCapacityFailure.Reason,
+            "owned pets cannot exceed the persisted opened shed cells");
+
         var duplicateSkills = valid with
         {
             Character = valid.Character! with
@@ -214,6 +250,13 @@ internal static partial class CharacterSnapshotContractChecks
         Check.Equal(4904, hydrated.Skills[0].SkillId, "skill identity hydrates");
         Check.Equal(1, hydrated.Talents.Count, "talents hydrate");
         Check.Equal(1, hydrated.Pets.Count, "pets hydrate");
+        Check.True(
+            hydrated.PetShed is
+            {
+                OpenedCellCount: 2,
+                Revision: 0
+            },
+            "pet-shed capacity hydrates independently of the pet collection");
         Check.Equal(
             (short)PetAptitude.Transcendent,
             (short)hydrated.Pets[0].Aptitude,

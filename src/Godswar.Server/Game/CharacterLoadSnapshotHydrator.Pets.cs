@@ -63,5 +63,10 @@ internal static partial class CharacterLoadSnapshotHydrator
                     skill.SkillExperience,
                     skill.IsActive,
                     skill.Revision))
-                .ToArray());
+                .ToArray(),
+            pet.OpenedSkillSlots,
+            pet.AvailableSkillSlots,
+            pet.TalentMask,
+            pet.InitialSavvySourceVersion,
+            pet.SoulContractStage);
 }

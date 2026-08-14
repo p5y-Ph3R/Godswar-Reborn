@@ -11,6 +11,8 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
         $$"""
         WITH
         {{PostgresMountGearPassiveProjectionSql.CommonTableExpressions}}
+        {{PostgresCharacterPetOwnerMergeProjectionSql.CommonTableExpression}}
+        {{PostgresCharacterPetLearnedSkillProjectionSql.CommonTableExpression}}
         equipment_stat_values AS (
             SELECT
                 equipment.user_id,
@@ -237,6 +239,8 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             UNION ALL SELECT * FROM talent_stat_values
             UNION ALL SELECT * FROM holy_suit_stat_values
             UNION ALL SELECT * FROM mount_gear_spirit_stat_values
+            UNION ALL SELECT * FROM pet_owner_merge_stat_values
+            UNION ALL SELECT * FROM pet_learned_skill_stat_values
         ),
         stat_totals AS (
             SELECT
@@ -263,7 +267,12 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'physical_append_damage'), 0) AS physical_append_damage,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_append_damage'), 0) AS magic_append_damage,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_percent'), 0) AS critical_damage_percent,
-                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_flat'), 0) AS critical_damage_flat
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_flat'), 0) AS critical_damage_flat,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'physical_damage_reduction'), 0) AS physical_damage_reduction,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_damage_reduction'), 0) AS magic_damage_reduction,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_reduction'), 0) AS critical_damage_reduction,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'life_absorption'), 0) AS life_absorption,
+                COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_rebound'), 0) AS damage_rebound
             FROM all_stat_values
             GROUP BY user_id
         )
@@ -308,7 +317,12 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 SELECT COUNT(*)::integer
                 FROM character_skills skill
                 WHERE skill.user_id = cb.id
-            ), 0) AS learned_skill_count
+            ), 0) AS learned_skill_count,
+            ROUND(COALESCE(stats.physical_damage_reduction, 0))::integer AS physical_damage_reduction,
+            ROUND(COALESCE(stats.magic_damage_reduction, 0))::integer AS magic_damage_reduction,
+            ROUND(COALESCE(stats.critical_damage_reduction, 0))::integer AS critical_damage_reduction,
+            ROUND(COALESCE(stats.life_absorption, 0))::integer AS life_absorption,
+            ROUND(COALESCE(stats.damage_rebound, 0))::integer AS damage_rebound
         FROM character_base cb
         LEFT JOIN stat_totals stats ON stats.user_id = cb.id
         {{RankLateralJoinForCharacterAlias}}

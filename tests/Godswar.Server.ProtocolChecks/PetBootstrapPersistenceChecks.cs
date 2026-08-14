@@ -406,6 +406,12 @@ internal static partial class PetBootstrapPersistenceChecks
         Check.Equal(7, pet.CompletedPetMerges, "completed pet merges");
         Check.True(pet.HasSoulContract, "pet soul contract");
         Check.True(pet.HasOwnerMergeTalent, "pet owner-merge talent");
+        Check.Equal((short)4, pet.OpenedSkillSlots, "opened pet skill slots");
+        Check.Equal(
+            (short)7,
+            pet.AvailableSkillSlots,
+            "available pet skill slots");
+        Check.Equal((short)31, pet.TalentMask, "pet talent mask");
         Check.Equal(90, pet.CurrentEnergy, "pet energy");
         Check.Equal(100, pet.MaximumEnergy, "pet maximum energy");
         Check.Equal(321, pet.Amity, "pet amity");
@@ -427,16 +433,25 @@ internal static partial class PetBootstrapPersistenceChecks
         {
             var stat = pet.StatValues[code - 1];
             Check.Equal(code, stat.StatCode, $"pet stat code {code}");
-            Check.Equal(code + 0.1m, stat.InitialSavvy, $"initial stat {code}");
-            Check.Equal(code + 10.2m, stat.AddedSavvy, $"added stat {code}");
+            Check.Equal(600m + code, stat.InitialSavvy, $"initial stat {code}");
             Check.Equal(
-                code + 30.4m,
+                (30m + code * 1.1m) * 80m,
+                stat.AddedSavvy,
+                $"added stat {code}");
+            Check.Equal(
+                9.7m + code * 0.1m,
                 stat.BaseGrowthRate,
                 $"base growth stat {code}");
             Check.Equal(
                 code + 20.3m,
                 stat.GrowthAcceleration,
                 $"growth acceleration stat {code}");
+            Check.True(
+                stat.BirthInitialSavvy == 600m,
+                $"birth Basic stat {code}");
+            Check.True(
+                stat.RarityAddedSavvy == 600m,
+                $"rarity Basic stat {code}");
             Check.Equal((long)code, stat.Revision, $"stat revision {code}");
         }
 

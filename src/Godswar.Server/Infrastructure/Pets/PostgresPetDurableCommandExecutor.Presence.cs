@@ -13,6 +13,14 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         LockedCharacter character,
         CancellationToken cancellationToken)
     {
+        // Merge owns the active-pet selection for its entire lifetime. Lock
+        // that owner first so Take/Call Out/Recall cannot race expiry or clear
+        // its contribution rows through the ordinary presence path.
+        var activeOwnerMergePetId = await LockActiveOwnerMergePetIdAsync(
+            connection,
+            transaction,
+            envelope.Subject.CharacterId,
+            cancellationToken);
         var pet = await LockPetAsync(
             connection,
             transaction,
@@ -37,6 +45,13 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 pet,
                 envelope.Command.Operation);
         }
+        if (activeOwnerMergePetId.HasValue)
+        {
+            return FromPet(
+                PetDurableReceiptStatus.PetUnavailable,
+                pet,
+                envelope.Command.Operation);
+        }
         if (envelope.Command.Operation is
                 PetPresenceCommandOperation.CallOut or
                 PetPresenceCommandOperation.Recall &&
@@ -53,14 +68,18 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         if (envelope.Command.Operation ==
             PetPresenceCommandOperation.Take)
         {
-            await ClearOtherCarriedPetsAsync(
+            var isSwitchingCarriedPet = !pet.IsCarried;
+            _ = await ClearOtherCarriedPetsAsync(
                 connection,
                 transaction,
                 envelope.Subject.CharacterId,
                 pet.PetId,
                 cancellationToken);
             carried = true;
-            summoned = false;
+            // Native Take selects a different companion immediately. Keep an
+            // already-carried pet's current presentation unchanged so a
+            // repeated Take cannot create a duplicate summoned model.
+            summoned = isSwitchingCarriedPet || pet.IsSummoned;
         }
         else
         {
@@ -111,13 +130,27 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 checked((byte)((byte)envelope.Command.Operation + 1)));
     }
 
-    private async Task ClearOtherCarriedPetsAsync(
+    private async Task<bool> ClearOtherCarriedPetsAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int characterId,
         long petId,
         CancellationToken cancellationToken)
     {
+        await using var presence = CreateCommand(
+            """
+            SELECT COALESCE(bool_or(is_summoned), false)
+            FROM public.character_pets
+            WHERE user_id = @characterId
+              AND id <> @petId;
+            """,
+            connection,
+            transaction);
+        presence.Parameters.AddWithValue("characterId", characterId);
+        presence.Parameters.AddWithValue("petId", petId);
+        var hadSummonedPet = Convert.ToBoolean(
+            await presence.ExecuteScalarAsync(cancellationToken));
+
         await using var command = CreateCommand(
             """
             UPDATE public.character_pets
@@ -128,6 +161,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 updated_at = transaction_timestamp()
             WHERE user_id = @characterId
               AND id <> @petId
+              AND NOT contributes_to_character
               AND (is_carried OR is_summoned OR contributes_to_character);
             """,
             connection,
@@ -135,6 +169,41 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("petId", petId);
         await command.ExecuteNonQueryAsync(cancellationToken);
+        return hadSummonedPet;
+    }
+
+    private async Task<long?> LockActiveOwnerMergePetIdAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int characterId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand(
+            """
+            SELECT id
+            FROM public.character_pets
+            WHERE user_id = @characterId
+              AND contributes_to_character
+            ORDER BY id
+            FOR UPDATE;
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("characterId", characterId);
+        var ids = new List<long>(2);
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetInt64(0));
+        }
+        return ids.Count switch
+        {
+            0 => null,
+            1 => ids[0],
+            _ => throw new InvalidDataException(
+                "A character has multiple active pet owner-Merge rows.")
+        };
     }
 
     private async Task<LockedPet?> LockPetAsync(
@@ -148,7 +217,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             """
             SELECT
                 id, level, experience, activity_state, revision,
-                is_carried, is_summoned, initial_savvy_source_version
+                is_carried, is_summoned, initial_savvy_source_version,
+                contributes_to_character
             FROM public.character_pets
             WHERE id = @petId
               AND user_id = @characterId
@@ -169,7 +239,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 reader.GetInt64(4),
                 reader.GetBoolean(5),
                 reader.GetBoolean(6),
-                reader.IsDBNull(7) ? null : reader.GetString(7))
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetBoolean(8))
             : null;
     }
 
@@ -197,5 +268,6 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         long Revision,
         bool IsCarried,
         bool IsSummoned,
-        string? InitialSavvySourceVersion);
+        string? InitialSavvySourceVersion,
+        bool ContributesToCharacter);
 }

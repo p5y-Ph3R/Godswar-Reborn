@@ -17,6 +17,7 @@ internal sealed partial class JsonGameStore :
     ICharacterSnapshotReader,
     ICharacterRuntimeProjectionReader,
     IOwnedPetSnapshotReader,
+    ISealedPetSnapshotReader,
     IExperienceBoostStateReader,
     IWorldBossAreaControlStore,
     IWorldBossRespawnReader,

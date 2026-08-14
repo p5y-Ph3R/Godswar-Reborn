@@ -45,12 +45,16 @@ internal sealed class PostgresApplicationDataRuntime :
         GameplayItemContent itemContent,
         string gameplayContentRevision,
         IPetContentCatalog petContent,
+        IPetOwnerMergeContentCatalog ownerMergeContent,
+        IPetLearnedSkillContentCatalog learnedSkillContent,
         ReconciliationOptions? reconciliationOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         ArgumentNullException.ThrowIfNull(outboxOptions);
         ArgumentNullException.ThrowIfNull(itemContent);
         ArgumentNullException.ThrowIfNull(petContent);
+        ArgumentNullException.ThrowIfNull(ownerMergeContent);
+        ArgumentNullException.ThrowIfNull(learnedSkillContent);
         gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateRequired(
                 gameplayContentRevision);
@@ -62,10 +66,12 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresCharacterSnapshotReader(
                 _dataSource,
                 itemContent.Templates,
-                gameplayContentRevision);
+                gameplayContentRevision,
+                learnedSkillContent.Revision.Sha256);
         CharacterSnapshots = characterReader;
         CharacterRuntimeProjections = characterReader;
         OwnedPetSnapshots = characterReader;
+        SealedPetSnapshots = characterReader;
         ExperienceBoosts =
             new PostgresExperienceBoostStateReader(
                 _dataSource,
@@ -174,7 +180,9 @@ internal sealed class PostgresApplicationDataRuntime :
                 _dataSource,
                 outboxOptions,
                 itemContent,
-                petContent);
+                petContent,
+                ownerMergeContent,
+                learnedSkillContent);
         var outboxConsumers =
             PostgresOutboxConsumerCatalog.Create();
         _outboxDispatcher = new PostgresOutboxDispatcher(
@@ -213,6 +221,8 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IOwnedPetSnapshotReader OwnedPetSnapshots { get; }
+
+    public ISealedPetSnapshotReader SealedPetSnapshots { get; }
 
     public IExperienceBoostStateReader ExperienceBoosts { get; }
 

@@ -7,7 +7,8 @@ internal static partial class
     PostgresPetDurableCommandIntegrationChecks
 {
     private static async Task<PetFixture> CreateFixtureAsync(
-        string connectionString)
+        string connectionString,
+        PetAptitude eggAptitude = PetAptitude.Calm)
     {
         var token = Guid.NewGuid().ToString("N")[..10];
         await using var store = new PostgresGameStore(connectionString);
@@ -37,7 +38,7 @@ internal static partial class
             )
             VALUES (
                 @characterId, 1, @slot, 10150,
-                14, 1, 1, 1, 0, 0
+                @eggAptitude, 1, 1, 1, 0, 0
             );
             """,
             connection);
@@ -45,6 +46,9 @@ internal static partial class
             "characterId",
             character.Id);
         command.Parameters.AddWithValue("slot", (short)eggSlot);
+        command.Parameters.AddWithValue(
+            "eggAptitude",
+            (short)eggAptitude);
         Check.Equal(
             1,
             await command.ExecuteNonQueryAsync(),
@@ -128,12 +132,16 @@ internal static partial class
     {
         var envelope =
             PlayerOwnershipTestFences.Bind(
-                Application.Pets.PetPresenceTransitionCommandEnvelope.Create(
+                Application.Pets.PetPresenceTransitionCommandEnvelope
+                    .CreateRawLocal(
                 subject,
                 correlation,
                 DateTimeOffset.UtcNow,
                 new Application.Pets.PetPresenceTransitionCommand(
-                    Guid.NewGuid(),
+                    Application.Pets.PetCommandOperationIdentity
+                        .RawLocalServer(
+                            Guid.NewGuid(),
+                            correlation.ConnectionId),
                     petId,
                     operation)));
         var committed = await executor.ExecuteAsync(envelope);

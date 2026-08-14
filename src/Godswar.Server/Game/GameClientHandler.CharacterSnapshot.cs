@@ -50,6 +50,12 @@ internal sealed partial class GameClientHandler
             _characterLoadSnapshot = hydrated;
             _characterSnapshotLoaded = true;
             _characterSnapshotBootstrapPending = hydrated is not null;
+            if (hydrated is not null)
+            {
+                _registry.UpdateActivePetHealingRuntime(
+                    _session,
+                    hydrated.Pets);
+            }
             ResetPlayerMovementEcs();
             return true;
         }

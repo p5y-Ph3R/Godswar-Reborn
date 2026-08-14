@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Pets;
 using Npgsql;
@@ -17,7 +18,12 @@ internal sealed partial class PostgresPetDurableCommandExecutor
     {
         await using var command = CreateCommand(
             """
-            SELECT profession, fighter_job_lv, inventory_revision
+            SELECT
+                profession,
+                fighter_job_lv,
+                inventory_revision,
+                pet_shed_capacity,
+                pet_shed_revision
             FROM public.character_base
             WHERE id = @characterId
               AND account_id = @accountId
@@ -36,7 +42,9 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             ? new LockedCharacter(
                 reader.GetInt16(0),
                 reader.GetInt32(1),
-                reader.GetInt64(2))
+                reader.GetInt64(2),
+                reader.GetInt16(3),
+                reader.GetInt64(4))
             : null;
     }
 
@@ -131,7 +139,17 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             transition.PresenceOperation,
             aggregateRevision,
             auditId.ToString(CultureInfo.InvariantCulture),
-            eventId);
+            eventId,
+            transition.DeputyPetId,
+            transition.PetMergeDelta,
+            transition.GrowthPreview,
+            transition.BasicSavvyPreview,
+            transition.HatchRank,
+            transition.AppearanceChange,
+            transition.SoulContract,
+            transition.PetManagerUtility,
+            transition.RebirthGrowth,
+            transition.SkillLearn);
         receipt.Validate();
         var payload = PetDurablePersistenceCodec.Encode(receipt);
         var resultHash = PetDurablePersistenceCodec.Hash(payload);
@@ -222,7 +240,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         command.Parameters.Add(
             "detailPayload",
             NpgsqlDbType.Jsonb).Value =
-            $$"""{"status":{{(byte)transition.Status}}}""";
+            EncodeAuditDetail(transition);
         command.Parameters.AddWithValue(
             "retentionPolicy",
             PetDurablePersistenceCodec.RetentionPolicy);
@@ -230,6 +248,68 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             await command.ExecuteScalarAsync(cancellationToken),
             CultureInfo.InvariantCulture);
     }
+
+    private static string EncodeAuditDetail(PetTransition transition) =>
+        transition.SkillLearn is { } learned
+            ? JsonSerializer.Serialize(new
+            {
+                status = (byte)transition.Status,
+                pet_skill_learn = learned
+            })
+            : transition.PetManagerUtility is { } utility
+            ? JsonSerializer.Serialize(new
+            {
+                status = (byte)transition.Status,
+                pet_manager_utility = utility
+            })
+            : transition.SoulContract is { } soulContract
+            ? JsonSerializer.Serialize(new
+            {
+                status = (byte)transition.Status,
+                soul_contract = new
+                {
+                    pet_id = soulContract.PetId,
+                    previous_stage = soulContract.PreviousStage,
+                    new_stage = soulContract.NewStage,
+                    material_item_id = soulContract.MaterialTemplateId,
+                    material_quantity = soulContract.MaterialQuantity,
+                    basic_savvy_increase_hundredths =
+                        soulContract.BasicSavvyIncreaseHundredths
+                }
+            })
+            : transition.AppearanceChange is { } appearance
+            ? JsonSerializer.Serialize(new
+            {
+                status = (byte)transition.Status,
+                appearance_change = new
+                {
+                    old_species_id = appearance.OldSpeciesId,
+                    old_species_name = appearance.OldSpeciesName,
+                    new_species_id = appearance.NewSpeciesId,
+                    new_species_name = appearance.NewSpeciesName,
+                    magic_jade_item_id = appearance.MagicJadeItemId,
+                    magic_jade_display_name =
+                        appearance.MagicJadeDisplayName,
+                    magic_jade_item_instance_id =
+                        appearance.MagicJadeItemInstanceId,
+                    kit_bag_slot = appearance.KitBagSlot,
+                    pet_content_revision = appearance.PetContentRevision,
+                    item_content_revision = appearance.ItemContentRevision
+                }
+            })
+            : transition.HatchRank is { } hatchRank
+            ? JsonSerializer.Serialize(new
+            {
+                status = (byte)transition.Status,
+                hatch_rank = new
+                {
+                    rank = hatchRank.Rank,
+                    outcome_order = hatchRank.OutcomeOrder,
+                    roll = hatchRank.Roll,
+                    content_revision = hatchRank.ContentRevision
+                }
+            })
+            : $$"""{"status":{{(byte)transition.Status}}}""";
 
     private async Task<long> InsertInboxAsync<T>(
         NpgsqlConnection connection,
@@ -274,7 +354,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             NpgsqlDbType.Bytea).Value = requestHash;
         command.Parameters.AddWithValue(
             "contractVersion",
-            PetDurablePersistenceCodec.ContractVersion);
+            PetDurablePersistenceCodec.ContractVersionFor(
+                envelope.Family));
         command.Parameters.AddWithValue(
             "resultCode",
             "pet_result");
@@ -341,7 +422,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             PetDurablePersistenceCodec.EventType(envelope.Family));
         command.Parameters.AddWithValue(
             "contractVersion",
-            PetDurablePersistenceCodec.ContractVersion);
+            PetDurablePersistenceCodec.ContractVersionFor(
+                envelope.Family));
         command.Parameters.AddWithValue(
             "orderingPolicy",
             PetDurablePersistenceCodec.OrderingPolicy);

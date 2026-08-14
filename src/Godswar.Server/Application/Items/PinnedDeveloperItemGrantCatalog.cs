@@ -10,7 +10,7 @@ namespace Godswar.Server.Application.Items;
 /// catalog; empty Holy Boxes and the reviewed permanent costume are derived
 /// from the same published item revision used by gameplay.
 /// </summary>
-internal sealed class PinnedDeveloperItemGrantCatalog :
+internal sealed partial class PinnedDeveloperItemGrantCatalog :
     IDeveloperItemGrantCatalog
 {
     internal const uint PermanentChristmasCostumeItemId = 8068;
@@ -28,6 +28,14 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         _costumesById;
     private readonly FrozenDictionary<string, DeveloperGrantMaterialDefinition>
         _costumesByAlias;
+    private readonly FrozenDictionary<uint, DeveloperGrantMaterialDefinition>
+        _petShedsById;
+    private readonly FrozenDictionary<string, DeveloperGrantMaterialDefinition>
+        _petShedsByAlias;
+    private readonly FrozenDictionary<uint, DeveloperGrantMaterialDefinition>
+        _petConsumablesById;
+    private readonly FrozenDictionary<string, DeveloperGrantMaterialDefinition>
+        _petConsumablesByAlias;
 
     public PinnedDeveloperItemGrantCatalog(IItemTemplateCatalog templates)
     {
@@ -59,6 +67,20 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
             static value => value.Grant);
         _costumesByAlias = CreateCostumeAliases(costumes)
             .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+        var petSheds = CreatePetShedGrants(templates);
+        _petShedsById = petSheds.ToFrozenDictionary(
+            static value => value.ItemId,
+            static value => value.Grant);
+        _petShedsByAlias = CreatePetShedAliases(petSheds)
+            .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+        var petConsumables = CreatePetConsumableGrants(templates);
+        _petConsumablesById = petConsumables.ToFrozenDictionary(
+            static value => value.Grant.ItemId,
+            static value => value.Grant);
+        _petConsumablesByAlias = CreatePetConsumableAliases(petConsumables)
+            .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 
     public bool TryResolveDeveloper(
@@ -67,7 +89,9 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         _materials.TryResolveDeveloper(itemId, out item!) ||
         _holyBoxesById.TryGetValue(itemId, out item!) ||
         _socketSpellsById.TryGetValue(itemId, out item!) ||
-        _costumesById.TryGetValue(itemId, out item!);
+        _costumesById.TryGetValue(itemId, out item!) ||
+        _petShedsById.TryGetValue(itemId, out item!) ||
+        _petConsumablesById.TryGetValue(itemId, out item!);
 
     public bool TryResolveDeveloper(
         string alias,
@@ -75,7 +99,92 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         _materials.TryResolveDeveloper(alias, out item!) ||
         _holyBoxesByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
         _socketSpellsByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
-        _costumesByAlias.TryGetValue(NormalizeAlias(alias), out item!);
+        _costumesByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
+        _petShedsByAlias.TryGetValue(NormalizeAlias(alias), out item!) ||
+        _petConsumablesByAlias.TryGetValue(
+            NormalizeAlias(alias),
+            out item!);
+
+    private static IReadOnlyList<PetShedDeveloperGrant>
+        CreatePetShedGrants(IItemTemplateCatalog templates)
+    {
+        const uint itemId = 4109;
+        if (!templates.TryGet(itemId, out var template))
+        {
+            return [];
+        }
+
+        if (!template.Kind.Equals("consume item", StringComparison.Ordinal) ||
+            !template.NameKey.Equals("AddPetNum", StringComparison.Ordinal) ||
+            !template.DisplayName.Equals(
+                "Special Pet Shed",
+                StringComparison.Ordinal) ||
+            template.EquipmentSlot != 0 ||
+            template.ClassIds.Count != 0 ||
+            template.MinLevel.HasValue ||
+            template.MaxLevel.HasValue ||
+            template.Hand.HasValue ||
+            template.SkillFlag.HasValue ||
+            !template.Texture.Equals(
+                "./Localization/en_us/UI/Texture/Icon2.gwo",
+                StringComparison.Ordinal) ||
+            !template.Icon.Equals("432,972", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Special Pet Shed does not match stock-client content.");
+        }
+
+        using var document = JsonDocument.Parse(template.StatsJson);
+        var root = document.RootElement;
+        if (!HasString(root, "ID", "4109") ||
+            !HasString(root, "Type", "consume item") ||
+            !HasString(
+                root,
+                "Texture",
+                "./Localization/en_us/UI/Texture/Icon2.gwo") ||
+            !HasString(root, "Icon", "432,972") ||
+            !HasString(root, "Random", "0") ||
+            !HasString(root, "Distribution", "0,0") ||
+            !HasString(root, "Money", "0") ||
+            !HasString(root, "Overlap", "1") ||
+            !HasString(root, "Use", "1") ||
+            !HasString(root, "BindType", "1") ||
+            !HasString(root, "Skill", "4720") ||
+            !HasString(root, "Mode", "4") ||
+            root.EnumerateObject().Count() != 12)
+        {
+            throw new InvalidOperationException(
+                "Special Pet Shed has invalid stock-client activation metadata.");
+        }
+
+        return
+        [
+            new PetShedDeveloperGrant(
+                itemId,
+                new DeveloperGrantMaterialDefinition(
+                    itemId,
+                    template.DisplayName,
+                    StackCap: 1,
+                    GrantedBound: 1))
+        ];
+    }
+
+    private static Dictionary<string, DeveloperGrantMaterialDefinition>
+        CreatePetShedAliases(
+            IReadOnlyList<PetShedDeveloperGrant> petSheds)
+    {
+        var aliases = new Dictionary<string, DeveloperGrantMaterialDefinition>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var shed in petSheds)
+        {
+            AddAlias(aliases, "specialpetshed", shed.Grant);
+            AddAlias(aliases, "petshed", shed.Grant);
+            AddAlias(aliases, "addpetnum", shed.Grant);
+            AddAlias(aliases, shed.Grant.DisplayName, shed.Grant);
+        }
+
+        return aliases;
+    }
 
     private static IReadOnlyList<CostumeDeveloperGrant>
         CreateCostumeGrants(IItemTemplateCatalog templates)
@@ -353,6 +462,10 @@ internal sealed class PinnedDeveloperItemGrantCatalog :
         DeveloperGrantMaterialDefinition Grant);
 
     private sealed record CostumeDeveloperGrant(
+        uint ItemId,
+        DeveloperGrantMaterialDefinition Grant);
+
+    private sealed record PetShedDeveloperGrant(
         uint ItemId,
         DeveloperGrantMaterialDefinition Grant);
 }

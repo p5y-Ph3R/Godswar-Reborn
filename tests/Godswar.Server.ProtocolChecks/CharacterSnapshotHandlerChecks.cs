@@ -31,7 +31,8 @@ internal static partial class CharacterSnapshotHandlerChecks
 
     private static async Task CheckCompleteBootstrapAsync()
     {
-        var source = CharacterSnapshotContractChecks.CreateValidSnapshot();
+        var source = CharacterSnapshotContractChecks
+            .CreateUnmergedValidSnapshot();
         var sourceCharacter = source.Character ??
             throw new InvalidOperationException(
                 "The handler fixture requires a character.");
@@ -163,11 +164,41 @@ internal static partial class CharacterSnapshotHandlerChecks
                 clearBytes,
                 PacketBuilder.CharacterPreview(hydrated.Character)),
             "the client receives the snapshot-backed character preview");
+        var ownedPetBootstrap = PacketBuilder.OwnedPetList(
+            PetContentTestCatalog.Instance,
+            hydrated.Pets,
+            hydrated.PetShed.OpenedCellCount);
         Check.True(
-            Contains(
-                clearBytes,
-                PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, hydrated.Pets)),
+            Contains(clearBytes, ownedPetBootstrap),
             "the client receives snapshot-backed owned pets");
+        var summonedPet = hydrated.Pets.Single(static pet =>
+            pet.IsCarried && pet.IsSummoned);
+        var restoredPetCallOut = PacketBuilder.PetOperationResult(
+            checked((uint)summonedPet.PetId),
+            PetOperationResultCode.CallOutSucceeded);
+        var restoredPetPresence = PacketBuilder.PetWorldPresence(
+            checked((uint)summonedPet.PetId),
+            0x0000_1448u);
+        var restoredOwnerMerge = PacketBuilder.PetOwnerMergeStarted(
+            0x0000_1448u);
+        Check.Equal(
+            1,
+            CountOccurrences(clearBytes, restoredPetCallOut),
+            "ordinary login restores the carried companion call-out");
+        Check.Equal(
+            1,
+            CountOccurrences(clearBytes, restoredPetPresence),
+            "ordinary login restores one companion model");
+        Check.Equal(
+            0,
+            CountOccurrences(clearBytes, restoredOwnerMerge),
+            "ordinary login does not fabricate a native unite presentation");
+        var ownedPetIndex = clearBytes.AsSpan().IndexOf(ownedPetBootstrap);
+        var callOutIndex = clearBytes.AsSpan().IndexOf(restoredPetCallOut);
+        Check.True(
+            ownedPetIndex >= 0 &&
+            callOutIndex > ownedPetIndex,
+            "owned-pet bootstrap precedes companion restoration");
         Check.True(
             Contains(
                 clearBytes,

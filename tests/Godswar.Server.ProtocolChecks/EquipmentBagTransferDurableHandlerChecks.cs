@@ -230,7 +230,12 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             persisted.CalculatedStats!,
             maxHp: 500,
             maxMp: 200,
-            physicalAttack: 99_999);
+            physicalAttack: 99_999,
+            physicalDamageReduction: 901,
+            magicDamageReduction: 902,
+            criticalDamageReduction: 903,
+            lifeAbsorption: 904,
+            damageRebound: 905);
 
         GameClientHandler.ApplyDurableEquipmentBagTransferProjection(
             live,
@@ -250,6 +255,16 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             99_999,
             live.CalculatedStats!.PhysicalAttack,
             "projection applies recalculated equipment stats");
+        Check.True(
+            live.CalculatedStats is
+            {
+                PhysicalDamageReduction: 901,
+                MagicDamageReduction: 902,
+                CriticalDamageReduction: 903,
+                LifeAbsorption: 904,
+                DamageRebound: 905
+            },
+            "equipment refresh preserves all Merge-only stat channels");
 
         var zeroManaLive = CreateProjectedCharacter(transferred: false);
         zeroManaLive.CurrentMp = 100;

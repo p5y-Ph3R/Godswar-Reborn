@@ -7,6 +7,8 @@ namespace Godswar.Server.Game;
 internal static class MonsterCombatResolver
 {
     internal const float DefaultPlayerBasicAttackRange = 2.5f;
+    internal const int DamageReductionBasisPointScale = 10_000;
+    internal const decimal MaximumCombinedDamageReduction = 1m;
     // A basic-attack request carries the client's final auto-approach position.
     // It can differ from the last Walk sample due to client interpolation, so
     // accept a bounded correction instead of testing reach from a stale point.
@@ -39,7 +41,24 @@ internal static class MonsterCombatResolver
         var damageAfterDefense = Math.Max(
             1L,
             baseAttack - effectivePhysicalDefense);
-        var boundedReduction = Math.Clamp(receivedDamageReduction, 0m, 1m);
+        // Runtime statuses use a decimal fraction while durable merge stats
+        // are projected as basis points. Compose the two only after both have
+        // been independently bounded, then cap the aggregate before applying
+        // it to the post-defense damage. The final one-damage floor prevents
+        // full reduction from becoming immunity.
+        var runtimeReduction = Math.Clamp(
+            receivedDamageReduction,
+            0m,
+            MaximumCombinedDamageReduction);
+        var mergeReduction = Math.Clamp(
+                stats.PhysicalDamageReduction,
+                0,
+                DamageReductionBasisPointScale) /
+            (decimal)DamageReductionBasisPointScale;
+        var boundedReduction = Math.Clamp(
+            runtimeReduction + mergeReduction,
+            0m,
+            MaximumCombinedDamageReduction);
         var reducedDamage = decimal.ToInt32(decimal.Truncate(
             damageAfterDefense * (1m - boundedReduction)));
         return (uint)Math.Max(1, reducedDamage);

@@ -7,6 +7,7 @@ internal sealed record HydratedCharacterLoadSnapshot(
     GameCharacter Character,
     IReadOnlyList<SkillState> Skills,
     IReadOnlyList<TalentState> Talents,
+    CharacterPetShedSnapshot PetShed,
     IReadOnlyList<PetBootstrapSnapshot> Pets,
     IReadOnlyList<CharacterProgressionBoostSnapshot> PersonalBoosts);
 
@@ -119,6 +120,7 @@ internal static partial class CharacterLoadSnapshotHydrator
                     NextCost = talent.NextCost
                 })
                 .ToArray(),
+            snapshot.PetShed,
             snapshot.Pets.Select(MapPet).ToArray(),
             snapshot.PersonalBoosts.ToArray());
     }
@@ -156,6 +158,11 @@ internal static partial class CharacterLoadSnapshotHydrator
             MagicAppendDamage = stats.MagicAppendDamage,
             CriticalDamagePercent = stats.CriticalDamagePercent,
             CriticalDamageFlat = stats.CriticalDamageFlat,
+            PhysicalDamageReduction = stats.PhysicalDamageReduction,
+            MagicDamageReduction = stats.MagicDamageReduction,
+            CriticalDamageReduction = stats.CriticalDamageReduction,
+            LifeAbsorption = stats.LifeAbsorption,
+            DamageRebound = stats.DamageRebound,
             WeaponScore = stats.WeaponScore,
             WeaponRank = stats.WeaponRank,
             WeaponAuraEffect = stats.WeaponAuraEffect,

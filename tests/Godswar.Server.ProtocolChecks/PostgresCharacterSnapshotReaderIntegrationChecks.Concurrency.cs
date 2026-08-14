@@ -49,7 +49,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             talentRank: 3,
             boostBasisPoints: 1_000,
             petExperience: 100,
-            petAddedSavvy: 10,
+            petAddedSavvy: 45,
             "repeatable-read snapshot is entirely old");
 
         var newSnapshot =
@@ -62,7 +62,7 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             talentRank: 7,
             boostBasisPoints: 2_000,
             petExperience: 200,
-            petAddedSavvy: 20,
+            petAddedSavvy: 54,
             "subsequent snapshot is entirely new");
     }
 
@@ -104,12 +104,13 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
               AND experience = 100;
 
             UPDATE public.character_pet_stat_values
-            SET added_savvy = 20,
-                rarity_added_savvy = 20,
+            SET added_savvy = 54,
+                base_growth_rate = 4,
                 revision = revision + 1
             WHERE pet_id = @petId
               AND stat_code = 1
-              AND added_savvy = 10;
+              AND added_savvy = 45
+              AND base_growth_rate = 3;
             """,
             connection,
             transaction);

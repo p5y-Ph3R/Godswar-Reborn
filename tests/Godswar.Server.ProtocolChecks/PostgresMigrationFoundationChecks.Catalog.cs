@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            61,
+            93,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -52,6 +52,17 @@ internal static partial class PostgresMigrationFoundationChecks
                 "WHERE conindid = username_index",
                 StringComparison.Ordinal),
             "fresh and existing databases retain an authoritative username uniqueness constraint");
+        var petEvidenceV3 = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260811_077_pet_durable_evidence_v3");
+        Check.True(
+            petEvidenceV3.Sql.Contains(
+                "'pet_to_pet_merge'",
+                StringComparison.Ordinal) &&
+            petEvidenceV3.Sql.Contains(
+                "'pet_rebirth'",
+                StringComparison.Ordinal),
+            "pet durable evidence exposes native Merge and Rebirth commands");
     }
 
     private static readonly string[] ExpectedMigrationIds =
@@ -116,6 +127,38 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260804_057_socket_spell_item_templates",
         "20260804_058_stock_holy_stone_material_templates",
         "20260805_059_holy_spirit_effectiveness_values",
-        "20260810_060_fashion_slot_consistency"
+        "20260810_060_fashion_slot_consistency",
+        "20260810_061_pet_skills_and_talents",
+        "20260810_062_pet_manager_dialogue",
+        "20260810_063_fashion_rank_projection_repair",
+        "20260810_064_zephyr_holy_stone_material_templates",
+        "20260810_065_pet_shed_capacity",
+        "20260810_066_pet_skill_cell_protocol",
+        "20260810_067_pet_skill_cell_protocol_correction",
+        "20260810_068_pet_point_reset_dialogue",
+        "20260810_069_pet_growth_savvy_semantics_v2",
+        "20260811_070_pet_initial_savvy_policy_v3",
+        "20260811_071_pet_phoenix_growth_activation",
+        "20260811_072_pet_quality_innate_talents",
+        "20260811_073_pet_owner_merge_content",
+        "20260811_074_pet_merge_balance_content",
+        "20260811_075_pet_durable_evidence_v2",
+        "20260811_076_pet_consumable_mutable_projection",
+        "20260811_077_pet_durable_evidence_v3",
+        "20260811_078_pet_scaled_added_value_v3",
+        "20260812_079_pet_growth_preview",
+        "20260812_080_pet_basic_savvy_preview",
+        "20260812_081_pet_rank_content",
+        "20260812_082_pet_hatch_evidence_hardening",
+        "20260812_083_pet_learned_skill_content",
+        "20260812_084_pet_merge_savvy_lookup_content",
+        "20260812_085_pet_magic_jade_appearance_groups",
+        "20260812_086_pet_appearance_change",
+        "20260812_087_pet_bind",
+        "20260813_088_pet_soul_contract",
+        "20260813_089_pet_manager_utility",
+        "20260813_090_bag_consumable_cooldown_state",
+        "20260813_091_pet_phoenix_rebirth_bracket",
+        "20260814_092_packed_seal_ownership_hardening"
     ];
 }

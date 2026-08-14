@@ -2,7 +2,6 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Networking.Secure;
-using Godswar.Server.Packets;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -12,35 +11,42 @@ internal sealed partial class GameClientHandler
     private readonly IPetDurableCommandExecutor? _petDurableCommands;
 
     private async Task HandleDurableBagItemActivationAsync(
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         int kitBagSlot,
         CancellationToken cancellationToken)
     {
-        if (!TryCreatePetSubject(out var subject) ||
+        if (!TryCreatePetSubject(identity, out var subject) ||
             _petDurableCommands is null)
         {
             RecordPetProviderUnavailable(
                 CommandFamily.BagItemActivation,
-                operationId,
+                identity,
                 "provider or active character is unavailable");
             return;
         }
 
-        var unownedEnvelope = BagItemActivationCommandEnvelope.Create(
-            subject,
-            SecurePetCorrelation(),
-            DateTimeOffset.UtcNow,
-            new BagItemActivationCommand(
-                operationId,
-                kitBagSlot,
-                IsSkillCastPending(MountCatalog.RideSkillId) ||
-                _registry.IsRuntimeStatusActive(
-                    _session,
-                    MountCatalog.RuntimeStatusKind,
-                    DateTimeOffset.UtcNow)
-                    ? BagItemActivationExecutionConstraint
-                        .RideRuntimeBlocked
-                    : BagItemActivationExecutionConstraint.None));
+        var correlation = PetCorrelation(identity);
+        var command = new BagItemActivationCommand(
+            identity,
+            kitBagSlot,
+            IsSkillCastPending(MountCatalog.RideSkillId) ||
+            _registry.IsRuntimeStatusActive(
+                _session,
+                MountCatalog.RuntimeStatusKind,
+                DateTimeOffset.UtcNow)
+                ? BagItemActivationExecutionConstraint.RideRuntimeBlocked
+                : BagItemActivationExecutionConstraint.None);
+        var unownedEnvelope = identity.IsSecureClient
+            ? BagItemActivationCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command)
+            : BagItemActivationCommandEnvelope.CreateRawLocal(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command);
         if (!TryBindCurrentPlayerOwnership(
                 unownedEnvelope,
                 out var envelope,
@@ -50,7 +56,7 @@ internal sealed partial class GameClientHandler
         }
 
         await ExecuteAndCompletePetCommandAsync(
-            operationId,
+            identity,
             CommandFamily.BagItemActivation,
             ownership,
             () => _petDurableCommands.ExecuteAsync(
@@ -60,25 +66,33 @@ internal sealed partial class GameClientHandler
     }
 
     private async Task HandleDurablePetLevelUpgradeAsync(
-        Guid operationId,
+        PetCommandOperationIdentity identity,
         long petId,
         CancellationToken cancellationToken)
     {
-        if (!TryCreatePetSubject(out var subject) ||
+        if (!TryCreatePetSubject(identity, out var subject) ||
             _petDurableCommands is null)
         {
             RecordPetProviderUnavailable(
                 CommandFamily.PetLevelUpgrade,
-                operationId,
+                identity,
                 "provider or active character is unavailable");
             return;
         }
 
-        var unownedEnvelope = PetLevelUpgradeCommandEnvelope.Create(
-            subject,
-            SecurePetCorrelation(),
-            DateTimeOffset.UtcNow,
-            new PetLevelUpgradeCommand(operationId, petId));
+        var correlation = PetCorrelation(identity);
+        var command = new PetLevelUpgradeCommand(identity, petId);
+        var unownedEnvelope = identity.IsSecureClient
+            ? PetLevelUpgradeCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command)
+            : PetLevelUpgradeCommandEnvelope.CreateRawLocal(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command);
         if (!TryBindCurrentPlayerOwnership(
                 unownedEnvelope,
                 out var envelope,
@@ -88,7 +102,7 @@ internal sealed partial class GameClientHandler
         }
 
         await ExecuteAndCompletePetCommandAsync(
-            operationId,
+            identity,
             CommandFamily.PetLevelUpgrade,
             ownership,
             () => _petDurableCommands.ExecuteAsync(
@@ -97,31 +111,33 @@ internal sealed partial class GameClientHandler
             cancellationToken);
     }
 
-    private async Task HandleDurablePetPresenceAsync(
-        Guid operationId,
-        long petId,
-        PetPresenceOperation operation,
+    private async Task HandleDurablePetOwnerMergeToggleAsync(
+        PetCommandOperationIdentity identity,
         CancellationToken cancellationToken)
     {
-        if (!TryCreatePetSubject(out var subject) ||
+        if (!TryCreatePetSubject(identity, out var subject) ||
             _petDurableCommands is null)
         {
             RecordPetProviderUnavailable(
-                CommandFamily.PetPresenceTransition,
-                operationId,
+                CommandFamily.PetOwnerMergeToggle,
+                identity,
                 "provider or active character is unavailable");
             return;
         }
 
-        var unownedEnvelope =
-            PetPresenceTransitionCommandEnvelope.Create(
-            subject,
-            SecurePetCorrelation(),
-            DateTimeOffset.UtcNow,
-            new PetPresenceTransitionCommand(
-                operationId,
-                petId,
-                ToPetPresenceCommandOperation(operation)));
+        var correlation = PetCorrelation(identity);
+        var command = new PetOwnerMergeToggleCommand(identity);
+        var unownedEnvelope = identity.IsSecureClient
+            ? PetOwnerMergeToggleCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command)
+            : PetOwnerMergeToggleCommandEnvelope.CreateRawLocal(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command);
         if (!TryBindCurrentPlayerOwnership(
                 unownedEnvelope,
                 out var envelope,
@@ -131,7 +147,64 @@ internal sealed partial class GameClientHandler
         }
 
         await ExecuteAndCompletePetCommandAsync(
-            operationId,
+            identity,
+            CommandFamily.PetOwnerMergeToggle,
+            ownership,
+            () => _petDurableCommands.ExecuteAsync(
+                envelope,
+                cancellationToken),
+            cancellationToken);
+    }
+
+    private async Task<PetDurableReceipt?> HandleDurablePetPresenceAsync(
+        PetCommandOperationIdentity identity,
+        long petId,
+        PetPresenceOperation operation,
+        CancellationToken cancellationToken)
+    {
+        if (!TryCreatePetSubject(identity, out var subject) ||
+            _petDurableCommands is null)
+        {
+            RecordPetProviderUnavailable(
+                CommandFamily.PetPresenceTransition,
+                identity,
+                "provider or active character is unavailable");
+            return null;
+        }
+
+        var correlation = PetCorrelation(identity);
+        var command = new PetPresenceTransitionCommand(
+            identity,
+            petId,
+            ToPetPresenceCommandOperation(operation));
+        var unownedEnvelope = identity.IsSecureClient
+            ? PetPresenceTransitionCommandEnvelope.Create(
+                subject,
+                correlation,
+                DateTimeOffset.UtcNow,
+                command)
+            : identity.IsRawLocalServer
+                ? PetPresenceTransitionCommandEnvelope.CreateRawLocal(
+                    subject,
+                    correlation,
+                    DateTimeOffset.UtcNow,
+                    command)
+                : PetPresenceTransitionCommandEnvelope
+                    .CreateServerSessionLifecycle(
+                        subject,
+                        correlation,
+                        DateTimeOffset.UtcNow,
+                        command);
+        if (!TryBindCurrentPlayerOwnership(
+                unownedEnvelope,
+                out var envelope,
+                out var ownership))
+        {
+            return null;
+        }
+
+        return await ExecuteAndCompletePetCommandAsync(
+            identity,
             CommandFamily.PetPresenceTransition,
             ownership,
             () => _petDurableCommands.ExecuteAsync(
@@ -153,11 +226,10 @@ internal sealed partial class GameClientHandler
             _ => throw new ArgumentOutOfRangeException(nameof(operation))
         };
 
-    private async Task ExecuteAndCompletePetCommandAsync(
-        Guid operationId,
+    private async Task<PetDurableReceipt?> ExecuteAndCompletePetCommandAsync(
+        PetCommandOperationIdentity identity,
         CommandFamily family,
-        Godswar.Server.Application.Characters.PlayerOwnershipFence
-            ownership,
+        PlayerOwnershipFence ownership,
         Func<Task<PetDurableExecutionResult>> execute,
         CancellationToken cancellationToken)
     {
@@ -171,48 +243,49 @@ internal sealed partial class GameClientHandler
         {
             CommandMetrics.Record(
                 family,
-                CommandIdentityStrength.ClientOperationId,
+                identity.Strength,
                 CommandOutcome.Cancelled);
             throw;
         }
         catch (PlayerOwnershipValidationException)
         {
             RejectLostPlayerOwnership();
-            return;
+            return null;
         }
         catch (Exception exception)
         {
             RecordPetProviderUnavailable(
                 family,
-                operationId,
+                identity,
                 exception.Message);
-            return;
+            return null;
         }
 
         if (!RevalidateCurrentPlayerOwnership(ownership))
         {
-            return;
+            return null;
         }
 
         if (execution.Receipt is { } receipt)
         {
             if (!await ReloadPetProjectionAsync(
                     receipt,
+                    execution.Disposition,
                     cancellationToken))
             {
                 RecordPetProviderUnavailable(
                     family,
-                    operationId,
+                    identity,
                     "committed projection could not be reloaded");
-                return;
+                return null;
             }
 
             await SendPetLegacyResultAsync(
-                operationId,
+                identity,
                 receipt,
                 execution.Disposition,
                 cancellationToken);
-            return;
+            return receipt;
         }
 
         if (execution.Disposition is
@@ -222,157 +295,33 @@ internal sealed partial class GameClientHandler
         {
             CommandMetrics.Record(
                 family,
-                CommandIdentityStrength.ClientOperationId,
+                identity.Strength,
                 execution.Disposition ==
                     PetDurableExecutionDisposition.RequestHashConflict
                     ? CommandOutcome.RequestHashConflict
                     : CommandOutcome.InvalidIntent);
-            await _session.SendLegacyCommandResultAsync(
-                new SecureLegacyCommandResult(
-                    execution.Disposition ==
-                        PetDurableExecutionDisposition
-                            .RequestHashConflict
-                        ? SecureLegacyCommandDisposition.Conflict
-                        : SecureLegacyCommandDisposition.Rejected,
-                    (ushort)family,
-                    0,
-                    0,
-                    operationId),
-                cancellationToken);
-            return;
+            if (identity.IsSecureClient)
+            {
+                await _session.SendLegacyCommandResultAsync(
+                    new SecureLegacyCommandResult(
+                        execution.Disposition ==
+                            PetDurableExecutionDisposition
+                                .RequestHashConflict
+                            ? SecureLegacyCommandDisposition.Conflict
+                            : SecureLegacyCommandDisposition.Rejected,
+                        (ushort)family,
+                        0,
+                        0,
+                        identity.OperationId),
+                    cancellationToken);
+            }
+            return null;
         }
 
         RecordPetProviderUnavailable(
             family,
-            operationId,
+            identity,
             $"unresolved execution {execution.Disposition}");
-    }
-
-    private async Task<bool> ReloadPetProjectionAsync(
-        PetDurableReceipt receipt,
-        CancellationToken cancellationToken)
-    {
-        if (!await RefreshCharacterSnapshotAsync(
-                "durable_pet_command",
-                cancellationToken) ||
-            _account is null ||
-            _character is null)
-        {
-            return false;
-        }
-
-        _registry.UpdateCharacter(
-            _session,
-            _character,
-            advanceWorldRevision: false);
-        var pets = _characterLoadSnapshot?.Pets ?? [];
-
-        if (receipt.Family == CommandFamily.BagItemActivation)
-        {
-            await SendKitBagRefreshAsync(cancellationToken);
-            if (receipt.EquipmentSlot >= 0)
-            {
-                var equipment = PacketBuilder.EquipmentItemSnapshot(
-                    _character,
-                    receipt.EquipmentSlot);
-                if (equipment.Length == 0)
-                {
-                    equipment = PacketBuilder
-                        .EquipmentItemClearSnapshot(
-                            receipt.EquipmentSlot);
-                }
-                await _session.SendAsync(
-                    equipment,
-                    cancellationToken,
-                    "DurablePetEquipmentRefresh");
-                await _session.SendAsync(
-                    PacketBuilder.EquipmentVisualRefresh(
-                        _character,
-                        _itemContent?.FashionAppearances),
-                    cancellationToken,
-                    "DurablePetEquipmentVisualRefresh");
-                await _session.SendAsync(
-                    PacketBuilder.EquipmentEffectVisibility(
-                        LocalPlayerObjectId,
-                        ResolveEquipmentEffectProjection(_character)),
-                    cancellationToken,
-                    "DurablePetEquipmentEffectVisibility");
-                await BroadcastEquipmentRefreshAsync(
-                    "durable_bag_activation",
-                    cancellationToken);
-            }
-            await _session.SendAsync(
-                PacketBuilder.OwnedPetList(RequirePetContent(), pets),
-                cancellationToken,
-                "DurablePetListRefresh");
-        }
-        else if (receipt.Family == CommandFamily.PetLevelUpgrade &&
-                 receipt.Succeeded)
-        {
-            var pet = pets.SingleOrDefault(
-                candidate => candidate.PetId == receipt.PetId);
-            if (pet is null || pet.StatValues.Count != 6)
-            {
-                return false;
-            }
-            var values = pet.StatValues
-                .OrderBy(static stat => stat.StatCode)
-                .Select(static stat => stat.InitialSavvy)
-                .ToArray();
-            await _session.SendAsync(
-                PacketBuilder.PetLevelUpgrade(
-                    RequirePetContent(),
-                    checked((uint)pet.PetId),
-                    pet.Level,
-                    pet.Experience,
-                    new PetSavvy(
-                        values[0], values[1], values[2],
-                        values[3], values[4], values[5])),
-                cancellationToken,
-                "DurablePetLevelUpgrade");
-        }
-        else if (receipt.Family ==
-                 CommandFamily.PetPresenceTransition)
-        {
-            await _session.SendAsync(
-                PacketBuilder.OwnedPetList(RequirePetContent(), pets),
-                cancellationToken,
-                "DurablePetPresenceListRefresh");
-            var target = pets.SingleOrDefault(
-                candidate => candidate.PetId == receipt.PetId);
-            await _session.SendAsync(
-                PacketBuilder.PetOperationResult(
-                    checked((uint)receipt.PetId),
-                    ResolveAuthoritativePresenceResult(
-                        receipt,
-                        target is not null,
-                        target?.IsCarried == true,
-                        target?.IsSummoned == true)),
-                cancellationToken,
-                "DurablePetPresenceResult");
-            var carried = pets.SingleOrDefault(
-                static candidate => candidate.IsCarried);
-            if (carried?.IsSummoned == true)
-            {
-                await _session.SendAsync(
-                    PacketBuilder.PetWorldPresence(
-                        checked((uint)carried.PetId),
-                        LocalPlayerObjectId),
-                    cancellationToken,
-                    "DurablePetWorldPresence");
-            }
-            else if (carried is not null &&
-                     carried.PetId != receipt.PetId)
-            {
-                await _session.SendAsync(
-                    PacketBuilder.PetOperationResult(
-                        checked((uint)carried.PetId),
-                        PetOperationResultCode.TakeSucceeded),
-                    cancellationToken,
-                    "DurablePetCurrentTake");
-            }
-        }
-
-        return true;
+        return null;
     }
 }

@@ -11,40 +11,78 @@ internal sealed partial class PostgresGameStore
            AND aptitude.aptitude = pet.aptitude
         LEFT JOIN character_pet_stat_values stat
             ON stat.pet_id = pet.id
-        WHERE pet.rarity_added_savvy_baseline_total IS NOT NULL
+        WHERE pet.initial_savvy_baseline_total IS NOT NULL
+           OR pet.initial_savvy_policy_version IS NOT NULL
+           OR pet.rarity_added_savvy_baseline_total IS NOT NULL
            OR pet.rarity_added_savvy_policy_version IS NOT NULL
            OR pet.initial_savvy_source_version IS NOT NULL
         GROUP BY
             pet.id,
+            pet.level,
+            pet.initial_savvy_baseline_total,
+            pet.initial_savvy_policy_version,
             pet.rarity_added_savvy_baseline_total,
             pet.rarity_added_savvy_policy_version,
             pet.initial_savvy_source_version,
+            aptitude.minimum_initial_savvy,
+            aptitude.maximum_initial_savvy,
             aptitude.minimum_added_savvy,
             aptitude.maximum_added_savvy
         HAVING count(stat.stat_code) <> 6
             OR count(DISTINCT stat.stat_code) <> 6
+            OR pet.initial_savvy_baseline_total IS NULL
+            OR (
+                pet.initial_savvy_policy_version
+                    IS DISTINCT FROM @initialPolicyVersion
+                AND pet.initial_savvy_policy_version
+                    IS DISTINCT FROM @migratedLegacySavvyPolicyVersion
+            )
             OR pet.rarity_added_savvy_baseline_total IS NULL
-            OR pet.rarity_added_savvy_policy_version
-                IS DISTINCT FROM @addedPolicyVersion
+            OR (
+                pet.rarity_added_savvy_policy_version
+                    IS DISTINCT FROM @initialPolicyVersion
+                AND pet.rarity_added_savvy_policy_version
+                    IS DISTINCT FROM @migratedLegacySavvyPolicyVersion
+            )
+            OR pet.initial_savvy_policy_version
+                IS DISTINCT FROM pet.rarity_added_savvy_policy_version
             OR pet.initial_savvy_source_version
                 IS DISTINCT FROM @initialSourceVersion
-            OR pet.rarity_added_savvy_baseline_total
-                < aptitude.minimum_added_savvy
-            OR pet.rarity_added_savvy_baseline_total
-                > aptitude.maximum_added_savvy
+            OR pet.initial_savvy_baseline_total
+                IS DISTINCT FROM pet.rarity_added_savvy_baseline_total
+            OR (
+                pet.initial_savvy_policy_version = @initialPolicyVersion
+                AND pet.rarity_added_savvy_baseline_total NOT BETWEEN
+                    aptitude.minimum_initial_savvy AND
+                    aptitude.maximum_initial_savvy
+            )
+            OR (
+                pet.initial_savvy_policy_version =
+                    @migratedLegacySavvyPolicyVersion
+                AND pet.rarity_added_savvy_baseline_total NOT BETWEEN
+                    aptitude.minimum_added_savvy AND
+                    aptitude.maximum_added_savvy
+            )
             OR count(*) FILTER (
                 WHERE stat.birth_initial_savvy IS NULL
                    OR stat.rarity_added_savvy IS NULL
+                   OR stat.base_growth_rate <= 0
+                   OR stat.growth_acceleration < 0
                    OR stat.birth_initial_savvy
-                        IS DISTINCT FROM stat.base_growth_rate
-                   OR stat.initial_savvy
-                        < stat.birth_initial_savvy
-                   OR stat.added_savvy
-                        < stat.rarity_added_savvy
+                        IS DISTINCT FROM stat.rarity_added_savvy
+                   OR stat.initial_savvy <= 0
+                   OR stat.added_savvy IS DISTINCT FROM
+                        (
+                            stat.base_growth_rate +
+                            stat.growth_acceleration
+                        ) * pet.level
             ) > 0
-            OR count(DISTINCT stat.rarity_added_savvy) < 2
             OR COALESCE(sum(stat.rarity_added_savvy), 0)
                 <> pet.rarity_added_savvy_baseline_total
+            OR COALESCE(sum(stat.birth_initial_savvy), 0)
+                <> pet.initial_savvy_baseline_total
+            OR COALESCE(sum(stat.initial_savvy), 0)
+                < pet.initial_savvy_baseline_total
         ORDER BY pet.id
         LIMIT 1;
         """;
@@ -95,11 +133,14 @@ internal sealed partial class PostgresGameStore
         await using var command = _dataSource.CreateCommand(
             PetSavvyBaselineValidationSql);
         command.Parameters.AddWithValue(
-            "addedPolicyVersion",
-            PetContent.Settings.AddedSavvyPolicyVersion);
+            "initialPolicyVersion",
+            PetContent.Settings.InitialSavvyPolicyVersion);
+        command.Parameters.AddWithValue(
+            "migratedLegacySavvyPolicyVersion",
+            PetSavvyRuntimeSemantics.LegacyHighSavvyPolicyVersion);
         command.Parameters.AddWithValue(
             "initialSourceVersion",
-            "growth-x1-v1");
+            PetSavvyRuntimeSemantics.SourceVersion);
         command.Parameters.AddWithValue(
             "petContentRevision",
             PetContent.Revision.Sha256);

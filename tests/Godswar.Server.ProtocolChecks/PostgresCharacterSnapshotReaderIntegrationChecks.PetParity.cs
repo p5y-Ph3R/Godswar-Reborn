@@ -14,6 +14,18 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             actual.Count,
             "snapshot pet count matches the legacy reader");
         Check.Equal(1, actual.Count, "rich fixture owns one pet");
+        Check.Equal(
+            (short)4,
+            actual[0].OpenedSkillSlots,
+            "rich fixture preserves opened pet skill slots");
+        Check.Equal(
+            (short)8,
+            actual[0].AvailableSkillSlots,
+            "rich fixture preserves available pet skill slots");
+        Check.Equal(
+            (short)31,
+            actual[0].TalentMask,
+            "rich fixture preserves the pet talent mask");
 
         for (var petIndex = 0; petIndex < expected.Count; petIndex++)
         {
@@ -78,6 +90,18 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
             expected.HasOwnerMergeTalent,
             actual.HasOwnerMergeTalent,
             $"{label} owner merge talent");
+        Check.Equal(
+            expected.OpenedSkillSlots,
+            actual.OpenedSkillSlots,
+            $"{label} opened skill slots");
+        Check.Equal(
+            expected.AvailableSkillSlots,
+            actual.AvailableSkillSlots,
+            $"{label} available skill slots");
+        Check.Equal(
+            expected.TalentMask,
+            actual.TalentMask,
+            $"{label} talent mask");
         Check.Equal(
             expected.CurrentEnergy,
             actual.CurrentEnergy,

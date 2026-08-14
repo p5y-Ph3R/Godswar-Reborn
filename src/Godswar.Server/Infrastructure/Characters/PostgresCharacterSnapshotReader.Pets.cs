@@ -72,7 +72,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 reader.GetInt16(9),
                 reader.GetInt16(10),
                 reader.GetInt32(11),
-                reader.GetBoolean(12),
+                checked((byte)reader.GetInt16(12)),
                 reader.GetBoolean(13),
                 reader.GetInt32(14),
                 reader.GetInt32(15),
@@ -88,7 +88,11 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 reader.GetBoolean(25),
                 reader.GetInt64(26),
                 ToUtcOffset(reader.GetDateTime(27)),
-                ToUtcOffset(reader.GetDateTime(28))));
+                ToUtcOffset(reader.GetDateTime(28)),
+                reader.GetInt16(29),
+                reader.GetInt16(30),
+                reader.GetInt16(31),
+                reader.IsDBNull(32) ? null : reader.GetString(32)));
         }
 
         return rows;
@@ -217,7 +221,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         short CompletedRebirths,
         short RebirthsRemaining,
         int CompletedPetMerges,
-        bool HasSoulContract,
+        byte SoulContractStage,
         bool HasOwnerMergeTalent,
         int CurrentEnergy,
         int MaximumEnergy,
@@ -233,7 +237,11 @@ internal sealed partial class PostgresCharacterSnapshotReader
         bool ContributesToCharacter,
         long Revision,
         DateTimeOffset CreatedAtUtc,
-        DateTimeOffset UpdatedAtUtc)
+        DateTimeOffset UpdatedAtUtc,
+        short OpenedSkillSlots,
+        short AvailableSkillSlots,
+        short TalentMask,
+        string? InitialSavvySourceVersion)
     {
         public CharacterPetSnapshot ToSnapshot(
             ImmutableArray<CharacterPetStatValueSnapshot> statValues,
@@ -253,7 +261,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 CompletedRebirths,
                 RebirthsRemaining,
                 CompletedPetMerges,
-                HasSoulContract,
+                SoulContractStage > 0,
                 HasOwnerMergeTalent,
                 CurrentEnergy,
                 MaximumEnergy,
@@ -272,7 +280,12 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 UpdatedAtUtc,
                 statValues,
                 bonuses,
-                skills);
+                skills,
+                OpenedSkillSlots,
+                AvailableSkillSlots,
+                TalentMask,
+                InitialSavvySourceVersion,
+                SoulContractStage);
     }
 
     private const string PetsQuery =
@@ -290,7 +303,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
             pet.completed_rebirths,
             pet.rebirths_remaining,
             pet.completed_pet_merges,
-            pet.has_soul_contract,
+            pet.soul_contract_stage,
             pet.has_owner_merge_talent,
             pet.current_energy,
             pet.maximum_energy,
@@ -306,13 +319,18 @@ internal sealed partial class PostgresCharacterSnapshotReader
             pet.contributes_to_character,
             pet.revision,
             pet.created_at,
-            pet.updated_at
+            pet.updated_at,
+            pet.opened_skill_slots,
+            pet.available_skill_slots,
+            pet.talent_mask,
+            pet.initial_savvy_source_version
         FROM character_pets pet
         JOIN character_base character
           ON character.id = pet.user_id
          AND character.account_id = @accountId
          AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
+          AND pet.activity_state = 'owned'
         ORDER BY pet.id;
 
         SELECT
@@ -333,6 +351,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
          AND character.account_id = @accountId
          AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
+          AND pet.activity_state = 'owned'
         ORDER BY value.pet_id, value.stat_code;
 
         SELECT
@@ -348,6 +367,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
          AND character.account_id = @accountId
          AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
+          AND pet.activity_state = 'owned'
         ORDER BY bonus.pet_id, bonus.effect_code;
 
         SELECT
@@ -366,6 +386,31 @@ internal sealed partial class PostgresCharacterSnapshotReader
          AND character.account_id = @accountId
          AND character.lifecycle_state = 'active'
         WHERE pet.user_id = @characterId
+          AND pet.activity_state = 'owned'
         ORDER BY skill.pet_id, skill.slot_index, skill.skill_id;
         """;
+
+    private static readonly string AuthorizedSealedPetQuery =
+        PetsQuery.Replace(
+            "AND pet.activity_state = 'owned'",
+            """
+            AND pet.activity_state = 'sealed'
+            AND pet.id = @petId
+            AND EXISTS (
+                SELECT 1
+                FROM public.sealed_pet_items sealed_link
+                JOIN public.character_items packed_item
+                  ON packed_item.id = sealed_link.item_instance_id
+                WHERE sealed_link.pet_id = pet.id
+                  AND sealed_link.owner_character_id = @characterId
+                  AND packed_item.user_id = @characterId
+                  AND packed_item.prop_id = 10109
+                  AND packed_item.bound IN (0, 1)
+                  AND (packed_item.bound = 1) IS NOT DISTINCT FROM
+                      sealed_link.pet_bound_snapshot
+                  AND pet.bound IS NOT DISTINCT FROM
+                      sealed_link.pet_bound_snapshot
+            )
+            """,
+            StringComparison.Ordinal);
 }

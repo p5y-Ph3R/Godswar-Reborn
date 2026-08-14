@@ -22,8 +22,13 @@ internal sealed record CharacterLoadSnapshot(
     CharacterCalculatedStatsSnapshot CalculatedStats,
     ImmutableArray<CharacterSkillSnapshot> Skills,
     ImmutableArray<CharacterTalentSnapshot> Talents,
+    CharacterPetShedSnapshot PetShed,
     ImmutableArray<CharacterPetSnapshot> Pets,
     ImmutableArray<CharacterProgressionBoostSnapshot> PersonalBoosts);
+
+internal sealed record CharacterPetShedSnapshot(
+    short OpenedCellCount,
+    long Revision);
 
 internal sealed record CharacterIdentitySnapshot(
     int CharacterId,

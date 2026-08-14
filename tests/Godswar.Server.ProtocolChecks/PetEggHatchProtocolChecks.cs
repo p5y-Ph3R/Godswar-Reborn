@@ -8,18 +8,19 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetEggHatchProtocolChecks
+internal static partial class PetEggHatchProtocolChecks
 {
-    private const int AccountId = 13;
-    private const int CharacterId = 2;
-    private const int EggSlot = 25;
-    private const uint EggItemId = 10150;
-    private const long PetId = 77;
+    internal const int AccountId = 13;
+    internal const int CharacterId = 2;
+    internal const int EggSlot = 25;
+    internal const uint EggItemId = 10150;
+    internal const long PetId = 77;
 
     public static async Task RunAsync()
     {
         CheckEggCatalog();
         await CheckSuccessfulHatchAsync();
+        await CheckSummonedCompanionReplacementAsync();
         await CheckRejectedHatchAsync();
     }
 
@@ -63,11 +64,14 @@ internal static class PetEggHatchProtocolChecks
             PetAptitude.Godly,
             50m,
             new Random(50));
-        var addedSavvy = PetAddedSavvyPolicy.Distribute(
+        var savvy = PetInitialSavvyPolicy.Distribute(
             PetAptitude.Godly,
             3_500,
             new Random(3_500));
-        var pet = CreatePet(addedSavvy, growth);
+        var pet = CreatePet(savvy, growth) with
+        {
+            IsCarried = true
+        };
         var operationId = Guid.NewGuid();
         var executor = new DelegatingPetDurableCommandExecutor
         {
@@ -84,7 +88,7 @@ internal static class PetEggHatchProtocolChecks
                         PetLevel: 1,
                         PetExperience: 0,
                         PetRevision: 0,
-                        IsCarried: false,
+                        IsCarried: true,
                         IsSummoned: false,
                         PresenceOperation: 0,
                         AggregateRevision: 1,
@@ -99,10 +103,19 @@ internal static class PetEggHatchProtocolChecks
         await fixture.InvokeAsync(
             CreateEggUsePacket(EggSlot, operationId));
         var packets = fixture.Transport.ReadLegacyPackets();
-        var expected = PacketBuilder
-            .KitBagDetailPages(updated)
+        var expected = new[]
+            {
+                PacketBuilder.StorageItemKitBagDelete(EggSlot)
+            }
+            .Concat(PacketBuilder.KitBagDetailPages(updated))
             .Concat(PacketBuilder.KitBagSlotIndexes(updated))
-            .Append(PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet]))
+            .Append(PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [pet],
+                openedCellCount: 2))
+            .Append(PacketBuilder.PetOperationResult(
+                checked((uint)PetId),
+                PetOperationResultCode.TakeSucceeded))
             .ToArray();
 
         Check.Equal(1, executor.ActivateCount, "egg hatch persists once");
@@ -126,7 +139,7 @@ internal static class PetEggHatchProtocolChecks
             completedOperation == operationId,
             "egg hatch terminates with one durable command result");
         Check.Equal(
-            expected.Length,
+            expected.Length + 2,
             packets.Count,
             "hatch emits bounded bag and pet refresh frames");
         for (var index = 0; index < expected.Length; index++)
@@ -135,16 +148,43 @@ internal static class PetEggHatchProtocolChecks
                 expected[index].SequenceEqual(packets[index]),
                 $"hatch refresh packet {index} preserves native order");
         }
-
         Check.True(
-            packets.All(static packet =>
-                ReadOpcode(packet) != Opcodes.PetOperationResult),
-            "egg hatch does not misuse the carry/summon result opcode");
+            ReadOpcode(packets[^2]) == 10_167 &&
+            ReadOpcode(packets[^1]) == 10_166,
+            "hatch refreshes the new carried-skill source in 10167 then 10166 order");
+
+        Check.Equal(
+            1,
+            packets.Count(static packet =>
+                ReadOpcode(packet) == Opcodes.PetOperationResult),
+            "egg hatch auto-carries the newly created pet exactly once");
     }
 
     private static async Task CheckRejectedHatchAsync()
     {
         var character = CharacterWithEgg(stack: 1);
+        var growth = PetGrowthPolicy.Distribute(
+            PetAptitude.Godly,
+            50m,
+            new Random(51));
+        var savvy = PetInitialSavvyPolicy.Distribute(
+            PetAptitude.Godly,
+            3_500,
+            new Random(3_501));
+        var pets = new[]
+        {
+            CreatePet(savvy, growth) with
+            {
+                PetId = 71,
+                Name = "First pet",
+                IsCarried = true
+            },
+            CreatePet(savvy, growth) with
+            {
+                PetId = 72,
+                Name = "Second pet"
+            }
+        };
         var operationId = Guid.NewGuid();
         var executor = new DelegatingPetDurableCommandExecutor
         {
@@ -171,7 +211,7 @@ internal static class PetEggHatchProtocolChecks
         await using var fixture = PetDurableHandlerFixture.Create(
             character,
             character,
-            [],
+            pets,
             executor);
         await fixture.InvokeAsync(
             CreateEggUsePacket(EggSlot, operationId));
@@ -179,7 +219,10 @@ internal static class PetEggHatchProtocolChecks
         var expected = PacketBuilder
             .KitBagDetailPages(character)
             .Concat(PacketBuilder.KitBagSlotIndexes(character))
-            .Append(PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, []))
+            .Append(PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                pets,
+                openedCellCount: 2))
             .ToArray();
 
         Check.Equal(
@@ -203,6 +246,11 @@ internal static class PetEggHatchProtocolChecks
             expected.Length,
             packets.Count,
             "rejected hatch performs one authoritative bag resync");
+        Check.Equal(
+            0,
+            packets.Count(static packet =>
+                ReadOpcode(packet) == Opcodes.PetOperationResult),
+            "capacity rejection never changes the carried or summoned pet");
         for (var index = 0; index < expected.Length; index++)
         {
             Check.True(
@@ -235,7 +283,7 @@ internal static class PetEggHatchProtocolChecks
         return new GamePacket(packet, operationId);
     }
 
-    private static GameCharacter CharacterWithEgg(short stack)
+    internal static GameCharacter CharacterWithEgg(short stack)
     {
         var egg = CompactItemEntry.Parse(
             $"[{EggItemId},,,,,,{(short)PetAptitude.Godly},1,0,{stack},0,0]");
@@ -252,8 +300,8 @@ internal static class PetEggHatchProtocolChecks
         };
     }
 
-    private static PetBootstrapSnapshot CreatePet(
-        PetAddedSavvyRoll addedSavvy,
+    internal static PetBootstrapSnapshot CreatePet(
+        PetInitialSavvyRoll savvy,
         PetGrowthRoll growth) =>
         new(
             PetId,
@@ -290,43 +338,43 @@ internal static class PetEggHatchProtocolChecks
             [
                 new(
                     1,
+                    savvy.InitialSavvy.Agility,
                     growth.BaseGrowthRates.Agility,
-                    addedSavvy.AddedSavvy.Agility,
                     growth.BaseGrowthRates.Agility,
                     0m,
                     0),
                 new(
                     2,
+                    savvy.InitialSavvy.Strength,
                     growth.BaseGrowthRates.Strength,
-                    addedSavvy.AddedSavvy.Strength,
                     growth.BaseGrowthRates.Strength,
                     0m,
                     0),
                 new(
                     3,
+                    savvy.InitialSavvy.Accuracy,
                     growth.BaseGrowthRates.Accuracy,
-                    addedSavvy.AddedSavvy.Accuracy,
                     growth.BaseGrowthRates.Accuracy,
                     0m,
                     0),
                 new(
                     4,
+                    savvy.InitialSavvy.Technique,
                     growth.BaseGrowthRates.Technique,
-                    addedSavvy.AddedSavvy.Technique,
                     growth.BaseGrowthRates.Technique,
                     0m,
                     0),
                 new(
                     5,
+                    savvy.InitialSavvy.Wisdom,
                     growth.BaseGrowthRates.Wisdom,
-                    addedSavvy.AddedSavvy.Wisdom,
                     growth.BaseGrowthRates.Wisdom,
                     0m,
                     0),
                 new(
                     6,
+                    savvy.InitialSavvy.Luck,
                     growth.BaseGrowthRates.Luck,
-                    addedSavvy.AddedSavvy.Luck,
                     growth.BaseGrowthRates.Luck,
                     0m,
                     0)

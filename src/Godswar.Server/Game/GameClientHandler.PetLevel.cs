@@ -1,4 +1,4 @@
-using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Game;
@@ -26,15 +26,22 @@ internal sealed partial class GameClientHandler
         if (packet.ClientOperationId is { } operationId)
         {
             await HandleDurablePetLevelUpgradeAsync(
-                operationId,
+                PetCommandOperationIdentity.SecureClient(operationId),
                 petId,
                 cancellationToken);
             return;
         }
-        CommandMetrics.RecordUnsupportedLegacyIdentity(
-            CommandFamily.PetLevelUpgrade);
-        Console.WriteLine(
-            $"[pet] rejected level-up without durable operation " +
-            $"identity pet={petId}");
+
+        if (!AllowLegacyPlayerMutationFallback("pet_level_upgrade"))
+        {
+            return;
+        }
+
+        await HandleDurablePetLevelUpgradeAsync(
+            PetCommandOperationIdentity.RawLocalServer(
+                Guid.NewGuid(),
+                _commandConnectionId),
+            petId,
+            cancellationToken);
     }
 }

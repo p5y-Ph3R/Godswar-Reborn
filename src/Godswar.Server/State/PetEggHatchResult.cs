@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Pets;
+
 namespace Godswar.Server.State;
 
 internal enum PetEggHatchStatus
@@ -19,16 +21,20 @@ internal sealed record PetEggHatchResult(
     long PetId,
     int SpeciesType,
     PetAptitude Aptitude,
+    PetHatchRankRoll? HatchRank,
+    string? HatchRankContentRevision,
     PetSavvy InitialSavvy,
-    PetAddedSavvyRoll? AddedSavvy,
+    PetInitialSavvyRoll? InitialSavvyRoll,
     PetGrowthRoll? Growth)
 {
     public bool Succeeded =>
         Status == PetEggHatchStatus.Succeeded &&
         Character is not null &&
         PetId > 0 &&
+        HatchRank is not null &&
+        !string.IsNullOrWhiteSpace(HatchRankContentRevision) &&
         InitialSavvy.IsNonNegative &&
-        AddedSavvy is not null &&
+        InitialSavvyRoll is not null &&
         Growth is not null;
 
     public static PetEggHatchResult Rejected(
@@ -40,7 +46,9 @@ internal sealed record PetEggHatchResult(
             PetId: 0,
             SpeciesType: 0,
             Aptitude: default,
+            HatchRank: null,
+            HatchRankContentRevision: null,
             InitialSavvy: PetSavvy.Zero,
-            AddedSavvy: null,
+            InitialSavvyRoll: null,
             Growth: null);
 }

@@ -50,6 +50,7 @@ internal static partial class BackhaulSkillHandlerChecks
                 fixture.Socket.Session);
         var vitalsBeforeAttack = fixture.Character.VitalsRevision;
         var interruptionSinkCalls = 0;
+        var allowInterruptionNotification = NewSignal();
         fixture.RegisterInterruptionSink(
             (reason, cancellationToken, notificationBarrier) =>
             {
@@ -60,24 +61,34 @@ internal static partial class BackhaulSkillHandlerChecks
                     fixture.Handler,
                     reason,
                     cancellationToken,
-                    notificationBarrier);
-                Interlocked.Increment(ref interruptionSinkCalls);
-                Check.True(
-                    IsPendingInterruptionClaimed(fixture.Handler),
-                    $"{playerRuntimeMode} lethal attack synchronously claims the cast");
-                Check.Equal(
-                    1,
-                    fixture.Character.CurrentHp,
-                    $"{playerRuntimeMode} claims before lethal HP commit");
-                Check.Equal(
-                    vitalsBeforeAttack,
-                    fixture.Character.VitalsRevision,
-                    $"{playerRuntimeMode} claims before lethal vitals revision");
-                Check.Equal(
-                    lifeBeforeAttack,
-                    fixture.Registry.GetPlayerLifeRevision(
-                        fixture.Socket.Session),
-                    $"{playerRuntimeMode} claims before death life revision");
+                    Task.WhenAll(
+                        notificationBarrier ?? Task.CompletedTask,
+                        allowInterruptionNotification.Task));
+                try
+                {
+                    Interlocked.Increment(ref interruptionSinkCalls);
+                    Check.True(
+                        IsPendingInterruptionClaimed(fixture.Handler),
+                        $"{playerRuntimeMode} lethal attack synchronously claims the cast");
+                    Check.Equal(
+                        1,
+                        fixture.Character.CurrentHp,
+                        $"{playerRuntimeMode} claims before lethal HP commit");
+                    Check.Equal(
+                        vitalsBeforeAttack,
+                        fixture.Character.VitalsRevision,
+                        $"{playerRuntimeMode} claims before lethal vitals revision");
+                    Check.Equal(
+                        lifeBeforeAttack,
+                        fixture.Registry.GetPlayerLifeRevision(
+                            fixture.Socket.Session),
+                        $"{playerRuntimeMode} claims before death life revision");
+                }
+                finally
+                {
+                    allowInterruptionNotification.TrySetResult();
+                }
+
                 return interruption;
             });
 
@@ -157,6 +168,7 @@ internal static partial class BackhaulSkillHandlerChecks
                 "FrozenBoundaryBackhaul");
         const int frozenKind = 27;
         var sinkCalls = 0;
+        var allowInterruptionNotification = NewSignal();
         fixture.RegisterInterruptionSink(
             (reason, cancellationToken, notificationBarrier) =>
             {
@@ -167,21 +179,31 @@ internal static partial class BackhaulSkillHandlerChecks
                     fixture.Handler,
                     reason,
                     cancellationToken,
-                    notificationBarrier);
-                Interlocked.Increment(ref sinkCalls);
-                Check.True(
-                    IsPendingInterruptionClaimed(fixture.Handler),
-                    "Frozen 299 synchronously claims the pending cast");
-                Check.True(
-                    !HasRawRuntimeStatus(
-                        fixture.Registry,
-                        fixture.Socket.Session,
-                        frozenKind),
-                    "Frozen 299 claims before its runtime-status mutation");
-                Check.Equal(
-                    0,
-                    fixture.Socket.Available,
-                    "Frozen 299 claims before status publication");
+                    Task.WhenAll(
+                        notificationBarrier ?? Task.CompletedTask,
+                        allowInterruptionNotification.Task));
+                try
+                {
+                    Interlocked.Increment(ref sinkCalls);
+                    Check.True(
+                        IsPendingInterruptionClaimed(fixture.Handler),
+                        "Frozen 299 synchronously claims the pending cast");
+                    Check.True(
+                        !HasRawRuntimeStatus(
+                            fixture.Registry,
+                            fixture.Socket.Session,
+                            frozenKind),
+                        "Frozen 299 claims before its runtime-status mutation");
+                    Check.Equal(
+                        0,
+                        fixture.Socket.Available,
+                        "Frozen 299 claims before status publication");
+                }
+                finally
+                {
+                    allowInterruptionNotification.TrySetResult();
+                }
+
                 return interruption;
             });
 

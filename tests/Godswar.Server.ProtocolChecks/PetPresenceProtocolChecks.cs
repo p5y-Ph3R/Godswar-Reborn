@@ -8,7 +8,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetPresenceProtocolChecks
+internal static partial class PetPresenceProtocolChecks
 {
     private const int AccountId = 13;
     private const int CharacterId = 2;
@@ -18,6 +18,7 @@ internal static class PetPresenceProtocolChecks
     {
         CheckOpcodeCatalog();
         CheckResultFrames();
+        await CheckPersistedPresenceRestoreAsync();
         await CheckSuccessfulActionAsync(
             Opcodes.PetTakeRequest,
             PetPresenceOperation.Take,
@@ -30,6 +31,12 @@ internal static class PetPresenceProtocolChecks
             Opcodes.PetRecallRequest,
             PetPresenceOperation.Recall,
             PetOperationResultCode.RecallSucceeded);
+        await CheckTakeAutoSummonsDifferentPetAsync(
+            previousWasSummoned: true);
+        await CheckTakeAutoSummonsDifferentPetAsync(
+            previousWasSummoned: false);
+        await CheckTakeSamePetDoesNotAutoSummonAsync();
+        await CheckTakeDuplicateReplayDoesNotAutoSummonTwiceAsync();
         await CheckRejectedActionAsync();
         await CheckMalformedActionAsync();
     }
@@ -135,8 +142,30 @@ internal static class PetPresenceProtocolChecks
         await fixture.InvokeAsync(
             CreateActionPacket(opcode, PetId, operationId));
         var packets = fixture.Transport.ReadLegacyPackets();
-        var response = packets.Single(packet =>
-            ReadOpcode(packet) == Opcodes.PetOperationResult);
+        var expectedPacketCount = expectedOperation ==
+            PetPresenceOperation.Take ? 3 : 1;
+        Check.Equal(
+            expectedPacketCount,
+            packets.Count,
+            $"{expectedOperation} emits its bounded authoritative projection");
+        Check.True(
+            ReadOpcode(packets[0]) == Opcodes.PetOperationResult,
+            $"{expectedOperation} begins with its native result frame");
+        if (expectedOperation == PetPresenceOperation.Take)
+        {
+            Check.True(
+                ReadOpcode(packets[1]) == 10_167 &&
+                ReadOpcode(packets[2]) == 10_166,
+                "Take refreshes the changed carried-skill source in 10167 then 10166 order");
+        }
+        else
+        {
+            Check.True(
+                packets.All(packet =>
+                    ReadOpcode(packet) == Opcodes.PetOperationResult),
+                $"{expectedOperation} preserves the carried-skill source without a stat refresh");
+        }
+        var response = packets[0];
 
         Check.True(
             response.SequenceEqual(
@@ -301,7 +330,7 @@ internal static class PetPresenceProtocolChecks
             KitBag = GameDefaults.EmptyKitBag
         };
 
-    private static PetBootstrapSnapshot CreatePet(
+    internal static PetBootstrapSnapshot CreatePet(
         bool isCarried,
         bool isSummoned,
         long revision) =>

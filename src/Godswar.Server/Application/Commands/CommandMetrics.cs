@@ -134,6 +134,26 @@ internal static class CommandMetrics
                 "bag_item_activation",
             CommandFamily.PetPresenceTransition =>
                 "pet_presence_transition",
+            CommandFamily.PetSkillUnlearn =>
+                "pet_skill_unlearn",
+            CommandFamily.PetGrowthReset =>
+                "pet_growth_reset",
+            CommandFamily.PetBasicSavvyReset =>
+                "pet_basic_savvy_reset",
+            CommandFamily.PetOwnerMergeToggle =>
+                "pet_owner_merge_toggle",
+            CommandFamily.PetToPetMerge =>
+                "pet_to_pet_merge",
+            CommandFamily.PetRebirth =>
+                "pet_rebirth",
+            CommandFamily.PetAppearanceChange =>
+                "pet_appearance_change",
+            CommandFamily.PetBind =>
+                "pet_bind",
+            CommandFamily.PetSoulContract =>
+                "pet_soul_contract",
+            CommandFamily.PetManagerUtility =>
+                "pet_manager_utility",
             CommandFamily.MonsterRewardSettlement =>
                 "monster_reward_settlement",
             CommandFamily.ProgressionIntervalSettlement =>

@@ -1,3 +1,4 @@
+using Godswar.Server.Application.Pets;
 using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -32,9 +33,15 @@ internal static partial class PetEggHatchPersistenceChecks
         try
         {
             await using var storeA =
-                new PostgresGameStore(connectionString);
+                new PostgresGameStore(
+                    connectionString,
+                    petHatchRankRollSource:
+                        new FixedPetHatchRankRollSource(89));
             await using var storeB =
-                new PostgresGameStore(connectionString);
+                new PostgresGameStore(
+                    connectionString,
+                    petHatchRankRollSource:
+                        new FixedPetHatchRankRollSource(89));
             await storeA.EnsureSeedDataAsync();
             await storeB.EnsureSeedDataAsync();
             CheckEggTemplates(storeA.ItemContent.Templates);
@@ -116,6 +123,11 @@ internal static partial class PetEggHatchPersistenceChecks
                 character.Id,
                 rarity: (short)EggAptitude);
 
+            await AssertInvalidRankRollPreservesEggAsync(
+                connectionString,
+                account.Id,
+                character.Id);
+
             var raced = await Task.WhenAll(
                 storeA.HatchPetEggAsync(
                     account.Id,
@@ -190,10 +202,6 @@ internal static partial class PetEggHatchPersistenceChecks
                 character.Id,
                 stack: 1,
                 bound: 1);
-            await InsertCapacityPetsAsync(
-                connectionString,
-                character.Id,
-                PetManagerPlanner.MaximumOwnedPetCount - 2);
             var capacity = await storeA.HatchPetEggAsync(
                 account.Id,
                 character.Id,
@@ -201,7 +209,7 @@ internal static partial class PetEggHatchPersistenceChecks
             Check.Equal(
                 (int)PetEggHatchStatus.PetCapacityReached,
                 (int)capacity.Status,
-                "native eight-pet capacity rejects another hatch");
+                "two opened pet sheds reject another hatch");
             Check.Equal(
                 1,
                 await ReadEggStackAsync(
@@ -209,13 +217,18 @@ internal static partial class PetEggHatchPersistenceChecks
                     character.Id),
                 "capacity rejection preserves the egg");
             Check.Equal(
-                PetManagerPlanner.MaximumOwnedPetCount,
+                2,
                 (await storeA.GetOwnedPetsAsync(
                     account.Id,
                     character.Id)).Count,
-                "capacity rejection does not create a ninth pet");
+                "shed-capacity rejection creates no extra pet");
 
             await AssertAuditAsync(
+                connectionString,
+                character.Id,
+                first,
+                second);
+            await AssertHatchRankEvidenceAsync(
                 connectionString,
                 character.Id,
                 first,
@@ -242,9 +255,9 @@ internal static partial class PetEggHatchPersistenceChecks
             ?? throw new InvalidOperationException(
                 "A successful hatch requires growth.");
         var initialSavvy = result.InitialSavvy;
-        var addedSavvy = result.AddedSavvy
+        var initialSavvyRoll = result.InitialSavvyRoll
             ?? throw new InvalidOperationException(
-                "A successful hatch requires added savvy.");
+                "A successful hatch requires a Savvy roll.");
         Check.Equal(
             ExpectedSpeciesType,
             result.SpeciesType,
@@ -253,36 +266,48 @@ internal static partial class PetEggHatchPersistenceChecks
             (short)EggAptitude,
             (short)result.Aptitude,
             "pet aptitude comes directly from egg rarity");
+        var hatchRank = result.HatchRank
+            ?? throw new InvalidOperationException(
+                "A successful hatch requires rank evidence.");
         Check.True(
-            PetGrowthPolicy.TryGet(
-                result.Aptitude,
-                out var bracket) &&
+            hatchRank == new PetHatchRankRoll(2.70m, 1, 89),
+            "injected hatch roll deterministically selects the middle Godly rank");
+        Check.True(
+            string.Equals(
+                PetContentTestCatalog.Instance.Revision.Sha256,
+                result.HatchRankContentRevision,
+                StringComparison.Ordinal),
+            "hatch receipt pins its rank source revision");
+        Check.True(
+            PetContentTestCatalog.Instance.TryGetAptitude(
+                (short)PetAptitude.Weak,
+                out var weakAptitude) &&
             growth.TotalGrowth >=
-                bracket.MinimumTotalGrowth &&
+                weakAptitude.MinimumTotalGrowth &&
             growth.TotalGrowth <=
-                bracket.MaximumTotalGrowth,
-            "hatch growth remains in its aptitude bracket");
+                weakAptitude.MaximumTotalGrowth,
+            "unrevealed hatch Growth remains in the Weak content bracket until a Phoenix reset");
         Check.Equal(
             growth.TotalGrowth,
             SavvyValues(growth.BaseGrowthRates).Sum(),
             "hatched growth distribution preserves its total");
         Check.True(
-            PetAddedSavvyPolicy.TryGet(
+            PetInitialSavvyPolicy.TryGet(
                 result.Aptitude,
                 out var savvyBracket) &&
-            addedSavvy.TotalSavvy >=
+            initialSavvyRoll.TotalSavvy >=
                 savvyBracket.MinimumTotalSavvy &&
-            addedSavvy.TotalSavvy <=
+            initialSavvyRoll.TotalSavvy <=
                 savvyBracket.MaximumTotalSavvy,
-            "hatch added savvy remains in its aptitude bracket");
+            "hatched Savvy remains in its aptitude bracket");
         Check.Equal(
-            (decimal)addedSavvy.TotalSavvy,
-            SavvyValues(addedSavvy.AddedSavvy).Sum(),
-            "hatched added-savvy distribution preserves its total");
+            (decimal)initialSavvyRoll.TotalSavvy,
+            SavvyValues(initialSavvyRoll.InitialSavvy).Sum(),
+            "hatched Savvy distribution preserves its total");
         Check.Equal(
-            growth.BaseGrowthRates,
+            initialSavvyRoll.InitialSavvy,
             initialSavvy,
-            "basic savvy is one times the matching base-growth rate");
+            "Basic value is the pet-quality Savvy roll");
     }
 
     private static async Task AssertPersistedPetAsync(
@@ -303,6 +328,10 @@ internal static partial class PetEggHatchPersistenceChecks
             (short)result.Aptitude,
             (short)pet.Aptitude,
             "hatched aptitude persists");
+        Check.Equal(
+            result.HatchRank!.Rank,
+            pet.Rank,
+            "hatched rank persists as current rank");
         Check.True(
             PetNativeAptitudeProfileCatalog.TryGet(
                 ExpectedSpeciesType,
@@ -314,6 +343,15 @@ internal static partial class PetEggHatchPersistenceChecks
             pet.RemainingLifetime,
             "hatched lifetime comes from species plus egg rarity");
         Check.True(pet.IsBound, "pet inherits bound egg state");
+        Check.True(pet.IsCarried, "a hatched pet is auto-carried");
+        Check.True(!pet.IsSummoned, "hatch does not force a new summon");
+        Check.Equal(
+            (short)PetInnateTalentPolicy.GodlyTalentMask,
+            pet.TalentMask,
+            "Godly hatch persists all five innate talents");
+        Check.True(
+            pet.HasOwnerMergeTalent,
+            "Godly hatch persists the Merge compatibility projection");
         Check.Equal(6, pet.StatValues.Count, "six growth rows persist");
 
         var persistedGrowth = pet.StatValues
@@ -331,29 +369,66 @@ internal static partial class PetEggHatchPersistenceChecks
         Check.True(
             persistedInitialSavvy.SequenceEqual(
                 SavvyValues(result.InitialSavvy)),
-            "all six growth-derived initial-savvy values survive reload");
+            "all six quality-derived Savvy values survive reload");
         var persistedAddedSavvy = pet.StatValues
             .OrderBy(static stat => stat.StatCode)
             .Select(static stat => stat.AddedSavvy)
             .ToArray();
         Check.True(
             persistedAddedSavvy.SequenceEqual(
-                SavvyValues(result.AddedSavvy!.AddedSavvy)),
-            "all six rarity-added-savvy values survive reload");
+                SavvyValues(result.Growth!.BaseGrowthRates)),
+            "all six Growth-derived Added-values survive reload");
         Check.True(
             pet.StatValues.All(static stat =>
                 stat.InitialSavvy > 0m &&
                 stat.AddedSavvy > 0m &&
                 stat.BirthInitialSavvy == stat.InitialSavvy &&
-                stat.RarityAddedSavvy == stat.AddedSavvy &&
+                stat.RarityAddedSavvy == stat.InitialSavvy &&
+                stat.AddedSavvy == stat.BaseGrowthRate &&
                 stat.GrowthAcceleration == 0m),
-            "basic, rarity-added, growth, and acceleration values retain distinct baselines");
+            "Savvy, Growth, Added-value, and acceleration retain their baselines");
         Check.True(
             pet.Skills.Count == 1 &&
             pet.Skills[0].SkillId == ExpectedStarterSkillId &&
             pet.Skills[0].SlotIndex == 0 &&
             pet.Skills[0].SkillRank == 1,
             "species starter skill persists in slot zero");
+    }
+
+    private sealed class FixedPetHatchRankRollSource(int roll) :
+        IPetHatchRankRollSource
+    {
+        public int NextRoll() => roll;
+    }
+
+    private static async Task AssertInvalidRankRollPreservesEggAsync(
+        string connectionString,
+        int accountId,
+        int characterId)
+    {
+        await using var invalidStore = new PostgresGameStore(
+            connectionString,
+            petHatchRankRollSource:
+                new FixedPetHatchRankRollSource(100));
+        await invalidStore.EnsureSeedDataAsync();
+        try
+        {
+            _ = await invalidStore.HatchPetEggAsync(
+                accountId,
+                characterId,
+                EggSlot);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            Check.Equal(
+                1,
+                await ReadEggStackAsync(connectionString, characterId),
+                "invalid injected rank roll rolls back before egg consumption");
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "Invalid injected hatch-rank roll was accepted.");
     }
 
 }

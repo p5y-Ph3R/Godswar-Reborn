@@ -164,6 +164,9 @@ internal sealed partial class JsonGameStore :
             MapCalculatedStats(character, skills.Length),
             skills,
             MapTalents(database, character),
+            new CharacterPetShedSnapshot(
+                PetShedCapacityPolicy.DefaultOpenedCellCount,
+                0),
             ImmutableArray<CharacterPetSnapshot>.Empty,
             MapPersonalBoosts(database, character.Id, readAt));
     }
@@ -380,5 +383,16 @@ internal sealed partial class JsonGameStore :
         return snapshot.Character?.Identity.CharacterId == characterId
             ? snapshot.Character.Pets
             : ImmutableArray<CharacterPetSnapshot>.Empty;
+    }
+
+    Task<CharacterPetSnapshot?>
+        ISealedPetSnapshotReader.ReadAuthorizedSealedPetAsync(
+            int accountId,
+            int characterId,
+            long petId,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<CharacterPetSnapshot?>(null);
     }
 }

@@ -36,4 +36,9 @@ internal sealed record CharacterCalculatedStatsSnapshot(
     int ArmorScore,
     short ArmorRank,
     int ArmorAuraEffect,
-    int LearnedSkillCount);
+    int LearnedSkillCount,
+    int PhysicalDamageReduction = 0,
+    int MagicDamageReduction = 0,
+    int CriticalDamageReduction = 0,
+    int LifeAbsorption = 0,
+    int DamageRebound = 0);

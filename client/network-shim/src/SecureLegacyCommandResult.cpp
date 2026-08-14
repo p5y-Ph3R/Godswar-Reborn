@@ -101,7 +101,27 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::ClassSuitAddAttribute ||
         family ==
-            SecureLegacyCommandFamily::ClassSuitDeleteAttribute;
+            SecureLegacyCommandFamily::ClassSuitDeleteAttribute ||
+        family ==
+            SecureLegacyCommandFamily::PetSkillUnlearn ||
+        family ==
+            SecureLegacyCommandFamily::PetGrowthReset ||
+        family ==
+            SecureLegacyCommandFamily::PetOwnerMergeToggle ||
+        family ==
+            SecureLegacyCommandFamily::PetToPetMerge ||
+        family ==
+            SecureLegacyCommandFamily::PetRebirth ||
+        family ==
+            SecureLegacyCommandFamily::PetBasicSavvyReset ||
+        family ==
+            SecureLegacyCommandFamily::PetAppearanceChange ||
+        family ==
+            SecureLegacyCommandFamily::PetBind ||
+        family ==
+            SecureLegacyCommandFamily::PetSoulContract ||
+        family ==
+            SecureLegacyCommandFamily::PetManagerUtility;
 }
 
 bool HasValidRevision(

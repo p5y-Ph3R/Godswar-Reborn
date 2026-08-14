@@ -375,6 +375,9 @@ internal sealed partial class PostgresDeveloperItemGrantCommandExecutor :
                     : itemId is >= FirstSocketSpellItemId and
                         <= LastSocketSpellItemId
                     ? "developer_socket_spell_grant"
+                    : PinnedDeveloperItemGrantCatalog
+                        .IsPetConsumableDeveloperGrant(itemId)
+                    ? "developer_pet_consumable_grant"
                     : "developer_empty_holy_box_grant");
             return true;
         }

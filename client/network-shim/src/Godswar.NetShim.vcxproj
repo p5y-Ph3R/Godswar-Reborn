@@ -98,6 +98,9 @@
     <ClInclude Include="SecureCharacterLifecycleIdentity.h" />
     <ClInclude Include="SecureClassSuitCommandIdentity.h" />
     <ClInclude Include="SecurePetCommandIdentity.h" />
+    <ClInclude Include="SecurePetBindCommandIdentity.h" />
+    <ClInclude Include="SecurePetAlterCommandIdentity.h" />
+    <ClInclude Include="SecurePetManagerUtilityIdentity.h" />
     <ClInclude Include="SecureEquipmentBagTransferIdentity.h" />
     <ClInclude Include="SecureForgeCommandIdentity.h" />
     <ClInclude Include="SecureHolyStoneCommandIdentity.h" />
@@ -156,6 +159,9 @@
     <ClCompile Include="SecureCharacterLifecycleIdentity.cpp" />
     <ClCompile Include="SecureClassSuitCommandIdentity.cpp" />
     <ClCompile Include="SecurePetCommandIdentity.cpp" />
+    <ClCompile Include="SecurePetBindCommandIdentity.cpp" />
+    <ClCompile Include="SecurePetAlterCommandIdentity.cpp" />
+    <ClCompile Include="SecurePetManagerUtilityIdentity.cpp" />
     <ClCompile Include="SecureGameControl.cpp" />
     <ClCompile Include="SecureGameGrantRegistry.cpp" />
     <ClCompile Include="SecureEquipmentBagTransferIdentity.cpp" />

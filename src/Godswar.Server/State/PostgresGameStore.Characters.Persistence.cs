@@ -382,47 +382,4 @@ internal sealed partial class PostgresGameStore
         };
     }
 
-    private static CharacterStats ReadCharacterStats(NpgsqlDataReader reader)
-    {
-        return new CharacterStats
-        {
-            CharacterId = reader.GetInt32(0),
-            AccountId = reader.GetInt32(1),
-            Name = reader.GetString(2),
-            Level = reader.GetInt32(4),
-            MaxHp = reader.GetInt32(5),
-            MaxMp = reader.GetInt32(6),
-            CurrentHp = reader.GetInt32(7),
-            CurrentMp = reader.GetInt32(8),
-            PhysicalAttack = reader.GetInt32(9),
-            PhysicalDefense = reader.GetInt32(10),
-            MagicAttack = reader.GetInt32(11),
-            MagicDefense = reader.GetInt32(12),
-            Hit = reader.GetInt32(13),
-            Dodge = reader.GetInt32(14),
-            Critical = reader.GetInt32(15),
-            CriticalResistance = reader.GetInt32(16),
-            DamageAbsorb = reader.GetInt32(17),
-            PhysicalDamageBonus = reader.GetInt32(18),
-            MagicDamageBonus = reader.GetInt32(19),
-            CureBonus = reader.GetInt32(20),
-            BeCureBonus = reader.GetInt32(21),
-            HpRecovery = reader.GetInt32(22),
-            MpRecovery = reader.GetInt32(23),
-            IgnorePhysicalDefense = reader.GetInt32(24),
-            IgnoreMagicDefense = reader.GetInt32(25),
-            PhysicalAppendDamage = reader.GetInt32(26),
-            MagicAppendDamage = reader.GetInt32(27),
-            CriticalDamagePercent = reader.GetInt32(28),
-            CriticalDamageFlat = reader.GetInt32(29),
-            WeaponScore = reader.GetInt32(30),
-            WeaponRank = reader.GetInt16(31),
-            WeaponAuraEffect = reader.GetInt32(32),
-            ArmorScore = reader.GetInt32(33),
-            ArmorRank = reader.GetInt16(34),
-            ArmorAuraEffect = reader.GetInt32(35),
-            LearnedSkillCount = reader.GetInt32(36)
-        };
-    }
-
 }

@@ -20,7 +20,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
 {
     private const int PublicationLockNamespace = 1_193_657_936;
     private const int PublicationLockKey = 1_448_298_802;
-    private const string Publisher = "server-baseline-v3";
+    private const string Publisher = "server-baseline-v5";
 
     public static async Task<NpcDialoguePublicationResult>
         EnsurePublishedAsync(
@@ -57,7 +57,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             cancellationToken);
         if (current is not null && string.Equals(
                 current.Revision,
-                NpcDialogueBaselineV3.ExpectedRevision,
+                NpcDialogueBaselineV5.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             await transaction.CommitAsync(cancellationToken);
@@ -68,7 +68,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         {
             throw new InvalidDataException(
                 "The published NPC dialogue revision is neither the " +
-                "reviewed V1/V2 rollback nor the reviewed V3 release.");
+                "reviewed V1/V2/V3/V4 rollback nor the reviewed V5 release.");
         }
 
         var spawnRevision = await ReadCurrentSpawnRevisionAsync(
@@ -77,10 +77,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             cancellationToken);
         if (!string.Equals(
                 spawnRevision.Revision,
-                NpcDialogueBaselineV3.ExpectedSpawnRevision,
+                NpcDialogueBaselineV5.ExpectedSpawnRevision,
                 StringComparison.Ordinal) ||
             spawnRevision.EntryCount !=
-                NpcDialogueBaselineV3.ExpectedTextCount)
+                NpcDialogueBaselineV5.ExpectedTextCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline does not target the " +
@@ -92,7 +92,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             transaction,
             spawnRevision.Revision,
             cancellationToken);
-        var routes = NpcDialogueBaselineV3.CreateRoutes();
+        var routes = NpcDialogueBaselineV5.CreateRoutes();
         var revision = ValidateBaseline(texts, routes);
 
         var releaseCreated = await InsertReleaseAsync(
@@ -144,13 +144,13 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         IReadOnlyList<NpcTextDefinition> texts,
         IReadOnlyList<NpcDialogueRouteDefinition> routes)
     {
-        if (texts.Count != NpcDialogueBaselineV3.ExpectedTextCount ||
-            routes.Count != NpcDialogueBaselineV3.ExpectedRouteCount ||
-            NpcDialogueBaselineV3.Profiles.Length !=
-                NpcDialogueBaselineV3.ExpectedProfileCount ||
-            NpcDialogueBaselineV3.Profiles.Sum(
+        if (texts.Count != NpcDialogueBaselineV5.ExpectedTextCount ||
+            routes.Count != NpcDialogueBaselineV5.ExpectedRouteCount ||
+            NpcDialogueBaselineV5.Profiles.Length !=
+                NpcDialogueBaselineV5.ExpectedProfileCount ||
+            NpcDialogueBaselineV5.Profiles.Sum(
                 static profile => profile.InitialMenuSubIds.Length) !=
-                NpcDialogueBaselineV3.ExpectedMenuEntryCount)
+                NpcDialogueBaselineV5.ExpectedMenuEntryCount)
         {
             throw new InvalidDataException(
                 "The reviewed NPC dialogue baseline has unexpected counts.");
@@ -214,10 +214,10 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         var revision =
             WorldContentRevisionHasher.HashNpcDialogues(texts, routes);
         if (revision.EntryCount !=
-                NpcDialogueBaselineV3.ExpectedHashedEntryCount ||
+                NpcDialogueBaselineV5.ExpectedHashedEntryCount ||
             !string.Equals(
                 revision.Sha256,
-                NpcDialogueBaselineV3.ExpectedRevision,
+                NpcDialogueBaselineV5.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             throw new InvalidDataException(
@@ -364,11 +364,11 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         new(
             revision,
             spawnRevision,
-            NpcDialogueBaselineV3.ExpectedTextCount,
-            NpcDialogueBaselineV3.ExpectedProfileCount,
-            NpcDialogueBaselineV3.ExpectedRouteCount,
-            NpcDialogueBaselineV3.ExpectedMenuEntryCount,
-            NpcDialogueBaselineV3.Source,
+            NpcDialogueBaselineV5.ExpectedTextCount,
+            NpcDialogueBaselineV5.ExpectedProfileCount,
+            NpcDialogueBaselineV5.ExpectedRouteCount,
+            NpcDialogueBaselineV5.ExpectedMenuEntryCount,
+            NpcDialogueBaselineV5.Source,
             Created);
 
     private static bool IsSupportedPreviousRevision(string revision) =>
@@ -379,5 +379,13 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         string.Equals(
             revision,
             NpcDialogueBaselineV2.ExpectedRevision,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            revision,
+            NpcDialogueBaselineV3.ExpectedRevision,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            revision,
+            NpcDialogueBaselineV4.ExpectedRevision,
             StringComparison.Ordinal);
 }

@@ -109,11 +109,11 @@ internal static class PetGrowthPolicyChecks
             "Weak 0.01");
 
         var first = PetGrowthPolicy.Distribute(
-            PetAptitude.Grumpy,
+            PetAptitude.Zealous,
             15m,
             new Random(15));
         var second = PetGrowthPolicy.Distribute(
-            PetAptitude.Grumpy,
+            PetAptitude.Zealous,
             15m,
             new Random(15));
 
@@ -122,7 +122,7 @@ internal static class PetGrowthPolicyChecks
             first,
             second,
             "seeded growth distribution is deterministic");
-        CheckDistribution(first, PetGrowthPolicy.All[8], "Grumpy 15.00");
+        CheckDistribution(first, PetGrowthPolicy.All[8], "Zealous 15.00");
 
         var largest = PetGrowthPolicy.Distribute(
             PetAptitude.Transcendent,

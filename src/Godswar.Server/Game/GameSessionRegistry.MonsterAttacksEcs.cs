@@ -94,7 +94,8 @@ internal sealed partial class GameSessionRegistry
                              attack.TargetVitalsRevision ??
                                  targetContext.Character
                                      .VitalsRevision,
-                             damage),
+                             damage,
+                             damageResolvedAt),
                         beforeLethalCommit: () =>
                         {
                             // The ECS decision is accepted and lethal, but
@@ -175,6 +176,17 @@ internal sealed partial class GameSessionRegistry
                     result: 0),
                 cancellationToken,
                 "MonsterAttackDamageSelf");
+            if (decision.PetHealing is { } selfHealing)
+            {
+                await PublishPetHealingTalentAsync(
+                    runtime,
+                    targetContext,
+                    target,
+                    LocalPlayerObjectId,
+                    selfHealing,
+                    "Self",
+                    cancellationToken);
+            }
             if (killed)
             {
                 await TrySendWorldInstancePacketAsync(
@@ -235,6 +247,17 @@ internal sealed partial class GameSessionRegistry
                         result: 0),
                     cancellationToken,
                     "MonsterAttackDamageWorld");
+                if (decision.PetHealing is { } worldHealing)
+                {
+                    await PublishPetHealingTalentAsync(
+                        runtime,
+                        observer,
+                        target,
+                        worldTargetObjectId,
+                        worldHealing,
+                        "World",
+                        cancellationToken);
+                }
                 if (killed)
                 {
                     await TrySendWorldInstancePacketAsync(

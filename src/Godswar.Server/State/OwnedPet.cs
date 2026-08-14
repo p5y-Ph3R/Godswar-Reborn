@@ -24,6 +24,9 @@ internal readonly record struct PetSavvy(
         Wisdom >= 0m &&
         Luck >= 0m;
 
+    public decimal Total => checked(
+        Agility + Strength + Accuracy + Technique + Wisdom + Luck);
+
     public bool IsAtLeast(PetSavvy other) =>
         Agility >= other.Agility &&
         Strength >= other.Strength &&
@@ -128,9 +131,42 @@ internal sealed record OwnedPet(
     int MaximumEnergy,
     int Amity,
     PetOwnerMergeState? OwnerMerge,
-    PetSavvy RarityAddedSavvy = default)
+    PetSavvy RarityAddedSavvy = default,
+    byte SoulContractStage = 0)
 {
-    public PetSavvy TotalSavvy => InitialSavvy + AddedSavvy;
+    public PetSavvy CurrentAddedSavvy =>
+        PetSavvyRuntimeSemantics.ResolveMaterializedAdded(
+            Level,
+            AddedSavvy,
+            BaseGrowthRates,
+            GrowthAcceleration,
+            RarityAddedSavvy == PetSavvy.Zero
+                ? null
+                : RarityAddedSavvy);
+
+    public PetSavvy TotalSavvy =>
+        PetSavvyRuntimeSemantics.ResolvePlayerVisibleTotal(
+            Level,
+            InitialSavvy,
+            AddedSavvy,
+            BaseGrowthRates,
+            GrowthAcceleration,
+            RarityAddedSavvy);
+
+    public byte ProjectedSoulContractStage =>
+        SoulContractStage == 0 && HasSoulContract
+            ? (byte)1
+            : SoulContractStage;
+
+    /// <summary>
+    /// Stock effective Savvy used by Unite and trait gates. Soul Contract is
+    /// deliberately separate from raw Basic/Added so pet-to-pet Merge can
+    /// continue to ignore it, as the installed-client guide requires.
+    /// </summary>
+    public PetSavvy EffectiveTotalSavvy =>
+        PetSoulContractPolicy.ResolveDisplayedTotal(
+            TotalSavvy,
+            ProjectedSoulContractStage);
 
     public bool IsMergedWithOwner => OwnerMerge is not null;
 }

@@ -14,10 +14,10 @@ internal static class PetAptitudeCatalogChecks
             "Moderate",
             "Rational",
             "Calm",
-            "Smart",
-            "Zealous",
             "Grumpy",
             "Brave",
+            "Zealous",
+            "Smart",
             "Overbearing",
             "Ferocious",
             "Almighty",
@@ -41,10 +41,22 @@ internal static class PetAptitudeCatalogChecks
                 .SequenceEqual(expectedNames),
             "pet aptitude names preserve the client ladder and named extensions");
         Check.True(
+            PetAptitudeCatalog.TryGet(PetAptitude.Calm, out var calm) &&
+            calm.Value == 6 &&
+            PetAptitudeCatalog.TryGet(PetAptitude.Grumpy, out var grumpy) &&
+            grumpy.Value == 7 &&
             PetAptitudeCatalog.TryGet(PetAptitude.Brave, out var brave) &&
-            brave.Value == 10 &&
-            !brave.IsServerExtension,
-            "Brave remains stock aptitude 10");
+            brave.Value == 8 &&
+            PetAptitudeCatalog.TryGet(PetAptitude.Zealous, out var zealous) &&
+            zealous.Value == 9 &&
+            PetAptitudeCatalog.TryGet(PetAptitude.Smart, out var smart) &&
+            smart.Value == 10 &&
+            !calm.IsServerExtension &&
+            !grumpy.IsServerExtension &&
+            !brave.IsServerExtension &&
+            !zealous.IsServerExtension &&
+            !smart.IsServerExtension,
+            "aptitudes 6-10 retain their corrected fixed-ID names");
         Check.True(
             PetAptitudeCatalog.TryGet(PetAptitude.Ferocious, out var ferocious) &&
             ferocious.Value == 12 &&

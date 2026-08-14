@@ -35,7 +35,18 @@ internal sealed record CharacterPetSnapshot(
     DateTimeOffset UpdatedAtUtc,
     ImmutableArray<CharacterPetStatValueSnapshot> StatValues,
     ImmutableArray<CharacterPetBonusSnapshot> CharacterBonuses,
-    ImmutableArray<CharacterPetSkillSnapshot> Skills);
+    ImmutableArray<CharacterPetSkillSnapshot> Skills,
+    short OpenedSkillSlots = 1,
+    short AvailableSkillSlots = 1,
+    short TalentMask = 0,
+    string? InitialSavvySourceVersion = null,
+    byte SoulContractStage = 0)
+{
+    public byte ProjectedSoulContractStage =>
+        SoulContractStage == 0 && HasSoulContract
+            ? (byte)1
+            : SoulContractStage;
+}
 
 internal sealed record CharacterPetStatValueSnapshot(
     short StatCode,

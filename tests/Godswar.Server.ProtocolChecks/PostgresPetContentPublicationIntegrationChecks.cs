@@ -39,7 +39,19 @@ internal static partial class PostgresPetContentPublicationIntegrationChecks
                 first.NativeProfiles.Count &&
             first.Revision.ExperienceStepCount ==
                 first.ExperienceSteps.Count &&
-            first.Revision.RebirthStepCount == first.RebirthSteps.Count,
+            first.Revision.RebirthStepCount == first.RebirthSteps.Count &&
+            first.Revision.MergeSavvyStepCount ==
+                first.MergeSavvySteps.Count &&
+            first.Revision.MergeSavvyLookupCount ==
+                first.MergeSavvyLookup.Count &&
+            first.Revision.HatchRankStepCount ==
+                first.HatchRankSteps.Count &&
+            first.Revision.MergeRankLookupCount ==
+                first.MergeRankLookup.Count &&
+            first.Revision.MergeRankSpeciesFactorCount ==
+                first.MergeRankSpeciesFactors.Count &&
+            first.Revision.MergeRankSpiritStepCount ==
+                first.MergeRankSpiritSteps.Count,
             "pet bootstrap pins one complete SHA-256 manifest");
 
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
@@ -49,6 +61,13 @@ internal static partial class PostgresPetContentPublicationIntegrationChecks
             !repeated.Created &&
             repeated.Revision == first.Revision.Sha256,
             "pet publication is idempotent after cold bootstrap");
+        await AssertReviewedPredecessorUpgradeAsync(
+            dataSource,
+            itemCatalog,
+            first.Revision.Sha256);
+        await AssertMagicJadeAppearanceGroupsAsync(
+            dataSource,
+            first.Revision.Sha256);
 
         await AssertSourceMutationIgnoredAsync(
             dataSource,
@@ -193,6 +212,25 @@ internal static partial class PostgresPetContentPublicationIntegrationChecks
             """,
             revision,
             "official pet publication rejects deletion");
+
+        foreach (var (table, assertion) in GuardedPetContentTables.Where(
+                     static value =>
+                         value.Table == "pet_content_hatch_rank_steps" ||
+                         value.Table == "pet_content_merge_savvy_lookup" ||
+                         value.Table.StartsWith(
+                             "pet_content_merge_rank_",
+                             StringComparison.Ordinal)))
+        {
+            await AssertRejectedAsync(
+                dataSource,
+                $"""
+                UPDATE public.{table}
+                SET revision = revision
+                WHERE revision = @revision;
+                """,
+                revision,
+                $"sealed {assertion} reject updates");
+        }
     }
 
     private static async Task AssertIncompletePublicationRejectedAsync(

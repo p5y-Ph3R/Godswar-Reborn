@@ -157,6 +157,11 @@ internal static class PlayerEcsSnapshotAdapter
             ArmorScore = stats.ArmorScore,
             ArmorRank = stats.ArmorRank,
             ArmorAuraEffect = stats.ArmorAuraEffect,
-            LearnedSkillCount = stats.LearnedSkillCount
+            LearnedSkillCount = stats.LearnedSkillCount,
+            PhysicalDamageReduction = stats.PhysicalDamageReduction,
+            MagicDamageReduction = stats.MagicDamageReduction,
+            CriticalDamageReduction = stats.CriticalDamageReduction,
+            LifeAbsorption = stats.LifeAbsorption,
+            DamageRebound = stats.DamageRebound
         };
 }

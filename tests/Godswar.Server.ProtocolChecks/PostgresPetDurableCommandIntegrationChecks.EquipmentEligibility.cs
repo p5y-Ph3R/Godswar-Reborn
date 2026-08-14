@@ -19,7 +19,9 @@ internal static partial class
             dataSource,
             new PostgresOutboxDispatcherOptions(),
             itemContent,
-            PetContentBaseline.Create());
+            PetContentBaseline.Create(),
+            PetOwnerMergeContentBaseline.Create(),
+            PetLearnedSkillContentBaseline.Create());
         await AssertEquipmentRejectedAsync(
             dataSource,
             executor,

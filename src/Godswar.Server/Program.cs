@@ -1,6 +1,5 @@
 using Godswar.Server;
 using Godswar.Server.Application.Characters;
-using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
@@ -54,6 +53,10 @@ try
     var petContent = await ServerPetContentComposition.LoadAsync(
         options,
         itemContent.Templates);
+    var petOwnerMergeContent =
+        await ServerPetOwnerMergeContentComposition.LoadAsync(options);
+    var petLearnedSkillContent = await ServerRuntimeContentComposition
+        .LoadLearnedSkillsAsync(options);
     var worldContent =
         await ServerWorldContentComposition.TryLoadAsync(
             options);
@@ -72,16 +75,12 @@ try
         options.Storage.PostgresConnectionString,
         itemContent,
         gameplayContentRevision,
-        petContent);
+        petContent,
+        petLearnedSkillContent: petLearnedSkillContent);
     await using var postgresApplicationDataRuntime =
-        new PostgresApplicationDataRuntime(
-            options.Storage.PostgresConnectionString,
-            options.Storage.Outbox,
-            options.Game.ZodiacEnergy.Snapshot(),
-            itemContent,
-            gameplayContentRevision,
-            petContent,
-            options.Storage.Reconciliation);
+        ServerRuntimeContentComposition.CreateApplicationData(
+            options, worldContent, itemContent, petContent,
+            petOwnerMergeContent, petLearnedSkillContent);
     var accountPersistence = ServerAccountPersistenceComposition.Create(
         postgresApplicationDataRuntime);
     var gameplayPersistence =
@@ -94,12 +93,13 @@ try
             controlledHostEvidence is not null,
             shutdown);
     await using var coordination =
-        await ServerCoordinationComposition.CreateAsync(
+        await ServerRuntimeContentComposition.CreateCoordinationAsync(
             options,
-            RuntimeContentFingerprint.Create(
-                worldContent.Manifest.Revision,
-                itemContent.Templates.Revision.Sha256,
-                petContent.Revision.Sha256),
+            worldContent,
+            itemContent,
+            petContent,
+            petOwnerMergeContent,
+            petLearnedSkillContent,
             shutdown.Token);
 
     await using var characterCheckpoints =
@@ -131,6 +131,7 @@ try
         accountPersistence.Presence,
         registry,
         gameplayPersistence.CharacterSnapshots,
+        gameplayPersistence.SealedPetSnapshots,
         worldContent,
         options.Game.DeveloperCommands,
         characterCheckpoints,

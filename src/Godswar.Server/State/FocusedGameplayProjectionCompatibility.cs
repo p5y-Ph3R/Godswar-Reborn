@@ -241,5 +241,10 @@ internal static partial class FocusedGameplayProjectionCompatibility
                     skill.SkillExperience,
                     skill.IsActive,
                     skill.Revision))
-                .ToImmutableArray());
+                .ToImmutableArray(),
+            pet.OpenedSkillSlots,
+            pet.AvailableSkillSlots,
+            pet.TalentMask,
+            pet.InitialSavvySourceVersion,
+            pet.SoulContractStage);
 }

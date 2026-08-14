@@ -8,14 +8,15 @@ The item command is disabled by default and is authorized by exact account ID.
 It can only grant item IDs present in the server's narrow developer-item
 allowlist; arbitrary item IDs are rejected. The allowlist combines the
 forging/Gear Enhancement materials below with four stock Socket Spells, the
-five Holy Boxes, and one reviewed permanent costume published by the active
-database-backed item-content revision.
+five Holy Boxes, reviewed pet-test consumables, and one reviewed permanent
+costume published by the active database-backed item-content revision.
 
 The allowlist contains 23 ordinary forging materials, all 51 shipped Gear
 Enhancement materials, the seven reviewed Greek-themed elemental stones, all
 21 native Attribute Dusts, the four stock Socket Spells, and permanent costume
-8068. Their type, texture, icon, native stack cap, and binding state are
-resolved again inside the store; command text cannot override them.
+8068, together with the reviewed pet-test items shown below. Their type,
+texture, icon, native stack cap, and binding state are resolved again inside
+the store; command text cannot override them.
 
 The checked-in configuration keeps it disabled. This workstation's ignored
 `.env` enables it for the local test accounts `3`, `7`, `13`, and `347`. To
@@ -57,9 +58,21 @@ Use the local chat box with either a native ID or material alias:
 /item add socketspell4 99
 /item add holybox1 1
 /item add emptyholybox5 1
+/item add mergedspirit 5
+/item add rebirthspirit 5
+/item add contractspirit 5
+/item add pixietear 5
+/item add emptysealjade 5
+/item add mdew5 5
+/item add genderreverser 1
 /item add christmassuit 1
 /item add costume8068 1
 ```
+
+The reviewed pet-test aliases above grant the stock Merge, Rebirth, and
+Contract Spirits; Pixie Tears; empty Seal Jades; Morning Dew 5; and the Pet
+Gender Reverser. Their native stack limits and binding state come from the
+published item templates, and numeric IDs remain accepted as usual.
 
 Costume `8068`, `Christmas Suit(perpetual)`, is the only costume in the
 developer-item allowlist. It is a permanent, unisex, bound Fashion-slot item

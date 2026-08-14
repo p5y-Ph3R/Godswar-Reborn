@@ -133,12 +133,28 @@ internal sealed partial class PostgresGameStore
                 class_attribute1, class_attribute2,
                 elemental_attribute1, elemental_attribute2,
                 holy_socket1_value, holy_socket2_value,
-                holy_socket3_value, holy_socket4_value
+                holy_socket3_value, holy_socket4_value,
+                sealed_link.pet_id
             FROM character_items
+            LEFT JOIN public.sealed_pet_items sealed_link
+              ON sealed_link.item_instance_id = character_items.id
+             AND character_items.prop_id = 10109
+             AND sealed_link.owner_character_id = character_items.user_id
+             AND (character_items.bound = 1) IS NOT DISTINCT FROM
+                 sealed_link.pet_bound_snapshot
+             AND EXISTS (
+                 SELECT 1
+                 FROM public.character_pets sealed_pet
+                 WHERE sealed_pet.id = sealed_link.pet_id
+                   AND sealed_pet.user_id = character_items.user_id
+                   AND sealed_pet.activity_state = 'sealed'
+                   AND sealed_pet.bound IS NOT DISTINCT FROM
+                       sealed_link.pet_bound_snapshot
+             )
             WHERE user_id = @characterId
               AND item_location IN (@equipmentLocation, @kitBagLocation)
             ORDER BY item_location, slot_index
-            FOR UPDATE;
+            FOR UPDATE OF character_items;
             """, connection, transaction);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue("equipmentLocation", ItemLocationEquipment);
@@ -204,7 +220,10 @@ internal sealed partial class PostgresGameStore
             Socket1Value = ReadNullableSmallint(reader, 36),
             Socket2Value = ReadNullableSmallint(reader, 37),
             Socket3Value = ReadNullableSmallint(reader, 38),
-            Socket4Value = ReadNullableSmallint(reader, 39)
+            Socket4Value = ReadNullableSmallint(reader, 39),
+            LinkedSealedPetId = reader.IsDBNull(40)
+                ? 0
+                : reader.GetInt64(40)
         };
     }
 

@@ -35,6 +35,9 @@ internal static class DataArchitectureCheckCatalog
             HolyStoneMaterialItemContentChecks.CheckName,
             HolyStoneMaterialItemContentChecks.RunAsync),
         (
+            PetItemContentChecks.CheckName,
+            PetItemContentChecks.RunAsync),
+        (
             HolyStoneUpgradePolicyChecks.CheckName,
             HolyStoneUpgradePolicyChecks.RunAsync),
         (
@@ -59,11 +62,22 @@ internal static class DataArchitectureCheckCatalog
             PetContentArchitectureChecks.CheckName,
             PetContentArchitectureChecks.RunAsync),
         (
+            BagConsumableCooldownPolicyChecks.CheckName,
+            BagConsumableCooldownPolicyChecks.RunAsync),
+        (
             PostgresPetContentPublicationIntegrationChecks.CheckName,
             PostgresPetContentPublicationIntegrationChecks.RunAsync),
         (
+            PostgresPetOwnerMergeContentPublicationIntegrationChecks
+                .CheckName,
+            PostgresPetOwnerMergeContentPublicationIntegrationChecks
+                .RunAsync),
+        (
             "PostgreSQL item-template publication",
             PostgresItemTemplateContentIntegrationChecks.RunAsync),
+        (
+            PetItemsV3UpgradePolicyChecks.CheckName,
+            PetItemsV3UpgradePolicyChecks.RunAsync),
         (
             PostgresHolySuitContentIntegrationChecks.CheckName,
             PostgresHolySuitContentIntegrationChecks.RunAsync),

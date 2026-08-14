@@ -15,6 +15,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
         DateTimeOffset readAtUtc,
         string itemContentRevision,
         string? gameplayContentRevision,
+        string? petLearnedSkillRevision,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -30,6 +31,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         PostgresGameplayContentBinding.AddParameter(
             command,
             gameplayContentRevision);
+        PostgresPetLearnedSkillContentBinding.AddParameter(
+            command,
+            petLearnedSkillRevision);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);

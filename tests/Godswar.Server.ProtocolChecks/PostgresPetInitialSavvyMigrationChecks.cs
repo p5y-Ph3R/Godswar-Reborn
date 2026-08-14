@@ -19,10 +19,10 @@ internal static class PostgresPetInitialSavvyMigrationChecks
         (PetAptitude.Moderate, 575, 699),
         (PetAptitude.Rational, 700, 849),
         (PetAptitude.Calm, 850, 1_024),
-        (PetAptitude.Smart, 1_025, 1_224),
-        (PetAptitude.Zealous, 1_225, 1_474),
-        (PetAptitude.Grumpy, 1_475, 1_774),
-        (PetAptitude.Brave, 1_775, 2_124),
+        (PetAptitude.Grumpy, 1_025, 1_224),
+        (PetAptitude.Brave, 1_225, 1_474),
+        (PetAptitude.Zealous, 1_475, 1_774),
+        (PetAptitude.Smart, 1_775, 2_124),
         (PetAptitude.Overbearing, 2_125, 2_524),
         (PetAptitude.Ferocious, 2_525, 2_974),
         (PetAptitude.Almighty, 2_975, 3_474),
@@ -60,9 +60,9 @@ internal static class PostgresPetInitialSavvyMigrationChecks
     private static void CheckExactPolicy(string sql)
     {
         Check.Equal(
-            "project-v1",
+            "project-v3",
             PetInitialSavvyPolicy.Version,
-            "initial-savvy runtime policy version");
+            "runtime advances without rewriting historical migration 019");
         Check.Equal(
             ExpectedBrackets.Count,
             PetInitialSavvyPolicy.All.Count,
@@ -78,20 +78,6 @@ internal static class PostgresPetInitialSavvyMigrationChecks
         for (var index = 0; index < ExpectedBrackets.Count; index++)
         {
             var expected = ExpectedBrackets[index];
-            var runtime = PetInitialSavvyPolicy.All[index];
-            Check.Equal(
-                (short)expected.Aptitude,
-                runtime.AptitudeValue,
-                $"{expected.Aptitude} initial-savvy aptitude");
-            Check.Equal(
-                expected.Minimum,
-                runtime.MinimumTotalSavvy,
-                $"{expected.Aptitude} initial-savvy minimum");
-            Check.Equal(
-                expected.Maximum,
-                runtime.MaximumTotalSavvy,
-                $"{expected.Aptitude} initial-savvy maximum");
-
             var expectedSql = FormattableString.Invariant(
                 $"({(short)expected.Aptitude}::smallint, {expected.Minimum}, {expected.Maximum})");
             Check.True(

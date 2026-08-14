@@ -7,14 +7,18 @@
 - The first advancement, level 1 to level 2, costs `1,500` EXP.
 - One Upgrade click advances exactly one level and spends only that
   transition's cost.
-- Every committed advancement adds each attribute's persisted
-  `base_growth_rate` to that attribute's current basic/initial savvy. Thus a
-  level-1 Strength value and growth rate of `9` becomes `18` at level 2,
-  `27` at level 3, and so on.
-- Level, EXP, all six basic-savvy values, the parent revision, and all six
-  stat revisions commit in one PostgreSQL transaction. Added savvy, birth
-  baselines, rarity-added savvy, base growth, and growth acceleration are not
-  changed by leveling.
+- **Basic Savvy** is the immutable hatch allocation plus durable gains from
+  pet-to-pet Merge. Leveling, Phoenix reset, and Rebirth do not change it.
+- Per attribute, `effective Growth Rate = base_growth_rate +
+  growth_acceleration` and `cumulative Added Value = effective Growth Rate *
+  current pet level`.
+- Every committed advancement changes the level and recomputes all six Added
+  Values. For example, Basic `100` and effective Growth Rate `9` remain Basic
+  `100`, while Added is `9` at level 1, `18` at level 2, and `27` at level 3.
+  The player-visible totals are therefore `109`, `118`, and `127`.
+- Level, EXP, all six cumulative Added Values, the parent revision, and all
+  six stat revisions commit in one PostgreSQL transaction. Basic Savvy,
+  base Growth Rate, and growth acceleration are unchanged by leveling.
 - Excess EXP carries forward. A pet at level 120 can retain nonzero EXP, but
   its next-level requirement is `0`.
 - The server accepts only a pet ID from the client. Ownership, availability,
@@ -41,26 +45,29 @@ Upgrade uses a verified request/update pair:
 |---|---:|---:|---|
 | C2S | `10285` (`0x282D`) | 8 | `u32 petId` at `+4` |
 | S2C | `10286` (`0x282E`) | 20 | Stock prefix: `u32 petId` at `+4`, `u8 level` at `+8`, three reserved zero bytes, `u32 remainingExp` at `+12`, `u32 nextLevelCost` at `+16` |
-| S2C | `10286` (`0x282E`) | 44 | Current compatible extension: the unchanged 20-byte prefix followed by six authoritative `u32` basic-savvy totals at `+20..+40`, in stat-code order `1..6`, encoded as `value * 100` |
+| S2C | `10286` (`0x282E`) | 44 | Historical intermediate extension: the stock prefix plus six `u32` Basic values at `+20..+40`; retained only as a recognized predecessor format |
+| S2C | `10286` (`0x282E`) | 68 | Current extension: the stock prefix, six authoritative `u32` Basic values at `+20..+40`, and six authoritative cumulative Added Values at `+44..+64`, in stat-code order `1..6`, encoded as `value * 100` |
 
 The server locks the owned pet row and all six stat rows, validates and commits
-one advancement plus its six growth increments, records exact before/after
-state in the `level_up` audit, and only then sends `10286`. Rejected requests
+one advancement plus its six recomputed Added Values, records exact
+before/after state in the `level_up` audit, and only then sends `10286`. Rejected requests
 do not receive `10286` because the native handler always treats that packet as
 a successful level-up and displays its success notification.
 
 The guarded client patch is documented in
-[Pet level savvy client refresh](pet-level-savvy-client-patch.md). It copies
-the six appended totals into the same native fields populated by the full pet
-bootstrap, allowing the open Pet window to refresh without rebuilding its pet
-collection.
+[Pet level savvy client refresh](pet-level-savvy-client-patch.md). The current
+68-byte path copies both appended vectors into the same Basic and Added
+client-object fields populated by the full pet bootstrap. The second vector is
+the cumulative Added Value, not raw Growth Rate.
 
 ## Evidence
 
-The installed client proves both packet layouts and the one-click/one-level
-behavior. Existing original-server `10237` captures independently verify the
-level 1, 21, 107, and 120 next-level values and show that level-120 pets keep
-overflow EXP.
+The installed client proves the packet layouts and one-click/one-level
+behavior. Native Pet Detail renderers read the Basic and Added vectors
+directly, and the derived-stat routine sums them; neither multiplies Added by
+level. Original-server `10237` captures independently show level-scaled Added
+values, verify the level 1, 21, 107, and 120 next-level values, and show that
+level-120 pets keep overflow EXP.
 
 The full progression table was recovered from the 2015 GodsWar Online
 Pet EXP Guide:

@@ -110,6 +110,16 @@ internal static class PlayerNpcEcsHydrationChecks
             protocolCharacter.FighterLevelSealed,
             "fighter level seal survives the ECS protocol projection");
         Check.True(
+            protocolCharacter.CalculatedStats is
+            {
+                PhysicalDamageReduction: 901,
+                MagicDamageReduction: 902,
+                CriticalDamageReduction: 903,
+                LifeAbsorption: 904,
+                DamageRebound: 905
+            },
+            "all Merge-only channels survive ECS hydration and snapshot adaptation");
+        Check.True(
             expectedSpawn.SequenceEqual(
                 PacketBuilder.PlayerWorldSpawn(
                     protocolCharacter,
@@ -353,7 +363,12 @@ internal static class PlayerNpcEcsHydrationChecks
                 ArmorScore = 1111,
                 ArmorRank = 14,
                 ArmorAuraEffect = 8,
-                LearnedSkillCount = 12
+                LearnedSkillCount = 12,
+                PhysicalDamageReduction = 901,
+                MagicDamageReduction = 902,
+                CriticalDamageReduction = 903,
+                LifeAbsorption = 904,
+                DamageRebound = 905
             }
         };
     }

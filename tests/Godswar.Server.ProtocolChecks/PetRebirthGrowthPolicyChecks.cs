@@ -43,42 +43,40 @@ internal static class PetRebirthGrowthPolicyChecks
     {
         var expected = new Dictionary<int, (decimal Min, decimal Max)>
         {
-            [1] = (0.10m, 0.20m),
-            [30] = (0.10m, 0.20m),
-            [31] = (0.10m, 0.20m),
-            [45] = (0.20m, 0.30m),
-            [60] = (0.30m, 0.40m),
-            [61] = (0.30m, 0.40m),
-            [80] = (0.40m, 0.50m),
-            [100] = (0.50m, 0.60m)
+            [0] = (0.01m, 0.20m),
+            [1] = (0.02m, 0.20m),
+            [2] = (0.04m, 0.20m),
+            [3] = (0.06m, 0.20m),
+            [4] = (0.08m, 0.20m),
+            [5] = (0.10m, 0.20m)
         };
 
-        foreach (var (rebirth, range) in expected)
+        foreach (var (spirits, range) in expected)
         {
             var actual =
-                PetRebirthGrowthPolicy.GetIncreaseRange(rebirth);
+                PetRebirthSpiritPolicy.GetIncreaseRange(spirits);
             Check.Equal(
                 range.Min,
                 actual.Minimum,
-                $"rebirth {rebirth} minimum increase");
+                $"rebirth {spirits}-spirit minimum increase");
             Check.Equal(
                 range.Max,
                 actual.Maximum,
-                $"rebirth {rebirth} maximum increase");
+                $"rebirth {spirits}-spirit maximum increase");
         }
 
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PetRebirthGrowthPolicy.GetIncreaseRange(0),
-            "rebirth zero is rejected");
+            () => PetRebirthSpiritPolicy.GetIncreaseRange(-1),
+            "negative rebirth spirit count is rejected");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PetRebirthGrowthPolicy.GetIncreaseRange(101),
-            "rebirth 101 is rejected");
+            () => PetRebirthSpiritPolicy.GetIncreaseRange(6),
+            "six rebirth spirits are rejected");
     }
 
     private static void CheckRolls()
     {
         var current = new PetSavvy(1m, 2m, 3m, 4m, 5m, 6m);
-        var minimum = PetRebirthGrowthPolicy.Roll(
+        var minimum = PetRebirthSpiritPolicy.Roll(
             1,
             5,
             current,
@@ -92,25 +90,27 @@ internal static class PetRebirthGrowthPolicyChecks
             minimum.GrowthAccelerationAfter,
             "rebirth increase is cumulative");
 
-        var maximum = PetRebirthGrowthPolicy.Roll(
+        var maximum = PetRebirthSpiritPolicy.Roll(
             100,
             5,
             current,
             new MaximumRandom());
         Check.Equal(
-            new PetSavvy(0.60m, 0.60m, 0.60m, 0.60m, 0.60m, 0.60m),
+            new PetSavvy(0.20m, 0.20m, 0.20m, 0.20m, 0.20m, 0.20m),
             maximum.Increase,
             "maximum rebirth increase");
 
+        var zeroSpirit = PetRebirthSpiritPolicy.Roll(
+            1,
+            0,
+            current,
+            new ConstantRandom(0));
+        Check.Equal(
+            new PetSavvy(0.01m, 0.01m, 0.01m, 0.01m, 0.01m, 0.01m),
+            zeroSpirit.Increase,
+            "zero-spirit rebirth retains the stock minimum roll");
         Check.Throws<ArgumentOutOfRangeException>(
-            () => PetRebirthGrowthPolicy.Roll(
-                1,
-                4,
-                current,
-                Random.Shared),
-            "rebirth requires exactly five spirits");
-        Check.Throws<ArgumentOutOfRangeException>(
-            () => PetRebirthGrowthPolicy.Roll(
+            () => PetRebirthSpiritPolicy.Roll(
                 1,
                 6,
                 current,
@@ -122,34 +122,38 @@ internal static class PetRebirthGrowthPolicyChecks
     {
         var current = new PetSavvy(1m, 1m, 1m, 1m, 1m, 1m);
         Check.True(
-            PetRebirthGrowthPolicy.IsValidOutcome(
+            PetRebirthSpiritPolicy.IsValidOutcome(
                 60,
+                5,
                 current,
                 new PetSavvy(
-                    1.30m,
-                    1.31m,
-                    1.32m,
-                    1.33m,
-                    1.39m,
-                    1.40m)),
-            "all per-stat rebirth deltas inside the tier are accepted");
+                    1.10m,
+                    1.11m,
+                    1.12m,
+                    1.13m,
+                    1.19m,
+                    1.20m)),
+            "all per-stat rebirth deltas inside q5 are accepted");
         Check.True(
-            !PetRebirthGrowthPolicy.IsValidOutcome(
+            !PetRebirthSpiritPolicy.IsValidOutcome(
                 60,
+                5,
                 current,
-                current with { Agility = 1.29m }),
+                current with { Agility = 1.09m }),
             "too-small rebirth delta is rejected");
         Check.True(
-            !PetRebirthGrowthPolicy.IsValidOutcome(
+            !PetRebirthSpiritPolicy.IsValidOutcome(
                 60,
+                5,
                 current,
-                current with { Agility = 1.41m }),
+                current with { Agility = 1.21m }),
             "too-large rebirth delta is rejected");
         Check.True(
-            !PetRebirthGrowthPolicy.IsValidOutcome(
+            !PetRebirthSpiritPolicy.IsValidOutcome(
                 60,
+                5,
                 current,
-                current with { Agility = 1.305m }),
+                current with { Agility = 1.105m }),
             "sub-cent rebirth delta is rejected");
     }
 

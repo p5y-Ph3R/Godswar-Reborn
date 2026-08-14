@@ -10,7 +10,7 @@ namespace Godswar.Server.Infrastructure.Pets;
 /// </summary>
 internal static class PetContentBaseline
 {
-    public const string Source = "reviewed-pet-baseline-v1";
+    public const string Source = "reviewed-pet-baseline-v10";
 
     public static PinnedPetContentCatalog Create()
     {
@@ -19,6 +19,7 @@ internal static class PetContentBaseline
             PetExperienceCatalog.MaximumLevel,
             PetManagerPlanner.MaximumOwnedPetCount,
             PetManagerPlanner.MaximumPetSkillCount,
+            655.35m,
             PetManagerPlanner.MinimumPetMergeLevel,
             PetManagerPlanner.MinimumOwnerMergeAmity,
             PetManagerPlanner.MaximumSpiritItems,
@@ -54,20 +55,7 @@ internal static class PetContentBaseline
         var aptitudes = PetAptitudeCatalog.All
             .Select(value => CreateAptitude(value))
             .ToArray();
-        var profiles = PetNativeAptitudeProfileCatalog.All
-            .Select(static value => new PetNativeProfileContentDefinition(
-                checked((short)value.SpeciesType),
-                value.AptitudeValue,
-                ToVector(value.StartingTraits),
-                ToVector(value.GeniusTraits),
-                value.NativeQuality,
-                value.NativeSamsara,
-                value.NativeGenius,
-                value.StarterSkillId,
-                value.NativeSkillCount,
-                value.NativeProcreate,
-                value.Lifetime))
-            .ToArray();
+        var profiles = CreateNativeProfiles();
         var experience = Enumerable
             .Range(
                 PetExperienceCatalog.MinimumLevel,
@@ -83,6 +71,14 @@ internal static class PetContentBaseline
             .Select(static rebirthNumber =>
                 CreateRebirthStep(rebirthNumber))
             .ToArray();
+        var mergeSavvySteps = CreateMergeSavvySteps();
+        var mergeSavvyLookup = PetMergeSavvyLookupContentBaseline.Create();
+        var hatchRankSteps = PetHatchRankContentBaseline.Create();
+        var mergeRankLookup = PetMergeRankContentBaseline.CreateLookup();
+        var mergeRankSpeciesFactors =
+            PetMergeRankContentBaseline.CreateSpeciesFactors();
+        var mergeRankSpiritSteps =
+            PetMergeRankContentBaseline.CreateSpiritSteps();
 
         return PinnedPetContentCatalog.Create(
             Source,
@@ -91,7 +87,13 @@ internal static class PetContentBaseline
             aptitudes,
             profiles,
             experience,
-            rebirth);
+            rebirth,
+            mergeSavvySteps,
+            mergeSavvyLookup,
+            hatchRankSteps,
+            mergeRankLookup,
+            mergeRankSpeciesFactors,
+            mergeRankSpiritSteps);
     }
 
     private static PetAptitudeContentDefinition CreateAptitude(
@@ -121,8 +123,62 @@ internal static class PetContentBaseline
             initial.MaximumTotalSavvy,
             initial.MaximumStatDeviationFraction,
             added.MinimumTotalSavvy,
-            added.MaximumTotalSavvy);
+            added.MaximumTotalSavvy,
+            checked((short)PetInnateTalentPolicy.Resolve(
+                aptitude.Aptitude)));
     }
+
+    private static PetNativeProfileContentDefinition[] CreateNativeProfiles()
+    {
+        var profiles = PetNativeAptitudeProfileCatalog.All
+            .Select(static value => CreateNativeProfile(value))
+            .ToList();
+
+        // Stock Pet_Confect.xml has no aptitude-6 row. Calm is a project
+        // aptitude, so its immutable database baseline uses each species'
+        // immediately lower, client-authored Rational (aptitude 5) profile as
+        // a conservative wire-compatible source. This preserves the species'
+        // starter skill, lifetime and native scalar shape without modifying or
+        // pretending to extend the fingerprinted 495-row stock catalog. Calm's
+        // growth and added-savvy rolls still come from its own project policy.
+        foreach (var species in PetSpeciesCatalog.All)
+        {
+            if (!PetNativeAptitudeProfileCatalog.TryGet(
+                    species.Type,
+                    PetAptitude.Rational,
+                    out var source))
+            {
+                throw new InvalidDataException(
+                    $"Pet species {species.Type} has no Rational compatibility source for Calm.");
+            }
+
+            profiles.Add(
+                CreateNativeProfile(source) with
+                {
+                    Aptitude = (short)PetAptitude.Calm
+                });
+        }
+
+        return profiles
+            .OrderBy(static value => value.SpeciesId)
+            .ThenBy(static value => value.Aptitude)
+            .ToArray();
+    }
+
+    private static PetNativeProfileContentDefinition CreateNativeProfile(
+        PetNativeAptitudeProfile value) =>
+        new(
+            checked((short)value.SpeciesType),
+            value.AptitudeValue,
+            ToVector(value.StartingTraits),
+            ToVector(value.GeniusTraits),
+            value.NativeQuality,
+            value.NativeSamsara,
+            value.NativeGenius,
+            value.StarterSkillId,
+            value.NativeSkillCount,
+            value.NativeProcreate,
+            value.Lifetime);
 
     private static PetRebirthStepContentDefinition CreateRebirthStep(
         int rebirthNumber)
@@ -135,7 +191,10 @@ internal static class PetContentBaseline
                 $"Pet rebirth {rebirthNumber} has no baseline tier.");
         }
 
-        var range = PetRebirthGrowthPolicy.GetIncreaseRange(rebirthNumber);
+        // The content row publishes the best (five-spirit) preview. Runtime
+        // validation uses the selected 0..5 spirit count directly.
+        var range = PetRebirthSpiritPolicy.GetIncreaseRange(
+            PetRebirthSpiritPolicy.MaximumCount);
         return new PetRebirthStepContentDefinition(
             checked((short)rebirthNumber),
             checked((short)BaselineRequiredLevelForRebirth(
@@ -146,11 +205,37 @@ internal static class PetContentBaseline
             range.Maximum);
     }
 
+    private static PetMergeSavvyStepContentDefinition[]
+        CreateMergeSavvySteps() =>
+        [
+            MergeSavvyStep(PetAptitude.Brave, 3.95m, 7.90m),
+            MergeSavvyStep(PetAptitude.Zealous, 3.95m, 7.90m),
+            MergeSavvyStep(PetAptitude.Smart, 3.95m, 7.90m),
+            MergeSavvyStep(PetAptitude.Overbearing, 13.50m, 18.00m),
+            MergeSavvyStep(PetAptitude.Ferocious, 13.50m, 18.00m),
+            MergeSavvyStep(PetAptitude.Almighty, 13.50m, 18.00m),
+            MergeSavvyStep(PetAptitude.Godly, 13.50m, 18.00m),
+            MergeSavvyStep(PetAptitude.Celestial, 13.50m, 18.00m),
+            MergeSavvyStep(PetAptitude.Transcendent, 13.50m, 18.00m)
+        ];
+
+    private static PetMergeSavvyStepContentDefinition MergeSavvyStep(
+        PetAptitude aptitude,
+        decimal minimum,
+        decimal maximum) =>
+        new(
+            checked((short)aptitude),
+            PetManagerPlanner.MaximumSpiritItems,
+            minimum,
+            maximum);
+
     private static int BaselineRequiredLevelForRebirth(
         int completedRebirths) =>
         completedRebirths switch
         {
-            0 => 50,
+            // Product override: the installed stock resources say 50, but
+            // this server intentionally opens the first rebirth at level 30.
+            0 => 30,
             1 => 80,
             2 => 100,
             3 => 110,

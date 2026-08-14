@@ -18,12 +18,12 @@ internal sealed record PetSkillFamilyDefinition(
 /// <summary>
 /// The 67 named families represented by the installed client's 1,655
 /// Pet_Skill.xml rows. Runtime IDs and skill-book item IDs are deliberately
-/// separate namespaces; only 57 families have books in item range 10200-10745.
+/// separate namespaces; only 58 families have books in item range 10200-10745.
 /// </summary>
 internal static class PetSkillFamilyCatalog
 {
     public const int FamilyCount = 67;
-    public const int BookBackedFamilyCount = 57;
+    public const int BookBackedFamilyCount = 58;
     public const int RuntimeRowCount = 1655;
 
     public static IReadOnlyList<PetSkillFamilyDefinition> All { get; } =
@@ -56,7 +56,7 @@ internal static class PetSkillFamilyCatalog
             X(3300, "Prick", false),
             X(3500, "Penalty of Justice", false),
             X(3700, "Palm Sweep", false),
-            X(3900, "Wild Bump", false),
+            X(3900, "Wild Bump"),
             X(4100, "Fury of Justice", false),
             X(4300, "Gnarl", false),
             X(4400, "Spirit Strength"), X(4500, "Wild Strength"),

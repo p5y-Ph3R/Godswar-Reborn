@@ -207,7 +207,12 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
         CharacterStats source,
         int maxHp,
         int maxMp,
-        int physicalAttack) =>
+        int physicalAttack,
+        int? physicalDamageReduction = null,
+        int? magicDamageReduction = null,
+        int? criticalDamageReduction = null,
+        int? lifeAbsorption = null,
+        int? damageRebound = null) =>
         new()
         {
             CharacterId = source.CharacterId,
@@ -239,6 +244,14 @@ internal static partial class EquipmentBagTransferDurableHandlerChecks
             MagicAppendDamage = source.MagicAppendDamage,
             CriticalDamagePercent = source.CriticalDamagePercent,
             CriticalDamageFlat = source.CriticalDamageFlat,
+            PhysicalDamageReduction =
+                physicalDamageReduction ?? source.PhysicalDamageReduction,
+            MagicDamageReduction =
+                magicDamageReduction ?? source.MagicDamageReduction,
+            CriticalDamageReduction =
+                criticalDamageReduction ?? source.CriticalDamageReduction,
+            LifeAbsorption = lifeAbsorption ?? source.LifeAbsorption,
+            DamageRebound = damageRebound ?? source.DamageRebound,
             WeaponScore = source.WeaponScore,
             WeaponRank = source.WeaponRank,
             WeaponAuraEffect = source.WeaponAuraEffect,

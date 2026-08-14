@@ -12,6 +12,9 @@ internal static class B20FStartupAndProjectionArchitectureChecks
             root,
             "src/Godswar.Server/State/PostgresGameStore.cs");
         var program = Read(root, "src/Godswar.Server/Program.cs");
+        var runtimeContent = Read(
+            root,
+            "src/Godswar.Server/ServerRuntimeContentComposition.cs");
         var gateway = Read(
             root,
             "src/Godswar.Server/Infrastructure/Gateway/" +
@@ -52,7 +55,7 @@ internal static class B20FStartupAndProjectionArchitectureChecks
             "ServerWorldContentComposition.TryLoadAsync",
             StringComparison.Ordinal);
         var coordination = program.IndexOf(
-            "ServerCoordinationComposition.CreateAsync",
+            "ServerRuntimeContentComposition.CreateCoordinationAsync",
             StringComparison.Ordinal);
         Check.True(
             schema >= 0 &&
@@ -62,6 +65,17 @@ internal static class B20FStartupAndProjectionArchitectureChecks
             worldPublication < coordination,
             "startup orders schema, reviewed relational baseline, immutable " +
             "item/world publications, then distributed listeners");
+        Check.True(
+            runtimeContent.Contains(
+                "ServerPetLearnedSkillContentComposition.LoadAsync",
+                StringComparison.Ordinal) &&
+            runtimeContent.Contains(
+                "RuntimeContentFingerprint.Create",
+                StringComparison.Ordinal) &&
+            runtimeContent.Contains(
+                "ServerCoordinationComposition.CreateAsync",
+                StringComparison.Ordinal),
+            "coordination pins learned pet-skill content before workers join");
         Check.True(
             !program.Contains(
                 "EnsureSeedDataAsync",

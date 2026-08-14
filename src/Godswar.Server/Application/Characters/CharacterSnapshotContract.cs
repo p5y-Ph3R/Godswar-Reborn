@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using Godswar.Server.Application.Pets;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -81,7 +82,7 @@ internal static class CharacterSnapshotContract
             snapshot.Loadout);
         ValidateSkills(snapshot.Skills);
         ValidateTalents(snapshot.Talents);
-        ValidatePets(snapshot.Pets, identity);
+        ValidatePets(snapshot.PetShed, snapshot.Pets, identity);
         ValidateBoosts(snapshot.PersonalBoosts);
     }
 
@@ -310,9 +311,19 @@ internal static class CharacterSnapshotContract
     }
 
     private static void ValidatePets(
+        CharacterPetShedSnapshot petShed,
         ImmutableArray<CharacterPetSnapshot> pets,
         CharacterIdentitySnapshot owner)
     {
+        if (petShed is null ||
+            !PetShedCapacityPolicy.IsValid(petShed.OpenedCellCount) ||
+            petShed.Revision < 0 ||
+            pets.Length > petShed.OpenedCellCount)
+        {
+            throw Invalid(
+                "Owned pets exceed the character's persisted pet-shed capacity.");
+        }
+
         RequireCount(
             pets,
             CharacterSnapshotLimits.OwnedPetCount,
@@ -361,10 +372,13 @@ internal static class CharacterSnapshotContract
         if (pet.Level is < 1 or > 120 ||
             pet.Experience < 0 ||
             pet.Aptitude is < 1 or > 16 ||
-            pet.Rank < 0 ||
+            !PetRankWirePolicy.IsRepresentable(pet.Rank) ||
             pet.CompletedRebirths < 0 ||
             pet.RebirthsRemaining < 0 ||
             pet.CompletedPetMerges < 0 ||
+            pet.ProjectedSoulContractStage >
+                PetSoulContractRules.MaximumStage ||
+            pet.SoulContractStage > 0 && !pet.HasSoulContract ||
             pet.CurrentEnergy < 0 ||
             pet.MaximumEnergy <= 0 ||
             pet.MaximumEnergy < pet.CurrentEnergy ||
@@ -372,6 +386,12 @@ internal static class CharacterSnapshotContract
             pet.Satiety < 0 ||
             pet.RemainingLifetime < 0 ||
             pet.AvailableStatPoints < 0 ||
+            pet.OpenedSkillSlots is < 1 or > 12 ||
+            pet.AvailableSkillSlots is < 1 or > 12 ||
+            pet.OpenedSkillSlots > pet.AvailableSkillSlots ||
+            pet.TalentMask is < 0 or > 31 ||
+            pet.HasOwnerMergeTalent !=
+                ((pet.TalentMask & 16) != 0) ||
             pet.Revision < 0 ||
             pet.IsSummoned && !pet.IsCarried ||
             pet.ContributesToCharacter &&
@@ -412,14 +432,21 @@ internal static class CharacterSnapshotContract
             pet.Skills.Any(static skill =>
                 skill is null ||
                 skill.SkillId <= 0 ||
-                skill.SlotIndex < 0 ||
+                skill.SlotIndex is < 0 or >= 12 ||
                 skill.SkillRank <= 0 ||
                 skill.SkillExperience < 0 ||
                 skill.Revision < 0) ||
-            HasDuplicates(pet.Skills, static skill => skill.SlotIndex))
+            HasDuplicates(pet.Skills, static skill => skill.SlotIndex) ||
+            pet.Skills.Count(static skill => skill.IsActive) >
+                pet.OpenedSkillSlots ||
+            pet.Skills.Any(skill =>
+                skill.IsActive &&
+                skill.SlotIndex >= pet.OpenedSkillSlots))
         {
             throw Invalid("Owned pet child rows are invalid or duplicated.");
         }
+
+        CharacterSnapshotPetSavvyContract.Validate(pet);
     }
 
     private static void ValidateBoosts(

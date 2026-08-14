@@ -23,6 +23,10 @@ internal static class NpcDialogueBehaviorRegistry
         [101, 201, 301, 401, 501, 601, 701, 801];
     private static readonly int[] ClassSuitMenu =
         [100, 101, 102, 103, 104, 105, 106, 107, 108];
+    private static readonly int[] PetManagerMenu =
+        PetManagerProtocol.InitialMenuSubIds.ToArray();
+    private static readonly int[] PetPointResetMenu =
+        PetManagerProtocol.PointResetInitialMenuSubIds.ToArray();
 
     public static bool IsAllowed(
         NpcSpawnDefinition npc,
@@ -75,6 +79,19 @@ internal static class NpcDialogueBehaviorRegistry
                 ClassSuitProtocol.IsEndpoint(
                     npc.InteractionId,
                     route.DialogIndex),
+            NpcDialogueBehavior.PetManager =>
+                route.DialogIndex == PetManagerProtocol.DialogIndex &&
+                HasExactMenu(route, PetManagerMenu) &&
+                PetManagerProtocol.IsEndpoint(
+                    npc.NpcKey,
+                    npc.InteractionId),
+            NpcDialogueBehavior.PetPointReset =>
+                route.DialogIndex ==
+                    PetManagerProtocol.PointResetDialogIndex &&
+                HasExactMenu(route, PetPointResetMenu) &&
+                PetManagerProtocol.IsEndpoint(
+                    npc.NpcKey,
+                    npc.InteractionId),
             _ => false
         };
     }

@@ -24,5 +24,7 @@ internal enum NpcDialogueBehavior
     OriginEnhancer = 2,
     HolySuitDesign = 3,
     HolyStone = 4,
-    ClassSuit = 5
+    ClassSuit = 5,
+    PetManager = 6,
+    PetPointReset = 7
 }

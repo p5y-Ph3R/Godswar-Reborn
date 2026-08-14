@@ -196,7 +196,11 @@ internal static partial class PetEggHatchPersistenceChecks
                 amity,
                 satiety,
                 remaining_lifetime,
-                activity_state
+                activity_state,
+                birth_rank,
+                hatch_rank_roll,
+                hatch_rank_outcome_order,
+                hatch_rank_content_revision
             )
             SELECT
                 @characterId,
@@ -212,8 +216,21 @@ internal static partial class PetEggHatchPersistenceChecks
                 100,
                 100,
                 600,
-                'owned'
-            FROM generate_series(1, @count) AS fixture(ordinal);
+                'owned',
+                evidence.rank,
+                0,
+                0,
+                evidence.revision
+            FROM generate_series(1, @count) AS fixture(ordinal)
+            CROSS JOIN (
+                SELECT publication.revision, step.rank
+                FROM public.pet_content_publication publication
+                JOIN public.pet_content_hatch_rank_steps step
+                  ON step.revision = publication.revision
+                 AND step.aptitude = 1
+                 AND step.outcome_order = 0
+                WHERE publication.family = 'pets'
+            ) evidence;
             """,
             connection);
         command.Parameters.AddWithValue("characterId", characterId);

@@ -62,11 +62,23 @@ Startup cross-checks every currently active pet item reference against the
 already pinned item revision: egg IDs, merge/rebirth spirits, and rebirth
 chance items. A missing active item fails startup.
 
-Magic Jade IDs 11050-11094 remain captured and hashed pet facts, but the
-species-change command and corresponding reviewed item family do not exist
-yet. They are deliberately not accepted as runtime items or silently added to
-the current item release. Their cross-catalog validation becomes mandatory
-when that feature receives its own reviewed item/content release.
+Magic Jade IDs 11050-11094 are reviewed item templates and captured, hashed
+pet facts. Startup now cross-checks every active Jade reference against both
+the pinned item and pet revisions. The durable `pet_appearance_change`
+command resolves the target species only through that pinned mapping; a
+client-supplied species is never accepted.
+
+Migration `20260812_085_pet_magic_jade_appearance_groups` makes the captured
+mapping directly queryable without duplicating it: the immutable species row
+owns the exact `magic_jade_item_id = 11049 + species_id` mapping, while
+`pet_content_magic_jade_appearance_groups` joins it to the same revision's
+Merge factor, lookup maximum, and five-spirit bounds. Use
+`current_pet_magic_jade_appearance_groups` to list all 45 appearances for the
+official publication. The view records the client files from which the
+appearance and Merge policy were transcribed. Migration
+`20260812_086_pet_appearance_change` separately authorizes the durable command
+evidence and exactly-once item consumption; keeping these migrations separate
+preserves the content/runtime boundary.
 
 ## Compatibility and rollout
 

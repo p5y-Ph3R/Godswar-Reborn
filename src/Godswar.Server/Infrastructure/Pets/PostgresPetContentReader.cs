@@ -57,6 +57,12 @@ internal static partial class PostgresPetContentReader
                    revision.native_profile_count,
                    revision.experience_step_count,
                    revision.rebirth_step_count,
+                   revision.merge_savvy_step_count,
+                   revision.merge_savvy_lookup_count,
+                   revision.hatch_rank_step_count,
+                   revision.merge_rank_lookup_count,
+                   revision.merge_rank_species_factor_count,
+                   revision.merge_rank_spirit_step_count,
                    revision.source,
                    revision.sealed_at IS NOT NULL
             FROM pet_content_publication publication
@@ -80,8 +86,14 @@ internal static partial class PostgresPetContentReader
             reader.GetInt32(3),
             reader.GetInt32(4),
             reader.GetInt32(5),
-            reader.GetString(6),
-            reader.GetBoolean(7));
+            reader.GetInt32(6),
+            reader.GetInt32(7),
+            reader.GetInt32(8),
+            reader.GetInt32(9),
+            reader.GetInt32(10),
+            reader.GetInt32(11),
+            reader.GetString(12),
+            reader.GetBoolean(13));
         if (await reader.ReadAsync(cancellationToken))
         {
             throw new InvalidOperationException(
@@ -103,7 +115,12 @@ internal static partial class PostgresPetContentReader
             """
             SELECT revision, species_count, aptitude_count,
                    native_profile_count, experience_step_count,
-                   rebirth_step_count, source, sealed_at IS NOT NULL
+                   rebirth_step_count, merge_savvy_step_count,
+                   merge_savvy_lookup_count,
+                   hatch_rank_step_count, merge_rank_lookup_count,
+                   merge_rank_species_factor_count,
+                   merge_rank_spirit_step_count,
+                   source, sealed_at IS NOT NULL
             FROM pet_content_revisions
             WHERE revision = @revision;
             """,
@@ -124,8 +141,14 @@ internal static partial class PostgresPetContentReader
             reader.GetInt32(3),
             reader.GetInt32(4),
             reader.GetInt32(5),
-            reader.GetString(6),
-            reader.GetBoolean(7));
+            reader.GetInt32(6),
+            reader.GetInt32(7),
+            reader.GetInt32(8),
+            reader.GetInt32(9),
+            reader.GetInt32(10),
+            reader.GetInt32(11),
+            reader.GetString(12),
+            reader.GetBoolean(13));
     }
 
     internal static async Task<PinnedPetContentCatalog> ReadRevisionAsync(
@@ -166,12 +189,50 @@ internal static partial class PostgresPetContentReader
             transaction,
             manifest.Revision,
             cancellationToken);
+        var mergeSavvySteps = await ReadMergeSavvyStepsAsync(
+            connection,
+            transaction,
+            manifest.Revision,
+            cancellationToken);
+        var mergeSavvyLookup = await ReadMergeSavvyLookupAsync(
+            connection,
+            transaction,
+            manifest.Revision,
+            cancellationToken);
+        var hatchRankSteps = await ReadHatchRankStepsAsync(
+            connection,
+            transaction,
+            manifest.Revision,
+            cancellationToken);
+        var mergeRankLookup = await ReadMergeRankLookupAsync(
+            connection,
+            transaction,
+            manifest.Revision,
+            cancellationToken);
+        var mergeRankSpeciesFactors =
+            await ReadMergeRankSpeciesFactorsAsync(
+                connection,
+                transaction,
+                manifest.Revision,
+                cancellationToken);
+        var mergeRankSpiritSteps = await ReadMergeRankSpiritStepsAsync(
+            connection,
+            transaction,
+            manifest.Revision,
+            cancellationToken);
 
         if (species.Count != manifest.SpeciesCount ||
             aptitudes.Count != manifest.AptitudeCount ||
             profiles.Count != manifest.NativeProfileCount ||
             experience.Count != manifest.ExperienceStepCount ||
-            rebirth.Count != manifest.RebirthStepCount)
+            rebirth.Count != manifest.RebirthStepCount ||
+            mergeSavvySteps.Count != manifest.MergeSavvyStepCount ||
+            mergeSavvyLookup.Count != manifest.MergeSavvyLookupCount ||
+            hatchRankSteps.Count != manifest.HatchRankStepCount ||
+            mergeRankLookup.Count != manifest.MergeRankLookupCount ||
+            mergeRankSpeciesFactors.Count !=
+                manifest.MergeRankSpeciesFactorCount ||
+            mergeRankSpiritSteps.Count != manifest.MergeRankSpiritStepCount)
         {
             throw new InvalidOperationException(
                 $"Pet-content revision {manifest.Revision} does not match its declared counts.");
@@ -185,6 +246,12 @@ internal static partial class PostgresPetContentReader
             profiles,
             experience,
             rebirth,
+            mergeSavvySteps,
+            mergeSavvyLookup,
+            hatchRankSteps,
+            mergeRankLookup,
+            mergeRankSpeciesFactors,
+            mergeRankSpiritSteps,
             manifest.Revision);
     }
 
@@ -201,6 +268,12 @@ internal static partial class PostgresPetContentReader
             manifest.NativeProfileCount is < 1 or > 100000 ||
             manifest.ExperienceStepCount is < 1 or > 254 ||
             manifest.RebirthStepCount is < 1 or > 1000 ||
+            manifest.MergeSavvyStepCount is < 0 or > 1536 ||
+            manifest.MergeSavvyLookupCount is < 0 or > 1024 ||
+            manifest.HatchRankStepCount is < 0 or > 1024 ||
+            manifest.MergeRankLookupCount is < 0 or > 1024 ||
+            manifest.MergeRankSpeciesFactorCount is < 0 or > 1024 ||
+            manifest.MergeRankSpiritStepCount is < 0 or > 100 ||
             string.IsNullOrWhiteSpace(manifest.Source) ||
             manifest.Source.Length > 96)
         {
@@ -217,10 +290,18 @@ internal sealed record PetContentManifest(
     int NativeProfileCount,
     int ExperienceStepCount,
     int RebirthStepCount,
+    int MergeSavvyStepCount,
+    int MergeSavvyLookupCount,
+    int HatchRankStepCount,
+    int MergeRankLookupCount,
+    int MergeRankSpeciesFactorCount,
+    int MergeRankSpiritStepCount,
     string Source,
     bool Sealed)
 {
     public int EntryCount => checked(
         SpeciesCount + AptitudeCount + NativeProfileCount +
-        ExperienceStepCount + RebirthStepCount + 1);
+        ExperienceStepCount + RebirthStepCount + MergeSavvyStepCount +
+        MergeSavvyLookupCount + HatchRankStepCount + MergeRankLookupCount +
+        MergeRankSpeciesFactorCount + MergeRankSpiritStepCount + 1);
 }

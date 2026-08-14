@@ -33,14 +33,116 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 checked((uint)item.PropId),
                 out var species))
         {
-            return await HatchEggAsync(
+            return await ExecuteWithBagConsumableCooldownAsync(
                 connection,
                 transaction,
                 envelope.Subject.CharacterId,
                 command.KitBagSlot,
                 item,
-                species,
-                character,
+                activationCancellationToken => HatchEggAsync(
+                    connection,
+                    transaction,
+                    envelope.Subject.CharacterId,
+                    command.KitBagSlot,
+                    item,
+                    species,
+                    character,
+                    activationCancellationToken),
+                cancellationToken);
+        }
+
+        if (item.PropId == PetItemCatalog.SpecialPetShed)
+        {
+            return await ExecuteWithBagConsumableCooldownAsync(
+                connection,
+                transaction,
+                envelope.Subject.CharacterId,
+                command.KitBagSlot,
+                item,
+                activationCancellationToken => ExpandPetShedAsync(
+                    connection,
+                    transaction,
+                    envelope.Subject.CharacterId,
+                    command.KitBagSlot,
+                    item,
+                    character,
+                    activationCancellationToken),
+                cancellationToken);
+        }
+
+        if (item.PropId is
+                (int)PetItemCatalog.PetEnhanceSpring or
+                (int)PetItemCatalog.GoldenAppleJuice)
+        {
+            return await ExecuteWithBagConsumableCooldownAsync(
+                connection,
+                transaction,
+                envelope.Subject.CharacterId,
+                command.KitBagSlot,
+                item,
+                activationCancellationToken => AdvancePetSkillCellAsync(
+                    connection,
+                    transaction,
+                    envelope.Subject.CharacterId,
+                    command.KitBagSlot,
+                    item,
+                    character,
+                    activationCancellationToken),
+                cancellationToken);
+        }
+
+        if (PetExperienceItemPolicy.TryResolve(
+                _itemContent.Templates,
+                checked((uint)item.PropId),
+                out var experienceItem))
+        {
+            return await ExecuteWithBagConsumableCooldownAsync(
+                connection,
+                transaction,
+                envelope.Subject.CharacterId,
+                command.KitBagSlot,
+                item,
+                activationCancellationToken => ApplyPetExperienceItemAsync(
+                    connection,
+                    transaction,
+                    envelope.Subject.CharacterId,
+                    command.KitBagSlot,
+                    item,
+                    experienceItem,
+                    character,
+                    activationCancellationToken),
+                cancellationToken);
+        }
+
+        if (PetSkillBookActivationPolicy.IsReviewedItem(
+                checked((uint)item.PropId)))
+        {
+            if (!PetSkillBookActivationPolicy.TryResolve(
+                    _itemContent.Templates,
+                    _learnedSkillContent,
+                    checked((uint)item.PropId),
+                    out var book))
+            {
+                return new(
+                    PetDurableReceiptStatus.UnsupportedItem,
+                    KitBagSlot: command.KitBagSlot);
+            }
+            return await ExecuteWithBagConsumableCooldownAsync(
+                connection,
+                transaction,
+                envelope.Subject.CharacterId,
+                command.KitBagSlot,
+                item,
+                activationCancellationToken =>
+                    LearnReviewedPetSkillAsync(
+                        connection,
+                        transaction,
+                        envelope.Subject.CharacterId,
+                        command.KitBagSlot,
+                        item,
+                        book,
+                        character,
+                        activationCancellationToken),
                 cancellationToken);
         }
 
@@ -221,12 +323,18 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 PetDurableReceiptStatus.UnsupportedItem,
                 KitBagSlot: bagSlot);
         }
-        if (await CountPetsAsync(
+        if (!PetShedCapacityPolicy.IsValid(character.PetShedCapacity))
+        {
+            throw new InvalidDataException(
+                "The locked character has an invalid pet-shed capacity.");
+        }
+        var ownedPetCount = await CountPetsAsync(
                 connection,
                 transaction,
                 characterId,
-                cancellationToken) >=
-            _petContent.Settings.MaximumOwnedPetCount)
+                cancellationToken);
+        if (ownedPetCount >= character.PetShedCapacity ||
+            ownedPetCount >= _petContent.Settings.MaximumOwnedPetCount)
         {
             return new(
                 PetDurableReceiptStatus.PetCapacityReached,
@@ -234,30 +342,52 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         }
 
         var aptitude = aptitudeDefinition.Aptitude;
+        var hatchRank = PetHatchRankEvidence.Create(
+            _petContent.RollHatchRank(
+                aptitude,
+                _petHatchRankRollSource.NextRoll()),
+            _petContent.Revision.Sha256);
+        // New pets begin with an effective Weak Growth vector. Their egg
+        // quality remains authoritative for Savvy and for the later Phoenix
+        // Feather reroll; high-tier Growth must not affect level-ups early.
         var growth = _petContent.RollGrowth(
-            aptitude,
+            checked((short)PetAptitude.Weak),
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
-        var added = _petContent.RollAddedSavvy(
+        var savvy = _petContent.RollInitialSavvy(
             aptitude,
             new Random(RandomNumberGenerator.GetInt32(int.MaxValue)));
         var sex = (short)RandomNumberGenerator.GetInt32(2);
+        var initialSkillSlots = PetSkillSlotPolicy.CreateHatchState(
+            (PetAptitude)aptitude).OpenSkillCellCount;
+        var preserveSummonedCompanion =
+            await ClearOtherCarriedPetsAsync(
+                connection,
+                transaction,
+                characterId,
+                petId: 0,
+                cancellationToken);
         var petId = await InsertPetAsync(
             connection,
             transaction,
             characterId,
             species,
             aptitude,
-            added.TotalSavvy,
+            hatchRank,
+            savvy.TotalSavvy,
             sex,
             nativeProfile.Lifetime,
             egg.Bound,
-            cancellationToken);
+            aptitudeDefinition.InnateTalentMask,
+            initialSkillSlots,
+            isCarried: true,
+            isSummoned: preserveSummonedCompanion,
+            cancellationToken: cancellationToken);
         await InsertPetStatsAsync(
             connection,
             transaction,
             petId,
+            ToPetSavvy(savvy.Values),
             ToPetSavvy(growth.Rates),
-            ToPetSavvy(added.Values),
             cancellationToken);
         await InsertPetSkillAsync(
             connection,
@@ -295,6 +425,9 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             PetId: petId,
             PetLevel: 1,
             PetRevision: 0,
+            IsCarried: true,
+            IsSummoned: preserveSummonedCompanion,
+            HatchRank: hatchRank,
             InventoryMutations:
             [
                 new InventoryMutation(

@@ -42,7 +42,6 @@ internal static partial class PacketBuilder
     private const ushort AfterLoginOpcode = 0x2876;
     private const ushort PlayerInspectEquipmentOpcode = 0x2726;
     private const ushort PlayerInspectProfileOpcode = 0x2772;
-    private const ushort PlayerInspectCompleteOpcode = 0x2826;
     private const int PlayerInspectProfileLength = 336;
     private const short CapturedWorldVisualQualityCap = 13;
     private const short CapturedWorldVisualGradeCap = 12;

@@ -1,4 +1,5 @@
 #include "SecurePendingOperationRegistry.h"
+#include "SecurePetManagerUtilityIdentity.h"
 
 #include <cstring>
 #include <limits>
@@ -13,11 +14,114 @@ bool EqualBytes(
     return std::memcmp(first, second, bytes) == 0;
 }
 
+bool HasSettlingResultCode(
+    const SecureLegacyCommandResult& result) noexcept {
+    if (result.commandFamily ==
+        SecureLegacyCommandFamily::PetBind) {
+        return result.resultCode ==
+                LegacyPetBindAlreadyBoundResultSubId ||
+            result.resultCode ==
+                LegacyPetBindSucceededResultSubId ||
+            result.resultCode ==
+                LegacyPetBindNoPetResultSubId;
+    }
+    if (result.commandFamily ==
+        SecureLegacyCommandFamily::PetAppearanceChange) {
+        return result.resultCode ==
+                LegacyPetAppearanceSucceededResultSubId ||
+            result.resultCode ==
+                LegacyPetAppearanceMissingJadeResultSubId ||
+            result.resultCode ==
+                LegacyPetAppearanceIncompatibleJadeResultSubId ||
+            result.resultCode ==
+                LegacyPetAppearanceNoPetResultSubId ||
+            result.resultCode ==
+                LegacyPetAppearanceUnboundPetResultSubId;
+    }
+    if (result.commandFamily ==
+        SecureLegacyCommandFamily::PetGrowthReset) {
+        return result.resultCode ==
+                LegacyPetGrowthResetNoPetResultSubId ||
+            result.resultCode ==
+                LegacyPetGrowthResetNoFeatherResultSubId ||
+            result.resultCode ==
+                LegacyPetGrowthResetNoPreviewResultSubId ||
+            result.resultCode ==
+                LegacyPetGrowthResetSucceededResultSubId;
+    }
+    if (result.commandFamily ==
+            SecureLegacyCommandFamily::PetBasicSavvyReset) {
+        return result.resultCode ==
+                LegacyPetBasicSavvyResetLegacyNoPetResultSubId ||
+            result.resultCode ==
+                LegacyPetBasicSavvyResetLegacyNoFeatherResultSubId ||
+            result.resultCode ==
+                LegacyPetBasicSavvyResetNoFeatherResultSubId ||
+            result.resultCode ==
+                LegacyPetBasicSavvyResetNoPetResultSubId ||
+            result.resultCode ==
+                LegacyPetBasicSavvyResetNoPreviewResultSubId ||
+            result.resultCode ==
+                LegacyPetBasicSavvyResetSucceededResultSubId;
+    }
+    if (result.commandFamily ==
+            SecureLegacyCommandFamily::PetManagerUtility) {
+        return result.resultCode == LegacyPetGrowthCheckedResult ||
+            result.resultCode == LegacyPetGrowthNoPetResult ||
+            result.resultCode == LegacyPetGrowthNoTearResult ||
+            result.resultCode == LegacyPetSealSucceededResult ||
+            result.resultCode == LegacyPetSealNoJadeResult ||
+            result.resultCode == LegacyPetSealBagFullResult ||
+            result.resultCode == LegacyPetSealBoundResult ||
+            result.resultCode == LegacyPetCharmBagFullResult ||
+            result.resultCode == LegacyPetCharmHeldResult ||
+            result.resultCode == LegacyPetCallClaimedResult ||
+            result.resultCode == LegacyPetMergeClaimedResult ||
+            result.resultCode == LegacyPetGenderUnboundResult ||
+            result.resultCode == LegacyPetGenderNoPetResult ||
+            result.resultCode == LegacyPetGenderUnavailableResult ||
+            result.resultCode == LegacyPetGenderNoItemResult ||
+            result.resultCode == LegacyPetGenderMaleResult ||
+            result.resultCode == LegacyPetGenderFemaleResult ||
+            result.resultCode == LegacyPetUnsealedResult ||
+            result.resultCode == LegacyPetUnsealUnavailableResult ||
+            result.resultCode == LegacyPetUnsealLinkInvalidResult ||
+            result.resultCode == LegacyPetUnsealMalformedResult ||
+            result.resultCode == LegacyPetUnsealConflictResult;
+    }
+    if (result.commandFamily !=
+        SecureLegacyCommandFamily::PetSkillUnlearn) {
+        return true;
+    }
+    return result.resultCode ==
+            LegacyPetSkillUnlearnNoPetResultSubId ||
+        result.resultCode ==
+            LegacyPetSkillUnlearnNoPotionResultSubId ||
+        result.resultCode ==
+            LegacyPetSkillUnlearnEmptySlotResultSubId ||
+        result.resultCode ==
+            LegacyPetSkillUnlearnSucceededResultSubId;
+}
+
+bool IsUnsealResultCode(std::uint32_t resultCode) noexcept {
+    return resultCode == LegacyPetUnsealedResult ||
+        resultCode == LegacyPetUnsealUnavailableResult ||
+        resultCode == LegacyPetUnsealLinkInvalidResult ||
+        resultCode == LegacyPetUnsealMalformedResult ||
+        resultCode == LegacyPetUnsealConflictResult;
+}
+
 } // namespace
 
 SecureOperationRegistryResult
 SecurePendingOperationRegistry::Resolve(
     const SecureLegacyCommandResult& result) noexcept {
+    // Pet Manager families are settled only by their stock terminal
+    // responses. An unknown code must leave the UUID pending so a valid
+    // response or retry can still complete the operation.
+    if (!HasSettlingResultCode(result)) {
+        return SecureOperationRegistryResult::InvalidPacket;
+    }
     std::uint64_t now = 0;
     if (!ReadNow(&now)) {
         return SecureOperationRegistryResult::ClockFailure;
@@ -40,9 +144,25 @@ SecurePendingOperationRegistry::Resolve(
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::UnknownOperation;
     }
-    if (entry->family != result.commandFamily) {
+    const bool bagActivationResolvedAsUnseal =
+        entry->family ==
+            SecureLegacyCommandFamily::BagItemActivation &&
+        result.commandFamily ==
+            SecureLegacyCommandFamily::PetManagerUtility &&
+        entry->capturesPetIntent &&
+        IsUnsealResultCode(result.resultCode);
+    if (entry->family != result.commandFamily &&
+        !bagActivationResolvedAsUnseal) {
         ReleaseSRWLockExclusive(&lock_);
         return SecureOperationRegistryResult::FamilyConflict;
+    }
+    if (bagActivationResolvedAsUnseal) {
+        // Opcode 10051 cannot expose the authoritative item template to the
+        // shim. The server locks the selected slot and is the only authority
+        // that may promote its family-26 intent to family 55 Unseal. Store
+        // that final family in the tombstone so duplicate server results are
+        // idempotent while every other cross-family settlement still fails.
+        entry->family = result.commandFamily;
     }
 
     if (!RememberResolved(*entry, now)) {

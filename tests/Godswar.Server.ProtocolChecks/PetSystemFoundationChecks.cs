@@ -2,7 +2,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetSystemFoundationChecks
+internal static partial class PetSystemFoundationChecks
 {
     public static Task RunAsync()
     {
@@ -18,6 +18,13 @@ internal static class PetSystemFoundationChecks
 
     private static void CheckItemCatalog()
     {
+        Check.True(
+            PetItemCatalog.TryGetCore(
+                PetItemCatalog.SpecialPetShed,
+                out var specialPetShed) &&
+            specialPetShed.DisplayName == "Special Pet Shed" &&
+            specialPetShed.Purpose == PetItemPurpose.ShedCapacity,
+            "Special Pet Shed has its stock item ID and capacity purpose");
         Check.True(
             PetItemCatalog.TryGetCore(PetItemCatalog.MergedSpirit, out var mergedSpirit) &&
             mergedSpirit.DisplayName == "Merged Spirit" &&
@@ -51,7 +58,7 @@ internal static class PetSystemFoundationChecks
         Check.Equal(
             PetSkillFamilyCatalog.BookBackedFamilyCount,
             PetSkillFamilyCatalog.All.Count(static family => family.HasSkillBooks),
-            "57 pet skill families have stock skill books");
+            "58 pet skill families have stock skill books");
         Check.Equal(
             1655,
             PetSkillFamilyCatalog.RuntimeRowCount,
@@ -180,15 +187,17 @@ internal static class PetSystemFoundationChecks
         Check.Equal(80, mergePlan.PetAfter.CurrentEnergy, "server outcome controls post-merge energy");
 
         Check.True(
-            PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
+            PetManagerPlanner.TryToggleOwnerMerge(
+                PetContentTestCatalog.Instance,
                 mergePlan.PetAfter,
                 pet.OwnerCharacterId,
                 outcome: null,
                 out var unmergePlan,
                 out rejection),
-            "merged pet toggles off without a second outcome");
-        Check.True(!unmergePlan!.PetAfter.IsMergedWithOwner, "unmerge clears merge state");
-        Check.Equal(contribution, unmergePlan.StatContribution, "unmerge removes the stored contribution");
+            "merged pet accepts the native Merge toggle-off action");
+        Check.True(
+            !unmergePlan!.PetAfter.IsMergedWithOwner,
+            "Merge toggle-off clears the temporary owner contribution");
 
         var lowAmity = pet with { Amity = 39 };
         Check.True(
@@ -203,7 +212,10 @@ internal static class PetSystemFoundationChecks
             rejection == PetPlanRejection.InsufficientAmity,
             "owner merge amity rejection");
 
-        var tooManySkills = outcome with { GrantedSkillIds = [1, 2, 3, 4, 5, 6, 7] };
+        var tooManySkills = outcome with
+        {
+            GrantedSkillIds = Enumerable.Range(1, 13).ToArray()
+        };
         Check.True(
             !PetManagerPlanner.TryToggleOwnerMerge(PetContentTestCatalog.Instance,
                 pet,
@@ -211,104 +223,10 @@ internal static class PetSystemFoundationChecks
                 tooManySkills,
                 out _,
                 out rejection),
-            "the stock six pet-skill slots remain bounded");
+            "the twelve learnable pet-skill cells remain bounded");
         Check.True(
             rejection == PetPlanRejection.InvalidAuthoritativeOutcome,
-            "seventh merged pet skill is rejected");
-    }
-
-    private static void CheckRebirth()
-    {
-        var ladder = new[] { 50, 80, 100, 110, 120, 120, 120 };
-        Check.True(
-            ladder.Select((_, index) => PetManagerPlanner.RequiredLevelForRebirth(PetContentTestCatalog.Instance, index))
-                .SequenceEqual(ladder),
-            "rebirth level ladder follows Pet_Alter.xml");
-
-        var initial = new PetSavvy(10m, 11m, 12m, 13m, 14m, 15m);
-        var pet = CreatePet() with
-        {
-            Level = 80,
-            CompletedRebirths = 1,
-            RebirthsRemaining = 3,
-            HasSoulContract = true,
-            IsSummoned = true,
-            Rank = 20m,
-            InitialSavvy = initial,
-            AddedSavvy =
-                new PetSavvy(42m, 43m, 44m, 45m, 46m, 47m),
-            RarityAddedSavvy =
-                new PetSavvy(40m, 41m, 42m, 43m, 44m, 45m)
-        };
-        var acceleration =
-            new PetSavvy(0.15m, 0.15m, 0.15m, 0.15m, 0.15m, 0.15m);
-        var outcome = new AuthoritativePetRebirthOutcome(
-            CarriedExperience: 1234,
-            RankAfter: 22m,
-            acceleration);
-
-        Check.True(
-            PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
-                pet,
-                pet.OwnerCharacterId,
-                new PetRebirthMaterials(
-                    RebirthSpiritCount: 5,
-                    RebornHarpyiaCount: 0),
-                outcome,
-                out var plan,
-                out var rejection),
-            "eligible pet rebirth is planned");
-        Check.True(rejection == PetPlanRejection.None, "rebirth accepted");
-        Check.Equal(1, plan!.PetAfter.Level, "rebirth returns pet to level one");
-        Check.Equal(1234L, plan.PetAfter.Experience, "server-authored carried EXP is applied");
-        Check.Equal(initial, plan.PetAfter.InitialSavvy, "rebirth preserves initial savvy");
-        Check.Equal(
-            pet.RarityAddedSavvy,
-            plan.PetAfter.AddedSavvy,
-            "rebirth clears only additions above the rarity floor");
-        Check.Equal(acceleration, plan.PetAfter.GrowthAcceleration, "server-authored growth is applied");
-        Check.Equal(2, plan.PetAfter.CompletedRebirths, "rebirth count advances");
-        Check.Equal(2, plan.PetAfter.RebirthsRemaining, "one rebirth chance is consumed");
-
-        Check.True(
-            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
-                pet with { HasSoulContract = false },
-                pet.OwnerCharacterId,
-                new PetRebirthMaterials(5, 0),
-                outcome,
-                out _,
-                out rejection),
-            "rebirth requires the stock Soul Contract prerequisite");
-        Check.True(
-            rejection == PetPlanRejection.SoulContractRequired,
-            "missing Soul Contract has a specific rejection");
-
-        Check.True(
-            !PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
-                pet,
-                pet.OwnerCharacterId,
-                new PetRebirthMaterials(0, 1),
-                outcome,
-                out _,
-                out rejection),
-            "restricted Reborn Harpyia cannot be used on an unbound pet");
-        Check.True(
-            rejection == PetPlanRejection.RestrictedMaterialRequiresBoundPet,
-            "restricted rebirth material has a specific rejection");
-
-        Check.True(
-            PetManagerPlanner.TryPlanRebirth(PetContentTestCatalog.Instance,
-                pet with { IsBound = true },
-                pet.OwnerCharacterId,
-                new PetRebirthMaterials(0, 5),
-                outcome,
-                out var boundPlan,
-                out rejection),
-            "a bound pet may use the restricted Reborn Harpyia variant");
-        Check.Equal(
-            5,
-            boundPlan!.Materials.RebornHarpyiaCount,
-            "restricted rebirth materials remain in the transaction plan");
+            "thirteenth merged pet skill is rejected");
     }
 
     private static void CheckPetMerge()
@@ -318,6 +236,7 @@ internal static class PetSystemFoundationChecks
         {
             Level = 30,
             Rank = 15m,
+            Aptitude = PetAptitude.Brave,
             InitialSavvy = initial,
             HasSoulContract = false,
             IsSummoned = true
@@ -326,11 +245,18 @@ internal static class PetSystemFoundationChecks
         {
             Level = 30,
             Rank = 18m,
+            Aptitude = PetAptitude.Smart,
             HasSoulContract = false,
             IsSummoned = false
         };
-        var improvedSavvy = new PetSavvy(11m, 21m, 31m, 41m, 51m, 61m);
-        var outcome = new AuthoritativePetMergeOutcome(16m, improvedSavvy);
+        var improvedSavvy = new PetSavvy(
+            10.95m,
+            20.61m,
+            30.39m,
+            40.01m,
+            50m,
+            60m);
+        var outcome = new AuthoritativePetMergeOutcome(16.96m, improvedSavvy);
 
         Check.True(
             PetManagerPlanner.TryPlanPetMerge(PetContentTestCatalog.Instance,
@@ -355,7 +281,7 @@ internal static class PetSystemFoundationChecks
                 primary,
                 contractedDeputy,
                 primary.OwnerCharacterId,
-                new PetMergeMaterials(0, 0),
+                new PetMergeMaterials(5, 0),
                 outcome,
                 out _,
                 out rejection),

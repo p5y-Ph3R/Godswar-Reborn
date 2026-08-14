@@ -15,7 +15,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal sealed class PetDurableHandlerFixture : IAsyncDisposable
+internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
 {
     private static readonly MethodInfo HandlePacketMethod =
         typeof(GameClientHandler).GetMethod(
@@ -27,11 +27,15 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
     private PetDurableHandlerFixture(
         ClientSession session,
         PetDurableCaptureTransport transport,
-        GameClientHandler handler)
+        GameClientHandler handler,
+        GameSessionRegistry registry,
+        PetHandlerStore store)
     {
         Session = session;
         Transport = transport;
         Handler = handler;
+        Registry = registry;
+        _store = store;
     }
 
     public ClientSession Session { get; }
@@ -40,11 +44,18 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
 
     public GameClientHandler Handler { get; }
 
+    public GameSessionRegistry Registry { get; }
+
     public static PetDurableHandlerFixture Create(
         GameCharacter liveCharacter,
         GameCharacter persistedCharacter,
         IReadOnlyList<PetBootstrapSnapshot> persistedPets,
-        IPetDurableCommandExecutor executor)
+        IPetDurableCommandExecutor executor,
+        short openedPetShedCells =
+            PetShedCapacityPolicy.DefaultOpenedCellCount,
+        TimeSpan? petOwnerMergeEnergyInterval = null,
+        ISealedPetSnapshotReader? sealedPetSnapshots = null,
+        CharacterCalculatedStatsSnapshot? persistedStats = null)
     {
         ArgumentNullException.ThrowIfNull(liveCharacter);
         ArgumentNullException.ThrowIfNull(persistedCharacter);
@@ -59,15 +70,20 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
             liveCharacter);
         var snapshot = CreateSnapshot(
             persistedCharacter,
-            persistedPets);
+            persistedPets,
+            openedPetShedCells,
+            persistedStats);
+        var store = new PetHandlerStore();
         var handler = new GameClientHandler(
             session,
-            new PetHandlerStore(),
+            store,
             registry,
             new FixedSnapshotReader(snapshot),
             WorldContentReaderTestFixtures.Empty,
             petDurableCommands: executor,
-            petContent: PetContentTestCatalog.Instance);
+            petContent: PetContentTestCatalog.Instance,
+            petOwnerMergeEnergyInterval: petOwnerMergeEnergyInterval,
+            sealedPetSnapshots: sealedPetSnapshots);
         SetField(
             handler,
             "_account",
@@ -75,7 +91,7 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
                 liveCharacter.AccountId,
                 "durable-pet-check"));
         SetField(handler, "_character", liveCharacter);
-        return new(session, transport, handler);
+        return new(session, transport, handler, registry, store);
     }
 
     public async Task InvokeAsync(GamePacket packet)
@@ -90,9 +106,12 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
 
     public ValueTask DisposeAsync() => Session.DisposeAsync();
 
-    private static CharacterAccountSnapshot CreateSnapshot(
+    internal static CharacterAccountSnapshot CreateSnapshot(
         GameCharacter character,
-        IReadOnlyList<PetBootstrapSnapshot> pets)
+        IReadOnlyList<PetBootstrapSnapshot> pets,
+        short openedPetShedCells =
+            PetShedCapacityPolicy.DefaultOpenedCellCount,
+        CharacterCalculatedStatsSnapshot? persistedStats = null)
     {
         var basis = CharacterSnapshotContractChecks.CreateValidSnapshot();
         var current = basis.Character ??
@@ -107,7 +126,7 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
             ArmorRank = character.ArmorRank,
             ArmorAuraEffect = character.ArmorAuraEffect
         };
-        var stats = current.CalculatedStats with
+        var stats = (persistedStats ?? current.CalculatedStats) with
         {
             CharacterId = character.Id,
             AccountId = character.AccountId,
@@ -117,6 +136,14 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
             ArmorRank = character.ArmorRank,
             ArmorAuraEffect = character.ArmorAuraEffect
         };
+        var vitals = persistedStats is null
+            ? current.Vitals
+            : current.Vitals with
+            {
+                PersistedCurrentHp = stats.CurrentHp,
+                PersistedCurrentMp = stats.CurrentMp,
+                Revision = character.VitalsRevision
+            };
         var snapshot = current with
         {
             Identity = current.Identity with
@@ -126,7 +153,11 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
                 Name = character.Name
             },
             Loadout = loadout,
+            Vitals = vitals,
             CalculatedStats = stats,
+            PetShed = new CharacterPetShedSnapshot(
+                openedPetShedCells,
+                0),
             Pets = pets.Select(ToApplicationPet).ToImmutableArray()
         };
         return basis with
@@ -192,24 +223,11 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
                     skill.SkillRank,
                     skill.SkillExperience,
                     skill.IsActive,
-                    skill.Revision)).ToImmutableArray());
-
-    private static void SetField<T>(
-        GameClientHandler handler,
-        string name,
-        T value)
-    {
-        var field = typeof(GameClientHandler).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException(
-                $"GameClientHandler.{name} was not found.");
-        field.SetValue(handler, value);
-    }
-
-    private sealed class PetHandlerStore : GameStoreTestStub
-    {
-    }
+                    skill.Revision)).ToImmutableArray(),
+            pet.OpenedSkillSlots,
+            pet.AvailableSkillSlots,
+            pet.TalentMask,
+            SoulContractStage: pet.SoulContractStage);
 
     private sealed class FixedSnapshotReader(
         CharacterAccountSnapshot snapshot) : ICharacterSnapshotReader
@@ -225,7 +243,7 @@ internal sealed class PetDurableHandlerFixture : IAsyncDisposable
     }
 }
 
-internal sealed class DelegatingPetDurableCommandExecutor :
+internal partial class DelegatingPetDurableCommandExecutor :
     IPetDurableCommandExecutor
 {
     public Func<CommandEnvelope<BagItemActivationCommand>,
@@ -237,11 +255,41 @@ internal sealed class DelegatingPetDurableCommandExecutor :
     public Func<CommandEnvelope<PetPresenceTransitionCommand>,
         PetDurableExecutionResult>? Transition { get; init; }
 
+    public Func<CommandEnvelope<PetSkillUnlearnCommand>,
+        PetDurableExecutionResult>? UnlearnSkill { get; init; }
+
+    public Func<CommandEnvelope<PetGrowthResetCommand>,
+        PetDurableExecutionResult>? ResetGrowth { get; init; }
+
+    public Func<CommandEnvelope<PetBasicSavvyResetCommand>,
+        PetDurableExecutionResult>? ResetBasicSavvy { get; init; }
+
+    public Func<CommandEnvelope<PetOwnerMergeToggleCommand>,
+        PetDurableExecutionResult>? ToggleOwnerMerge { get; init; }
+
+    public Func<CommandEnvelope<PetToPetMergeCommand>,
+        PetDurableExecutionResult>? MergePets { get; init; }
+
+    public Func<CommandEnvelope<PetRebirthCommand>,
+        PetDurableExecutionResult>? RebirthPet { get; init; }
+
     public int ActivateCount { get; private set; }
 
     public int UpgradeCount { get; private set; }
 
     public int TransitionCount { get; private set; }
+
+    public int UnlearnSkillCount { get; private set; }
+
+    public int ResetGrowthCount { get; private set; }
+
+    public int ResetBasicSavvyCount { get; private set; }
+
+    public int ToggleOwnerMergeCount { get; private set; }
+
+    public int MergePetsCount { get; private set; }
+
+    public int RebirthPetCount { get; private set; }
 
     public CommandEnvelope<BagItemActivationCommand>? ActivationEnvelope
     { get; private set; }
@@ -250,6 +298,24 @@ internal sealed class DelegatingPetDurableCommandExecutor :
     { get; private set; }
 
     public CommandEnvelope<PetPresenceTransitionCommand>? TransitionEnvelope
+    { get; private set; }
+
+    public CommandEnvelope<PetSkillUnlearnCommand>? UnlearnSkillEnvelope
+    { get; private set; }
+
+    public CommandEnvelope<PetGrowthResetCommand>? ResetGrowthEnvelope
+    { get; private set; }
+
+    public CommandEnvelope<PetBasicSavvyResetCommand>?
+        ResetBasicSavvyEnvelope { get; private set; }
+
+    public CommandEnvelope<PetOwnerMergeToggleCommand>?
+        ToggleOwnerMergeEnvelope { get; private set; }
+
+    public CommandEnvelope<PetToPetMergeCommand>? MergePetsEnvelope
+    { get; private set; }
+
+    public CommandEnvelope<PetRebirthCommand>? RebirthPetEnvelope
     { get; private set; }
 
     public Task<PetDurableExecutionResult> ExecuteAsync(
@@ -283,6 +349,74 @@ internal sealed class DelegatingPetDurableCommandExecutor :
         TransitionEnvelope = envelope;
         return Task.FromResult(
             (Transition ?? throw Missing("presence transition"))(envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetSkillUnlearnCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        UnlearnSkillCount++;
+        UnlearnSkillEnvelope = envelope;
+        return Task.FromResult(
+            (UnlearnSkill ?? throw Missing("skill unlearn"))(envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetGrowthResetCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ResetGrowthCount++;
+        ResetGrowthEnvelope = envelope;
+        return Task.FromResult(
+            (ResetGrowth ?? throw Missing("growth reset"))(envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetBasicSavvyResetCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ResetBasicSavvyCount++;
+        ResetBasicSavvyEnvelope = envelope;
+        return Task.FromResult(
+            (ResetBasicSavvy ?? throw Missing("Basic-Savvy reset"))(
+                envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetOwnerMergeToggleCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ToggleOwnerMergeCount++;
+        ToggleOwnerMergeEnvelope = envelope;
+        return Task.FromResult(
+            (ToggleOwnerMerge ?? throw Missing("owner Merge toggle"))(
+                envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetToPetMergeCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        MergePetsCount++;
+        MergePetsEnvelope = envelope;
+        return Task.FromResult(
+            (MergePets ?? throw Missing("pet-to-pet Merge"))(envelope));
+    }
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetRebirthCommand> envelope,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RebirthPetCount++;
+        RebirthPetEnvelope = envelope;
+        return Task.FromResult(
+            (RebirthPet ?? throw Missing("pet rebirth"))(envelope));
     }
 
     private static InvalidOperationException Missing(string operation) =>

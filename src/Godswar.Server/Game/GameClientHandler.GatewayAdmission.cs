@@ -1,3 +1,5 @@
+using Godswar.Server.State;
+
 namespace Godswar.Server.Game;
 
 internal sealed partial class GameClientHandler
@@ -21,16 +23,22 @@ internal sealed partial class GameClientHandler
                 _character,
                 WorldObjectIds.ForPlayer(_character.Id),
                 worldReady);
-            return;
+        }
+        else
+        {
+            _registry.JoinGatewayWorld(
+                _session,
+                accountId,
+                _character,
+                WorldObjectIds.ForPlayer(_character.Id),
+                admission,
+                worldReady);
         }
 
-        _registry.JoinGatewayWorld(
+        _registry.UpdateActivePetHealingRuntime(
             _session,
-            accountId,
-            _character,
-            WorldObjectIds.ForPlayer(_character.Id),
-            admission,
-            worldReady);
+            _characterLoadSnapshot?.Pets ??
+                Array.Empty<PetBootstrapSnapshot>());
     }
 
     private bool ValidateGatewayAdmission()

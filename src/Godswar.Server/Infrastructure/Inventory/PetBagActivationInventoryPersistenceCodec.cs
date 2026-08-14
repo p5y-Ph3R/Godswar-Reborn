@@ -22,6 +22,7 @@ internal static class PetBagActivationInventoryPersistenceCodec
     public const string AggregateType = "character_inventory";
     public const string EventType = "inventory.pet_bag_item_activated";
     public const string OrderingPolicy = "strict";
+    public const int MaximumLedgerEntryCount = 5;
 
     public static string AggregateKey(int characterId) =>
         string.Create(
@@ -79,7 +80,7 @@ internal static class PetBagActivationInventoryPersistenceCodec
         ArgumentNullException.ThrowIfNull(receipt);
         if (receipt.CharacterId <= 0 ||
             receipt.InventoryRevision <= 0 ||
-            receipt.LedgerEntryCount is < 1 or > 2 ||
+            receipt.LedgerEntryCount is < 1 or > MaximumLedgerEntryCount ||
             receipt.OutboxEventId == Guid.Empty)
         {
             throw new InvalidDataException(

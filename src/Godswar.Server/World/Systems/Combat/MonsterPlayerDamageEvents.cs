@@ -17,7 +17,8 @@ internal readonly record struct MonsterPlayerDamageAppliedEvent(
     long AfterVitalsRevision,
     long BeforeLifeRevision,
     long AfterLifeRevision,
-    bool Killed);
+    bool Killed,
+    DateTimeOffset ResolvedAt);
 
 internal readonly record struct MonsterPlayerDamageRejectedEvent(
     ulong DecisionSequence,

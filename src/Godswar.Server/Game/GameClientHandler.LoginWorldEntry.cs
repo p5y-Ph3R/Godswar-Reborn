@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.World;
 using Godswar.Server.Networking;
 using Godswar.Server.Operations;
@@ -268,6 +269,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        // A process crash can leave the durable Merge flag behind after its
+        // owning session vanished. Clear it before EnterMain, the owned-pet
+        // list, PlayerDetail, or any calculated-stat frame can expose a stale
+        // hidden pet or temporary stat overlay to the new client.
+        if (_characterLoadSnapshot is { } enterSnapshot)
+        {
+            await RecoverStalePetOwnerMergeOnLoginAsync(
+                enterSnapshot.Pets,
+                cancellationToken);
+        }
+
         ResetPlayerMovementEcs();
         if (_character.CurrentHp <= 0)
         {
@@ -287,7 +299,9 @@ internal sealed partial class GameClientHandler
             _characterLoadSnapshot?.Pets ?? [];
         var ownedPetList = PacketBuilder.OwnedPetList(
             RequirePetContent(),
-            ownedPets);
+            ownedPets,
+            _characterLoadSnapshot?.PetShed.OpenedCellCount ??
+                PetShedCapacityPolicy.DefaultOpenedCellCount);
         Console.WriteLine(
             $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
 

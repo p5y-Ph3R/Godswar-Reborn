@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302 AS build
 WORKDIR /src
 
 COPY GodswarServer.sln ./
@@ -13,7 +13,7 @@ RUN dotnet publish src/Godswar.Server/Godswar.Server.csproj \
     --output /app/publish \
     --no-restore
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:10.0.10 AS runtime
 WORKDIR /app
 
 ARG GODSWAR_SOURCE_COMMIT=unknown

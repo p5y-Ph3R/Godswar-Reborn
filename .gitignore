@@ -32,6 +32,7 @@ coverage/
 artifacts/
 captures/
 phase4-completion/
+.scratch/
 .tmp*
 client/network-shim/diagnostics/
 **/__pycache__/

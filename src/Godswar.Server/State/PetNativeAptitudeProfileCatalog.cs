@@ -45,10 +45,10 @@ internal static class PetNativeAptitudeProfileCatalog
             PetAptitude.Cowish,
             PetAptitude.Moderate,
             PetAptitude.Rational,
-            PetAptitude.Smart,
-            PetAptitude.Zealous,
             PetAptitude.Grumpy,
             PetAptitude.Brave,
+            PetAptitude.Zealous,
+            PetAptitude.Smart,
             PetAptitude.Ferocious,
             PetAptitude.Godly
         ]);

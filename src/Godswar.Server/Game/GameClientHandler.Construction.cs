@@ -87,12 +87,19 @@ internal sealed partial class GameClientHandler
         bool requiresDurablePlayerCommands = false,
         GameplayRuntimeCatalogs? gameplayCatalogs = null,
         GameplayItemContent? itemContent = null,
-        IPetContentCatalog? petContent = null)
+        IPetContentCatalog? petContent = null,
+        TimeSpan? petOwnerMergeEnergyInterval = null,
+        ISealedPetSnapshotReader? sealedPetSnapshots = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(backhaulSkillCastTime));
+        }
+        if (petOwnerMergeEnergyInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(petOwnerMergeEnergyInterval));
         }
 
         _session = session;
@@ -150,6 +157,8 @@ internal sealed partial class GameClientHandler
         _requiresDurablePlayerCommands =
             requiresDurablePlayerCommands;
         _petDurableCommands = petDurableCommands;
+        _petOwnerMergeEnergyInterval =
+            petOwnerMergeEnergyInterval ?? TimeSpan.FromSeconds(3);
         _characterRuntimeProjections =
             characterRuntimeProjections ??
             gameStore as ICharacterRuntimeProjectionReader ??
@@ -162,6 +171,8 @@ internal sealed partial class GameClientHandler
             throw new ArgumentException(
                 "An owned-pet snapshot reader is required.",
                 nameof(ownedPetSnapshots));
+        _sealedPetSnapshots = sealedPetSnapshots ??
+            characterSnapshots as ISealedPetSnapshotReader;
         _worldBossAreaControl =
             worldBossAreaControl ??
             gameStore as IWorldBossAreaControlStore ??
@@ -197,7 +208,8 @@ internal sealed partial class GameClientHandler
                 _zodiacSkillGridSelectionCommands,
                 _characterLifecycleCommands,
                 _petDurableCommands,
-                _characterCheckpoints
+                _characterCheckpoints,
+                _sealedPetSnapshots
             }.Any(static provider => provider is null))
         {
             throw new InvalidOperationException(

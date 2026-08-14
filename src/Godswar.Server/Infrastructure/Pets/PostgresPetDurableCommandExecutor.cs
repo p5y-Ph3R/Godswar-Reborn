@@ -12,7 +12,10 @@ using Npgsql;
 namespace Godswar.Server.Infrastructure.Pets;
 
 internal sealed partial class PostgresPetDurableCommandExecutor :
-    IPetDurableCommandExecutor
+    IPetDurableCommandExecutor,
+    IPetOwnerMergeLifecycleStore,
+    IPetGrowthPreviewLifecycleStore,
+    IPetBasicSavvyPreviewLifecycleStore
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
@@ -20,12 +23,18 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     private readonly short _maximumOutboxAttempts;
     private readonly GameplayItemContent _itemContent;
     private readonly IPetContentCatalog _petContent;
+    private readonly IPetOwnerMergeContentCatalog _ownerMergeContent;
+    private readonly IPetLearnedSkillContentCatalog _learnedSkillContent;
+    private readonly IPetHatchRankRollSource _petHatchRankRollSource;
 
     public PostgresPetDurableCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
         GameplayItemContent itemContent,
-        IPetContentCatalog petContent)
+        IPetContentCatalog petContent,
+        IPetOwnerMergeContentCatalog ownerMergeContent,
+        IPetLearnedSkillContentCatalog learnedSkillContent,
+        IPetHatchRankRollSource? petHatchRankRollSource = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -34,6 +43,12 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
             nameof(itemContent));
         _petContent = petContent ?? throw new ArgumentNullException(
             nameof(petContent));
+        _ownerMergeContent = ownerMergeContent ??
+            throw new ArgumentNullException(nameof(ownerMergeContent));
+        _learnedSkillContent = learnedSkillContent ??
+            throw new ArgumentNullException(nameof(learnedSkillContent));
+        _petHatchRankRollSource = petHatchRankRollSource ??
+            CryptographicPetHatchRankRollSource.Instance;
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -68,6 +83,96 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
             envelope,
             PetPresenceTransitionCommandEnvelope.Validate(envelope),
             ExecutePetPresenceAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetSkillUnlearnCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetSkillUnlearnCommandEnvelope.Validate(envelope),
+            ExecutePetSkillUnlearnAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetGrowthResetCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetGrowthResetCommandEnvelope.Validate(envelope),
+            ExecutePetGrowthResetAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetBasicSavvyResetCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetBasicSavvyResetCommandEnvelope.Validate(envelope),
+            ExecutePetBasicSavvyResetAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetOwnerMergeToggleCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetOwnerMergeToggleCommandEnvelope.Validate(envelope),
+            ToggleOwnerMergeAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetToPetMergeCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetToPetMergeCommandEnvelope.Validate(envelope),
+            ExecutePetToPetMergeAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetRebirthCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetRebirthCommandEnvelope.Validate(envelope),
+            ExecutePetRebirthAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetAppearanceChangeCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetAppearanceChangeCommandEnvelope.Validate(envelope),
+            ExecutePetAppearanceChangeAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetBindCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetBindCommandEnvelope.Validate(envelope),
+            ExecutePetBindAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetSoulContractCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetSoulContractCommandEnvelope.Validate(envelope),
+            ExecutePetSoulContractAsync,
+            cancellationToken);
+
+    public Task<PetDurableExecutionResult> ExecuteAsync(
+        CommandEnvelope<PetManagerUtilityCommand> envelope,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(
+            envelope,
+            PetManagerUtilityCommandEnvelope.Validate(envelope),
+            ExecutePetManagerUtilityAsync,
             cancellationToken);
 
     private async Task<PetDurableExecutionResult> ExecuteCoreAsync<T>(
@@ -194,7 +299,16 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
                 cancellationToken);
         }
 
-        if (envelope.Family == CommandFamily.BagItemActivation &&
+        if (envelope.Family is
+                CommandFamily.BagItemActivation or
+                CommandFamily.PetSkillUnlearn or
+                CommandFamily.PetGrowthReset or
+                CommandFamily.PetBasicSavvyReset or
+                CommandFamily.PetToPetMerge or
+                CommandFamily.PetRebirth or
+                CommandFamily.PetAppearanceChange or
+                CommandFamily.PetSoulContract or
+                CommandFamily.PetManagerUtility &&
             !await PostgresCharacterEconomyBaseline.EnsureAsync(
                 connection,
                 transaction,
@@ -277,7 +391,9 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     private readonly record struct LockedCharacter(
         int Profession,
         int Level,
-        long InventoryRevision);
+        long InventoryRevision,
+        short PetShedCapacity,
+        long PetShedRevision);
 
     private sealed record StoredInbox(
         long InboxId,
@@ -299,19 +415,53 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
         bool IsCarried = false,
         bool IsSummoned = false,
         byte PresenceOperation = 0,
-        IReadOnlyList<InventoryMutation>? InventoryMutations = null)
+        IReadOnlyList<InventoryMutation>? InventoryMutations = null,
+        long DeputyPetId = 0,
+        PetToPetMergeDelta? PetMergeDelta = null,
+        PetGrowthPreviewSnapshot? GrowthPreview = null,
+        PetBasicSavvyPreviewSnapshot? BasicSavvyPreview = null,
+        PetHatchRankEvidence? HatchRank = null,
+        PetAppearanceChangeEvidence? AppearanceChange = null,
+        PetSoulContractEvidence? SoulContract = null,
+        PetManagerUtilityEvidence? PetManagerUtility = null,
+        PetRebirthGrowthEvidence? RebirthGrowth = null,
+        PetSkillLearnEvidence? SkillLearn = null)
     {
         public bool Succeeded =>
             Status is PetDurableReceiptStatus.EggHatched or
                 PetDurableReceiptStatus.EquipmentEquipped or
                 PetDurableReceiptStatus.PetLevelUpgraded or
-                PetDurableReceiptStatus.PresenceChanged;
+                PetDurableReceiptStatus.PresenceChanged or
+                PetDurableReceiptStatus.PetShedExpanded or
+                PetDurableReceiptStatus.PetSkillCellMadeAvailable or
+                PetDurableReceiptStatus.PetSkillCellOpened or
+                PetDurableReceiptStatus.PetSkillUnlearned or
+                PetDurableReceiptStatus.PetGrowthReset or
+                PetDurableReceiptStatus.PetGrowthPreviewed or
+                PetDurableReceiptStatus.PetGrowthAccepted or
+                PetDurableReceiptStatus.PetBasicSavvyPreviewed or
+                PetDurableReceiptStatus.PetBasicSavvyAccepted or
+                PetDurableReceiptStatus.PetExperienceAdded or
+                PetDurableReceiptStatus.PetToPetMerged or
+                PetDurableReceiptStatus.PetReborn or
+                PetDurableReceiptStatus.PetSoulContractSigned or
+                PetDurableReceiptStatus.PetGrowthChecked or
+                PetDurableReceiptStatus.PetSealed or
+                PetDurableReceiptStatus.PetUnsealed or
+                PetDurableReceiptStatus.PetCallClaimed or
+                PetDurableReceiptStatus.PetMergeClaimed or
+                PetDurableReceiptStatus.PetGenderChanged or
+                PetDurableReceiptStatus.PetAppearanceChanged or
+                PetDurableReceiptStatus.PetBound or
+                PetDurableReceiptStatus.PetSkillLearned or
+                PetDurableReceiptStatus.OwnerMerged or
+                PetDurableReceiptStatus.OwnerUnmerged;
     }
 
     private sealed record InventoryMutation(
         long ItemInstanceId,
         string MutationKind,
-        string BeforeState,
+        string? BeforeState,
         string? AfterState,
         string ReasonCode,
         long InventoryRevision);

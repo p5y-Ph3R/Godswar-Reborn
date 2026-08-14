@@ -5,6 +5,7 @@ using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Players;
+using Godswar.Server.World.Systems.Combat;
 using Godswar.Server.World.Systems.Players;
 
 namespace Godswar.Server.Game;
@@ -16,6 +17,8 @@ internal sealed partial class GameSessionRegistry
     private readonly ConditionalWeakTable<
         ClientSession,
         PlayerRuntimeEcsAdapters> _playerRuntimeEcs = new();
+    private readonly ProcessPetHealingCooldownStore
+        _petHealingCooldowns = new();
 
     public GameSessionRegistry(
         IGameStore? store,
@@ -106,7 +109,8 @@ internal sealed partial class GameSessionRegistry
         ClientSession session) =>
         _playerRuntimeEcs.GetValue(
             session,
-            static _ => new PlayerRuntimeEcsAdapters());
+            _ => new PlayerRuntimeEcsAdapters(
+                _petHealingCooldowns));
 
     private void RemovePlayerRuntimeEcs(ClientSession session) =>
         _playerRuntimeEcs.Remove(session);
@@ -184,10 +188,16 @@ internal sealed partial class GameSessionRegistry
 
     private sealed class PlayerRuntimeEcsAdapters
     {
+        public PlayerRuntimeEcsAdapters(
+            ProcessPetHealingCooldownStore petHealingCooldowns)
+        {
+            IncomingDamage = new PlayerVitalsDamageEcsAdapter(
+                petHealingCooldowns);
+        }
+
         public PlayerCombatEcsAdapter Combat { get; } = new();
 
-        public PlayerVitalsDamageEcsAdapter IncomingDamage { get; } =
-            new();
+        public PlayerVitalsDamageEcsAdapter IncomingDamage { get; }
 
         public PlayerRecoveryEcsAdapter Recovery { get; } = new();
 

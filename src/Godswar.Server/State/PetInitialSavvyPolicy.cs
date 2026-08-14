@@ -27,7 +27,7 @@ internal sealed record PetInitialSavvyRoll(
 /// </summary>
 internal static class PetInitialSavvyPolicy
 {
-    public const string Version = "project-v1";
+    public const string Version = "project-v3";
     public const decimal MaximumStatDeviationFraction = 0.12m;
 
     private const int SavvyValueScale = 100;
@@ -36,16 +36,16 @@ internal static class PetInitialSavvyPolicy
     public static IReadOnlyList<PetInitialSavvyBracket> All { get; } =
         Array.AsReadOnly(
         [
-            B(PetAptitude.Weak, 250, 349),
-            B(PetAptitude.Fool, 350, 449),
-            B(PetAptitude.Cowish, 450, 574),
-            B(PetAptitude.Moderate, 575, 699),
-            B(PetAptitude.Rational, 700, 849),
-            B(PetAptitude.Calm, 850, 1_024),
-            B(PetAptitude.Smart, 1_025, 1_224),
-            B(PetAptitude.Zealous, 1_225, 1_474),
-            B(PetAptitude.Grumpy, 1_475, 1_774),
-            B(PetAptitude.Brave, 1_775, 2_124),
+            B(PetAptitude.Weak, 25, 34),
+            B(PetAptitude.Fool, 35, 44),
+            B(PetAptitude.Cowish, 45, 54),
+            B(PetAptitude.Moderate, 55, 69),
+            B(PetAptitude.Rational, 70, 84),
+            B(PetAptitude.Calm, 85, 104),
+            B(PetAptitude.Grumpy, 105, 124),
+            B(PetAptitude.Brave, 125, 149),
+            B(PetAptitude.Zealous, 150, 174),
+            B(PetAptitude.Smart, 175, 200),
             B(PetAptitude.Overbearing, 2_125, 2_524),
             B(PetAptitude.Ferocious, 2_525, 2_974),
             B(PetAptitude.Almighty, 2_975, 3_474),
@@ -79,8 +79,8 @@ internal static class PetInitialSavvyPolicy
                 bracket.MinimumTotalSavvy ||
                 bracket.MaximumStatDeviationFraction is <= 0m or > 0.25m ||
                 previous is not null &&
-                (bracket.MinimumTotalSavvy !=
-                 previous.MaximumTotalSavvy + 1 ||
+                (bracket.MinimumTotalSavvy <=
+                 previous.MaximumTotalSavvy ||
                  bracket.TotalCount < previous.TotalCount))
             {
                 throw new InvalidDataException(

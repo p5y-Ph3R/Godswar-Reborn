@@ -65,9 +65,9 @@ $report = [ordered]@{
         requiredMajor = 17
         serverVersionNumber = $null
     }
-    expectedMigrationCount = 61
+    expectedMigrationCount = 91
     expectedMigrationHead =
-        '20260810_060_fashion_slot_consistency'
+        '20260813_090_bag_consumable_cooldown_state'
     checks = $checkResults
     scenarios = $scenarioResults
     cleanup = [ordered]@{
@@ -286,7 +286,7 @@ try {
     $currentWatch.Stop()
     Add-ScenarioResult `
         -Name 'current-schema-idempotence' `
-        -InitialMigrationCount 58 `
+        -InitialMigrationCount 91 `
         -FinalState $currentState `
         -DurationMs ([long]$currentWatch.Elapsed.TotalMilliseconds) `
         -FixtureKind 'restored-prefix-008-upgrade'
@@ -300,7 +300,17 @@ try {
         -Name 'PostgreSQL migration-prefix fixture' `
         -GeneralConnectionString (
             New-TestConnectionString $databaseNames.SmokeTemplate) `
-        -MigrationPrefix '20260810_060_fashion_slot_consistency'
+        -MigrationPrefix '20260813_090_bag_consumable_cooldown_state'
+
+    $databaseNames['HatchEvidenceTemplate'] =
+        "godswar_b03_${runToken}_hatch_evidence_template"
+    New-DisposableDatabase $databaseNames.HatchEvidenceTemplate
+    Invoke-RequiredProtocolCheck `
+        -Phase 'hatch-evidence-prefix-template' `
+        -Name 'PostgreSQL migration-prefix fixture' `
+        -GeneralConnectionString (
+            New-TestConnectionString $databaseNames.HatchEvidenceTemplate) `
+        -MigrationPrefix '20260812_081_pet_rank_content'
 
     # Repository integration checks own their content publication and fixture
     # setup. Clone a schema-only database rather than the empty-install
@@ -345,7 +355,10 @@ try {
         'PostgreSQL equipment-forge race and preservation',
         'PostgreSQL Zodiac level-up race',
         'PostgreSQL authoritative pet level-up',
-        'PostgreSQL pet-egg hatch transaction'
+        'PostgreSQL pet-egg hatch transaction',
+        'PostgreSQL immutable pet hatch-rank evidence integration',
+        'PostgreSQL learned pet-skill content publication integration',
+        'PostgreSQL immutable pet Merge-savvy lookup migration'
     )
     for ($smokeIndex = 0;
          $smokeIndex -lt $smokeCheckNames.Count;
@@ -356,9 +369,16 @@ try {
             $smokeIndex.ToString('00'))
         $databaseNames["Smoke$($smokeIndex.ToString('00'))"] =
             $smokeDatabase
+        $smokeTemplate = if ($checkName -eq
+            'PostgreSQL immutable pet hatch-rank evidence integration') {
+            $databaseNames.HatchEvidenceTemplate
+        }
+        else {
+            $databaseNames.SmokeTemplate
+        }
         New-DisposableDatabaseFromTemplate `
             -Database $smokeDatabase `
-            -Template $databaseNames.SmokeTemplate
+            -Template $smokeTemplate
         Invoke-RequiredProtocolCheck `
             -Phase 'repository-and-concurrency-smoke' `
             -Name $checkName `

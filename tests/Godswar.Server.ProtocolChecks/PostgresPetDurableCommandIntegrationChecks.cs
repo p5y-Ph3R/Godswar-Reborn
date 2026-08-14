@@ -47,35 +47,51 @@ internal static partial class
             return;
         }
 
+        await new PostgresSchemaMigrationRunner(dataSource)
+            .InitializeGodswarSchemaAsync();
+
         GameplayItemContent itemContent;
+        IPetContentCatalog petContent;
         await using (var store =
                       new PostgresGameStore(connectionString))
         {
             await store.EnsureSeedDataAsync();
             itemContent = store.ItemContent;
+            petContent = store.PetContent;
         }
         var fixture = await CreateFixtureAsync(connectionString);
         var options = new PostgresOutboxDispatcherOptions();
+        var ownerMergeContent =
+            await PostgresPetOwnerMergeContentBootstrapper.LoadAsync(
+                dataSource);
         var executor = new PostgresPetDurableCommandExecutor(
             dataSource,
             options,
             itemContent,
-            PetContentBaseline.Create());
+            petContent,
+            ownerMergeContent,
+            PetLearnedSkillContentBaseline.Create(),
+            new FixedPetHatchRankRollSource(89));
         var correlation = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
+        var rawCorrelation = new CommandConnectionCorrelation(
+            Guid.NewGuid(),
+            CommandTransportKind.LegacyTcp);
         var subject = new CommandSubject(
             fixture.AccountId,
             fixture.CharacterId);
 
         var hatchOperation = Guid.NewGuid();
         var hatchEnvelope = PlayerOwnershipTestFences.Bind(
-            BagItemActivationCommandEnvelope.Create(
+            BagItemActivationCommandEnvelope.CreateRawLocal(
                 subject,
-                correlation,
+                rawCorrelation,
                 DateTimeOffset.UtcNow,
                 new BagItemActivationCommand(
-                    hatchOperation,
+                    PetCommandOperationIdentity.RawLocalServer(
+                        hatchOperation,
+                        rawCorrelation.ConnectionId),
                     fixture.EggSlot)));
         var concurrentHatch = await Task.WhenAll(
             executor.ExecuteAsync(hatchEnvelope),
@@ -87,15 +103,44 @@ internal static partial class
         var hatchReceipt = concurrentHatch.Single(
             result => result.Disposition ==
                 PetDurableExecutionDisposition.Committed).Receipt!;
+        Check.True(
+            hatchReceipt.HatchRank == new PetHatchRankEvidence(
+                0.80m,
+                OutcomeOrder: 1,
+                Roll: 89,
+                petContent.Revision.Sha256),
+            "durable Calm hatch receipt retains its deterministic rank roll and source revision");
         var randomState = await ReadHatchStateAsync(
             dataSource,
             fixture,
             hatchReceipt.PetId);
         Check.True(
             randomState.PetCount == 1 &&
+            randomState.PetShedCapacity == 2 &&
+            randomState.PetShedRevision == 0 &&
             randomState.EggCount == 0 &&
+            randomState.Aptitude == (short)PetAptitude.Calm &&
+            randomState.OpenedSkillSlots == 1 &&
+            randomState.AvailableSkillSlots == 1 &&
+            randomState.LearnedSkillCount == 1 &&
+            randomState.IsCarried &&
+            !randomState.IsSummoned &&
+            randomState.TalentMask == 0 &&
+            !randomState.HasOwnerMergeTalent &&
+            randomState.Rank == 0.80m &&
+            randomState.BirthRank == 0.80m &&
+            randomState.HatchRankRoll == 89 &&
+            randomState.HatchRankOutcomeOrder == 1 &&
+            randomState.HatchRankContentRevision ==
+                petContent.Revision.Sha256 &&
             randomState.StatValues.Length == 6,
-            "hatch consumes one egg and creates one complete pet");
+            "Calm hatch atomically persists its approved rank evidence with the complete pet");
+        await AssertDurableHatchEvidenceAsync(
+            dataSource,
+            hatchReceipt);
+        await AssertDurableHatchEvidenceSurvivesPetDeletionAsync(
+            dataSource,
+            hatchReceipt);
         var hatchInventory = await ReadInventoryStateAsync(
             dataSource,
             fixture.CharacterId);
@@ -112,7 +157,10 @@ internal static partial class
             dataSource,
             options,
             itemContent,
-            PetContentBaseline.Create());
+            petContent,
+            ownerMergeContent,
+            PetLearnedSkillContentBaseline.Create(),
+            new ThrowingPetHatchRankRollSource());
         var restartHatch = await restarted.ExecuteAsync(hatchEnvelope);
         Check.True(
             restartHatch.Disposition ==
@@ -127,18 +175,26 @@ internal static partial class
             replayedRandomState.PetCount == randomState.PetCount &&
             replayedRandomState.EggCount == randomState.EggCount &&
             replayedRandomState.StatValues.SequenceEqual(
-                randomState.StatValues),
-            "hatch replay preserves its random aptitude/stat outcome");
+                randomState.StatValues) &&
+            replayedRandomState.Rank == randomState.Rank &&
+            replayedRandomState.BirthRank == randomState.BirthRank &&
+            replayedRandomState.HatchRankRoll ==
+                randomState.HatchRankRoll &&
+            replayedRandomState.HatchRankContentRevision ==
+                randomState.HatchRankContentRevision,
+            "hatch replay preserves its random aptitude/stat/rank outcome without rerolling");
 
         var conflict = await restarted.ExecuteAsync(
             PlayerOwnershipTestFences.Bind(
-                BagItemActivationCommandEnvelope.Create(
-                subject,
-                correlation,
-                DateTimeOffset.UtcNow,
-                new BagItemActivationCommand(
-                    hatchOperation,
-                    fixture.EggSlot - 1))));
+                BagItemActivationCommandEnvelope.CreateRawLocal(
+                    subject,
+                    rawCorrelation,
+                    DateTimeOffset.UtcNow,
+                    new BagItemActivationCommand(
+                        PetCommandOperationIdentity.RawLocalServer(
+                            hatchOperation,
+                            rawCorrelation.ConnectionId),
+                        fixture.EggSlot - 1))));
         Check.True(
             conflict.Disposition ==
                 PetDurableExecutionDisposition.RequestHashConflict,
@@ -184,12 +240,14 @@ internal static partial class
             3_000);
         var levelOperation = Guid.NewGuid();
         var levelEnvelope = PlayerOwnershipTestFences.Bind(
-            PetLevelUpgradeCommandEnvelope.Create(
+            PetLevelUpgradeCommandEnvelope.CreateRawLocal(
                 subject,
-                correlation,
+                rawCorrelation,
                 DateTimeOffset.UtcNow,
                 new PetLevelUpgradeCommand(
-                    levelOperation,
+                    PetCommandOperationIdentity.RawLocalServer(
+                        levelOperation,
+                        rawCorrelation.ConnectionId),
                     hatchReceipt.PetId)));
         var concurrentLevel = await Task.WhenAll(
             executor.ExecuteAsync(levelEnvelope),
@@ -208,6 +266,9 @@ internal static partial class
         var levelState = await ReadLevelStateAsync(
             dataSource,
             hatchReceipt.PetId);
+        Check.True(
+            levelState.HasExactScaledAdded,
+            "pet level-up materializes Added as effective Growth times level");
         var restartLevel = await restarted.ExecuteAsync(levelEnvelope);
         var replayedLevelState = await ReadLevelStateAsync(
             dataSource,
@@ -219,15 +280,17 @@ internal static partial class
             replayedLevelState.Level == levelState.Level &&
             replayedLevelState.Experience == levelState.Experience &&
             replayedLevelState.Revision == levelState.Revision &&
+            replayedLevelState.HasExactScaledAdded ==
+                levelState.HasExactScaledAdded &&
             replayedLevelState.StatValues.SequenceEqual(
                 levelState.StatValues),
             "pet level replay cannot spend experience or grow stats twice");
 
-        _ = await CheckPresenceReplayAsync(
+        var take = await CheckPresenceReplayAsync(
             executor,
             restarted,
             subject,
-            correlation,
+            rawCorrelation,
             hatchReceipt.PetId,
             PetPresenceCommandOperation.Take,
             isCarried: true,
@@ -236,16 +299,16 @@ internal static partial class
             executor,
             restarted,
             subject,
-            correlation,
+            rawCorrelation,
             hatchReceipt.PetId,
             PetPresenceCommandOperation.CallOut,
             isCarried: true,
             isSummoned: true);
-        _ = await CheckPresenceReplayAsync(
+        var recall = await CheckPresenceReplayAsync(
             executor,
             restarted,
             subject,
-            correlation,
+            rawCorrelation,
             hatchReceipt.PetId,
             PetPresenceCommandOperation.Recall,
             isCarried: true,
@@ -269,6 +332,20 @@ internal static partial class
                 PetOperationResultCode.RecallSucceeded,
             "CallOut then Recall then old CallOut retry preserves and presents the current recalled projection");
 
+        var expectedAuditIds = new[]
+        {
+            hatchReceipt,
+            equipped.Receipt!,
+            levelReceipt,
+            take.Receipt,
+            callOut.Receipt,
+            recall.Receipt
+        }.Select(static receipt =>
+            long.TryParse(receipt.AuditReference, out var auditId)
+                ? auditId
+                : throw new InvalidDataException(
+                    "Pet receipt has an invalid audit reference."))
+            .ToArray();
         var dispatcher = new PostgresOutboxDispatcher(
             dataSource,
             new IOutboxEventConsumer[]
@@ -284,8 +361,13 @@ internal static partial class
             var state = await ReadInventoryStateAsync(
                 dataSource,
                 fixture.CharacterId);
+            var petEvidence = await ReadEvidenceAsync(
+                dataSource,
+                fixture.CharacterId,
+                expectedAuditIds);
             if (state.DeliveredOutboxCount == 2 &&
-                state.PositionVersion == 2)
+                state.PositionVersion == 2 &&
+                petEvidence.PositionVersion == 6)
             {
                 break;
             }
@@ -293,7 +375,8 @@ internal static partial class
 
         var evidence = await ReadEvidenceAsync(
             dataSource,
-            fixture.CharacterId);
+            fixture.CharacterId,
+            expectedAuditIds);
         Check.True(
             evidence is
             {
@@ -323,6 +406,61 @@ internal static partial class
             },
             "pet bag inventory events advance the strict checkpoint");
 
+        await AssertPetShedExpansionAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation);
+
+        await AssertPetSkillCellItemsAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
+        await AssertPetGrowthResetAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
+        await AssertPetBasicSavvyResetAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
+        await AssertPetSkillUnlearnAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
+        await AssertPetExperienceItemsAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
+        await AssertTakeSwitchesCompanionAtomicallyAsync(
+            dataSource,
+            executor,
+            restarted,
+            subject,
+            rawCorrelation,
+            hatchReceipt.PetId);
+
         await AssertAuthoritativeEquipmentEligibilityAsync(
             dataSource,
             itemContent);
@@ -333,26 +471,51 @@ internal static partial class
         await AssertStreamProjectionDoesNotBlockPurgeAsync(
             dataSource,
             fixture.CharacterId);
+        await AssertOwnerMergeAsync(
+            connectionString,
+            dataSource,
+            executor,
+            restarted,
+            itemContent,
+            ownerMergeContent);
+        await AssertOwnerMergeRevisionSafetyAsync(
+            connectionString,
+            dataSource,
+            executor,
+            itemContent,
+            ownerMergeContent);
+        await AssertOwnerMergeRevisionReconciliationAsync(
+            connectionString,
+            dataSource,
+            executor,
+            itemContent,
+            ownerMergeContent);
+        await AssertPetToPetMergeAsync(
+            connectionString,
+            dataSource,
+            executor,
+            restarted,
+            itemContent);
+        await AssertPetRebirthAsync(
+            connectionString,
+            dataSource,
+            executor,
+            restarted,
+            itemContent);
+        await AssertPetAppearanceChangeAsync(
+            connectionString, dataSource, executor, restarted,
+            itemContent, petContent);
+        await AssertPetSoulContractAsync(
+            connectionString,
+            dataSource,
+            executor,
+            restarted);
+        await AssertPetManagerUtilityAsync(
+            connectionString,
+            dataSource,
+            executor,
+            restarted,
+            itemContent);
     }
 
-    private static void AssertCommitAndDuplicate(
-        IReadOnlyList<PetDurableExecutionResult> results,
-        PetDurableReceiptStatus status,
-        string phase)
-    {
-        Check.Equal(
-            1,
-            results.Count(result => result.Disposition ==
-                PetDurableExecutionDisposition.Committed),
-            $"{phase} commits once");
-        Check.Equal(
-            1,
-            results.Count(result => result.Disposition ==
-                PetDurableExecutionDisposition.Duplicate),
-            $"{phase} replays once");
-        Check.True(
-            results.All(result => result.Receipt?.Status == status) &&
-            results[0].Receipt == results[1].Receipt,
-            $"{phase} returns one canonical receipt");
-    }
 }

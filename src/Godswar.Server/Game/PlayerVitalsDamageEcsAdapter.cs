@@ -15,7 +15,20 @@ internal readonly record struct PlayerMonsterDamageEcsRequest(
     uint ExpectedPlayerObjectId,
     long ExpectedLifeRevision,
     long ExpectedVitalsRevision,
-    uint ResolvedDamage);
+    uint ResolvedDamage,
+    DateTimeOffset ResolvedAt = default);
+
+internal readonly record struct PlayerPetHealingEcsDecision(
+    long PetId,
+    int PolicyVersion,
+    int ResolvedHealing,
+    int AppliedHealing,
+    int BeforeHealth,
+    int AfterHealth,
+    long BeforeVitalsRevision,
+    long AfterVitalsRevision,
+    DateTimeOffset AppliedAt,
+    DateTimeOffset CooldownReadyAt);
 
 internal readonly record struct PlayerMonsterDamageEcsDecision(
     bool Applied,
@@ -32,22 +45,41 @@ internal readonly record struct PlayerMonsterDamageEcsDecision(
     long AfterVitalsRevision,
     long BeforeLifeRevision,
     long AfterLifeRevision,
-    ulong LastAttackEventId);
+    ulong LastAttackEventId,
+    PlayerPetHealingEcsDecision? PetHealing = null)
+{
+    public int FinalHealth =>
+        PetHealing?.AfterHealth ?? AfterHealth;
+
+    public long FinalVitalsRevision =>
+        PetHealing?.AfterVitalsRevision ?? AfterVitalsRevision;
+}
 
 /// <summary>
 /// Owns one logical player's transport-neutral incoming-damage ECS. The
 /// adapter copies scalar state in, applies an accepted decision to
-/// GameCharacter under its vitals gate, and retains only ECS dedupe state.
+/// GameCharacter under its vitals gate, and retains only ECS dedupe state plus
+/// the bounded active-pet projection. Cooldown ownership remains process-wide.
 /// </summary>
 internal sealed class PlayerVitalsDamageEcsAdapter
 {
     private readonly object _gate = new();
+    private readonly ProcessPetHealingCooldownStore _petHealingCooldowns;
     private EcsWorld? _world;
     private EcsSystemScheduler? _scheduler;
     private MonsterPlayerDamageEntity _player;
     private int _characterId;
     private uint _objectId;
     private PlayerMonsterDamageEcsDecision? _lastDecision;
+    private PetHealingTalentHydrationSnapshot? _activePet;
+
+    public PlayerVitalsDamageEcsAdapter(
+        ProcessPetHealingCooldownStore petHealingCooldowns)
+    {
+        _petHealingCooldowns = petHealingCooldowns ??
+            throw new ArgumentNullException(
+                nameof(petHealingCooldowns));
+    }
 
     public PlayerMonsterDamageEcsDecision? Snapshot()
     {
@@ -67,6 +99,24 @@ internal sealed class PlayerVitalsDamageEcsAdapter
             _characterId = 0;
             _objectId = 0;
             _lastDecision = null;
+        }
+    }
+
+    public void UpdateActivePet(
+        PetHealingTalentHydrationSnapshot? activePet)
+    {
+        lock (_gate)
+        {
+            _activePet = activePet;
+            if (_world is not null &&
+                _world.IsAlive(_player.Entity))
+            {
+                MonsterPlayerDamageEcsBoundary
+                    .SynchronizePetHealingTalent(
+                        _world,
+                        _player,
+                        _activePet);
+            }
         }
     }
 
@@ -96,6 +146,11 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                     world,
                     _player,
                     snapshot);
+                MonsterPlayerDamageEcsBoundary
+                    .SynchronizePetHealingTalent(
+                        world,
+                        _player,
+                        _activePet);
                 MonsterPlayerDamageEcsBoundary.QueueDamage(
                     world,
                     _player,
@@ -107,7 +162,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                         request.ExpectedPlayerObjectId,
                         request.ExpectedLifeRevision,
                         request.ExpectedVitalsRevision,
-                        request.ResolvedDamage));
+                        request.ResolvedDamage,
+                        request.ResolvedAt));
                 scheduler.RunTick(TimeSpan.Zero);
 
                 var applied = scheduler.Events
@@ -116,9 +172,12 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                     .Read<MonsterPlayerDamageRejectedEvent>();
                 var deaths = scheduler.Events
                     .Read<MonsterPlayerDeathDecisionEvent>();
+                var petHealing = scheduler.Events
+                    .Read<PetHealingAppliedEvent>();
                 if (applied.Length + rejected.Length != 1 ||
                     applied.Length > 1 ||
-                    rejected.Length > 1)
+                    rejected.Length > 1 ||
+                    petHealing.Length > 1)
                 {
                     throw new InvalidOperationException(
                         "Incoming damage ECS did not emit exactly one decision.");
@@ -132,6 +191,18 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                     {
                         throw new InvalidOperationException(
                             "Incoming damage ECS emitted an inconsistent death decision.");
+                    }
+                    if ((result.Killed && petHealing.Length != 0) ||
+                        petHealing.Length == 1 &&
+                        (petHealing[0].AttackEventId !=
+                             result.AttackEventId ||
+                         petHealing[0].BeforeHealth !=
+                             result.AfterHealth ||
+                         petHealing[0].BeforeVitalsRevision !=
+                             result.AfterVitalsRevision))
+                    {
+                        throw new InvalidOperationException(
+                            "Incoming damage ECS emitted an inconsistent pet-healing decision.");
                     }
 
                     if (result.Killed)
@@ -149,6 +220,34 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                             "Incoming damage ECS and GameCharacter vitals revisions diverged.");
                     }
 
+                    PlayerPetHealingEcsDecision? healingDecision = null;
+                    if (petHealing.Length == 1)
+                    {
+                        var healing = petHealing[0];
+                        character.CurrentHp = healing.AfterHealth;
+                        var healingRevision =
+                            character.MarkVitalsChanged();
+                        if (healingRevision !=
+                            healing.AfterVitalsRevision)
+                        {
+                            throw new InvalidOperationException(
+                                "Pet Healing ECS and GameCharacter vitals revisions diverged.");
+                        }
+
+                        healingDecision =
+                            new PlayerPetHealingEcsDecision(
+                                healing.PetId,
+                                healing.PolicyVersion,
+                                healing.ResolvedHealing,
+                                healing.AppliedHealing,
+                                healing.BeforeHealth,
+                                healing.AfterHealth,
+                                healing.BeforeVitalsRevision,
+                                healing.AfterVitalsRevision,
+                                healing.AppliedAt,
+                                healing.CooldownReadyAt);
+                    }
+
                     decision = new PlayerMonsterDamageEcsDecision(
                         Applied: true,
                         result.Killed,
@@ -164,7 +263,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                         result.AfterVitalsRevision,
                         result.BeforeLifeRevision,
                         result.AfterLifeRevision,
-                        ReadLastAttackEventId(world));
+                        ReadLastAttackEventId(world),
+                        healingDecision);
                 }
                 else
                 {
@@ -172,6 +272,11 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                     {
                         throw new InvalidOperationException(
                             "Rejected incoming damage emitted a death decision.");
+                    }
+                    if (petHealing.Length != 0)
+                    {
+                        throw new InvalidOperationException(
+                            "Rejected incoming damage emitted pet Healing.");
                     }
 
                     var result = rejected[0];
@@ -217,6 +322,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                 snapshot);
         var scheduler = new EcsSystemScheduler(world);
         scheduler.AddSystem(new MonsterPlayerDamageSystem());
+        scheduler.AddSystem(
+            new PetHealingTalentSystem(_petHealingCooldowns));
         _world = world;
         _scheduler = scheduler;
         _player = player;

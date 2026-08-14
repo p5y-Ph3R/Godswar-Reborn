@@ -54,6 +54,23 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cancellationToken);
     }
 
+    public Task<CharacterPetSnapshot?> ReadAuthorizedSealedPetAsync(
+        int accountId,
+        int characterId,
+        long petId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRuntimeProjectionIdentity(accountId, characterId);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(petId);
+        return ExecuteRuntimeProjectionAsync(
+            token => ReadAuthorizedSealedPetCoreAsync(
+                accountId,
+                characterId,
+                petId,
+                token),
+            cancellationToken);
+    }
+
     private async Task<CharacterCalculatedStatsSnapshot?>
         ReadCalculatedStatsCoreAsync(
             int accountId,
@@ -70,6 +87,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         PostgresGameplayContentBinding.AddParameter(
             command,
             _gameplayContentRevision);
+        PostgresPetLearnedSkillContentBinding.AddParameter(
+            command,
+            _petLearnedSkillRevision);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         return await ReadOptionalCalculatedStatsAsync(
@@ -131,6 +151,46 @@ internal sealed partial class PostgresCharacterSnapshotReader
         }
         await transaction.CommitAsync(cancellationToken);
         return pets;
+    }
+
+    private async Task<CharacterPetSnapshot?>
+        ReadAuthorizedSealedPetCoreAsync(
+        int accountId,
+        int characterId,
+        long petId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection =
+            await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            await connection.BeginTransactionAsync(
+                IsolationLevel.RepeatableRead,
+                cancellationToken);
+        await SetReadOnlyAsync(connection, transaction, cancellationToken);
+        ImmutableArray<CharacterPetSnapshot> pets;
+        await using (var command = new NpgsqlCommand(
+                         AuthorizedSealedPetQuery,
+                         connection,
+                         transaction))
+        {
+            command.Parameters.AddWithValue("accountId", accountId);
+            command.Parameters.AddWithValue("characterId", characterId);
+            command.Parameters.AddWithValue("petId", petId);
+            await using var reader =
+                await command.ExecuteReaderAsync(cancellationToken);
+            pets = await ReadOwnedPetSnapshotsAsync(
+                reader,
+                accountId,
+                cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return pets.Length switch
+        {
+            0 => null,
+            1 => pets[0],
+            _ => throw new InvalidDataException(
+                "A packed Seal Jade authorized more than one pet.")
+        };
     }
 
     private static void ValidateRuntimeProjectionIdentity(

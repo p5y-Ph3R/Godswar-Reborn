@@ -241,6 +241,18 @@ internal static partial class PacketBuilder
                 encodedLevel);
         }
 
+        if (record.Length >= 60 && item.Id == PetItemCatalog.PackedSealJade)
+        {
+            if (item.LinkedSealedPetId is <= 0 or > uint.MaxValue)
+            {
+                throw new InvalidDataException(
+                    "A packed Seal Jade requires a native-width linked pet ID.");
+            }
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                record.Slice(56, 4),
+                checked((uint)item.LinkedSealedPetId));
+        }
+
         // Captured item records pack holy suit and holy-stone socket count into one dword.
         BinaryPrimitives.WriteInt16LittleEndian(
             record.Slice(32, 2),

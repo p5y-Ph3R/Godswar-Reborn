@@ -9,111 +9,125 @@ server must keep them separate:
   effects to its owner. The pet remains owned and is not consumed.
 - **Pet merge / Inosculate**: a primary pet absorbs a secondary pet. The
   secondary pet is consumed only after the transaction commits.
-- **Rebirth / Samsara**: the pet returns to level 1, trainable added savvy is
-  reset to its immutable rarity floor, and rebirth progression advances.
-- **Soul Contract / Indenture**: an independent operation that improves a
-  pet's initial savvy. The stock server requires it for rebirth, while the
+- **Rebirth / Samsara**: the pet returns to level 1, Basic Savvy is retained,
+  and Rebirth acceleration advances independently.
+- **Soul Contract / Indenture**: an independent staged bonus of +3 through +8
+  on every displayed Savvy total without rewriting raw Basic. The stock server requires it for rebirth, while the
   detailed Pet Manager instructions say it does not affect pet merge.
 
 The foundation now includes relational pet state, the owned-pet login
-bootstrap, and authoritative Carry, Summon, and Recall transitions. Pet
-Manager crafting, inventory consumption, merge/rebirth executors, and the live
-character-stat overlay remain later slices.
+bootstrap, authoritative Carry, Summon, and Recall transitions, and the
+database-published owner-Merge character-stat overlay. Pet-to-pet Merge,
+Rebirth, and the remaining Pet Manager crafting operations remain later
+slices.
 
-Pet aptitude is a separate 1-16 authoritative ladder. Values 1-14 retain the
-stock names from `PETAPTITUDE1` through `PETAPTITUDE14`; values 15 and 16 are
-project extensions named **Celestial** and **Transcendent**. PostgreSQL stores
-the mapping in `pet_aptitude_templates` and references it from owned pets.
+Pet aptitude is a separate 1-16 authoritative ladder. Numeric IDs remain
+stable for wire and database compatibility. Values 1-5 and 11-14 retain their
+stock names, while the project deliberately reorders values 6-10 as **Calm**
+(6), **Grumpy** (7), **Brave** (8), **Zealous** (9), and **Smart** (10).
+Values 15 and 16 are project extensions named **Celestial** and
+**Transcendent**. PostgreSQL stores the mapping in
+`pet_aptitude_templates` and references it from owned pets.
 
-For project gameplay, aptitude is the pet's **quality tier** and is the
-authoritative input to its base growth budget/range. The resulting Agility,
-Strength, Accuracy, Technique, Wisdom, and Luck growth rates remain a
-per-pet distribution so operations such as Phoenix's Feather can redistribute
-them. Numeric Rank is a separate property, and rebirth growth acceleration is
-an additional modifier; neither replaces the quality-derived base growth.
-Exact tier budgets, random ranges, rounding, and the extension values for
-Celestial and Transcendent use the explicit project-authored `project-v2`
-balance below rather than pretending to be recovered stock behavior.
+For project gameplay, aptitude is the pet's **quality tier**. It selects the
+Basic Savvy hatch budget and the base Growth Rate bracket unlocked by a
+Phoenix's Feather. Every newly hatched pet starts with a Weak base-rate roll,
+regardless of quality. This is a project rule, not a claim about stock balance.
 
-| Aptitude/quality | Total base-growth bracket |
-|---|---:|
-| Weak | 0.01-0.10 |
-| Fool | 0.10-0.25 |
-| Cowish | 0.25-0.50 |
-| Moderate | 0.50-1.00 |
-| Rational | 1.00-2.00 |
-| Calm | 2.00-4.00 |
-| Smart | 4.00-7.00 |
-| Zealous | 7.00-11.00 |
-| Grumpy | 11.00-16.00 |
-| Brave | 16.00-23.00 |
-| Overbearing | 23.00-31.00 |
-| Ferocious | 31.00-40.00 |
-| Almighty | 40.00-50.00 |
-| Godly | 50.00-62.00 |
-| Celestial | 62.00-75.00 |
-| Transcendent | 75.00-100.00 |
+The three values must not be conflated:
 
-The server rolls the total to hundredth precision, then distributes it across
-the six growth rates. Each individual rate remains within 12% of an even
-share, uses at most six decimal places, stays positive even for a `0.01`
-Weak roll, and must sum back to the exact rolled total. The
-brackets widen as aptitude rises, making each upper quality materially more
-valuable. Adjacent brackets intentionally share one boundary value but have
-strictly increasing expected totals. Base growth is stored independently from
-rebirth growth acceleration.
+- **Basic Savvy** is the immutable hatch allocation plus later pet-to-pet
+  Merge gains.
+- **Effective Growth Rate** is `base_growth_rate + growth_acceleration`.
+- **Cumulative Added Value** is `effective Growth Rate * current pet level`.
 
-### Basic and rarity-added savvy at birth
+The stock Pet Detail label **Added-value** correctly names the second displayed
+vector. Raw Growth Rate appears on the Phoenix result page, not in that vector.
 
-At hatch, each basic/initial-savvy attribute is exactly `1 ×` its matching
-base-growth attribute. For example, `16.767423` Agility growth produces
-`16.767423` basic Agility savvy. This relationship is stored per stat as the
-immutable birth baseline; later legitimate operations may raise current
-initial savvy without changing that historical baseline.
+| Aptitude/quality | Phoenix Growth Rate bracket | Total Basic Savvy at hatch |
+|---|---:|---:|
+| Weak | 0.01-0.10 | 25-34 |
+| Fool | 0.10-0.25 | 35-44 |
+| Cowish | 0.25-0.50 | 45-54 |
+| Moderate | 0.50-1.00 | 55-69 |
+| Rational | 1.00-2.00 | 70-84 |
+| Calm | 2.00-4.00 | 85-104 |
+| Grumpy | 4.00-7.00 | 105-124 |
+| Brave | 7.00-11.00 | 125-149 |
+| Zealous | 11.00-16.00 | 150-174 |
+| Smart | 16.00-23.00 | 175-200 |
+| Overbearing | 23.00-31.00 | 2,125-2,524 |
+| Ferocious | 31.00-40.00 | 2,525-2,974 |
+| Almighty | 40.00-50.00 | 2,975-3,474 |
+| Godly | 50.00-62.00 | 3,475-4,024 |
+| Celestial | 62.00-75.00 | 4,025-4,624 |
+| Transcendent | 75.00-100.00 | 4,625-5,324 |
 
-Each successful level advancement adds that stat's immutable base-growth rate
-to current basic/initial savvy. Therefore, at level `L`, an otherwise
-unmodified pet has `basic savvy = birth basic savvy + ((L - 1) * base
-growth)`. The authoritative level-up transaction applies all six increments
-together with the EXP deduction and level change; growth acceleration remains
-reserved for rebirth policy and is not silently added by ordinary leveling.
+The low-to-mid ladder deliberately compresses Weak through Smart into the
+25-200 total range. Overbearing through Transcendent retain their established
+2,125-5,324 ranges, so the gap between Smart and Overbearing is intentional.
+Existing pets keep their exact Savvy vectors under the explicit
+`legacy-high-savvy-range-v1` compatibility policy; the V3 hatch policy applies
+only to newly generated Savvy rolls.
 
-The egg's aptitude selects a separate project-authored `project-v2`
-**rarity-added-savvy** total:
+The base Growth Rate total is rolled to hundredth precision and distributed
+across Agility, Strength, Accuracy, Technique, Wisdom, and Luck. Each rate
+remains within 12% of an even share, uses at most six decimal places, stays
+positive, and sums to the rolled total. Hatch always uses the Weak
+`0.01-0.10` bracket. Phoenix reset replaces the six base rates with a roll from
+the pet quality's row. Base rate and Rebirth acceleration remain separate
+durable inputs.
 
-| Aptitude/quality | Total rarity-added-savvy bracket |
-|---|---:|
-| Weak | 250-349 |
-| Fool | 350-449 |
-| Cowish | 450-574 |
-| Moderate | 575-699 |
-| Rational | 700-849 |
-| Calm | 850-1,024 |
-| Smart | 1,025-1,224 |
-| Zealous | 1,225-1,474 |
-| Grumpy | 1,475-1,774 |
-| Brave | 1,775-2,124 |
-| Overbearing | 2,125-2,524 |
-| Ferocious | 2,525-2,974 |
-| Almighty | 2,975-3,474 |
-| Godly | 3,475-4,024 |
-| Celestial | 4,025-4,624 |
-| Transcendent | 4,625-5,324 |
+### Basic Savvy, Growth Rate, and Added Value
 
-The server rolls one whole-point total and randomly assigns the distinct
-bounded weights `80, 88, 96, 104, 112, 120` to the six attributes. A
-largest-remainder allocation keeps hundredth precision and preserves the exact
-total. The six values therefore are not equal, while no attribute is starved.
-The immutable per-stat rarity allocation is also the floor retained when
-rebirth clears later trainable added savvy.
+The Basic Savvy total is a separate whole-point roll. The server begins with a
+near-even hundredth-precision distribution, randomizes the stat order, and
+moves randomly selected amounts between paired attributes. Every resulting
+attribute remains within 12% of the exact six-stat mean and the six values sum
+back to the exact rolled total. This bounded random vector is the pet's
+immutable quality-derived birth-savvy baseline.
+
+At level `L`, each cumulative Added Value is
+`(base_growth_rate + growth_acceleration) * L`. A level-up leaves Basic and
+both rate inputs unchanged, then recomputes all six Added Values atomically
+with the EXP deduction and level change. Rebirth returns to level 1, adds its
+roll to acceleration, and recomputes Added for level 1. Owner Merge consumes
+the player-visible `Basic + Added` totals.
 
 The egg already owns its rarity; hatching does not roll a second rarity. The
-server maps the authoritative egg instance's quality value directly to the
-matching aptitude and rejects undefined values without consuming the egg.
-It rolls base growth first, derives basic savvy directly from that vector,
-then independently rolls and distributes the aptitude-based added-savvy
-budget. All three complete vectors and both immutable savvy baselines are
-persisted in the same transaction.
+server maps the authoritative egg instance's quality directly to the matching
+aptitude and rejects undefined values without consuming the egg. It rolls the
+quality's Basic budget and a separate Weak base-rate budget. Basic, base rate,
+zero initial acceleration, and level-1 Added are persisted together. No higher
+hidden Growth roll exists.
+
+Completed-Rebirth widening and versioned Phoenix preview semantics are
+specified in `pet-rebirth-balance.md`.
+
+The Pet Manager point-reset page is client type `NpcFunPett` / dialog `36`.
+Its Growth choice is sub-ID `101`, description/reset page `[112,117]`, and
+exact reset action `117`. The server selects the summoned owned pet, consumes
+one authoritative Phoenix's Feather (`11005`), rolls all six base rates in the
+pet quality bracket plus the count-derived modifiers, recomputes Added at the
+pet's current level, and commits both rate vectors, Added, revisions,
+inventory, inbox/outbox, and the `reveal_growth` audit atomically. Native
+pages are `127` (missing feather),
+`128` (no summoned pet), and `130` plus six proposed effective-rate rows
+(success). A retry replays the committed result without another roll or
+consumption. Basic
+Savvy never changes in this operation.
+
+Action `117` creates the paid durable preview. Patched A2 **OK** accepts the
+latest session-fenced preview, while Cancel leaves Growth unchanged and A3
+**Reset/Draw again** creates another preview. Page `130` shows the six proposed
+effective rates. On accept, opcode `10286` refreshes the pet object's Basic and
+cumulative Added vectors; no full `10237` collection rebuild is emitted.
+Apply or inspect the two-locale patch with
+`tools/PatchClientPetGrowthResetDialog.ps1`; its exact-hash guard refuses
+unknown or mixed client files.
+
+Magic Jade and Bind durability, validation, and projection are specified in
+`docs/pet-magic-jade-runtime.md`.
 
 The installed client has species-specific creation profiles only for aptitude
 values `1,2,3,4,5,7,8,9,10,12,14`. Hatching also requires that exact
@@ -122,113 +136,32 @@ rarity. Values `6,11,13` and the project extensions `15,16` remain valid
 growth tiers, but an egg with one of those rarities is preserved and rejected
 until matching client profiles are deliberately authored and shipped.
 
-Native egg items are non-stackable (`Overlap=1`). The transaction therefore
-requires exactly one egg in the authoritative slot, consumes it, enforces the
-native eight-pet limit, creates the species starter skill, records the egg
-rarity, growth policy, added-savvy policy, totals, and all six-stat results in
-the audit, and commits or rolls back the entire operation atomically. Migration
-017 gives pre-policy pets a
-deterministic midpoint growth distribution only when all six existing growth
-values are zero or missing; any pet with a nonzero value is preserved.
-Migration 018 installs `project-v2` and moves only complete six-stat pets whose
-old total is outside their revised rarity bracket to that bracket's balanced
-midpoint. In-bracket pets retain their exact values. Every changed stat keeps
-an atomic before-image in `pet_growth_reconciliation_archive`, including its
-old growth and revision, so a later forward recovery migration can restore the
-pre-v2 result without relying on a code rollback.
-Startup rejects a partial or non-positive six-stat growth vector instead of
-silently treating corrupt legacy state as a valid pet, and also rejects totals
-outside the persisted aptitude bracket.
+Native eggs are non-stackable (`Overlap=1`). Hatching consumes exactly one egg,
+enforces the native eight-pet limit, creates the starter skill, records rarity
+and all six-stat results, and commits or rolls back atomically. Startup rejects
+partial or non-positive six-rate vectors. Unrevealed pets require a Weak base
+rate; Phoenix-revealed pets require their quality bracket.
 
-Migration 019 assigns a deterministic bracket midpoint only to complete
-legacy initial-savvy vectors whose six values are all zero. It preserves every
-nonzero vector, including progressed values above the birth range, and archives
-each changed stat plus the parent pet revision/provenance before-image in
-`pet_initial_savvy_reconciliation_archive`. After reconciliation the database
-removes the legacy zero default, so every future pet creator must explicitly
-provide its initial savvy.
-Startup requires six distinct rows and a nonzero initial-savvy total, but does
-not enforce the creation maximum as a lifetime cap.
-
-Migration 020 corrects migration 019 without rewriting its applied checksum.
-For every unprogressed `project-v1` pet, it archives the full before-image,
-sets basic savvy to the matching base-growth vector, and deterministically
-shuffles the preserved rarity total into a non-equal added-savvy vector. It
-stores immutable per-stat birth and rarity baselines, advances each affected
-revision exactly once, and aborts instead of guessing if an affected pet has
-incomplete or already-progressed data.
+Migration history remains immutable. Migrations 017-018 introduced and
+reconciled the rate policy with before-images. Migrations 019-021 recorded an
+earlier reversed interpretation of Basic and Added. Forward migration
+`20260810_069_pet_growth_savvy_semantics_v2` archived affected rows and restored
+the project rule without guessing incomplete data. Migration
+`20260811_070_pet_initial_savvy_policy_v3` preserved existing six-stat values
+under an explicit legacy policy. Migration
+`20260811_071_pet_phoenix_growth_activation` archived and reconciled unrevealed
+base rates to Weak while preserving Basic; revealed rates were retained.
 
 The verified owned-pet bootstrap is opcode `10237` (`0x27FD`). Within each
-`0xA8`-byte pet record, six little-endian `uint32` initial-savvy fields occupy
-offsets `0x6C` through `0x83`; the six added-savvy fields occupy `0x84` through
-`0x9B`. Both use `value * 100` fixed point. This is why birth savvy is
-distributed at hundredth precision and is visible after the post-hatch pet
-list refresh. Base growth is authoritative in PostgreSQL and hatch audit data
-but is not encoded by this verified bootstrap; its client display and gameplay
-use remain gated on capturing the native pet-detail/growth packet.
+`0xA8`-byte pet record, six little-endian `uint32` Basic Savvy fields occupy
+offsets `0x6C..0x83`; six cumulative Added Values occupy `0x84..0x9B`. Both
+use `value * 100` fixed point. Native copies place them in pet-bean vectors
+`+0x84..+0x9B` and `+0x9C..+0xB3`. Pet Detail renders both directly, and its
+derived-stat routine sums them without multiplying by level. Original-server
+captures likewise show level-scaled Added values. Therefore neither `10237`
+nor the second vector of extended `10286` is a raw Growth Rate channel.
 
-## Client-derived rules
-
-### Owner merge
-
-The original client requires:
-
-- a summoned pet;
-- the Merge talent;
-- full pet energy;
-- at least 40 amity;
-- a pet that is not already merged.
-
-The reverse operation is an immediate unmerge. The exact ongoing energy/amity
-consumption rate is not present in plaintext client data and must be captured
-before it is enabled.
-
-`Pet_Alter.xml` exposes the 16 contribution effect IDs and their six-savvy
-curves. The numeric tables are authoritative evidence, but the native
-interpolation and rounding function has not yet been recovered. The server
-stores normalized fixed-point decimal contributions so that a later verified
-calculator can replace the preview calculation without changing persistence.
-
-### Pet merge
-
-- Both primary and secondary pets must be level 30 or higher.
-- They must be different pets owned by the same character.
-- The primary pet must be summoned.
-- The primary pet survives; the secondary pet is sacrificed on success.
-- Merged Spirit (`10103`) improves the result.
-- Fused Harpyia (`10097`) is the restricted equivalent accepted only when the
-  primary pet is bound.
-- At most five standard and restricted merge spirits may be used in total.
-- The operation improves the primary pet's rank and six initial savvy values.
-- A locked, dispatched, sealed, or already-consumed pet is not eligible.
-
-The client contains quality/restriction lookup tables and per-species
-multipliers, but the final native roll formula is not exposed. A client-sent
-rank, savvy gain, or success result must never be accepted as authoritative.
-The generic message catalog also references a deputy-quality restriction and
-a 30-level EXP-gap restriction. Their exact native comparison semantics are
-not yet proven, so the planner does not pretend to implement them.
-
-### Rebirth
-
-The rebirth level gates, material tiers, exact five-spirit balance,
-growth-acceleration ranges, level cap, and EXP evidence are maintained in
-[Pet rebirth balance](pet-rebirth-balance.md). Rebirth preserves the immutable
-rarity-added-savvy floor while clearing only later trainable additions.
-
-### Soul Contract
-
-- Contract Spirit (`10105`) may be inserted, maximum five.
-- Client `Base_Alter` values for zero through five spirits are
-  `300, 400, 500, 600, 700, 800`.
-- A new contract replaces the previous contract result.
-- The detailed stock-client pet-merge instructions explicitly say contract
-  status has no effect on pet merge. An older generic merge rejection string
-  conflicts with that instruction, so original-server packet capture remains
-  the final compatibility check.
-- Rebirth does require a contract: `PetCodeReturn114` explicitly rejects a
-  rebirth when the pet has not signed one, and both Pet Manager NPC
-  descriptions state that the contract enables rebirth.
+[Client-derived rules](pet-system-client-derived-rules.md)
 
 ## Core pet items
 
@@ -249,19 +182,19 @@ rarity-added-savvy floor while clearing only later trainable additions.
 | 10103 | Merged Spirit | Improves pet-to-pet merge |
 | 10104 | Rebirth Spirit | Improves rebirth |
 | 10105 | Contract Spirit | Improves Soul Contract |
-| 10106 | Pixie Tear | Reveals concealed growth |
+| 10106 | Pixie Tear | Reveals the summoned pet's six effective Growth rates; every successful check consumes one |
 | 10107 | Spring Water | Adds a rebirth chance |
-| 10108-10109 | Seal Jade | Empty/packed pet transfer |
-| 10110-10114 | Talent sticks | Random Event, Dispatch, Work, Healing, Merge |
+| 10108-10109 | Seal Jade | Empty jade consumed to create an owner-linked packed pet; right-clicking the packed jade unseals when shed capacity allows |
+| 10110-10114 | Legacy talent-stick artifacts | Inert compatibility records; aptitude owns talents |
 | 10130-10134 | Morning Dew 1-5 | Pet EXP consumables |
 | 10140-10144 | Restricted Morning Dew | Bound-pet EXP consumables |
 | 10145-10146 | Juice of Rebirth | Extra attempts after 30 rebirths |
 | 11000 | Fairy's Feather | Resets the six base-savvy distribution |
-| 11003 | Charm: Pet Call | Reusable summon/dismiss action |
-| 11004 | Charm: Merge | Reusable owner-merge action |
-| 11005 | Phoenix's Feather | Resets growth toward maximum potential |
+| 11003 | Charm: Pet Call | One-per-character claimed Pet Manager charm |
+| 11004 | Charm: Merge | One-per-character claimed Pet Manager charm; innate owner Merge still does not consume it |
+| 11005 | Phoenix's Feather | Rerolls base Growth Rate in the pet quality's bracket |
 | 11010 | Spring Water (Restricted) | Bound-pet rebirth chance |
-| 11015 | Pet Gender Reverser | Changes a bound pet's sex |
+| 11015 | Pet Gender Reverser | Consumed to change the summoned, bound, non-merged pet's sex |
 | 11050-11094 | Magic Jade | Species 1-45 acquisition/change items |
 | 11095 | Ambrosia of Rebirth | Adds a rebirth chance for rebirths 61-100 |
 
@@ -292,13 +225,14 @@ have tiers I-VI; the six savvy families have I-III books.
   Ocean Sphere, Tiger's Roar, Spiky Armor, Imp Trick.
 - Savvy: Agility, Strength, Accuracy, Technique, Wisdom, Luck.
 
-Pets expose six client skill slots. The five genius/talent abilities are Random
-Event, Quest Dispatch, Work, Healing, and Merge.
-
-This slice catalogs all five talents and all skill families, but persistence
-currently models only the Merge talent and occupied skill slots. Unlocked slot
-progression and the other four talents belong in the next forward-only schema
-migration once their creation/default behavior is captured.
+Pets support 12 learned-skill cells and a separate six-cell auto-cast bar.
+Hatch defaults, the two-step slot-item progression, innate talent bits, and
+the original Pet Manager dialogue maps (`31` Pet Raising and `36` Reset Pet's
+Points) are maintained in
+[Pet skills, talents, and manager dialogue](pet-skills-talents.md). The menu,
+informational pages, and durable twelve-slot skill removal are wired; other
+state-changing modal messages remain capture-gated until their native packet
+layouts are verified.
 
 ## Trust boundary and transaction contract
 
@@ -327,6 +261,30 @@ The owned-pet login bootstrap is now verified and implemented as S2C opcode
 the complete relational pet snapshot and sends this packet after inventory
 bootstrap and before the skill list/enter-complete boundary.
 
+The `10237` header has two independent one-byte counts:
+
+| Offset | Field | Authoritative meaning |
+|---:|---|---|
+| `+4` | Opened shed-cell count | Persisted number of usable pet inventory cells; default `2`, maximum `8` |
+| `+5` | Owned-pet count | Number of `0xA8` pet records that follow the header |
+
+The stock client always renders eight physical pet cells. A new character has
+two opened cells and six sealed cells. An opened cell may be occupied or empty,
+so the opened-cell count must not be inferred from the number of owned pets.
+For example, a character with one pet and the default two opened cells has one
+available cell and six sealed cells. Opening additional cells is durable
+character state and must be loaded independently of the owned-pet collection.
+
+Hatching is capacity checked inside the authoritative inventory/pet
+transaction. If the owned-pet count is already equal to the persisted opened
+cell count, the request is rejected and the egg is not consumed. A successful
+hatch consumes exactly one egg, creates the new pet, and makes it the carried
+pet in the same transaction. Any previously carried pet is cleared. If that
+previous companion was summoned in the world, its summoned state transfers to
+the newly hatched pet so the old model is removed and the new companion model
+is created only after commit. If no companion was summoned, the new pet is
+carried but remains unsummoned.
+
 The installed client's native routines also establish the basic presence
 protocol:
 
@@ -335,14 +293,18 @@ protocol:
 | C2S | 10239 | Carry/Take | 8 bytes; pet ID at `+4` |
 | C2S | 10240 | Summon/Call Out | 8 bytes; pet ID at `+4` |
 | C2S | 10241 | Recall/Dismiss | 8 bytes; pet ID at `+4` |
-| S2C | 10244 | Pet operation result | 9 bytes; pet ID at `+4`, result at `+8` |
+| S2C | 10244 | Live pet operation result | 9 bytes; pet ID at `+4`, result at `+8` |
 
 Result `1` selects the carried pet, `5` recalls and removes its model, and `7`
 summons and creates its model. Even results `2`, `6`, and `8` are the matching
 failures. The server authenticates ownership, locks the character and pets,
 commits `is_carried`/`is_summoned`, writes a pet-operation audit row, and only
 then returns the native result. Exactly one carried and one summoned pet are
-enforced by PostgreSQL.
+enforced by PostgreSQL. S2C `10244` is also the live in-world mechanism used
+after a committed hatch to replace the previous companion: recall the old
+summoned model, select the new carried pet, and call it out when summoned state
+was preserved. These messages describe one committed state transition and are
+not separate authoritative mutations.
 
 Persisted presence is replayed only after the client has passed its world
 readiness gate and map objects have loaded. It is replayed again after a map
@@ -350,18 +312,29 @@ transition, avoiding the native model constructor's unsafe early-world path.
 
 S2C `10248` is the native world-ready pet restore packet, with pet ID at `+4`
 and owner world-object ID at `+8`. The server sends it to the owner after
-initial AOI readiness and after map transitions; the client atomically selects
-and calls out the already-loaded pet. The handler ignores non-local owners, so
-another player's summoned-pet model remains an explicit compatibility gap
-whose separate observer path still needs capture.
+initial AOI readiness and after map transitions. Live-client verification
+showed that `10248` alone does not reliably recreate the companion after a
+fresh login, so persisted summoned presence is replayed as one `10244` Call
+Out-success presentation followed immediately by `10248`. These packets do
+not execute another authoritative mutation. The `10248` handler ignores
+non-local owners, so another player's summoned-pet model remains an explicit
+compatibility gap whose separate observer path still needs capture.
+
+`10244` and `10248` therefore have deliberately different lifecycles. Use
+`10244` for live Carry, Summon, Recall, and post-hatch companion replacement
+while the character is already in the world. Use the verified `10244` success
+plus `10248` pair only to restore the persisted carried/summoned companion
+after login or a map transition has reached the world/AOI-ready boundary; the
+pair is a presentation replay, not a generic pet mutation or database write.
 
 Before wiring the remaining client-visible pet operations, capture the
 original server for:
 
 - individual pet detail refreshes;
-- egg opening;
 - all Pet Manager menu/action requests and responses;
-- owner merge, pet merge, and rebirth success and rejection;
+- the native server-to-client owner-merge visual response (the verified
+  header-only action-bar request is opcode `10274` and is implemented);
+- pet merge and rebirth success and rejection;
 - pet skills;
 - another player observing Carry, Summon, Recall, and map transitions;
 - map changes, logout, reconnect, and duplicate login.

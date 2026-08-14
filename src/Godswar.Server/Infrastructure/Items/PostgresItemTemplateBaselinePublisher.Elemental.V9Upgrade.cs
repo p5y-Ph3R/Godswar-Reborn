@@ -5,6 +5,17 @@ namespace Godswar.Server.Infrastructure.Items;
 
 internal static partial class PostgresItemTemplateBaselinePublisher
 {
+    private const string OfficialPetItemsV2Revision =
+        "28B1C5C6C2F292755B564CAC9D7C651CA821391C6D4E8C03EAE0D01535D60BB4";
+    private const string OfficialPetItemsV2Source =
+        "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
+        "zephyr-v1+mount-speed-v3+pets-v2";
+    private const string OfficialPetItemsV3Revision =
+        "BCF91FCD7A9E3C5EA93B774143B5D2F9B714B147E40EBF0B85C639CF0DD63057";
+    private const string OfficialPetItemsV3Source =
+        "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
+        "zephyr-v1+mount-speed-v3+pets-v3";
+
     private sealed record V9PublicationSnapshot(
         IReadOnlyList<ItemTemplateDefinition> Definitions,
         ItemPolicySnapshot Policies,
@@ -24,6 +35,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 transaction,
                 existing,
                 cancellationToken);
+            ValidateSupportedPetItemsV9Predecessor(existing);
             prior = await ReadV8ShapeAsync(
                 connection,
                 transaction,
@@ -72,6 +84,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             transaction,
             definitions,
             cancellationToken);
+        definitions = await ReconcileReviewedPetItemsAsync(
+            connection,
+            transaction,
+            definitions,
+            cancellationToken);
         definitions = await ReplaceReviewedMountDefinitionsAsync(
             connection,
             transaction,
@@ -88,6 +105,30 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     prior.Policies.EnhancementMaterials)
             },
             prior.HolySuit);
+    }
+
+    private static void ValidateSupportedPetItemsV9Predecessor(
+        PublishedItemRevisionState release)
+    {
+        var isV2 = release.Revision.Equals(
+                OfficialPetItemsV2Revision,
+                StringComparison.Ordinal) &&
+            release.Source.Equals(
+                OfficialPetItemsV2Source,
+                StringComparison.Ordinal);
+        var isV3 = release.Revision.Equals(
+                OfficialPetItemsV3Revision,
+                StringComparison.Ordinal) &&
+            release.Source.Equals(
+                OfficialPetItemsV3Source,
+                StringComparison.Ordinal);
+        if (!isV2 && !isV3)
+        {
+            throw new InvalidOperationException(
+                $"Manifest-v9 item revision {release.Revision} is not the " +
+                "exact reviewed pets-v2/v3 predecessor; pet items were not " +
+                "reconciled.");
+        }
     }
 
     private static IReadOnlyList<GearEnhancementMaterialDefinition>

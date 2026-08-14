@@ -18,6 +18,7 @@ internal sealed class GameClientHandlerFactory(
     IAccountPresenceWriter accountPresence,
     GameSessionRegistry registry,
     ICharacterSnapshotReader characterSnapshots,
+    ISealedPetSnapshotReader sealedPetSnapshots,
     IWorldContentReader worldContent,
     DeveloperCommandOptions developerCommands,
     ICharacterCheckpointCoordinator characterCheckpoints,
@@ -108,5 +109,7 @@ internal sealed class GameClientHandlerFactory(
             itemContent:
                 itemContent,
             petContent:
-                petContent);
+                petContent,
+            sealedPetSnapshots:
+                sealedPetSnapshots);
 }

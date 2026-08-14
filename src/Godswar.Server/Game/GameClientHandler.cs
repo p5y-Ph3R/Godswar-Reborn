@@ -35,6 +35,7 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly ICharacterRuntimeProjectionReader
         _characterRuntimeProjections;
     private readonly IOwnedPetSnapshotReader _ownedPetSnapshots;
+    private readonly ISealedPetSnapshotReader? _sealedPetSnapshots;
     private readonly IWorldBossAreaControlStore _worldBossAreaControl;
     private readonly IWorldBossRespawnReader _worldBossRespawns;
     private readonly IWorldContentReader _worldContent;
@@ -43,6 +44,7 @@ internal sealed partial class GameClientHandler : IClientHandler
     private readonly IPetContentCatalog? _petContent;
     private readonly DeveloperCommandOptions _developerCommands;
     private readonly Guid _commandConnectionId = Guid.NewGuid();
+    private Guid? _loginPetCallOutOperationId;
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
     private AccountIdentity? _account;
@@ -129,6 +131,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         {
             await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
+            await StopPetOwnerMergeEnergyDrainAsync();
             _registry.UnregisterSkillCastInterruptionSink(_session);
             await StopPendingSkillCastsAsync();
 
@@ -156,6 +159,18 @@ internal sealed partial class GameClientHandler : IClientHandler
             {
                 Console.WriteLine($"[zodiac] failed saving final online interval: {ex.Message}");
             }
+
+            try
+            {
+                await EndPetOwnerMergeForSessionExitAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[pet] failed ending owner Merge on session exit: {ex.Message}");
+            }
+
+            await DiscardPetGrowthPreviewForSessionExitAsync();
 
             if (_registered)
             {
@@ -386,6 +401,31 @@ internal sealed partial class GameClientHandler : IClientHandler
                 await HandlePetPresenceRequestAsync(
                     packet,
                     PetPresenceOperation.Recall,
+                    cancellationToken);
+                break;
+            case Opcodes.PetOwnerMergeRequest:
+                await HandlePetOwnerMergeRequestAsync(
+                    packet,
+                    cancellationToken);
+                break;
+            case Opcodes.PackedPetDetailRequest:
+                await HandlePackedPetDetailRequestAsync(
+                    packet,
+                    cancellationToken);
+                break;
+            case Opcodes.PetToPetMergeRequest:
+                await HandlePetToPetMergeRequestAsync(
+                    packet,
+                    cancellationToken);
+                break;
+            case Opcodes.PetSoulContractRequest:
+                await HandlePetSoulContractRequestAsync(
+                    packet,
+                    cancellationToken);
+                break;
+            case Opcodes.PetRebirthRequest:
+                await HandlePetRebirthRequestAsync(
+                    packet,
                     cancellationToken);
                 break;
             case Opcodes.PetLevelUpgradeRequest:

@@ -1,6 +1,7 @@
 using System.Text;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Inventory;
+using Godswar.Server.State;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -16,13 +17,16 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         IReadOnlyList<InventoryMutation> mutations,
         CancellationToken cancellationToken)
     {
-        if (mutations.Count is < 1 or > 2 ||
+        if (mutations.Count < 1 ||
+            mutations.Count >
+                PetBagActivationInventoryPersistenceCodec
+                    .MaximumLedgerEntryCount ||
             mutations.Any(mutation =>
                 mutation.InventoryRevision !=
                     mutations[0].InventoryRevision))
         {
             throw new InvalidDataException(
-                "A pet bag activation has invalid inventory evidence.");
+                "A pet command has invalid inventory evidence.");
         }
         for (var ordinal = 0; ordinal < mutations.Count; ordinal++)
         {
@@ -143,7 +147,10 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             mutation.MutationKind);
         command.Parameters.Add(
             "beforeState",
-            NpgsqlDbType.Jsonb).Value = mutation.BeforeState;
+            NpgsqlDbType.Jsonb).Value =
+            mutation.BeforeState is null
+                ? DBNull.Value
+                : mutation.BeforeState;
         command.Parameters.Add(
             "afterState",
             NpgsqlDbType.Jsonb).Value =

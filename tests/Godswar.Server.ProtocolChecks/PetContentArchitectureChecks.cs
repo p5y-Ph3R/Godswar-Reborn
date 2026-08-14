@@ -18,6 +18,7 @@ internal static partial class PetContentArchitectureChecks
         "PetGrowthPolicy",
         "PetInitialSavvyPolicy",
         "PetAddedSavvyPolicy",
+        "PetInnateTalentPolicy",
         "PetNativeAptitudeProfileCatalog",
         "PetExperienceCatalog",
         "PetRebirthGrowthPolicy"
@@ -26,11 +27,15 @@ internal static partial class PetContentArchitectureChecks
     private static readonly HashSet<string> AllowedCompiledConsumers =
         new(StringComparer.Ordinal)
         {
+            "src/Godswar.Server/Infrastructure/Items/PetMagicJadeItemContentBaseline.cs",
             "src/Godswar.Server/Infrastructure/Pets/PetContentBaseline.cs",
+            "src/Godswar.Server/Infrastructure/Pets/PetMergeRankContentBaseline.cs",
             "src/Godswar.Server/State/PetAddedSavvyPolicy.cs",
             "src/Godswar.Server/State/PetGrowthPolicy.cs",
             "src/Godswar.Server/State/PetInitialSavvyPolicy.cs",
-            "src/Godswar.Server/State/PetNativeAptitudeProfileCatalog.cs"
+            "src/Godswar.Server/State/PetInnateTalentPolicy.cs",
+            "src/Godswar.Server/State/PetNativeAptitudeProfileCatalog.cs",
+            "src/Godswar.Server/State/PetSkillSlotPolicy.cs"
         };
 
     public static Task RunAsync()
@@ -58,6 +63,7 @@ internal static partial class PetContentArchitectureChecks
         AssertCompiledSourceIsolation(root);
         AssertNoMutableRuntimeReads(root);
         AssertRuntimeUsesPinnedCatalog(root);
+        AssertSealedPetReaderComposition(root);
         AssertPinnedCatalogIntegrity();
         return Task.CompletedTask;
     }
@@ -155,10 +161,24 @@ internal static partial class PetContentArchitectureChecks
             baseline.Revision.ExperienceStepCount ==
                 baseline.ExperienceSteps.Count &&
             baseline.Revision.RebirthStepCount ==
-                baseline.RebirthSteps.Count,
+                baseline.RebirthSteps.Count &&
+            baseline.Revision.MergeSavvyStepCount ==
+                baseline.MergeSavvySteps.Count &&
+            baseline.Revision.MergeSavvyLookupCount ==
+                baseline.MergeSavvyLookup.Count &&
+            baseline.Revision.HatchRankStepCount ==
+                baseline.HatchRankSteps.Count &&
+            baseline.Revision.MergeRankLookupCount ==
+                baseline.MergeRankLookup.Count &&
+            baseline.Revision.MergeRankSpeciesFactorCount ==
+                baseline.MergeRankSpeciesFactors.Count &&
+            baseline.Revision.MergeRankSpiritStepCount ==
+                baseline.MergeRankSpiritSteps.Count,
             "pet revision manifest exactly counts every content family");
         baseline.ValidateItemReferences(
             CreateReferencedItemCatalog(baseline));
+        AssertCalmCompatibilityProfiles(baseline);
+        AssertMagicJadeAppearanceGroups(baseline);
 
         var lifetimeSource = baseline.Species[0].LifetimeValues.ToArray();
         var species = baseline.Species
@@ -174,6 +194,12 @@ internal static partial class PetContentArchitectureChecks
             baseline.NativeProfiles,
             baseline.ExperienceSteps,
             baseline.RebirthSteps,
+            baseline.MergeSavvySteps,
+            baseline.MergeSavvyLookup,
+            baseline.HatchRankSteps,
+            baseline.MergeRankLookup,
+            baseline.MergeRankSpeciesFactors,
+            baseline.MergeRankSpiritSteps,
             baseline.Revision.Sha256);
         lifetimeSource[0] = checked(lifetimeSource[0] + 1);
         Check.True(
@@ -192,13 +218,111 @@ internal static partial class PetContentArchitectureChecks
             changedAptitudes,
             baseline.NativeProfiles,
             baseline.ExperienceSteps,
-            baseline.RebirthSteps);
+            baseline.RebirthSteps,
+            baseline.MergeSavvySteps,
+            baseline.MergeSavvyLookup,
+            baseline.HatchRankSteps,
+            baseline.MergeRankLookup,
+            baseline.MergeRankSpeciesFactors,
+            baseline.MergeRankSpiritSteps);
         Check.True(
             changed.Revision.Sha256 != baseline.Revision.Sha256,
             "every active aptitude fact contributes to the pet revision hash");
 
+        var changedTalentMasks = baseline.Aptitudes
+            .Select((value, index) => index == 0
+                ? value with
+                {
+                    InnateTalentMask = checked((short)(
+                        value.InnateTalentMask + 1))
+                }
+                : value)
+            .ToArray();
+        var talentMaskHash = PetContentRevisionHasher.Compute(
+            baseline.Settings,
+            baseline.Species,
+            changedTalentMasks,
+            baseline.NativeProfiles,
+            baseline.ExperienceSteps,
+            baseline.RebirthSteps,
+            baseline.MergeSavvySteps,
+            baseline.MergeSavvyLookup,
+            baseline.HatchRankSteps,
+            baseline.MergeRankLookup,
+            baseline.MergeRankSpeciesFactors,
+            baseline.MergeRankSpiritSteps);
+        Check.True(
+            talentMaskHash != baseline.Revision.Sha256,
+            "innate talent masks contribute to the pet revision hash");
+
         AssertHashMismatchRejected(baseline);
         AssertMissingItemReferenceRejected(baseline);
+    }
+
+    private static void AssertCalmCompatibilityProfiles(
+        PinnedPetContentCatalog baseline)
+    {
+        Check.Equal(
+            PetNativeAptitudeProfileCatalog.ProfileCount,
+            PetNativeAptitudeProfileCatalog.All.Count,
+            "stock native profile count remains fingerprint-compatible");
+        Check.Equal(
+            PetNativeAptitudeProfileCatalog.ProfileCount +
+                PetSpeciesCatalog.SpeciesCount,
+            baseline.NativeProfiles.Count,
+            "the database baseline adds one Calm compatibility profile per species");
+
+        foreach (var species in PetSpeciesCatalog.All)
+        {
+            Check.True(
+                !PetNativeAptitudeProfileCatalog.TryGet(
+                    species.Type,
+                    PetAptitude.Calm,
+                    out _),
+                $"{species.DisplayName} stock aptitude 6 remains absent");
+            if (!PetNativeAptitudeProfileCatalog.TryGet(
+                    species.Type,
+                    PetAptitude.Rational,
+                    out var source))
+            {
+                throw new InvalidDataException(
+                    $"{species.DisplayName} Rational compatibility source did not resolve.");
+            }
+            if (!baseline.TryGetNativeProfile(
+                    species.Type,
+                    (short)PetAptitude.Calm,
+                    out var calm))
+            {
+                throw new InvalidDataException(
+                    $"{species.DisplayName} Calm compatibility profile did not resolve.");
+            }
+            Check.True(
+                calm == new PetNativeProfileContentDefinition(
+                    checked((short)source.SpeciesType),
+                    (short)PetAptitude.Calm,
+                    new PetContentStatVector(
+                        source.StartingTraits.Agility,
+                        source.StartingTraits.Strength,
+                        source.StartingTraits.Accuracy,
+                        source.StartingTraits.Technique,
+                        source.StartingTraits.Wisdom,
+                        source.StartingTraits.Luck),
+                    new PetContentStatVector(
+                        source.GeniusTraits.Agility,
+                        source.GeniusTraits.Strength,
+                        source.GeniusTraits.Accuracy,
+                        source.GeniusTraits.Technique,
+                        source.GeniusTraits.Wisdom,
+                        source.GeniusTraits.Luck),
+                    source.NativeQuality,
+                    source.NativeSamsara,
+                    source.NativeGenius,
+                    source.StarterSkillId,
+                    source.NativeSkillCount,
+                    source.NativeProcreate,
+                    source.Lifetime),
+                $"{species.DisplayName} Calm uses the documented Rational wire defaults");
+        }
     }
 
     private static void AssertHashMismatchRejected(
@@ -214,6 +338,12 @@ internal static partial class PetContentArchitectureChecks
                 baseline.NativeProfiles,
                 baseline.ExperienceSteps,
                 baseline.RebirthSteps,
+                baseline.MergeSavvySteps,
+                baseline.MergeSavvyLookup,
+                baseline.HatchRankSteps,
+                baseline.MergeRankLookup,
+                baseline.MergeRankSpeciesFactors,
+                baseline.MergeRankSpiritSteps,
                 new string('0', 64));
         }
         catch (InvalidOperationException)
@@ -258,6 +388,8 @@ internal static partial class PetContentArchitectureChecks
             .Select(static value => value.EggItemId)
             .Where(static value => value.HasValue)
             .Select(static value => value!.Value)
+            .Concat(baseline.Species.Select(
+                static value => value.MagicJadeItemId))
             .Concat(
             [
                 baseline.Settings.MergeSpiritItemId,

@@ -20,6 +20,8 @@ internal sealed record GameSessionContext(
 {
     public PlayerOwnershipFence Ownership { get; init; }
 
+    public bool PetOwnerMergeActive { get; init; }
+
     public string DisplayName => string.IsNullOrWhiteSpace(CharacterName)
         ? $"character:{CharacterId}"
         : CharacterName;

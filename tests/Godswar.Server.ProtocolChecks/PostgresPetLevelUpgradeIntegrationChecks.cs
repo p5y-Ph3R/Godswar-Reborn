@@ -223,7 +223,7 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
 
         Check.True(
             rejectedMalformedState,
-            "malformed stat provenance rejects the whole level-up");
+            "malformed zero-Growth baseline rejects the whole level-up");
         Check.Equal(
             petBefore,
             await ReadPetLevelAsync(
@@ -281,11 +281,15 @@ internal static partial class PostgresPetLevelUpgradeIntegrationChecks
             fixture.SuccessPetId);
         Check.True(
             statsAfter.SequenceEqual(expectedStatsAfter),
-            "one level adds each base growth rate and advances all stat revisions once");
+            "one level rematerializes Added and advances all stat revisions once");
         Check.Equal(
-            statsBefore[1].InitialSavvy + 9m,
+            statsBefore[1].InitialSavvy,
             statsAfter[1].InitialSavvy,
-            "strength growth rate nine adds exactly nine at level two");
+            "level-up never mutates Basic Savvy");
+        Check.Equal(
+            19m,
+            statsAfter[1].AddedSavvy,
+            "level two materializes effective strength Growth into Added");
         await AssertCommittedAuditAsync(
             connectionString,
             fixture);

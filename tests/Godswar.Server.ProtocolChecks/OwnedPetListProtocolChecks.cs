@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Reflection;
 using System.Text;
 using Godswar.Server.Application.Accounts;
+using Godswar.Server.Application.Characters;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -28,14 +29,107 @@ internal static partial class OwnedPetListProtocolChecks
     {
         CheckCanonicalEmptyPacket();
         CheckGodlyKingLionRecord();
+        CheckRankWireSafety();
+        CheckScaledAddedV3Projection();
         CheckCapacityThresholdsAndValidation();
         await CheckLoginBootstrapOrderingAsync();
     }
 
+    private static void CheckScaledAddedV3Projection()
+    {
+        var pet = CreateGodlyKingLion() with
+        {
+            InitialSavvySourceVersion =
+                PetSavvyRuntimeSemantics.SourceVersion,
+            StatValues =
+            [
+                new PetStatValueSnapshot(
+                    1,
+                    InitialSavvy: 2_658.653337m,
+                    AddedSavvy: 16.767423m * 80m,
+                    BaseGrowthRate: 16.767423m,
+                    GrowthAcceleration: 0m,
+                    Revision: 209,
+                    BirthInitialSavvy: 663.33m,
+                    RarityAddedSavvy: 663.33m),
+                ScaledStat(2, 2m, 12m, 80),
+                ScaledStat(3, 3m, 13m, 80),
+                ScaledStat(4, 4m, 14m, 80),
+                ScaledStat(5, 5m, 15m, 80),
+                ScaledStat(6, 6m, 16m, 80)
+            ]
+        };
+
+        var packet = PacketBuilder.OwnedPetList(
+            PetContentTestCatalog.Instance,
+            [pet],
+            openedCellCount: 2);
+        var record = packet.AsSpan(8, PetRecordLength);
+
+        Check.Equal(
+            ToFixedPoint(2_658.653337m),
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x6C, 4)),
+            "scaled-Added v3 Basic remains the persisted Merge value");
+        Check.Equal(
+            ToFixedPoint(16.767423m * pet.Level),
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x84, 4)),
+            "scaled-Added v3 projects Growth Rate multiplied by pet level");
+        Check.Equal(
+            ToFixedPoint(2m),
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x70, 4)),
+            "scaled-Added v3 preserves the second Basic value");
+        Check.Equal(
+            ToFixedPoint(12m * pet.Level),
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x88, 4)),
+            "scaled-Added v3 scales every Added value by pet level");
+
+        var stale = pet with
+        {
+            StatValues = pet.StatValues
+                .Select(stat => stat.StatCode == 1
+                    ? stat with { AddedSavvy = stat.BaseGrowthRate }
+                    : stat)
+                .ToArray()
+        };
+        Check.Throws<InvalidDataException>(
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [stale],
+                openedCellCount: 2),
+            "10237 rejects stale scaled-Added materialization");
+        Check.Throws<InvalidDataException>(
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [pet with
+                {
+                    InitialSavvySourceVersion = "savvy-plus-growth-v2"
+                }],
+                openedCellCount: 2),
+            "10237 rejects obsolete Savvy provenance");
+    }
+
+    private static PetStatValueSnapshot ScaledStat(
+        short code,
+        decimal basic,
+        decimal growth,
+        int level) =>
+        new(
+            code,
+            basic,
+            growth * level,
+            growth,
+            0m,
+            Revision: 1,
+            BirthInitialSavvy: basic,
+            RarityAddedSavvy: basic);
+
     private static void CheckGodlyKingLionRecord()
     {
         var pet = CreateGodlyKingLion();
-        var packet = PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet]);
+        var packet = PacketBuilder.OwnedPetList(
+            PetContentTestCatalog.Instance,
+            [pet],
+            openedCellCount: 2);
         var record = packet.AsSpan(8, PetRecordLength);
 
         Check.Equal(176, packet.Length, "one-pet packet length");
@@ -60,7 +154,8 @@ internal static partial class OwnedPetListProtocolChecks
             ReadFixedAscii(record.Slice(0x04, 32)),
             "pet name");
         var longNamePacket = PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
-            [pet with { Name = new string('X', 32) }]);
+            [pet with { Name = new string('X', 32) }],
+            openedCellCount: 2);
         var longNameField = longNamePacket.AsSpan(12, 32);
         Check.True(
             longNameField[..31].IndexOfAnyExcept((byte)'X') < 0,
@@ -86,13 +181,26 @@ internal static partial class OwnedPetListProtocolChecks
             (byte)1,
             record[0x2F],
             "captured per-record flag remains independent of carried state");
+        Check.Equal(
+            (byte)0,
+            record[0x30],
+            "uncarried pet leaves the native active-pet selector clear");
+
+        var carriedPacket = PacketBuilder.OwnedPetList(
+            PetContentTestCatalog.Instance,
+            [pet with { IsCarried = true }],
+            openedCellCount: 2);
+        Check.Equal(
+            (byte)1,
+            carriedPacket[8 + 0x30],
+            "carried pet arms the native left-panel summon/recall control");
 
         Check.Equal(
             (byte)2,
             record[0x2B],
             "opened skill-cell boundary");
         Check.Equal(
-            (byte)2,
+            (byte)3,
             record[0x2C],
             "available skill-cell boundary");
         Check.Equal((byte)2, record[0x31], "learned skill count");
@@ -125,6 +233,10 @@ internal static partial class OwnedPetListProtocolChecks
             123_456u,
             BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x60, 4)),
             "pet experience");
+        Check.Equal(
+            31u,
+            BinaryPrimitives.ReadUInt32LittleEndian(record.Slice(0x68, 4)),
+            "five captured pet-talent bits");
 
         var expectedInitialSavvy =
             new decimal[] { 1.25m, 2.5m, 3.75m, 4m, 5.5m, 6.25m };
@@ -156,7 +268,7 @@ internal static partial class OwnedPetListProtocolChecks
             (byte)3,
             record[0xA0],
             "completed rebirth count");
-        Check.Equal((byte)1, record[0xA1], "soul-contract flag");
+        Check.Equal((byte)6, record[0xA1], "soul-contract stage");
         Check.Equal(
             (ushort)7,
             BinaryPrimitives.ReadUInt16LittleEndian(record.Slice(0xA2, 2)),
@@ -166,26 +278,39 @@ internal static partial class OwnedPetListProtocolChecks
 
     private static void CheckCapacityThresholdsAndValidation()
     {
-        CheckCapacity(count: 0, expectedCapacity: 2);
-        CheckCapacity(count: 2, expectedCapacity: 2);
-        CheckCapacity(count: 3, expectedCapacity: 4);
-        CheckCapacity(count: 4, expectedCapacity: 4);
-        CheckCapacity(count: 5, expectedCapacity: 8);
-        CheckCapacity(count: 8, expectedCapacity: 8);
+        CheckCapacity(count: 0, openedCellCount: 2);
+        CheckCapacity(count: 1, openedCellCount: 2);
+        CheckCapacity(count: 2, openedCellCount: 2);
+        CheckCapacity(count: 2, openedCellCount: 3);
+        CheckCapacity(count: 4, openedCellCount: 4);
+        CheckCapacity(count: 7, openedCellCount: 8);
+        CheckCapacity(count: 8, openedCellCount: 8);
 
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, CreatePets(9)),
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                CreatePets(3),
+                openedCellCount: 2),
+            "owned pets cannot exceed independently opened shed cells");
+
+        Check.Throws<InvalidDataException>(
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                CreatePets(9),
+                openedCellCount: 8),
             "native eight-pet limit is enforced");
 
         var duplicate = CreateGodlyKingLion();
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
-                [duplicate, duplicate with { Name = "Duplicate" }]),
+                [duplicate, duplicate with { Name = "Duplicate" }],
+                openedCellCount: 2),
             "duplicate pet IDs are rejected");
 
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
-                [duplicate with { SpeciesId = short.MaxValue }]),
+                [duplicate with { SpeciesId = short.MaxValue }],
+                openedCellCount: 2),
             "unknown species are rejected");
         var publishedSkillOverflow = duplicate with
         {
@@ -205,11 +330,13 @@ internal static partial class OwnedPetListProtocolChecks
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(
                 PetContentTestCatalog.Instance,
-                [publishedSkillOverflow]),
+                [publishedSkillOverflow],
+                openedCellCount: 2),
             "published pet skill limit governs the runtime wire projection");
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
-                [duplicate with { Sex = 2 }]),
+                [duplicate with { Sex = 2 }],
+                openedCellCount: 2),
             "native-incompatible pet sex is rejected");
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
@@ -218,7 +345,8 @@ internal static partial class OwnedPetListProtocolChecks
                     {
                         Aptitude = (PetAptitude)17
                     }
-                ]),
+                ],
+                openedCellCount: 2),
             "undefined aptitude tiers are rejected");
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
@@ -228,7 +356,8 @@ internal static partial class OwnedPetListProtocolChecks
                         IsSummoned = true,
                         IsCarried = false
                     }
-                ]),
+                ],
+                openedCellCount: 2),
             "summoned pet must be carried");
         Check.Throws<InvalidDataException>(
             () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance,
@@ -240,7 +369,8 @@ internal static partial class OwnedPetListProtocolChecks
                         Name = "Second",
                         IsCarried = true
                     }
-                ]),
+                ],
+                openedCellCount: 2),
             "only one pet can be carried");
 
         var duplicateSkillSlots = duplicate with
@@ -252,7 +382,10 @@ internal static partial class OwnedPetListProtocolChecks
             ]
         };
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [duplicateSkillSlots]),
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [duplicateSkillSlots],
+                openedCellCount: 2),
             "duplicate active pet-skill slots are rejected");
 
         var sparseSkillSlots = duplicate with
@@ -264,7 +397,10 @@ internal static partial class OwnedPetListProtocolChecks
             ]
         };
         Check.Throws<InvalidDataException>(
-            () => PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [sparseSkillSlots]),
+            () => PacketBuilder.OwnedPetList(
+                PetContentTestCatalog.Instance,
+                [sparseSkillSlots],
+                openedCellCount: 2),
             "learned pet skills must occupy contiguous native slots");
     }
 
@@ -298,6 +434,7 @@ internal static partial class OwnedPetListProtocolChecks
                 character,
                 [],
                 [],
+                new CharacterPetShedSnapshot(2, 0),
                 [pet],
                 []));
         SetField(handler, "_characterSnapshotLoaded", true);
@@ -346,7 +483,10 @@ internal static partial class OwnedPetListProtocolChecks
             "captured UI bootstrap precedes OwnedPetList");
         Check.True(
             packets[petPacketIndex].SequenceEqual(
-                PacketBuilder.OwnedPetList(PetContentTestCatalog.Instance, [pet])),
+                PacketBuilder.OwnedPetList(
+                    PetContentTestCatalog.Instance,
+                    [pet],
+                    openedCellCount: 2)),
             "enter flow sends the persisted pet snapshot");
         Check.Equal(
             (ushort)10_196,
@@ -364,161 +504,6 @@ internal static partial class OwnedPetListProtocolChecks
             0,
             store.OwnedPetReadCount,
             "initial enter consumes pets from the single character snapshot");
-    }
-
-    private static PetBootstrapSnapshot[] CreatePets(int count) =>
-        Enumerable.Range(1, count)
-            .Select(index => CreateGodlyKingLion() with
-            {
-                PetId = index,
-                Name = $"Lion {index}"
-            })
-            .ToArray();
-
-    private static PetBootstrapSnapshot CreateGodlyKingLion() =>
-        new(
-            PetId: 1,
-            AccountId: AccountId,
-            OwnerCharacterId: CharacterId,
-            SpeciesId: 37,
-            Name: "Godly King Lion",
-            Sex: 1,
-            Level: 80,
-            Experience: 123_456,
-            Aptitude: PetAptitude.Godly,
-            Rank: 25.25m,
-            CompletedRebirths: 3,
-            RebirthsRemaining: 2,
-            CompletedPetMerges: 7,
-            HasSoulContract: true,
-            HasOwnerMergeTalent: true,
-            CurrentEnergy: 90,
-            MaximumEnergy: 100,
-            Amity: 77,
-            Satiety: 88,
-            RemainingLifetime: 1_100,
-            AvailableStatPoints: 9,
-            GrowthRevealed: true,
-            IsBound: true,
-            ActivityState: "owned",
-            IsCarried: false,
-            IsSummoned: false,
-            ContributesToCharacter: true,
-            Revision: 12,
-            CreatedAt: DateTimeOffset.UnixEpoch,
-            UpdatedAt: DateTimeOffset.UnixEpoch,
-            StatValues:
-            [
-                Stat(1, 1.25m, 7.5m),
-                Stat(2, 2.5m, 8.25m),
-                Stat(3, 3.75m, 9m),
-                Stat(4, 4m, 10.75m),
-                Stat(5, 5.5m, 11.5m),
-                Stat(6, 6.25m, 12.25m)
-            ],
-            CharacterBonuses: [],
-            Skills:
-            [
-                new PetSkillSnapshot(5_200, 0, 1, 0, true, 1),
-                new PetSkillSnapshot(6_000, 7, 3, 99, false, 2),
-                new PetSkillSnapshot(5_555, 1, 2, 88, true, 3)
-            ]);
-
-    private static PetStatValueSnapshot Stat(
-        short code,
-        decimal initial,
-        decimal added) =>
-        new(code, initial, added, 0m, 0m, 1);
-
-    private static GameCharacter CreateCharacter() =>
-        new()
-        {
-            Id = CharacterId,
-            AccountId = AccountId,
-            Name = "test2",
-            Camp = GameDefaults.SpartaCamp,
-            Profession = 0,
-            Level = 80,
-            CurrentMap = GameDefaults.SpartaCapitalMap,
-            PositionX = GameDefaults.StartingPositionX,
-            PositionZ = GameDefaults.StartingPositionZ,
-            CurrentHp = 5_000,
-            MaxHp = 5_000,
-            CurrentMp = 1_000,
-            MaxMp = 1_000,
-            Equipment = string.Empty,
-            KitBag = string.Empty
-        };
-
-    private static async Task InvokePacketAsync(
-        GameClientHandler handler,
-        GamePacket packet)
-    {
-        var task = HandlePacketMethod.Invoke(
-            handler,
-            [packet, CancellationToken.None]) as Task
-            ?? throw new InvalidOperationException(
-                "GameClientHandler.HandlePacketAsync returned no task.");
-        await task;
-    }
-
-    private static GamePacket CreateOpcodePacket(ushort opcode)
-    {
-        var bytes = new byte[4];
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes, 4);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(2), opcode);
-        return new GamePacket(bytes);
-    }
-
-    private static List<byte[]> SplitPackets(byte[] clearBytes)
-    {
-        var packets = new List<byte[]>();
-        var offset = 0;
-        while (offset < clearBytes.Length)
-        {
-            Check.True(
-                clearBytes.Length - offset >= 4,
-                "enter bootstrap has a complete packet header");
-            var length = BinaryPrimitives.ReadUInt16LittleEndian(
-                clearBytes.AsSpan(offset, 2));
-            Check.True(
-                length >= 4 && length <= clearBytes.Length - offset,
-                "enter bootstrap packet has a bounded declared length");
-            packets.Add(clearBytes.AsSpan(offset, length).ToArray());
-            offset += length;
-        }
-
-        return packets;
-    }
-
-    private static string ReadFixedAscii(ReadOnlySpan<byte> source)
-    {
-        var terminator = source.IndexOf((byte)0);
-        var length = terminator >= 0 ? terminator : source.Length;
-        return Encoding.ASCII.GetString(source[..length]);
-    }
-
-    private static uint ToFixedPoint(decimal value) =>
-        checked((uint)decimal.Round(
-            value * 100m,
-            0,
-            MidpointRounding.AwayFromZero));
-
-    private static ushort ReadUInt16(byte[] packet, int offset) =>
-        BinaryPrimitives.ReadUInt16LittleEndian(
-            packet.AsSpan(offset, sizeof(ushort)));
-
-    private static void SetField<T>(
-        GameClientHandler handler,
-        string name,
-        T value)
-    {
-        var field = typeof(GameClientHandler).GetField(
-            name,
-            BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException(
-                $"GameClientHandler.{name} was not found.");
-        field.SetValue(handler, value);
     }
 
 }

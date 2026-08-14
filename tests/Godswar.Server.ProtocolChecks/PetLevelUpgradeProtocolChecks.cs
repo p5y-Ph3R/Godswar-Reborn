@@ -230,24 +230,33 @@ internal static class PetLevelUpgradeProtocolChecks
             Technique: 4.04m,
             Wisdom: 5.05m,
             Luck: 6.06m);
+        var addedSavvy = new PetSavvy(
+            Agility: 7.07m,
+            Strength: 8.08m,
+            Accuracy: 9.09m,
+            Technique: 10.10m,
+            Wisdom: 11.11m,
+            Luck: 12.12m);
 
         var packet = PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
             petId,
             level,
             currentExperience,
-            basicSavvy);
+            basicSavvy,
+            addedSavvy);
         var expected = Convert.FromHexString(
-            "2C002E28040302016B000000040302013C714300" +
-            "65000000CA0000002F01000094010000F90100005E020000");
+            "44002E28040302016B000000040302013C714300" +
+            "65000000CA0000002F01000094010000F90100005E020000" +
+            "C3020000280300008D030000F203000057040000BC040000");
 
         Check.True(
             packet.SequenceEqual(expected),
             "pet level-up response retains native little-endian bytes");
-        Check.Equal(44, packet.Length, "pet level-up response length");
+        Check.Equal(68, packet.Length, "pet progression response length");
         Check.Equal(
-            (ushort)44,
+            (ushort)68,
             BinaryPrimitives.ReadUInt16LittleEndian(packet),
-            "pet level-up declared length");
+            "pet progression declared length");
         Check.Equal(
             Opcodes.PetLevelUpgrade,
             BinaryPrimitives.ReadUInt16LittleEndian(packet.AsSpan(2)),
@@ -280,35 +289,57 @@ internal static class PetLevelUpgradeProtocolChecks
                     packet.AsSpan(20 + (index * sizeof(uint)))),
                 $"pet level-up basic-savvy value {index + 1}");
         }
+        var expectedAdded =
+            new uint[] { 707, 808, 909, 1_010, 1_111, 1_212 };
+        for (var index = 0; index < expectedAdded.Length; index++)
+        {
+            Check.Equal(
+                expectedAdded[index],
+                BinaryPrimitives.ReadUInt32LittleEndian(
+                    packet.AsSpan(44 + (index * sizeof(uint)))),
+                $"pet level-up Added Savvy value {index + 1}");
+        }
 
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId: 0,
                 level: 1,
                 currentExperience: 0,
-                basicSavvy),
+                basicSavvy,
+                addedSavvy),
             "zero pet ID cannot produce a native upgrade response");
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 121,
                 currentExperience: 0,
-                basicSavvy),
+                basicSavvy,
+                addedSavvy),
             "out-of-range pet level cannot be serialized");
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 1,
                 currentExperience: -1,
-                basicSavvy),
+                basicSavvy,
+                addedSavvy),
             "negative pet experience cannot be serialized");
         Check.Throws<ArgumentOutOfRangeException>(
             () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
                 petId,
                 level: 1,
                 currentExperience: 0,
-                basicSavvy with { Strength = -0.01m }),
+                basicSavvy with { Strength = -0.01m },
+                addedSavvy),
             "negative pet basic savvy cannot be serialized");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => PacketBuilder.PetLevelUpgrade(PetContentTestCatalog.Instance,
+                petId,
+                level: 1,
+                currentExperience: 0,
+                basicSavvy,
+                addedSavvy with { Luck = -0.01m }),
+            "negative pet Added Savvy cannot be serialized");
     }
 
     private static async Task CheckSuccessfulUpgradeAsync()
@@ -359,7 +390,8 @@ internal static class PetLevelUpgradeProtocolChecks
                     PetId,
                     level: 2,
                     currentExperience: 299_998_500,
-                    basicSavvy)),
+                    basicSavvy,
+                    new PetSavvy(1, 1, 1, 1, 1, 1))),
             "successful level-up emits the native authoritative refresh");
         Check.Equal(1, executor.UpgradeCount, "pet level-up persists once");
         Check.True(
@@ -537,7 +569,7 @@ internal static class PetLevelUpgradeProtocolChecks
                 new PetStatValueSnapshot(
                     checked((short)(index + 1)),
                     value,
-                    AddedSavvy: 0,
+                    AddedSavvy: 1,
                     BaseGrowthRate: 1,
                     GrowthAcceleration: 0,
                     revision)).ToArray(),

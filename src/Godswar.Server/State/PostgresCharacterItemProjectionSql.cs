@@ -90,6 +90,7 @@ internal static class PostgresCharacterItemProjectionSql
                          AND ci.holy_socket2_value IS NULL
                          AND ci.holy_socket3_value IS NULL
                          AND ci.holy_socket4_value IS NULL
+                         AND sealed_link.pet_id IS NULL
                             THEN ''
                         ELSE
                             ',' ||
@@ -100,13 +101,29 @@ internal static class PostgresCharacterItemProjectionSql
                             COALESCE(ci.holy_socket1_value::text, '') || ',' ||
                             COALESCE(ci.holy_socket2_value::text, '') || ',' ||
                             COALESCE(ci.holy_socket3_value::text, '') || ',' ||
-                            COALESCE(ci.holy_socket4_value::text, '')
+                            COALESCE(ci.holy_socket4_value::text, '') || ',' ||
+                            COALESCE(sealed_link.pet_id::text, '')
                     END ||
                     ']' AS compact_entry
                 FROM character_items ci
                 LEFT JOIN item_template_content_definitions template
                   ON template.revision = @itemContentRevision
                  AND template.id = ci.prop_id
+                LEFT JOIN public.sealed_pet_items sealed_link
+                  ON sealed_link.item_instance_id = ci.id
+                 AND ci.prop_id = 10109
+                 AND sealed_link.owner_character_id = ci.user_id
+                 AND (ci.bound = 1) IS NOT DISTINCT FROM
+                     sealed_link.pet_bound_snapshot
+                 AND EXISTS (
+                     SELECT 1
+                     FROM public.character_pets sealed_pet
+                     WHERE sealed_pet.id = sealed_link.pet_id
+                       AND sealed_pet.user_id = ci.user_id
+                       AND sealed_pet.activity_state = 'sealed'
+                       AND sealed_pet.bound IS NOT DISTINCT FROM
+                           sealed_link.pet_bound_snapshot
+                 )
                 LEFT JOIN LATERAL (
                     SELECT
                         NULLIF(array_length(string_to_array(

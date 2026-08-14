@@ -128,7 +128,7 @@ internal static class DataBoundaryArchitectureBaseline
         new("State/DatabaseMigrations/PostgresSchemaMigrationRunner.cs", 17),
         new("State/PostgresGameStore.Characters.cs", 1),
         new("State/PostgresGameStore.CharacterLookup.cs", 3),
-        new("State/PostgresGameStore.Characters.Persistence.cs", 14),
+        new("State/PostgresGameStore.Characters.Persistence.cs", 13),
         new("State/PostgresGameStore.Crafting.cs", 7),
         new("State/PostgresGameStore.cs", 5),
         new("State/PostgresGameStore.Inventory.Grants.cs", 9),
