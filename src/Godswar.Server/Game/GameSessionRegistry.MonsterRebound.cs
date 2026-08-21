@@ -157,7 +157,7 @@ internal sealed partial class GameSessionRegistry
             source.MapId,
             damageResult.ObjectId,
             BuildMonsterReboundPacket(
-                WorldObjectIds.ForPlayer(source.CharacterId),
+                source.ObjectId,
                 character.PositionX,
                 character.PositionZ,
                 damageResult.ObjectId,

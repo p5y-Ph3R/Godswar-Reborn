@@ -61,14 +61,15 @@ internal static class PlayerMovementSpeedStatusChecks
             1.42f,
             ReadSingle(localPacket, 56),
             "wire offset 56 keeps the current total movement multiplier");
+        Check.True(
+            localPacket[60] == 0 &&
+            localPacket[61] == 0 &&
+            localPacket[63] == 0,
+            "wire offsets 60, 61, and 63 remain zero around the native camp byte");
         Check.Equal(
-            0f,
-            ReadSingle(localPacket, 60),
-            "wire offset 60 remains zero so the native NPC interaction identity is not corrupted");
-        Check.Equal(
-            (byte)0,
+            character.Camp,
             localPacket[62],
-            "wire offset 62 keeps the local NPC interaction gate open");
+            "wire offset 62 carries the validated local camp");
         Check.True(
             localPacket.AsSpan(64, sizeof(float)).SequenceEqual(
                 baselinePacket.AsSpan(64, sizeof(float))),
@@ -83,10 +84,12 @@ internal static class PlayerMovementSpeedStatusChecks
             character,
             remoteObjectId,
             aggregate);
-        Check.Equal(
-            0f,
-            ReadSingle(remotePacket, 60),
-            "remote status deliberately does not disclose the local Riding Speed extension");
+        Check.True(
+            remotePacket[60] == 0 &&
+            remotePacket[61] == 0 &&
+            remotePacket[62] == character.Camp &&
+            remotePacket[63] == 0,
+            "remote status carries only camp inside wire offsets 60 through 63");
         Check.True(
             remotePacket.AsSpan(64, sizeof(float)).SequenceEqual(
                 remoteBaseline.AsSpan(64, sizeof(float))),

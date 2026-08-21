@@ -122,7 +122,7 @@ internal sealed partial class GameClientHandler
                 character.CurrentMap,
                 attack.TargetObjectId,
                 BuildResolvedBasicAttackPacket(
-                    WorldObjectIds.ForPlayer(character.Id),
+                    CurrentPlayerObjectId,
                     attack.TargetObjectId,
                     attackSelector,
                     resolution),
@@ -202,7 +202,7 @@ internal sealed partial class GameClientHandler
                 $"[attack] caster notification failed character={character.Name} target={attack.TargetObjectId}: {ex.Message}");
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var viewers = await _registry.BroadcastToMonsterViewersAsync(
             character.CurrentMap,
             attack.TargetObjectId,

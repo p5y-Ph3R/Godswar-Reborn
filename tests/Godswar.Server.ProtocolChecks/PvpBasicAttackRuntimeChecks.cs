@@ -21,8 +21,10 @@ internal static partial class PvpBasicAttackRuntimeChecks
                 selectedTargetIsOtherPlayer: false),
             "hostile PvP skills remain capture-gated while PvP basic attacks are live");
         await CheckCommittedHitAsync();
+        await CheckFixedLifeAbsorptionAsync();
         await CheckStatReboundPacketAsync();
         await CheckMissAndAdmissionDenialAsync();
+        await CheckRuntimeStatusRatingsAsync();
         await CheckPostCommitCancellationDurabilityAsync();
     }
 
@@ -122,6 +124,8 @@ internal static partial class PvpBasicAttackRuntimeChecks
         Check.True(
             decision.Accepted &&
             decision.Eligibility.Allowed &&
+            decision.Resolution.FormulaVersion ==
+                AuthoredCombatV2.Version &&
             decision.Resolution.Hit &&
             decision.AppliedDamage > 0 &&
             target.CurrentHp < target.MaxHp &&
@@ -258,7 +262,7 @@ internal static partial class PvpBasicAttackRuntimeChecks
                 attacker.VitalsRevision,
                 target.VitalsRevision,
                 revision);
-            var resolution = PlayerCombatRules.ResolveBasicAttack(
+            var resolution = PlayerCombatRules.ResolvePvpBasicAttack(
                 CombatCharacterStatsAdapter.FromCharacter(attacker),
                 targetStats,
                 eventId);
@@ -272,8 +276,14 @@ internal static partial class PvpBasicAttackRuntimeChecks
             "No deterministic PvP combat sample matched the requested outcome.");
     }
 
-    private static GameSessionRegistry Registry() =>
-        new(gameplayCatalogs: GameplayContentTestFixtures.Runtime);
+    private static GameSessionRegistry Registry(
+        PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs) =>
+        new(
+            store: null,
+            zodiacEnergyOptions: null,
+            monsterRuntimeMode: MonsterRuntimeMode.Ecs,
+            playerRuntimeMode,
+            gameplayCatalogs: GameplayContentTestFixtures.Runtime);
 
     private static void Join(
         GameSessionRegistry registry,
@@ -292,7 +302,11 @@ internal static partial class PvpBasicAttackRuntimeChecks
         int physicalDefense = 100,
         int hit = 1_000,
         int dodge = 100,
-        int damageRebound = 0)
+        int critical = 0,
+        int criticalResistance = 0,
+        int damageRebound = 0,
+        int lifeAbsorption = 0,
+        int lifeAbsorptionFlat = 0)
     {
         var character = new GameCharacter
         {
@@ -325,7 +339,11 @@ internal static partial class PvpBasicAttackRuntimeChecks
             PhysicalDefense = physicalDefense,
             Hit = hit,
             Dodge = dodge,
+            Critical = critical,
+            CriticalResistance = criticalResistance,
             DamageRebound = damageRebound,
+            LifeAbsorption = lifeAbsorption,
+            LifeAbsorptionFlat = lifeAbsorptionFlat,
             BasicAttackIntervalMilliseconds = 1_500,
             BasicAttackRange = 1.7f
         };

@@ -60,7 +60,8 @@ internal static partial class PostgresAccountStoreIntegrationChecks
                 "PostgreSQL semantic gateway rejects an invalid credential");
 
             var routed = await session.FindCharacterRouteAsync(
-                accepted.AccountId);
+                accepted.AccountId,
+                RealmId.Tempest);
             Check.True(
                 routed is not null,
                 "PostgreSQL semantic gateway resolves an authenticated route");
@@ -81,7 +82,8 @@ internal static partial class PostgresAccountStoreIntegrationChecks
                 "PostgreSQL semantic gateway authenticates a no-route account");
             Check.True(
                 await session.FindCharacterRouteAsync(
-                    noRouteAccepted!.AccountId) is null,
+                    noRouteAccepted!.AccountId,
+                    RealmId.Tempest) is null,
                 "PostgreSQL semantic gateway returns no route when none exists");
         }
         finally
@@ -121,7 +123,8 @@ internal static partial class PostgresAccountStoreIntegrationChecks
             async () =>
             {
                 _ = await session.FindCharacterRouteAsync(
-                    routedAccount.Id);
+                    routedAccount.Id,
+                    RealmId.Tempest);
             },
             "disposed semantic gateway rejects route lookup");
     }

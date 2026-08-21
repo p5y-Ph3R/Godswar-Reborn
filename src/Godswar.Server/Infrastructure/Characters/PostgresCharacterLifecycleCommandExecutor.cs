@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -83,6 +84,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
             CancellationToken,
             Task<LifecycleTransition>> transition,
         CancellationToken cancellationToken)
+        where T : IRealmScopedCharacterLifecycleCommand
     {
         ArgumentNullException.ThrowIfNull(envelope);
         var started = Stopwatch.GetTimestamp();
@@ -141,6 +143,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
                 CancellationToken,
                 Task<LifecycleTransition>> transition,
             CancellationToken cancellationToken)
+        where T : IRealmScopedCharacterLifecycleCommand
     {
         await using var connection =
             await _dataSource.OpenConnectionAsync(cancellationToken);
@@ -150,6 +153,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             cancellationToken);
         if (account is null)
         {
@@ -161,6 +165,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             envelope.Family,
             operationId,
             cancellationToken);
@@ -198,6 +203,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
         StoredInbox stored,
         byte[] requestHash,
         CancellationToken cancellationToken)
+        where T : IRealmScopedCharacterLifecycleCommand
     {
         if (!CryptographicOperations.FixedTimeEquals(
                 stored.RequestHash,
@@ -216,7 +222,8 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor :
         var receipt = ValidateStoredReceipt(
             stored,
             envelope.Family,
-            envelope.Subject.AccountId);
+            envelope.Subject.AccountId,
+            envelope.Command.RealmId);
         await RecordDuplicateAsync(
             connection,
             transaction,

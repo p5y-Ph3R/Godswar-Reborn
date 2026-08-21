@@ -63,9 +63,9 @@ for ($i = 0; $i -lt $talentEffects.Count; $i++) {
 [void]$sql.AppendLine()
 [void]$sql.AppendLine("INSERT INTO talent_templates (id, class_id, tree_order, name, prefix_id, required_prefix_rank, required_total_rank, equip_request, effect_type, effect_id, effect_value, is_percent, icon_x, icon_y, icon_width, icon_height, stats)")
 [void]$sql.AppendLine("VALUES")
-for ($i = 0; $i -lt $talents.Count; $i++) {
-    $talent = $talents[$i]
-    $suffix = if ($i -eq $talents.Count - 1) { "" } else { "," }
+for ($i = 0; $i -lt $legacySqlTalents.Count; $i++) {
+    $talent = $legacySqlTalents[$i]
+    $suffix = if ($i -eq $legacySqlTalents.Count - 1) { "" } else { "," }
     [void]$sql.AppendLine(
         "    (" +
         "$($talent.Id), $($talent.ClassId), $($talent.TreeOrder), $(ConvertTo-SqlString $talent.Name), " +

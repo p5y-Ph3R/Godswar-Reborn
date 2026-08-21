@@ -94,6 +94,10 @@ internal sealed partial class GameClientHandler
             result?.Committed == true
                 ? CommandOutcome.Accepted
                 : CommandOutcome.PreconditionFailed);
+        Console.WriteLine(
+            "[zodiac] compatibility skill selection " +
+            $"grid={request.Value1} kind={request.Value2} " +
+            $"status={result?.Status.ToString() ?? "not_found"}");
         if (result?.Committed == true)
         {
             await _session.SendAsync(

@@ -54,6 +54,9 @@ internal static class CharacterStatsReader
             CriticalDamageFlatReduction = reader.GetInt32(44),
             DamageReboundFlat = reader.GetInt32(45),
             BasicAttackIntervalMilliseconds = reader.GetInt32(46),
-            BasicAttackRange = reader.GetFloat(47)
+            BasicAttackRange = reader.GetFloat(47),
+            StatusHit = reader.GetInt32(48),
+            StatusResistance = reader.GetInt32(49),
+            LifeAbsorptionFlat = reader.GetInt32(50)
         };
 }

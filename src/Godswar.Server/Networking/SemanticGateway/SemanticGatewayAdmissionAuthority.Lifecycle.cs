@@ -359,7 +359,8 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
                 out var found) &&
             found.Sequence == generation.Sequence &&
             found.Principal == generation.Principal &&
-            found.LoginSource == generation.LoginSource)
+            found.LoginSource == generation.LoginSource &&
+            found.RealmGrant == generation.RealmGrant)
         {
             current = found;
             return true;

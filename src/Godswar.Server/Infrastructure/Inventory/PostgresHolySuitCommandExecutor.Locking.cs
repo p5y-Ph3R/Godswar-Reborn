@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -18,7 +19,8 @@ internal sealed partial class PostgresHolySuitCommandExecutor
                 fighter_job_lv,
                 fighter_job_exp,
                 progression_reward_revision,
-                inventory_revision
+                inventory_revision,
+                server_id
             FROM public.character_base
             WHERE account_id = @accountId
               AND id = @characterId
@@ -39,11 +41,13 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             reader.GetInt32(0),
             reader.GetInt64(1),
             reader.GetInt64(2),
-            reader.GetInt64(3));
+            reader.GetInt64(3),
+            new RealmId(reader.GetInt32(4)));
         return value.Level > 0 &&
             value.Experience is >= 0 and <= uint.MaxValue &&
             value.ProgressionRevision >= 0 &&
-            value.InventoryRevision >= 0
+            value.InventoryRevision >= 0 &&
+            value.RealmId.IsValid
             ? value
             : throw new InvalidDataException(
                 "The locked Holy Suit character state is invalid.");
@@ -119,6 +123,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken)
     {
         var realmDayTimeZone = _itemContent.HolySuit.OperationPolicy?
@@ -148,7 +153,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             transaction))
         {
             create.Parameters.AddWithValue("accountId", accountId);
-            create.Parameters.AddWithValue("realmId", TempestRealmId);
+            create.Parameters.AddWithValue("realmId", realmId.Value);
             create.Parameters.AddWithValue(
                 "realmDayTimeZone",
                 realmDayTimeZone);
@@ -168,7 +173,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("realmId", TempestRealmId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue(
             "realmDayTimeZone",
             realmDayTimeZone);

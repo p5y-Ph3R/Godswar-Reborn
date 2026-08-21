@@ -137,6 +137,7 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
         var registry = new GameSessionRegistry(
             worldInstanceOptions: new WorldInstanceRuntimeOptions
             {
+                RealmId = 1,
                 MaximumRuntimes = 2,
                 MaximumPlayerAssignments = 4,
                 MaximumRetiredInstanceIds = 8,

@@ -6,7 +6,7 @@ namespace Godswar.Server.Game.WorldInstances;
 
 /// <summary>
 /// Process-local owner of live map runtimes. WorldInstanceId is authoritative;
-/// the byte map index is only the Tempest open-world compatibility projection.
+/// the realm/map pair is the open-world compatibility projection.
 /// </summary>
 internal sealed partial class LocalWorldInstanceRuntimeDirectory :
     IAsyncDisposable
@@ -20,8 +20,8 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
     private readonly object _indexGate = new();
     private readonly Dictionary<WorldInstanceId, WorldInstanceRuntime>
         _runtimes = [];
-    private readonly Dictionary<byte, WorldInstanceId>
-        _tempestOpenWorldByMapId = [];
+    private readonly Dictionary<(RealmId RealmId, byte MapId), WorldInstanceId>
+        _openWorldByRoute = [];
     private readonly IWorldInstanceRuntimeFactory _factory;
     private readonly TimeSpan _ownerInvocationTimeout;
     private readonly TimeSpan _ownerShutdownTimeout;
@@ -54,7 +54,8 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         _placement.MaximumPlayerAssignments;
 
     public async ValueTask<WorldInstanceRuntimeDirectoryResult>
-        GetOrCreateTempestOpenWorldAsync(
+        GetOrCreateOpenWorldAsync(
+            RealmId realmId,
             byte legacyMapId,
             int playerCapacity,
             DateTimeOffset createdAt,
@@ -64,7 +65,8 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         try
         {
             ThrowIfDisposed();
-            if (TryFindTempestOpenWorldCore(
+            if (TryFindOpenWorldCore(
+                    realmId,
                     legacyMapId,
                     out var existing))
             {
@@ -79,12 +81,12 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
             }
 
             return await CreateCoreAsync(
-                RealmId.Tempest,
+                realmId,
                 WorldMapId.FromLegacy(legacyMapId),
                 InstanceKind.OpenWorld,
                 playerCapacity,
                 createdAt,
-                registerTempestDefault: true,
+                registerOpenWorld: true,
                 instanceId: null,
                 cancellationToken);
         }
@@ -125,7 +127,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 kind,
                 playerCapacity,
                 createdAt,
-                registerTempestDefault: false,
+                registerOpenWorld: false,
                 instanceId: null,
                 cancellationToken);
         }
@@ -174,8 +176,8 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                             assigned);
                 }
 
-                if (realmId == RealmId.Tempest &&
-                    TryFindTempestOpenWorldCore(
+                if (TryFindOpenWorldCore(
+                        realmId,
                         legacyMapId,
                         out var existing))
                 {
@@ -192,8 +194,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 InstanceKind.OpenWorld,
                 playerCapacity,
                 createdAt,
-                registerTempestDefault:
-                    realmId == RealmId.Tempest,
+                registerOpenWorld: true,
                 instanceId,
                 cancellationToken);
         }
@@ -213,13 +214,15 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         }
     }
 
-    public bool TryFindTempestOpenWorld(
+    public bool TryFindOpenWorld(
+        RealmId realmId,
         byte legacyMapId,
         out WorldInstanceRuntime runtime)
     {
         lock (_indexGate)
         {
-            return TryFindTempestOpenWorldCore(
+            return TryFindOpenWorldCore(
+                realmId,
                 legacyMapId,
                 out runtime!);
         }
@@ -243,7 +246,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         {
             return new WorldInstanceRuntimeDirectorySnapshot(
                 _runtimes.Count,
-                _tempestOpenWorldByMapId.Count,
+                _openWorldByRoute.Count,
                 MaximumRuntimes);
         }
     }
@@ -302,7 +305,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
             {
                 runtimes = _runtimes.Values.ToArray();
                 _runtimes.Clear();
-                _tempestOpenWorldByMapId.Clear();
+                _openWorldByRoute.Clear();
             }
         }
         finally
@@ -323,7 +326,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
             InstanceKind kind,
         int playerCapacity,
         DateTimeOffset createdAt,
-        bool registerTempestDefault,
+        bool registerOpenWorld,
         WorldInstanceId? instanceId,
         CancellationToken cancellationToken)
     {
@@ -382,11 +385,11 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         lock (_indexGate)
         {
             _runtimes.Add(runtime.InstanceId, runtime);
-            if (registerTempestDefault)
+            if (registerOpenWorld)
             {
                 var legacyMapId = checked((byte)contentMapId.Value);
-                _tempestOpenWorldByMapId.Add(
-                    legacyMapId,
+                _openWorldByRoute.Add(
+                    (realmId, legacyMapId),
                     runtime.InstanceId);
             }
         }
@@ -415,12 +418,13 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         }
     }
 
-    private bool TryFindTempestOpenWorldCore(
+    private bool TryFindOpenWorldCore(
+        RealmId realmId,
         byte legacyMapId,
         out WorldInstanceRuntime runtime)
     {
-        if (_tempestOpenWorldByMapId.TryGetValue(
-                legacyMapId,
+        if (_openWorldByRoute.TryGetValue(
+                (realmId, legacyMapId),
                 out var instanceId) &&
             _runtimes.TryGetValue(instanceId, out runtime!))
         {

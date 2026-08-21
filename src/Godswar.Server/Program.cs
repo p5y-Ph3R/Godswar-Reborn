@@ -57,6 +57,8 @@ try
         await ServerPetOwnerMergeContentComposition.LoadAsync(options);
     var petLearnedSkillContent = await ServerRuntimeContentComposition
         .LoadLearnedSkillsAsync(options);
+    var holyBalance = await ServerRuntimeContentComposition
+        .LoadHolySpiritBalanceAsync(options);
     var worldContent =
         await ServerWorldContentComposition.TryLoadAsync(
             options);
@@ -76,11 +78,14 @@ try
         itemContent,
         gameplayContentRevision,
         petContent,
-        petLearnedSkillContent: petLearnedSkillContent);
+        petLearnedSkillContent: petLearnedSkillContent,
+        holySpiritBalance: holyBalance,
+        realmId: options.Game.WorldInstances.ProcessRealmId);
     await using var postgresApplicationDataRuntime =
         ServerRuntimeContentComposition.CreateApplicationData(
             options, worldContent, itemContent, petContent,
-            petOwnerMergeContent, petLearnedSkillContent);
+            petOwnerMergeContent, petLearnedSkillContent,
+            holyBalance);
     var accountPersistence = ServerAccountPersistenceComposition.Create(
         postgresApplicationDataRuntime);
     var gameplayPersistence =
@@ -100,6 +105,7 @@ try
             petContent,
             petOwnerMergeContent,
             petLearnedSkillContent,
+            holyBalance,
             shutdown.Token);
 
     await using var characterCheckpoints =
@@ -112,19 +118,16 @@ try
         options.Game.Monsters.Runtime,
         options.Game.Players.Runtime,
         characterCheckpoints,
-        postgresApplicationDataRuntime
-            .ProgressionIntervalSettlementCommands,
-        zodiacLevelStore:
-            gameplayPersistence.ZodiacLevels,
-        experienceBoosts:
-            gameplayPersistence.ExperienceBoosts,
+        postgresApplicationDataRuntime.ProgressionIntervalSettlementCommands,
+        zodiacLevelStore: gameplayPersistence.ZodiacLevels,
+        experienceBoosts: gameplayPersistence.ExperienceBoosts,
         requiresDurablePlayerPersistence: true,
-        worldInstanceOptions:
-            options.Game.WorldInstances,
-        gameplayCatalogs:
-            gameplayCatalogs,
-        itemContent:
-            itemContent);
+        worldInstanceOptions: options.Game.WorldInstances,
+        gameplayCatalogs: gameplayCatalogs,
+        itemContent: itemContent,
+        trainingDummies: TrainingDummyPolicy.Create(
+            options.Game.TrainingDummies,
+            runtimeProfile));
     var gameHandlerFactory = new GameClientHandlerFactory(
         store,
         accountPersistence.Directory,
@@ -140,7 +143,8 @@ try
         coordination.Worker,
         gameplayCatalogs,
         itemContent,
-        petContent);
+        petContent,
+        processRealmId: options.Game.WorldInstances.ProcessRealmId);
     var admission = new ConnectionAdmission(new ConnectionAdmissionOptions(
         options.Network.MaxActiveConnections,
         options.Network.MaxUnauthenticatedConnections,
@@ -164,7 +168,9 @@ try
                 accountPersistence.LegacyLogin,
                 options,
                 legacyAuthenticationAccess:
-                    legacyAuthenticationAccess),
+                    legacyAuthenticationAccess,
+                realmCatalog:
+                    postgresApplicationDataRuntime.RealmCatalog),
             session => gameHandlerFactory.Create(
                 session,
                 legacyAuthenticationAccess:
@@ -311,7 +317,9 @@ try
                 options,
                 secureAuthentication,
                 secureGameTickets,
-                secureGameTarget),
+                secureGameTarget,
+                realmCatalog:
+                    postgresApplicationDataRuntime.RealmCatalog),
             transportFactory: secureTransportFactory);
     var secureGameServer = secureTransportFactory is null
         ? null

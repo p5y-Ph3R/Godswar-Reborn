@@ -106,7 +106,7 @@ internal sealed partial class GameClientHandler
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
 
         var monster = stunResult.Monster;
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var statusSeconds = checked((uint)Math.Max(1d, Math.Ceiling(definition.Duration.TotalSeconds)));
         var statusPacket = PacketBuilder.WorldObjectStatusEffects(
             cast.TargetObjectId,
@@ -278,7 +278,7 @@ internal sealed partial class GameClientHandler
 
         var targetX = float.IsFinite(cast.TargetX) ? cast.TargetX : character.PositionX;
         var targetZ = float.IsFinite(cast.TargetZ) ? cast.TargetZ : character.PositionZ;
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
 
         await _session.SendAsync(
             PacketBuilder.SelfTargetSkillCastVisual(packet.Buffer, LocalPlayerObjectId),

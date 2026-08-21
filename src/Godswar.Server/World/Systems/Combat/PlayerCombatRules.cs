@@ -38,7 +38,7 @@ internal static class PlayerCombatRules
         in PlayerCombatOffenseComponent offense)
     {
         var attacker = CombatCharacterStatsAdapter.FromOffense(offense);
-        return AuthoredCombatV1.ResolveBasicAttackForOutcome(
+        return AuthoredCombatPveCurrent.ResolveBasicAttackForOutcome(
             attacker,
             target: default,
             CombatHitOutcome.Normal).Damage;
@@ -49,7 +49,7 @@ internal static class PlayerCombatRules
         in PlayerCombatSkillSnapshot skill)
     {
         var attacker = CombatCharacterStatsAdapter.FromOffense(offense);
-        return AuthoredCombatV1.ResolveSkillDamageForOutcome(
+        return AuthoredCombatPveCurrent.ResolveSkillDamageForOutcome(
             attacker,
             target: default,
             skill.Property,
@@ -63,9 +63,33 @@ internal static class PlayerCombatRules
         in CombatTargetStats target,
         ulong eventId,
         int targetOrder = 0) =>
-        AuthoredCombatV1.ResolveBasicAttack(
+        AuthoredCombatPveCurrent.ResolveBasicAttack(
             attacker,
             target,
+            eventId,
+            targetOrder);
+
+    public static CombatResolution ResolvePvpBasicAttack(
+        in CombatAttackerStats attacker,
+        in CombatTargetStats target,
+        ulong eventId) =>
+        AuthoredCombatPvpCurrent.ResolveBasicAttack(
+            attacker,
+            target,
+            eventId);
+
+    public static CombatResolution ResolvePvpSkillDamage(
+        in CombatAttackerStats attacker,
+        in CombatTargetStats target,
+        in PlayerCombatSkillSnapshot skill,
+        ulong eventId,
+        int targetOrder = 0) =>
+        AuthoredCombatPvpCurrent.ResolveSkillDamage(
+            attacker,
+            target,
+            skill.Property,
+            skill.Power1,
+            skill.Power2,
             eventId,
             targetOrder);
 
@@ -75,7 +99,7 @@ internal static class PlayerCombatRules
         in PlayerCombatSkillSnapshot skill,
         ulong eventId,
         int targetOrder = 0) =>
-        AuthoredCombatV1.ResolveSkillDamage(
+        AuthoredCombatPveCurrent.ResolveSkillDamage(
             attacker,
             target,
             skill.Property,

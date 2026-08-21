@@ -11,6 +11,106 @@ internal static partial class PostgresRelationalContentBaselineBootstrapper
     {
         await using var command = new NpgsqlCommand(
             """
+            DO $champion_talent_authority$
+            DECLARE
+                authority_count integer;
+                tooltip_count integer;
+                corrected_count integer;
+            BEGIN
+                WITH correction(id, effect_value, tooltip_value) AS (
+                    VALUES
+                        (50, 3::numeric, 7.8::numeric),
+                        (51, 10::numeric, 26::numeric),
+                        (52, 9::numeric, 23.4::numeric),
+                        (53, 50::numeric, 130::numeric),
+                        (54, 2::numeric, 5.2::numeric),
+                        (55, 0.005::numeric, 0.013::numeric),
+                        (56, 5::numeric, 13::numeric),
+                        (57, 16::numeric, 41.6::numeric),
+                        (58, 4::numeric, 10.4::numeric),
+                        (59, 7::numeric, 18.2::numeric),
+                        (60, 3::numeric, 7.8::numeric),
+                        (61, 0.01::numeric, 0.026::numeric),
+                        (62, 20::numeric, 52::numeric),
+                        (63, 1.6::numeric, 4.16::numeric),
+                        (64, 4::numeric, 10.4::numeric),
+                        (65, 1.2::numeric, 3.12::numeric),
+                        (66, 7::numeric, 18.2::numeric),
+                        (67, 90::numeric, 234::numeric),
+                        (68, 90::numeric, 234::numeric)
+                )
+                SELECT
+                    count(*) FILTER (
+                        WHERE talent.effect_value = correction.effect_value
+                          AND talent.stats ->> talent.effect_type =
+                              talent.effect_id::text || ',' ||
+                              correction.effect_value::text),
+                    count(*) FILTER (
+                        WHERE talent.effect_value = correction.tooltip_value
+                          AND talent.stats ->> talent.effect_type =
+                              talent.effect_id::text || ',' ||
+                              correction.tooltip_value::text)
+                INTO authority_count, tooltip_count
+                FROM correction
+                LEFT JOIN talent_templates talent
+                  ON talent.id = correction.id
+                 AND talent.class_id = 1;
+
+                IF authority_count = 19 AND tooltip_count = 0 THEN
+                    NULL;
+                ELSIF authority_count = 0 AND tooltip_count = 19 THEN
+                    WITH correction(id, effect_value, tooltip_value) AS (
+                        VALUES
+                            (50, 3::numeric, 7.8::numeric),
+                            (51, 10::numeric, 26::numeric),
+                            (52, 9::numeric, 23.4::numeric),
+                            (53, 50::numeric, 130::numeric),
+                            (54, 2::numeric, 5.2::numeric),
+                            (55, 0.005::numeric, 0.013::numeric),
+                            (56, 5::numeric, 13::numeric),
+                            (57, 16::numeric, 41.6::numeric),
+                            (58, 4::numeric, 10.4::numeric),
+                            (59, 7::numeric, 18.2::numeric),
+                            (60, 3::numeric, 7.8::numeric),
+                            (61, 0.01::numeric, 0.026::numeric),
+                            (62, 20::numeric, 52::numeric),
+                            (63, 1.6::numeric, 4.16::numeric),
+                            (64, 4::numeric, 10.4::numeric),
+                            (65, 1.2::numeric, 3.12::numeric),
+                            (66, 7::numeric, 18.2::numeric),
+                            (67, 90::numeric, 234::numeric),
+                            (68, 90::numeric, 234::numeric)
+                    )
+                    UPDATE talent_templates talent
+                    SET effect_value = correction.effect_value,
+                        stats = jsonb_set(
+                            talent.stats,
+                            ARRAY[talent.effect_type],
+                            to_jsonb((talent.effect_id::text || ',' ||
+                                correction.effect_value::text)::text),
+                            false)
+                    FROM correction
+                    WHERE talent.id = correction.id
+                      AND talent.class_id = 1
+                      AND talent.effect_value = correction.tooltip_value
+                      AND talent.stats ->> talent.effect_type =
+                          talent.effect_id::text || ',' ||
+                          correction.tooltip_value::text;
+                    GET DIAGNOSTICS corrected_count = ROW_COUNT;
+                    IF corrected_count <> 19 THEN
+                        RAISE EXCEPTION
+                            'Champion talent authority corrected % rows; expected 19.',
+                            corrected_count;
+                    END IF;
+                ELSE
+                    RAISE EXCEPTION
+                        'Champion talent authority expected 19 uniformly authoritative or tooltip rows; found % authoritative and % tooltip rows.',
+                        authority_count,
+                        tooltip_count;
+                END IF;
+            END;
+            $champion_talent_authority$;
+
             UPDATE map_links
             SET confidence = 'captured-span-map',
                 activation = 'automatic',

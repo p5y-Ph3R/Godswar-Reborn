@@ -234,6 +234,8 @@ internal sealed record PlayerLeaseInstallRequest
 
     public required CoordinatedPresenceState Presence { get; init; }
 
+    public bool AllowAccountReplacement { get; init; } = true;
+
     public void Validate()
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(AccountId);

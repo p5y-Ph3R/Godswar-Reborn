@@ -95,7 +95,7 @@ internal sealed partial class GameClientHandler
         var sourceZ = character.PositionZ;
         var characterId = character.Id;
         var characterName = character.Name;
-        var worldObjectId = WorldObjectIds.ForPlayer(characterId);
+        var worldObjectId = CurrentPlayerObjectId;
         var expectedLifeRevision =
             _registry.GetPlayerLifeRevision(_session);
 

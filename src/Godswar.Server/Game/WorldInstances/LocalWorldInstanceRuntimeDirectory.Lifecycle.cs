@@ -196,15 +196,15 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory
             {
                 _runtimes.Remove(instanceId);
                 if (runtime.Kind == InstanceKind.OpenWorld &&
-                    runtime.RealmId == RealmId.Tempest &&
                     runtime.ContentMapId.TryGetLegacyValue(
                         out var legacyMapId) &&
-                    _tempestOpenWorldByMapId.TryGetValue(
-                        legacyMapId,
+                    _openWorldByRoute.TryGetValue(
+                        (runtime.RealmId, legacyMapId),
                         out var projectedId) &&
                     projectedId == instanceId)
                 {
-                    _tempestOpenWorldByMapId.Remove(legacyMapId);
+                    _openWorldByRoute.Remove(
+                        (runtime.RealmId, legacyMapId));
                 }
             }
 

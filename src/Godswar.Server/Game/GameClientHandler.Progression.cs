@@ -205,7 +205,7 @@ internal sealed partial class GameClientHandler
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
                 PacketBuilder.PlayerLevelUp(
-                    WorldObjectIds.ForPlayer(_character.Id),
+                    CurrentPlayerObjectId,
                     levelUp.Level,
                     clientExperienceMaximum,
                     levelUp.CurrentExperience,
@@ -428,7 +428,7 @@ internal sealed partial class GameClientHandler
             monsterObjectId,
             PacketBuilder.MonsterDeathReward(
                 monsterObjectId,
-                WorldObjectIds.ForPlayer(_character.Id),
+                CurrentPlayerObjectId,
                 currentExperience,
                 currentTalentExperience,
                 currentTalentPoints),
@@ -469,7 +469,7 @@ internal sealed partial class GameClientHandler
         }
 
         var outboundPacket = packet.Opcode == Opcodes.Walk
-            ? PacketBuilder.PlayerWorldMovement(packet.Buffer.AsSpan(), WorldObjectIds.ForPlayer(_character.Id))
+            ? PacketBuilder.PlayerWorldMovement(packet.Buffer.AsSpan(), CurrentPlayerObjectId)
             : packet.Buffer;
         var recipients =
             await _registry.BroadcastToCurrentWorldInstanceAsync(
@@ -481,7 +481,7 @@ internal sealed partial class GameClientHandler
 
         if (packet.Opcode == Opcodes.Walk && recipients > 0)
         {
-            Console.WriteLine($"[world] broadcast walk map={_character.CurrentMap} character={_character.Name} object={WorldObjectIds.ForPlayer(_character.Id)} recipients={recipients}");
+            Console.WriteLine($"[world] broadcast walk map={_character.CurrentMap} character={_character.Name} object={CurrentPlayerObjectId} recipients={recipients}");
         }
 
         if (packet.Opcode == Opcodes.Talk)

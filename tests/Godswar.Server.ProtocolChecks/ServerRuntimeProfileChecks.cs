@@ -210,6 +210,11 @@ internal static partial class ServerRuntimeProfileChecks
                 "provider": "Postgres",
                 "postgresConnectionString":
                   "Host=127.0.0.1;Database=profile-check"
+              },
+              "game": {
+                "worldInstances": {
+                  "realmId": 1
+                }
               }
             }
             """);

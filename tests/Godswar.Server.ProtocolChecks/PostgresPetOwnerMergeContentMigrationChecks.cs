@@ -23,6 +23,7 @@ internal static class PostgresPetOwnerMergeContentMigrationChecks
         CheckSchema(sql);
         CheckPublicationGuards(sql);
         CheckProjectionProvenance(sql);
+        CheckRebornInternalChannels();
         return Task.CompletedTask;
     }
 
@@ -111,5 +112,26 @@ internal static class PostgresPetOwnerMergeContentMigrationChecks
                 "ix_character_pet_bonuses_balance_revision",
                 StringComparison.Ordinal),
             "persisted owner-Merge projections expose stale balance revisions");
+    }
+
+    private static void CheckRebornInternalChannels()
+    {
+        var migration = PostgresSchemaMigrationCatalog
+            .CreatePetOwnerMergeRebalance();
+        Check.True(
+            migration.Id ==
+                "20260821_097_pet_owner_merge_rebalance" &&
+            migration.Sql.Contains(
+                "reborn_technique_physical_reduction",
+                StringComparison.Ordinal) &&
+            migration.Sql.Contains(
+                "reborn_technique_magic_reduction",
+                StringComparison.Ordinal) &&
+            migration.Sql.Contains("1001, 1002", StringComparison.Ordinal) &&
+            !migration.Sql.Contains(
+                "pet_owner_merge_effect_bases",
+                StringComparison.Ordinal),
+            "Reborn Technique channels extend derived storage without " +
+            "changing the sixteen native content effects");
     }
 }

@@ -61,8 +61,24 @@ internal static partial class
             fixture.CharacterId,
             petId);
         Check.True(
-            activeMerge.Contributes && activeMerge.BonusCount == 16,
-            "fresh Merge restores all 16 contribution rows");
+            activeMerge.Contributes && activeMerge.BonusCount == 18,
+            "fresh Merge restores all contribution rows");
+
+        var ownership = PlayerOwnershipTestFences.ForCharacter(
+            fixture.CharacterId);
+        var blockedRecharge = await executor.RestoreEnergyAsync(
+            subject,
+            ownership,
+            energyPoints: 1);
+        var afterBlockedRecharge = await ReadOwnerMergeStateAsync(
+            dataSource,
+            fixture.CharacterId,
+            petId);
+        Check.True(
+            blockedRecharge.Status ==
+                PetOwnerMergeLifecycleStatus.NoRechargeTarget &&
+            afterBlockedRecharge == activeMerge,
+            "active owner Merge blocks recovery without mutating energy or bonuses");
 
         await SeedOwnerMergePhoenixFeatherAsync(
             dataSource,
@@ -162,11 +178,9 @@ internal static partial class
         Check.True(
             afterBlockedPresence.Contributes &&
             afterBlockedPresence.PetRevision == activeMerge.PetRevision &&
-            afterBlockedPresence.BonusCount == 16,
+            afterBlockedPresence.BonusCount == 18,
             "blocked pet presence actions preserve every Merge contribution");
 
-        var ownership = PlayerOwnershipTestFences.ForCharacter(
-            fixture.CharacterId);
         var drained = await executor.DrainEnergyAsync(
             subject,
             ownership,
@@ -182,7 +196,7 @@ internal static partial class
             afterDrain.Contributes &&
             afterDrain.CurrentEnergy == drained.CurrentEnergy &&
             afterDrain.PetRevision == activeMerge.PetRevision + 1 &&
-            afterDrain.BonusCount == 16,
+            afterDrain.BonusCount == 18,
             "one deterministic online settlement spends one energy and preserves all contribution rows");
 
         var expired = await restarted.DrainEnergyAsync(
@@ -205,7 +219,7 @@ internal static partial class
             afterExpiry.AuditCount ==
                 activeMerge.AuditCount + 1 &&
             afterExpiry.CommittedAuditCount == 4,
-            "energy expiry atomically removes the flag and all 16 contribution rows without changing inventory");
+            "energy expiry atomically removes the flag and all contribution rows without changing inventory");
         var unmergedStats = await ReadProjectedMergeStatsAsync(
             connectionString,
             fixture,
@@ -214,6 +228,58 @@ internal static partial class
             beforeStats,
             unmergedStats,
             "energy expiry restores every normal calculated character stat");
+
+        var recovered = await executor.RestoreEnergyAsync(
+            subject,
+            ownership,
+            energyPoints: 1);
+        var afterRecovery = await ReadOwnerMergeStateAsync(
+            dataSource,
+            fixture.CharacterId,
+            petId);
+        Check.True(
+            recovered.Status ==
+                PetOwnerMergeLifecycleStatus.EnergyChanged &&
+            recovered.CurrentEnergy == 1 &&
+            !afterRecovery.Contributes &&
+            afterRecovery.CurrentEnergy == 1 &&
+            afterRecovery.PetRevision == afterExpiry.PetRevision + 1 &&
+            afterRecovery.BonusCount == 0,
+            "one online recovery settlement restores one unmerged carried-pet energy point");
+
+        var fullyRecovered = await restarted.RestoreEnergyAsync(
+            subject,
+            ownership,
+            energyPoints: int.MaxValue);
+        var afterFullRecovery = await ReadOwnerMergeStateAsync(
+            dataSource,
+            fixture.CharacterId,
+            petId);
+        Check.True(
+            fullyRecovered.Status ==
+                PetOwnerMergeLifecycleStatus.EnergyChanged &&
+            fullyRecovered.CurrentEnergy ==
+                fullyRecovered.MaximumEnergy &&
+            afterFullRecovery.CurrentEnergy ==
+                fullyRecovered.MaximumEnergy &&
+            afterFullRecovery.PetRevision ==
+                afterRecovery.PetRevision + 1 &&
+            afterFullRecovery.BonusCount == 0,
+            "recovery caps at maximum energy without recreating Merge bonuses");
+
+        var maximumHeartbeat = await executor.RestoreEnergyAsync(
+            subject,
+            ownership,
+            energyPoints: 1);
+        var afterMaximumHeartbeat = await ReadOwnerMergeStateAsync(
+            dataSource,
+            fixture.CharacterId,
+            petId);
+        Check.True(
+            maximumHeartbeat.Status ==
+                PetOwnerMergeLifecycleStatus.EnergyAtMaximum &&
+            afterMaximumHeartbeat == afterFullRecovery,
+            "full-energy heartbeat preserves the durable pet revision");
 
         await AssertExplicitOwnerMergeEndAsync(
             dataSource,

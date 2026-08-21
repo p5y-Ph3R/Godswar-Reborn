@@ -48,6 +48,7 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             keys.Worker(nodeId),
             keys.RealmContent(route.RealmId),
             keys.Route(route.WorldInstanceId),
+            keys.PlayerAccount(700_001),
             keys.Player(700_017),
             keys.Player(700_018)
         };
@@ -74,6 +75,13 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             var workerLease = registration.Lease!.Value;
 
             await CheckExactRouteAsync(first, route, nodeId, bootId);
+            await CheckCrossRealmAccountReplacementAsync(
+                executor,
+                keys,
+                route,
+                nodeId,
+                bootId,
+                cleanup);
             await CheckRealmContentAdmissionAsync(
                 second,
                 keys,

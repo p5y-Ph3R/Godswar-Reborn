@@ -111,6 +111,9 @@ internal static class MonsterRuntimeCutoverChecks
                 "allowLegacyRawAuthentication": true
               },
               "game": {
+                "worldInstances": {
+                  "realmId": 1
+                },
                 "monsters": {
                   "runtime": "{{runtime}}"
                 }

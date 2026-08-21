@@ -64,6 +64,8 @@ internal static partial class CombatSecondaryProjectionChecks
 
         var spirits = PostgresCharacterHolySpiritCombatProjectionSql
             .CommonTableExpressions;
+        var compactSpirits = string.Concat(
+            spirits.Where(static character => !char.IsWhiteSpace(character)));
         Check.True(
             spirits.Contains(
                 "socket.socket_index < equipment.holy_socket_count",
@@ -85,6 +87,38 @@ internal static partial class CombatSecondaryProjectionChecks
                 StringComparison.Ordinal),
             "Holy Spirits require an opened ordinal, reviewed effect/value, " +
             "and affinity-compatible equipped slot");
+        Check.True(
+            compactSpirits.Contains(
+                "(9,22,@cooledPhysicalReductionGradeOneMaximum,80)",
+                StringComparison.Ordinal) &&
+            compactSpirits.Contains(
+                "(10,22,@cooledMagicReductionGradeOneMaximum,80)",
+                StringComparison.Ordinal) &&
+            compactSpirits.Contains(
+                "(13,28,@cooledCriticalReductionGradeOneMaximum,70)",
+                StringComparison.Ordinal) &&
+            spirits.Contains(
+                "effect.grade_one_accepted_maximum *",
+                StringComparison.Ordinal) &&
+            spirits.Contains(
+                "WHEN socket.effect_id IN (9, 10, 13) THEN LEAST(",
+                StringComparison.Ordinal) &&
+            spirits.Contains(
+                "socket.grade_one_maximum * socket.safe_level",
+                StringComparison.Ordinal),
+            "Cooled percentage reductions enforce startup-pinned live caps " +
+            "inside immutable historical acceptance envelopes");
+        Check.True(
+            spirits.Contains(
+                "WHEN 11 THEN 'physical_flat_absorption'",
+                StringComparison.Ordinal) &&
+            spirits.Contains(
+                "WHEN 12 THEN 'magic_flat_absorption'",
+                StringComparison.Ordinal) &&
+            spirits.Contains(
+                "WHEN 14 THEN 'critical_damage_flat_reduction'",
+                StringComparison.Ordinal),
+            "Cooled flat absorption remains separate from percentage caps");
 
         var weapon = PostgresCharacterWeaponCombatProjectionSql
             .LateralJoinForCharacterAlias;

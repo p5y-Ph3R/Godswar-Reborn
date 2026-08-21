@@ -95,7 +95,7 @@ internal sealed partial class GameClientHandler
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
         var targetX = float.IsFinite(cast.TargetX) ? cast.TargetX : character.PositionX;
         var targetZ = float.IsFinite(cast.TargetZ) ? cast.TargetZ : character.PositionZ;
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var lifeRevision = _registry.GetPlayerLifeRevision(_session);
 
         var visualRecipients = 0;

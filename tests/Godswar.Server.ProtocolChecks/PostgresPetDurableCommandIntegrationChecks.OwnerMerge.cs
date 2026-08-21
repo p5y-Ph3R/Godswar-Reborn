@@ -46,8 +46,8 @@ internal static partial class
         var expected = PetOwnerMergeContributionCalculator.Calculate(
             await ReadOwnerMergeTotalSavvyAsync(dataSource, petId),
             ownerMergeContent);
-        var expectedEffects = PetOwnerMergeContributionCalculator
-            .ToEffectValues(expected);
+        var expectedEffects = PetOwnerMergeStoredBonusCodec
+            .ToStoredValues(expected);
         var before = await ReadOwnerMergeStateAsync(
             dataSource,
             fixture.CharacterId,
@@ -90,12 +90,12 @@ internal static partial class
         Check.True(
             merged.Contributes &&
             merged.PetRevision == before.PetRevision + 1 &&
-            merged.BonusCount == 16 &&
+            merged.BonusCount == 18 &&
             merged.InventoryRevision == before.InventoryRevision &&
             merged.AuditCount == 1 &&
             merged.CommittedAuditCount == 1 &&
             merged.EmptyConsumedAuditCount == 1,
-            "owner Merge atomically sets the flag and writes 16 rows without changing inventory");
+            "owner Merge atomically sets the flag and writes all stored rows without changing inventory");
 
         var mergedStats = await ReadProjectedMergeStatsAsync(
             connectionString,
@@ -103,7 +103,7 @@ internal static partial class
             itemContent);
         Check.True(
             mergedStats.IsStrictlyGreaterThan(beforeStats),
-            "all 16 owner Merge channels reach the calculated character projection");
+            "all owner Merge channels reach the calculated character projection");
 
         var replayed = await restarted.ExecuteAsync(mergeEnvelope);
         var afterReplay = await ReadOwnerMergeStateAsync(
@@ -360,7 +360,8 @@ internal static partial class
             ORDER BY effect_code;
             """);
         command.Parameters.AddWithValue("petId", petId);
-        var values = new List<OwnerMergeEffectState>(16);
+        var values = new List<OwnerMergeEffectState>(
+            PetOwnerMergeStoredBonusCodec.TotalCount);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -374,16 +375,15 @@ internal static partial class
 
     private static void AssertOwnerMergeEffects(
         IReadOnlyList<OwnerMergeEffectState> actual,
-        IReadOnlyList<PetOwnerMergeEffectValue> expected,
+        IReadOnlyList<PetOwnerMergeStoredBonusValue> expected,
         long expectedRevision)
     {
-        Check.Equal(16, actual.Count,
-            "owner Merge persists exactly 16 effect rows");
+        Check.Equal(PetOwnerMergeStoredBonusCodec.TotalCount, actual.Count,
+            "owner Merge persists every native and internal bonus row");
         for (var index = 0; index < expected.Count; index++)
         {
             Check.True(
-                actual[index].EffectCode ==
-                    (short)expected[index].Effect &&
+                actual[index].EffectCode == expected[index].Code &&
                 actual[index].EffectValue == expected[index].Value &&
                 actual[index].Revision == expectedRevision,
                 $"owner Merge effect row {index} is exact and revisioned");

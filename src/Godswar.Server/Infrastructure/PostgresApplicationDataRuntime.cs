@@ -5,6 +5,7 @@ using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Reconciliation;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Application.World;
@@ -17,9 +18,11 @@ using Godswar.Server.Infrastructure.Pets;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.Rewards;
 using Godswar.Server.Infrastructure.Reconciliation;
+using Godswar.Server.Infrastructure.Realms;
 using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Infrastructure.World;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -44,9 +47,11 @@ internal sealed class PostgresApplicationDataRuntime :
         ZodiacEnergyPolicy zodiacEnergyPolicy,
         GameplayItemContent itemContent,
         string gameplayContentRevision,
+        RealmId realmId,
         IPetContentCatalog petContent,
         IPetOwnerMergeContentCatalog ownerMergeContent,
         IPetLearnedSkillContentCatalog learnedSkillContent,
+        HolySpiritBalanceSnapshot holySpiritBalance,
         ReconciliationOptions? reconciliationOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
@@ -55,6 +60,8 @@ internal sealed class PostgresApplicationDataRuntime :
         ArgumentNullException.ThrowIfNull(petContent);
         ArgumentNullException.ThrowIfNull(ownerMergeContent);
         ArgumentNullException.ThrowIfNull(learnedSkillContent);
+        ArgumentNullException.ThrowIfNull(holySpiritBalance);
+        holySpiritBalance.Validate();
         gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateRequired(
                 gameplayContentRevision);
@@ -62,12 +69,14 @@ internal sealed class PostgresApplicationDataRuntime :
 
         _dataSource = NpgsqlDataSource.Create(connectionString);
         Accounts = new PostgresAccountStore(_dataSource);
+        RealmCatalog = new PostgresRealmCatalogReader(_dataSource);
         var characterReader =
             new PostgresCharacterSnapshotReader(
                 _dataSource,
                 itemContent.Templates,
                 gameplayContentRevision,
-                learnedSkillContent.Revision.Sha256);
+                learnedSkillContent.Revision.Sha256,
+                holySpiritBalance);
         CharacterSnapshots = characterReader;
         CharacterRuntimeProjections = characterReader;
         OwnedPetSnapshots = characterReader;
@@ -79,6 +88,7 @@ internal sealed class PostgresApplicationDataRuntime :
         var worldBossState =
             new PostgresWorldBossAreaControlStore(
                 _dataSource,
+                realmId,
                 gameplayContentRevision);
         WorldBossAreaControl = worldBossState;
         WorldBossRespawns = worldBossState;
@@ -147,7 +157,8 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresHolyStoneCommandExecutor(
                 _dataSource,
                 outboxOptions,
-                itemContent);
+                itemContent,
+                holySpiritBalance: holySpiritBalance);
         HolySuitCommands =
             new PostgresHolySuitCommandExecutor(
                 _dataSource,
@@ -213,6 +224,8 @@ internal sealed class PostgresApplicationDataRuntime :
     }
 
     public PostgresAccountStore Accounts { get; }
+
+    public IRealmCatalogReader RealmCatalog { get; }
 
     public ICharacterSnapshotReader CharacterSnapshots { get; }
 

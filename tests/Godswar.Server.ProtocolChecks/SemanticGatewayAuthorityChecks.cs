@@ -22,7 +22,10 @@ internal static partial class SemanticGatewayChecks
             time);
         var principal = new SemanticGatewayPrincipal(7, "TEST");
         var loginSource = Source();
-        var login = authority.BeginLogin(principal, loginSource);
+        var login = authority.BeginLogin(
+            principal,
+            loginSource,
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             login.IsStarted,
             "authenticated login starts one gateway generation");
@@ -41,6 +44,14 @@ internal static partial class SemanticGatewayChecks
                 SemanticGatewayAdmissionStatus.GenerationNotActivated,
             "pending login cannot reserve worker capacity");
         Check.True(
+            !authority.ActivateLogin(
+                login.Generation! with
+                {
+                    RealmGrant =
+                        SemanticGatewayTestRealm.DwargonGrant
+                }),
+            "tampering with the selected realm grant cannot activate login");
+        Check.True(
             authority.ActivateLogin(login.Generation),
             "redirect boundary activates the pending login");
         var lookup = authority.TryFindLogin(
@@ -50,7 +61,9 @@ internal static partial class SemanticGatewayChecks
             lookup.IsFound &&
             lookup.Generation!.GenerationId ==
                 login.Generation!.GenerationId &&
-            lookup.Generation.Principal == principal,
+            lookup.Generation.Principal == principal &&
+            lookup.Generation.RealmGrant ==
+                SemanticGatewayTestRealm.TempestGrant,
             "username plus normalized address finds exact generation");
         Check.True(
             authority.TryFindLogin(
@@ -135,7 +148,8 @@ internal static partial class SemanticGatewayChecks
 
         var replacement = authority.BeginLogin(
             principal,
-            Source());
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             replacement.IsStarted &&
             replacement.InvalidatedAdmissions == 1,
@@ -161,13 +175,15 @@ internal static partial class SemanticGatewayChecks
         Check.True(
             authority.BeginLogin(
                 new SemanticGatewayPrincipal(8, "TEST"),
-                Source()).Status ==
+                Source(),
+                SemanticGatewayTestRealm.TempestGrant).Status ==
                 SemanticGatewayLoginStatus.IdentityConflict,
             "canonical username cannot bind to another account");
         Check.True(
             authority.BeginLogin(
                 new SemanticGatewayPrincipal(7, "RENAMED"),
-                Source()).Status ==
+                Source(),
+                SemanticGatewayTestRealm.TempestGrant).Status ==
                 SemanticGatewayLoginStatus.IdentityConflict,
             "active account cannot bind another canonical username");
 
@@ -192,7 +208,8 @@ internal static partial class SemanticGatewayChecks
             "rollback does not make a single-use generation reusable");
         var releaseGeneration = authority.BeginLogin(
             principal,
-            Source());
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             releaseGeneration.IsStarted,
             "full login creates a generation for the next session");
@@ -233,7 +250,10 @@ internal static partial class SemanticGatewayChecks
             time);
         var firstPrincipal =
             new SemanticGatewayPrincipal(1, "FIRST");
-        var first = authority.BeginLogin(firstPrincipal, Source());
+        var first = authority.BeginLogin(
+            firstPrincipal,
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             authority.ActivateLogin(first.Generation!),
             "expiry fixture activates its first login");
@@ -250,7 +270,8 @@ internal static partial class SemanticGatewayChecks
 
         var second = authority.BeginLogin(
             new SemanticGatewayPrincipal(2, "SECOND"),
-            Source());
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(second.IsStarted, "second bounded generation starts");
         time.Advance(TimeSpan.FromSeconds(2));
         Check.True(
@@ -280,12 +301,14 @@ internal static partial class SemanticGatewayChecks
         Check.True(
             capacity.BeginLogin(
                 new SemanticGatewayPrincipal(11, "ONE"),
-                Source()).IsStarted,
+                Source(),
+                SemanticGatewayTestRealm.TempestGrant).IsStarted,
             "authority fills its generation capacity");
         Check.True(
             capacity.BeginLogin(
                 new SemanticGatewayPrincipal(12, "TWO"),
-                Source()).Status ==
+                Source(),
+                SemanticGatewayTestRealm.TempestGrant).Status ==
                 SemanticGatewayLoginStatus.CapacityExceeded,
             "generation capacity rejects additional identities");
     }
@@ -308,7 +331,8 @@ internal static partial class SemanticGatewayChecks
             {
                 results[index] = authority.BeginLogin(
                     principal,
-                    Source($"192.0.2.{20 + index % 100}"));
+                    Source($"192.0.2.{20 + index % 100}"),
+                    SemanticGatewayTestRealm.TempestGrant);
             });
         Check.True(
             results.All(static result => result.IsStarted),

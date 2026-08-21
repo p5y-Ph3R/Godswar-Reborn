@@ -1,5 +1,6 @@
 using System.Text;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -44,6 +45,34 @@ internal sealed record CharacterLifecycleReceipt
         DateTimeOffset? restoreUntil,
         DateTimeOffset? purgeAfter,
         string auditReference,
+        Guid? outboxEventId) : this(
+            family,
+            status,
+            accountId,
+            RealmId.Tempest,
+            characterSlot,
+            characterId,
+            lifecycleVersion,
+            characterName,
+            restoreUntil,
+            purgeAfter,
+            auditReference,
+            outboxEventId)
+    {
+    }
+
+    public CharacterLifecycleReceipt(
+        CommandFamily family,
+        CharacterLifecycleReceiptStatus status,
+        int accountId,
+        RealmId realmId,
+        short characterSlot,
+        int characterId,
+        long lifecycleVersion,
+        string characterName,
+        DateTimeOffset? restoreUntil,
+        DateTimeOffset? purgeAfter,
+        string auditReference,
         Guid? outboxEventId)
     {
         if (family is not (
@@ -54,6 +83,7 @@ internal sealed record CharacterLifecycleReceipt
             !Enum.IsDefined(status) ||
             !IsStatusValidForFamily(family, status) ||
             accountId <= 0 ||
+            !realmId.IsValid ||
             characterSlot !=
                 CharacterLifecycleCommandContract.SingleCharacterSlot ||
             characterId < 0 ||
@@ -93,6 +123,7 @@ internal sealed record CharacterLifecycleReceipt
         Family = family;
         Status = status;
         AccountId = accountId;
+        RealmId = realmId;
         CharacterSlot = characterSlot;
         CharacterId = characterId;
         LifecycleVersion = lifecycleVersion;
@@ -106,6 +137,7 @@ internal sealed record CharacterLifecycleReceipt
     public CommandFamily Family { get; }
     public CharacterLifecycleReceiptStatus Status { get; }
     public int AccountId { get; }
+    public RealmId RealmId { get; }
     public short CharacterSlot { get; }
     public int CharacterId { get; }
     public long LifecycleVersion { get; }

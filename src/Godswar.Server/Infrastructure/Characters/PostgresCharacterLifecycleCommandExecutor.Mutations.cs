@@ -1,4 +1,5 @@
 using Godswar.Server.State;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -10,6 +11,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand(
@@ -32,6 +34,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 checkpoint_owner_id IS NOT NULL
             FROM public.character_base
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND character_slot = 0
               AND lifecycle_state = 'active'
             FOR UPDATE;
@@ -39,6 +42,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         return await ReadStoredCharacterAsync(command, cancellationToken);
     }
 
@@ -46,6 +50,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         int characterId,
         CancellationToken cancellationToken)
     {
@@ -69,6 +74,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 checkpoint_owner_id IS NOT NULL
             FROM public.character_base
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND character_slot = 0
               AND id = @characterId
             FOR UPDATE;
@@ -76,6 +82,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("characterId", characterId);
         return await ReadStoredCharacterAsync(command, cancellationToken);
     }
@@ -120,6 +127,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         int characterId,
         long expectedVersion,
         long nextVersion,
@@ -138,6 +146,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                     @restoreWindow +
                     @purgeDelay
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND id = @characterId
               AND character_slot = 0
               AND lifecycle_state = 'active'
@@ -148,6 +157,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue(
             "expectedVersion",
@@ -184,6 +194,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         int characterId,
         long expectedVersion,
         long nextVersion,
@@ -198,6 +209,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 restore_until = NULL,
                 purge_after = NULL
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND id = @characterId
               AND character_slot = 0
               AND lifecycle_state = 'deleted'
@@ -207,6 +219,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue(
             "expectedVersion",
@@ -223,6 +236,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         int characterId,
         long expectedVersion,
         CancellationToken cancellationToken)
@@ -231,6 +245,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             """
             DELETE FROM public.character_base
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND id = @characterId
               AND character_slot = 0
               AND lifecycle_state = 'deleted'
@@ -240,6 +255,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("characterId", characterId);
         command.Parameters.AddWithValue(
             "expectedVersion",
@@ -255,6 +271,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         long expectedVersion,
         long nextVersion,
         CancellationToken cancellationToken)
@@ -267,14 +284,16 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
 
         await using var command = CreateCommand(
             """
-            UPDATE public.accounts
+            UPDATE public.account_realm
             SET character_lifecycle_version = @nextVersion
-            WHERE id = @accountId
+            WHERE account_id = @accountId
+              AND realm_id = @realmId
               AND character_lifecycle_version = @expectedVersion;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue(
             "expectedVersion",
             expectedVersion);
@@ -283,6 +302,29 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         {
             throw new InvalidDataException(
                 "The account lifecycle version did not advance exactly once.");
+        }
+
+        if (realmId == RealmId.Tempest)
+        {
+            await using var legacyMirror = CreateCommand(
+                """
+                UPDATE public.accounts
+                SET character_lifecycle_version = @nextVersion
+                WHERE id = @accountId
+                  AND character_lifecycle_version = @expectedVersion;
+                """,
+                connection,
+                transaction);
+            legacyMirror.Parameters.AddWithValue("accountId", accountId);
+            legacyMirror.Parameters.AddWithValue(
+                "expectedVersion",
+                expectedVersion);
+            legacyMirror.Parameters.AddWithValue("nextVersion", nextVersion);
+            if (await legacyMirror.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidDataException(
+                    "The Tempest lifecycle mirror did not advance exactly once.");
+            }
         }
     }
 }

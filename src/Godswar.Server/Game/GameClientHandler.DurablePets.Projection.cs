@@ -499,6 +499,11 @@ internal sealed partial class GameClientHandler
             {
                 return false;
             }
+            if (receipt.Succeeded &&
+                target is { ContributesToCharacter: false })
+            {
+                StartPetOwnerMergeEnergyRecharge();
+            }
         }
 
         return true;

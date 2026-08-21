@@ -15,6 +15,7 @@ internal static partial class
         await CheckReplaySuppressesNativeAnimationAsync();
         await CheckSecureTokenlessFailsClosedAsync();
         await CheckNonzeroTailFailsClosedAsync();
+        await CheckLocalRawAttackAndDefenseSelectionAsync();
     }
 
     private static async Task CheckCommittedSelectionAsync()

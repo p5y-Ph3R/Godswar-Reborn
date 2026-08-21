@@ -23,7 +23,14 @@ internal sealed partial class GameClientHandler
         {
             var accountSnapshot = await _characterSnapshots.ReadAsync(
                 _account.Id,
+                _processRealmId,
                 cancellationToken);
+            if (accountSnapshot.RealmId != _processRealmId)
+            {
+                throw new CharacterSnapshotUnavailableException(
+                    CharacterSnapshotFailureReason.InvalidData,
+                    "The character snapshot belongs to another realm.");
+            }
             if (hadOwnership &&
                 !RevalidateCurrentPlayerOwnership(ownership))
             {

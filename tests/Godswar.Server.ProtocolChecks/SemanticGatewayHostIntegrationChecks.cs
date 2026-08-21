@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking.Backhaul;
 using Godswar.Server.Networking.SemanticGateway;
@@ -77,14 +78,76 @@ internal static partial class BackhaulProtocolChecks
                 coordination,
                 7,
                 "test2",
+                SemanticGatewayTestRealm.TempestGrant,
                 stop.Token);
+            using (var wrongToken = await OpenGameAsync(
+                       endpoints.Game,
+                       EncryptedGameLogin(
+                           "test2",
+                           SemanticGatewayTestRealm.TempestGrant,
+                           identifierOverride:
+                               SemanticGatewayTestRealm
+                                   .DwargonGrant.Identifier),
+                       stop.Token))
+            {
+                await ExpectClosedAsync(
+                    wrongToken,
+                    stop.Token,
+                    "selected realm rejects a forged game-login token");
+            }
+
             _ = await BeginHostLoginAsync(
                 coordination,
                 13,
                 "test13",
+                SemanticGatewayTestRealm.TempestGrant,
                 stop.Token);
-            var encryptedA = EncryptedGameLogin("test2");
-            var encryptedB = EncryptedGameLogin("test13");
+            using (var wrongRealm = await OpenGameAsync(
+                       endpoints.Game,
+                       EncryptedGameLogin(
+                           "test13",
+                           SemanticGatewayTestRealm.DwargonGrant),
+                       stop.Token))
+            {
+                await ExpectClosedAsync(
+                    wrongRealm,
+                    stop.Token,
+                    "game-login realm cannot differ from login selection");
+            }
+            Check.True(
+                workerA.SessionCount == 0 && workerB.SessionCount == 0,
+                "realm and token forgeries never reach a worker");
+
+            _ = await BeginHostLoginAsync(
+                coordination,
+                13,
+                "test13",
+                SemanticGatewayTestRealm.DwargonGrant,
+                stop.Token);
+            var encryptedA = EncryptedGameLogin(
+                "test2",
+                SemanticGatewayTestRealm.TempestGrant);
+            var encryptedB = EncryptedGameLogin(
+                "test13",
+                SemanticGatewayTestRealm.DwargonGrant);
+
+            data.SetEnabledRealms(
+                new RealmCatalogSnapshot(
+                    [SemanticGatewayTestRealm.Tempest]));
+            using (var disabledRealm = await OpenGameAsync(
+                       endpoints.Game,
+                       encryptedB,
+                       stop.Token))
+            {
+                await ExpectClosedAsync(
+                    disabledRealm,
+                    stop.Token,
+                    "game login rechecks that selected realm remains enabled");
+            }
+            data.SetEnabledRealms(SemanticGatewayTestRealm.Catalog);
+            Check.True(
+                workerA.SessionCount == 0 && workerB.SessionCount == 0,
+                "disabled realm rejection never reaches a worker");
 
             using var clientA = await OpenGameAsync(
                 endpoints.Game,
@@ -102,7 +165,9 @@ internal static partial class BackhaulProtocolChecks
                 initialSnapshot.ActiveConnections == 2 ||
                 workerA.SessionCount != 0 &&
                 workerB.SessionCount != 0,
-                $"initial gateway sessions remain active: {initialSnapshot}");
+                $"initial gateway sessions remain active: {initialSnapshot}; " +
+                $"workerA={workerA.SessionCount}; " +
+                $"workerB={workerB.SessionCount}");
             var sessionA = await workerA.WaitForSessionAsync(
                 1,
                 stop.Token);
@@ -111,6 +176,7 @@ internal static partial class BackhaulProtocolChecks
                 stop.Token);
             CheckWorkerRoute(
                 sessionA,
+                RealmId.Tempest,
                 IntegrationNodeA,
                 IntegrationMapA,
                 IntegrationWorldA,
@@ -118,6 +184,7 @@ internal static partial class BackhaulProtocolChecks
                 "first exact route");
             CheckWorkerRoute(
                 sessionB,
+                RealmId.Dwargon,
                 IntegrationNodeB,
                 IntegrationMapB,
                 IntegrationWorldB,
@@ -179,6 +246,7 @@ internal static partial class BackhaulProtocolChecks
                 coordination,
                 7,
                 "test2",
+                SemanticGatewayTestRealm.TempestGrant,
                 stop.Token);
             Check.True(
                 freshGeneration.GenerationId !=
@@ -193,6 +261,7 @@ internal static partial class BackhaulProtocolChecks
                 stop.Token);
             CheckWorkerRoute(
                 replacement,
+                RealmId.Tempest,
                 IntegrationNodeA,
                 IntegrationMapA,
                 IntegrationWorldA,
@@ -234,6 +303,7 @@ internal static partial class BackhaulProtocolChecks
                 coordination,
                 7,
                 "test2",
+                SemanticGatewayTestRealm.TempestGrant,
                 stop.Token);
             Check.True(
                 finalGeneration.GenerationId !=
@@ -260,6 +330,7 @@ internal static partial class BackhaulProtocolChecks
                 coordination,
                 7,
                 "test2",
+                SemanticGatewayTestRealm.TempestGrant,
                 stop.Token);
             Check.True(
                 replacementGeneration.GenerationId !=
@@ -316,10 +387,13 @@ internal static partial class BackhaulProtocolChecks
             coordination,
             8,
             "DRAINED",
+            SemanticGatewayTestRealm.TempestGrant,
             cancellationToken);
         using (var rejected = await OpenGameAsync(
                    gameEndpoint,
-                   EncryptedGameLogin("DRAINED"),
+                   EncryptedGameLogin(
+                       "DRAINED",
+                       SemanticGatewayTestRealm.TempestGrant),
                    cancellationToken))
         {
             await ExpectClosedAsync(
@@ -356,10 +430,13 @@ internal static partial class BackhaulProtocolChecks
             coordination,
             9,
             "OFFLINE",
+            SemanticGatewayTestRealm.TempestGrant,
             cancellationToken);
         using (var rejected = await OpenGameAsync(
                    gameEndpoint,
-                   EncryptedGameLogin("OFFLINE"),
+                   EncryptedGameLogin(
+                       "OFFLINE",
+                       SemanticGatewayTestRealm.TempestGrant),
                    cancellationToken))
         {
             await ExpectClosedAsync(

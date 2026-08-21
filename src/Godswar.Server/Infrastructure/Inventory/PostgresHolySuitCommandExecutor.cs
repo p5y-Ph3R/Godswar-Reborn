@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Items;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
@@ -15,8 +16,6 @@ namespace Godswar.Server.Infrastructure.Inventory;
 internal sealed partial class PostgresHolySuitCommandExecutor :
     IHolySuitCommandExecutor
 {
-    private const int TempestRealmId = 1;
-
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresPlayerOwnershipGuard _ownershipGuard;
     private readonly int _commandTimeoutSeconds;
@@ -202,6 +201,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
                 connection,
                 transaction,
                 context.Subject.AccountId,
+                character.Value.RealmId,
                 cancellationToken)
             : DailyUsage.None;
         var battlePass = context.Command.Operation ==
@@ -335,7 +335,8 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
         int Level,
         long Experience,
         long ProgressionRevision,
-        long InventoryRevision);
+        long InventoryRevision,
+        RealmId RealmId);
 
     private readonly record struct DailyUsage(
         DateOnly UsageDay,

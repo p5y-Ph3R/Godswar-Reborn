@@ -19,17 +19,10 @@ internal sealed partial class GameSessionRegistry
         bool worldReady = true,
         DateTimeOffset? joinedAt = null)
     {
-        ArgumentNullException.ThrowIfNull(admission);
-        if (admission.AccountId != accountId ||
-            admission.CharacterId != 0 &&
-            admission.CharacterId != character.Id ||
-            !admission.MapId.TryGetLegacyValue(out var legacyMapId) ||
-            legacyMapId != character.CurrentMap)
-        {
-            throw new InvalidOperationException(
-                "The gateway admission does not match the joining " +
-                "account and character.");
-        }
+        ValidateGatewayWorldJoin(
+            accountId,
+            character,
+            admission);
 
         JoinWorldInstanceCore(
             session,
@@ -39,6 +32,29 @@ internal sealed partial class GameSessionRegistry
             GetOrCreateGatewayWorldInstance(admission),
             worldReady,
             joinedAt);
+    }
+
+    internal uint JoinPlayerGatewayWorld(
+        ClientSession session,
+        int accountId,
+        GameCharacter character,
+        GatewayWorldAdmission admission,
+        bool worldReady = true,
+        DateTimeOffset? joinedAt = null)
+    {
+        ValidateGatewayWorldJoin(
+            accountId,
+            character,
+            admission);
+
+        return JoinWorldInstanceCore(
+            session,
+            accountId,
+            character,
+            requestedObjectId: null,
+            runtime: GetOrCreateGatewayWorldInstance(admission),
+            worldReady: worldReady,
+            joinedAt: joinedAt);
     }
 
     internal void JoinWorldInstance(
@@ -70,15 +86,22 @@ internal sealed partial class GameSessionRegistry
             joinedAt);
     }
 
-    private void JoinWorldInstanceCore(
+    private uint JoinWorldInstanceCore(
         ClientSession session,
         int accountId,
         GameCharacter character,
-        uint objectId,
+        uint? requestedObjectId,
         WorldInstanceRuntime runtime,
         bool worldReady,
         DateTimeOffset? joinedAt)
     {
+        if (character.RealmId != runtime.RealmId)
+        {
+            throw new InvalidOperationException(
+                "The character realm does not match the requested " +
+                "world instance.");
+        }
+
         var onlineStartedAt =
             joinedAt ?? DateTimeOffset.UtcNow;
         var ownership = PlayerOwnership(character);
@@ -87,26 +110,31 @@ internal sealed partial class GameSessionRegistry
             accountId,
             ownership);
 
-        var context = new GameSessionContext(
-            session,
-            accountId,
-            character.Id,
-            character.Name,
-            runtime.RealmId,
-            runtime.InstanceId,
-            character.CurrentMap,
-            objectId,
-            character,
-            worldReady,
-            0)
-        {
-            Ownership = ownership
-        };
-
+        GameSessionContext context;
         GameSessionContext? previous;
         lock (_gate)
         {
             _sessions.TryGetValue(session, out previous);
+            var objectId = requestedObjectId ??
+                AllocatePlayerObjectIdLocked(
+                    session,
+                    character.Id,
+                    previous);
+            context = new GameSessionContext(
+                session,
+                accountId,
+                character.Id,
+                character.Name,
+                runtime.RealmId,
+                runtime.InstanceId,
+                character.CurrentMap,
+                objectId,
+                character,
+                worldReady,
+                0)
+            {
+                Ownership = ownership
+            };
             EnsureMapObjectIdAvailable(context);
             var placementChange =
                 PrepareWorldPlacement(previous, context);
@@ -172,6 +200,26 @@ internal sealed partial class GameSessionRegistry
         }
 
         LogWorldJoin(previous, context);
+        return context.ObjectId;
+    }
+
+    private static void ValidateGatewayWorldJoin(
+        int accountId,
+        GameCharacter character,
+        GatewayWorldAdmission admission)
+    {
+        ArgumentNullException.ThrowIfNull(admission);
+        if (admission.AccountId != accountId ||
+            admission.RealmId != character.RealmId ||
+            admission.CharacterId != 0 &&
+            admission.CharacterId != character.Id ||
+            !admission.MapId.TryGetLegacyValue(out var legacyMapId) ||
+            legacyMapId != character.CurrentMap)
+        {
+            throw new InvalidOperationException(
+                "The gateway admission does not match the joining " +
+                "account and character.");
+        }
     }
 
     private void ValidateWorldJoinOwnership(

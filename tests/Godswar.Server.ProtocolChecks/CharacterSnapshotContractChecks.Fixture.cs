@@ -108,7 +108,13 @@ internal static partial class CharacterSnapshotContractChecks
                 accountId,
                 "SnapshotHero",
                 FixedUtc),
-            new CharacterAppearanceSnapshot(1, 2, 3, 4, 5, 6),
+            new CharacterAppearanceSnapshot(
+                Gender: 1,
+                Camp: GameDefaults.AthensCamp,
+                Profession: 3,
+                Hair: 4,
+                Face: 5,
+                Faith: 6),
             new CharacterLocationSnapshot(
                 7,
                 12.5f,

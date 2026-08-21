@@ -28,6 +28,29 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] SkillCastVisual(
+        ReadOnlySpan<byte> clientSkillCastPacket,
+        uint casterObjectId,
+        uint targetObjectId,
+        uint skillId)
+    {
+        var packet = SkillCastVisual(
+            clientSkillCastPacket,
+            casterObjectId);
+        if (packet.Length >= 12)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                packet.AsSpan(8, 4),
+                skillId);
+        }
+        if (packet.Length >= 20)
+        {
+            PatchSkillCastObjectId(packet, 16, targetObjectId);
+        }
+
+        return packet;
+    }
+
     public static byte[] SelfTargetSkillCastVisual(
         ReadOnlySpan<byte> clientSkillCastPacket,
         uint objectId)

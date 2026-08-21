@@ -18,6 +18,8 @@ internal readonly record struct PetOwnerMergeEffectValue(
 internal static class PetOwnerMergeContributionCalculator
 {
     public const int DecimalScale = 6;
+    public const decimal TechniqueReductionBasisPointsPerSavvy = 0.15m;
+    public const decimal MaximumTechniqueReductionBasisPoints = 3_000m;
 
     public static PetOwnerStatContribution Calculate(
         PetSavvy totalSavvy,
@@ -49,8 +51,32 @@ internal static class PetOwnerMergeContributionCalculator
                 values[rate.Effect] + (width * rate.RatePerSavvy));
         }
 
-        return FromEffectValues(values.Select(static pair =>
+        var native = FromEffectValues(values.Select(static pair =>
             new PetOwnerMergeEffectValue(pair.Key, Round(pair.Value))));
+        var techniqueReduction = CalculateTechniqueReductionBasisPoints(
+            totalSavvy.Technique);
+        return native with
+        {
+            TechniquePhysicalReduction = techniqueReduction,
+            TechniqueMagicReduction = techniqueReduction
+        };
+    }
+
+    public static decimal CalculateTechniqueReductionBasisPoints(
+        decimal effectiveTechnique)
+    {
+        if (effectiveTechnique < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(effectiveTechnique));
+        }
+
+        return Math.Min(
+            MaximumTechniqueReductionBasisPoints,
+            Math.Round(
+                effectiveTechnique *
+                    TechniqueReductionBasisPointsPerSavvy,
+                0,
+                MidpointRounding.AwayFromZero));
     }
 
     public static IReadOnlyList<PetOwnerMergeEffectValue> ToEffectValues(

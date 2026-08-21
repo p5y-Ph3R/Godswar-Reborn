@@ -81,6 +81,7 @@ internal static partial class PostgresHolyStoneCommandIntegrationChecks
             dataSource,
             new PostgresOutboxDispatcherOptions(),
             TestItemContent.Content,
+            HolySpiritBalanceSnapshot.HistoricalAcceptanceEnvelope,
             probe,
             upgradeRandomSource,
             holySpiritRandomSource);

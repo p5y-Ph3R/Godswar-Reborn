@@ -49,7 +49,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var started = await TryBeginPendingSkillCastAsync(
             cast.SkillId,
             combat.CastTime,
@@ -74,7 +74,8 @@ internal sealed partial class GameClientHandler
             token => HandleSkillCastAsync(
                 packet,
                 token,
-                intonationCompleted: true),
+                intonationCompleted: true,
+                intonedCombatSnapshot: combat),
             cancellationToken,
             () => IsIntonedPriestHealingCompletionStillValid(
                 cast,
@@ -393,7 +394,7 @@ internal sealed partial class GameClientHandler
             _session,
             character.AccountId,
             character,
-            WorldObjectIds.ForPlayer(character.Id),
+            CurrentPlayerObjectId,
             IsCaster: true,
             WorldContext: null);
 
@@ -407,7 +408,7 @@ internal sealed partial class GameClientHandler
                 _session,
                 character.AccountId,
                 character,
-                WorldObjectIds.ForPlayer(character.Id),
+                CurrentPlayerObjectId,
                 IsCaster: true,
                 WorldContext: null)
         };

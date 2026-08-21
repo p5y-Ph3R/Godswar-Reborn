@@ -8,6 +8,31 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class CharacterLifecycleDurableHandlerChecks
 {
+    private static async Task CheckCrossRealmReceiptFailsClosedAsync()
+    {
+        await using var fixture = CreateSecureFixture(
+            EmptySnapshot(),
+            ActiveSnapshot(),
+            CharacterLifecycleExecutionResult.Committed(
+                SuccessReceipt(
+                    CommandFamily.CharacterCreate,
+                    Godswar.Server.Domain.World.Instances.RealmId.Dwargon)));
+
+        await InvokeAsync(
+            fixture.Handler,
+            CreateRolePacket(CreateOperationId));
+
+        Check.Equal(
+            0,
+            fixture.SnapshotReader.ReadCount,
+            "cross-realm lifecycle receipt cannot refresh projection");
+        Check.True(
+            fixture.Transport.ReadClearPackets().All(packet =>
+                !packet.AsSpan().SequenceEqual(
+                    PacketBuilder.CreateRoleSuccess())),
+            "cross-realm lifecycle receipt emits no native success");
+    }
+
     private static async Task
         CheckHistoricalSuccessSettlesAgainstCurrentProjectionAsync()
     {

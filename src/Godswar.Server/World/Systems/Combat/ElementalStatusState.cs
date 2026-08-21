@@ -2,6 +2,17 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.World.Systems.Combat;
 
+internal readonly record struct ActiveElementalStatusSnapshot(
+    ElementalEffectKind Effect,
+    long ExpiresAtMilliseconds);
+
+internal readonly record struct ElementalStatusSnapshot(
+    long Revision,
+    IReadOnlyList<ActiveElementalStatusSnapshot> ActiveEffects)
+{
+    public static ElementalStatusSnapshot Empty { get; } = new(0, []);
+}
+
 // Target-owned transient state. Callers serialize access with the same actor
 // authority that owns HP/movement; this type never discovers or mutates a
 // target on its own.
@@ -15,6 +26,7 @@ internal sealed class ElementalStatusState
     private readonly Queue<StatusEventKey> _seenOrder = [];
     private IReadOnlyList<ElementalPeriodicDamageIntent>?
         _deferredBurnDamage;
+    private long _revision;
 
     public ElementalStatusState(long ownerCharacterId)
     {
@@ -65,7 +77,32 @@ internal sealed class ElementalStatusState
         }
 
         _active[application.Effect] = incoming;
+        AdvanceRevision();
         return true;
+    }
+
+    public ElementalStatusSnapshot CaptureActive(
+        long authoritativeTimeMilliseconds)
+    {
+        if (authoritativeTimeMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(authoritativeTimeMilliseconds));
+        }
+
+        Expire(authoritativeTimeMilliseconds);
+        var active = _active.Values
+            .Select(static value => value.Application)
+            .Where(application =>
+                application.ExpiresAtMilliseconds >
+                    authoritativeTimeMilliseconds)
+            .OrderBy(static application => application.Effect)
+            .Select(static application =>
+                new ActiveElementalStatusSnapshot(
+                    application.Effect,
+                    application.ExpiresAtMilliseconds))
+            .ToArray();
+        return new ElementalStatusSnapshot(_revision, active);
     }
 
     public bool HasActive(
@@ -171,6 +208,7 @@ internal sealed class ElementalStatusState
         if (burn.EmittedTickCount >= burn.Application.PeriodicTickCount)
         {
             _active.Remove(ElementalEffectKind.Burn);
+            AdvanceRevision();
         }
 
         return intents;
@@ -178,12 +216,17 @@ internal sealed class ElementalStatusState
 
     public long ConsumeRemainingBurn(long authoritativeTimeMilliseconds)
     {
-        if (authoritativeTimeMilliseconds < 0 ||
-            !_active.Remove(ElementalEffectKind.Burn, out var burn))
+        if (authoritativeTimeMilliseconds < 0)
         {
             return 0;
         }
 
+        if (!_active.Remove(ElementalEffectKind.Burn, out var burn))
+        {
+            return 0;
+        }
+
+        AdvanceRevision();
         var application = burn.Application;
         return Math.Max(0, checked(
             application.PeriodicDamageTotal - burn.EmittedDamage));
@@ -191,16 +234,26 @@ internal sealed class ElementalStatusState
 
     public void ClearOnDeath()
     {
+        var hadActive = _active.Count > 0;
         _active.Clear();
         _deferredBurnDamage = null;
+        if (hadActive)
+        {
+            AdvanceRevision();
+        }
     }
 
     public void ClearOnReconnect()
     {
+        var hadActive = _active.Count > 0;
         _active.Clear();
         _deferredBurnDamage = null;
         _seen.Clear();
         _seenOrder.Clear();
+        if (hadActive)
+        {
+            AdvanceRevision();
+        }
     }
 
     private bool TryPotency(ElementalEffectKind effect, out int potency)
@@ -217,17 +270,26 @@ internal sealed class ElementalStatusState
 
     private void Expire(long authoritativeTimeMilliseconds)
     {
-        foreach (var effect in _active
-                     .Where(pair =>
-                         pair.Key != ElementalEffectKind.Burn &&
-                         pair.Value.Application.ExpiresAtMilliseconds <=
-                            authoritativeTimeMilliseconds)
-                     .Select(static pair => pair.Key)
-                     .ToArray())
+        var expired = _active
+            .Where(pair =>
+                pair.Key != ElementalEffectKind.Burn &&
+                pair.Value.Application.ExpiresAtMilliseconds <=
+                    authoritativeTimeMilliseconds)
+            .Select(static pair => pair.Key)
+            .ToArray();
+        foreach (var effect in expired)
         {
             _active.Remove(effect);
         }
+
+        if (expired.Length > 0)
+        {
+            AdvanceRevision();
+        }
     }
+
+    private void AdvanceRevision() =>
+        _revision = checked(_revision + 1);
 
     private bool Remember(StatusEventKey key)
     {

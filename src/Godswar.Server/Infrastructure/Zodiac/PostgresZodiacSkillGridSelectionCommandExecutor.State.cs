@@ -114,11 +114,13 @@ internal sealed partial class
         NpgsqlTransaction transaction,
         int characterId,
         byte profession,
+        int gridIndex,
         int selectedSkillKind,
         CancellationToken cancellationToken)
     {
-        if (selectedSkillKind ==
-            ZodiacSkillGridSelectionCatalog.ClearSelection)
+        if (!ZodiacSkillGridSelectionCatalog.RequiresLearnedSkill(
+                gridIndex,
+                selectedSkillKind))
         {
             return true;
         }

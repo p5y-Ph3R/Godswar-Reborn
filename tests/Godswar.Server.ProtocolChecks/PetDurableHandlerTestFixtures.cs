@@ -55,7 +55,8 @@ internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
             PetShedCapacityPolicy.DefaultOpenedCellCount,
         TimeSpan? petOwnerMergeEnergyInterval = null,
         ISealedPetSnapshotReader? sealedPetSnapshots = null,
-        CharacterCalculatedStatsSnapshot? persistedStats = null)
+        CharacterCalculatedStatsSnapshot? persistedStats = null,
+        TimeSpan? petOwnerMergeRechargeInterval = null)
     {
         ArgumentNullException.ThrowIfNull(liveCharacter);
         ArgumentNullException.ThrowIfNull(persistedCharacter);
@@ -68,6 +69,11 @@ internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
             session,
             liveCharacter.AccountId,
             liveCharacter);
+        registry.JoinPlayerMap(
+            session,
+            liveCharacter.AccountId,
+            liveCharacter,
+            worldReady: false);
         var snapshot = CreateSnapshot(
             persistedCharacter,
             persistedPets,
@@ -83,7 +89,9 @@ internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
             petDurableCommands: executor,
             petContent: PetContentTestCatalog.Instance,
             petOwnerMergeEnergyInterval: petOwnerMergeEnergyInterval,
-            sealedPetSnapshots: sealedPetSnapshots);
+            sealedPetSnapshots: sealedPetSnapshots,
+            petOwnerMergeRechargeInterval:
+                petOwnerMergeRechargeInterval);
         SetField(
             handler,
             "_account",
@@ -151,6 +159,10 @@ internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
                 CharacterId = character.Id,
                 AccountId = character.AccountId,
                 Name = character.Name
+            },
+            Appearance = current.Appearance with
+            {
+                Camp = character.Camp
             },
             Loadout = loadout,
             Vitals = vitals,
@@ -229,18 +241,6 @@ internal sealed partial class PetDurableHandlerFixture : IAsyncDisposable
             pet.TalentMask,
             SoulContractStage: pet.SoulContractStage);
 
-    private sealed class FixedSnapshotReader(
-        CharacterAccountSnapshot snapshot) : ICharacterSnapshotReader
-    {
-        public Task<CharacterAccountSnapshot> ReadAsync(
-            int accountId,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Check.Equal(snapshot.AccountId, accountId, "pet snapshot account");
-            return Task.FromResult(snapshot);
-        }
-    }
 }
 
 internal partial class DelegatingPetDurableCommandExecutor :

@@ -15,6 +15,7 @@ internal sealed partial class GameClientHandler
     {
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account!.Id,
+            _processRealmId,
             cancellationToken);
         if (!RevalidateCurrentPlayerOwnership(ownership))
         {
@@ -120,6 +121,8 @@ internal sealed partial class GameClientHandler
                 MagicDefense = persistedStats.MagicDefense,
                 Hit = persistedStats.Hit,
                 Dodge = persistedStats.Dodge,
+                StatusHit = persistedStats.StatusHit,
+                StatusResistance = persistedStats.StatusResistance,
                 Critical = persistedStats.Critical,
                 CriticalResistance =
                     persistedStats.CriticalResistance,
@@ -158,6 +161,7 @@ internal sealed partial class GameClientHandler
                 CriticalDamageFlatReduction =
                     persistedStats.CriticalDamageFlatReduction,
                 DamageReboundFlat = persistedStats.DamageReboundFlat,
+                LifeAbsorptionFlat = persistedStats.LifeAbsorptionFlat,
                 BasicAttackIntervalMilliseconds =
                     persistedStats.BasicAttackIntervalMilliseconds,
                 BasicAttackRange = persistedStats.BasicAttackRange,

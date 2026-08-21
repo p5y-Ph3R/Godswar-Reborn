@@ -90,7 +90,10 @@ internal sealed partial class PostgresCharacterSnapshotReader
             reader.GetInt32(44),
             reader.GetInt32(45),
             reader.GetInt32(46),
-            reader.GetFloat(47));
+            reader.GetFloat(47),
+            reader.GetInt32(48),
+            reader.GetInt32(49),
+            reader.GetInt32(50));
 
     private static async Task<ImmutableArray<CharacterSkillSnapshot>>
         ReadSkillsAsync(

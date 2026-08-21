@@ -96,7 +96,7 @@ internal sealed partial class GameClientHandler
             decision.AuthoritativeX,
             decision.AuthoritativeZ,
             decision.AuthoritativeAuxiliary,
-            WorldObjectIds.ForPlayer(_character.Id));
+            CurrentPlayerObjectId);
         var positionSave = new RealtimePositionSave(
             _account.Id,
             _character.Id,

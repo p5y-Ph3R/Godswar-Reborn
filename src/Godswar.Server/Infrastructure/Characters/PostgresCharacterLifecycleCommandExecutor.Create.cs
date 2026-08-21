@@ -22,6 +22,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             cancellationToken);
         if (active is not null)
         {
@@ -37,6 +38,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            command.RealmId,
             nextVersion,
             command,
             cancellationToken);
@@ -73,6 +75,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            command.RealmId,
             account.LifecycleVersion,
             nextVersion,
             cancellationToken);
@@ -90,6 +93,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         long lifecycleVersion,
         CharacterCreateCommand intent,
         CancellationToken cancellationToken)
@@ -193,7 +197,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue(
             "realmId",
-            RealmId.Tempest.Value);
+            realmId.Value);
         command.Parameters.AddWithValue("name", intent.Name);
         command.Parameters.AddWithValue(
             "gender",

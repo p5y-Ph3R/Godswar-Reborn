@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.State;
@@ -14,9 +15,41 @@ internal static partial class CharacterSnapshotContractChecks
         CheckFiniteFailures();
         CheckPetRankWireSafety();
         CheckPetScaledAddedFailures();
+        CheckRealmScope();
         CheckHydration();
         CheckBoundedPostgresProviderToken();
         return Task.CompletedTask;
+    }
+
+    private static void CheckRealmScope()
+    {
+        var tempest = CreateValidSnapshot();
+        var mismatched = tempest with
+        {
+            Character = tempest.Character! with
+            {
+                Identity = tempest.Character.Identity with
+                {
+                    RealmId = RealmId.Dwargon
+                }
+            }
+        };
+        var ownership = CaptureFailure(
+            () => CharacterSnapshotContract.Validate(mismatched));
+        Check.Equal(
+            (int)CharacterSnapshotFailureReason.OwnershipMismatch,
+            (int)ownership.Reason,
+            "snapshot identity cannot cross its requested realm");
+
+        var dwargon = mismatched with { RealmId = RealmId.Dwargon };
+        CharacterSnapshotContract.Validate(dwargon);
+        var hydrated = CharacterLoadSnapshotHydrator.Hydrate(dwargon) ??
+            throw new InvalidOperationException(
+                "Valid Dwargon character snapshot did not hydrate.");
+        Check.Equal(
+            RealmId.Dwargon.Value,
+            hydrated.Character.RealmId.Value,
+            "snapshot hydration preserves authoritative realm identity");
     }
 
     private static void CheckBoundedPostgresProviderToken()

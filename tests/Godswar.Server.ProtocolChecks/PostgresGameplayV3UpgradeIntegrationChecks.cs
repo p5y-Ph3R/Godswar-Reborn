@@ -7,7 +7,7 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresGameplayV3UpgradeIntegrationChecks
+internal static partial class PostgresGameplayV3UpgradeIntegrationChecks
 {
     public const string CheckName =
         "PostgreSQL gameplay v2-to-v3 publication upgrade";
@@ -20,6 +20,8 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
         "server-database-promotion-v1";
     private const string UpgradePublisher =
         "server-database-promotion-v2";
+    private const string AuthorityPublisher =
+        "server-database-champion-talent-authority-v1";
 
     public static async Task RunAsync()
     {
@@ -37,10 +39,16 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
         await MigrateAsync(dataSource, Through(PredecessorMigration));
         await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
             connectionString);
+        await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
+            connectionString);
         await AssertCombatColumnsAbsentAsync(dataSource);
+        await MigrateAsync(dataSource, PostgresSchemaMigrationCatalog.All);
+        await AssertCleanAndDirectPublicationPathsAsync(
+            dataSource,
+            connectionString);
+        await InflateMutableChampionTalentsAsync(dataSource);
         var predecessor = await PublishLegacyV2Async(dataSource);
 
-        await MigrateAsync(dataSource, PostgresSchemaMigrationCatalog.All);
         await AssertLegacyRowsPreservedAsync(dataSource, predecessor);
         await AssertUnknownPublisherFailsClosedAsync(
             dataSource,
@@ -57,17 +65,22 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
             upgraded.Created &&
             string.Equals(
                 upgraded.Publisher,
-                UpgradePublisher,
+                AuthorityPublisher,
                 StringComparison.Ordinal) &&
             !string.Equals(
                 predecessor.Sha256,
                 upgraded.Revision,
                 StringComparison.Ordinal),
-            "an exact v2 predecessor produces one distinct v3 publication");
+            "an exact v2 predecessor chains to one corrected publication");
         await AssertUpgradeStateAsync(
             dataSource,
             predecessor,
             upgraded);
+        await AssertChampionVectorAsync(
+            dataSource,
+            InflatedV3Revision,
+            inflated: true,
+            mutable: false);
 
         var repeated = await PostgresGameplayContentPublisher
             .EnsurePublishedAsync(connectionString);
@@ -77,7 +90,11 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
                 upgraded.Revision,
                 repeated.Revision,
                 StringComparison.Ordinal),
-            "a repeated v3 publication check is an idempotent read");
+            "a repeated authority publication check is an idempotent read");
+        await AssertDirectV3AuthorityUpgradeAsync(
+            dataSource,
+            connectionString,
+            upgraded);
     }
 
     private static IReadOnlyList<PostgresSchemaMigration> Through(string id)
@@ -153,7 +170,11 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
             INSERT INTO gameplay_content_publication (
                 family, revision, published_at, publisher
             )
-            VALUES ('gameplay', @revision, now(), @publisher);
+            VALUES ('gameplay', @revision, now(), @publisher)
+            ON CONFLICT (family) DO UPDATE
+            SET revision = EXCLUDED.revision,
+                published_at = EXCLUDED.published_at,
+                publisher = EXCLUDED.publisher;
             """,
             connection,
             transaction);
@@ -162,7 +183,7 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
         Check.Equal(
             1,
             await publish.ExecuteNonQueryAsync(),
-            "the historical publisher points at the complete v2 release");
+            "the fixture repoints at the complete historical v2 release");
         await transaction.CommitAsync();
         return revision;
     }
@@ -335,9 +356,13 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
     {
         await using var connection = await dataSource.OpenConnectionAsync();
         Check.Equal(
+            LegacyV2Revision,
+            predecessor.Sha256,
+            "the fixture recreates the exact reviewed legacy-v2 hash");
+        Check.Equal(
             upgraded.Revision,
             await ReadCurrentRevisionAsync(connection),
-            "the current pointer advances atomically to v3");
+            "the current pointer advances atomically to Champion authority");
         await using (var audit = new NpgsqlCommand(
                          """
                          WITH legacy_counts(row_count) AS (
@@ -396,11 +421,11 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
                                 AND map_mode IS NULL),
                              (SELECT COUNT(*)::integer
                               FROM gameplay_map_definitions
-                              WHERE revision = @v3_revision
+                              WHERE revision = @authority_revision
                                 AND map_mode IS NOT NULL),
                              (SELECT COUNT(*)::integer
                               FROM gameplay_monster_templates
-                              WHERE revision = @v3_revision
+                              WHERE revision = @authority_revision
                                 AND attack_type IS NOT NULL);
                          """,
                          connection))
@@ -408,16 +433,20 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
             audit.Parameters.AddWithValue(
                 "legacy_revision",
                 predecessor.Sha256);
-            audit.Parameters.AddWithValue("v3_revision", upgraded.Revision);
+            audit.Parameters.AddWithValue(
+                "authority_revision",
+                upgraded.Revision);
             await using var reader = await audit.ExecuteReaderAsync();
-            Check.True(await reader.ReadAsync(), "v3 release audit returns one row");
             Check.True(
-                reader.GetInt32(0) == 2 &&
+                await reader.ReadAsync(),
+                "authority release audit returns one row");
+            Check.True(
+                reader.GetInt32(0) == 3 &&
                 reader.GetInt64(1) == predecessor.EntryCount &&
                 reader.GetInt32(2) > 0 &&
                 reader.GetInt32(3) > 0 &&
                 reader.GetInt32(4) > 0,
-                "the upgrade retains v2 rows and seals authored v3 authority");
+                "the chain retains v2 rows and seals corrected v3 authority");
         }
 
         await using var transaction = await connection.BeginTransactionAsync(
@@ -431,7 +460,7 @@ internal static class PostgresGameplayV3UpgradeIntegrationChecks
         Check.Equal(
             upgraded.Revision,
             pinnedRevision.Sha256,
-            "the runtime reader accepts the upgraded v3 publication");
+            "the runtime reader accepts the corrected publication");
         await transaction.CommitAsync();
     }
 

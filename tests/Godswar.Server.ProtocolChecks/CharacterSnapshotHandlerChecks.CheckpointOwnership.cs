@@ -17,6 +17,10 @@ internal static partial class CharacterSnapshotHandlerChecks
         var character = source.Character ??
             throw new InvalidOperationException(
                 "Checkpoint race fixture has no character.");
+        var carriedPet = CharacterLoadSnapshotHydrator.Hydrate(source)?
+            .Pets.Single(static pet => pet.IsCarried) ??
+            throw new InvalidOperationException(
+                "Checkpoint race fixture has no carried pet.");
         var checkpoints = new InterleavedCheckpointCoordinator(
             character.Location.PositionRevision,
             character.Vitals.Revision);
@@ -41,6 +45,8 @@ internal static partial class CharacterSnapshotHandlerChecks
             WorldContentReaderTestFixtures.Empty,
             legacyAuthenticationAccess: CreateLocalAccess(),
             characterCheckpoints: checkpoints,
+            petDurableCommands:
+                new SnapshotLoginPetEnergyLifecycle(carriedPet),
             petContent: PetContentTestCatalog.Instance);
         var replacementHandler = new GameClientHandler(
             replacementSession,
@@ -50,6 +56,8 @@ internal static partial class CharacterSnapshotHandlerChecks
             WorldContentReaderTestFixtures.Empty,
             legacyAuthenticationAccess: CreateLocalAccess(),
             characterCheckpoints: checkpoints,
+            petDurableCommands:
+                new SnapshotLoginPetEnergyLifecycle(carriedPet),
             petContent: PetContentTestCatalog.Instance);
 
         await InvokePacketAsync(

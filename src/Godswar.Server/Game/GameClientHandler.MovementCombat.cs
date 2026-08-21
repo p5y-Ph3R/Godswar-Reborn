@@ -157,7 +157,7 @@ internal sealed partial class GameClientHandler
         // Type 2 is the only capture-proven free-revival path. Currency-backed
         // in-place revival remains unsupported until its native contract and
         // settlement rules are proven.
-        await RestoreFreeRevivalStateAsync(cancellationToken);
+        await RestoreEntryStateAsync(cancellationToken);
         await HandleEnterGameAsync(cancellationToken);
         Console.WriteLine(
             $"[revive] free revival character={_character.Name} request-object={request.PlayerObjectId} requested-type={request.ReviveType} map={previousMap}->{_character.CurrentMap} hp={_character.CurrentHp}/{_character.MaxHp} mp={_character.CurrentMp}/{_character.MaxMp}");
@@ -204,6 +204,11 @@ internal sealed partial class GameClientHandler
         if (_character is null)
         {
             Console.WriteLine("[attack] ignored basic attack before character enter");
+            return;
+        }
+
+        if (!IsHostileStatusBasicAttackAllowed(DateTimeOffset.UtcNow))
+        {
             return;
         }
 
@@ -333,10 +338,13 @@ internal sealed partial class GameClientHandler
             target,
             now,
             targetCombat);
+        var runtimeCombatModifiers =
+            _registry.GetRuntimeStatusAggregate(_session, now);
         var resolution = MonsterCombatResolver.ResolvePlayerBasicAttack(
             _character,
             targetCombat,
-            eventId);
+            eventId,
+            runtimeModifiers: runtimeCombatModifiers);
         resolution = _registry.AdjustPveOutgoingResolution(
             _session,
             _character,
@@ -379,7 +387,7 @@ internal sealed partial class GameClientHandler
                 _character.CurrentMap,
                 attack.TargetObjectId,
                 PacketBuilder.PhysicalDamage(
-                    WorldObjectIds.ForPlayer(_character.Id),
+                    CurrentPlayerObjectId,
                     0f,
                     0f,
                     0f,
@@ -460,7 +468,7 @@ internal sealed partial class GameClientHandler
                 $"[attack] caster notification failed character={_character.Name} target={attack.TargetObjectId}: {ex.Message}");
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(_character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var viewers = await _registry.BroadcastToMonsterViewersAsync(
             _character.CurrentMap,
             attack.TargetObjectId,

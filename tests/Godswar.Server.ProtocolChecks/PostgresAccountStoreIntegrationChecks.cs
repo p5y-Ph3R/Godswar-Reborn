@@ -254,6 +254,43 @@ internal static partial class PostgresAccountStoreIntegrationChecks
             await ReadLoginStatusAsync(dataSource, created.Id),
             "presence compatibility writer marks the account offline");
 
+        var firstPresenceToken = Guid.NewGuid();
+        var replacementPresenceToken = Guid.NewGuid();
+        await store.MarkAccountPlayerOnlineAsync(
+            created.Id,
+            firstPresenceToken);
+        await store.MarkAccountPlayerOnlineAsync(
+            created.Id,
+            replacementPresenceToken);
+        Check.True(
+            !await store.TryMarkAccountPlayerOfflineAsync(
+                created.Id,
+                firstPresenceToken),
+            "a stale process cannot clear replacement presence");
+        _ = await store.LoginOrCreateLegacyAccountAsync(
+            username,
+            "must-not-replace-fenced-presence");
+        await store.MarkAccountOfflineAsync(created.Id);
+        var replacementPresence = await ReadPresenceAsync(
+            dataSource,
+            created.Id);
+        Check.True(
+            replacementPresence.LoginStatus == 1 &&
+            replacementPresence.Token == replacementPresenceToken,
+            "legacy login/disconnect cannot mutate fenced replacement presence");
+        Check.True(
+            await store.TryMarkAccountPlayerOfflineAsync(
+                created.Id,
+                replacementPresenceToken),
+            "the current process clears its exact presence token");
+        var releasedPresence = await ReadPresenceAsync(
+            dataSource,
+            created.Id);
+        Check.True(
+            releasedPresence.LoginStatus == 0 &&
+            releasedPresence.Token is null,
+            "final replacement exit leaves the account offline");
+
         var legacyLogin =
             await store.LoginOrCreateLegacyAccountAsync(
                 username,
@@ -311,11 +348,13 @@ internal static partial class PostgresAccountStoreIntegrationChecks
         await using var insert = dataSource.CreateCommand("""
             INSERT INTO public.character_base (
                 account_id,
+                server_id,
                 name,
                 "Map"
             )
             VALUES (
                 @accountId,
+                1,
                 @characterName,
                 @mapId
             )
@@ -329,7 +368,9 @@ internal static partial class PostgresAccountStoreIntegrationChecks
 
         var routes =
             new PostgresSemanticGatewayCharacterRouteReader(dataSource);
-        var route = await routes.FindCharacterRouteAsync(accountId);
+        var route = await routes.FindCharacterRouteAsync(
+            accountId,
+            RealmId.Tempest);
         Check.True(
             route is not null,
             "focused semantic-gateway reader resolves the active route");
@@ -355,6 +396,28 @@ internal static partial class PostgresAccountStoreIntegrationChecks
             """);
         command.Parameters.AddWithValue("accountId", accountId);
         return Convert.ToInt16(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<AccountPresenceProjection>
+        ReadPresenceAsync(
+            NpgsqlDataSource dataSource,
+            int accountId)
+    {
+        await using var command = dataSource.CreateCommand("""
+            SELECT login_status, login_presence_token
+            FROM public.accounts
+            WHERE id = @accountId;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(
+                "Account presence fixture disappeared.");
+        }
+        return new AccountPresenceProjection(
+            reader.GetInt16(0),
+            reader.IsDBNull(1) ? null : reader.GetGuid(1));
     }
 
     private static async Task<long> ReadAccountCountAsync(
@@ -406,4 +469,8 @@ internal static partial class PostgresAccountStoreIntegrationChecks
             CryptographicOperations.ZeroMemory(hash);
         }
     }
+
+    private readonly record struct AccountPresenceProjection(
+        short LoginStatus,
+        Guid? Token);
 }

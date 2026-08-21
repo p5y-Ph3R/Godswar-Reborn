@@ -18,9 +18,24 @@ internal sealed partial class GameClientHandler
         // after forging, progression, equipment, or inspection silently
         // cancels the client's mount-speed change.
         var now = DateTimeOffset.UtcNow;
-        var status = ApplyElementalMovementStatus(
+        return BuildLocalPlayerStatusUpdateAt(
             _registry.GetRuntimeStatusAggregate(_session, now),
             now);
+    }
+
+    private byte[] BuildLocalPlayerStatusUpdateAt(
+        in ClientStatusAggregate aggregate,
+        DateTimeOffset observedAt)
+    {
+        if (_character is null)
+        {
+            throw new InvalidOperationException(
+                "A local player status update requires an active character.");
+        }
+
+        var status = ApplyElementalMovementStatus(
+            aggregate,
+            observedAt);
         return PacketBuilder.PlayerStatusUpdate(_character, status);
     }
 }

@@ -35,6 +35,7 @@ internal readonly record struct CombatAttackerStats
     public int CriticalDamageBasisPoints { get; init; }
     public int CriticalDamageFlat { get; init; }
     public int LifeAbsorptionBasisPoints { get; init; }
+    public int LifeAbsorptionFlat { get; init; }
 }
 
 /// <summary>
@@ -51,6 +52,8 @@ internal readonly record struct CombatTargetStats
     public int CriticalResistance { get; init; }
     public int PhysicalDamageReductionBasisPoints { get; init; }
     public int MagicDamageReductionBasisPoints { get; init; }
+    public int PhysicalDamageTakenIncreaseBasisPoints { get; init; }
+    public int MagicDamageTakenIncreaseBasisPoints { get; init; }
     public int CriticalDamageReductionBasisPoints { get; init; }
     public int PhysicalFlatAbsorption { get; init; }
     public int MagicFlatAbsorption { get; init; }
@@ -77,6 +80,7 @@ internal readonly record struct CombatDamageEvidence(
     decimal CriticalBonusDamage,
     decimal DamageWithAppend,
     decimal DamageAfterReduction,
+    decimal DamageAfterTakenIncrease,
     decimal DamageAfterAbsorption);
 
 /// <summary>

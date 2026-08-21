@@ -53,6 +53,7 @@ internal sealed partial class PlayerCombatEcsAdapter
         uint objectId,
         DateTimeOffset nextBasicAttackAt,
         in PlayerCombatEcsRequest request,
+        in ClientStatusAggregate runtimeModifiers,
         Action? onAdmittedAttempt = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
@@ -65,12 +66,14 @@ internal sealed partial class PlayerCombatEcsAdapter
                 registry,
                 character,
                 objectId,
-                nextBasicAttackAt);
+                nextBasicAttackAt,
+                runtimeModifiers);
             var world = _world!;
             var scheduler = _scheduler!;
             var mirroredResources = SynchronizePlayer(
                 character,
-                nextBasicAttackAt);
+                nextBasicAttackAt,
+                runtimeModifiers);
             var selectedTarget = HydrateTargets(
                 registry,
                 session,

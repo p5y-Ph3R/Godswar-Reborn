@@ -5,21 +5,52 @@ namespace Godswar.Server.World.Systems.Combat;
 /// from content projection so a future capture-backed formula can coexist with
 /// already persisted event evidence.
 /// </summary>
-internal static class AuthoredCombatV1
+internal sealed class AuthoredCombatFormula
 {
-    public const int Version = 1;
     public const int BasisPointScale = 10_000;
     public const int MaximumIgnoreDefenseBasisPoints = 8_000;
     public const int MaximumDamageReductionBasisPoints = 8_000;
+    public const int MaximumDamageTakenIncreaseBasisPoints = 8_000;
     public const int MaximumCriticalReductionBasisPoints = 8_000;
     public const int MinimumHitChanceBasisPoints = 500;
     public const int MaximumHitChanceBasisPoints = 9_800;
     public const int BaseHitChanceBasisPoints = 9_000;
-    public const int BaseCriticalChanceBasisPoints = 500;
-    public const int MaximumCriticalChanceBasisPoints = 5_000;
     public const int BaseCriticalBonusBasisPoints = 5_000;
 
-    public static CombatResolution ResolveBasicAttack(
+    private readonly int _version;
+    private readonly AuthoredHitChancePolicy _hitChancePolicy;
+    private readonly AuthoredCriticalChancePolicy _criticalChancePolicy;
+
+    public AuthoredCombatFormula(
+        int version,
+        AuthoredHitChancePolicy hitChancePolicy,
+        AuthoredCriticalChancePolicy criticalChancePolicy)
+    {
+        if (version <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(version));
+        }
+
+        if (!hitChancePolicy.IsConfigured)
+        {
+            throw new ArgumentException(
+                "A configured Hit chance policy is required.",
+                nameof(hitChancePolicy));
+        }
+
+        if (!criticalChancePolicy.IsConfigured)
+        {
+            throw new ArgumentException(
+                "A configured Critical chance policy is required.",
+                nameof(criticalChancePolicy));
+        }
+
+        _version = version;
+        _hitChancePolicy = hitChancePolicy;
+        _criticalChancePolicy = criticalChancePolicy;
+    }
+
+    public CombatResolution ResolveBasicAttack(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         ulong eventId,
@@ -34,7 +65,7 @@ internal static class AuthoredCombatV1
             eventId,
             targetOrder);
 
-    public static CombatResolution ResolveSkillDamage(
+    public CombatResolution ResolveSkillDamage(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         int property,
@@ -54,7 +85,7 @@ internal static class AuthoredCombatV1
             eventId,
             targetOrder);
 
-    public static CombatResolution ResolveBasicAttackForOutcome(
+    public CombatResolution ResolveBasicAttackForOutcome(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         CombatHitOutcome outcome) =>
@@ -70,7 +101,7 @@ internal static class AuthoredCombatV1
             outcome,
             ForcedRollEvidence(attacker, target));
 
-    public static CombatResolution ResolveSkillDamageForOutcome(
+    public CombatResolution ResolveSkillDamageForOutcome(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         int property,
@@ -91,35 +122,15 @@ internal static class AuthoredCombatV1
             outcome,
             ForcedRollEvidence(attacker, target));
 
-    public static int CalculateHitChanceBasisPoints(
+    public int CalculateHitChanceBasisPoints(
         in CombatAttackerStats attacker,
-        in CombatTargetStats target)
-    {
-        var hit = Math.Max(0L, attacker.Hit);
-        var dodge = Math.Max(0L, target.Dodge);
-        var scale = ResolveRatingScale(attacker.Level, target.Level);
-        var adjustment = 4_000L * (hit - dodge) /
-                         (scale + hit + dodge);
-        return (int)Math.Clamp(
-            BaseHitChanceBasisPoints + adjustment,
-            MinimumHitChanceBasisPoints,
-            MaximumHitChanceBasisPoints);
-    }
+        in CombatTargetStats target) =>
+        _hitChancePolicy.Calculate(attacker, target);
 
-    public static int CalculateCriticalChanceBasisPoints(
+    public int CalculateCriticalChanceBasisPoints(
         in CombatAttackerStats attacker,
-        in CombatTargetStats target)
-    {
-        var critical = Math.Max(0L, attacker.Critical);
-        var resistance = Math.Max(0L, target.CriticalResistance);
-        var scale = ResolveRatingScale(attacker.Level, target.Level);
-        var adjustment = 4_500L * (critical - resistance) /
-                         (scale + critical + resistance);
-        return (int)Math.Clamp(
-            BaseCriticalChanceBasisPoints + adjustment,
-            0,
-            MaximumCriticalChanceBasisPoints);
-    }
+        in CombatTargetStats target) =>
+        _criticalChancePolicy.Calculate(attacker, target);
 
     public static int CalculateEffectiveDefense(
         int defense,
@@ -135,7 +146,7 @@ internal static class AuthoredCombatV1
                      BasisPointScale);
     }
 
-    private static CombatResolution ResolveWithRolls(
+    private CombatResolution ResolveWithRolls(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         CombatDamageChannel channel,
@@ -201,7 +212,7 @@ internal static class AuthoredCombatV1
                 criticalRoll));
     }
 
-    private static CombatResolution ResolveForOutcome(
+    private CombatResolution ResolveForOutcome(
         in CombatAttackerStats attacker,
         in CombatTargetStats target,
         CombatDamageChannel channel,
@@ -229,7 +240,7 @@ internal static class AuthoredCombatV1
         if (outcome == CombatHitOutcome.Miss)
         {
             return new CombatResolution(
-                Version,
+                _version,
                 eventId,
                 targetOrder,
                 channel,
@@ -240,6 +251,7 @@ internal static class AuthoredCombatV1
                     attack,
                     effectiveDefense,
                     Math.Max(0m, (decimal)attack - effectiveDefense),
+                    0m,
                     0m,
                     0m,
                     0m,
@@ -280,11 +292,20 @@ internal static class AuthoredCombatV1
                 (BasisPointScale - reduction) /
                 (decimal)BasisPointScale)
             : withAppend;
+        var takenIncrease = Math.Clamp(
+            ResolveTypedDamageTakenIncrease(target, channel),
+            0,
+            MaximumDamageTakenIncreaseBasisPoints);
+        var afterTakenIncrease = afterReduction > 0m
+            ? SaturatingMultiply(
+                afterReduction,
+                1m + (takenIncrease / (decimal)BasisPointScale))
+            : afterReduction;
         var absorption = Math.Max(
             0,
             ResolveFlatAbsorption(target, channel));
         var afterAbsorption = SaturatingAdd(
-            afterReduction,
+            afterTakenIncrease,
             -absorption);
         var shouldFloorAtOne = minimumOneDamage || withAppend > 0m;
         var damage = ResolveFinalDamage(
@@ -292,7 +313,7 @@ internal static class AuthoredCombatV1
             shouldFloorAtOne);
 
         return new CombatResolution(
-            Version,
+            _version,
             eventId,
             targetOrder,
             channel,
@@ -308,6 +329,7 @@ internal static class AuthoredCombatV1
                 criticalBonus,
                 withAppend,
                 afterReduction,
+                afterTakenIncrease,
                 afterAbsorption));
     }
 
@@ -343,7 +365,7 @@ internal static class AuthoredCombatV1
         return Math.Max(0m, bonus);
     }
 
-    private static CombatRollEvidence ForcedRollEvidence(
+    private CombatRollEvidence ForcedRollEvidence(
         in CombatAttackerStats attacker,
         in CombatTargetStats target) =>
         new(
@@ -397,21 +419,19 @@ internal static class AuthoredCombatV1
             ? target.MagicDamageReductionBasisPoints
             : target.PhysicalDamageReductionBasisPoints;
 
+    private static int ResolveTypedDamageTakenIncrease(
+        in CombatTargetStats target,
+        CombatDamageChannel channel) =>
+        channel == CombatDamageChannel.Magic
+            ? target.MagicDamageTakenIncreaseBasisPoints
+            : target.PhysicalDamageTakenIncreaseBasisPoints;
+
     private static int ResolveFlatAbsorption(
         in CombatTargetStats target,
         CombatDamageChannel channel) =>
         channel == CombatDamageChannel.Magic
             ? target.MagicFlatAbsorption
             : target.PhysicalFlatAbsorption;
-
-    private static long ResolveRatingScale(int attackerLevel, int targetLevel)
-    {
-        var level = Math.Clamp(
-            Math.Max(attackerLevel, targetLevel),
-            1,
-            10_000);
-        return 100L + (25L * level);
-    }
 
     private static uint ResolveFinalDamage(
         decimal damage,

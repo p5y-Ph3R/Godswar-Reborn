@@ -14,7 +14,9 @@ internal enum PetOwnerMergeLifecycleStatus : byte
 {
     NoActiveMerge = 1,
     EnergyChanged = 2,
-    MergeEnded = 3
+    MergeEnded = 3,
+    EnergyAtMaximum = 4,
+    NoRechargeTarget = 5
 }
 
 internal sealed record PetOwnerMergeLifecycleResult(
@@ -26,23 +28,27 @@ internal sealed record PetOwnerMergeLifecycleResult(
     bool IsCarried,
     bool IsSummoned)
 {
-    public bool Changed => Status !=
-        PetOwnerMergeLifecycleStatus.NoActiveMerge;
+    public bool Changed => Status is
+        PetOwnerMergeLifecycleStatus.EnergyChanged or
+        PetOwnerMergeLifecycleStatus.MergeEnded;
 
     public void Validate()
     {
+        var hasNoPet = Status is
+            PetOwnerMergeLifecycleStatus.NoActiveMerge or
+            PetOwnerMergeLifecycleStatus.NoRechargeTarget;
         if (!Enum.IsDefined(Status) ||
             PetId < 0 ||
             CurrentEnergy < 0 ||
             MaximumEnergy < 0 ||
             CurrentEnergy > MaximumEnergy ||
             PetRevision < 0 ||
-            (Status == PetOwnerMergeLifecycleStatus.NoActiveMerge) !=
-                (PetId == 0) ||
-            (Status == PetOwnerMergeLifecycleStatus.NoActiveMerge) !=
-                (MaximumEnergy == 0) ||
+            hasNoPet != (PetId == 0) ||
+            hasNoPet != (MaximumEnergy == 0) ||
             Status == PetOwnerMergeLifecycleStatus.EnergyChanged &&
-                CurrentEnergy == 0)
+                CurrentEnergy == 0 ||
+            Status == PetOwnerMergeLifecycleStatus.EnergyAtMaximum &&
+                (MaximumEnergy == 0 || CurrentEnergy != MaximumEnergy))
         {
             throw new InvalidDataException(
                 "Pet owner-Merge lifecycle result is inconsistent.");
@@ -53,6 +59,12 @@ internal sealed record PetOwnerMergeLifecycleResult(
 internal interface IPetOwnerMergeLifecycleStore
 {
     Task<PetOwnerMergeLifecycleResult> DrainEnergyAsync(
+        CommandSubject subject,
+        PlayerOwnershipFence ownership,
+        int energyPoints,
+        CancellationToken cancellationToken = default);
+
+    Task<PetOwnerMergeLifecycleResult> RestoreEnergyAsync(
         CommandSubject subject,
         PlayerOwnershipFence ownership,
         int energyPoints,

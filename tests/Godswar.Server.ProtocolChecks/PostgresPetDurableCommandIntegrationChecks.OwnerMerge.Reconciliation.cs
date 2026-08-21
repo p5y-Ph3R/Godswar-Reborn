@@ -55,8 +55,8 @@ internal static partial class
         var expected = PetOwnerMergeContributionCalculator.Calculate(
             await ReadOwnerMergeTotalSavvyAsync(dataSource, petId),
             ownerMergeContent);
-        var expectedEffects = PetOwnerMergeContributionCalculator
-            .ToEffectValues(expected);
+        var expectedEffects = PetOwnerMergeStoredBonusCodec
+            .ToStoredValues(expected);
         var before = await ReadOwnerMergeStateAsync(
             dataSource,
             fixture.CharacterId,
@@ -75,14 +75,13 @@ internal static partial class
             dataSource,
             petId);
         Check.Equal(
-            16,
+            18,
             rows.Count,
-            "startup reconciliation restores all 16 owner-Merge rows");
+            "startup reconciliation restores all owner-Merge rows");
         for (var index = 0; index < expectedEffects.Count; index++)
         {
             Check.True(
-                rows[index].EffectCode ==
-                    (short)expectedEffects[index].Effect &&
+                rows[index].EffectCode == expectedEffects[index].Code &&
                 rows[index].EffectValue == expectedEffects[index].Value &&
                 rows[index].PetRevision == before.PetRevision &&
                 rows[index].BalanceRevision ==
@@ -97,7 +96,7 @@ internal static partial class
         Check.True(
             after.Contributes &&
             after.PetRevision == before.PetRevision &&
-            after.BonusCount == 16,
+            after.BonusCount == 18,
             "reconciliation replaces only the derived owner-Merge rows");
         Check.Equal(
             0,
@@ -120,7 +119,7 @@ internal static partial class
             """);
         command.Parameters.AddWithValue("petId", petId);
         Check.Equal(
-            16,
+            18,
             await command.ExecuteNonQueryAsync(),
             "owner-Merge reconciliation fixture corrupts values while retaining current metadata");
     }
@@ -138,7 +137,7 @@ internal static partial class
             ORDER BY effect_code;
             """);
         command.Parameters.AddWithValue("petId", petId);
-        var rows = new List<ReconciledOwnerMergeRow>(16);
+        var rows = new List<ReconciledOwnerMergeRow>(18);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {

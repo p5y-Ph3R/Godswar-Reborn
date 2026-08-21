@@ -122,6 +122,7 @@ internal static class PlayerNpcEcsHydrationChecks
                 MagicFlatAbsorption: 907,
                 CriticalDamageFlatReduction: 908,
                 DamageReboundFlat: 909,
+                LifeAbsorptionFlat: 910,
                 BasicAttackIntervalMilliseconds: 2_300,
                 BasicAttackRange: 2.5f
             },
@@ -381,6 +382,7 @@ internal static class PlayerNpcEcsHydrationChecks
                 MagicFlatAbsorption = 907,
                 CriticalDamageFlatReduction = 908,
                 DamageReboundFlat = 909,
+                LifeAbsorptionFlat = 910,
                 BasicAttackIntervalMilliseconds = 2_300,
                 BasicAttackRange = 2.5f
             }

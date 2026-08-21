@@ -31,6 +31,7 @@ internal sealed partial class GameSessionRegistry
     private readonly MonsterRuntimeMode _monsterRuntimeMode;
     private readonly GameplayRuntimeCatalogs _gameplayCatalogs;
     private readonly GameplayItemContent? _itemContent;
+    private readonly TrainingDummyPolicy _trainingDummies;
 
     public GameSessionRegistry(
         IGameStore? store = null,
@@ -44,7 +45,8 @@ internal sealed partial class GameSessionRegistry
         bool requiresDurablePlayerPersistence = false,
         WorldInstanceRuntimeOptions? worldInstanceOptions = null,
         GameplayRuntimeCatalogs? gameplayCatalogs = null,
-        GameplayItemContent? itemContent = null)
+        GameplayItemContent? itemContent = null,
+        TrainingDummyPolicy? trainingDummies = null)
     {
         _worldInstanceOptions = SnapshotWorldInstanceOptions(
             worldInstanceOptions);
@@ -73,6 +75,7 @@ internal sealed partial class GameSessionRegistry
         _gameplayCatalogs = gameplayCatalogs ??
             GameplayRuntimeCatalogs.Empty;
         _itemContent = itemContent;
+        _trainingDummies = trainingDummies ?? TrainingDummyPolicy.Disabled;
         zodiacEnergyOptions ??= new ZodiacEnergyOptions();
         zodiacEnergyOptions.Normalize();
         _zodiacEnergyPolicy = zodiacEnergyOptions.Snapshot();
@@ -170,6 +173,7 @@ internal sealed partial class GameSessionRegistry
             }
             _nextPlayerRecoveryAt.TryRemove(context.CharacterId, out _);
             RemoveElementalCombatSession(session);
+            ClearTrainingDummyHostileStatusesLocked(session);
             RemovePlayerRuntimeEcs(session);
             if (!preservePlayerStatus &&
                 _playerStatusStates.TryRemove(session, out var statusState))
@@ -218,6 +222,12 @@ internal sealed partial class GameSessionRegistry
                 return;
             }
 
+            if (character.RealmId != existing.RealmId)
+            {
+                throw new InvalidOperationException(
+                    "A character update cannot change its active realm.");
+            }
+
             var ownership = PlayerOwnership(character);
             if (existing.Ownership.IsValid &&
                 (ownership != existing.Ownership ||
@@ -234,6 +244,12 @@ internal sealed partial class GameSessionRegistry
                     ? GetRequiredWorldInstance(existing)
                     : GetOrCreateDefaultWorldInstance(
                         character.CurrentMap);
+            if (worldInstance.RealmId != character.RealmId)
+            {
+                throw new InvalidOperationException(
+                    "The character realm does not match its world " +
+                    "instance.");
+            }
             var updated = existing with
             {
                 CharacterId = character.Id,
@@ -333,6 +349,7 @@ internal sealed partial class GameSessionRegistry
             if (_sessions.TryGetValue(session, out var context))
             {
                 ClearElementalCombatLifeState(session);
+                ClearTrainingDummyHostileStatusesLocked(session);
                 _nextPlayerRecoveryAt[context.CharacterId] =
                     advancedAt + PlayerRecoveryInterval;
                 ResetPlayerRecoveryEcs(session);

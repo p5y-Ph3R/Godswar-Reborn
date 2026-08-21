@@ -54,6 +54,9 @@ internal sealed record PvpBasicAttackDecision(
 
     public IReadOnlyList<GameSessionContext> KilledPlayers { get; init; } = [];
 
+    public HostileStatusApplicationDecision? HostileStatusApplication
+        { get; init; }
+
     public long ElementalHealthRecovery { get; init; }
 
     public long ElementalManaRecovery { get; init; }

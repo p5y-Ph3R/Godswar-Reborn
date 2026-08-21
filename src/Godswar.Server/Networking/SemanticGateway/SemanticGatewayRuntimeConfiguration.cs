@@ -136,8 +136,11 @@ internal sealed record SemanticGatewayClientRuntimeLimits
 internal sealed class SemanticGatewayRuntimeConfiguration : IDisposable
 {
     private readonly IReadOnlyDictionary<
-        MapId,
+        (RealmId RealmId, MapId MapId),
         SemanticGatewayRouteTarget> _mapRoutes;
+    private readonly IReadOnlyDictionary<
+        RealmId,
+        SemanticGatewayRouteTarget> _bootstrapRoutes;
     private readonly IReadOnlyDictionary<
         ServerNodeId,
         SemanticGatewayWorkerTarget> _workerTargets;
@@ -154,8 +157,11 @@ internal sealed class SemanticGatewayRuntimeConfiguration : IDisposable
         int maximumConcurrentBackhaulTlsHandshakes,
         SemanticGatewayAuthorityLimits authorityLimits,
         StaticSemanticGatewayRouteDirectory routeDirectory,
-        SemanticGatewayRouteTarget bootstrapTarget,
-        IReadOnlyDictionary<MapId, SemanticGatewayRouteTarget> mapRoutes,
+        IReadOnlyDictionary<RealmId, SemanticGatewayRouteTarget>
+            bootstrapRoutes,
+        IReadOnlyDictionary<
+            (RealmId RealmId, MapId MapId),
+            SemanticGatewayRouteTarget> mapRoutes,
         IReadOnlyDictionary<
             ServerNodeId,
             SemanticGatewayWorkerTarget> workerTargets)
@@ -184,18 +190,30 @@ internal sealed class SemanticGatewayRuntimeConfiguration : IDisposable
         }
         ArgumentNullException.ThrowIfNull(authorityLimits);
         ArgumentNullException.ThrowIfNull(routeDirectory);
-        if (!bootstrapTarget.IsValid)
-        {
-            throw new ArgumentException(
-                "A valid bootstrap target is required.",
-                nameof(bootstrapTarget));
-        }
+        ArgumentNullException.ThrowIfNull(bootstrapRoutes);
         ArgumentNullException.ThrowIfNull(mapRoutes);
         ArgumentNullException.ThrowIfNull(workerTargets);
-        if (mapRoutes.Count == 0 || workerTargets.Count == 0)
+        if (bootstrapRoutes.Count == 0 ||
+            mapRoutes.Count == 0 ||
+            workerTargets.Count == 0)
         {
             throw new ArgumentException(
                 "Semantic-gateway maps and workers cannot be empty.");
+        }
+        foreach (var (realmId, bootstrap) in bootstrapRoutes)
+        {
+            if (!realmId.IsValid ||
+                !bootstrap.IsValid ||
+                bootstrap.RealmId != realmId ||
+                !mapRoutes.TryGetValue(
+                    (realmId, bootstrap.MapId),
+                    out var mapped) ||
+                mapped != bootstrap)
+            {
+                throw new ArgumentException(
+                    "Every realm bootstrap must be an exact configured map route.",
+                    nameof(bootstrapRoutes));
+            }
         }
 
         GamePublicHost = gamePublicHost;
@@ -207,9 +225,11 @@ internal sealed class SemanticGatewayRuntimeConfiguration : IDisposable
             maximumConcurrentBackhaulTlsHandshakes;
         AuthorityLimits = authorityLimits;
         RouteDirectory = routeDirectory;
-        BootstrapTarget = bootstrapTarget;
+        _bootstrapRoutes = new Dictionary<
+            RealmId,
+            SemanticGatewayRouteTarget>(bootstrapRoutes);
         _mapRoutes = new Dictionary<
-            MapId,
+            (RealmId RealmId, MapId MapId),
             SemanticGatewayRouteTarget>(mapRoutes);
         _workerTargets = new Dictionary<
             ServerNodeId,
@@ -239,25 +259,43 @@ internal sealed class SemanticGatewayRuntimeConfiguration : IDisposable
 
     public StaticSemanticGatewayRouteDirectory RouteDirectory { get; }
 
-    public SemanticGatewayRouteTarget BootstrapTarget { get; }
-
     public BackhaulHandshakeGate CreateBackhaulHandshakeGate() =>
         new(MaximumConcurrentBackhaulTlsHandshakes);
 
-    public SemanticGatewayRouteTarget? ResolveMap(MapId mapId) =>
-        TryResolveMap(mapId, out var target) ? target : null;
+    public SemanticGatewayRouteTarget? ResolveBootstrap(
+        RealmId realmId) =>
+        TryResolveBootstrap(realmId, out var target) ? target : null;
 
-    public bool TryResolveMap(
-        MapId mapId,
+    public bool TryResolveBootstrap(
+        RealmId realmId,
         out SemanticGatewayRouteTarget target)
     {
-        if (!mapId.IsValid)
+        if (!realmId.IsValid)
         {
             target = default;
             return false;
         }
 
-        return _mapRoutes.TryGetValue(mapId, out target);
+        return _bootstrapRoutes.TryGetValue(realmId, out target);
+    }
+
+    public SemanticGatewayRouteTarget? ResolveMap(
+        RealmId realmId,
+        MapId mapId) =>
+        TryResolveMap(realmId, mapId, out var target) ? target : null;
+
+    public bool TryResolveMap(
+        RealmId realmId,
+        MapId mapId,
+        out SemanticGatewayRouteTarget target)
+    {
+        if (!realmId.IsValid || !mapId.IsValid)
+        {
+            target = default;
+            return false;
+        }
+
+        return _mapRoutes.TryGetValue((realmId, mapId), out target);
     }
 
     public SemanticGatewayWorkerTarget? ResolveWorker(

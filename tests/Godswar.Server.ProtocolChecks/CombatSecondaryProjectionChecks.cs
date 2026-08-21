@@ -112,7 +112,8 @@ internal static partial class CombatSecondaryProjectionChecks
     {
         var attacker = new CombatAttackerStats
         {
-            LifeAbsorptionBasisPoints = 1_500
+            LifeAbsorptionBasisPoints = 1_500,
+            LifeAbsorptionFlat = 7
         };
         var target = new CombatTargetStats
         {
@@ -124,8 +125,8 @@ internal static partial class CombatSecondaryProjectionChecks
             attacker,
             target);
 
-        Check.Equal(15u, direct.LifeAbsorptionHealing,
-            "life absorption scales committed damage in basis points");
+        Check.Equal(22u, direct.LifeAbsorptionHealing,
+            "life absorption combines percentage and fixed on-hit healing");
         Check.Equal(28u, direct.ReboundDamage,
             "rebound combines basis points and flat damage");
         Check.True(
@@ -201,7 +202,8 @@ internal static partial class CombatSecondaryProjectionChecks
             MaxHp = 100,
             CalculatedStats = new CharacterStats
             {
-                LifeAbsorption = 5_000
+                LifeAbsorption = 5_000,
+                LifeAbsorptionFlat = 3
             }
         };
         var committer = new PveLifeAbsorptionCommitter(
@@ -216,7 +218,7 @@ internal static partial class CombatSecondaryProjectionChecks
             committed is
             {
                 ClaimedHitCount: 1,
-                RequestedHealing: 20,
+                RequestedHealing: 23,
                 AppliedHealing: 10,
                 BeforeHealth: 90,
                 AfterHealth: 100,
@@ -256,10 +258,10 @@ internal static partial class CombatSecondaryProjectionChecks
             areaCommit is
             {
                 ClaimedHitCount: 2,
-                RequestedHealing: 10,
-                AppliedHealing: 10,
+                RequestedHealing: 16,
+                AppliedHealing: 16,
                 BeforeHealth: 50,
-                AfterHealth: 60
+                AfterHealth: 66
             } &&
             character.VitalsRevision == 2,
             "area life absorption rounds and commits independently per hit");
@@ -283,9 +285,9 @@ internal static partial class CombatSecondaryProjectionChecks
         Check.True(
             areaReplay.ClaimedHitCount == 0 &&
             areaReplay.AppliedHealing == 0 &&
-            character.CurrentHp == 60 &&
+            character.CurrentHp == 66 &&
             character.VitalsRevision == 2,
-            "replayed area hits cannot heal or advance vitals twice");
+            "fixed on-hit recovery applies once per committed hit and never on replay");
 
         character.CurrentHp = 0;
         var dead = committer.Commit(

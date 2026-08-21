@@ -63,6 +63,7 @@ internal readonly record struct PlayerCombatOffenseComponent(
     public int CriticalDamageBasisPoints { get; init; }
     public int CriticalDamageFlat { get; init; }
     public int LifeAbsorptionBasisPoints { get; init; }
+    public int LifeAbsorptionFlat { get; init; }
     public int BasicAttackIntervalMilliseconds { get; init; } = 1500;
 }
 

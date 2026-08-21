@@ -191,6 +191,7 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
             generation.Sequence,
             generation.Principal,
             generation.LoginSource,
+            generation.RealmGrant,
             generation.ExpiresAt);
 
     private static SemanticGatewayAdmissionLease CreateAdmissionLease(
@@ -257,6 +258,7 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
             long sequence,
             SemanticGatewayPrincipal principal,
             SemanticGatewayConnectionSource loginSource,
+            SemanticGatewayRealmGrant realmGrant,
             DateTimeOffset expiresAt,
             ExpiryEntry expiry)
         {
@@ -264,6 +266,8 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
             Sequence = sequence;
             Principal = principal;
             LoginSource = loginSource;
+            RealmGrant = realmGrant ??
+                throw new ArgumentNullException(nameof(realmGrant));
             ExpiresAt = expiresAt;
             Expiry = expiry;
         }
@@ -275,6 +279,8 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
         public SemanticGatewayPrincipal Principal { get; }
 
         public SemanticGatewayConnectionSource LoginSource { get; }
+
+        public SemanticGatewayRealmGrant RealmGrant { get; }
 
         public DateTimeOffset ExpiresAt { get; set; }
 

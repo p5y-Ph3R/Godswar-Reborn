@@ -3,8 +3,10 @@ namespace Godswar.Server.Protocol;
 internal static class Opcodes
 {
     public const ushort Login = 1;
+    public const ushort ServerList = 3;
     public const ushort SelectServer = 4;
     public const ushort LoginReturnInfo = 6;
+    public const ushort SendServer = 7;
 
     public const ushort LoginGameServer = 10000;
     public const ushort ResponseGameServer = 10001;
@@ -111,8 +113,10 @@ internal static class Opcodes
         return opcode switch
         {
             Login => nameof(Login),
+            ServerList => nameof(ServerList),
             SelectServer => nameof(SelectServer),
             LoginReturnInfo => nameof(LoginReturnInfo),
+            SendServer => nameof(SendServer),
             LoginGameServer => nameof(LoginGameServer),
             ResponseGameServer => nameof(ResponseGameServer),
             RoleInfo => nameof(RoleInfo),

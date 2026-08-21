@@ -38,6 +38,7 @@ internal static partial class CharacterLifecycleDurableHandlerChecks
             CommandFamily.CharacterDelete,
             requestConflict: false);
         await CheckHistoricalSuccessSettlesAgainstCurrentProjectionAsync();
+        await CheckCrossRealmReceiptFailsClosedAsync();
         await CheckSecureMissingIdentityFailsClosedAsync();
         await CheckInWorldLifecycleFailsClosedAsync();
         await CheckMixedRawPostgresProfileFailsClosedAsync();

@@ -17,14 +17,18 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var objectId = CurrentPlayerObjectId;
         var statusSnapshot = await _registry.GetStatusSnapshotAsync(
             _session,
             DateTimeOffset.UtcNow,
             cancellationToken);
         var recipients = await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
-            PacketBuilder.PlayerWorldSpawn(_character, objectId, statusSnapshot.Effects),
+            PacketBuilder.PlayerWorldSpawn(
+                _character,
+                objectId,
+                statusSnapshot.Effects,
+                pkMode: _registry.TrainingDummySpawnPkMode(_character)),
             cancellationToken,
             _session,
             "PlayerWorldSpawnRefresh");
@@ -62,10 +66,12 @@ internal sealed partial class GameClientHandler
                 "PlayerTitleInfoRefresh");
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.PlayerInspectEquipmentStatusBundle(
+                PacketBuilder.PlayerInspectEquipmentRemoteStatusBundle(
                     _character,
                     objectId,
-                    statusSnapshot.Aggregate),
+                    statusSnapshot.Aggregate,
+                    _registry.TrainingDummySpawnPkMode(
+                        _character)),
                 cancellationToken,
                 _session,
                 "PlayerInspectEquipmentStatusBroadcast",
@@ -95,7 +101,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var objectId = CurrentPlayerObjectId;
         var recipients = await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
             PacketBuilder.RemoveWorldObjects(objectId),
@@ -219,14 +225,31 @@ internal sealed partial class GameClientHandler
                 "VisiblePlayerReconcileRemove");
         }
 
-        var objectId = WorldObjectIds.ForPlayer(_character.Id);
+        var objectId = CurrentPlayerObjectId;
         var statusSnapshot = await _registry.GetStatusSnapshotAsync(
             _session,
             DateTimeOffset.UtcNow,
             cancellationToken);
+        // A dead remote-player presentation can outlive its first ordered
+        // world removal. Reassert retirement immediately before reusing the
+        // dummy's stable object ID so the stock client cannot carry that
+        // presentation into the replacement spawn.
+        if (_registry.IsTrainingDummy(_character))
+        {
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                PacketBuilder.RemoveWorldObjects(objectId),
+                cancellationToken,
+                _session,
+                "TrainingDummyPreSpawnReset");
+        }
         var spawnRecipients = await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
-            PacketBuilder.PlayerWorldSpawn(_character, objectId, statusSnapshot.Effects),
+            PacketBuilder.PlayerWorldSpawn(
+                _character,
+                objectId,
+                statusSnapshot.Effects,
+                pkMode: _registry.TrainingDummySpawnPkMode(_character)),
             cancellationToken,
             _session);
         if (spawnRecipients > 0)
@@ -266,10 +289,12 @@ internal sealed partial class GameClientHandler
                 _session);
             await _registry.BroadcastToMapAsync(
                 _character.CurrentMap,
-                PacketBuilder.PlayerStatusUpdate(
+                PacketBuilder.RemotePlayerStatusUpdate(
                     _character,
                     objectId,
-                    statusSnapshot.Aggregate),
+                    statusSnapshot.Aggregate,
+                    _registry.TrainingDummySpawnPkMode(
+                        _character)),
                 cancellationToken,
                 _session,
                 "VisiblePlayerStatus");

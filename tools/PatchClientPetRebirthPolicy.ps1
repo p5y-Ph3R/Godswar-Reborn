@@ -11,29 +11,31 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+. (Join-Path $PSScriptRoot 'client_patch_helpers\PetAlter.States.ps1')
+
 $definitions = @(
     [pscustomobject]@{
         Locale = 'en_us'; Relative = 'Settings\Sys\Pet_Alter.xml'
-        Stock = 'E97ADE5D6BE0E3DED334AEA1C1EBB3EFA84FCC7D04CAE0E3417E036CB6D2C0BA'
-        Patched = '74BA1124C9956C6E065DCFCD6FA0E9A2FAA4F09994A4699E1D737509D00B8C51'
         Kind = 'xml'
     },
     [pscustomobject]@{
         Locale = 'zh_cn'; Relative = 'Settings\Sys\Pet_Alter.xml'
-        Stock = 'E97ADE5D6BE0E3DED334AEA1C1EBB3EFA84FCC7D04CAE0E3417E036CB6D2C0BA'
-        Patched = '74BA1124C9956C6E065DCFCD6FA0E9A2FAA4F09994A4699E1D737509D00B8C51'
         Kind = 'xml'
     },
     [pscustomobject]@{
         Locale = 'en_us'; Relative = 'UI\Base\LuaText.lua'
         Stock = 'BC3CDE8114EC6F94541767E7B3E9DE52E177E57A4A7697B1D2282D84354BEEB3'
         Patched = '6D1583BD8A8FAEE5F7609D05717D436D6354414CE4C5C0F58E84EE43EF0ECC33'
+        AlternateStock = '2C66C4BDA2604CB211095753BDD1DA1AEB169928FB1B6330B3AB23B4D41465D9'
+        AlternatePatched = '7EE7DF86612E8786E1162CA2F71E7445B1A290A0CC540209565DCDEB586842AE'
         Kind = 'en_lua'
     },
     [pscustomobject]@{
         Locale = 'zh_cn'; Relative = 'UI\Base\LuaText.lua'
         Stock = 'ED52897D10595EC04F196D823CDA716040A2B46B5DF2814C317616CE47280DB4'
         Patched = 'EECE12008019B9F0CC1AABB54214EDADC48471B3BF7932E8A82B0E71A5CD6A12'
+        AlternateStock = 'E9E3C0887B7F26D76F6070A3221FFD78F15857B0C0615A39FD95855F859B98E7'
+        AlternatePatched = '1E3AE6AD950CBA8FB33F075ECA017E44CBEEA67BA9E5AD6C27EBCE6C02A96F8B'
         Kind = 'zh_lua'
     },
     [pscustomobject]@{
@@ -156,10 +158,24 @@ function Convert-Resource(
     $Text
 }
 
-function Assert-ClientClosed {
+function Assert-ClientClosed([string]$ExecutablePath) {
+    $resolved = [IO.Path]::GetFullPath($ExecutablePath)
+    $liveDefault = [IO.Path]::GetFullPath('C:\Godswar Origin\Origin.exe')
     foreach ($process in @(Get-Process Origin -ErrorAction SilentlyContinue)) {
         try {
-            throw 'Close Origin.exe before changing the rebirth policy.'
+            $processPath = $null
+            try { $processPath = $process.Path } catch {}
+            $same = -not [string]::IsNullOrWhiteSpace($processPath) -and
+                [string]::Equals(
+                    [IO.Path]::GetFullPath($processPath), $resolved,
+                    [StringComparison]::OrdinalIgnoreCase)
+            $hiddenLive = [string]::IsNullOrWhiteSpace($processPath) -and
+                [string]::Equals(
+                    $resolved, $liveDefault,
+                    [StringComparison]::OrdinalIgnoreCase)
+            if ($same -or $hiddenLive) {
+                throw 'Close Origin.exe before changing the rebirth policy.'
+            }
         }
         finally { $process.Dispose() }
     }
@@ -172,20 +188,54 @@ $records = foreach ($definition in $definitions) {
         throw "Required rebirth resource is missing: $path"
     }
     $hash = Get-Sha256 $path
-    $state = if ($hash -eq $definition.Stock) {
-        'Stock'
+    $petAlterState = if ($definition.Kind -eq 'xml') {
+        Resolve-RebornPetAlterState $path
     }
-    elseif ($hash -eq $definition.Patched) {
-        'Patched'
+    else { $null }
+    $resourceVariants = @(if ($definition.Kind -ne 'xml') {
+        @([pscustomobject]@{
+            Stock = $definition.Stock; Patched = $definition.Patched
+        })
+    }
+    else { @() })
+    if ($definition.PSObject.Properties['AlternateStock']) {
+        $resourceVariants += [pscustomobject]@{
+            Stock = $definition.AlternateStock
+            Patched = $definition.AlternatePatched
+        }
+    }
+    $resourceVariant = @($resourceVariants | Where-Object {
+        $_.Stock -ceq $hash -or $_.Patched -ceq $hash
+    })
+    $state = if ($definition.Kind -eq 'xml') {
+        if ($petAlterState.Rebirth -eq 'Level30') { 'Patched' }
+        else { 'Stock' }
     }
     else {
-        throw "Unsupported rebirth resource (SHA-256 $hash): $path"
+        if ($resourceVariant.Count -ne 1) {
+            throw "Unsupported rebirth resource (SHA-256 $hash): $path"
+        }
+        if ($hash -ceq $resourceVariant[0].Stock) { 'Stock' }
+        else { 'Patched' }
     }
     [pscustomobject]@{
         Definition = $definition; Path = $path; State = $state
+        PetAlterState = $petAlterState; Original = $hash
+        ResourceVariant = if ($resourceVariant.Count -eq 1) {
+            $resourceVariant[0]
+        }
+        else { $null }
     }
 }
 
+$petAlterRecords = @($records | Where-Object {
+    $null -ne $_.PetAlterState
+})
+if (@($petAlterRecords.PetAlterState.Sha256 |
+        Select-Object -Unique).Count -ne 1) {
+    throw 'Pet_Alter.xml locales are in a mixed policy state.'
+}
+$currentPetAlter = $petAlterRecords[0].PetAlterState
 $states = @($records.State | Select-Object -Unique)
 $previousPartial = $records.Count -eq 6 -and
     @($records[0..3] | Where-Object State -ne 'Patched').Count -eq 0 -and
@@ -205,12 +255,14 @@ if ($Mode -eq 'Status') {
         else { 'Ready' }
         FirstRebirthLevel = if ($current -in @(
             'Patched', 'PreviousPartial')) { 30 } else { 50 }
+        Factors = $currentPetAlter.Factors
+        AgilityDamageRebound = $currentPetAlter.AgilityRebound
         Resources = $records.Count
     }
     return
 }
 
-Assert-ClientClosed
+Assert-ClientClosed (Join-Path $ClientRoot 'Origin.exe')
 $target = if ($Mode -eq 'Apply') { 'Patched' } else { 'Stock' }
 if ($current -eq $target) {
     [pscustomobject]@{
@@ -241,16 +293,25 @@ try {
         $output = Convert-Resource `
             $file.Text $record.Definition.Kind $target
         Write-Utf8 $file $stage $output
-        $expected = if ($target -eq 'Patched') {
-            $record.Definition.Patched
+        $expected = if ($record.Definition.Kind -eq 'xml') {
+            $targetRebirth = if ($target -eq 'Patched') {
+                'Level30'
+            }
+            else { 'Level50' }
+            (Find-RebornPetAlterState `
+                $record.PetAlterState.Factors $targetRebirth `
+                $record.PetAlterState.AgilityRebound).Sha256
         }
-        else { $record.Definition.Stock }
+        elseif ($target -eq 'Patched') {
+            $record.ResourceVariant.Patched
+        }
+        else { $record.ResourceVariant.Stock }
         if ((Get-Sha256 $stage) -ne $expected) {
             throw "Staged rebirth resource hash is not exact: $($record.Path)"
         }
         $staged += [pscustomobject]@{
             Path = $record.Path; Backup = $backup; Stage = $stage
-            Expected = $expected
+            Expected = $expected; Original = $record.Original
         }
     }
     foreach ($record in $staged) {
@@ -268,6 +329,9 @@ catch {
         if (Test-Path -LiteralPath $record.Backup -PathType Leaf) {
             Copy-Item -LiteralPath $record.Backup `
                 -Destination $record.Path -Force
+            if ((Get-Sha256 $record.Path) -cne $record.Original) {
+                throw "Rollback hash mismatch: $($record.Path)"
+            }
         }
         if (Test-Path -LiteralPath $record.Stage -PathType Leaf) {
             Remove-Item -LiteralPath $record.Stage -Force

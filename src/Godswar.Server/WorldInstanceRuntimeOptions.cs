@@ -15,6 +15,8 @@ namespace Godswar.Server;
 /// </summary>
 internal sealed class WorldInstanceRuntimeOptions
 {
+    public int RealmId { get; set; }
+
     public string ServerNodeId { get; set; } =
         WorldServerNodeId.Local.ToString();
 
@@ -51,6 +53,8 @@ internal sealed class WorldInstanceRuntimeOptions
     public WorldServerNodeId ProcessServerNodeId =>
         new(ServerNodeId);
 
+    public WorldRealmId ProcessRealmId => new(RealmId);
+
     public bool TryFindStaticOpenWorld(
         WorldRealmId realmId,
         WorldMapId mapId,
@@ -72,6 +76,19 @@ internal sealed class WorldInstanceRuntimeOptions
 
     public void Validate()
     {
+        WorldRealmId processRealmId;
+        try
+        {
+            processRealmId = ProcessRealmId;
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            throw new InvalidDataException(
+                "RealmId must identify the one positive logical realm " +
+                "hosted by this process.",
+                exception);
+        }
+
         try
         {
             _ = ProcessServerNodeId;
@@ -143,6 +160,12 @@ internal sealed class WorldInstanceRuntimeOptions
             }
 
             route.Validate();
+            if (route.ProcessRealmId != processRealmId)
+            {
+                throw new InvalidDataException(
+                    "Every static open-world route must belong to the " +
+                    "process RealmId.");
+            }
             if (!routeKeys.Add(
                     (route.ProcessRealmId, route.ProcessMapId)))
             {
@@ -173,7 +196,7 @@ internal sealed class WorldInstanceRuntimeOptions
 
 internal sealed class StaticOpenWorldInstanceOptions
 {
-    public int RealmId { get; set; } = WorldRealmId.Tempest.Value;
+    public int RealmId { get; set; }
 
     public short MapId { get; set; }
 

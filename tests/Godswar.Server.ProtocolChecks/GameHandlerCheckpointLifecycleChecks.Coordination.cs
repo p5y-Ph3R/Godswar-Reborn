@@ -130,7 +130,9 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
 
     private sealed class RecordingLeaseIssuer(
         bool acquire,
-        List<string> operations) : IPlayerCoordinationLeaseIssuer
+        List<string> operations,
+        Guid? leaseToken = null,
+        bool releaseCurrent = true) : IPlayerCoordinationLeaseIssuer
     {
         public bool IsEnabled => true;
 
@@ -162,15 +164,25 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<IPlayerCoordinationLease?>(
                 acquire
-                    ? new RecordingPlayerLease(ownership, operations)
+                    ? new RecordingPlayerLease(
+                        ownership,
+                        operations,
+                        leaseToken ?? Guid.NewGuid(),
+                        releaseCurrent)
                     : null);
     }
 
     private sealed class RecordingPlayerLease(
         PlayerOwnershipFence ownership,
-        List<string> operations) : IPlayerCoordinationLease
+        List<string> operations,
+        Guid leaseToken,
+        bool releaseCurrent) : IPlayerCoordinationLease
     {
+        private int _released;
+
         public PlayerOwnershipFence Ownership { get; } = ownership;
+
+        public Guid LeaseToken { get; } = leaseToken;
 
         public bool IsCurrent => true;
 
@@ -184,11 +196,17 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(true);
 
-        public ValueTask DisposeAsync()
+        public ValueTask<bool> ReleaseAsync()
         {
-            operations.Add("redis-release");
-            return ValueTask.CompletedTask;
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                operations.Add("redis-release");
+            }
+            return ValueTask.FromResult(releaseCurrent);
         }
+
+        public async ValueTask DisposeAsync() =>
+            _ = await ReleaseAsync();
     }
 
     private sealed class CoordinationGatewayTransport(

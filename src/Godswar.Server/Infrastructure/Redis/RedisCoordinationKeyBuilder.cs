@@ -76,6 +76,14 @@ internal sealed class RedisCoordinationKeyBuilder
         return Build("player", HashBytes("character", value));
     }
 
+    public string PlayerAccount(int accountId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        Span<byte> value = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(value, accountId);
+        return Build("player-account", HashBytes("account", value));
+    }
+
     public string Ticket(ReadOnlySpan<byte> ticketHash)
     {
         if (ticketHash.Length != 32)

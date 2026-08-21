@@ -195,8 +195,15 @@ internal static class RedisCoordinationScripts
             tonumber(redis.call('HGET', KEYS[1], 'generation'))
         local same = false
         if generation then
+            local storedAccount =
+                redis.call('HGET', KEYS[1], 'account')
+            local storedCharacter =
+                redis.call('HGET', KEYS[1], 'character')
+            if storedAccount ~= ARGV[1] or
+               storedCharacter ~= ARGV[2] then
+                return {-1, 0, 0}
+            end
             local sameIdentity =
-                redis.call('HGET', KEYS[1], 'account') == ARGV[1] and
                 redis.call('HGET', KEYS[1], 'owner') == ARGV[3] and
                 redis.call('HGET', KEYS[1], 'token') == ARGV[5] and
                 redis.call('HGET', KEYS[1], 'node') == ARGV[6] and
@@ -210,6 +217,22 @@ internal static class RedisCoordinationScripts
         end
         local version =
             (tonumber(redis.call('HGET', KEYS[1], 'version')) or 0) + 1
+        local previousPlayerKey =
+            redis.call('HGET', KEYS[4], 'player_key')
+        local indexedAccount =
+            redis.call('HGET', KEYS[4], 'account')
+        if indexedAccount and indexedAccount ~= ARGV[1] then
+            return {-1, 0, 0}
+        end
+        if previousPlayerKey and previousPlayerKey ~= KEYS[1] then
+            if ARGV[13] ~= '1' then
+                return {-1, 0, 0}
+            end
+            if redis.call('HGET', previousPlayerKey, 'account') ==
+               ARGV[1] then
+                redis.call('DEL', previousPlayerKey)
+            end
+        end
         redis.call(
             'HSET', KEYS[1],
             'v', '1',
@@ -226,7 +249,20 @@ internal static class RedisCoordinationScripts
             'presence', ARGV[11],
             'version', tostring(version),
             'until', leaseExpires)
+        redis.call(
+            'HSET', KEYS[4],
+            'v', '1',
+            'account', ARGV[1],
+            'character', ARGV[2],
+            'player_key', KEYS[1],
+            'owner', ARGV[3],
+            'generation', ARGV[4],
+            'token', ARGV[5],
+            'node', ARGV[6],
+            'boot', ARGV[7],
+            'until', leaseExpires)
         redis.call('PEXPIRE', KEYS[1], ARGV[12])
+        redis.call('PEXPIRE', KEYS[4], ARGV[12])
         if same then
             return {2, version, leaseExpires}
         end
@@ -239,17 +275,17 @@ internal static class RedisCoordinationScripts
         local now =
             (tonumber(serverTime[1]) * 1000) +
             math.floor(tonumber(serverTime[2]) / 1000)
-        local leaseExpires = now + tonumber(ARGV[10])
+        local leaseExpires = now + tonumber(ARGV[12])
         local routeNode = redis.call('HGET', KEYS[2], 'node')
         if not routeNode then
             return {0, 0, 0}
         end
         local routeRevision = redis.call('HGET', KEYS[2], 'revision')
-        if routeNode ~= ARGV[4] or
-           redis.call('HGET', KEYS[2], 'boot') ~= ARGV[5] or
-           redis.call('HGET', KEYS[2], 'realm') ~= ARGV[6] or
-           redis.call('HGET', KEYS[2], 'map') ~= ARGV[7] or
-           redis.call('HGET', KEYS[2], 'world') ~= ARGV[8] or
+        if routeNode ~= ARGV[6] or
+           redis.call('HGET', KEYS[2], 'boot') ~= ARGV[7] or
+           redis.call('HGET', KEYS[2], 'realm') ~= ARGV[8] or
+           redis.call('HGET', KEYS[2], 'map') ~= ARGV[9] or
+           redis.call('HGET', KEYS[2], 'world') ~= ARGV[10] or
            tonumber(redis.call('HGET', KEYS[2], 'until') or '0') <=
                now then
             return {-1, 0, 0}
@@ -259,10 +295,10 @@ internal static class RedisCoordinationScripts
             return {0, 0, 0}
         end
         local workerState = redis.call('HGET', KEYS[3], 'state')
-        if workerBoot ~= ARGV[5] or
+        if workerBoot ~= ARGV[7] or
            redis.call('HGET', KEYS[3], 'revision') ~= routeRevision or
            (workerState ~= '1' and
-               not (workerState == '2' and ARGV[9] == '3')) or
+                not (workerState == '2' and ARGV[11] == '3')) or
            tonumber(redis.call('HGET', KEYS[3], 'until') or '0') <=
                now then
             return {-1, 0, 0}
@@ -272,24 +308,52 @@ internal static class RedisCoordinationScripts
         if not owner then
             return {0, 0, 0}
         end
-        if owner ~= ARGV[1] or
-           redis.call('HGET', KEYS[1], 'generation') ~= ARGV[2] or
-           redis.call('HGET', KEYS[1], 'token') ~= ARGV[3] or
-           redis.call('HGET', KEYS[1], 'node') ~= ARGV[4] or
-           redis.call('HGET', KEYS[1], 'boot') ~= ARGV[5] then
+        if redis.call('HGET', KEYS[1], 'account') ~= ARGV[1] or
+           redis.call('HGET', KEYS[1], 'character') ~= ARGV[2] or
+           owner ~= ARGV[3] or
+           redis.call('HGET', KEYS[1], 'generation') ~= ARGV[4] or
+           redis.call('HGET', KEYS[1], 'token') ~= ARGV[5] or
+           redis.call('HGET', KEYS[1], 'node') ~= ARGV[6] or
+           redis.call('HGET', KEYS[1], 'boot') ~= ARGV[7] then
+            return {-1, 0, 0}
+        end
+        local indexedPlayerKey =
+            redis.call('HGET', KEYS[4], 'player_key')
+        if indexedPlayerKey and
+           (indexedPlayerKey ~= KEYS[1] or
+            redis.call('HGET', KEYS[4], 'account') ~= ARGV[1] or
+            redis.call('HGET', KEYS[4], 'character') ~= ARGV[2] or
+            redis.call('HGET', KEYS[4], 'owner') ~= ARGV[3] or
+            redis.call('HGET', KEYS[4], 'generation') ~= ARGV[4] or
+            redis.call('HGET', KEYS[4], 'token') ~= ARGV[5] or
+            redis.call('HGET', KEYS[4], 'node') ~= ARGV[6] or
+            redis.call('HGET', KEYS[4], 'boot') ~= ARGV[7]) then
             return {-1, 0, 0}
         end
         local version =
             (tonumber(redis.call('HGET', KEYS[1], 'version')) or 0) + 1
         redis.call(
             'HSET', KEYS[1],
-            'realm', ARGV[6],
-            'map', ARGV[7],
-            'world', ARGV[8],
-            'presence', ARGV[9],
+            'realm', ARGV[8],
+            'map', ARGV[9],
+            'world', ARGV[10],
+            'presence', ARGV[11],
             'version', tostring(version),
             'until', leaseExpires)
-        redis.call('PEXPIRE', KEYS[1], ARGV[10])
+        redis.call(
+            'HSET', KEYS[4],
+            'v', '1',
+            'account', ARGV[1],
+            'character', ARGV[2],
+            'player_key', KEYS[1],
+            'owner', ARGV[3],
+            'generation', ARGV[4],
+            'token', ARGV[5],
+            'node', ARGV[6],
+            'boot', ARGV[7],
+            'until', leaseExpires)
+        redis.call('PEXPIRE', KEYS[1], ARGV[12])
+        redis.call('PEXPIRE', KEYS[4], ARGV[12])
         return {1, version, leaseExpires}
         """;
 
@@ -299,14 +363,26 @@ internal static class RedisCoordinationScripts
         if not owner then
             return 0
         end
-        if owner ~= ARGV[1] or
-           redis.call('HGET', KEYS[1], 'generation') ~= ARGV[2] or
-           redis.call('HGET', KEYS[1], 'token') ~= ARGV[3] or
-           redis.call('HGET', KEYS[1], 'node') ~= ARGV[4] or
-           redis.call('HGET', KEYS[1], 'boot') ~= ARGV[5] then
+        if redis.call('HGET', KEYS[1], 'account') ~= ARGV[1] or
+           redis.call('HGET', KEYS[1], 'character') ~= ARGV[2] or
+           owner ~= ARGV[3] or
+           redis.call('HGET', KEYS[1], 'generation') ~= ARGV[4] or
+           redis.call('HGET', KEYS[1], 'token') ~= ARGV[5] or
+           redis.call('HGET', KEYS[1], 'node') ~= ARGV[6] or
+           redis.call('HGET', KEYS[1], 'boot') ~= ARGV[7] then
             return -1
         end
         redis.call('DEL', KEYS[1])
+        if redis.call('HGET', KEYS[2], 'player_key') == KEYS[1] and
+           redis.call('HGET', KEYS[2], 'account') == ARGV[1] and
+           redis.call('HGET', KEYS[2], 'character') == ARGV[2] and
+           redis.call('HGET', KEYS[2], 'owner') == ARGV[3] and
+           redis.call('HGET', KEYS[2], 'generation') == ARGV[4] and
+           redis.call('HGET', KEYS[2], 'token') == ARGV[5] and
+           redis.call('HGET', KEYS[2], 'node') == ARGV[6] and
+           redis.call('HGET', KEYS[2], 'boot') == ARGV[7] then
+            redis.call('DEL', KEYS[2])
+        end
         return 1
         """;
 }

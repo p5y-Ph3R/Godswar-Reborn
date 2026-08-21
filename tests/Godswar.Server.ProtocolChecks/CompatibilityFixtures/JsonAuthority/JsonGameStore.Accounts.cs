@@ -284,6 +284,22 @@ internal sealed partial class JsonGameStore
         CancellationToken cancellationToken) =>
         MarkAccountOfflineAsync(accountId, cancellationToken);
 
+    Task IAccountPresenceWriter.MarkAccountPlayerOnlineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken) =>
+        MarkAccountOnlineAsync(accountId, cancellationToken);
+
+    async Task<bool>
+        IAccountPresenceWriter.TryMarkAccountPlayerOfflineAsync(
+            int accountId,
+            Guid presenceToken,
+            CancellationToken cancellationToken)
+    {
+        await MarkAccountOfflineAsync(accountId, cancellationToken);
+        return true;
+    }
+
     private static GameAccount? FindByUsername(
         GameDatabase database,
         string username)

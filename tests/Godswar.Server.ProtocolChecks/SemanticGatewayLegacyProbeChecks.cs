@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking.SemanticGateway;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -44,6 +45,14 @@ internal static partial class SemanticGatewayChecks
             "test2",
             result.Username,
             "segmented legacy game-login probe decodes username");
+        Check.Equal(
+            RealmId.Tempest,
+            result.RealmId,
+            "legacy game-login probe decodes the selected realm");
+        Check.Equal(
+            SemanticGatewayTestRealm.Tempest.Identifier,
+            result.Identifier,
+            "legacy game-login probe retains the redirected realm token");
         Check.True(
             result.EncryptedPacket.SequenceEqual(encrypted),
             "probe preserves exact ciphertext and cipher position");
@@ -95,7 +104,7 @@ internal static partial class SemanticGatewayChecks
         string rawUsername,
         ushort opcode = Opcodes.LoginGameServer)
     {
-        var packet = new byte[36];
+        var packet = new byte[LegacyGameLoginPacket.PacketLength];
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet,
             checked((ushort)packet.Length));
@@ -103,8 +112,17 @@ internal static partial class SemanticGatewayChecks
             packet.AsSpan(2),
             opcode);
         PacketText.WriteFixedAscii(
-            packet.AsSpan(4, 32),
+            packet.AsSpan(
+                LegacyGameLoginPacket.UsernameOffset,
+                LegacyGameLoginPacket.UsernameLength),
             rawUsername);
+        PacketText.WriteFixedAscii(
+            packet.AsSpan(
+                LegacyGameLoginPacket.IdentifierOffset,
+                LegacyGameLoginPacket.IdentifierLength),
+            "KAL3jcIzqGgKvOf1dbYZKC8cS");
+        packet[LegacyGameLoginPacket.RealmIdOffset] =
+            checked((byte)RealmId.Tempest.Value);
         new PacketCipher().Transform(packet);
         return packet;
     }

@@ -1,5 +1,7 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
+using Godswar.Server.Infrastructure.Characters;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -35,6 +37,59 @@ internal static partial class CharacterLifecycleCommandContractChecks
             0,
             create.Subject.CharacterId,
             "lifecycle commands deliberately scope identity to account slot zero");
+
+        var explicitTempest = CharacterCreateCommandEnvelope.Create(
+            347,
+            connection,
+            receivedAt,
+            create.Command with { RealmId = RealmId.Tempest });
+        var dwargon = CharacterCreateCommandEnvelope.Create(
+            347,
+            connection,
+            receivedAt,
+            create.Command with { RealmId = RealmId.Dwargon });
+        Check.Equal(
+            create.RequestHash,
+            explicitTempest.RequestHash,
+            "Tempest keeps the historical lifecycle request identity");
+        Check.True(
+            !string.Equals(
+                create.RequestHash,
+                dwargon.RequestHash,
+                StringComparison.Ordinal),
+            "the same lifecycle intent in another realm has a distinct request hash");
+        Check.Equal(
+            (int)CommandEnvelopeValidation.Valid,
+            (int)CharacterCreateCommandEnvelope.Validate(dwargon),
+            "Dwargon accepts a realm-scoped character create intent");
+        Check.Throws<ArgumentOutOfRangeException>(
+            () => CharacterCreateCommandEnvelope.Create(
+                347,
+                connection,
+                receivedAt,
+                create.Command with { RealmId = default }),
+            "an unspecified lifecycle realm fails closed before persistence");
+        Check.Equal(
+            "347:0",
+            CharacterLifecyclePersistenceCodec.AggregateKey(347, 0),
+            "Tempest retains its historical aggregate key");
+        Check.Equal(
+            "347:2:0",
+            CharacterLifecyclePersistenceCodec.AggregateKey(
+                347,
+                RealmId.Dwargon,
+                0),
+            "new realm streams include realm identity in their aggregate key");
+        Check.Equal(
+            CharacterLifecyclePersistenceCodec.RealmAggregateType,
+            CharacterLifecyclePersistenceCodec.AggregateTypeFor(
+                RealmId.Dwargon),
+            "new realms use the realm-scoped aggregate contract");
+        Check.Equal(
+            CharacterLifecyclePersistenceCodec.RealmConsumerKey,
+            CharacterLifecyclePersistenceCodec.ConsumerKeyFor(
+                RealmId.Dwargon),
+            "new realms use the realm-scoped durable consumer");
 
         var deleteCommand = new CharacterDeleteCommand(
             operationId,

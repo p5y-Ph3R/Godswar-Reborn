@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            94,
+            100,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -181,6 +181,12 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260813_090_bag_consumable_cooldown_state",
         "20260813_091_pet_phoenix_rebirth_bracket",
         "20260814_092_packed_seal_ownership_hardening",
-        "20260814_093_monster_combat_authority"
+        "20260814_093_monster_combat_authority",
+        "20260820_094_multi_realm_character_authority",
+        "20260820_095_realm_scoped_world_boss_control",
+        "20260820_096_fenced_account_presence_projection",
+        "20260821_097_pet_owner_merge_rebalance",
+        "20260821_098_cooled_holy_stone_balance",
+        "20260821_099_holy_spirit_balance_settings"
     ];
 }

@@ -66,8 +66,8 @@ internal static class PostgresPetOwnerMergeBonusReconciler
                 PetOwnerMergeContributionCalculator.Calculate(
                     savvy,
                     content);
-            var effects = PetOwnerMergeContributionCalculator
-                .ToEffectValues(contribution);
+            var effects = PetOwnerMergeStoredBonusCodec
+                .ToStoredValues(contribution);
             if (await HasCurrentBonusProjectionAsync(
                     connection,
                     transaction,
@@ -139,7 +139,7 @@ internal static class PostgresPetOwnerMergeBonusReconciler
         NpgsqlTransaction transaction,
         ActiveMergePet pet,
         string balanceRevision,
-        IReadOnlyList<PetOwnerMergeEffectValue> expected,
+        IReadOnlyList<PetOwnerMergeStoredBonusValue> expected,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -159,7 +159,7 @@ internal static class PostgresPetOwnerMergeBonusReconciler
         while (await reader.ReadAsync(cancellationToken))
         {
             if (index >= expected.Count ||
-                reader.GetInt16(0) != (short)expected[index].Effect ||
+                reader.GetInt16(0) != expected[index].Code ||
                 reader.GetDecimal(1) != expected[index].Value ||
                 reader.GetInt64(2) != pet.PetRevision ||
                 reader.IsDBNull(3) ||
@@ -319,8 +319,8 @@ internal static class PostgresPetOwnerMergeBonusReconciler
             await delete.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        var effects = PetOwnerMergeContributionCalculator
-            .ToEffectValues(contribution);
+        var effects = PetOwnerMergeStoredBonusCodec
+            .ToStoredValues(contribution);
         await using var insert = new NpgsqlCommand(
             """
             INSERT INTO public.character_pet_character_bonuses (
@@ -344,7 +344,7 @@ internal static class PostgresPetOwnerMergeBonusReconciler
         insert.Parameters.Add(
             "effectCodes",
             NpgsqlDbType.Array | NpgsqlDbType.Smallint).Value =
-            effects.Select(static value => (short)value.Effect).ToArray();
+            effects.Select(static value => value.Code).ToArray();
         insert.Parameters.Add(
             "effectValues",
             NpgsqlDbType.Array | NpgsqlDbType.Numeric).Value =

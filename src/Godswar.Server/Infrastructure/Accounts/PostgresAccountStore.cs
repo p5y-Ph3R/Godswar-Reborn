@@ -43,8 +43,15 @@ internal sealed class PostgresAccountStore(
                         THEN accounts.password
                     ELSE EXCLUDED.password
                 END,
-                login_status = 1,
-                last_login_time = now()
+                login_status = CASE
+                    WHEN accounts.login_presence_token IS NULL THEN 1
+                    ELSE accounts.login_status
+                END,
+                last_login_time = CASE
+                    WHEN accounts.login_presence_token IS NULL AND
+                         accounts.login_status = 0 THEN now()
+                    ELSE accounts.last_login_time
+                END
             RETURNING id, username;
             """);
         command.Parameters.AddWithValue("username", username);
@@ -201,8 +208,12 @@ internal sealed class PostgresAccountStore(
         await using var command = _dataSource.CreateCommand("""
             UPDATE public.accounts
             SET login_status = 1,
-                last_login_time = now()
-            WHERE id = @accountId;
+                last_login_time = CASE
+                    WHEN login_status = 0 THEN now()
+                    ELSE last_login_time
+                END
+            WHERE id = @accountId
+              AND login_presence_token IS NULL;
             """);
         command.Parameters.AddWithValue("accountId", accountId);
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -221,13 +232,81 @@ internal sealed class PostgresAccountStore(
             UPDATE public.accounts
             SET login_status = 0,
                 last_logout_time = now(),
-                total_online_time = total_online_time + GREATEST(
-                    0,
-                    EXTRACT(EPOCH FROM (now() - last_login_time))::bigint)
-            WHERE id = @accountId;
+                total_online_time = total_online_time + CASE
+                    WHEN login_status <> 0 THEN GREATEST(
+                        0,
+                        EXTRACT(EPOCH FROM (
+                            now() - last_login_time
+                        ))::bigint)
+                    ELSE 0
+                END
+            WHERE id = @accountId
+              AND login_presence_token IS NULL;
             """);
         command.Parameters.AddWithValue("accountId", accountId);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task MarkAccountPlayerOnlineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountId <= 0)
+        {
+            return;
+        }
+        if (presenceToken == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "A nonzero account presence token is required.",
+                nameof(presenceToken));
+        }
+
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE public.accounts
+            SET login_status = 1,
+                last_login_time = CASE
+                    WHEN login_status = 0 THEN now()
+                    ELSE last_login_time
+                END,
+                login_presence_token = @presenceToken
+            WHERE id = @accountId;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("presenceToken", presenceToken);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<bool> TryMarkAccountPlayerOfflineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountId <= 0 || presenceToken == Guid.Empty)
+        {
+            return false;
+        }
+
+        await using var command = _dataSource.CreateCommand("""
+            UPDATE public.accounts
+            SET login_status = 0,
+                last_logout_time = now(),
+                total_online_time = total_online_time + CASE
+                    WHEN login_status <> 0 THEN GREATEST(
+                        0,
+                        EXTRACT(EPOCH FROM (
+                            now() - last_login_time
+                        ))::bigint)
+                    ELSE 0
+                END,
+                login_presence_token = NULL
+            WHERE id = @accountId
+              AND login_presence_token = @presenceToken;
+            """);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("presenceToken", presenceToken);
+        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
     private static AccountIdentity ReadIdentity(

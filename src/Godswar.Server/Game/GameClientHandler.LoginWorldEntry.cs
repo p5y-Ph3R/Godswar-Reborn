@@ -24,7 +24,14 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var username = PacketText.ReadFixedAscii(packet.Payload, 0, 32);
+        var username = await ResolveGameLoginUsernameAsync(
+            packet,
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            _session.Disconnect();
+            return;
+        }
         var boundPrincipal = _session.BoundGamePrincipal;
         if (boundPrincipal is not null)
         {
@@ -93,12 +100,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var replacedSession = _registry.ReplaceAccountSession(
-            _account.Id,
-            _session);
+        var replacement =
+            _registry.ReplaceAccountSessionAndDetachWorld(
+                _account.Id,
+                _session);
+        var replacedSession = replacement.ReplacedSession;
         _accountSessionRegistered = true;
         if (replacedSession is not null)
         {
+            replacedSession.Disconnect();
+            await PublishReplacedWorldRemovalAsync(
+                replacement.DetachedWorld);
             if (_session.AllowsPayloadDiagnostics)
             {
                 Console.WriteLine(
@@ -121,9 +133,6 @@ internal sealed partial class GameClientHandler
                         ? $"[status] stale-session boost tail deferred account={_account.Username}: {ex.Message}"
                         : "[status] stale-session boost tail deferred");
             }
-
-            _registry.Remove(replacedSession);
-            replacedSession.Disconnect();
         }
         if (!hasGatewayAdmission &&
             !await RefreshCharacterSnapshotAsync(
@@ -195,6 +204,7 @@ internal sealed partial class GameClientHandler
         var payload = packet.Payload;
         var character = new GameCharacter
         {
+            RealmId = _processRealmId,
             Name = PacketText.ReadFixedAscii(payload, 0, 32),
             Gender = ReadByte(payload, 32, 1),
             Camp = ReadByte(payload, 33, 1),
@@ -269,6 +279,13 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        var trainingDummyEntry =
+            _registry.IsTrainingDummyCore(_character);
+        if (trainingDummyEntry)
+        {
+            await RestoreEntryStateAsync(cancellationToken);
+        }
+
         // A process crash can leave the durable Merge flag behind after its
         // owning session vanished. Clear it before EnterMain, the owned-pet
         // list, PlayerDetail, or any calculated-stat frame can expose a stale
@@ -281,12 +298,12 @@ internal sealed partial class GameClientHandler
         }
 
         ResetPlayerMovementEcs();
-        if (_character.CurrentHp <= 0)
+        if (!trainingDummyEntry)
         {
-            await RestoreFreeRevivalStateAsync(cancellationToken);
-            Console.WriteLine(
-                $"[revive] restored dead character during enter character={_character.Name} map={_character.CurrentMap} hp={_character.CurrentHp}/{_character.MaxHp}");
+            await RestoreEntryStateAsync(cancellationToken);
         }
+
+        await RefillCarriedPetEnergyForLoginAsync(cancellationToken);
 
         var enterMain = PacketBuilder.EnterMain(_character);
         var kitBagDetailPages = PacketBuilder.KitBagDetailPages(_character);
@@ -325,6 +342,19 @@ internal sealed partial class GameClientHandler
             ownedPetList,
             cancellationToken,
             "OwnedPetList");
+        if (ownedPets.SingleOrDefault(
+                static pet => pet.IsCarried) is { } carriedPet)
+        {
+            // Opcode 10237 selects the carried pet but does not publish its
+            // durable energy. The stock client otherwise initializes the bar
+            // as full until the first six-second heartbeat or a Merge result.
+            await _session.SendAsync(
+                PacketBuilder.PetEnergy(
+                    carriedPet.CurrentEnergy,
+                    carriedPet.MaximumEnergy),
+                cancellationToken,
+                "PetEnergyBootstrap");
+        }
         await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
     }

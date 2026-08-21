@@ -19,6 +19,8 @@ internal static partial class
     private const int CharacterId = 19;
     private const int GridIndex = 1;
     private const int SelectedKind = 10_057;
+    private const int DefenseGridIndex = 8;
+    private const int DefenseSelectedKind = 10_025;
     private static readonly Guid OperationId =
         Guid.Parse("0be13d22-8b3d-43e9-a74f-1e9595cf6d9c");
     private static readonly MethodInfo HandlePacketMethod =
@@ -85,6 +87,7 @@ internal static partial class
         var levels = ZodiacSkillGridCatalog.CreateEmptyLevels();
         var selected = ZodiacSkillGridCatalog.CreateEmptySkillIds();
         levels[GridIndex] = 1;
+        levels[DefenseGridIndex] = 1;
         return new GameCharacter
         {
             Id = CharacterId,
@@ -110,10 +113,18 @@ internal static partial class
 
     private static GamePacket CreateSelectionPacket(
         Guid? operationId,
-        int tail = 0)
+        int tail = 0,
+        int gridIndex = GridIndex,
+        int selectedKind = SelectedKind)
     {
         var packet = Convert.FromHexString(
             "1800392800000000FF006600010000004927000000000000");
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(12, 4),
+            gridIndex);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(16, 4),
+            selectedKind);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(20, 4),
             tail);
@@ -201,6 +212,7 @@ internal static partial class
         GameStoreTestStub
     {
         public int SelectionCount { get; private set; }
+        public GameCharacter? AuthoritativeCharacter { get; init; }
 
         public override Task<ZodiacSkillGridSelectionResult?>
             SelectZodiacSkillGridAsync(
@@ -212,6 +224,20 @@ internal static partial class
         {
             cancellationToken.ThrowIfCancellationRequested();
             SelectionCount++;
+            if (AuthoritativeCharacter is not null)
+            {
+                Check.True(
+                    accountId == AccountId &&
+                    characterId == CharacterId,
+                    "raw SID102 preserves the selected character owner");
+                return Task.FromResult<ZodiacSkillGridSelectionResult?>(
+                    ZodiacSkillGridSelection.Apply(
+                        AuthoritativeCharacter,
+                        gridIndex,
+                        selectedSkillKind,
+                        skillLearned:
+                            selectedSkillKind == SelectedKind));
+            }
             return Task.FromResult<ZodiacSkillGridSelectionResult?>(
                 null);
         }

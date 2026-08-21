@@ -83,6 +83,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var reusedConnection = await gatewayB.StartLoginAsync(
             new SemanticGatewayPrincipal(704, "REUSED_CONNECTION"),
             gameSource,
+            SemanticGatewayTestRealm.TempestGrant,
             Deadline(),
             CancellationToken.None);
         Check.True(

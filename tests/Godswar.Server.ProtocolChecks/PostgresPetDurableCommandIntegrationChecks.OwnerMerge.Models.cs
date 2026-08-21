@@ -31,13 +31,15 @@ internal static partial class
         int Hit,
         int Dodge,
         int DamageAbsorb,
-        int PhysicalDamageBonus,
-        int MagicDamageBonus,
+        int PhysicalAppendDamage,
+        int MagicAppendDamage,
         int PhysicalDamageReduction,
         int MagicDamageReduction,
-        int CriticalDamageReduction,
-        int LifeAbsorption,
-        int DamageRebound)
+        int PhysicalFlatAbsorption,
+        int MagicFlatAbsorption,
+        int CriticalDamageFlatReduction,
+        int LifeAbsorptionFlat,
+        int DamageReboundFlat)
     {
         public static OwnerMergeProjectedStats From(CharacterStats stats) =>
             new(
@@ -50,13 +52,15 @@ internal static partial class
                 stats.Hit,
                 stats.Dodge,
                 stats.DamageAbsorb,
-                stats.PhysicalDamageBonus,
-                stats.MagicDamageBonus,
+                stats.PhysicalAppendDamage,
+                stats.MagicAppendDamage,
                 stats.PhysicalDamageReduction,
                 stats.MagicDamageReduction,
-                stats.CriticalDamageReduction,
-                stats.LifeAbsorption,
-                stats.DamageRebound);
+                stats.PhysicalFlatAbsorption,
+                stats.MagicFlatAbsorption,
+                stats.CriticalDamageFlatReduction,
+                stats.LifeAbsorptionFlat,
+                stats.DamageReboundFlat);
 
         public bool IsStrictlyGreaterThan(OwnerMergeProjectedStats other) =>
             MaxHp > other.MaxHp &&
@@ -68,12 +72,15 @@ internal static partial class
             Hit > other.Hit &&
             Dodge > other.Dodge &&
             DamageAbsorb > other.DamageAbsorb &&
-            PhysicalDamageBonus > other.PhysicalDamageBonus &&
-            MagicDamageBonus > other.MagicDamageBonus &&
+            PhysicalAppendDamage > other.PhysicalAppendDamage &&
+            MagicAppendDamage > other.MagicAppendDamage &&
             PhysicalDamageReduction > other.PhysicalDamageReduction &&
             MagicDamageReduction > other.MagicDamageReduction &&
-            CriticalDamageReduction > other.CriticalDamageReduction &&
-            LifeAbsorption > other.LifeAbsorption &&
-            DamageRebound > other.DamageRebound;
+            PhysicalFlatAbsorption > other.PhysicalFlatAbsorption &&
+            MagicFlatAbsorption > other.MagicFlatAbsorption &&
+            CriticalDamageFlatReduction >
+                other.CriticalDamageFlatReduction &&
+            LifeAbsorptionFlat > other.LifeAbsorptionFlat &&
+            DamageReboundFlat > other.DamageReboundFlat;
     }
 }

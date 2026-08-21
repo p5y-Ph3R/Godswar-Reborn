@@ -17,6 +17,10 @@ internal static class CharacterSnapshotContract
         }
 
         RequirePositive(snapshot.AccountId, "account ID");
+        if (!snapshot.RealmId.IsValid)
+        {
+            throw Invalid("Character snapshot realm is invalid.");
+        }
         RequireText(
             snapshot.ProviderSnapshotToken,
             CharacterSnapshotLimits.ProviderSnapshotTokenLength,
@@ -31,23 +35,28 @@ internal static class CharacterSnapshotContract
 
         if (snapshot.Character is not null)
         {
-            ValidateCharacter(snapshot.Character, snapshot.AccountId);
+            ValidateCharacter(
+                snapshot.Character,
+                snapshot.AccountId,
+                snapshot.RealmId);
         }
     }
 
     private static void ValidateCharacter(
         CharacterLoadSnapshot snapshot,
-        int accountId)
+        int accountId,
+        Godswar.Server.Domain.World.Instances.RealmId realmId)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var identity = snapshot.Identity ??
             throw Invalid("Character identity is missing.");
         RequirePositive(identity.CharacterId, "character ID");
-        if (identity.AccountId != accountId)
+        if (identity.AccountId != accountId ||
+            identity.RealmId != realmId)
         {
             Fail(
                 CharacterSnapshotFailureReason.OwnershipMismatch,
-                "Character ownership does not match the requested account.");
+                "Character ownership does not match the requested account and realm.");
         }
 
         RequireText(
@@ -268,6 +277,9 @@ internal static class CharacterSnapshotContract
             stats.WeaponAuraEffect != loadout.WeaponAuraEffect ||
             stats.ArmorRank != loadout.ArmorRank ||
             stats.ArmorAuraEffect != loadout.ArmorAuraEffect ||
+            stats.StatusHit < 0 ||
+            stats.StatusResistance < 0 ||
+            stats.LifeAbsorptionFlat < 0 ||
             stats.LearnedSkillCount < 0)
         {
             throw Invalid("Character calculated stats are outside valid bounds.");

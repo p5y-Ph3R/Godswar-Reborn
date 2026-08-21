@@ -29,6 +29,7 @@ internal static partial class PetOwnerMergeProjectionChecks
         await CheckNearbyObserverReceivesWorldNamespaceAsync();
         await CheckNearbyObserverReceivesMergeEndAsync();
         await CheckRemergeGetsFreshEnergyTimerAsync();
+        await CheckUnmergedPetEnergyRechargeAsync();
         await CheckStaleLoginMergeFailsClosedAsync();
     }
 
@@ -90,14 +91,31 @@ internal static partial class PetOwnerMergeProjectionChecks
             activePresentation.WorldRevision ==
                 beforePresentation.WorldRevision + 1,
             "Merge start atomically advances AOI revision with its presentation flag");
+        Check.Equal(
+            (int)pet.Aptitude,
+            (int)activePresentation.PetOwnerMergeAptitude,
+            "Merge presentation retains the authoritative aptitude");
+        Check.Equal(
+            pet.CompletedRebirths,
+            activePresentation.PetOwnerMergeCompletedRebirths,
+            "Merge presentation retains completed rebirths for late viewers");
         var observerStart = viewerTransport.ReadLegacyPackets()
             .Single(packet => Opcode(packet) ==
                 Opcodes.PetOwnerMergeStarted);
+        Check.Equal(10, observerStart.Length, "nearby Merge start length");
         Check.Equal(
             WorldObjectIds.ForPlayer(actor.Id),
             BinaryPrimitives.ReadUInt32LittleEndian(
                 observerStart.AsSpan(4)),
             "nearby Merge start uses the actor's world object namespace");
+        Check.Equal(
+            checked((byte)pet.Aptitude),
+            observerStart[8],
+            "nearby Merge start publishes authoritative aptitude");
+        Check.Equal(
+            checked((byte)pet.CompletedRebirths),
+            observerStart[9],
+            "nearby Merge start publishes completed rebirths");
         var observerStatus = viewerTransport.ReadLegacyPackets()
             .Single(packet => Opcode(packet) == 0x27B6);
         Check.Equal(
@@ -116,6 +134,14 @@ internal static partial class PetOwnerMergeProjectionChecks
             endedPresentation.WorldRevision ==
                 activePresentation.WorldRevision + 1,
             "Merge end atomically advances AOI revision with its presentation flag");
+        Check.Equal(
+            0,
+            (int)endedPresentation.PetOwnerMergeAptitude,
+            "Merge end clears the retained visual aptitude");
+        Check.Equal(
+            (short)0,
+            endedPresentation.PetOwnerMergeCompletedRebirths,
+            "Merge end clears the retained rebirth visual tier");
         fixture.Registry.Remove(viewerSession);
         fixture.Registry.Remove(fixture.Session);
     }

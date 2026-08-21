@@ -69,7 +69,7 @@ internal sealed partial class GameSessionRegistry
                 source.MapId,
                 damage.ObjectId,
                 BuildPveElementalDamagePacket(
-                    WorldObjectIds.ForPlayer(source.CharacterId),
+                    source.ObjectId,
                     source,
                     damage.ObjectId,
                     applied,
@@ -120,7 +120,7 @@ internal sealed partial class GameSessionRegistry
             await BroadcastToMapAsync(
                 source.MapId,
                 PacketBuilder.PlayerVitalsUpdate(
-                    WorldObjectIds.ForPlayer(source.CharacterId),
+                    source.ObjectId,
                     currentHealth,
                     currentMana),
                 cancellationToken,

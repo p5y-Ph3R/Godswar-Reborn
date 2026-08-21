@@ -1,5 +1,6 @@
 using System.Data;
 using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Database;
 using Npgsql;
 using NpgsqlTypes;
@@ -11,14 +12,29 @@ internal sealed class PostgresWorldBossAreaControlStore :
     IWorldBossRespawnReader
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly RealmId _realmId;
     private readonly string? _gameplayContentRevision;
 
     public PostgresWorldBossAreaControlStore(
         NpgsqlDataSource dataSource,
+        string? gameplayContentRevision = null) :
+        this(dataSource, RealmId.Tempest, gameplayContentRevision)
+    {
+    }
+
+    public PostgresWorldBossAreaControlStore(
+        NpgsqlDataSource dataSource,
+        RealmId realmId,
         string? gameplayContentRevision = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+
+        _realmId = realmId;
         _gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateOptional(
                 gameplayContentRevision);
@@ -132,6 +148,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
         await using var command = _dataSource.CreateCommand(
             ActiveRespawnQuery);
         command.Parameters.AddWithValue("mapId", request.MapId);
+        command.Parameters.AddWithValue("realmId", _realmId.Value);
         command.Parameters.Add(
             "readAt",
             NpgsqlDbType.TimestampTz).Value =
@@ -211,7 +228,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
         return configured;
     }
 
-    private static async Task<WorldBossAreaControlSnapshot?>
+    private async Task<WorldBossAreaControlSnapshot?>
         ReadCurrentControlAsync(
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
@@ -229,12 +246,14 @@ internal sealed class PostgresWorldBossAreaControlStore :
                 activated_at,
                 expires_at
             FROM public.faction_area_experience_control
-            WHERE map_id = @mapId
+            WHERE realm_id = @realmId
+              AND map_id = @mapId
             FOR UPDATE;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("mapId", mapId);
+        command.Parameters.AddWithValue("realmId", _realmId.Value);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
@@ -253,6 +272,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
             connection,
             transaction);
         command.Parameters.AddWithValue("mapId", activation.MapId);
+        command.Parameters.AddWithValue("realmId", _realmId.Value);
         command.Parameters.AddWithValue(
             "bossTemplateKey",
             activation.BossTemplateKey);
@@ -307,6 +327,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
     private const string UpsertControlQuery =
         """
         INSERT INTO public.faction_area_experience_control (
+            realm_id,
             map_id,
             controlling_camp,
             boss_template_key,
@@ -316,6 +337,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
             death_token
         )
         SELECT
+            @realmId,
             area.map_id,
             @controllingCamp,
             area.template_key,
@@ -335,7 +357,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
                   WHERE publication.family = 'gameplay'
               )
           )
-        ON CONFLICT (map_id) DO UPDATE
+        ON CONFLICT (realm_id, map_id) DO UPDATE
         SET controlling_camp = EXCLUDED.controlling_camp,
             boss_template_key = EXCLUDED.boss_template_key,
             bonus_basis_points = EXCLUDED.bonus_basis_points,
@@ -375,6 +397,7 @@ internal sealed class PostgresWorldBossAreaControlStore :
              )
          )
         WHERE control.map_id = @mapId
+          AND control.realm_id = @realmId
           AND control.activated_at <= @readAt
           AND control.expires_at > @readAt;
         """;

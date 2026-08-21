@@ -48,6 +48,16 @@ internal interface IAccountPresenceWriter
     Task MarkAccountOfflineAsync(
         int accountId,
         CancellationToken cancellationToken = default);
+
+    Task MarkAccountPlayerOnlineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> TryMarkAccountPlayerOfflineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

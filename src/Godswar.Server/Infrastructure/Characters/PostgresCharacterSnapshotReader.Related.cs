@@ -1,13 +1,14 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.Inventory;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
 
 internal sealed partial class PostgresCharacterSnapshotReader
 {
-    private static async Task<CharacterRelatedReadResult> ReadRelatedAsync(
+    private async Task<CharacterRelatedReadResult> ReadRelatedAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
@@ -34,6 +35,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         PostgresPetLearnedSkillContentBinding.AddParameter(
             command,
             petLearnedSkillRevision);
+        PostgresHolySpiritBalanceBinding.AddParameters(
+            command,
+            _holySpiritBalance);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);

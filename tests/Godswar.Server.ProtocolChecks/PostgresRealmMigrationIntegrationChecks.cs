@@ -63,8 +63,15 @@ internal static partial class PostgresRealmMigrationIntegrationChecks
                 fixture);
             await runner.InitializeAsync(
                 LegacySchemaBootstrap.LoadAsync,
-                PostgresSchemaMigrationCatalog.All);
+                MigrationsThrough(MigrationId));
             await AssertAppliedRealmAuthorityAsync(
+                dataSource,
+                fixture);
+
+            await runner.InitializeAsync(
+                LegacySchemaBootstrap.LoadAsync,
+                PostgresSchemaMigrationCatalog.All);
+            await AssertAppliedMultiRealmAuthorityAsync(
                 dataSource,
                 fixture);
 
@@ -85,6 +92,17 @@ internal static partial class PostgresRealmMigrationIntegrationChecks
 
     internal static bool IsDisposableDatabaseName(string databaseName) =>
         DisposableDatabasePattern.IsMatch(databaseName);
+
+    private static IReadOnlyList<PostgresSchemaMigration> MigrationsThrough(
+        string migrationId)
+    {
+        var migrations = PostgresSchemaMigrationCatalog.All;
+        var finalIndex = migrations
+            .Select(static (migration, index) => (migration, index))
+            .Single(candidate => candidate.migration.Id == migrationId)
+            .index;
+        return migrations.Take(finalIndex + 1).ToArray();
+    }
 
     private static async Task<RealmFixture> CreateLegacyFixtureAsync(
         NpgsqlDataSource dataSource)

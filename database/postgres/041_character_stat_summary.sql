@@ -151,7 +151,10 @@ talent_stats AS (
         SUM(ct.rank * CASE WHEN tt.is_percent THEN tt.effect_value * 10000 ELSE tt.effect_value END) FILTER (WHERE tet.key = 'Becure') AS be_cure_bonus,
         SUM(ct.rank * CASE WHEN tt.is_percent THEN tt.effect_value * 10000 ELSE tt.effect_value END) FILTER (WHERE tet.key = 'HPResume') AS hp_recovery,
         SUM(ct.rank * CASE WHEN tt.is_percent THEN tt.effect_value * 10000 ELSE tt.effect_value END) FILTER (WHERE tet.key = 'MPResume') AS mp_recovery
-    FROM character_talents ct
+    FROM (
+        SELECT user_id, talent_id, talent_effective_rank(rank) AS rank
+        FROM character_talents
+    ) ct
     JOIN character_base cb ON cb.id = ct.user_id
     JOIN talent_templates tt ON tt.id = ct.talent_id AND tt.class_id = cb.profession
     JOIN talent_effect_templates tet ON tet.id = tt.effect_id

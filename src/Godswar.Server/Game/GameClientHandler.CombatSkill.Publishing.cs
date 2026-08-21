@@ -92,7 +92,7 @@ internal sealed partial class GameClientHandler
                 $"[skill] caster notification failed character={character.Name} target={cast.TargetObjectId}: {ex.Message}");
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var visualRecipients = publishCastVisual
             ? await _registry.BroadcastToMonsterViewersAsync(
                 character.CurrentMap,

@@ -1,4 +1,5 @@
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.State;
 
@@ -68,11 +69,52 @@ internal interface IGameStore : IAsyncDisposable
 
     Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(int accountId, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
+        int accountId,
+        RealmId realmId,
+        CancellationToken cancellationToken = default) =>
+        realmId == RealmId.Tempest
+            ? GetCharactersAsync(accountId, cancellationToken)
+            : throw new NotSupportedException(
+                "This game store is Tempest-only.");
+
     Task<GameCharacter?> GetFirstCharacterAsync(int accountId, CancellationToken cancellationToken = default);
+
+    Task<GameCharacter?> GetFirstCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        CancellationToken cancellationToken = default) =>
+        realmId == RealmId.Tempest
+            ? GetFirstCharacterAsync(accountId, cancellationToken)
+            : throw new NotSupportedException(
+                "This game store is Tempest-only.");
 
     Task<GameCharacter> CreateCharacterAsync(int accountId, GameCharacter character, CancellationToken cancellationToken = default);
 
+    Task<GameCharacter> CreateCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        GameCharacter character,
+        CancellationToken cancellationToken = default) =>
+        realmId == RealmId.Tempest
+            ? CreateCharacterAsync(accountId, character, cancellationToken)
+            : throw new NotSupportedException(
+                "This game store is Tempest-only.");
+
     Task<bool> DeleteCharacterAsync(int accountId, string characterName, CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        string characterName,
+        CancellationToken cancellationToken = default) =>
+        realmId == RealmId.Tempest
+            ? DeleteCharacterAsync(
+                accountId,
+                characterName,
+                cancellationToken)
+            : throw new NotSupportedException(
+                "This game store is Tempest-only.");
 
     Task<GameCharacter?> MoveEquipmentToKitBagAsync(
         int accountId,

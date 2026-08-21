@@ -36,6 +36,7 @@ internal static partial class
             """
             INSERT INTO public.character_base (
                 account_id,
+                server_id,
                 name,
                 gender,
                 camp,
@@ -50,6 +51,7 @@ internal static partial class
             )
             VALUES (
                 @accountId,
+                1,
                 @characterName,
                 'male',
                 1,

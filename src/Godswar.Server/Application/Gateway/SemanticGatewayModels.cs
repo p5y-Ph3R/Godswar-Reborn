@@ -225,6 +225,7 @@ internal sealed record SemanticGatewayLoginGenerationLease(
     long Sequence,
     SemanticGatewayPrincipal Principal,
     SemanticGatewayConnectionSource LoginSource,
+    SemanticGatewayRealmGrant RealmGrant,
     DateTimeOffset ExpiresAt);
 
 internal readonly record struct SemanticGatewayLoginResult(

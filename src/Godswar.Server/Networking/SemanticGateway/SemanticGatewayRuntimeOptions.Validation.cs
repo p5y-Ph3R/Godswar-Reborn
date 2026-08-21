@@ -88,7 +88,7 @@ internal sealed partial class SemanticGatewayRuntimeOptions
                 limitOptions.MaximumConcurrentBackhaulTlsHandshakes,
                 authorityLimits,
                 directory,
-                routes.BootstrapTarget,
+                routes.BootstrapTargets,
                 routes.MapTargets,
                 workers.Targets);
         }
@@ -187,11 +187,13 @@ internal sealed partial class SemanticGatewayRuntimeOptions
         var definitions =
             new List<SemanticGatewayStaticRoute>(options.Count);
         var mapTargets = new Dictionary<
-            MapId,
+            (RealmId RealmId, MapId MapId),
             SemanticGatewayRouteTarget>();
         var worldInstances = new HashSet<WorldInstanceId>();
-        SemanticGatewayRouteTarget bootstrapTarget = default;
-        var bootstrapCount = 0;
+        var bootstrapTargets = new Dictionary<
+            RealmId,
+            SemanticGatewayRouteTarget>();
+        var routeRealms = new HashSet<RealmId>();
 
         for (var index = 0; index < options.Count; index++)
         {
@@ -226,16 +228,17 @@ internal sealed partial class SemanticGatewayRuntimeOptions
                 realmId,
                 mapId,
                 worldInstanceId);
+            routeRealms.Add(realmId);
             if (!worldInstances.Add(worldInstanceId))
             {
                 throw new InvalidDataException(
                     "Semantic-gateway WorldInstanceId routes must be unique.");
             }
-            if (!mapTargets.TryAdd(mapId, target))
+            if (!mapTargets.TryAdd((realmId, mapId), target))
             {
                 throw new InvalidDataException(
-                    "Static semantic-gateway routes must use unique MapId " +
-                    "values so legacy map lookup remains exact.");
+                    "Static semantic-gateway routes must use unique " +
+                    "RealmId/MapId values.");
             }
 
             definitions.Add(
@@ -247,22 +250,26 @@ internal sealed partial class SemanticGatewayRuntimeOptions
                     configured.AdmissionCapacity));
             if (configured.Bootstrap)
             {
-                bootstrapCount++;
-                bootstrapTarget = target;
+                if (!bootstrapTargets.TryAdd(realmId, target))
+                {
+                    throw new InvalidDataException(
+                        "SemanticGateway.Routes must contain exactly one " +
+                        "bootstrap route per realm.");
+                }
             }
         }
 
-        if (bootstrapCount != 1)
+        if (bootstrapTargets.Count != routeRealms.Count)
         {
             throw new InvalidDataException(
                 "SemanticGateway.Routes must contain exactly one bootstrap " +
-                "route.");
+                "route for every configured realm.");
         }
 
         return new ValidatedRoutes(
             definitions,
             mapTargets,
-            bootstrapTarget);
+            bootstrapTargets);
     }
 
     private static ServerNodeId ParseNodeId(
@@ -334,7 +341,8 @@ internal sealed partial class SemanticGatewayRuntimeOptions
     private sealed record ValidatedRoutes(
         IReadOnlyList<SemanticGatewayStaticRoute> Definitions,
         IReadOnlyDictionary<
-            MapId,
+            (RealmId RealmId, MapId MapId),
             SemanticGatewayRouteTarget> MapTargets,
-        SemanticGatewayRouteTarget BootstrapTarget);
+        IReadOnlyDictionary<RealmId, SemanticGatewayRouteTarget>
+            BootstrapTargets);
 }

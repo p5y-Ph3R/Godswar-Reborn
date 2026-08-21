@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -18,6 +19,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             byte[] operationId,
             byte[] requestHash,
             CancellationToken cancellationToken)
+        where T : IRealmScopedCharacterLifecycleCommand
     {
         var eventId = transition.Succeeded
             ? Guid.NewGuid()
@@ -34,6 +36,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             envelope.Family,
             transition.Status,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             CharacterLifecycleCommandContract.SingleCharacterSlot,
             transition.CharacterId,
             transition.LifecycleVersion,
@@ -48,6 +51,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             envelope.Family,
             operationId,
             requestHash,
@@ -61,6 +65,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 connection,
                 transaction,
                 envelope.Subject.AccountId,
+                envelope.Command.RealmId,
                 envelope.Family,
                 inboxId,
                 transition.LifecycleVersion,
@@ -84,6 +89,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         byte[] operationId,
         byte[] requestHash,
         CancellationToken cancellationToken)
+        where T : IRealmScopedCharacterLifecycleCommand
     {
         await using var command = CreateCommand(
             """
@@ -110,6 +116,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 @outcomeCode,
                 jsonb_build_object(
                     'status', @status,
+                    'realmId', @realmId,
                     'characterSlot', @characterSlot,
                     'characterId', @characterId,
                     'lifecycleVersion', @lifecycleVersion,
@@ -126,6 +133,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         AddIdentityParameters(
             command,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             envelope.Family,
             operationId);
         command.Parameters.Add(
@@ -140,6 +148,9 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         command.Parameters.AddWithValue(
             "status",
             checked((short)transition.Status));
+        command.Parameters.AddWithValue(
+            "realmId",
+            envelope.Command.RealmId.Value);
         command.Parameters.AddWithValue(
             "characterSlot",
             CharacterLifecycleCommandContract.SingleCharacterSlot);
@@ -174,6 +185,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CommandFamily family,
         byte[] operationId,
         byte[] requestHash,
@@ -221,6 +233,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         AddIdentityParameters(
             command,
             accountId,
+            realmId,
             family,
             operationId);
         command.Parameters.Add(
@@ -255,6 +268,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CommandFamily family,
         long inboxId,
         long aggregateVersion,
@@ -266,6 +280,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             accountId,
+            realmId,
             aggregateVersion,
             cancellationToken);
         await using var command = CreateCommand(
@@ -303,14 +318,15 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         command.Parameters.AddWithValue("inboxId", inboxId);
         command.Parameters.AddWithValue(
             "consumerKey",
-            CharacterLifecyclePersistenceCodec.ConsumerKey);
+            CharacterLifecyclePersistenceCodec.ConsumerKeyFor(realmId));
         command.Parameters.AddWithValue(
             "aggregateType",
-            CharacterLifecyclePersistenceCodec.AggregateType);
+            CharacterLifecyclePersistenceCodec.AggregateTypeFor(realmId));
         command.Parameters.AddWithValue(
             "aggregateKey",
             CharacterLifecyclePersistenceCodec.AggregateKey(
                 accountId,
+                realmId,
                 CharacterLifecycleCommandContract.SingleCharacterSlot));
         command.Parameters.AddWithValue(
             "aggregateVersion",
@@ -342,6 +358,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         long aggregateVersion,
         CancellationToken cancellationToken)
     {
@@ -383,14 +400,15 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             transaction);
         command.Parameters.AddWithValue(
             "consumerKey",
-            CharacterLifecyclePersistenceCodec.ConsumerKey);
+            CharacterLifecyclePersistenceCodec.ConsumerKeyFor(realmId));
         command.Parameters.AddWithValue(
             "aggregateType",
-            CharacterLifecyclePersistenceCodec.AggregateType);
+            CharacterLifecyclePersistenceCodec.AggregateTypeFor(realmId));
         command.Parameters.AddWithValue(
             "aggregateKey",
             CharacterLifecyclePersistenceCodec.AggregateKey(
                 accountId,
+                realmId,
                 CharacterLifecycleCommandContract.SingleCharacterSlot));
         command.Parameters.AddWithValue(
             "orderingPolicy",

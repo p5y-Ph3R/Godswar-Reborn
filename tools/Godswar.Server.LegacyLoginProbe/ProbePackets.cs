@@ -6,10 +6,35 @@ namespace Godswar.Server.LegacyLoginProbe;
 
 internal static class ProbePackets
 {
-    public static byte[] GameLogin(string username)
+    public static byte[] Login(
+        string username,
+        string password)
     {
-        var packet = Create(Opcodes.LoginGameServer, 36);
+        var packet = Create(Opcodes.Login, 68);
         PacketText.WriteFixedAscii(packet.AsSpan(4, 32), username);
+        PacketText.WriteFixedAscii(packet.AsSpan(36, 32), password);
+        return packet;
+    }
+
+    public static byte[] SelectServer(byte realmId)
+    {
+        var packet = Create(Opcodes.SelectServer, 44);
+        packet[36] = realmId;
+        return packet;
+    }
+
+    public static byte[] LoginReturnInfo() =>
+        Create(Opcodes.LoginReturnInfo, 4);
+
+    public static byte[] GameLogin(
+        string username,
+        string realmIdentifier,
+        byte realmId)
+    {
+        var packet = Create(Opcodes.LoginGameServer, 62);
+        PacketText.WriteFixedAscii(packet.AsSpan(4, 32), username);
+        PacketText.WriteFixedAscii(packet.AsSpan(36, 25), realmIdentifier);
+        packet[61] = realmId;
         return packet;
     }
 

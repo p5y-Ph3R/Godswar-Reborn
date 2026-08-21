@@ -200,7 +200,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
                    (audit.detail_payload->>'automaticStoreMaximum')::boolean
             FROM character_base cb
             JOIN holy_suit_daily_exp_storage hs
-              ON hs.account_id=cb.account_id AND hs.realm_id=1
+              ON hs.account_id=cb.account_id
+             AND hs.realm_id=cb.server_id
              AND hs.usage_day=
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Singapore')::date
             JOIN character_items ci

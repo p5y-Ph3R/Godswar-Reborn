@@ -47,7 +47,7 @@ internal static partial class RedisSemanticGatewayScripts
         local now =
             (tonumber(serverTime[1]) * 1000) +
             math.floor(tonumber(serverTime[2]) / 1000)
-        local expires = now + tonumber(ARGV[6])
+        local expires = now + tonumber(ARGV[10])
         local nameAccount = redis.call('HGET', KEYS[2], 'account')
         if nameAccount and nameAccount ~= ARGV[2] then
             local nameExpires =
@@ -108,7 +108,7 @@ internal static partial class RedisSemanticGatewayScripts
 
         local generations =
             tonumber(redis.call('HGET', KEYS[4], 'generations') or '0')
-        if not current and generations >= tonumber(ARGV[8]) then
+        if not current and generations >= tonumber(ARGV[12]) then
             return {22, '', 0, 0, 0}
         end
 
@@ -128,7 +128,7 @@ internal static partial class RedisSemanticGatewayScripts
             redis.call('HINCRBY', KEYS[4], 'login-sequence', 1)
         redis.call(
             'HSET', KEYS[1],
-            'v', '1',
+            'v', '2',
             'generation', ARGV[1],
             'sequence', tostring(sequence),
             'account', ARGV[2],
@@ -136,14 +136,18 @@ internal static partial class RedisSemanticGatewayScripts
             'nameKey', KEYS[2],
             'loginConnection', ARGV[4],
             'loginAddress', ARGV[5],
+            'realm', ARGV[6],
+            'identifier', ARGV[7],
+            'gameHost', ARGV[8],
+            'gamePort', ARGV[9],
             'loginConnectionKey', KEYS[3],
             'state', '1',
             'generationExpires', expires,
             'admissionsIssued', '0')
-        redis.call('PEXPIRE', KEYS[1], ARGV[7])
+        redis.call('PEXPIRE', KEYS[1], ARGV[11])
         redis.call(
             'HSET', KEYS[2],
-            'v', '1',
+            'v', '2',
             'generation', ARGV[1],
             'sequence', tostring(sequence),
             'account', ARGV[2],
@@ -151,22 +155,26 @@ internal static partial class RedisSemanticGatewayScripts
             'accountKey', KEYS[1],
             'loginConnection', ARGV[4],
             'loginAddress', ARGV[5],
+            'realm', ARGV[6],
+            'identifier', ARGV[7],
+            'gameHost', ARGV[8],
+            'gamePort', ARGV[9],
             'state', '1',
             'generationExpires', expires)
-        redis.call('PEXPIRE', KEYS[2], ARGV[7])
+        redis.call('PEXPIRE', KEYS[2], ARGV[11])
         redis.call(
             'HSET', KEYS[3],
-            'v', '1',
+            'v', '2',
             'kind', 'login',
             'account', ARGV[2],
             'generation', ARGV[1],
             'address', ARGV[5],
             'expires', expires)
-        redis.call('PEXPIRE', KEYS[3], ARGV[7])
+        redis.call('PEXPIRE', KEYS[3], ARGV[11])
         redis.call(
             'ZADD', KEYS[5], expires, 'g|' .. KEYS[1])
-        redis.call('PEXPIRE', KEYS[4], ARGV[7])
-        redis.call('PEXPIRE', KEYS[5], ARGV[7])
+        redis.call('PEXPIRE', KEYS[4], ARGV[11])
+        redis.call('PEXPIRE', KEYS[5], ARGV[11])
         return {1, ARGV[1], sequence, invalidated, expires}
         """;
 
@@ -183,7 +191,11 @@ internal static partial class RedisSemanticGatewayScripts
            redis.call('HGET', KEYS[1], 'account') ~= ARGV[3] or
            redis.call('HGET', KEYS[1], 'username') ~= ARGV[4] or
            redis.call('HGET', KEYS[1], 'loginConnection') ~= ARGV[5] or
-           redis.call('HGET', KEYS[1], 'loginAddress') ~= ARGV[6] then
+           redis.call('HGET', KEYS[1], 'loginAddress') ~= ARGV[6] or
+           redis.call('HGET', KEYS[1], 'realm') ~= ARGV[7] or
+           redis.call('HGET', KEYS[1], 'identifier') ~= ARGV[8] or
+           redis.call('HGET', KEYS[1], 'gameHost') ~= ARGV[9] or
+           redis.call('HGET', KEYS[1], 'gamePort') ~= ARGV[10] then
             return 0
         end
         local expires =
@@ -194,7 +206,9 @@ internal static partial class RedisSemanticGatewayScripts
             return 0
         end
         if redis.call('HGET', KEYS[2], 'generation') ~= ARGV[1] or
-           redis.call('HGET', KEYS[2], 'account') ~= ARGV[3] then
+           redis.call('HGET', KEYS[2], 'account') ~= ARGV[3] or
+           redis.call('HGET', KEYS[2], 'realm') ~= ARGV[7] or
+           redis.call('HGET', KEYS[2], 'identifier') ~= ARGV[8] then
             return 0
         end
         redis.call('HSET', KEYS[1], 'state', '2')
@@ -210,20 +224,27 @@ internal static partial class RedisSemanticGatewayScripts
             math.floor(tonumber(serverTime[2]) / 1000)
         local generation = redis.call('HGET', KEYS[1], 'generation')
         if not generation then
-            return {20, '', 0, 0, '', '', '', 0}
+            return {20, '', 0, 0, '', '', '', 0, '', '', 0, 0}
         end
         local expires =
             tonumber(redis.call(
                 'HGET', KEYS[1], 'generationExpires') or '0')
         if expires <= now then
-            return {21, '', 0, 0, '', '', '', 0}
+            return {21, '', 0, 0, '', '', '', 0, '', '', 0, 0}
         end
         local address = redis.call('HGET', KEYS[1], 'loginAddress')
         if address ~= ARGV[1] then
-            return {22, '', 0, 0, '', '', '', 0}
+            return {22, '', 0, 0, '', '', '', 0, '', '', 0, 0}
         end
         if redis.call('HGET', KEYS[1], 'state') ~= '2' then
-            return {23, '', 0, 0, '', '', '', 0}
+            return {23, '', 0, 0, '', '', '', 0, '', '', 0, 0}
+        end
+        local realm = redis.call('HGET', KEYS[1], 'realm')
+        local identifier = redis.call('HGET', KEYS[1], 'identifier')
+        local gameHost = redis.call('HGET', KEYS[1], 'gameHost')
+        local gamePort = redis.call('HGET', KEYS[1], 'gamePort')
+        if not realm or not identifier or not gameHost or not gamePort then
+            return {23, '', 0, 0, '', '', '', 0, '', '', 0, 0}
         end
         return {
             1,
@@ -233,6 +254,10 @@ internal static partial class RedisSemanticGatewayScripts
             redis.call('HGET', KEYS[1], 'username'),
             redis.call('HGET', KEYS[1], 'loginConnection'),
             address,
+            realm,
+            identifier,
+            gameHost,
+            gamePort,
             expires
         }
         """;
@@ -257,7 +282,11 @@ internal static partial class RedisSemanticGatewayScripts
            redis.call('HGET', KEYS[1], 'account') ~= ARGV[3] or
            redis.call('HGET', KEYS[1], 'username') ~= ARGV[4] or
            redis.call('HGET', KEYS[1], 'loginConnection') ~= ARGV[5] or
-           redis.call('HGET', KEYS[1], 'loginAddress') ~= ARGV[6] then
+           redis.call('HGET', KEYS[1], 'loginAddress') ~= ARGV[6] or
+           redis.call('HGET', KEYS[1], 'realm') ~= ARGV[7] or
+           redis.call('HGET', KEYS[1], 'identifier') ~= ARGV[8] or
+           redis.call('HGET', KEYS[1], 'gameHost') ~= ARGV[9] or
+           redis.call('HGET', KEYS[1], 'gamePort') ~= ARGV[10] then
             return {0, 0}
         end
         local expires =

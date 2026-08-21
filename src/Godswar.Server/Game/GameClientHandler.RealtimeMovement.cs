@@ -200,6 +200,8 @@ internal sealed partial class GameClientHandler
                         _character.CurrentMap,
                         LocalPlayerObjectId,
                         IsReady: !forceAcceptanceCorrection &&
+                            IsHostileStatusMovementAllowed(
+                                movementObservedAt) &&
                             elementalMovement.MovementAllowed,
                         IsAlive: _character.CurrentHp > 0,
                         elementalMovement.MovementMultiplier,

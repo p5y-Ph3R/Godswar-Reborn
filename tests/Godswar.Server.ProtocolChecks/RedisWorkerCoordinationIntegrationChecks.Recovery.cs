@@ -21,9 +21,11 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             MapId.FromLegacy(2),
             new WorldInstanceId(Guid.NewGuid()));
         var node = new ServerNodeId("b17-live-runtime");
+        const int accountId = 700_004;
         const int characterId = 700_019;
         cleanup.Add(keys.Worker(node));
         cleanup.Add(keys.Route(route.WorldInstanceId));
+        cleanup.Add(keys.PlayerAccount(accountId));
         cleanup.Add(keys.Player(characterId));
 
         var runtimeOptions = new CoordinationRuntimeOptions
@@ -74,7 +76,7 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             new PlayerOwnershipFence(Guid.NewGuid(), 29);
         var ownershipLost = 0;
         await using var player = await runtime.AcquireAsync(
-            accountId: 700_001,
+            accountId,
             characterId,
             ownership,
             route,
@@ -98,12 +100,13 @@ internal static partial class RedisWorkerCoordinationIntegrationChecks
             [
                 keys.Worker(node),
                 keys.Route(route.WorldInstanceId),
+                keys.PlayerAccount(accountId),
                 keys.Player(characterId)
             ]));
         Check.Equal(
-            3L,
+            4L,
             deleted,
-            "simulated FLUSHDB removes live worker, route, and player keys");
+            "simulated FLUSHDB removes worker, route, account, and player keys");
 
         await WaitUntilAsync(
             async () =>

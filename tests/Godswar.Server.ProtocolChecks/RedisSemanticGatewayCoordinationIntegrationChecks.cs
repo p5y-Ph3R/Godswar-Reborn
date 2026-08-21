@@ -88,6 +88,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var login = await gatewayA.StartLoginAsync(
             principal,
             Source("192.0.2.41"),
+            SemanticGatewayTestRealm.TempestGrant,
             Deadline(),
             CancellationToken.None);
         Check.True(
@@ -100,11 +101,32 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
                 SemanticGatewayLoginLookupStatus.NotActivated,
             "another gateway sees pending login by hashed canonical name");
         Check.True(
+            !await gatewayB.ActivateLoginAsync(
+                login.Generation! with
+                {
+                    RealmGrant =
+                        SemanticGatewayTestRealm.DwargonGrant
+                },
+                Deadline(),
+                CancellationToken.None),
+            "Redis rejects a tampered selected realm grant");
+        Check.True(
             await gatewayB.ActivateLoginAsync(
                 login.Generation!,
                 Deadline(),
                 CancellationToken.None),
             "another gateway atomically activates the exact generation");
+        var activatedLookup =
+            await gatewayA.FindActivatedLoginAsync(
+                "REDIS_GATEWAY",
+                login.Generation.LoginSource.Address!,
+                Deadline(),
+                CancellationToken.None);
+        Check.True(
+            activatedLookup.IsFound &&
+            activatedLookup.Generation!.RealmGrant ==
+                SemanticGatewayTestRealm.TempestGrant,
+            "Redis round-trips the exact selected realm grant");
         Check.True(
             (await gatewayA.FindActivatedLoginAsync(
                 "REDIS_GATEWAY",
@@ -197,6 +219,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var replacement = await gatewayB.StartLoginAsync(
             principal,
             Source("192.0.2.61"),
+            SemanticGatewayTestRealm.TempestGrant,
             Deadline(),
             CancellationToken.None);
         Check.True(
@@ -267,6 +290,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var login = await gateway.StartLoginAsync(
             principal,
             Source(address),
+            SemanticGatewayTestRealm.TempestGrant,
             Deadline(),
             CancellationToken.None);
         Check.True(

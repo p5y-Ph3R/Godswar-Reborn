@@ -46,10 +46,10 @@ internal static partial class PostgresClassSuitCommandIntegrationChecks
         await using (var command = new NpgsqlCommand(
             """
             INSERT INTO public.character_base (
-                account_id, name, camp, profession, fighter_job_lv,
+                account_id, server_id, name, camp, profession, fighter_job_lv,
                 "Money", "Stone", inventory_revision
             )
-            VALUES (@accountId, @name, 1, 0, 120, 1000, 100, 0)
+            VALUES (@accountId, 1, @name, 1, 0, 120, 1000, 100, 0)
             RETURNING id;
             """,
             connection,

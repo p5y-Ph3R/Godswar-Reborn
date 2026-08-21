@@ -161,6 +161,24 @@ internal sealed partial class GameClientHandler
                     _session.Disconnect();
                     return false;
                 }
+
+                await _accountPresence.MarkAccountPlayerOnlineAsync(
+                    accountId,
+                    _playerCoordinationLease.LeaseToken,
+                    cancellationToken);
+                if (!await _playerCoordinationLease.PublishEnteringAsync(
+                        route,
+                        cancellationToken))
+                {
+                    await ReleasePlayerCoordinationLeaseAsync();
+                    await ReleaseCheckpointOwnershipAsync(
+                        accountId,
+                        characterId,
+                        ownership.Value.Owner,
+                        CancellationToken.None);
+                    _session.Disconnect();
+                    return false;
+                }
             }
             if (!_registry.TryBindAccountSessionOwnership(
                     accountId,
@@ -347,6 +365,7 @@ internal sealed partial class GameClientHandler
         var character = _character;
         if (character is null)
         {
+            await ReleasePlayerCoordinationLeaseAsync();
             return;
         }
 
@@ -464,9 +483,21 @@ internal sealed partial class GameClientHandler
     private void InstallUpdatedCharacter(GameCharacter updated)
     {
         ArgumentNullException.ThrowIfNull(updated);
+        if (updated.RealmId != _processRealmId)
+        {
+            throw new InvalidOperationException(
+                "The refreshed character belongs to another realm.");
+        }
+
         var current = _character;
         if (current is not null && current.Id == updated.Id)
         {
+            if (current.RealmId != updated.RealmId)
+            {
+                throw new InvalidOperationException(
+                    "A character refresh cannot change realms.");
+            }
+
             updated.CurrentMap = current.CurrentMap;
             updated.PositionX = current.PositionX;
             updated.PositionZ = current.PositionZ;

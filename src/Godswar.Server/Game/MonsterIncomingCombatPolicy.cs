@@ -32,7 +32,7 @@ internal static class MonsterIncomingCombatPolicy
         var targetStats = ResolveTargetStats(
             target,
             runtimeMitigation);
-        return AuthoredCombatV1.ResolveBasicAttack(
+        return AuthoredCombatPveCurrent.ResolveBasicAttack(
             attacker,
             targetStats,
             combatEventId);
@@ -45,13 +45,19 @@ internal static class MonsterIncomingCombatPolicy
         ArgumentNullException.ThrowIfNull(target);
         var stats = target.CalculatedStats ??
                     CharacterStats.FromCharacter(target);
-        return CombatCharacterStatsAdapter.ToTarget(
-            target.Level,
-            stats,
-            runtimeMitigation.PhysicalDefenseBonus,
-            runtimeMitigation.MagicDefenseBonus,
-            ToBasisPoints(runtimeMitigation.PhysicalDamageReduction),
-            ToBasisPoints(runtimeMitigation.MagicDamageReduction));
+        return CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
+            CombatCharacterStatsAdapter.ToTarget(
+                target.Level,
+                stats,
+                runtimeMitigation.PhysicalDefenseBonus,
+                runtimeMitigation.MagicDefenseBonus,
+                ToBasisPoints(runtimeMitigation.PhysicalDamageReduction),
+                ToBasisPoints(runtimeMitigation.MagicDamageReduction),
+                runtimeMitigation.
+                    PhysicalDamageTakenIncreaseBasisPoints,
+                runtimeMitigation.
+                    MagicDamageTakenIncreaseBasisPoints),
+            runtimeMitigation.StatusAggregate);
     }
 
     private static int ToBasisPoints(decimal fraction) =>

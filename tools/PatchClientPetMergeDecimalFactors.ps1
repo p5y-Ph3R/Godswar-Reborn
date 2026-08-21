@@ -11,16 +11,17 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+. (Join-Path $PSScriptRoot 'client_patch_helpers\PetAlter.States.ps1')
+
 $locales = @('en_us', 'zh_cn')
-$stockSha256 =
-    '0E2349F555DC125601DC7D51924B79A25F9BFD1E2288C514B2E2B4AFD5377844'
-$patchedSha256 =
-    'E97ADE5D6BE0E3DED334AEA1C1EBB3EFA84FCC7D04CAE0E3417E036CB6D2C0BA'
 $supportedOriginSha256 = @(
     '9354BDB00376E16F5C2D1E682637790D90C3930B8F3655456F8F49F3314C6728',
     '31B4CE0E0445958C7814BCD2572381F9115DE194E0E13CB3ED7502F02C9FB9B2',
     'C642C3F9F4F3458BC4DBAD126E06C1661C7F1C418FB63BD037543CA1892D5656',
-    '7B837397F5387186001B7CB155FBADD2B3AA2CA425B7568A21F9C66EDA90A8DA'
+    '7B837397F5387186001B7CB155FBADD2B3AA2CA425B7568A21F9C66EDA90A8DA',
+    # Current character-stat-display successor. That patch does not alter
+    # Pet_Alter.xml or the Pet Unite resource parser used by this tool.
+    'FB634307517770ED8C677503C7D6F9E0E51A5995AFAF1A9D19631F1EFE1B6683'
 )
 
 function Read-TextFile([string]$Path) {
@@ -63,13 +64,6 @@ function Write-TextFile($File, [string]$Path, [string]$Text) {
 
 function Get-Sha256([string]$Path) {
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
-}
-
-function Get-State([string]$Path) {
-    $hash = Get-Sha256 $Path
-    if ($hash -eq $stockSha256) { return 'Stock' }
-    if ($hash -eq $patchedSha256) { return 'Patched' }
-    throw "Unsupported Pet_Alter.xml (SHA-256 $hash): $Path"
 }
 
 function Replace-Exact(
@@ -165,8 +159,8 @@ if ($originHash -notin $supportedOriginSha256) {
     throw "Unsupported Origin.exe build (SHA-256 $originHash)."
 }
 
-$states = @($paths | ForEach-Object { Get-State $_ })
-if (@($states | Select-Object -Unique).Count -ne 1) {
+$states = @($paths | ForEach-Object { Resolve-RebornPetAlterState $_ })
+if (@($states.Sha256 | Select-Object -Unique).Count -ne 1) {
     throw 'Pet_Alter.xml locales are in a mixed state.'
 }
 $currentState = $states[0]
@@ -176,15 +170,19 @@ foreach ($path in $paths) {
         -not $file.HasPreamble -or $file.NewLine -ne "`r`n") {
         throw "Pet_Alter.xml encoding/newlines are unsupported: $path"
     }
-    Assert-Structure $file.Text $currentState
+    Assert-Structure $file.Text $currentState.Factors
 }
 
 if ($Mode -eq 'Status') {
     [pscustomobject]@{
-        Status = if ($currentState -eq 'Patched') { 'Patched' } else { 'Ready' }
-        Factors = if ($currentState -eq 'Patched') {
+        Status = if ($currentState.Factors -eq 'Patched') {
+            'Patched'
+        } else { 'Ready' }
+        Factors = if ($currentState.Factors -eq 'Patched') {
             'decimal-compatible'
         } else { 'stock-binary32' }
+        Rebirth = $currentState.Rebirth
+        AgilityDamageRebound = $currentState.AgilityRebound
         Locales = $locales -join ', '
     }
     return
@@ -192,7 +190,7 @@ if ($Mode -eq 'Status') {
 
 Assert-ClientClosed $originPath
 $targetState = if ($Mode -eq 'Apply') { 'Patched' } else { 'Stock' }
-if ($currentState -eq $targetState) {
+if ($currentState.Factors -eq $targetState) {
     [pscustomobject]@{
         Status = if ($Mode -eq 'Apply') { 'Already patched' } else {
             'Already reverted'
@@ -201,6 +199,8 @@ if ($currentState -eq $targetState) {
     }
     return
 }
+$target = Find-RebornPetAlterState `
+    $targetState $currentState.Rebirth $currentState.AgilityRebound
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
 $backupDirectory = Join-Path $BackupRoot (
@@ -222,9 +222,7 @@ try {
         $output = Convert-Factors $file.Text $targetState
         Assert-Structure $output $targetState
         Write-TextFile $file $stage $output
-        $expected = if ($targetState -eq 'Patched') {
-            $patchedSha256
-        } else { $stockSha256 }
+        $expected = $target.Sha256
         if ((Get-Sha256 $stage) -ne $expected) {
             throw "Staged Pet_Alter.xml hash is not exact: $path"
         }
@@ -251,10 +249,7 @@ catch {
             if (Test-Path -LiteralPath $record.Backup -PathType Leaf) {
                 Copy-Item -LiteralPath $record.Backup `
                     -Destination $record.Path -Force
-                $expectedRollback = if ($currentState -eq 'Patched') {
-                    $patchedSha256
-                } else { $stockSha256 }
-                if ((Get-Sha256 $record.Path) -ne $expectedRollback) {
+                if ((Get-Sha256 $record.Path) -ne $currentState.Sha256) {
                     throw 'restored hash mismatch'
                 }
             }

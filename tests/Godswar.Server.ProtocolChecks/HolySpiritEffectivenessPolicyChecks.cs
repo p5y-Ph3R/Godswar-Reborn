@@ -6,7 +6,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class HolySpiritEffectivenessPolicyChecks
+internal static partial class HolySpiritEffectivenessPolicyChecks
 {
     public const string CheckName =
         "Authoritative Holy Spirit effectiveness brackets";
@@ -15,6 +15,7 @@ internal static class HolySpiritEffectivenessPolicyChecks
     {
         AssertReviewedCatalog();
         AssertGradeBracketsPartitionEveryRange();
+        AssertCooledReductionBalance();
         AssertBoundaryRollsAndGoddessFloor();
         AssertLegacyCompatibilityValues();
         AssertNativeImplementationErrors();
@@ -153,9 +154,9 @@ internal static class HolySpiritEffectivenessPolicyChecks
                 HolySpiritValueKind.HundredthPercent),
             E(9067, HolyStoneAffinity.Heated, 4, 24, 60,
                 HolySpiritValueKind.HundredthPercent),
-            E(9080, HolyStoneAffinity.Cooled, 9, 22, 55,
+            E(9080, HolyStoneAffinity.Cooled, 9, 22, 80,
                 HolySpiritValueKind.HundredthPercent),
-            E(9081, HolyStoneAffinity.Cooled, 10, 22, 55,
+            E(9081, HolyStoneAffinity.Cooled, 10, 22, 80,
                 HolySpiritValueKind.HundredthPercent),
             E(9082, HolyStoneAffinity.Cooled, 11, 16, 40,
                 HolySpiritValueKind.Flat),

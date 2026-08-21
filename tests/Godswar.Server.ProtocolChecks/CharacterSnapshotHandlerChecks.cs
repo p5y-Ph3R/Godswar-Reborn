@@ -55,6 +55,10 @@ internal static partial class CharacterSnapshotHandlerChecks
                 "The handler fixture did not hydrate.");
         var snapshotReader = new CountingSnapshotReader(source);
         var store = new FanOutRejectingStore(source.AccountId);
+        var carriedPet = hydrated.Pets.Single(static pet =>
+            pet.IsCarried && pet.IsSummoned);
+        var petEnergyLifecycle =
+            new SnapshotLoginPetEnergyLifecycle(carriedPet);
         var transport = new ScriptedLegacyByteTransport();
         await using var session = new ClientSession(
             transport,
@@ -90,6 +94,7 @@ internal static partial class CharacterSnapshotHandlerChecks
                 new GameHandlerCheckpointCoordinatorStub(
                     source.Character!.Location.PositionRevision,
                     source.Character.Vitals.Revision),
+            petDurableCommands: petEnergyLifecycle,
             itemContent: TestItemContent.Content,
             petContent: PetContentTestCatalog.Instance);
 
@@ -156,6 +161,11 @@ internal static partial class CharacterSnapshotHandlerChecks
             0,
             transport.DisconnectCount,
             "a valid consistent snapshot completes the client bootstrap");
+        Check.True(
+            petEnergyLifecycle.RestoreCount == 1 &&
+            petEnergyLifecycle.CurrentEnergy ==
+                petEnergyLifecycle.MaximumEnergy,
+            "snapshot bootstrap refills its carried pet through durable authority");
 
         var clearBytes = transport.WrittenBytes;
         new PacketCipher().Transform(clearBytes);
@@ -171,8 +181,7 @@ internal static partial class CharacterSnapshotHandlerChecks
         Check.True(
             Contains(clearBytes, ownedPetBootstrap),
             "the client receives snapshot-backed owned pets");
-        var summonedPet = hydrated.Pets.Single(static pet =>
-            pet.IsCarried && pet.IsSummoned);
+        var summonedPet = carriedPet;
         var restoredPetCallOut = PacketBuilder.PetOperationResult(
             checked((uint)summonedPet.PetId),
             PetOperationResultCode.CallOutSucceeded);
@@ -180,7 +189,9 @@ internal static partial class CharacterSnapshotHandlerChecks
             checked((uint)summonedPet.PetId),
             0x0000_1448u);
         var restoredOwnerMerge = PacketBuilder.PetOwnerMergeStarted(
-            0x0000_1448u);
+            0x0000_1448u,
+            carriedPet.Aptitude,
+            carriedPet.CompletedRebirths);
         Check.Equal(
             1,
             CountOccurrences(clearBytes, restoredPetCallOut),

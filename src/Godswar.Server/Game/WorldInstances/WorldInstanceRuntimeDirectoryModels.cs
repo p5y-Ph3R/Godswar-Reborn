@@ -34,5 +34,5 @@ internal readonly record struct WorldInstanceRuntimeDirectoryResult(
 
 internal readonly record struct WorldInstanceRuntimeDirectorySnapshot(
     int RuntimeCount,
-    int TempestOpenWorldCount,
+    int OpenWorldCount,
     int MaximumRuntimes);

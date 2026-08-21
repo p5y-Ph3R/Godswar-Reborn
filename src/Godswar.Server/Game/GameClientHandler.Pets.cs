@@ -179,6 +179,8 @@ internal sealed partial class GameClientHandler
                 "PetTakeRestore");
         }
 
+        StartPetOwnerMergeEnergyRecharge();
+
         Console.WriteLine(
             $"[pet] presence restored character={_character.Name} pet={petId} summoned={carried.IsSummoned}");
     }

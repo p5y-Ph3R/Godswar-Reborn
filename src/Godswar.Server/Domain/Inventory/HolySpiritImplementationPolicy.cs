@@ -33,6 +33,15 @@ internal static class HolySpiritImplementationPolicy
     public const uint HeatedHolyStoneItemId = 9030;
     public const uint CooledHolyStoneItemId = 9031;
     public const uint ZephyrHolyStoneItemId = 9032;
+    public const short CooledPhysicalDamageReductionEffectId = 9;
+    public const short CooledMagicDamageReductionEffectId = 10;
+    public const short CooledCriticalDamageReductionEffectId = 13;
+    // These are durable acceptance ceilings for historical socket values and
+    // receipt evidence. PostgreSQL owns the adjustable live maxima used for
+    // new rolls and combat projection.
+    public const int CooledPhysicalReductionGradeOneAcceptedMaximum = 80;
+    public const int CooledMagicReductionGradeOneAcceptedMaximum = 80;
+    public const int CooledCriticalReductionGradeOneAcceptedMaximum = 70;
 
     private static readonly HolySpiritImplementationDefinition[] Definitions =
     [
@@ -53,9 +62,15 @@ internal static class HolySpiritImplementationPolicy
         Percent(9067, HeatedHolyStoneItemId,
             HolySpiritImplementationAffinity.Heated, 4, 24, 60),
         Percent(9080, CooledHolyStoneItemId,
-            HolySpiritImplementationAffinity.Cooled, 9, 22, 55),
+            HolySpiritImplementationAffinity.Cooled,
+            CooledPhysicalDamageReductionEffectId,
+            22,
+            CooledPhysicalReductionGradeOneAcceptedMaximum),
         Percent(9081, CooledHolyStoneItemId,
-            HolySpiritImplementationAffinity.Cooled, 10, 22, 55),
+            HolySpiritImplementationAffinity.Cooled,
+            CooledMagicDamageReductionEffectId,
+            22,
+            CooledMagicReductionGradeOneAcceptedMaximum),
         Flat(9082, CooledHolyStoneItemId,
             HolySpiritImplementationAffinity.Cooled, 11, 16, 40),
         Flat(9083, CooledHolyStoneItemId,
@@ -65,7 +80,10 @@ internal static class HolySpiritImplementationPolicy
         Flat(9085, CooledHolyStoneItemId,
             HolySpiritImplementationAffinity.Cooled, 20, 16, 40),
         Percent(9086, CooledHolyStoneItemId,
-            HolySpiritImplementationAffinity.Cooled, 13, 28, 70),
+            HolySpiritImplementationAffinity.Cooled,
+            CooledCriticalDamageReductionEffectId,
+            28,
+            CooledCriticalReductionGradeOneAcceptedMaximum),
         Flat(9087, CooledHolyStoneItemId,
             HolySpiritImplementationAffinity.Cooled, 14, 40, 100),
         Percent(9090, ZephyrHolyStoneItemId,

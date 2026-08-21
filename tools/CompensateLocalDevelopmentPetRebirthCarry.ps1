@@ -12,7 +12,7 @@ Set-StrictMode -Version Latest
 # One-purpose repair for the four isolated-development rebirths that carried
 # historical surplus but dropped their already-unspent EXP pools.
 $postgresContainer = 'godswar-dev-postgres'
-$serverContainer = 'godswar-dev-server'
+$serverContainer = 'godswar-dev-tempest-openworld-01'
 $redisContainer = 'godswar-dev-redis-coordination'
 $databaseUser = 'godswar'
 $compensation = 13493595L

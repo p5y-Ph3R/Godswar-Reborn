@@ -14,7 +14,7 @@ internal sealed partial class GameClientHandler
     {
         var character = _character!;
         var casterWorldObjectId =
-            WorldObjectIds.ForPlayer(character.Id);
+            CurrentPlayerObjectId;
         var selfTargeted = singleTarget is null ||
                            singleTarget.Value.IsCaster;
         await _session.SendAsync(
@@ -96,7 +96,7 @@ internal sealed partial class GameClientHandler
 
         var character = _character!;
         var casterWorldObjectId =
-            WorldObjectIds.ForPlayer(character.Id);
+            CurrentPlayerObjectId;
         await SendPriestHealCombatTextAsync(
             _session,
             recipientIsCaster: true,
@@ -213,7 +213,7 @@ internal sealed partial class GameClientHandler
     {
         var character = _character!;
         var casterWorldObjectId =
-            WorldObjectIds.ForPlayer(character.Id);
+            CurrentPlayerObjectId;
         var areaHeal = singleTarget is null;
         var target = singleTarget ?? new PriestHealTarget(
             _session,

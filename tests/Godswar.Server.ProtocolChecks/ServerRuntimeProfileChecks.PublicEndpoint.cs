@@ -101,7 +101,10 @@ internal static partial class ServerRuntimeProfileChecks
               },
               "game": {
                 "port": {{gamePort}},
-                "publicPort": {{publicPort}}
+                "publicPort": {{publicPort}},
+                "worldInstances": {
+                  "realmId": 1
+                }
               }
             }
             """);

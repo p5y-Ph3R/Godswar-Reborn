@@ -10,6 +10,14 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
 {
     private const long PublicationLockId = 0x5045544D45524745;
     private const int MaximumPayloadBytes = 1024 * 1024;
+    private const string ReviewedV1Source =
+        "reviewed-pet-owner-merge-v1";
+    private const string ReviewedV1Revision =
+        "E6A6FA22C0D2AEE9D6B2E7C968D903E05E0576E6D40A179DC2A3715F434A4929";
+    private const string ReviewedV2Source =
+        "reviewed-pet-owner-merge-v2";
+    private const string ReviewedV2Revision =
+        "EEA02574B39EDED6DBEFCACF80337AAE0166A44366115AB7E8360DD39B36C84D";
 
     public static async Task<PetOwnerMergeContentPublicationResult>
         EnsurePublishedAsync(
@@ -31,7 +39,9 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
                 connection,
                 transaction,
                 cancellationToken);
-        if (published is not null)
+        if (published is not null && published.Revision.Equals(
+                baseline.Revision.Sha256,
+                StringComparison.Ordinal))
         {
             _ = await PostgresPetOwnerMergeContentReader.ReadRevisionAsync(
                 connection,
@@ -44,6 +54,22 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
                 published.EntryCount,
                 Created: false);
         }
+        if (published is not null)
+        {
+            _ = await PostgresPetOwnerMergeContentReader.ReadRevisionAsync(
+                connection,
+                transaction,
+                published,
+                cancellationToken);
+            if (!IsReviewedPredecessor(published))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new PetOwnerMergeContentPublicationResult(
+                    published.Revision,
+                    published.EntryCount,
+                    Created: false);
+            }
+        }
 
         var existing = await PostgresPetOwnerMergeContentReader
             .ReadRevisionManifestAsync(
@@ -51,32 +77,64 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
                 transaction,
                 baseline.Revision.Sha256,
                 cancellationToken);
-        if (existing is not null)
+        var reusedSealedRevision = existing is not null;
+        if (existing is null)
+        {
+            await InsertRevisionAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            await InsertEffectBasesAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            await InsertBandsAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            await InsertRatesAsync(
+                connection,
+                transaction,
+                baseline,
+                cancellationToken);
+            existing = await PostgresPetOwnerMergeContentReader
+                .ReadRevisionManifestAsync(
+                    connection,
+                    transaction,
+                    baseline.Revision.Sha256,
+                    cancellationToken) ?? throw new InvalidOperationException(
+                    "The inserted pet owner-Merge revision disappeared.");
+        }
+        else if (!existing.Sealed)
         {
             throw new InvalidDataException(
-                "An unpublished pet owner-Merge baseline revision already exists.");
+                "An unsealed pet owner-Merge V3 revision already exists.");
         }
 
-        await InsertRevisionAsync(
+        if (existing.EffectBaseCount != baseline.Revision.EffectBaseCount ||
+            existing.BandCount != baseline.Revision.BandCount ||
+            existing.RateCount != baseline.Revision.RateCount ||
+            !existing.PolicyVersion.Equals(
+                baseline.Revision.PolicyVersion,
+                StringComparison.Ordinal) ||
+            !existing.Source.Equals(
+                baseline.Revision.Source,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "An existing pet owner-Merge V3 revision conflicts with " +
+                "the reviewed baseline.");
+        }
+
+        _ = await PostgresPetOwnerMergeContentReader.ReadRevisionAsync(
             connection,
             transaction,
-            baseline,
-            cancellationToken);
-        await InsertEffectBasesAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
-        await InsertBandsAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
-        await InsertRatesAsync(
-            connection,
-            transaction,
-            baseline,
-            cancellationToken);
+            existing,
+            cancellationToken,
+            requireSealed: reusedSealedRevision);
         await PublishAsync(
             connection,
             transaction,
@@ -100,6 +158,27 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
             published.EntryCount,
             Created: true);
     }
+
+    internal static bool IsReviewedPredecessor(
+        PetOwnerMergeContentManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return IsExactPredecessor(
+                   manifest,
+                   ReviewedV1Source,
+                   ReviewedV1Revision) ||
+               IsExactPredecessor(
+                   manifest,
+                   ReviewedV2Source,
+                   ReviewedV2Revision);
+    }
+
+    private static bool IsExactPredecessor(
+        PetOwnerMergeContentManifest manifest,
+        string source,
+        string revision) =>
+        manifest.Source.Equals(source, StringComparison.Ordinal) &&
+        manifest.Revision.Equals(revision, StringComparison.Ordinal);
 
     private static async Task AcquireLockAsync(
         NpgsqlConnection connection,
@@ -286,7 +365,10 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
             INSERT INTO pet_owner_merge_content_publication (
                 family, revision
             )
-            VALUES ('pet-owner-merge', @revision);
+            VALUES ('pet-owner-merge', @revision)
+            ON CONFLICT (family) DO UPDATE
+            SET revision = EXCLUDED.revision,
+                published_at = now();
             """,
             connection,
             transaction);
@@ -294,7 +376,7 @@ internal static class PostgresPetOwnerMergeContentBaselinePublisher
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
         {
             throw new InvalidDataException(
-                "The pet owner-Merge publication was not inserted exactly.");
+                "The pet owner-Merge publication was not written exactly.");
         }
     }
 

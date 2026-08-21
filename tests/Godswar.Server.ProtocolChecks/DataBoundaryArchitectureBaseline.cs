@@ -126,9 +126,9 @@ internal static class DataBoundaryArchitectureBaseline
     [
         new("Operations/ControlledHostValidationCommand.cs", 2),
         new("State/DatabaseMigrations/PostgresSchemaMigrationRunner.cs", 17),
-        new("State/PostgresGameStore.Characters.cs", 1),
+        new("State/PostgresGameStore.Characters.cs", 2),
         new("State/PostgresGameStore.CharacterLookup.cs", 3),
-        new("State/PostgresGameStore.Characters.Persistence.cs", 13),
+        new("State/PostgresGameStore.Characters.Persistence.cs", 12),
         new("State/PostgresGameStore.Crafting.cs", 7),
         new("State/PostgresGameStore.cs", 5),
         new("State/PostgresGameStore.Inventory.Grants.cs", 9),
@@ -174,12 +174,16 @@ internal static class DataBoundaryArchitectureBaseline
         "ApplyWeaponHolyStoneAsync",
         "ClearKitBagAsync",
         "CreateCharacterAsync",
+        "CreateCharacterAsync",
+        "DeleteCharacterAsync",
         "DeleteCharacterAsync",
         "DeleteKitBagItemAsync",
         "EnhanceGearAsync",
         "EnsureSeedDataAsync",
         "ForgeEquipmentAsync",
         "GetCharactersAsync",
+        "GetCharactersAsync",
+        "GetFirstCharacterAsync",
         "GetFirstCharacterAsync",
         "GetTalentStatesAsync",
         "MoveEquipmentToKitBagAsync",
@@ -194,7 +198,7 @@ internal static class DataBoundaryArchitectureBaseline
     ];
 
     public const string GameStoreSignatureSha256 =
-        "195BFE83A341B4E04F74FD2950749B64D05E357A5FF74FB5ECBF1666C4FFB231";
+        "9D188033C31713B4CD5F561F5FE0F17F5F9F6A974B3140E329A330CCA17DF204";
 
     public static DataBoundaryBaselineSnapshot Snapshot { get; } =
         new(

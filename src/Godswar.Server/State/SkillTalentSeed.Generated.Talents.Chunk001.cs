@@ -6,7 +6,6 @@ internal static partial class SkillTalentSeeds
 {
     private static TalentTemplateSeed[] CreateTalentsChunk001() =>
     [
-        new(167, 2, 17, "Centaurian Strength", 160, 0, 0, -1, "MaxHP", 0, 90m, false, 252, 36, 36, 36, "{\"Name\":\"Centaurian Strength\",\"PrefixID\":\"160\",\"RrefixRank\":\"0\",\"TotalRank\":\"0\",\"EquipRequest\":\"-1\",\"MaxHP\":\"0,90\",\"IconPos\":\"252,36\",\"IconSize\":\"36,36\"}"),
         new(100, 3, 0, "Basic Focus", 100, 0, 0, -1, "MaxMP", 1, 12m, false, 468, 0, 36, 36, "{\"Name\":\"Basic Focus\",\"PrefixID\":\"100\",\"RrefixRank\":\"0\",\"TotalRank\":\"0\",\"EquipRequest\":\"-1\",\"MaxMP\":\"1,12\",\"IconPos\":\"468,0\",\"IconSize\":\"36,36\"}"),
         new(101, 3, 1, "Basic Channelling", 100, 0, 0, -1, "MagicAttack", 6, 8m, false, 684, 72, 36, 36, "{\"Name\":\"Basic Channelling\",\"PrefixID\":\"100\",\"RrefixRank\":\"0\",\"TotalRank\":\"0\",\"EquipRequest\":\"-1\",\"MagicAttack\":\"6,8\",\"IconPos\":\"684,72\",\"IconSize\":\"36,36\"}"),
         new(102, 3, 2, "Basic Accuracy", 100, 0, 0, -1, "Hit", 2, 3m, false, 252, 0, 36, 36, "{\"Name\":\"Basic Accuracy\",\"PrefixID\":\"100\",\"RrefixRank\":\"0\",\"TotalRank\":\"0\",\"EquipRequest\":\"-1\",\"Hit\":\"2,3\",\"IconPos\":\"252,0\",\"IconSize\":\"36,36\"}"),

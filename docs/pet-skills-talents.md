@@ -172,9 +172,11 @@ Owner Merge is an innate pet talent. The stock client presents its action with
 the legacy Merge control/artwork, but item `11004` is not an input, inventory
 requirement, or consumable for opcode `10274`. The server locks the carried
 pet, requires it to be summoned, at full energy, and at least 40 amity, then
-calculates the contribution from all six pet Savvy values. A successful request writes
-the one contributing-pet flag and exactly 16 typed bonus rows in the same
-transaction. A second distinct Merge activation toggles the state off; Take,
+calculates the contribution from all six pet Savvy values. A successful request
+writes the one contributing-pet flag, 16 native typed bonus rows, and two
+Reborn-only Technique reduction rows in the same transaction. The internal
+rows are never serialized as native `PetUnite` fields. A second distinct Merge
+activation toggles the state off; Take,
 Call Out, Recall, and switching pets are rejected while the flag is active. The
 dedicated command-family identity, inbox replay, optimistic pet
 revision, outbox, and audit records make retries unable to duplicate or
@@ -188,23 +190,33 @@ stable operation UUID for retry/deduplication without accepting a client item,
 bag slot, pet ID, or stat value.
 
 The contribution curve is database-published project policy
-`project-pet-unite-piecewise-marginal-v2`, based on the recovered stock
+`project-pet-unite-piecewise-marginal-v4`, based on the recovered stock
 `Pet_Alter.xml` bases and curves. Its marginal-band effectiveness is
-`100% / 85% / 70% / 60% / 50%`; see
+`100% / 85% / 70% / 60% / 50%`. Agility's five Damage Rebound rates are
+intentionally zero; Luck remains the only Savvy source for Damage Rebound.
+See
 [pet-owner-merge-balance.md](pet-owner-merge-balance.md) for the complete
-database ownership and publication contract. All 16 values are durable and
-appear in the server CharacterStats projection. Physical damage reduction is
-applied to incoming monster physical damage. Magic damage reduction, critical
-damage reduction, life absorption, and damage rebound remain projection-ready
-until their corresponding authoritative combat paths exist.
+database ownership and publication contract. Native effects `23/24` add fixed
+physical/magic damage, `29/30` cancel fixed physical/magic damage, `32` cancels
+fixed critical damage, `34` restores a fixed amount of HP once per committed
+direct hit, and `38` reflects a fixed amount. Effect `10` remains flat damage
+absorption. Technique separately grants physical and magic percentage
+reduction as `min(3000 bp, round-away(effective Technique * 0.15 bp))`; the
+shared combat resolver retains its global `8000 bp` reduction cap. Fixed
+on-hit healing is added to any independent percentage life absorption and is
+capped at missing HP. Rebound and on-hit healing are replay-fenced secondary
+effects and cannot recursively trigger another proc chain. Exact
+training-dummy admission also suppresses dummy-sourced stat rebound and
+elemental reflection.
 
-The installed `Origin.exe` independently establishes the visual lifecycle:
+The project client's owner-Merge visual policy is specified in
+[pet-owner-merge-visual.md](pet-owner-merge-visual.md). Its lifecycle is:
 
 - opcode `10275` is registered to the unite-start handler at `0x006A16F0`;
-  its eight-byte frame carries the owner object ID, selects the current pet's
-  `unitefile` effect (for example `PetUniteEffect/e_he_0001_all.gwm`), hides
-  the companion, and changes both local and third-player pet managers to the
-  merged state;
+  its ten-byte frame carries the owner object ID, aptitude, and completed
+  rebirth count, selects the quality-tiered `unitefile` effect, scales that
+  effect by rebirth milestone, hides the companion, and changes both local and
+  third-player pet managers to the merged state;
 - opcode `10282` is registered to the unite-end handler at `0x006A17A0`;
   its eight-byte frame carries the owner object ID, removes the unite effect,
   and restores the manager state for local and nearby-player presentations.
@@ -227,23 +239,42 @@ and AOI world revision change atomically so map handoff reconciliation cannot
 miss a concurrent Merge start or end.
 
 Pet energy is normalized to `0..100` by the current server schema. The native
-client uses `1800` units for a full bar, and retained server captures publish
-that value on a roughly six-second update cadence while unmerged. Exact stock
-drain cadence is not recovered. Project balance policy drains one normalized
-point per 3 online seconds, mapping a full bar to a 5-minute lifetime. The
-interval is injectable for deterministic tests.
-Energy decrement and the
+client uses `1800` units for a full bar. Retained capture
+`capture-proxy-20260514-173331.log` publishes opcode `10278` at approximately
+six-second intervals while unmerged (for example `18:26:24.079`,
+`18:26:30.098`, and `18:26:36.120`), with `1800` in its four-byte energy field.
+That evidence establishes the heartbeat cadence and wire scale, but does not
+reveal a stock recovery delta. Authored project balance therefore restores five
+normalized points every 6 online seconds to the one carried, unmerged pet,
+whether called out or recalled. Recovery is capped at the pet's stored maximum;
+there is no elapsed-time offline accrual. Separately, every ordinary login
+durably resets the one carried pet to full before client bootstrap. This fixed
+login rule does not estimate missed recharge intervals. A full pet keeps
+receiving the captured six-second `10278` heartbeat without advancing its
+durable revision.
+
+Exact stock drain cadence is also not recovered. Project balance drains one
+normalized point per 3 online Merge seconds, mapping a full bar to a 5-minute
+lifetime. Both intervals are injectable for deterministic tests. Energy
+recovery, decrement, and the
 final transition are ownership-fenced PostgreSQL mutations. At zero the
-server atomically clears `contributes_to_character`, deletes all 16 derived
+server atomically clears `contributes_to_character`, deletes all 18 derived
 bonus rows, refreshes character stats, sends `10282`, and restores the carried
 companion. Disconnect ends Merge before releasing session ownership; login
 also clears a stale active Merge left by an unclean process exit before the
 first character-state projection.
 
 Opcode `10278` writes the client's current pet-energy field. The server sends
-it only to the owning client at Merge start, each authoritative drain tick,
-and Merge end; normalized database energy `0..100` is safely scaled to native
-units `0..1800` (`percentage * 18`). It is not broadcast to observers.
+it only to the owning client immediately after the login-owned-pet list, at
+each unmerged recovery/heartbeat tick, Merge start, each authoritative drain
+tick, and Merge end. The explicit login projection is required because opcode
+`10237` selects the carried pet but does not publish its energy. Normal login
+first commits the full refill through the ownership/revision-fenced pet
+lifecycle, then sends `10278` immediately after `10237`; the packet therefore
+matches durable state rather than painting over a partial value. Exact pinned
+training dummies retain their perpetual Merge fixture and bypass this login
+reset. Normalized database energy `0..100` is safely scaled to native units
+`0..1800` (`percentage * 18`). It is not broadcast to observers.
 
 ## Pet Manager dialogue compatibility
 

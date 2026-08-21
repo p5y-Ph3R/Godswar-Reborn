@@ -72,6 +72,39 @@ internal static class ZodiacSkillGridSelectionCatalog
         SkillClasses.TryGetValue(skillKind, out var requiredClass) &&
         requiredClass == profession;
 
+    public static bool IsDefenseGrid(int gridIndex) =>
+        ZodiacSkillGridCatalog.IsValidGrid(gridIndex) &&
+        gridIndex >= ZodiacSkillGridCatalog.GridCount / 2;
+
+    public static bool IsAllowedForCharacter(
+        byte profession,
+        int gridIndex,
+        int skillKind)
+    {
+        if (!ZodiacSkillGridCatalog.IsValidGrid(gridIndex))
+        {
+            return false;
+        }
+
+        if (skillKind == ClearSelection)
+        {
+            return true;
+        }
+
+        // Attack grids contain the character's own learned skill.
+        // Defense grids contain an enemy skill chosen from the shipped
+        // all-profession SkillChoice catalog.
+        return SkillClasses.TryGetValue(skillKind, out var requiredClass) &&
+            (IsDefenseGrid(gridIndex) || requiredClass == profession);
+    }
+
+    public static bool RequiresLearnedSkill(
+        int gridIndex,
+        int skillKind) =>
+        skillKind != ClearSelection &&
+        ZodiacSkillGridCatalog.IsValidGrid(gridIndex) &&
+        !IsDefenseGrid(gridIndex);
+
     public static int SkillFamilyFirstRuntimeId(int skillKind)
     {
         if (skillKind == ClearSelection ||
@@ -146,8 +179,9 @@ internal static class ZodiacSkillGridSelection
                     .SkillKindNotAllowedForGrid);
         }
 
-        if (!ZodiacSkillGridSelectionCatalog.IsAllowedForClass(
+        if (!ZodiacSkillGridSelectionCatalog.IsAllowedForCharacter(
                 character.Profession,
+                gridIndex,
                 selectedSkillKind))
         {
             return Result(
@@ -155,8 +189,9 @@ internal static class ZodiacSkillGridSelection
                     .SkillKindNotAllowedForClass);
         }
 
-        if (selectedSkillKind !=
-                ZodiacSkillGridSelectionCatalog.ClearSelection &&
+        if (ZodiacSkillGridSelectionCatalog.RequiresLearnedSkill(
+                gridIndex,
+                selectedSkillKind) &&
             !skillLearned)
         {
             return Result(

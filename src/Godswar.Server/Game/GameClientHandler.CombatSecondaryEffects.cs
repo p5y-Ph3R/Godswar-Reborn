@@ -283,7 +283,7 @@ internal sealed partial class GameClientHandler
         await _registry.BroadcastToMapAsync(
             character.CurrentMap,
             PacketBuilder.PlayerVitalsUpdate(
-                WorldObjectIds.ForPlayer(character.Id),
+                CurrentPlayerObjectId,
                 currentHp,
                 currentMp),
             cancellationToken,

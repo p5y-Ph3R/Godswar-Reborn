@@ -137,6 +137,7 @@ internal sealed partial class GameSessionRegistry
         DeterministicCombatEventContext committedEvent,
         long appliedDirectDamage,
         IReadOnlyList<ResonanceTargetCandidate> additionalTargets,
+        bool allowTargetCounterDamage,
         out PvpElementalPostCommit committed)
     {
         committed = default;
@@ -185,13 +186,15 @@ internal sealed partial class GameSessionRegistry
                 }
 
                 var resonance = committedHit.Resonance;
-                var reflection = ElementalResonanceExecutionPolicy
-                    .PlanCommittedReflection(
-                        committedEvent,
-                        target.Character.ElementalEquipment,
-                        targetState.Resonance,
-                        appliedDirectDamage,
-                        attacker.Character.MaxHp);
+                var reflection = allowTargetCounterDamage
+                    ? ElementalResonanceExecutionPolicy
+                        .PlanCommittedReflection(
+                            committedEvent,
+                            target.Character.ElementalEquipment,
+                            targetState.Resonance,
+                            appliedDirectDamage,
+                            attacker.Character.MaxHp)
+                    : null;
                 var stunApplied = false;
                 foreach (var control in resonance.ControlIntents.Where(
                              value =>

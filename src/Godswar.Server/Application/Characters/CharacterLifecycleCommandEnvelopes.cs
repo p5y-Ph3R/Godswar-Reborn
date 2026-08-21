@@ -42,6 +42,7 @@ internal static class CharacterCreateCommandEnvelope
 
     private static bool IsValid(CharacterCreateCommand command) =>
         command.ClientOperationId != Guid.Empty &&
+        command.RealmId.IsValid &&
         command.CharacterSlot ==
             CharacterLifecycleCommandContract.SingleCharacterSlot &&
         CharacterLifecycleCommandContract.IsValidName(command.Name) &&
@@ -96,6 +97,7 @@ internal static class CharacterDeleteCommandEnvelope
             command.ExpectedActiveCharacterId.HasValue ==
             command.ExpectedLifecycleVersion.HasValue;
         return command.ClientOperationId != Guid.Empty &&
+            command.RealmId.IsValid &&
             command.CharacterSlot ==
                 CharacterLifecycleCommandContract.SingleCharacterSlot &&
             CharacterLifecycleCommandContract.IsValidName(command.Name) &&
@@ -122,7 +124,8 @@ internal static class CharacterRestoreCommandEnvelope
             command.ClientOperationId,
             command.CharacterSlot,
             command.CharacterId,
-            command.ExpectedLifecycleVersion);
+            command.ExpectedLifecycleVersion,
+            command.RealmId);
 
     public static CommandEnvelopeValidation Validate(
         CommandEnvelope<CharacterRestoreCommand> envelope) =>
@@ -132,7 +135,8 @@ internal static class CharacterRestoreCommandEnvelope
             envelope.Command.ClientOperationId,
             envelope.Command.CharacterSlot,
             envelope.Command.CharacterId,
-            envelope.Command.ExpectedLifecycleVersion);
+            envelope.Command.ExpectedLifecycleVersion,
+            envelope.Command.RealmId);
 }
 
 internal static class CharacterPurgeCommandEnvelope
@@ -151,7 +155,8 @@ internal static class CharacterPurgeCommandEnvelope
             command.ClientOperationId,
             command.CharacterSlot,
             command.CharacterId,
-            command.ExpectedLifecycleVersion);
+            command.ExpectedLifecycleVersion,
+            command.RealmId);
 
     public static CommandEnvelopeValidation Validate(
         CommandEnvelope<CharacterPurgeCommand> envelope) =>
@@ -161,7 +166,8 @@ internal static class CharacterPurgeCommandEnvelope
             envelope.Command.ClientOperationId,
             envelope.Command.CharacterSlot,
             envelope.Command.CharacterId,
-            envelope.Command.ExpectedLifecycleVersion);
+            envelope.Command.ExpectedLifecycleVersion,
+            envelope.Command.RealmId);
 }
 
 internal static class CharacterLifecycleTargetEnvelope
@@ -175,7 +181,8 @@ internal static class CharacterLifecycleTargetEnvelope
         Guid operationId,
         short slot,
         int characterId,
-        long expectedVersion) =>
+        long expectedVersion,
+        Godswar.Server.Domain.World.Instances.RealmId realmId) =>
         CommandEnvelopeContract.Create(
             family,
             CommandIdentityStrength.ClientOperationId,
@@ -186,7 +193,8 @@ internal static class CharacterLifecycleTargetEnvelope
             CharacterLifecycleCommandContract.CanonicalTarget(
                 slot,
                 characterId,
-                expectedVersion),
+                expectedVersion,
+                realmId),
             command);
 
     public static CommandEnvelopeValidation Validate<T>(
@@ -195,9 +203,11 @@ internal static class CharacterLifecycleTargetEnvelope
         Guid operationId,
         short slot,
         int characterId,
-        long expectedVersion)
+        long expectedVersion,
+        Godswar.Server.Domain.World.Instances.RealmId realmId)
     {
         if (operationId == Guid.Empty ||
+            !realmId.IsValid ||
             slot != CharacterLifecycleCommandContract.SingleCharacterSlot ||
             characterId <= 0 ||
             expectedVersion <= 0 ||
@@ -215,6 +225,7 @@ internal static class CharacterLifecycleTargetEnvelope
             CharacterLifecycleCommandContract.CanonicalTarget(
                 slot,
                 characterId,
-                expectedVersion));
+                expectedVersion,
+                realmId));
     }
 }

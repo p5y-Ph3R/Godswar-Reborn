@@ -98,11 +98,20 @@ internal sealed partial class GameSessionRegistry
                 now);
         }
 
+        snapshot = MergeTrainingDummyClientStatusOverlays(
+            context,
+            snapshot,
+            now,
+            out var elementalOverlay,
+            out _);
+
         if (!force && string.Equals(
                 state.LastFingerprint,
                 snapshot.Fingerprint,
                 StringComparison.Ordinal))
         {
+            state.LastPublishedElementalFingerprint =
+                elementalOverlay.Fingerprint;
             return false;
         }
 
@@ -125,10 +134,16 @@ internal sealed partial class GameSessionRegistry
             // displayed derived values from the local 10166 GameData copy.
             // Publish both whenever a runtime modifier changes, including on
             // expiry, so the panel cannot retain either base or buffed values.
+            var localAggregate = ProjectElementalMovementStatus(
+                session,
+                context.Character,
+                context.Ownership,
+                snapshot.Aggregate,
+                now);
             await session.SendAsync(
                 PacketBuilder.PlayerStatusUpdate(
                     context.Character,
-                    snapshot.Aggregate),
+                    localAggregate),
                 cancellationToken,
                 "PlayerMovementSpeed");
         }
@@ -148,6 +163,8 @@ internal sealed partial class GameSessionRegistry
         }
 
         state.LastPublishedAggregate = snapshot.Aggregate;
+        state.LastPublishedElementalFingerprint =
+            elementalOverlay.Fingerprint;
         state.LastFingerprint = snapshot.Fingerprint;
         Console.WriteLine(
             $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} pdef={snapshot.Aggregate.PhysicalDefense} mdef={snapshot.Aggregate.MagicDefense} dodge={snapshot.Aggregate.Dodge} critical-resistance={snapshot.Aggregate.CriticalResistance} exp={snapshot.Aggregate.ExperienceBonus:R} speed={snapshot.Aggregate.MovementSpeedMultiplier:R} game-data={synchronizeLocalGameData}");

@@ -17,9 +17,11 @@ internal sealed partial class WorkerCoordinationRuntime
         private readonly PlayerLeaseInstallRequest _request;
         private readonly TimeProvider _timeProvider;
         private readonly object _stateGate = new();
+        private readonly object _releaseGate = new();
         private CoordinatedPlayerLease _lease;
         private MonotonicLeaseBudget _leaseBudget;
         private readonly Task _renewal;
+        private Task<bool>? _release;
         private int _disposed;
         private int _invalidated;
 
@@ -47,11 +49,14 @@ internal sealed partial class WorkerCoordinationRuntime
         public PlayerOwnershipFence Ownership =>
             _request.Ownership;
 
+        public Guid LeaseToken => _request.LeaseToken;
+
         public bool IsCurrent
         {
             get
             {
-                if (Volatile.Read(ref _invalidated) != 0)
+                if (Volatile.Read(ref _disposed) != 0 ||
+                    Volatile.Read(ref _invalidated) != 0)
                 {
                     return false;
                 }
@@ -91,12 +96,21 @@ internal sealed partial class WorkerCoordinationRuntime
                 cancellationToken);
         }
 
-        public async ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync() =>
+            _ = await ReleaseAsync();
+
+        public ValueTask<bool> ReleaseAsync()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            lock (_releaseGate)
             {
-                return;
+                _release ??= ReleaseCoreAsync();
+                return new ValueTask<bool>(_release);
             }
+        }
+
+        private async Task<bool> ReleaseCoreAsync()
+        {
+            Interlocked.Exchange(ref _disposed, 1);
 
             _disposeStop.Cancel();
             try
@@ -106,6 +120,10 @@ internal sealed partial class WorkerCoordinationRuntime
             catch (OperationCanceledException)
                 when (_disposeStop.IsCancellationRequested)
             {
+            }
+            catch
+            {
+                // Release remains best-effort after a failed renewal loop.
             }
 
             await _operationGate.WaitAsync();
@@ -118,14 +136,18 @@ internal sealed partial class WorkerCoordinationRuntime
                 }
                 try
                 {
-                    await _coordination.ReleasePlayerLeaseAsync(
+                    var status =
+                        await _coordination.ReleasePlayerLeaseAsync(
                         lease,
                         _runtime.Deadline(),
                         CancellationToken.None);
+                    return status ==
+                        CoordinationOperationStatus.Applied;
                 }
                 catch
                 {
                     // The durable fence and Redis TTL prevent stale reuse.
+                    return false;
                 }
             }
             finally
@@ -173,7 +195,8 @@ internal sealed partial class WorkerCoordinationRuntime
             await _operationGate.WaitAsync(cancellationToken);
             try
             {
-                if (Volatile.Read(ref _invalidated) != 0)
+                if (Volatile.Read(ref _disposed) != 0 ||
+                    Volatile.Read(ref _invalidated) != 0)
                 {
                     return false;
                 }
@@ -251,7 +274,8 @@ internal sealed partial class WorkerCoordinationRuntime
             var reinstall = _request with
             {
                 Route = route,
-                Presence = presence
+                Presence = presence,
+                AllowAccountReplacement = false
             };
             var budget = MonotonicLeaseBudget.Capture(
                 _timeProvider,

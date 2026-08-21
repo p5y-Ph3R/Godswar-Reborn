@@ -117,7 +117,10 @@ internal sealed partial class GameClientHandler
             character.ZodiacType,
             character.Hair,
             character.Face,
-            character.Faith);
+            character.Faith)
+        {
+            RealmId = _processRealmId
+        };
         CharacterLifecycleExecutionResult execution;
         try
         {
@@ -180,7 +183,10 @@ internal sealed partial class GameClientHandler
             CharacterLifecycleCommandContract.SingleCharacterSlot,
             characterName,
             _character?.Id,
-            _character?.LifecycleVersion);
+            _character?.LifecycleVersion)
+        {
+            RealmId = _processRealmId
+        };
         CharacterLifecycleExecutionResult execution;
         try
         {
@@ -242,6 +248,7 @@ internal sealed partial class GameClientHandler
         if (receipt is not null &&
             (receipt.Family != family ||
              receipt.AccountId != _account.Id ||
+             receipt.RealmId != _processRealmId ||
              receipt.CharacterSlot !=
                 CharacterLifecycleCommandContract
                     .SingleCharacterSlot))
@@ -349,6 +356,7 @@ internal sealed partial class GameClientHandler
                 LegacyPersistenceOperation.CreateCharacter);
             created = await _store.CreateCharacterAsync(
                 _account.Id,
+                _processRealmId,
                 character,
                 cancellationToken);
         }
@@ -411,6 +419,7 @@ internal sealed partial class GameClientHandler
             LegacyPersistenceOperation.DeleteCharacter);
         var deleted = await _store.DeleteCharacterAsync(
             _account.Id,
+            _processRealmId,
             characterName,
             cancellationToken);
         if (!await RefreshCharacterSnapshotAsync(

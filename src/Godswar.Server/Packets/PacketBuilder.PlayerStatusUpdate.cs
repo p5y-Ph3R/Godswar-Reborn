@@ -12,6 +12,7 @@ internal static partial class PacketBuilder
     // GameData+0x292 as the local interaction identity/faction. Writing a
     // float here can therefore make every NPC unselectable client-side.
     private const int PlayerStatusInteractionIdentityOffset = 60;
+    private const int PlayerStatusCampOffset = 62;
     private const int PlayerStatusSilverOffset = 120;
     private const int PlayerStatusGoldOffset = 124;
     private const int PlayerStatusPhysicalDefenseOffset = 164;
@@ -23,6 +24,7 @@ internal static partial class PacketBuilder
     private const int PlayerStatusAttackIntervalShortOffset = 114;
     private const int PlayerStatusAttackIntervalDwordOffset = 224;
     private const int PlayerStatusTalentPointsOffset = 228;
+    private const int PlayerStatusPkModeOffset = 232;
 
     private static readonly byte[] PlayerStatusUpdateTemplate = Convert.FromHexString(
         "EC00B6271D01000074657374696E6739000000000000000000000000000000000000000000000000" +
@@ -82,6 +84,16 @@ internal static partial class PacketBuilder
         uint objectId,
         ClientStatusAggregate aggregate)
     {
+        if (character.Camp is not (
+                GameDefaults.SpartaCamp or
+                GameDefaults.AthensCamp))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(character),
+                character.Camp,
+                "The character camp must be Sparta (0) or Athens (1).");
+        }
+
         if (!float.IsFinite(aggregate.MovementSpeedMultiplier) ||
             aggregate.MovementSpeedMultiplier <= 0f)
         {
@@ -111,10 +123,11 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusMovementSpeedMultiplierOffset, 4),
             aggregate.MovementSpeedMultiplier);
-        // Preserve the stock-zero interaction identity dword for both local
-        // and remote status packets. Riding speed must use a separately proven
-        // client channel; encoding it here suppresses opcode 10067 at source.
+        // Preserve the non-camp bytes in this native interaction-identity
+        // dword. Byte 62 is the proven local/remote camp byte; projecting a
+        // valid 0/1 keeps player hostility and NPC faction checks coherent.
         packet.AsSpan(PlayerStatusInteractionIdentityOffset, sizeof(uint)).Clear();
+        packet[PlayerStatusCampOffset] = character.Camp;
         var stats = character.CalculatedStats ??
             CharacterStats.FromCharacter(character);
         BinaryPrimitives.WriteInt32LittleEndian(
@@ -178,6 +191,37 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(PlayerStatusTalentPointsOffset, 4),
                 character.TalentPoints);
+        }
+
+        return packet;
+    }
+
+    public static byte[] RemotePlayerStatusUpdate(
+        GameCharacter character,
+        uint objectId,
+        ClientStatusAggregate aggregate,
+        byte? pkMode)
+    {
+        if (objectId == LocalPlayerObjectId)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(objectId),
+                objectId,
+                "A remote player status cannot use the local-player object id.");
+        }
+
+        if (pkMode is not (null or 1))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(pkMode),
+                pkMode,
+                "Only exact training-dummy PK mode 1 may override the captured default.");
+        }
+
+        var packet = PlayerStatusUpdate(character, objectId, aggregate);
+        if (pkMode.HasValue)
+        {
+            packet[PlayerStatusPkModeOffset] = pkMode.Value;
         }
 
         return packet;

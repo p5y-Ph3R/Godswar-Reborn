@@ -20,7 +20,7 @@ different and ignores Soul Contract, matching the Pet Manager guide.
 
 ## Current reviewed policy
 
-Policy `project-pet-unite-piecewise-marginal-v2` uses continuous marginal
+Policy `project-pet-unite-piecewise-marginal-v4` uses continuous marginal
 bands. A rate applies only to Savvy inside its band, so every result remains
 continuous and increasing at a boundary.
 
@@ -33,8 +33,8 @@ continuous and increasing at a boundary.
 | `600+` | `50%` |
 
 This is a modest adjustment to the earlier project curve, not a flat scaling
-rule. High Savvy still has diminishing returns, but every additional point
-always contributes.
+rule. High Savvy still has diminishing returns, but every additional point on
+an enabled mapping always contributes.
 
 The fixed bases and first-band rates are:
 
@@ -42,26 +42,47 @@ The fixed bases and first-band rates are:
 |---|---|---:|---:|
 | Agility | Maximum MP | 300 | 4.00 |
 | Agility | Magical Attack | 80 | 2.00 |
-| Agility | Damage Rebound | 150 | 1.50 |
+| Agility | Damage Rebound (disabled) | 150 | 0.00 |
 | Agility | Hit Rate | 20 | 0.12 |
 | Strength | Maximum HP | 4,000 | 10.00 |
 | Strength | Physical Defense | 80 | 2.00 |
-| Strength | Life Absorption | 100 | 5.00 |
+| Strength | Fixed HP Recovery on Hit | 100 | 5.00 |
 | Accuracy | Hit Rate | 20 | 0.48 |
 | Accuracy | Physical Attack | 100 | 3.00 |
 | Accuracy | Magical Defense | 60 | 1.50 |
 | Technique | Dodge Rate | 10 | 0.50 |
-| Technique | Physical Damage Reduction | 300 | 6.00 |
-| Technique | Magical Damage Reduction | 240 | 5.00 |
+| Technique | Fixed Physical Damage Cancellation | 600 | 12.00 |
+| Technique | Fixed Magical Damage Cancellation | 480 | 10.00 |
 | Wisdom | Maximum HP | 4,000 | 40.00 |
-| Wisdom | Physical Damage Increase | 200 | 5.00 |
-| Wisdom | Critical Damage Reduction | 800 | 15.00 |
-| Luck | Damage Absorption | 80 | 1.50 |
-| Luck | Magical Damage Increase | 150 | 4.00 |
-| Luck | Damage Rebound | 150 | 6.00 |
+| Wisdom | Fixed Physical Append Damage | 200 | 5.00 |
+| Wisdom | Fixed Critical-Damage Cancellation | 800 | 15.00 |
+| Luck | Flat All-Damage Absorption | 80 | 1.50 |
+| Luck | Fixed Magical Append Damage | 150 | 4.00 |
+| Luck | Fixed Damage Rebound | 150 | 6.00 |
 
 A fixed base is added once per resulting effect, even when two Savvy sources
-feed the same effect.
+feed the same effect. The five Agility-to-Rebound rows remain as zero-rate
+compatibility placeholders; only Luck Savvy contributes variable Damage
+Rebound.
+
+The V4 policy preserves native effects `10`, `23`, `24`, `29`, `30`, `32`,
+`34`, and `38` as fixed-value channels. In particular, effects `29` and `30`
+are not percentages: their entire fixed output (base and every marginal band)
+is exactly twice the reviewed V3 output. Effect `34` restores its fixed HP
+amount once for each committed direct hit, capped by missing HP; replayed or
+Rebound damage cannot trigger it.
+
+Reborn adds a separate percentage policy from the same effective Technique
+used by Unite (`Basic + Added + Soul Contract`):
+
+```text
+typed reduction bp = min(3000, round-away(effective Technique * 0.15))
+```
+
+The physical and magical results are equal and independently project into the
+typed percentage-reduction fields. Combat still applies the global 8,000 bp
+(80%) reduction cap after all sources are summed. The percentage policy never
+reuses or changes the native meaning of effects `29` and `30`.
 
 ## PostgreSQL authority
 
@@ -79,13 +100,19 @@ The active balance is an immutable, SHA-256-addressed publication:
 
 Database triggers reject incomplete publications, unsupported mappings,
 gapped bands, increasing later-band rates, mutation of sealed content, and
-deletion of the official publication. Zero is allowed for a later marginal
-rate, but valuable character state is never stored in these content tables.
+deletion of the official publication. Zero is allowed for a disabled curve or
+a later marginal rate, but valuable character state is never stored in these
+content tables.
 
 `character_pet_character_bonuses` is a derived materialization. Every row is
-stamped with `balance_revision`. Startup rebuilds stale active Merge rows from
-the authoritative `Basic + cumulative Added` totals and the process-pinned
-publication before gameplay listeners open.
+stamped with `balance_revision`. An active Merge has the 16 native rows plus
+server-only codes `1001` (`TechniquePhysicalReduction`) and `1002`
+(`TechniqueMagicReduction`). Those internal codes are valid only in derived
+storage and the runtime projection; they are never serialized into the native
+16-field PetUnite payload or included in the native content counts. Startup
+rebuilds missing, stale-revision, or malformed active Merge rows from the
+authoritative effective Savvy and process-pinned publication before gameplay
+listeners open.
 
 ## Future web-admin workflow
 
@@ -105,3 +132,19 @@ Balance publication is intentionally not a live hot-reload. This keeps one
 calculation revision per process and prevents two workers from silently using
 different owner-Merge math. Rollback means republishing a previously sealed
 revision and performing the same controlled worker restart.
+
+## Login energy authority
+
+Every ordinary player login refills the one authoritative carried pet to its
+durable `maximum_energy` before `OwnedPetList` and the first `PetEnergy` packet
+are built. The refill reuses the owner-Merge lifecycle transaction: it locks
+the carried row, validates the current player-ownership fence, advances the
+pet revision only when energy changes, and projects that committed result into
+the login snapshot. The first client energy value is therefore the stored
+100%, not a UI-only replacement for a partial database value.
+
+The refill runs after stale owner-Merge recovery. It rejects multiple carried
+pets, does nothing when no pet is carried, and never touches exact pinned
+training dummies. Online recharge restores five normalized points at every
+six-second heartbeat. Merge drain, session shutdown, and their existing
+generation/cancellation rules remain unchanged.

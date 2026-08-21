@@ -32,6 +32,10 @@ internal sealed class CharacterStats
 
     public int Dodge { get; init; }
 
+    public int StatusHit { get; init; }
+
+    public int StatusResistance { get; init; }
+
     public int Critical { get; init; }
 
     public int CriticalResistance { get; init; }
@@ -70,6 +74,8 @@ internal sealed class CharacterStats
     public int CriticalDamageReduction { get; init; }
 
     public int LifeAbsorption { get; init; }
+
+    public int LifeAbsorptionFlat { get; init; }
 
     public int DamageRebound { get; init; }
 
@@ -121,7 +127,8 @@ internal sealed class CharacterStats
     {
         return $"hp={CurrentHp}/{MaxHp} mp={CurrentMp}/{MaxMp} " +
             $"patk={PhysicalAttack} pdef={PhysicalDefense} matk={MagicAttack} mdef={MagicDefense} " +
-            $"hit={Hit} dodge={Dodge} wr={WeaponRank}:{WeaponScore}/aura{WeaponAuraEffect} " +
+            $"hit={Hit} dodge={Dodge} status={StatusHit}/{StatusResistance} " +
+            $"wr={WeaponRank}:{WeaponScore}/aura{WeaponAuraEffect} " +
             $"ar={ArmorRank}:{ArmorScore}/aura{ArmorAuraEffect} skills={LearnedSkillCount}";
     }
 

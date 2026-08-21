@@ -164,6 +164,7 @@ internal static partial class Program
     private static Task CheckPlayerStatusUpdateAsync()
     {
         PlayerMovementSpeedStatusChecks.Run();
+        PlayerRemoteStatusProjectionChecks.Run();
         var character = CreateCharacter();
         const uint objectId = 0x7135B24E;
         var packet = PacketBuilder.PlayerStatusUpdate(character, objectId);

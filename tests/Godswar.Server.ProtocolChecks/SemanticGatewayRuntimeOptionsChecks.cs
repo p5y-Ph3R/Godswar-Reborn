@@ -56,10 +56,41 @@ internal static partial class BackhaulProtocolChecks
             {
                 Check.True(
                     loaded.TryResolveMap(
+                        Godswar.Server.Domain.World.Instances.RealmId.Tempest,
                         new Godswar.Server.Domain.World.Instances.MapId(4),
                         out var route) &&
-                    route == loaded.BootstrapTarget,
+                    route == loaded.ResolveBootstrap(
+                        Godswar.Server.Domain.World.Instances.RealmId.Tempest),
                     "valid generated certificate and strict config load");
+            }
+
+            var sameMapOtherRealm = valid.DeepClone().AsObject();
+            var dwargonRoute = sameMapOtherRealm["Routes"]!
+                .AsArray()[0]!.DeepClone();
+            dwargonRoute!["RealmId"] = 2;
+            dwargonRoute["WorldInstanceId"] =
+                "22222222-2222-4222-8222-222222222222";
+            dwargonRoute["Bootstrap"] = true;
+            sameMapOtherRealm["Routes"]!.AsArray().Add(dwargonRoute);
+            var crossRealmPath = await WriteOptionsAsync(
+                directory.FullName,
+                "same-map-other-realm.json",
+                sameMapOtherRealm);
+            using (var loaded =
+                   await SemanticGatewayRuntimeOptions.LoadAsync(
+                       crossRealmPath))
+            {
+                Check.True(
+                    loaded.TryResolveMap(
+                        Godswar.Server.Domain.World.Instances.RealmId.Tempest,
+                        new Godswar.Server.Domain.World.Instances.MapId(4),
+                        out var tempest) &&
+                    loaded.TryResolveMap(
+                        Godswar.Server.Domain.World.Instances.RealmId.Dwargon,
+                        new Godswar.Server.Domain.World.Instances.MapId(4),
+                        out var dwargon) &&
+                    tempest.WorldInstanceId != dwargon.WorldInstanceId,
+                    "same map ID resolves independently in two realms");
             }
 
             var unknown = valid.DeepClone().AsObject();
@@ -197,6 +228,7 @@ internal static partial class BackhaulProtocolChecks
             "33333333-3333-4333-8333-333333333333";
         var worldInstances = new WorldInstanceRuntimeOptions
         {
+            RealmId = 1,
             ServerNodeId = "worker-a",
             MaximumRuntimes = 8,
             MaximumPlayerAssignments = 16,

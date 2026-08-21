@@ -52,6 +52,11 @@ internal static partial class HolyStoneDurableHandlerChecks
             session,
             baseSnapshot.AccountId,
             live);
+        registry.JoinPlayerMap(
+            session,
+            baseSnapshot.AccountId,
+            live,
+            worldReady: false);
         var store = new HolyStoneStore();
         if (storeMutation is not null)
         {

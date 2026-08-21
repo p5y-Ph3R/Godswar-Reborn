@@ -3,6 +3,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
 using Godswar.Server.Networking;
@@ -27,7 +28,8 @@ internal sealed class GameClientHandlerFactory(
     IPlayerCoordinationLeaseIssuer? playerCoordination = null,
     GameplayRuntimeCatalogs? gameplayCatalogs = null,
     GameplayItemContent? itemContent = null,
-    IPetContentCatalog? petContent = null)
+    IPetContentCatalog? petContent = null,
+    RealmId? processRealmId = null)
 {
     public GameClientHandler Create(
         ClientSession session,
@@ -111,5 +113,9 @@ internal sealed class GameClientHandlerFactory(
             petContent:
                 petContent,
             sealedPetSnapshots:
-                sealedPetSnapshots);
+                sealedPetSnapshots,
+            realmCatalog:
+                postgresRuntime?.RealmCatalog,
+            processRealmId:
+                processRealmId);
 }

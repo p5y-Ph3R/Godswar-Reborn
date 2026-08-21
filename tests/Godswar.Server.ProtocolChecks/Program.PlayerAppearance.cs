@@ -74,7 +74,20 @@ internal static partial class Program
         Check.Equal(character.PositionZ, ReadSingle(packet, 64), "PlayerWorldSpawn Z at offset 64");
         Check.Equal(0f, ReadSingle(packet, 68), "PlayerWorldSpawn terrain-height float at offset 68");
         Check.Equal(1f, ReadSingle(packet, 72), "PlayerWorldSpawn facing at offset 72");
+        Check.Equal(character.Camp, packet[53], "PlayerWorldSpawn camp");
         Check.Equal(character.Face, packet[56], "PlayerWorldSpawn face");
+        Check.Equal((byte)5, packet[80], "PlayerWorldSpawn default PK mode");
+
+        var explicitPkMode = PacketBuilder.PlayerWorldSpawn(
+            character,
+            objectId,
+            pkMode: 1);
+        var expectedExplicitPkMode = packet.ToArray();
+        expectedExplicitPkMode[80] = 1;
+        Check.Equal((byte)1, explicitPkMode[80], "PlayerWorldSpawn explicit PK mode");
+        Check.True(
+            explicitPkMode.SequenceEqual(expectedExplicitPkMode),
+            "PlayerWorldSpawn PK-mode projection changes only native byte 80");
 
         return Task.CompletedTask;
     }

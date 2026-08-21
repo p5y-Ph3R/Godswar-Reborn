@@ -12,6 +12,7 @@ internal interface ISemanticGatewayCoordination : IAsyncDisposable
     ValueTask<SemanticGatewayLoginResult> StartLoginAsync(
         SemanticGatewayPrincipal principal,
         SemanticGatewayConnectionSource loginSource,
+        SemanticGatewayRealmGrant realmGrant,
         CoordinationDeadline deadline,
         CancellationToken cancellationToken);
 

@@ -17,20 +17,18 @@ internal sealed partial class GameClientHandler
         var admission = _session.GatewayWorldAdmission;
         if (admission is null)
         {
-            _registry.JoinMap(
+            _registry.JoinPlayerMap(
                 _session,
                 accountId,
                 _character,
-                WorldObjectIds.ForPlayer(_character.Id),
                 worldReady);
         }
         else
         {
-            _registry.JoinGatewayWorld(
+            _registry.JoinPlayerGatewayWorld(
                 _session,
                 accountId,
                 _character,
-                WorldObjectIds.ForPlayer(_character.Id),
                 admission,
                 worldReady);
         }
@@ -42,6 +40,18 @@ internal sealed partial class GameClientHandler
             _session,
             _characterLoadSnapshot?.Pets ??
                 Array.Empty<PetBootstrapSnapshot>());
+        var activeTrainingPet = _registry.IsTrainingDummyCore(_character)
+            ? _characterLoadSnapshot?.Pets.SingleOrDefault(
+                static pet => pet.ContributesToCharacter)
+            : null;
+        if (activeTrainingPet is not null)
+        {
+            _registry.SetPetOwnerMergePresentation(
+                _session,
+                active: true,
+                activeTrainingPet.Aptitude,
+                activeTrainingPet.CompletedRebirths);
+        }
     }
 
     private bool ValidateGatewayAdmission()
@@ -54,6 +64,7 @@ internal sealed partial class GameClientHandler
 
         if (_account is null ||
             admission.AccountId != _account.Id ||
+            admission.RealmId != _processRealmId ||
             !_registry.AcceptsGatewayAdmission(admission))
         {
             return false;
@@ -64,7 +75,8 @@ internal sealed partial class GameClientHandler
             return admission.CharacterId == 0;
         }
 
-        return admission.CharacterId == _character.Id &&
+        return _character.RealmId == _processRealmId &&
+            admission.CharacterId == _character.Id &&
             admission.MapId.TryGetLegacyValue(out var mapId) &&
             mapId == _character.CurrentMap;
     }

@@ -7,6 +7,7 @@ using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Backhaul;
 using Godswar.Server.Networking.SemanticGateway;
+using Godswar.Server.Packets;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -16,7 +17,8 @@ internal sealed record CapturedBackhaulSession(
 
 internal sealed class LoopbackBackhaulWorker : IAsyncDisposable
 {
-    private const int LegacyGameLoginBytes = 36;
+    private const int LegacyGameLoginBytes =
+        LegacyGameLoginPacket.PacketLength;
 
     private readonly WorkerBackhaulAdmissionRegistry _admissions;
     private readonly ConcurrentDictionary<long, ILegacyByteTransport>

@@ -42,9 +42,10 @@ internal interface IHolySpiritEffectivenessRandomSource
 }
 
 /// <summary>
-/// Defines the authoritative effectiveness range assigned when a Holy Spirit
-/// is implemented into a Holy Stone. Values are fixed-point integers so the
-/// result can be persisted and replayed without floating-point drift.
+/// Defines stable Holy Spirit identities and durable acceptance ranges. Values
+/// are fixed-point integers so persisted results and historical receipts can
+/// be replayed without floating-point drift. PostgreSQL supplies the mutable
+/// maximum for adjustable Cooled effects on the production roll path.
 /// </summary>
 internal static class HolySpiritEffectivenessPolicy
 {
@@ -121,6 +122,41 @@ internal static class HolySpiritEffectivenessPolicy
         bool hasGoddessStone,
         IHolySpiritEffectivenessRandomSource randomSource)
     {
+        if (!TryGetDefinition(spiritItemId, out var definition))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(spiritItemId),
+                spiritItemId,
+                "Unknown Holy Spirit item.");
+        }
+        if (definition.EffectId is
+            HolySpiritImplementationPolicy
+                .CooledPhysicalDamageReductionEffectId or
+            HolySpiritImplementationPolicy
+                .CooledMagicDamageReductionEffectId or
+            HolySpiritImplementationPolicy
+                .CooledCriticalDamageReductionEffectId)
+        {
+            throw new InvalidOperationException(
+                "Adjustable Cooled effects require a startup-pinned " +
+                "PostgreSQL maximum.");
+        }
+
+        return Roll(
+            spiritItemId,
+            holyStoneGrade,
+            hasGoddessStone,
+            definition.GradeOneMaximumValue,
+            randomSource);
+    }
+
+    public static HolySpiritEffectivenessRoll Roll(
+        uint spiritItemId,
+        int holyStoneGrade,
+        bool hasGoddessStone,
+        int gradeOneMaximum,
+        IHolySpiritEffectivenessRandomSource randomSource)
+    {
         ArgumentNullException.ThrowIfNull(randomSource);
         if (!TryGetDefinition(spiritItemId, out var definition))
         {
@@ -129,17 +165,20 @@ internal static class HolySpiritEffectivenessPolicy
                 spiritItemId,
                 "Unknown Holy Spirit item.");
         }
-        if (!TryGetGradeBracket(
-                spiritItemId,
-                holyStoneGrade,
-                out var lower,
-                out var upper))
+        if (holyStoneGrade is
+                < MinimumHolyStoneGrade or > MaximumHolyStoneGrade ||
+            gradeOneMaximum < definition.GradeOneMinimumValue ||
+            gradeOneMaximum > definition.GradeOneMaximumValue)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(holyStoneGrade),
                 holyStoneGrade,
-                "Holy Stone grade must be from 1 through 10.");
+                "Holy Stone grade or effectiveness maximum is invalid.");
         }
+
+        var lower = checked(
+            definition.GradeOneMinimumValue * holyStoneGrade);
+        var upper = checked(gradeOneMaximum * holyStoneGrade);
 
         if (hasGoddessStone)
         {

@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Items;
+using Godswar.Server.Domain.Inventory;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Infrastructure.Inventory;
@@ -60,10 +61,21 @@ internal sealed partial class PostgresHolyStoneCommandExecutor
                 spirit);
         }
 
+        var gradeOneMaximum = definition.EffectId is
+            HolySpiritImplementationPolicy
+                .CooledPhysicalDamageReductionEffectId or
+            HolySpiritImplementationPolicy
+                .CooledMagicDamageReductionEffectId or
+            HolySpiritImplementationPolicy
+                .CooledCriticalDamageReductionEffectId
+                ? _holySpiritBalance.GradeOneMaximumFor(
+                    definition.EffectId)
+                : definition.GradeOneMaximumValue;
         var roll = HolySpiritEffectivenessPolicy.Roll(
             spirit.Id,
             holyStone.Grade,
             usesGoddessStone,
+            gradeOneMaximum,
             _holySpiritRandomSource);
         if (roll.Definition.EffectId != definition.EffectId ||
             roll.Value is <= 0 or > short.MaxValue)

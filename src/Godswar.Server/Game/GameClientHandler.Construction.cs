@@ -4,9 +4,11 @@ using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Rewards;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Zodiac;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure.Udp;
 using Godswar.Server.Operations;
@@ -89,7 +91,10 @@ internal sealed partial class GameClientHandler
         GameplayItemContent? itemContent = null,
         IPetContentCatalog? petContent = null,
         TimeSpan? petOwnerMergeEnergyInterval = null,
-        ISealedPetSnapshotReader? sealedPetSnapshots = null)
+        ISealedPetSnapshotReader? sealedPetSnapshots = null,
+        TimeSpan? petOwnerMergeRechargeInterval = null,
+        IRealmCatalogReader? realmCatalog = null,
+        RealmId? processRealmId = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -101,9 +106,20 @@ internal sealed partial class GameClientHandler
             throw new ArgumentOutOfRangeException(
                 nameof(petOwnerMergeEnergyInterval));
         }
+        if (petOwnerMergeRechargeInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(petOwnerMergeRechargeInterval));
+        }
 
         _session = session;
         _store = gameStore;
+        _realmCatalog = realmCatalog;
+        _processRealmId = processRealmId ?? RealmId.Tempest;
+        if (!_processRealmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(processRealmId));
+        }
         _accountDirectory = accountDirectory ??
             gameStore as IAccountDirectory ??
             throw new ArgumentException(
@@ -159,6 +175,8 @@ internal sealed partial class GameClientHandler
         _petDurableCommands = petDurableCommands;
         _petOwnerMergeEnergyInterval =
             petOwnerMergeEnergyInterval ?? TimeSpan.FromSeconds(3);
+        _petOwnerMergeRechargeInterval =
+            petOwnerMergeRechargeInterval ?? TimeSpan.FromSeconds(6);
         _characterRuntimeProjections =
             characterRuntimeProjections ??
             gameStore as ICharacterRuntimeProjectionReader ??

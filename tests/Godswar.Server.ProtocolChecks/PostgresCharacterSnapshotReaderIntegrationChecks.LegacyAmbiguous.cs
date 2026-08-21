@@ -12,8 +12,8 @@ internal static partial class PostgresCharacterSnapshotReaderIntegrationChecks
     {
         await using var command = dataSource.CreateCommand(
             """
-            INSERT INTO character_base (account_id, name)
-            VALUES (@accountId, @name)
+            INSERT INTO character_base (account_id, server_id, name)
+            VALUES (@accountId, 1, @name)
             RETURNING id;
             """);
         command.Parameters.AddWithValue("accountId", accountId);

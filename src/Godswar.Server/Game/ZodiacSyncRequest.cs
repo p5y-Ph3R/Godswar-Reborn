@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using Godswar.Server.Packets;
+using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Game;
 
@@ -27,11 +29,24 @@ internal readonly record struct ZodiacSyncRequest(
     public bool IsSkillGridSelection =>
         Module is 0 or 0xFF && Sid == 102 && Value3 == 0;
 
+    public bool IsCharacterUiStatsV1Envelope =>
+        Module == PacketBuilder.CharacterUiStatsModule &&
+        Sid == PacketBuilder.CharacterUiStatsV1Sid;
+
+    public bool IsCanonicalCharacterUiStatsV1Probe =>
+        IsCharacterUiStatsV1Envelope &&
+        PlayerId == 0 &&
+        Value1 == 1 &&
+        Value2 == 0 &&
+        Value3 == 0;
+
     public static bool TryParse(ReadOnlySpan<byte> packet, out ZodiacSyncRequest request)
     {
         request = default;
         if (packet.Length != PacketLength ||
-            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != PacketLength)
+            BinaryPrimitives.ReadUInt16LittleEndian(packet[..2]) != PacketLength ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet.Slice(2, 2)) !=
+                Opcodes.Zodiac)
         {
             return false;
         }

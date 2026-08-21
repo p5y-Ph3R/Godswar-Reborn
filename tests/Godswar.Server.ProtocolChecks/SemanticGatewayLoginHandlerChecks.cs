@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.Net;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.SemanticGateway;
 using Godswar.Server.Packets;
@@ -17,6 +19,7 @@ internal static partial class SemanticGatewayChecks
     {
         await CheckCanonicalUsernameCasingAcceptedAsync();
         await CheckPreRedirectDisconnectCancelsGenerationAsync();
+        await CheckDisabledRealmSelectionRejectedAsync();
         await CheckRedirectFailureCancelsMatchingRelayAsync();
         await CheckGenerationAwareRelayReplacementAsync();
         await CheckTransientDecryptedBodyIsClearedAsync();
@@ -38,7 +41,8 @@ internal static partial class SemanticGatewayChecks
         var inbound = EncryptLoginStream(
             "TEST",
             "password",
-            Opcodes.LoginReturnInfo);
+            SelectRealmPacket(RealmId.Dwargon),
+            OpcodePacket(Opcodes.LoginReturnInfo));
         var transport = new ScriptedLegacyByteTransport(
             inbound,
             readChunks: [1, 2, 7, 3],
@@ -51,8 +55,6 @@ internal static partial class SemanticGatewayChecks
             data,
             CreateLoginCoordination(authority),
             connections,
-            "127.0.0.1",
-            41002,
             TimeSpan.FromSeconds(1));
 
         await handler.RunAsync(CancellationToken.None);
@@ -71,7 +73,9 @@ internal static partial class SemanticGatewayChecks
         Check.True(
             lookup.IsFound &&
             lookup.Generation!.Principal.AccountId == 7 &&
-            lookup.Generation.Principal.CanonicalUsername == "test",
+            lookup.Generation.Principal.CanonicalUsername == "test" &&
+            lookup.Generation.RealmGrant ==
+                SemanticGatewayTestRealm.DwargonGrant,
             "case-insensitive lookup routes to server-derived canonical " +
             "account identity");
     }
@@ -90,7 +94,10 @@ internal static partial class SemanticGatewayChecks
                     7,
                     "TEST"));
         var transport = new ScriptedLegacyByteTransport(
-            EncryptLoginStream("TEST", "password"),
+            EncryptLoginStream(
+                "TEST",
+                "password",
+                SelectRealmPacket(RealmId.Tempest)),
             readChunks: [2, 1, 11],
             remoteEndPoint: "127.0.0.1:41003");
         await using var session = new ClientSession(
@@ -101,8 +108,6 @@ internal static partial class SemanticGatewayChecks
             data,
             CreateLoginCoordination(authority),
             connections,
-            "127.0.0.1",
-            41004,
             TimeSpan.FromSeconds(1));
 
         await handler.RunAsync(CancellationToken.None);
@@ -119,6 +124,41 @@ internal static partial class SemanticGatewayChecks
                 IPAddress.Loopback).Status ==
                 SemanticGatewayLoginLookupStatus.NotFound,
             "cancelled pre-redirect generation cannot enter game");
+    }
+
+    private static async Task CheckDisabledRealmSelectionRejectedAsync()
+    {
+        var authority = CreateLoginAuthority();
+        using var connections =
+            new SemanticGatewayConnectionCoordinator(
+                maximumConnections: 4,
+                replacementTimeout: TimeSpan.FromSeconds(1));
+        await using var data = new LoginHandlerDataSession(
+            new SemanticGatewayAuthenticatedAccount(7, "TEST"),
+            SemanticGatewayTestRealm.Catalog,
+            new RealmCatalogSnapshot([SemanticGatewayTestRealm.Tempest]));
+        var transport = new ScriptedLegacyByteTransport(
+            EncryptLoginStream(
+                "TEST",
+                "password",
+                SelectRealmPacket(RealmId.Dwargon)),
+            remoteEndPoint: "127.0.0.1:41007");
+        await using var session = new ClientSession(
+            transport,
+            endpointRole: NetworkEndpointRole.Login);
+        var handler = new SemanticGatewayLoginHandler(
+            session,
+            data,
+            CreateLoginCoordination(authority),
+            connections,
+            TimeSpan.FromSeconds(1));
+
+        await handler.RunAsync(CancellationToken.None);
+
+        Check.True(
+            transport.DisconnectCount == 1 &&
+            authority.GetSnapshot().LoginGenerationsStarted == 0,
+            "a realm disabled after advertisement cannot mint a login grant");
     }
 
     private static async Task
@@ -172,10 +212,10 @@ internal static partial class SemanticGatewayChecks
     private static byte[] EncryptLoginStream(
         string rawUsername,
         string password,
-        params ushort[] followingOpcodes)
+        params byte[][] followingPackets)
     {
         var clear = new byte[
-            68 + followingOpcodes.Length * 4];
+            68 + followingPackets.Sum(static packet => packet.Length)];
         BinaryPrimitives.WriteUInt16LittleEndian(
             clear,
             68);
@@ -188,26 +228,49 @@ internal static partial class SemanticGatewayChecks
         PacketText.WriteFixedAscii(
             clear.AsSpan(36, 32),
             password);
-        for (var index = 0;
-             index < followingOpcodes.Length;
-             index++)
+        var offset = 68;
+        foreach (var following in followingPackets)
         {
-            var offset = 68 + index * 4;
-            BinaryPrimitives.WriteUInt16LittleEndian(
-                clear.AsSpan(offset),
-                4);
-            BinaryPrimitives.WriteUInt16LittleEndian(
-                clear.AsSpan(offset + 2),
-                followingOpcodes[index]);
+            following.CopyTo(clear, offset);
+            offset += following.Length;
         }
         new PacketCipher().Transform(clear);
         return clear;
     }
 
+    private static byte[] OpcodePacket(ushort opcode)
+    {
+        var packet = new byte[4];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet, 4);
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2), opcode);
+        return packet;
+    }
+
+    private static byte[] SelectRealmPacket(RealmId realmId)
+    {
+        var packet = new byte[LegacyRealmSelectionPacket.PacketLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet,
+            checked((ushort)packet.Length));
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2),
+            Opcodes.SelectServer);
+        packet[LegacyRealmSelectionPacket.RealmIdOffset] =
+            checked((byte)realmId.Value);
+        return packet;
+    }
+
     private sealed class LoginHandlerDataSession(
-        SemanticGatewayAuthenticatedAccount authenticated) :
+        SemanticGatewayAuthenticatedAccount authenticated,
+        params RealmCatalogSnapshot[] catalogs) :
         ISemanticGatewayDataSession
     {
+        private readonly RealmCatalogSnapshot[] _catalogs =
+            catalogs.Length == 0
+                ? [SemanticGatewayTestRealm.Catalog]
+                : catalogs;
+        private int _catalogReadCount;
+
         public int AuthenticationCalls { get; private set; }
 
         public Task<SemanticGatewayAuthenticatedAccount?>
@@ -230,9 +293,20 @@ internal static partial class SemanticGatewayChecks
         public Task<SemanticGatewayCharacterRoute?>
             FindCharacterRouteAsync(
                 int accountId,
+                RealmId realmId,
                 CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(
                 "Login-only regression must not query character routing.");
+
+        public Task<RealmCatalogSnapshot> ReadEnabledAsync(
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var index = Math.Min(
+                Interlocked.Increment(ref _catalogReadCount) - 1,
+                _catalogs.Length - 1);
+            return Task.FromResult(_catalogs[index]);
+        }
 
         public ValueTask DisposeAsync() =>
             ValueTask.CompletedTask;

@@ -29,6 +29,7 @@ internal static class WorldInstanceEgressRevalidationChecks
         await using var registry = new GameSessionRegistry(
             worldInstanceOptions: new WorldInstanceRuntimeOptions
             {
+                RealmId = 1,
                 MaximumRuntimes = 4,
                 MaximumPlayerAssignments = 8,
                 MaximumRetiredInstanceIds = 16,

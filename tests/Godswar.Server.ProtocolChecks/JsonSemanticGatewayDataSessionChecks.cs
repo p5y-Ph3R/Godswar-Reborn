@@ -72,7 +72,8 @@ internal static class JsonSemanticGatewayDataSessionChecks
                     "JSON gateway session rejects an invalid credential");
 
                 var route = await session.FindCharacterRouteAsync(
-                    account.Id);
+                    account.Id,
+                    RealmId.Tempest);
                 Check.True(
                     route is not null,
                     "JSON gateway session resolves an active character route");
@@ -85,7 +86,9 @@ internal static class JsonSemanticGatewayDataSessionChecks
                     route.MapId,
                     "JSON gateway session preserves map identity");
                 Check.True(
-                    await session.FindCharacterRouteAsync(int.MaxValue) is null,
+                    await session.FindCharacterRouteAsync(
+                        int.MaxValue,
+                        RealmId.Tempest) is null,
                     "JSON gateway session returns no route for an unknown account");
             }
             finally
@@ -129,7 +132,9 @@ internal static class JsonSemanticGatewayDataSessionChecks
         var threw = false;
         try
         {
-            _ = await session.FindCharacterRouteAsync(1);
+            _ = await session.FindCharacterRouteAsync(
+                1,
+                RealmId.Tempest);
         }
         catch (ObjectDisposedException)
         {

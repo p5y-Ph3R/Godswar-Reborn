@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ConfigurationDirectory,
-    [switch]$RequireLive
+    [switch]$RequireLive,
+    [switch]$MultiRealm
 )
 
 Set-StrictMode -Version Latest
@@ -15,28 +16,43 @@ function Assert-Condition {
 
 $environmentPath = Get-DevelopmentEnvironmentPath $ConfigurationDirectory
 $compose = Get-DevelopmentComposeArguments $environmentPath
-$renderedRaw = & docker @($compose + @('config', '--format', 'json'))
+$renderedRaw = & docker @(
+    $compose + @(
+        '--profile',
+        'multi-realm',
+        'config',
+        '--format',
+        'json'
+    )
+)
 if ($LASTEXITCODE -ne 0) {
     throw 'The isolated development Compose configuration did not render.'
 }
 $rendered = $renderedRaw | ConvertFrom-Json
 $serviceNames = @($rendered.services.PSObject.Properties.Name | Sort-Object)
 Assert-Condition `
-    (($serviceNames -join ',') -ceq 'postgres,redis-coordination,server') `
-    'Development Compose must contain exactly three isolated services.'
+    (($serviceNames -join ',') -ceq
+        'postgres,redis-coordination,server,server-dwargon') `
+    'Development Compose must contain the four isolated multi-realm services.'
 
 $postgres = $rendered.services.postgres
 $redis = $rendered.services.'redis-coordination'
 $server = $rendered.services.server
+$dwargon = $rendered.services.'server-dwargon'
 Assert-Condition ($postgres.container_name -ceq 'godswar-dev-postgres') `
     'Development PostgreSQL container name is not isolated.'
 Assert-Condition `
     ($redis.container_name -ceq 'godswar-dev-redis-coordination') `
     'Development Redis container name is not isolated.'
-Assert-Condition ($server.container_name -ceq 'godswar-dev-server') `
+Assert-Condition ($server.container_name -ceq 'godswar-dev-tempest-openworld-01') `
     'Development server container name is not isolated.'
 Assert-Condition ($server.image -ceq 'reborn-server:dev') `
     'Development server must use only the dev image tag.'
+Assert-Condition `
+    ($dwargon.container_name -ceq 'godswar-dev-dwargon-openworld-01') `
+    'Development Dwargon container name is not isolated.'
+Assert-Condition ($dwargon.image -ceq 'reborn-server:dev') `
+    'Development Dwargon server must use only the dev image tag.'
 Assert-Condition `
     ($server.environment.GODSWAR_GAME_PUBLIC_HOST -ceq '127.1.1.111') `
     'Development game redirects must target the dev loopback IP.'
@@ -44,9 +60,26 @@ Assert-Condition `
     ($server.environment.GODSWAR_COORDINATION_ENVIRONMENT -ceq 'tempest-dev') `
     'Development Redis keys must use the dev coordination namespace.'
 Assert-Condition `
+    ($dwargon.environment.GODSWAR_COORDINATION_ENVIRONMENT -ceq
+        'tempest-dev') `
+    'Both realms must share the isolated coordination namespace.'
+Assert-Condition `
+    ([string]$server.environment.GODSWAR_WORLD_INSTANCE_REALM_ID -ceq '1') `
+    'Tempest must explicitly host realm one.'
+Assert-Condition `
+    ([string]$dwargon.environment.GODSWAR_WORLD_INSTANCE_REALM_ID -ceq '2') `
+    'Dwargon must explicitly host realm two.'
+Assert-Condition `
     ($server.environment.GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID -ceq
         'tempest-dev-openworld-01') `
     'Development world ownership must use the dev node identity.'
+Assert-Condition `
+    ($dwargon.environment.GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID -ceq
+        'dwargon-dev-openworld-01') `
+    'Dwargon world ownership must use a unique node identity.'
+Assert-Condition `
+    ($dwargon.environment.GODSWAR_GAME_PUBLIC_HOST -ceq '127.1.1.112') `
+    'Dwargon redirects must target its dedicated loopback IP.'
 Assert-Condition `
     ($null -eq $server.environment.PSObject.Properties[
         'GODSWAR_POSTGRES_CONNECTION_STRING']) `
@@ -98,6 +131,15 @@ Assert-Condition `
 Assert-Condition `
     (-not ($published -match '127\.1\.1\.110')) `
     'Development Compose overlaps the monitored loopback IP.'
+$dwargonPublished = @($dwargon.ports | ForEach-Object {
+    "$($_.host_ip):$($_.published):$($_.target)/$($_.protocol)"
+})
+Assert-Condition `
+    ($dwargonPublished -contains '127.1.1.112:5998:5999/tcp') `
+    'Dwargon login endpoint is not 127.1.1.112:5998.'
+Assert-Condition `
+    ($dwargonPublished -contains '127.1.1.112:7000:7000/tcp') `
+    'Dwargon game endpoint is not 127.1.1.112:7000.'
 $postgresPublished = @($postgres.ports | ForEach-Object {
     "$($_.host_ip):$($_.published):$($_.target)/$($_.protocol)"
 })
@@ -124,8 +166,14 @@ if ($RequireLive) {
     $live = @(
         @{ Name = 'godswar-dev-postgres'; Service = 'postgres' }
         @{ Name = 'godswar-dev-redis-coordination'; Service = 'redis-coordination' }
-        @{ Name = 'godswar-dev-server'; Service = 'server' }
+        @{ Name = 'godswar-dev-tempest-openworld-01'; Service = 'server' }
     )
+    if ($MultiRealm) {
+        $live += @{
+            Name = 'godswar-dev-dwargon-openworld-01'
+            Service = 'server-dwargon'
+        }
+    }
     foreach ($entry in $live) {
         $container = Assert-DevelopmentContainer `
             $entry.Name $entry.Service
@@ -142,7 +190,7 @@ if ($RequireLive) {
         ($devVolumes.Count -eq 1 -and
             $devVolumes[0].Name -ceq 'godswar-dev-postgres-data') `
         'Live development PostgreSQL is not using its isolated volume.'
-    $devServer = Get-DockerContainer 'godswar-dev-server'
+    $devServer = Get-DockerContainer 'godswar-dev-tempest-openworld-01'
     $serverEnvironment = @($devServer.Config.Env)
     Assert-Condition `
         (-not ($serverEnvironment -match
@@ -166,6 +214,16 @@ if ($RequireLive) {
         ((Test-NetConnection 127.1.1.111 -Port 7000 `
             -InformationLevel Quiet -WarningAction SilentlyContinue)) `
         'Development game endpoint is unreachable.'
+    if ($MultiRealm) {
+        Assert-Condition `
+            ((Test-NetConnection 127.1.1.112 -Port 5998 `
+                -InformationLevel Quiet -WarningAction SilentlyContinue)) `
+            'Dwargon login endpoint is unreachable.'
+        Assert-Condition `
+            ((Test-NetConnection 127.1.1.112 -Port 7000 `
+                -InformationLevel Quiet -WarningAction SilentlyContinue)) `
+            'Dwargon game endpoint is unreachable.'
+    }
 }
 
 [pscustomobject]@{
@@ -173,6 +231,8 @@ if ($RequireLive) {
     Project = 'reborn-dev'
     LoginEndpoint = '127.1.1.111:5998'
     GameEndpoint = '127.1.1.111:7000'
+    DwargonLoginEndpoint = '127.1.1.112:5998'
+    DwargonGameEndpoint = '127.1.1.112:7000'
     PostgreSqlEndpoint = '127.0.0.1:55432'
     Network = 'reborn_dev_runtime'
     Volume = 'godswar-dev-postgres-data'

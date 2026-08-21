@@ -184,6 +184,18 @@ internal abstract class GameStoreTestStub :
         CancellationToken cancellationToken = default) =>
         throw Unsupported();
 
+    public virtual Task MarkAccountPlayerOnlineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
+    public virtual Task<bool> TryMarkAccountPlayerOfflineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken = default) =>
+        throw Unsupported();
+
     public virtual Task SaveCharacterPositionAsync(
         int accountId,
         int characterId,

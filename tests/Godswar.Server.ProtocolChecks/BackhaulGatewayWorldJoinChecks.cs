@@ -65,11 +65,11 @@ internal static partial class BackhaulProtocolChecks
             descriptor.RealmId == CrossServerRealm &&
             descriptor.MapId == CrossServerMap,
             "gateway join consumes the admitted realm, map, and world ID");
-        Check.Equal(
-            0,
-            registry.GetMapPopulation(
-                checked((byte)CrossServerMap.Value)),
-            "cross-server admission does not create a Tempest fallback");
+        var directory = registry.GetWorldInstanceDirectorySnapshot();
+        Check.True(
+            directory.RuntimeCount == 1 &&
+            directory.OpenWorldCount == 1,
+            "cross-server admission creates no fallback runtime");
         Check.Equal(
             1,
             registry.GetWorldInstancePopulation(CrossServerWorld),
@@ -82,8 +82,9 @@ internal static partial class BackhaulProtocolChecks
                 .ObjectId == monster.ObjectId &&
             registry.GetMapMonsterSnapshots(
                     firstCharacter.CurrentMap)
-                .Count == 0,
-            "pre-join monsters exist only in the admitted non-Tempest world");
+                .Single()
+                .ObjectId == monster.ObjectId,
+            "session and process-realm readers resolve the admitted world");
 
         var secondCharacter =
             CrossServerCharacter(31_002, 3_002, "CrossTwo");
@@ -104,6 +105,25 @@ internal static partial class BackhaulProtocolChecks
             2,
             registry.GetWorldInstancePopulation(CrossServerWorld),
             "the assigned non-Tempest runtime is reused exactly");
+
+        var wrongRealmCharacter = CrossServerCharacter(
+            31_004,
+            3_004,
+            "WrongRealm",
+            RealmId.Tempest);
+        var wrongRealmAdmission = CrossServerAdmission(
+            wrongRealmCharacter,
+            Guid.Parse("00000000-0000-0000-0000-000000003004"));
+        await using var wrongRealmSession = new ClientSession(
+            new GatewayAdmissionTestTransport(wrongRealmAdmission));
+        Check.Throws<InvalidOperationException>(
+            () => registry.JoinGatewayWorld(
+                wrongRealmSession,
+                wrongRealmCharacter.AccountId,
+                wrongRealmCharacter,
+                0x8104,
+                wrongRealmAdmission),
+            "gateway world join rejects a cross-realm character");
 
         var wrongWorldAdmission = CrossServerAdmission(
             CrossServerCharacter(
@@ -142,7 +162,11 @@ internal static partial class BackhaulProtocolChecks
             await RuntimePolicySessionSocket.CreateAsync();
         await using var registry = new GameSessionRegistry();
         var character =
-            CrossServerCharacter(31_010, 3_010, "LegacyLocal");
+            CrossServerCharacter(
+                31_010,
+                3_010,
+                "LegacyLocal",
+                RealmId.Tempest);
 
         registry.JoinMap(
             socket.Session,
@@ -164,6 +188,7 @@ internal static partial class BackhaulProtocolChecks
     private static WorldInstanceRuntimeOptions ExactWorkerOptions() =>
         new()
         {
+            RealmId = CrossServerRealm.Value,
             ServerNodeId = CrossServerNode.ToString(),
             MaximumRuntimes = 4,
             MaximumPlayerAssignments = 8,
@@ -210,11 +235,13 @@ internal static partial class BackhaulProtocolChecks
     private static GameCharacter CrossServerCharacter(
         int characterId,
         int accountId,
-        string name) =>
+        string name,
+        RealmId? realmId = null) =>
         new()
         {
             Id = characterId,
             AccountId = accountId,
+            RealmId = realmId ?? CrossServerRealm,
             Name = name,
             CreatedUtc = CrossServerTestTime.UtcDateTime,
             CurrentMap = checked((byte)CrossServerMap.Value),

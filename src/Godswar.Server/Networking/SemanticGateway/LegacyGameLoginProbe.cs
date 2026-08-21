@@ -2,11 +2,14 @@ using System.Buffers.Binary;
 using System.Net.Sockets;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Networking.SemanticGateway;
 
 internal sealed record LegacyGameLoginProbeResult(
     string Username,
+    string Identifier,
+    RealmId RealmId,
     byte[] EncryptedPacket);
 
 /// <summary>
@@ -77,21 +80,33 @@ internal static class LegacyGameLoginProbe
                             "The first game packet must be LoginGameServer.");
                     }
 
-                    var username = PacketText.ReadFixedAscii(
-                        clearBody.AsSpan(2),
-                        0,
-                        32);
-                    if (string.IsNullOrWhiteSpace(username) ||
-                        username.Length >
-                            SemanticGatewayPrincipal
-                                .MaximumUsernameLength)
+                    var clearPacket = new byte[length];
+                    clearHeader.CopyTo(clearPacket, 0);
+                    clearBody.CopyTo(clearPacket, 2);
+                    LegacyGameLoginIdentity? identity;
+                    try
                     {
-                        throw new InvalidDataException(
-                            "The first game packet has an invalid username.");
+                        if (!LegacyGameLoginPacket.TryRead(
+                                new GamePacket(clearPacket),
+                                out identity) ||
+                            identity is null ||
+                            identity.Username.Length >
+                                SemanticGatewayPrincipal
+                                    .MaximumUsernameLength)
+                        {
+                            throw new InvalidDataException(
+                                "The first game packet has no valid realm identity.");
+                        }
+                    }
+                    finally
+                    {
+                        Array.Clear(clearPacket);
                     }
 
                     return new LegacyGameLoginProbeResult(
-                        username,
+                        identity.Username,
+                        identity.Identifier,
+                        identity.RealmId,
                         encryptedPacket);
                 }
                 finally

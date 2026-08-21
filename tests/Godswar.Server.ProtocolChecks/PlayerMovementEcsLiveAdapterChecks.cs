@@ -10,6 +10,7 @@ internal static partial class PlayerMovementEcsLiveAdapterChecks
     {
         await CheckLiveEcsWalkOrderingAsync();
         await CheckLegacyRollbackAsync();
+        await CheckHostileStatusMovementControlsAsync();
         await CheckDeadLegacyTcpMovementParityAsync();
     }
 

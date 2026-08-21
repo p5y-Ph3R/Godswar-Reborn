@@ -170,7 +170,7 @@ internal static class SkillCombatResolver
     public static uint CalculateDamage(GameCharacter character, SkillCombatDefinition skill)
     {
         var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
-        return AuthoredCombatV1.ResolveSkillDamageForOutcome(
+        return AuthoredCombatPveCurrent.ResolveSkillDamageForOutcome(
             attacker,
             target: default,
             skill.Property,
@@ -184,11 +184,15 @@ internal static class SkillCombatResolver
         SkillCombatDefinition skill,
         in CombatTargetStats target,
         ulong combatEventId,
-        int targetOrder = 0)
+        int targetOrder = 0,
+        ClientStatusAggregate runtimeModifiers = default)
     {
         ArgumentNullException.ThrowIfNull(character);
-        var attacker = CombatCharacterStatsAdapter.FromCharacter(character);
-        return AuthoredCombatV1.ResolveSkillDamage(
+        var attacker =
+            CombatCharacterStatsAdapter.ApplyRuntimeAttackerModifiers(
+                CombatCharacterStatsAdapter.FromCharacter(character),
+                runtimeModifiers);
+        return AuthoredCombatPveCurrent.ResolveSkillDamage(
             attacker,
             target,
             skill.Property,

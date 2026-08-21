@@ -19,6 +19,9 @@ internal sealed partial class GameSessionRegistry
                 "The live combat ECS adapter is disabled in Legacy mode.");
         }
 
+        var runtimeModifiers = GetRuntimeStatusAggregate(
+            session,
+            request.RequestedAt);
         return GetPlayerRuntimeEcs(session).Combat.Execute(
             this,
             session,
@@ -26,6 +29,7 @@ internal sealed partial class GameSessionRegistry
             objectId,
             nextBasicAttackAt,
             request,
+            runtimeModifiers,
             onAdmittedAttempt);
     }
 

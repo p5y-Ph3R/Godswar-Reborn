@@ -33,7 +33,8 @@ internal sealed partial class GameSessionRegistry
         bool requiresDurablePlayerPersistence = false,
         WorldInstanceRuntimeOptions? worldInstanceOptions = null,
         GameplayRuntimeCatalogs? gameplayCatalogs = null,
-        GameplayItemContent? itemContent = null)
+        GameplayItemContent? itemContent = null,
+        TrainingDummyPolicy? trainingDummies = null)
         : this(
             store,
             zodiacEnergyOptions,
@@ -45,7 +46,8 @@ internal sealed partial class GameSessionRegistry
             requiresDurablePlayerPersistence,
             worldInstanceOptions,
             gameplayCatalogs,
-            itemContent)
+            itemContent,
+            trainingDummies)
     {
         if (!Enum.IsDefined(playerRuntimeMode))
         {

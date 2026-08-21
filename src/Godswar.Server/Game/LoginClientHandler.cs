@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Godswar.Server.Application.Accounts;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.Secure;
 using Godswar.Server.Operations;
@@ -20,8 +21,11 @@ internal sealed class LoginClientHandler : IClientHandler
     private readonly IGameTicketStore? _ticketStore;
     private readonly LegacyAuthenticationAccess?
         _legacyAuthenticationAccess;
+    private readonly IRealmCatalogReader? _realmCatalog;
     private AccountIdentity? _authenticatedAccount;
+    private RealmCatalogSnapshot? _advertisedRealms;
     private SecureLoginGeneration? _loginGeneration;
+    private RealmCatalogEntry? _selectedRealm;
     private bool _grantCommitted;
     private bool _loginAttempted;
 
@@ -33,7 +37,8 @@ internal sealed class LoginClientHandler : IClientHandler
         IGameTicketStore? ticketStore = null,
         SecureGameTarget? gameTarget = null,
         LegacyAuthenticationAccess?
-            legacyAuthenticationAccess = null)
+            legacyAuthenticationAccess = null,
+        IRealmCatalogReader? realmCatalog = null)
     {
         _session = session;
         _legacyAccounts = legacyAccounts ??
@@ -50,6 +55,7 @@ internal sealed class LoginClientHandler : IClientHandler
         _gameTarget = gameTarget;
         _legacyAuthenticationAccess =
             legacyAuthenticationAccess;
+        _realmCatalog = realmCatalog;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -116,12 +122,9 @@ internal sealed class LoginClientHandler : IClientHandler
                 await HandleLoginAsync(packet, cancellationToken);
                 break;
             case Opcodes.SelectServer:
-                if (_authenticatedAccount is null)
-                {
-                    _session.Disconnect();
-                    return;
-                }
-                await _session.SendAsync(PacketBuilder.SendServer(), cancellationToken, "SendServer");
+                await HandleServerSelectionAsync(
+                    packet,
+                    cancellationToken);
                 break;
             case Opcodes.LoginReturnInfo:
                 await HandleGameRedirectAsync(cancellationToken);
@@ -191,10 +194,7 @@ internal sealed class LoginClientHandler : IClientHandler
                 {
                     Console.WriteLine($"[login] accepted {username}");
                 }
-                await _session.SendAsync(
-                    PacketBuilder.ServerList(),
-                    cancellationToken,
-                    "ServerList");
+                await SendServerListAsync(cancellationToken);
                 return;
             }
 
@@ -240,10 +240,7 @@ internal sealed class LoginClientHandler : IClientHandler
             }
 
             _session.MarkAuthenticated();
-            await _session.SendAsync(
-                PacketBuilder.ServerList(),
-                cancellationToken,
-                "ServerList");
+            await SendServerListAsync(cancellationToken);
         }
         finally
         {
@@ -260,8 +257,23 @@ internal sealed class LoginClientHandler : IClientHandler
             return;
         }
 
+        if (_realmCatalog is not null && _selectedRealm is null)
+        {
+            _session.Disconnect();
+            return;
+        }
+
         if (!_session.IsSecure)
         {
+            if (_selectedRealm is not null)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.GameServerRedirect(_selectedRealm),
+                    cancellationToken,
+                    "GameServerRedirect");
+                return;
+            }
+
             await _session.SendAsync(
                 PacketBuilder.GameServerRedirect(
                     _options.Game.PublicHost,
@@ -313,6 +325,91 @@ internal sealed class LoginClientHandler : IClientHandler
         }
 
         _grantCommitted = true;
+    }
+
+    private async Task SendServerListAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_realmCatalog is null)
+        {
+            await _session.SendAsync(
+                PacketBuilder.ServerList(),
+                cancellationToken,
+                "ServerList");
+            return;
+        }
+
+        if (_advertisedRealms is not null)
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        _advertisedRealms = await _realmCatalog.ReadEnabledAsync(
+            cancellationToken);
+        if (_advertisedRealms.Entries.IsEmpty)
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        await _session.SendAsync(
+            PacketBuilder.ServerList(_advertisedRealms),
+            cancellationToken,
+            "ServerList");
+    }
+
+    private async Task HandleServerSelectionAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken)
+    {
+        if (_authenticatedAccount is null)
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        if (_realmCatalog is null)
+        {
+            await _session.SendAsync(
+                PacketBuilder.SendServer(),
+                cancellationToken,
+                "SendServer");
+            return;
+        }
+
+        if (_advertisedRealms is null ||
+            _selectedRealm is not null ||
+            !LegacyRealmSelectionPacket.TryRead(
+                packet,
+                out var realmId) ||
+            !_advertisedRealms.TryFind(
+                realmId,
+                out var advertised) ||
+            advertised is null)
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        var currentRealms = await _realmCatalog.ReadEnabledAsync(
+            cancellationToken);
+        if (!currentRealms.TryFind(realmId, out var selected) ||
+            selected is null ||
+            selected != advertised ||
+            (_session.IsSecure &&
+             selected.RealmId !=
+                _options.Game.WorldInstances.ProcessRealmId))
+        {
+            _session.Disconnect();
+            return;
+        }
+
+        _selectedRealm = selected;
+        await _session.SendAsync(
+            PacketBuilder.SendServer(selected),
+            cancellationToken,
+            "SendServer");
     }
 
     private async Task SendGenericFailureAsync(

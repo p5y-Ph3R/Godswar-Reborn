@@ -356,37 +356,59 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(session);
         if (!_playerStatusStates.TryGetValue(session, out var state))
         {
-            return PlayerStatusComposer.Compose(
+            var baseline = PlayerStatusComposer.Compose(
                 ExperienceBoostState.Empty,
                 [],
                 now);
+            return _sessions.TryGetValue(session, out var context)
+                ? MergeTrainingDummyClientStatusOverlays(
+                    context,
+                    baseline,
+                    now,
+                    out _,
+                    out _)
+                : baseline;
         }
 
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
+            PlayerStatusSnapshot? snapshot = null;
+            GameSessionContext? context = null;
             if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
             {
                 lock (_gate)
                 {
                     if (_sessions.TryGetValue(
                             session,
-                            out var context))
+                            out var currentContext))
                     {
-                        return EvaluatePlayerStatusEcsLocked(
+                        snapshot = EvaluatePlayerStatusEcsLocked(
                                 session,
                                 state,
-                                context,
+                                currentContext,
                                 now)
                             .Snapshot;
+                        context = currentContext;
                     }
                 }
             }
 
-            return PlayerStatusComposer.Compose(
-                state.ExperienceBoosts,
-                state.RuntimeStatuses.Values,
-                now);
+            snapshot ??= PlayerStatusComposer.Compose(
+                    state.ExperienceBoosts,
+                    state.RuntimeStatuses.Values,
+                    now);
+            context ??= _sessions.TryGetValue(session, out var current)
+                ? current
+                : null;
+            return context is null
+                ? snapshot
+                : MergeTrainingDummyClientStatusOverlays(
+                    context,
+                    snapshot,
+                    now,
+                    out _,
+                    out _);
         }
         finally
         {

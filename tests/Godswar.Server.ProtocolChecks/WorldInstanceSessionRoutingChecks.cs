@@ -38,6 +38,7 @@ internal static partial class WorldInstanceSessionRoutingChecks
         await using var registry = new GameSessionRegistry(
             worldInstanceOptions: new WorldInstanceRuntimeOptions
             {
+                RealmId = 1,
                 MaximumRuntimes = 8,
                 MaximumPlayerAssignments = 16,
                 MaximumRetiredInstanceIds = 64,
@@ -47,6 +48,17 @@ internal static partial class WorldInstanceSessionRoutingChecks
                 ShutdownDrainTimeoutMilliseconds = 2_000,
                 MaximumFanoutConcurrency = 2
             });
+
+        Check.Throws<InvalidOperationException>(
+            () => registry.CreateLocalWorldInstanceAsync(
+                    RealmId.Dwargon,
+                    new WorldMapId(SharedMapId),
+                    InstanceKind.Dungeon,
+                    playerCapacity: 4)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult(),
+            "one-realm process rejects cross-realm local creation");
 
         var firstInstanceId =
             await CreateDungeonAsync(registry);
@@ -69,6 +81,22 @@ internal static partial class WorldInstanceSessionRoutingChecks
             DefaultAccountId,
             "DefaultRouteHero");
 
+        var wrongRealmCharacter = CreateCharacter(
+            FirstCharacterId,
+            FirstAccountId,
+            "WrongRealmRouteHero");
+        wrongRealmCharacter.RealmId = RealmId.Dwargon;
+        Check.Throws<InvalidOperationException>(
+            () => registry.JoinWorldInstance(
+                firstSocket.Session,
+                FirstAccountId,
+                wrongRealmCharacter,
+                FirstObjectId,
+                firstInstanceId,
+                worldReady: true,
+                joinedAt: TestTime),
+            "explicit world join rejects a cross-realm character");
+
         registry.JoinWorldInstance(
             firstSocket.Session,
             FirstAccountId,
@@ -77,6 +105,11 @@ internal static partial class WorldInstanceSessionRoutingChecks
             firstInstanceId,
             worldReady: true,
             joinedAt: TestTime);
+        Check.Throws<InvalidOperationException>(
+            () => registry.UpdateCharacter(
+                firstSocket.Session,
+                wrongRealmCharacter),
+            "active character update cannot switch realms");
         registry.JoinWorldInstance(
             secondSocket.Session,
             SecondAccountId,

@@ -105,8 +105,10 @@ internal static partial class Program
 
         Check.True(
             WorldObjectIds.IsReservedForPlayer(0x1448) &&
-            WorldObjectIds.IsReservedForPlayer(0x6000) &&
-            WorldObjectIds.IsReservedForPlayer(0x7FFF) &&
+            WorldObjectIds.IsReservedForPlayer(1) &&
+            WorldObjectIds.IsReservedForPlayer(0x05DB) &&
+            !WorldObjectIds.IsReservedForPlayer(0x05DC) &&
+            !WorldObjectIds.IsReservedForPlayer(0x6000) &&
             !WorldObjectIds.IsReservedForPlayer(westMonster.ObjectId),
             "NPC and monster IDs cannot overlap the local or remote player namespace");
 

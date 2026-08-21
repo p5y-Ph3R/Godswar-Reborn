@@ -26,12 +26,13 @@ internal sealed class InMemorySemanticGatewayCoordination :
     public ValueTask<SemanticGatewayLoginResult> StartLoginAsync(
         SemanticGatewayPrincipal principal,
         SemanticGatewayConnectionSource loginSource,
+        SemanticGatewayRealmGrant realmGrant,
         CoordinationDeadline deadline,
         CancellationToken cancellationToken)
     {
         EnsureAvailable(deadline, cancellationToken);
         return ValueTask.FromResult(
-            _authority.BeginLogin(principal, loginSource));
+            _authority.BeginLogin(principal, loginSource, realmGrant));
     }
 
     public ValueTask<bool> ActivateLoginAsync(

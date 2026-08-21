@@ -18,7 +18,11 @@ internal static class Program
             var options = ProbeOptions.Parse(args);
             using var deadline =
                 new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            var result = await ProbeAsync(options, deadline.Token);
+            object result = options.Mode == LegacyProbeMode.LoginRouting
+                ? await LoginRoutingProbe.RunAsync(
+                    options.ToLoginRoutingOptions(),
+                    deadline.Token)
+                : await ProbeAsync(options, deadline.Token);
             var json = JsonSerializer.Serialize(
                 result,
                 new JsonSerializerOptions { WriteIndented = true });
@@ -60,7 +64,10 @@ internal static class Program
             cancellationToken);
 
         await peer.SendAsync(
-            ProbePackets.GameLogin(options.Username),
+            ProbePackets.GameLogin(
+                options.Username,
+                options.RealmIdentifier,
+                options.RealmId),
             cancellationToken);
         await ReadThroughOpcodeAsync(
             peer,
@@ -68,6 +75,11 @@ internal static class Program
             "game-login",
             Opcodes.RoleInfo,
             cancellationToken);
+
+        if (options.AdmissionOnly)
+        {
+            return CreateResult(options, records);
+        }
 
         await peer.SendAsync(
             ProbePackets.EnterGame(),
@@ -118,14 +130,22 @@ internal static class Program
             Opcodes.NpcDialogOpen,
             cancellationToken);
 
-        return new ProbeResult(
+        return CreateResult(options, records);
+    }
+
+    private static ProbeResult CreateResult(
+        ProbeOptions options,
+        IReadOnlyList<PacketRecord> records) =>
+        new(
             options.Label,
             options.Address.ToString(),
             options.GamePort,
             options.Username,
+            options.RealmId,
+            options.RealmIdentifier,
+            options.AdmissionOnly,
             DateTimeOffset.UtcNow,
             records);
-    }
 
     private static async Task ReadThroughOpcodeAsync(
         LegacyProbePeer peer,
@@ -189,6 +209,9 @@ internal static class Program
         string Host,
         int GamePort,
         string Username,
+        byte RealmId,
+        string RealmIdentifier,
+        bool AdmissionOnly,
         DateTimeOffset CompletedAt,
         IReadOnlyList<PacketRecord> Packets);
 
@@ -202,19 +225,50 @@ internal static class Program
         string ClearBytesBase64);
 
     private sealed record ProbeOptions(
+        LegacyProbeMode Mode,
         string Label,
         IPAddress Address,
+        int LoginPort,
         int GamePort,
         string Username,
+        string? Password,
+        byte RealmId,
+        string RealmIdentifier,
+        string? ExpectedGameHost,
+        IReadOnlyList<LoginRoutingExpectedRealm> ExpectedRealms,
+        bool AdmissionOnly,
         uint NpcId,
         string? OutputPath)
     {
+        public LoginRoutingProbeOptions ToLoginRoutingOptions() =>
+            new(
+                Label,
+                Address,
+                LoginPort,
+                Username,
+                Password ?? throw new ArgumentException(
+                    "--password is required in login-routing mode."),
+                RealmId,
+                RealmIdentifier,
+                ExpectedGameHost ?? throw new ArgumentException(
+                    "--expected-game-host is required in login-routing mode."),
+                GamePort,
+                ExpectedRealms);
+
         public static ProbeOptions Parse(string[] args)
         {
+            var mode = LegacyProbeMode.Game;
             string? label = null;
             IPAddress? address = null;
+            var loginPort = 5_998;
             var gamePort = 7000;
             string? username = null;
+            string? password = null;
+            byte realmId = 1;
+            var realmIdentifier = "KAL3jcIzqGgKvOf1dbYZKC8cS";
+            string? expectedGameHost = null;
+            var expectedRealms = new List<LoginRoutingExpectedRealm>();
+            var admissionOnly = false;
             uint npcId = 5083;
             string? output = null;
 
@@ -228,6 +282,16 @@ internal static class Program
 
                 switch (args[index])
                 {
+                    case "--mode":
+                        mode = args[index + 1] switch
+                        {
+                            "game" => LegacyProbeMode.Game,
+                            "login-routing" =>
+                                LegacyProbeMode.LoginRouting,
+                            _ => throw new ArgumentException(
+                                "--mode must be game or login-routing.")
+                        };
+                        break;
                     case "--label":
                         label = args[index + 1];
                         break;
@@ -240,6 +304,14 @@ internal static class Program
                                 "--host must be an IPv4 literal.");
                         }
                         break;
+                    case "--login-port":
+                        if (!int.TryParse(args[index + 1], out loginPort) ||
+                            loginPort is < 1 or > 65_535)
+                        {
+                            throw new ArgumentException(
+                                "--login-port must be 1..65535.");
+                        }
+                        break;
                     case "--game-port":
                         if (!int.TryParse(args[index + 1], out gamePort) ||
                             gamePort is < 1 or > 65_535)
@@ -250,6 +322,36 @@ internal static class Program
                         break;
                     case "--username":
                         username = args[index + 1];
+                        break;
+                    case "--password":
+                        password = args[index + 1];
+                        break;
+                    case "--realm-id":
+                        if (!byte.TryParse(args[index + 1], out realmId) ||
+                            realmId == 0)
+                        {
+                            throw new ArgumentException(
+                                "--realm-id must be 1..255.");
+                        }
+                        break;
+                    case "--realm-identifier":
+                        realmIdentifier = args[index + 1];
+                        break;
+                    case "--expected-game-host":
+                        expectedGameHost = args[index + 1];
+                        break;
+                    case "--expected-realm":
+                        expectedRealms.Add(ParseExpectedRealm(
+                            args[index + 1]));
+                        break;
+                    case "--admission-only":
+                        if (!bool.TryParse(
+                            args[index + 1],
+                            out admissionOnly))
+                        {
+                            throw new ArgumentException(
+                                "--admission-only must be true or false.");
+                        }
                         break;
                     case "--npc-id":
                         if (!uint.TryParse(args[index + 1], out npcId) ||
@@ -278,16 +380,74 @@ internal static class Program
                 throw new ArgumentException(
                     "--username must fit the 32-byte legacy field.");
             }
+            if (realmIdentifier.Length != 25 ||
+                realmIdentifier.Any(
+                    static character => character is < '!' or > '~'))
+            {
+                throw new ArgumentException(
+                    "--realm-identifier must be exactly 25 printable ASCII bytes.");
+            }
+            if (password is not null &&
+                (password.Length > 32 ||
+                 password.Any(
+                    static character => character is < ' ' or > '~')))
+            {
+                throw new ArgumentException(
+                    "--password must be at most 32 printable ASCII bytes.");
+            }
+            if (mode == LegacyProbeMode.LoginRouting)
+            {
+                if (password is null ||
+                    string.IsNullOrWhiteSpace(expectedGameHost) ||
+                    expectedRealms.Count == 0)
+                {
+                    throw new ArgumentException(
+                        "Login routing requires --password, " +
+                        "--expected-game-host, and at least one " +
+                        "--expected-realm.");
+                }
+            }
 
             return new ProbeOptions(
+                mode,
                 string.IsNullOrWhiteSpace(label)
                     ? address.ToString()
                     : label,
                 address,
+                loginPort,
                 gamePort,
                 username,
+                password,
+                realmId,
+                realmIdentifier,
+                expectedGameHost,
+                expectedRealms,
+                admissionOnly,
                 npcId,
                 output);
+        }
+
+        private static LoginRoutingExpectedRealm ParseExpectedRealm(
+            string value)
+        {
+            var fields = value.Split(':');
+            if (fields.Length != 3 ||
+                !byte.TryParse(fields[0], out var realmId) ||
+                realmId == 0 ||
+                string.IsNullOrWhiteSpace(fields[1]) ||
+                fields[1].Length > 35 ||
+                fields[1].Any(
+                    static character => character is < '!' or > '~') ||
+                !bool.TryParse(fields[2], out var recommended))
+            {
+                throw new ArgumentException(
+                    "--expected-realm must be id:name:true|false.");
+            }
+
+            return new LoginRoutingExpectedRealm(
+                realmId,
+                fields[1],
+                recommended);
         }
     }
 }

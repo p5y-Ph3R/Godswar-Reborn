@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $postgresContainer = 'godswar-dev-postgres'
-$serverContainer = 'godswar-dev-server'
+$serverContainer = 'godswar-dev-tempest-openworld-01'
 $redisContainer = 'godswar-dev-redis-coordination'
 $databaseUser = 'godswar'
 $operationText =

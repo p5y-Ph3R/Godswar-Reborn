@@ -83,6 +83,7 @@ internal sealed partial class GameClientHandler
 
     private readonly record struct PendingSkillCastContext(
         int CharacterId,
+        uint ObjectId,
         byte MapId,
         float StartX,
         float StartZ,

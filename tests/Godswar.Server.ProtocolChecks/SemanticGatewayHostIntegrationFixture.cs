@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking.Backhaul;
 using Godswar.Server.Networking.SemanticGateway;
@@ -50,10 +51,12 @@ internal static partial class BackhaulProtocolChecks
             ],
             maximumAdmissions: 16);
         var mapRoutes =
-            new Dictionary<MapId, SemanticGatewayRouteTarget>
+            new Dictionary<
+                (RealmId RealmId, MapId MapId),
+                SemanticGatewayRouteTarget>
             {
-                [routeA.MapId] = routeA,
-                [routeB.MapId] = routeB
+                [(routeA.RealmId, routeA.MapId)] = routeA,
+                [(routeB.RealmId, routeB.MapId)] = routeB
             };
         var workers =
             new Dictionary<ServerNodeId, SemanticGatewayWorkerTarget>
@@ -99,7 +102,11 @@ internal static partial class BackhaulProtocolChecks
                 reservationTtl: TimeSpan.FromSeconds(2),
                 committedAdmissionTtl: TimeSpan.FromSeconds(2)),
             routes,
-            routeA,
+            new Dictionary<RealmId, SemanticGatewayRouteTarget>
+            {
+                [routeA.RealmId] = routeA,
+                [routeB.RealmId] = routeB
+            },
             mapRoutes,
             workers);
     }
@@ -117,7 +124,7 @@ internal static partial class BackhaulProtocolChecks
 
     private static SemanticGatewayRouteTarget IntegrationRouteB() =>
         new(
-            RealmId.Tempest,
+            RealmId.Dwargon,
             IntegrationMapB,
             IntegrationWorldB);
 
@@ -126,6 +133,7 @@ internal static partial class BackhaulProtocolChecks
         ISemanticGatewayCoordination coordination,
         int accountId,
         string username,
+        SemanticGatewayRealmGrant realmGrant,
         CancellationToken cancellationToken)
     {
         var deadline =
@@ -139,11 +147,15 @@ internal static partial class BackhaulProtocolChecks
             new SemanticGatewayConnectionSource(
                 GatewayConnectionId.New(),
                 IPAddress.Loopback),
+            realmGrant,
             deadline,
             cancellationToken);
         Check.True(
             result.IsStarted && result.Generation is not null,
             $"direct authenticated login hook starts {username}");
+        Check.True(
+            result.Generation!.RealmGrant == realmGrant,
+            $"direct authenticated login hook binds {username} realm");
         Check.True(
             await coordination.ActivateLoginAsync(
                 result.Generation!,
@@ -164,9 +176,13 @@ internal static partial class BackhaulProtocolChecks
         ?? throw new InvalidOperationException(
             "Semantic gateway host coordination field was not found.");
 
-    private static byte[] EncryptedGameLogin(string username)
+    private static byte[] EncryptedGameLogin(
+        string username,
+        SemanticGatewayRealmGrant realmGrant,
+        RealmId? realmOverride = null,
+        string? identifierOverride = null)
     {
-        var packet = new byte[36];
+        var packet = new byte[LegacyGameLoginPacket.PacketLength];
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet,
             checked((ushort)packet.Length));
@@ -174,8 +190,17 @@ internal static partial class BackhaulProtocolChecks
             packet.AsSpan(2),
             Opcodes.LoginGameServer);
         PacketText.WriteFixedAscii(
-            packet.AsSpan(4, 32),
+            packet.AsSpan(
+                LegacyGameLoginPacket.UsernameOffset,
+                LegacyGameLoginPacket.UsernameLength),
             username);
+        PacketText.WriteFixedAscii(
+            packet.AsSpan(
+                LegacyGameLoginPacket.IdentifierOffset,
+                LegacyGameLoginPacket.IdentifierLength),
+            identifierOverride ?? realmGrant.Identifier);
+        packet[LegacyGameLoginPacket.RealmIdOffset] =
+            checked((byte)(realmOverride ?? realmGrant.RealmId).Value);
         new PacketCipher().Transform(packet);
         return packet;
     }
@@ -249,6 +274,7 @@ internal static partial class BackhaulProtocolChecks
 
     private static void CheckWorkerRoute(
         CapturedBackhaulSession session,
+        RealmId realmId,
         ServerNodeId node,
         MapId map,
         WorldInstanceId world,
@@ -257,7 +283,7 @@ internal static partial class BackhaulProtocolChecks
     {
         Check.True(
             session.Admission.TargetNodeId == node &&
-            session.Admission.RealmId == RealmId.Tempest &&
+            session.Admission.RealmId == realmId &&
             session.Admission.MapId == map &&
             session.Admission.WorldInstanceId == world,
             $"{description} preserves the exact route identity");
@@ -295,6 +321,21 @@ internal static partial class BackhaulProtocolChecks
         IReadOnlyDictionary<int, byte> maps) :
         ISemanticGatewayDataSession
     {
+        private RealmCatalogSnapshot _catalog =
+            SemanticGatewayTestRealm.Catalog;
+
+        public void SetEnabledRealms(RealmCatalogSnapshot catalog) =>
+            Volatile.Write(
+                ref _catalog,
+                catalog ?? throw new ArgumentNullException(nameof(catalog)));
+
+        public Task<RealmCatalogSnapshot> ReadEnabledAsync(
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Volatile.Read(ref _catalog));
+        }
+
         public Task<SemanticGatewayAuthenticatedAccount?>
             AuthenticateAsync(
                 string username,
@@ -320,6 +361,7 @@ internal static partial class BackhaulProtocolChecks
         public Task<SemanticGatewayCharacterRoute?>
             FindCharacterRouteAsync(
             int accountId,
+            RealmId realmId,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -327,6 +369,7 @@ internal static partial class BackhaulProtocolChecks
                 maps.TryGetValue(accountId, out var map)
                     ? new SemanticGatewayCharacterRoute(
                         checked(accountId * 10),
+                        realmId,
                         MapId.FromLegacy(map))
                     : null);
         }

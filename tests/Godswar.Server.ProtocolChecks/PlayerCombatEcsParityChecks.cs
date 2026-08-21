@@ -53,10 +53,12 @@ internal static partial class PlayerCombatEcsParityChecks
     {
         CheckResolverParity();
         CheckAuthoredCombatV1();
+        CheckAuthoredCombatV2();
         CheckEcsBasicAttackResolution();
         CheckEcsHostileSkillResolution();
         CheckRequiredRejections();
         CheckSingleTargetReservationRefund();
+        CheckZodiacProjectedReservationRefund();
         CheckAreaOrderingAndReservation();
         CheckGroundAreaSelectionAndRange();
         CheckCommittedProgressionProjection();

@@ -1,10 +1,11 @@
 using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Pets;
+using Godswar.Server.Application.Pets;
 using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PostgresPetOwnerMergeContentPublicationIntegrationChecks
+internal static partial class PostgresPetOwnerMergeContentPublicationIntegrationChecks
 {
     public const string CheckName =
         "PostgreSQL immutable pet owner-Merge publication";
@@ -34,7 +35,12 @@ internal static class PostgresPetOwnerMergeContentPublicationIntegrationChecks
             first.EntryCount == 116 &&
             loaded.EffectBases.Count == 16 &&
             loaded.Bands.Count == 5 &&
-            loaded.Rates.Count == 95,
+            loaded.Rates.Count == 95 &&
+            loaded.Revision.Source == PetOwnerMergeContentBaseline.Source &&
+            loaded.Rates.Where(static value =>
+                    value.SourceSavvy == PetOwnerMergeSavvyStat.Agility &&
+                    value.Effect == PetOwnerMergeEffectCode.DamageRebound)
+                .All(static value => value.RatePerSavvy == 0m),
             "owner-Merge bootstrap pins one complete SHA-256 publication");
         var publishedRows = await ReadScalarAsync<long>(
             dataSource,
@@ -58,6 +64,10 @@ internal static class PostgresPetOwnerMergeContentPublicationIntegrationChecks
             repeated.Revision == loaded.Revision.Sha256,
             "owner-Merge publication is idempotent and preserves the official pointer");
 
+        await AssertReviewedPredecessorsPromoteToV3Async(
+            dataSource,
+            loaded);
+        await AssertUnknownPublicationIsPreservedAsync(dataSource, loaded);
         await AssertSealedContentRejectsMutationAsync(
             dataSource,
             loaded.Revision.Sha256);

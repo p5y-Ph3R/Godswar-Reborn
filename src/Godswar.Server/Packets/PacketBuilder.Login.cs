@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -7,14 +8,95 @@ namespace Godswar.Server.Packets;
 
 internal static partial class PacketBuilder
 {
+    private const int RealmListHeaderLength = 6;
+    private const int RealmListRecordLength = 48;
+    private const int RealmListRecordNameOffset = 4;
+    private const int RealmListRecordNameLength = 36;
+    private const int RealmListRecordIdOffset = 40;
+    private const int RealmListRecordRecommendedOffset = 41;
+    private const int RealmListRecordTerminalOffset = 46;
+    private const int SendServerNameOffset = 36;
+    private const int SendServerNameLength = 36;
+    private const int SendServerRealmIdOffset = 72;
+    private const int RedirectHostOffset = 5;
+    private const int RedirectHostLength = 23;
+    private const int RedirectPortOffset = 40;
+    private const int RedirectIdentifierOffset = 45;
+    private const int RedirectIdentifierLength = 25;
+
     public static byte[] ServerList()
     {
         return ReferencePackets.ServerList.ToArray();
     }
 
+    public static byte[] ServerList(RealmCatalogSnapshot catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        var packet = new byte[
+            RealmListHeaderLength +
+            catalog.Entries.Length * RealmListRecordLength];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, 2),
+            RealmListHeaderLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, 2),
+            Opcodes.ServerList);
+        // Opcode 3 carries a login-result status, not a realm count. The
+        // stock client dispatches status 1 as success and status 2 as
+        // AccountUnuse before it consumes the following realm records.
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(4, 2),
+            1);
+
+        for (var index = 0; index < catalog.Entries.Length; index++)
+        {
+            var realm = catalog.Entries[index];
+            var record = packet.AsSpan(
+                RealmListHeaderLength + index * RealmListRecordLength,
+                RealmListRecordLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                record[..2],
+                RealmListRecordLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                record.Slice(2, 2),
+                Opcodes.GameServerInfo);
+            PacketText.WriteFixedAscii(
+                record.Slice(
+                    RealmListRecordNameOffset,
+                    RealmListRecordNameLength),
+                realm.Name);
+            record[RealmListRecordIdOffset] = realm.LegacyWireId;
+            record[RealmListRecordRecommendedOffset] =
+                realm.Recommended ? (byte)1 : (byte)0;
+
+            // Preserve the client-compatible captured suffix, then encode the
+            // one evidenced field within it. The stock client treats byte 46
+            // as a boolean end-of-list marker and finalizes the realm list
+            // only when it is non-zero.
+            ReferencePackets.ServerList
+                .Slice(48, 6)
+                .CopyTo(record[42..]);
+            record[RealmListRecordTerminalOffset] =
+                index == catalog.Entries.Length - 1 ? (byte)1 : (byte)0;
+        }
+
+        return packet;
+    }
+
     public static byte[] SendServer()
     {
         return ReferencePackets.SendServer.ToArray();
+    }
+
+    public static byte[] SendServer(RealmCatalogEntry realm)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        var packet = ReferencePackets.SendServer.ToArray();
+        PacketText.WriteFixedAscii(
+            packet.AsSpan(SendServerNameOffset, SendServerNameLength),
+            realm.Name);
+        packet[SendServerRealmIdOffset] = realm.LegacyWireId;
+        return packet;
     }
 
     public static byte[] BlankUser()
@@ -102,6 +184,24 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(40, 4), port);
         }
 
+        return packet;
+    }
+
+    public static byte[] GameServerRedirect(RealmCatalogEntry realm)
+    {
+        ArgumentNullException.ThrowIfNull(realm);
+        var packet = ReferencePackets.NewGameServerTemplate.ToArray();
+        PacketText.WriteFixedAscii(
+            packet.AsSpan(RedirectHostOffset, RedirectHostLength),
+            realm.Host);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(RedirectPortOffset, 4),
+            realm.GamePort);
+        PacketText.WriteFixedAscii(
+            packet.AsSpan(
+                RedirectIdentifierOffset,
+                RedirectIdentifierLength),
+            realm.Identifier);
         return packet;
     }
 

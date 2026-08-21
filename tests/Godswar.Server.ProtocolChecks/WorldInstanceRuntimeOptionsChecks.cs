@@ -7,6 +7,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
 
     private static readonly string[] EnvironmentKeys =
     [
+        "GODSWAR_WORLD_INSTANCE_REALM_ID",
         "GODSWAR_WORLD_INSTANCE_MAXIMUM_RUNTIMES",
         "GODSWAR_WORLD_INSTANCE_MAXIMUM_PLAYER_ASSIGNMENTS",
         "GODSWAR_WORLD_INSTANCE_MAXIMUM_RETIRED_INSTANCE_IDS",
@@ -15,7 +16,8 @@ internal static class WorldInstanceRuntimeOptionsChecks
         "GODSWAR_WORLD_INSTANCE_OWNER_INVOCATION_TIMEOUT_MILLISECONDS",
         "GODSWAR_WORLD_INSTANCE_SHUTDOWN_DRAIN_TIMEOUT_MILLISECONDS",
         "GODSWAR_WORLD_INSTANCE_MAXIMUM_FANOUT_CONCURRENCY",
-        "GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID"
+        "GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID",
+        "GODSWAR_WORLD_INSTANCE_ROUTE_MANIFEST_FILE"
     ];
 
     public static Task RunAsync()
@@ -29,7 +31,13 @@ internal static class WorldInstanceRuntimeOptionsChecks
     private static void CheckDefaults()
     {
         var options = new WorldInstanceRuntimeOptions();
+        Check.Throws<InvalidDataException>(
+            options.Validate,
+            "hosted realm is required");
+        options.RealmId = 1;
         options.Validate();
+
+        Check.Equal(1, options.RealmId, "configured realm ID");
 
         Check.Equal(
             "local-node",
@@ -99,6 +107,17 @@ internal static class WorldInstanceRuntimeOptionsChecks
         CheckInvalid(
             options => options.MaximumFanoutConcurrency = 129,
             "oversized fanout concurrency");
+        CheckInvalid(
+            options => options.StaticOpenWorldInstances =
+            [
+                new StaticOpenWorldInstanceOptions
+                {
+                    RealmId = 2,
+                    MapId = 0,
+                    WorldInstanceId = Guid.NewGuid().ToString()
+                }
+            ],
+            "route from another realm");
     }
 
     private static void CheckConfigurationBinding()
@@ -117,6 +136,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
             var fromJson = ServerOptions.Load(path).Game.WorldInstances;
             AssertValues(
                 fromJson,
+                1,
                 32,
                 1_000,
                 2_048,
@@ -128,11 +148,27 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 "postgres-worker-01",
                 "PostgreSQL configuration");
 
+            var routeManifest = Path.Combine(
+                directory,
+                "dwargon-routes.json");
+            File.WriteAllText(
+                routeManifest,
+                """
+                [
+                  {
+                    "realmId": 2,
+                    "mapId": 0,
+                    "worldInstanceId":
+                      "22222222-2222-4222-8222-222222222222"
+                  }
+                ]
+                """);
+
             var environmentValues = new[]
             {
-                "64", "2000", "4096", "256",
+                "2", "64", "2000", "4096", "256",
                 "512", "750", "3000", "6",
-                "env-worker-02"
+                "env-worker-02", routeManifest
             };
             for (var index = 0; index < EnvironmentKeys.Length; index++)
             {
@@ -145,6 +181,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 ServerOptions.Load(path).Game.WorldInstances;
             AssertValues(
                 fromEnvironment,
+                2,
                 64,
                 2_000,
                 4_096,
@@ -155,9 +192,20 @@ internal static class WorldInstanceRuntimeOptionsChecks
                 6,
                 "env-worker-02",
                 "environment");
+            Check.True(
+                fromEnvironment.StaticOpenWorldInstances is
+                    [
+                        {
+                            RealmId: 2,
+                            MapId: 0,
+                            WorldInstanceId:
+                                "22222222-2222-4222-8222-222222222222"
+                        }
+                    ],
+                "environment route manifest replaces configured routes");
 
             Environment.SetEnvironmentVariable(
-                EnvironmentKeys[0],
+                EnvironmentKeys[1],
                 "not-an-integer");
             Check.Throws<InvalidDataException>(
                 () => ServerOptions.Load(path),
@@ -178,7 +226,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
         Action<WorldInstanceRuntimeOptions> mutate,
         string name)
     {
-        var options = new WorldInstanceRuntimeOptions();
+        var options = new WorldInstanceRuntimeOptions { RealmId = 1 };
         mutate(options);
         Check.Throws<InvalidDataException>(
             options.Validate,
@@ -187,6 +235,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
 
     private static void AssertValues(
         WorldInstanceRuntimeOptions options,
+        int realmId,
         int maximumRuntimes,
         int maximumPlayerAssignments,
         int maximumRetiredInstanceIds,
@@ -198,6 +247,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
         string serverNodeId,
         string source)
     {
+        Check.Equal(realmId, options.RealmId, $"{source} realm ID");
         Check.Equal(
             serverNodeId,
             options.ServerNodeId,
@@ -266,6 +316,7 @@ internal static class WorldInstanceRuntimeOptionsChecks
               },
               "game": {
                 "worldInstances": {
+                  "realmId": 1,
                   "serverNodeId": "postgres-worker-01",
                   "maximumRuntimes": 32,
                   "maximumPlayerAssignments": 1000,

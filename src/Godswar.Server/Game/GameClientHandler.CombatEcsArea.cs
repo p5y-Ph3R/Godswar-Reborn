@@ -212,7 +212,7 @@ internal sealed partial class GameClientHandler
                 $"[skill] area caster notification failed character={character.Name} skill={cast.SkillId}: {ex.Message}");
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var worldVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(
                 packet.Buffer,

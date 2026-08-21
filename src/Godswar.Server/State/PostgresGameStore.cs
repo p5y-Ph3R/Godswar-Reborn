@@ -1,12 +1,15 @@
 using Godswar.Server.Application.Accounts;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.World;
 using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Infrastructure.Items;
+using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Pets;
 using Godswar.Server.Game;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Application.Pets;
 using System.Data;
 using System.Data.Common;
@@ -64,7 +67,7 @@ internal sealed partial class PostgresGameStore :
         cb.position_revision,
         cb.character_slot, cb.lifecycle_state, cb.lifecycle_version,
         cb.deleted_at, cb.restore_until, cb.purge_after,
-        cb.fighter_level_sealed
+        cb.fighter_level_sealed, cb.server_id
         """;
 
     private readonly NpgsqlDataSource _dataSource;
@@ -79,6 +82,7 @@ internal sealed partial class PostgresGameStore :
     private readonly IPetHatchRankRollSource _petHatchRankRollSource;
     private readonly string? _gameplayContentRevision;
     private readonly string? _petLearnedSkillRevision;
+    private readonly HolySpiritBalanceSnapshot _holySpiritBalance;
 
     public PostgresGameStore(
         string connectionString,
@@ -86,7 +90,9 @@ internal sealed partial class PostgresGameStore :
         string? gameplayContentRevision = null,
         IPetContentCatalog? petContent = null,
         IPetHatchRankRollSource? petHatchRankRollSource = null,
-        IPetLearnedSkillContentCatalog? petLearnedSkillContent = null)
+        IPetLearnedSkillContentCatalog? petLearnedSkillContent = null,
+        RealmId? realmId = null,
+        HolySpiritBalanceSnapshot? holySpiritBalance = null)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -108,10 +114,14 @@ internal sealed partial class PostgresGameStore :
         _worldBossAreaControlStore =
             new PostgresWorldBossAreaControlStore(
                 _dataSource,
+                realmId ?? RealmId.Tempest,
                 _gameplayContentRevision);
         _zodiacLevelStore = new PostgresZodiacLevelStore(_dataSource);
         _itemContent = itemContent;
         _petContent = petContent;
+        _holySpiritBalance = holySpiritBalance ??
+            HolySpiritBalanceSnapshot.HistoricalAcceptanceEnvelope;
+        _holySpiritBalance.Validate();
         _petHatchRankRollSource = petHatchRankRollSource ??
             CryptographicPetHatchRankRollSource.Instance;
     }
@@ -161,6 +171,11 @@ internal sealed partial class PostgresGameStore :
             : _petLearnedSkillRevision;
         command.Parameters.Add(parameter);
     }
+
+    private void AddHolySpiritBalanceParameters(DbCommand command) =>
+        PostgresHolySpiritBalanceBinding.AddParameters(
+            command,
+            _holySpiritBalance);
 
     public async Task EnsureSeedDataAsync(CancellationToken cancellationToken = default)
     {

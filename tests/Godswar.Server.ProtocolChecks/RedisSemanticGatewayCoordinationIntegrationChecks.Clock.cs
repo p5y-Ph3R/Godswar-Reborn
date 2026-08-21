@@ -74,6 +74,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var login = await ahead.StartLoginAsync(
             principal,
             Source("192.0.2.111"),
+            SemanticGatewayTestRealm.TempestGrant,
             SkewDeadline(aheadClock),
             CancellationToken.None);
         Check.True(
@@ -102,6 +103,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var blocked = await behind.StartLoginAsync(
             new SemanticGatewayPrincipal(712, "CLOCK_CAPACITY"),
             Source("192.0.2.112"),
+            SemanticGatewayTestRealm.TempestGrant,
             SkewDeadline(behindClock),
             CancellationToken.None);
         Check.True(
@@ -172,6 +174,7 @@ internal static partial class RedisSemanticGatewayCoordinationIntegrationChecks
         var replacement = await ahead.StartLoginAsync(
             new SemanticGatewayPrincipal(713, "CLOCK_REUSED"),
             Source("192.0.2.114"),
+            SemanticGatewayTestRealm.TempestGrant,
             SkewDeadline(aheadClock),
             CancellationToken.None);
         Check.True(

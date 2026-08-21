@@ -11,7 +11,16 @@ internal interface IPlayerCoordinationLease : IAsyncDisposable
 {
     PlayerOwnershipFence Ownership { get; }
 
+    Guid LeaseToken { get; }
+
     bool IsCurrent { get; }
+
+    /// <summary>
+    /// Stops renewal and releases the exact disposable lease. The result is
+    /// true only when this lease removed the current coordination record.
+    /// Repeated calls return the first release result.
+    /// </summary>
+    ValueTask<bool> ReleaseAsync();
 
     ValueTask<bool> PublishEnteringAsync(
         CoordinatedWorldRoute route,

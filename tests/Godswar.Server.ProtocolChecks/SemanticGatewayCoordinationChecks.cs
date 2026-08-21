@@ -31,6 +31,7 @@ internal static partial class SemanticGatewayChecks
         var login = await coordination.StartLoginAsync(
             principal,
             loginSource,
+            SemanticGatewayTestRealm.TempestGrant,
             deadline(),
             CancellationToken.None);
         Check.True(
@@ -88,6 +89,7 @@ internal static partial class SemanticGatewayChecks
         var rollbackLogin = await coordination.StartLoginAsync(
             principal,
             Source(),
+            SemanticGatewayTestRealm.TempestGrant,
             deadline(),
             CancellationToken.None);
         _ = await coordination.ActivateLoginAsync(
@@ -114,6 +116,7 @@ internal static partial class SemanticGatewayChecks
         var cancellable = await coordination.StartLoginAsync(
             cancelPrincipal,
             Source(),
+            SemanticGatewayTestRealm.TempestGrant,
             deadline(),
             CancellationToken.None);
         Check.True(
@@ -131,6 +134,7 @@ internal static partial class SemanticGatewayChecks
             _ = await coordination.StartLoginAsync(
                 new SemanticGatewayPrincipal(709, "CANCELLED"),
                 Source(),
+                SemanticGatewayTestRealm.TempestGrant,
                 deadline(),
                 cancelled.Token);
         }
@@ -148,6 +152,7 @@ internal static partial class SemanticGatewayChecks
             _ = await coordination.StartLoginAsync(
                 new SemanticGatewayPrincipal(710, "EXPIRED"),
                 Source(),
+                SemanticGatewayTestRealm.TempestGrant,
                 new CoordinationDeadline(
                     time.GetUtcNow()),
                 CancellationToken.None);

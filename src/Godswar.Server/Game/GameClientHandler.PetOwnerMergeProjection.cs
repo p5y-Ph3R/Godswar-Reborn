@@ -15,7 +15,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        _registry.SetPetOwnerMergePresentation(_session, active: true);
+        _registry.SetPetOwnerMergePresentation(
+            _session,
+            active: true,
+            pet.Aptitude,
+            pet.CompletedRebirths);
 
         await _session.SendAsync(
             PacketBuilder.PetEnergy(
@@ -24,7 +28,10 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "PetOwnerMergeEnergyStart");
         await _session.SendAsync(
-            PacketBuilder.PetOwnerMergeStarted(LocalPlayerObjectId),
+            PacketBuilder.PetOwnerMergeStarted(
+                LocalPlayerObjectId,
+                pet.Aptitude,
+                pet.CompletedRebirths),
             cancellationToken,
             "PetOwnerMergeStarted");
         await _session.SendAsync(
@@ -35,7 +42,9 @@ internal sealed partial class GameClientHandler
         await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
             PacketBuilder.PetOwnerMergeStarted(
-                WorldObjectIds.ForPlayer(_character.Id)),
+                CurrentPlayerObjectId,
+                pet.Aptitude,
+                pet.CompletedRebirths),
             cancellationToken,
             _session,
             "PetOwnerMergeStartedWorld");
@@ -75,7 +84,7 @@ internal sealed partial class GameClientHandler
         await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
             PacketBuilder.PetOwnerMergeEnded(
-                WorldObjectIds.ForPlayer(_character.Id)),
+                CurrentPlayerObjectId),
             cancellationToken,
             _session,
             "PetOwnerMergeEndedWorld");
@@ -83,22 +92,24 @@ internal sealed partial class GameClientHandler
             "PetOwnerMergeEndedStatusWorld",
             cancellationToken);
 
-        if (!restoreCompanion || !pet.IsCarried || !pet.IsSummoned)
+        if (restoreCompanion && pet.IsCarried && pet.IsSummoned)
         {
-            return;
+            var petId = checked((uint)pet.PetId);
+            await _session.SendAsync(
+                PacketBuilder.PetOperationResult(
+                    petId,
+                    PetOperationResultCode.CallOutSucceeded),
+                cancellationToken,
+                "PetOwnerMergeCompanionRestore");
+            await _session.SendAsync(
+                PacketBuilder.PetWorldPresence(
+                    petId,
+                    LocalPlayerObjectId),
+                cancellationToken,
+                "PetOwnerMergeWorldPresenceRestore");
         }
 
-        var petId = checked((uint)pet.PetId);
-        await _session.SendAsync(
-            PacketBuilder.PetOperationResult(
-                petId,
-                PetOperationResultCode.CallOutSucceeded),
-            cancellationToken,
-            "PetOwnerMergeCompanionRestore");
-        await _session.SendAsync(
-            PacketBuilder.PetWorldPresence(petId, LocalPlayerObjectId),
-            cancellationToken,
-            "PetOwnerMergeWorldPresenceRestore");
+        StartPetOwnerMergeEnergyRecharge();
     }
 
     private async Task BroadcastPetOwnerMergeStatusAsync(
@@ -116,10 +127,12 @@ internal sealed partial class GameClientHandler
             cancellationToken);
         await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
-            PacketBuilder.PlayerStatusUpdate(
+            PacketBuilder.RemotePlayerStatusUpdate(
                 _character,
-                WorldObjectIds.ForPlayer(_character.Id),
-                status.Aggregate),
+                CurrentPlayerObjectId,
+                status.Aggregate,
+                _registry.TrainingDummySpawnPkMode(
+                    _character)),
             cancellationToken,
             _session,
             reason);

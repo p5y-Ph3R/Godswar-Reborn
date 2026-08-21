@@ -1,6 +1,7 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.State;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -11,18 +12,46 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken)
     {
+        await using (var ensureMembership = CreateCommand(
+            """
+            INSERT INTO public.account_realm (
+                account_id,
+                realm_id
+            )
+            SELECT account_row.id, realm.id
+            FROM public.accounts account_row
+            CROSS JOIN public.server realm
+            WHERE account_row.id = @accountId
+              AND realm.id = @realmId
+              AND realm.enabled
+            ON CONFLICT (account_id, realm_id) DO NOTHING;
+            """,
+            connection,
+            transaction))
+        {
+            ensureMembership.Parameters.AddWithValue("accountId", accountId);
+            ensureMembership.Parameters.AddWithValue("realmId", realmId.Value);
+            await ensureMembership.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using var command = CreateCommand(
             """
-            SELECT character_lifecycle_version
-            FROM public.accounts
-            WHERE id = @accountId
+            SELECT membership.character_lifecycle_version
+            FROM public.account_realm membership
+            JOIN public.server realm
+              ON realm.id = membership.realm_id
+             AND realm.enabled
+            WHERE membership.account_id = @accountId
+              AND membership.realm_id = @realmId
             FOR UPDATE;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         var scalar = await command.ExecuteScalarAsync(cancellationToken);
         if (scalar is null or DBNull)
         {
@@ -48,6 +77,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             cancellationToken);
         if (active is null)
         {
@@ -92,6 +122,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             active.Value.CharacterId,
             active.Value.LifecycleVersion,
             nextVersion,
@@ -100,6 +131,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             account.LifecycleVersion,
             nextVersion,
             cancellationToken);
@@ -124,6 +156,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             envelope.Command.CharacterId,
             cancellationToken);
         if (target is null)
@@ -163,6 +196,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             cancellationToken);
         if (active is not null)
         {
@@ -178,6 +212,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             target.Value.CharacterId,
             target.Value.LifecycleVersion,
             nextVersion,
@@ -186,6 +221,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             account.LifecycleVersion,
             nextVersion,
             cancellationToken);
@@ -210,6 +246,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             envelope.Command.CharacterId,
             cancellationToken);
         if (target is null)
@@ -250,6 +287,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             target.Value.CharacterId,
             target.Value.LifecycleVersion,
             cancellationToken);
@@ -257,6 +295,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             connection,
             transaction,
             envelope.Subject.AccountId,
+            envelope.Command.RealmId,
             account.LifecycleVersion,
             nextVersion,
             cancellationToken);

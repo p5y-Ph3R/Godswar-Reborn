@@ -15,7 +15,8 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         CancellationToken cancellationToken,
         bool intonationCompleted = false,
-        uint? expectedTargetSpawnGeneration = null)
+        uint? expectedTargetSpawnGeneration = null,
+        SkillCombatDefinition? intonedCombatSnapshot = null)
     {
         if (_character is null)
         {
@@ -36,8 +37,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var control = _registry.GetPlayerSkillCastControl(
-            _session,
+        var control = ResolvePlayerSkillCastControl(
             DateTimeOffset.UtcNow);
         // The coordinator validates control statuses before atomically
         // claiming completion. A status applied after that claim belongs to
@@ -111,11 +111,38 @@ internal sealed partial class GameClientHandler
         if (cast.SkillId > int.MaxValue ||
             !_gameplayCatalogs.SkillCombat.TryGet(
                 (int)cast.SkillId,
-                out var combat))
+                out var authoredCombat))
         {
             Console.WriteLine(
                 $"[skill] rejected unsupported combat skill character={_character.Name} skill={cast.SkillId}");
             return;
+        }
+
+        SkillCombatDefinition combat;
+        if (intonedCombatSnapshot is { } pinnedCombat)
+        {
+            if (!intonationCompleted ||
+                pinnedCombat.SkillId != authoredCombat.SkillId)
+            {
+                Console.WriteLine(
+                    $"[skill] rejected invalid intonation snapshot character={_character.Name} skill={cast.SkillId}");
+                return;
+            }
+
+            combat = pinnedCombat;
+        }
+        else
+        {
+            var zodiacOffense = ZodiacOffensiveSkillProjection.Resolve(
+                _character,
+                authoredCombat);
+            combat = zodiacOffense.Skill;
+            if (zodiacOffense.Status ==
+                ZodiacOffensiveSkillProjectionStatus.InvalidState)
+            {
+                Console.WriteLine(
+                    $"[skill] ignored invalid Zodiac offense character={_character.Name} skill={cast.SkillId}");
+            }
         }
 
         if (PriestHealingSkillCatalog.TryResolve(
@@ -144,6 +171,37 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (TrainingDummyHostileStatusSkillCatalog.TryGet(
+                combat.SkillId,
+                out var hostileStatus) &&
+            hostileStatus.Trigger ==
+                HostileStatusApplicationTrigger.CommittedCast)
+        {
+            if (!intonationCompleted &&
+                combat.CastTime > TimeSpan.Zero &&
+                await TryBeginIntonedTrainingDummyHostileStatusCastAsync(
+                    packet,
+                    cast,
+                    combat,
+                    hostileStatus,
+                    cancellationToken))
+            {
+                return;
+            }
+            if ((intonationCompleted ||
+                 combat.CastTime == TimeSpan.Zero) &&
+                await TryHandleTrainingDummyHostileStatusCastAsync(
+                    packet,
+                    cast,
+                    combat,
+                    hostileStatus,
+                    publishCastVisual: !intonationCompleted,
+                    cancellationToken))
+            {
+                return;
+            }
+        }
+
         if (!SkillCombatResolver.IsHostileMonsterSkill(combat))
         {
             Console.WriteLine(
@@ -158,11 +216,38 @@ internal sealed partial class GameClientHandler
                 cast.TargetObjectId,
                 out var selectedPlayer) &&
             !ReferenceEquals(selectedPlayer.Character, _character);
+        if (selectedTargetIsOtherPlayer &&
+            _registry.IsTrainingDummy(selectedPlayer.Character) &&
+            TrainingDummyDamageSkillPolicy.IsSupportedScalar(
+                _gameplayCatalogs,
+                authoredCombat,
+                _character.Profession))
+        {
+            await HandleTrainingDummyDamageScalarAsync(
+                packet,
+                cast,
+                authoredCombat,
+                cancellationToken);
+            return;
+        }
         if (SkillCombatResolver.MustRejectHostilePlayerTarget(
                 selectedTargetIsOtherPlayer))
         {
             Console.WriteLine(
                 $"[skill] rejected uncaptured hostile player target character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
+            return;
+        }
+
+        if (TrainingDummyDamageSkillPolicy.IsSupportedArea(
+                _gameplayCatalogs,
+                authoredCombat,
+                _character.Profession) &&
+            await TryHandleTrainingDummyDamageAreaAsync(
+                packet,
+                cast,
+                authoredCombat,
+                cancellationToken))
+        {
             return;
         }
 
@@ -294,13 +379,16 @@ internal sealed partial class GameClientHandler
 
         var admittedCombatRevision =
             checked((ulong)NextAdmittedLegacyCombatRevision());
+        var runtimeCombatModifiers =
+            _registry.GetRuntimeStatusAggregate(_session, observedAt);
         var resolution = ResolveHostileMonsterSkillDamage(
             _character,
             combat,
             target,
             admittedCombatRevision,
             targetOrder: 0,
-            observedAt);
+            observedAt,
+            runtimeCombatModifiers);
         if (!resolution.Hit)
         {
             await PublishUnreportedHostileMonsterSkillMissAsync(

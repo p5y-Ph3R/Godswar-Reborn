@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -14,32 +15,51 @@ internal readonly record struct CharacterCreateCommand(
     byte ZodiacType,
     byte Hair,
     byte Face,
-    byte Faith);
+    byte Faith) : IRealmScopedCharacterLifecycleCommand
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
 
 internal readonly record struct CharacterDeleteCommand(
     Guid ClientOperationId,
     short CharacterSlot,
     string Name,
     int? ExpectedActiveCharacterId = null,
-    long? ExpectedLifecycleVersion = null);
+    long? ExpectedLifecycleVersion = null) :
+    IRealmScopedCharacterLifecycleCommand
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
 
 internal readonly record struct CharacterRestoreCommand(
     Guid ClientOperationId,
     short CharacterSlot,
     int CharacterId,
-    long ExpectedLifecycleVersion);
+    long ExpectedLifecycleVersion) : IRealmScopedCharacterLifecycleCommand
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
 
 internal readonly record struct CharacterPurgeCommand(
     Guid ClientOperationId,
     short CharacterSlot,
     int CharacterId,
-    long ExpectedLifecycleVersion);
+    long ExpectedLifecycleVersion) : IRealmScopedCharacterLifecycleCommand
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
+
+internal interface IRealmScopedCharacterLifecycleCommand
+{
+    RealmId RealmId { get; }
+}
 
 internal static class CharacterLifecycleCommandContract
 {
     public const short SingleCharacterSlot = 0;
     public const int MaximumNameUtf8Bytes = 32;
     private const ushort CanonicalRequestVersion = 1;
+    private const ushort RealmScopedCanonicalRequestVersion = 2;
 
     public static bool IsValidName(string? name)
     {
@@ -101,7 +121,7 @@ internal static class CharacterLifecycleCommandContract
         result[offset++] = command.Hair;
         result[offset++] = command.Face;
         result[offset] = command.Faith;
-        return result;
+        return AddRealmScope(command.RealmId, result);
     }
 
     public static byte[] CanonicalDelete(CharacterDeleteCommand command)
@@ -117,13 +137,14 @@ internal static class CharacterLifecycleCommandContract
         name.CopyTo(result.AsSpan(4));
         var offset = 4 + name.Length;
         result[offset] = checked((byte)command.CharacterSlot);
-        return result;
+        return AddRealmScope(command.RealmId, result);
     }
 
     public static byte[] CanonicalTarget(
         short characterSlot,
         int characterId,
-        long expectedLifecycleVersion)
+        long expectedLifecycleVersion,
+        RealmId realmId)
     {
         var result = new byte[2 + 1 + 4 + 8];
         BinaryPrimitives.WriteUInt16BigEndian(
@@ -136,7 +157,31 @@ internal static class CharacterLifecycleCommandContract
         BinaryPrimitives.WriteInt64BigEndian(
             result.AsSpan(7),
             expectedLifecycleVersion);
-        return result;
+        return AddRealmScope(realmId, result);
+    }
+
+    private static byte[] AddRealmScope(
+        RealmId realmId,
+        byte[] tempestCanonical)
+    {
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+        if (realmId == RealmId.Tempest)
+        {
+            return tempestCanonical;
+        }
+
+        var realmCanonical = new byte[tempestCanonical.Length + 4];
+        BinaryPrimitives.WriteUInt16BigEndian(
+            realmCanonical,
+            RealmScopedCanonicalRequestVersion);
+        BinaryPrimitives.WriteInt32BigEndian(
+            realmCanonical.AsSpan(2),
+            realmId.Value);
+        tempestCanonical.AsSpan(2).CopyTo(realmCanonical.AsSpan(6));
+        return realmCanonical;
     }
 
     private static byte[] EncodeName(string name)

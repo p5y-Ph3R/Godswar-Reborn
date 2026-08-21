@@ -64,6 +64,7 @@ internal sealed partial class GameClientHandler
 
         var context = new PendingSkillCastContext(
             character.Id,
+            CurrentPlayerObjectId,
             character.CurrentMap,
             character.PositionX,
             character.PositionZ,
@@ -405,8 +406,7 @@ internal sealed partial class GameClientHandler
             await _registry.BroadcastToMapAsync(
                 pending.Context.MapId,
                 PacketBuilder.SkillCastInterrupt(
-                    WorldObjectIds.ForPlayer(
-                        pending.Context.CharacterId)),
+                    pending.Context.ObjectId),
                 cancellationToken,
                 _session,
                 "SkillCastInterruptedWorld");
@@ -481,9 +481,9 @@ internal sealed partial class GameClientHandler
                 SkillCastMovementTolerance ||
             MathF.Abs(character.PositionZ - context.StartZ) >
                 SkillCastMovementTolerance ||
-            _registry.GetPlayerSkillCastControl(
-                _session,
-                DateTimeOffset.UtcNow) !=
+            ResolvePlayerSkillCastControl(
+                DateTimeOffset.UtcNow,
+                pendingCompletion: true) !=
                 PlayerSkillCastControl.None ||
             !_registry.TryGetCurrentWorldSessionByCharacterId(
                 _session,

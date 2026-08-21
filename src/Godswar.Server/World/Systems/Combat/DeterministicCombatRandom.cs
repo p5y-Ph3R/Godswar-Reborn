@@ -3,13 +3,14 @@ namespace Godswar.Server.World.Systems.Combat;
 internal enum CombatRandomStage : byte
 {
     Hit = 1,
-    Critical = 2
+    Critical = 2,
+    StatusProc = 3
 }
 
 /// <summary>
 /// Stateless, platform-stable combat rolls derived only from server-owned
 /// event identity. Separate stage salts prevent a hit roll from being reused
-/// as a critical roll.
+/// as a critical or hostile-status roll.
 /// </summary>
 internal static class DeterministicCombatRandom
 {
@@ -30,7 +31,7 @@ internal static class DeterministicCombatRandom
         seed ^= unchecked(TargetSalt * ((ulong)(uint)targetOrder + 1UL));
         seed ^= unchecked(StageSalt * ((ulong)stage + 1UL));
         var random = SplitMix64(seed);
-        return (int)(((UInt128)random * AuthoredCombatV1.BasisPointScale) >> 64);
+        return (int)(((UInt128)random * AuthoredCombatFormula.BasisPointScale) >> 64);
     }
 
     private static ulong SplitMix64(ulong seed)

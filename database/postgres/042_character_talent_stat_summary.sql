@@ -10,7 +10,7 @@ SELECT
     ct.rank,
     tt.effect_value,
     tt.is_percent,
-    ROUND(ct.rank * CASE WHEN tt.is_percent THEN tt.effect_value * 10000 ELSE tt.effect_value END)::integer AS contribution
+    ROUND(talent_effective_rank(ct.rank) * CASE WHEN tt.is_percent THEN tt.effect_value * 10000 ELSE tt.effect_value END)::integer AS contribution
 FROM character_talents ct
 JOIN character_base cb ON cb.id = ct.user_id
 JOIN talent_templates tt ON tt.id = ct.talent_id AND tt.class_id = cb.profession

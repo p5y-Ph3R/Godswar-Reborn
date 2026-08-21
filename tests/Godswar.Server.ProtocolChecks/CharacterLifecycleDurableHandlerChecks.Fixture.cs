@@ -3,6 +3,7 @@ using System.Reflection;
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -138,7 +139,12 @@ internal static partial class CharacterLifecycleDurableHandlerChecks
         };
 
     private static CharacterLifecycleReceipt SuccessReceipt(
-        CommandFamily family)
+        CommandFamily family) =>
+        SuccessReceipt(family, RealmId.Tempest);
+
+    private static CharacterLifecycleReceipt SuccessReceipt(
+        CommandFamily family,
+        RealmId realmId)
     {
         var snapshot = ActiveSnapshot();
         var identity = snapshot.Character?.Identity ??
@@ -150,6 +156,7 @@ internal static partial class CharacterLifecycleDurableHandlerChecks
                 ? CharacterLifecycleReceiptStatus.Created
                 : CharacterLifecycleReceiptStatus.Deleted,
             AccountId,
+            realmId,
             CharacterLifecycleCommandContract.SingleCharacterSlot,
             identity.CharacterId,
             identity.LifecycleVersion,

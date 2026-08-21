@@ -1,4 +1,5 @@
 using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.World;
 using Npgsql;
 
@@ -24,10 +25,12 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         var firstStore =
             new PostgresWorldBossAreaControlStore(
                 firstProvider,
+                RealmId.Tempest,
                 gameplayContentRevision);
         var secondStore =
             new PostgresWorldBossAreaControlStore(
                 secondProvider,
+                RealmId.Tempest,
                 gameplayContentRevision);
 
         await AssertNewerEventWinsAsync(
@@ -86,7 +89,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
 
         var durable = await ReadDurableControlAsync(
             verificationDataSource,
-            fixture.ConfiguredMapId);
+            fixture.ConfiguredMapId,
+            RealmId.Tempest);
         Check.Equal(
             newer.DeathToken,
             durable.DeathToken,
@@ -198,15 +202,18 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
     private static async Task<DurableWorldBossControl>
         ReadDurableControlAsync(
             NpgsqlDataSource dataSource,
-            short mapId)
+            short mapId,
+            RealmId realmId)
     {
         await using var command = dataSource.CreateCommand(
             """
             SELECT death_token, controlling_camp, activated_at
             FROM public.faction_area_experience_control
-            WHERE map_id = @mapId;
+            WHERE realm_id = @realmId
+              AND map_id = @mapId;
             """);
         command.Parameters.AddWithValue("mapId", mapId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {

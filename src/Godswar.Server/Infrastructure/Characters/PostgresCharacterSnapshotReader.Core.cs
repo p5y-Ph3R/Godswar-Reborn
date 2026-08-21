@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
 
@@ -12,6 +13,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
             NpgsqlConnection connection,
             NpgsqlTransaction transaction,
             int accountId,
+            RealmId realmId,
             string itemContentRevision,
             CancellationToken cancellationToken)
     {
@@ -20,6 +22,7 @@ internal sealed partial class PostgresCharacterSnapshotReader
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue(
             "itemContentRevision",
             itemContentRevision);
@@ -49,7 +52,10 @@ internal sealed partial class PostgresCharacterSnapshotReader
             reader.GetString(2),
             ToUtcOffset(reader.GetDateTime(17)),
             reader.GetInt16(46),
-            reader.GetInt64(47));
+            reader.GetInt64(47))
+        {
+            RealmId = new RealmId(reader.GetInt32(53))
+        };
         return new CharacterCoreRow(
             identity,
             new CharacterAppearanceSnapshot(
@@ -232,10 +238,12 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cb.inventory_revision,
             cb.fighter_level_sealed,
             cb.pet_shed_capacity,
-            cb.pet_shed_revision
+            cb.pet_shed_revision,
+            cb.server_id
         FROM character_base cb
         {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
         WHERE cb.account_id = @accountId
+          AND cb.server_id = @realmId
           AND cb.lifecycle_state = 'active'
         ORDER BY cb.id
         LIMIT 2;

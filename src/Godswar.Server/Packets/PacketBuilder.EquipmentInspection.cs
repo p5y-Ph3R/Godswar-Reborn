@@ -75,6 +75,24 @@ internal static partial class PacketBuilder
         return bundle;
     }
 
+    public static byte[] PlayerInspectEquipmentRemoteStatusBundle(
+        GameCharacter character,
+        uint objectId,
+        ClientStatusAggregate aggregate,
+        byte? pkMode)
+    {
+        var inspectEquipment = PlayerInspectEquipment(character, objectId);
+        var inspectStatus = RemotePlayerStatusUpdate(
+            character,
+            objectId,
+            aggregate,
+            pkMode);
+        var bundle = new byte[inspectEquipment.Length + inspectStatus.Length];
+        inspectEquipment.CopyTo(bundle, 0);
+        inspectStatus.CopyTo(bundle, inspectEquipment.Length);
+        return bundle;
+    }
+
     public static byte[] PlayerInspectProfile(GameCharacter character, uint objectId)
     {
         var packet = new byte[PlayerInspectProfileLength];

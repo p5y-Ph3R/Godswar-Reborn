@@ -26,8 +26,14 @@ internal static class DataArchitectureCheckCatalog
             ItemTemplateContentArchitectureChecks.CheckName,
             ItemTemplateContentArchitectureChecks.RunAsync),
         (
+            ChampionTalentAuthorityChecks.CheckName,
+            ChampionTalentAuthorityChecks.RunAsync),
+        (
             HolySuitContentArchitectureChecks.CheckName,
             HolySuitContentArchitectureChecks.RunAsync),
+        (
+            HolySuitRealmAuthorityChecks.CheckName,
+            HolySuitRealmAuthorityChecks.RunAsync),
         (
             SocketSpellItemContentChecks.CheckName,
             SocketSpellItemContentChecks.RunAsync),
@@ -47,6 +53,9 @@ internal static class DataArchitectureCheckCatalog
             HolySpiritEffectivenessPolicyChecks.CheckName,
             HolySpiritEffectivenessPolicyChecks.RunAsync),
         (
+            PostgresHolySpiritBalanceIntegrationChecks.CheckName,
+            PostgresHolySpiritBalanceIntegrationChecks.RunAsync),
+        (
             MountGearPassiveChecks.CheckName,
             MountGearPassiveChecks.RunAsync),
         (
@@ -56,8 +65,20 @@ internal static class DataArchitectureCheckCatalog
             CombatSecondaryProjectionChecks.CheckName,
             CombatSecondaryProjectionChecks.RunAsync),
         (
+            CharacterStatusRatingProjectionChecks.CheckName,
+            CharacterStatusRatingProjectionChecks.RunAsync),
+        (
             PvpBasicAttackRuntimeChecks.CheckName,
             PvpBasicAttackRuntimeChecks.RunAsync),
+        (
+            TrainingDummyEntitlementChecks.CheckName,
+            TrainingDummyEntitlementChecks.RunAsync),
+        (
+            TrainingDummySkillChecks.CheckName,
+            TrainingDummySkillChecks.RunAsync),
+        (
+            TrainingDummyHostileStatusSkillChecks.CheckName,
+            TrainingDummyHostileStatusSkillChecks.RunAsync),
         (
             HolyStoneCombinationSelectionChecks.CheckName,
             HolyStoneCombinationSelectionChecks.RunAsync),
@@ -216,6 +237,21 @@ internal static class DataArchitectureCheckCatalog
         (
             PostgresRealmMigrationChecks.CheckName,
             PostgresRealmMigrationChecks.RunAsync),
+        (
+            PostgresMultiRealmMigrationChecks.CheckName,
+            PostgresMultiRealmMigrationChecks.RunAsync),
+        (
+            PostgresWorldBossRealmMigrationChecks.CheckName,
+            PostgresWorldBossRealmMigrationChecks.RunAsync),
+        (
+            ExplicitCharacterRealmInsertChecks.CheckName,
+            ExplicitCharacterRealmInsertChecks.RunAsync),
+        (
+            HostedCharacterSnapshotRealmChecks.CheckName,
+            HostedCharacterSnapshotRealmChecks.RunAsync),
+        (
+            LegacyRealmLoginProtocolChecks.CheckName,
+            LegacyRealmLoginProtocolChecks.RunAsync),
         (
             "Durable character lifecycle command contracts",
             CharacterLifecycleCommandContractChecks.RunAsync),

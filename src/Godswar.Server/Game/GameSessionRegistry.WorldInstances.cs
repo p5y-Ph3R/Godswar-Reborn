@@ -20,9 +20,16 @@ internal sealed partial class GameSessionRegistry
             RealmId realmId,
             WorldMapId contentMapId,
             InstanceKind kind,
-            int playerCapacity,
-            CancellationToken cancellationToken = default)
+        int playerCapacity,
+        CancellationToken cancellationToken = default)
     {
+        if (realmId != _worldInstanceOptions.ProcessRealmId)
+        {
+            throw new InvalidOperationException(
+                "A game process cannot create a world instance for " +
+                "another realm.");
+        }
+
         return await WorldInstances.CreateInstancedAsync(
             realmId,
             contentMapId,
@@ -148,10 +155,11 @@ internal sealed partial class GameSessionRegistry
     private WorldInstanceRuntime GetOrCreateDefaultWorldInstance(
         byte legacyMapId)
     {
+        var realmId = _worldInstanceOptions.ProcessRealmId;
         var mapId = WorldMapId.FromLegacy(legacyMapId);
         var hasAssignedInstance =
             _worldInstanceOptions.TryFindStaticOpenWorld(
-                RealmId.Tempest,
+                realmId,
                 mapId,
                 out var instanceId);
         if (!hasAssignedInstance &&
@@ -159,20 +167,21 @@ internal sealed partial class GameSessionRegistry
         {
             throw new InvalidOperationException(
                 $"Worker does not own a configured open-world route for " +
-                $"Tempest map {legacyMapId}.");
+                $"realm {realmId} map {legacyMapId}.");
         }
 
         var result = (
             hasAssignedInstance
                 ? WorldInstances.GetOrCreateAssignedOpenWorldAsync(
-                    RealmId.Tempest,
+                    realmId,
                     mapId,
                     instanceId,
                     _worldInstanceOptions
                         .DefaultOpenWorldPlayerCapacity,
                     DateTimeOffset.UtcNow,
                     CancellationToken.None)
-                : WorldInstances.GetOrCreateTempestOpenWorldAsync(
+                : WorldInstances.GetOrCreateOpenWorldAsync(
+                    realmId,
                     legacyMapId,
                     _worldInstanceOptions
                         .DefaultOpenWorldPlayerCapacity,
@@ -184,7 +193,8 @@ internal sealed partial class GameSessionRegistry
         if (!result.Succeeded || result.Runtime is null)
         {
             throw new InvalidOperationException(
-                $"Cannot resolve Tempest open-world map {legacyMapId}: " +
+                $"Cannot resolve realm {realmId} open-world map " +
+                $"{legacyMapId}: " +
                 $"{result.Status}/{result.PlacementStatus}.");
         }
 
@@ -230,7 +240,8 @@ internal sealed partial class GameSessionRegistry
     private bool TryGetDefaultWorldInstance(
         byte legacyMapId,
         out WorldInstanceRuntime runtime) =>
-        WorldInstances.TryFindTempestOpenWorld(
+        WorldInstances.TryFindOpenWorld(
+            _worldInstanceOptions.ProcessRealmId,
             legacyMapId,
             out runtime!);
 
@@ -361,10 +372,17 @@ internal sealed partial class GameSessionRegistry
         SnapshotWorldInstanceOptions(
             WorldInstanceRuntimeOptions? options)
     {
-        options ??= new WorldInstanceRuntimeOptions();
+        // The optional constructor path exists for legacy unit fixtures. A
+        // hosted process always passes the validated, explicitly configured
+        // ServerOptions instance from Program.
+        options ??= new WorldInstanceRuntimeOptions
+        {
+            RealmId = RealmId.Tempest.Value
+        };
         options.Validate();
         return new WorldInstanceRuntimeOptions
         {
+            RealmId = options.RealmId,
             ServerNodeId = options.ServerNodeId,
             MaximumRuntimes = options.MaximumRuntimes,
             MaximumPlayerAssignments =

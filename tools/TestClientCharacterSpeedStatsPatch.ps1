@@ -8,280 +8,154 @@ Set-StrictMode -Version Latest
 
 $speedPatcher = Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.ps1'
 $questPatcher = Join-Path $PSScriptRoot 'PatchClientQuestViewFrameGuard.ps1'
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Binary.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Text.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.XmlValidation.ps1')
 . (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Core.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Layout.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.XmlState.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Lua.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Transaction.ps1')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $artifactRoot = Join-Path $repoRoot 'artifacts'
 $testRoot = Join-Path $artifactRoot (
     'character-speed-stats-test-' + [guid]::NewGuid().ToString('N'))
+$fixtureRoot = [IO.Path]::GetFullPath($FixtureRoot)
 $assertions = 0
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.Helpers.ps1')
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.Advanced.ps1')
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.XmlSecurity.ps1')
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.Layout.ps1')
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.Frame.ps1')
+. (Join-Path $PSScriptRoot 'TestClientCharacterSpeedStatsPatch.Compatibility.ps1')
 
-function Assert-True([bool]$Condition, [string]$Label) {
-    if (-not $Condition) { throw "Assertion failed: $Label" }
-    $script:assertions++
-}
-
-function Assert-Equal($Actual, $Expected, [string]$Label) {
-    if ($Actual -ne $Expected) {
-        throw "$Label expected '$Expected', got '$Actual'."
-    }
-    $script:assertions++
-}
-
-function Assert-Throws(
-    [scriptblock]$Operation,
-    [string]$Fragment,
-    [string]$Label
-) {
-    try { & $Operation }
-    catch {
-        Assert-True ($_.Exception.Message -like "*$Fragment*") (
-            "$Label error message")
-        return
-    }
-    throw "Expected failure: $Label"
-}
-
-function Copy-Bytes([byte[]]$Source, [byte[]]$Destination, [int]$Offset) {
-    [Array]::Copy($Source, 0, $Destination, $Offset, $Source.Length)
-}
-
-function Convert-HexBytes([string]$Hex) {
-    $normalized = $Hex -replace '\s', ''
-    [byte[]]$result = for ($index = 0; $index -lt $normalized.Length;
-        $index += 2) {
-        [Convert]::ToByte($normalized.Substring($index, 2), 16)
-    }
-    return $result
-}
-
-function Test-OffsetAllowed([int]$Offset, [object[]]$Ranges) {
-    foreach ($range in $Ranges) {
-        if ($Offset -ge $range.Offset -and
-            $Offset -lt $range.Offset + $range.Length) { return $true }
-    }
-    return $false
-}
-
-function Get-BackupFileCount([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return 0 }
-    return @(Get-ChildItem -LiteralPath $Path -Recurse -File).Count
-}
-
-function New-ClientFixture([string]$Name) {
-    $root = Join-Path $testRoot $Name
-    [IO.Directory]::CreateDirectory($root) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $FixtureRoot 'Origin.exe') `
-        -Destination (Join-Path $root 'Origin.exe')
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $relative = "Localization\$locale\UI\XML"
-        $targetDirectory = Join-Path $root $relative
-        [IO.Directory]::CreateDirectory($targetDirectory) | Out-Null
-        Copy-Item -LiteralPath (
-            Join-Path $FixtureRoot "$relative\PersonalInfoUI.xml") `
-            -Destination (Join-Path $targetDirectory 'PersonalInfoUI.xml')
-        $sourceLua = Join-Path $FixtureRoot (
-            "$relative\PersonalInfoSpeedStats.lua")
-        if (Test-Path -LiteralPath $sourceLua -PathType Leaf) {
-            Copy-Item -LiteralPath $sourceLua -Destination (
-                Join-Path $targetDirectory 'PersonalInfoSpeedStats.lua')
-        }
-    }
-    return $root
-}
-
-function Normalize-Original([string]$Root, [string]$BackupRoot) {
-    $speed = & $speedPatcher -ClientRoot $Root -Mode Status
-    if ($speed.State -in 'PatchedV1', 'PatchedV2', 'PatchedV3') {
-        & $speedPatcher -ClientRoot $Root -Mode Revert `
-            -BackupRoot $BackupRoot | Out-Null
-    }
-    $quest = & $questPatcher -ClientExe (Join-Path $Root 'Origin.exe') `
-        -Mode Status
-    if ($quest.State -eq 'Patched') {
-        & $questPatcher -ClientExe (Join-Path $Root 'Origin.exe') `
-            -Mode Revert -BackupRoot $BackupRoot | Out-Null
-    }
-    Assert-Equal (& $speedPatcher -ClientRoot $Root -Mode Status).State `
-        'Original' "$Root normalized speed state"
-    Assert-Equal (& $questPatcher -ClientExe (
-            Join-Path $Root 'Origin.exe') -Mode Status).State `
-        'Original' "$Root normalized QuestView state"
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $xmlPath = Join-Path $Root (
-            "Localization\$locale\UI\XML\PersonalInfoUI.xml")
-        $xml = [IO.File]::ReadAllText(
-            $xmlPath, [Text.UTF8Encoding]::new($false, $true))
-        Assert-Equal (Convert-PersonalInfoXml $xml $locale $false) $xml (
-            "$locale direct original conversion idempotence")
-    }
-}
-
-function Assert-BothPatched([string]$Root) {
-    $speed = & $speedPatcher -ClientRoot $Root -Mode Status
-    $quest = & $questPatcher -ClientExe (Join-Path $Root 'Origin.exe') `
-        -Mode Status
-    Assert-Equal $speed.State 'PatchedV3' 'Speed patch state'
-    Assert-Equal $quest.State 'Patched' 'QuestView patch state'
-    Assert-Equal $speed.CaveReserveBytes 128 'Speed cave ownership'
-    Assert-Equal $quest.CaveReserveBytes 32 'Quest cave ownership'
-    Assert-Equal $speed.MovementWireOffset 56 'Movement wire offset'
-    Assert-Equal $speed.RidingWireOffset 60 'Riding wire offset'
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $xmlPath = Join-Path $Root (
-            "Localization\$locale\UI\XML\PersonalInfoUI.xml")
-        $xml = [IO.File]::ReadAllText(
-            $xmlPath, [Text.UTF8Encoding]::new($false, $true))
-        Assert-True (-not $xml.Contains('<SpeedBack ')) (
-            "$locale has no separate speed background")
-        Assert-True $xml.Contains('<MovementSpeedPercent ') (
-            "$locale movement value suffix")
-        Assert-True $xml.Contains('<RidingSpeed ') "$locale riding label"
-        Assert-True $xml.Contains('Rectangle="100,100,363,652"') (
-            "$locale native-grid character-window bounds")
-        Assert-True $xml.Contains(
-            '<BaseBack Template="T_BgWindow" ID="-1" Rectangle="19,330,127,536" />') (
-            "$locale extended left-stat background")
-        Assert-True $xml.Contains(
-            '<FightBack Template="T_BgWindow" ID="-1" Rectangle="129,330,243,536" />') (
-            "$locale extended right-stat background")
-        Assert-True $xml.Contains('Rectangle="24,517,78,533"') (
-            "$locale movement label geometry")
-        Assert-True $xml.Contains('Rectangle="85,517,111,533"') (
-            "$locale movement value geometry")
-        Assert-True $xml.Contains('Rectangle="113,517,125,533"') (
-            "$locale movement suffix geometry")
-        Assert-True $xml.Contains('Rectangle="137,517,200,533"') (
-            "$locale riding label geometry")
-        Assert-True $xml.Contains('Rectangle="210,517,234,533"') (
-            "$locale riding value geometry")
-        Assert-True $xml.Contains('Rectangle="236,517,246,533"') (
-            "$locale riding suffix geometry")
-        Assert-True $xml.Contains(
-            'OnHovered="RebornPersonalInfoMovementSpeedHovered()"') (
-            "$locale movement hover callback")
-        Assert-True $xml.Contains(
-            'OnHovered="RebornPersonalInfoRidingSpeedHovered()"') (
-            "$locale riding hover callback")
-        $movement = Get-SpeedCompactLabel $locale $true
-        $riding = Get-SpeedCompactLabel $locale $false
-        Assert-True $xml.Contains("Text=`"$movement`" Visible=`"1`"") (
-            "$locale compact movement label")
-        Assert-True $xml.Contains("Text=`"$riding`" CanHovered=`"1`"") (
-            "$locale compact riding label")
-        Assert-True $xml.Contains(
-            "./Localization/$locale/UI/XML/PersonalInfoSpeedStats.lua") (
-            "$locale hover script include")
-        $luaPath = Join-Path $Root (
-            "Localization\$locale\UI\XML\PersonalInfoSpeedStats.lua")
-        Assert-True (Test-Path -LiteralPath $luaPath -PathType Leaf) (
-            "$locale owned hover script exists")
-        $lua = [IO.File]::ReadAllText(
-            $luaPath, [Text.UTF8Encoding]::new($false, $true))
-        Assert-Equal $lua (Get-PersonalInfoSpeedLua $locale) (
-            "$locale exact hover script")
-        Assert-True $lua.Contains('local uiapi=UIAPI') (
-            "$locale helper API binding")
-    }
-}
-
-function Set-SpeedV1Fixture([string]$Root) {
-    $encoding = [Text.UTF8Encoding]::new($false, $true)
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $directory = Join-Path $Root "Localization\$locale\UI\XML"
-        $xmlPath = Join-Path $directory 'PersonalInfoUI.xml'
-        $xml = [IO.File]::ReadAllText($xmlPath, $encoding)
-        $newLine = if ($xml.Contains("`r`n")) { "`r`n" } else { "`n" }
-        if ((Get-PersonalInfoXmlState $xml) -eq 'PatchedV3') {
-            $xml = Convert-SpeedV3ToV2 $xml (
-                Get-SpeedCompactLabel $locale $true) (
-                Get-SpeedCompactLabel $locale $false) $newLine
-        }
-        $xml = Convert-SpeedV2ToV1 $xml (
-            Get-SpeedFullLabel $locale $true) (
-            Get-SpeedFullLabel $locale $false) $newLine
-        [IO.File]::WriteAllText($xmlPath, $xml, $encoding)
-        $luaPath = Join-Path $directory 'PersonalInfoSpeedStats.lua'
-        if (Test-Path -LiteralPath $luaPath -PathType Leaf) {
-            Remove-Item -LiteralPath $luaPath -Force
-        }
-    }
-    Assert-Equal (& $speedPatcher -ClientRoot $Root -Mode Status).State (
-        'PatchedV1') 'Synthetic predecessor state'
-}
-
-function Set-SpeedV2Fixture([string]$Root) {
-    $encoding = [Text.UTF8Encoding]::new($false, $true)
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $xmlPath = Join-Path $Root (
-            "Localization\$locale\UI\XML\PersonalInfoUI.xml")
-        $xml = [IO.File]::ReadAllText($xmlPath, $encoding)
-        $newLine = if ($xml.Contains("`r`n")) { "`r`n" } else { "`n" }
-        $xml = Convert-SpeedV3ToV2 $xml (
-            Get-SpeedCompactLabel $locale $true) (
-            Get-SpeedCompactLabel $locale $false) $newLine
-        [IO.File]::WriteAllText($xmlPath, $xml, $encoding)
-    }
-    Assert-Equal (& $speedPatcher -ClientRoot $Root -Mode Status).State (
-        'PatchedV2') 'Synthetic V2 predecessor state'
-}
-
-if (-not (Test-Path -LiteralPath (Join-Path $FixtureRoot 'Origin.exe') `
+if (-not (Test-Path -LiteralPath (Join-Path $fixtureRoot 'Origin.exe') `
         -PathType Leaf)) {
-    throw "Origin.exe fixture is missing under $FixtureRoot."
+    throw "Origin.exe fixture is missing under $fixtureRoot."
 }
 [IO.Directory]::CreateDirectory($testRoot) | Out-Null
-$fixtureExe = Join-Path $FixtureRoot 'Origin.exe'
+$fixtureExe = Join-Path $fixtureRoot 'Origin.exe'
 $fixtureHash = (Get-FileHash $fixtureExe -Algorithm SHA256).Hash
+$fixtureInitialState = (& $speedPatcher -ClientRoot $fixtureRoot `
+    -Mode Status).State
 
 try {
+    $partial = New-ClientFixture 'legacy-partial'
+    $partialBackups = Join-Path $testRoot 'backups-legacy-partial'
+    Normalize-Original $partial $partialBackups
+    $encoding = [Text.UTF8Encoding]::new($false, $true)
+    $partialOriginalHashes = @{}
+    $partialOriginalBoms = @{}
+    foreach ($locale in 'en_us', 'zh_cn') {
+        $xmlPath = Join-Path $partial (
+            "Localization\$locale\UI\XML\PersonalInfoUI.xml")
+        $stockXml = [IO.File]::ReadAllText($xmlPath, $encoding)
+        $roundTripXml = Convert-PersonalInfoXml (
+            Convert-PersonalInfoXml $stockXml $locale $true) $locale $false
+        Assert-Equal $roundTripXml $stockXml (
+            "$locale XML conversion is text-exact")
+        Assert-Equal ([regex]::Matches($roundTripXml, "`r`n").Count) (
+            [regex]::Matches($stockXml, "`r`n").Count) (
+            "$locale XML conversion preserves CRLF count")
+        $constellationPath = Join-Path $partial (
+            "Localization\$locale\UI\XML\Constellation.lua")
+        $partialOriginalHashes[$xmlPath] = Get-FileSha256 $xmlPath
+        $partialOriginalHashes[$constellationPath] = Get-FileSha256 (
+            $constellationPath)
+        $partialOriginalBoms[$xmlPath] = Test-Utf8Bom $xmlPath
+        $partialOriginalBoms[$constellationPath] = Test-Utf8Bom (
+            $constellationPath)
+        $stockConstellation = [IO.File]::ReadAllText(
+            $constellationPath, $encoding)
+        Assert-Equal (Convert-ConstellationStatsLua (
+                Convert-ConstellationStatsLua $stockConstellation $true) (
+                $false)) $stockConstellation (
+            "$locale Constellation conversion is text-exact")
+    }
+    Set-LegacyPartialFixture $partial
+    $partialStatus = & $speedPatcher -ClientRoot $partial -Mode Status
+    Assert-Equal $partialStatus.State 'LegacyPartial' (
+        'Installed-client predecessor is recognized')
+    [byte[]]$partialBefore = [IO.File]::ReadAllBytes(
+        (Join-Path $partial 'Origin.exe'))
+    $questBefore = (& $questPatcher -ClientExe (Join-Path $partial (
+                'Origin.exe')) -Mode Status).State
+    & $speedPatcher -ClientRoot $partial -Mode Apply `
+        -BackupRoot $partialBackups | Out-Null
+    Assert-Sid200Patched $partial
+    Assert-Equal (& $questPatcher -ClientExe (Join-Path $partial (
+                'Origin.exe')) -Mode Status).State $questBefore (
+        'Legacy-partial migration preserves QuestView owner')
+    [byte[]]$partialAfter = [IO.File]::ReadAllBytes(
+        (Join-Path $partial 'Origin.exe'))
+    $profile = Get-CharacterStatsBinaryProfile
+    $changed = 0
+    $allowed = @(
+        [pscustomobject]@{ Offset = $profile.HookOffset; Length = 5 },
+        [pscustomobject]@{
+            Offset = $profile.CaveOffset
+            Length = $profile.CaveReserveLength
+        }
+    )
+    for ($offset = 0; $offset -lt $partialAfter.Length; $offset++) {
+        if ($partialBefore[$offset] -eq $partialAfter[$offset]) { continue }
+        $changed++
+        Assert-True (Test-OffsetAllowed $offset $allowed) (
+            "legacy migration binary offset 0x$('{0:X}' -f $offset)")
+    }
+    Assert-True ($changed -gt 100) 'Legacy native hook and cave were removed'
+    Assert-True (Test-RebornBytes $partialAfter $profile.HookOffset (
+            $profile.OriginalHook)) 'Original PersonalInfo hook restored'
+    Assert-True (Test-RebornBytes $partialAfter $profile.CaveOffset (
+            $profile.EmptyCave)) 'Only owned 128-byte cave is zeroed'
+    $backupCount = Get-BackupFileCount $partialBackups
+    & $speedPatcher -ClientRoot $partial -Mode Apply `
+        -BackupRoot $partialBackups | Out-Null
+    Assert-Equal (Get-BackupFileCount $partialBackups) $backupCount (
+        'SID200 Apply is idempotent')
+    & $speedPatcher -ClientRoot $partial -Mode Revert `
+        -BackupRoot $partialBackups | Out-Null
+    Assert-Equal (& $speedPatcher -ClientRoot $partial -Mode Status).State (
+        'Original') 'SID200 Revert reaches stock state'
+    foreach ($path in $partialOriginalHashes.Keys) {
+        Assert-Equal (Get-FileSha256 $path) $partialOriginalHashes[$path] (
+            "$(Split-Path $path -Leaf) byte-exact Apply/Revert round trip")
+        Assert-Equal (Test-Utf8Bom $path) $partialOriginalBoms[$path] (
+            "$(Split-Path $path -Leaf) BOM policy survives round trip")
+    }
+
     $questFirst = New-ClientFixture 'quest-first'
     $questFirstBackups = Join-Path $testRoot 'backups-quest-first'
     Normalize-Original $questFirst $questFirstBackups
     [byte[]]$baseline = [IO.File]::ReadAllBytes(
         (Join-Path $questFirst 'Origin.exe'))
-
     & $questPatcher -ClientExe (Join-Path $questFirst 'Origin.exe') `
         -Mode Apply -BackupRoot $questFirstBackups | Out-Null
     & $speedPatcher -ClientRoot $questFirst -Mode Apply `
         -BackupRoot $questFirstBackups | Out-Null
-    Assert-BothPatched $questFirst
-    $backupCount = Get-BackupFileCount $questFirstBackups
-    & $questPatcher -ClientExe (Join-Path $questFirst 'Origin.exe') `
-        -Mode Apply -BackupRoot $questFirstBackups | Out-Null
-    & $speedPatcher -ClientRoot $questFirst -Mode Apply `
-        -BackupRoot $questFirstBackups | Out-Null
-    Assert-Equal (Get-BackupFileCount $questFirstBackups) $backupCount (
-        'Both patches are idempotent')
-
+    Assert-Sid200Patched $questFirst
+    Assert-Equal (& $questPatcher -ClientExe (Join-Path $questFirst (
+                'Origin.exe')) -Mode Status).State 'Patched' (
+        'QuestView remains patched')
     [byte[]]$both = [IO.File]::ReadAllBytes(
         (Join-Path $questFirst 'Origin.exe'))
-    $allowed = @(
+    $questRanges = @(
         [pscustomobject]@{ Offset = 0x1DA4C0; Length = 5 },
-        [pscustomobject]@{ Offset = 0x5C3F00; Length = 0x20 },
-        [pscustomobject]@{ Offset = 0x1B5B97; Length = 5 },
-        [pscustomobject]@{ Offset = 0x5C3F20; Length = 0x80 }
+        [pscustomobject]@{ Offset = 0x5C3F00; Length = 0x20 }
     )
-    $changed = 0
+    $questChanges = 0
     for ($offset = 0; $offset -lt $both.Length; $offset++) {
         if ($baseline[$offset] -eq $both[$offset]) { continue }
-        $changed++
-        Assert-True (Test-OffsetAllowed $offset $allowed) (
-            "allowlisted binary offset 0x$('{0:X}' -f $offset)")
+        $questChanges++
+        Assert-True (Test-OffsetAllowed $offset $questRanges) (
+            "Quest-only binary offset 0x$('{0:X}' -f $offset)")
     }
-    Assert-True ($changed -gt 120) 'Expected audited binary mutations exist'
-
+    Assert-True ($questChanges -gt 20) 'Quest patch remains the only EXE change'
     & $speedPatcher -ClientRoot $questFirst -Mode Revert `
         -BackupRoot $questFirstBackups | Out-Null
-    Assert-Equal (& $questPatcher -ClientExe (
-            Join-Path $questFirst 'Origin.exe') -Mode Status).State `
-        'Patched' 'Speed revert preserves QuestView patch'
-    Assert-Equal (& $speedPatcher -ClientRoot $questFirst -Mode Status).State `
-        'Original' 'Speed revert state'
-    foreach ($locale in 'en_us', 'zh_cn') {
-        Assert-True (-not (Test-Path -LiteralPath (Join-Path $questFirst (
-                "Localization\$locale\UI\XML\PersonalInfoSpeedStats.lua")) `
-                -PathType Leaf)) "$locale hover script removed on revert"
-    }
+    Assert-Equal (& $questPatcher -ClientExe (Join-Path $questFirst (
+                'Origin.exe')) -Mode Status).State 'Patched' (
+        'Character-stat Revert preserves QuestView')
 
     $speedFirst = New-ClientFixture 'speed-first'
     $speedFirstBackups = Join-Path $testRoot 'backups-speed-first'
@@ -290,63 +164,94 @@ try {
         -BackupRoot $speedFirstBackups | Out-Null
     & $questPatcher -ClientExe (Join-Path $speedFirst 'Origin.exe') `
         -Mode Apply -BackupRoot $speedFirstBackups | Out-Null
-    Assert-BothPatched $speedFirst
+    Assert-Sid200Patched $speedFirst
     & $questPatcher -ClientExe (Join-Path $speedFirst 'Origin.exe') `
         -Mode Revert -BackupRoot $speedFirstBackups | Out-Null
-    Assert-Equal (& $speedPatcher -ClientRoot $speedFirst -Mode Status).State `
-        'PatchedV3' 'QuestView revert preserves speed patch'
+    Assert-Equal (& $speedPatcher -ClientRoot $speedFirst -Mode Status).State (
+        'PatchedSid200') 'QuestView Revert preserves SID200 UI'
 
-    $upgrade = New-ClientFixture 'v1-upgrade'
-    $upgradeBackups = Join-Path $testRoot 'backups-v1-upgrade'
-    Normalize-Original $upgrade $upgradeBackups
-    & $questPatcher -ClientExe (Join-Path $upgrade 'Origin.exe') `
-        -Mode Apply -BackupRoot $upgradeBackups | Out-Null
-    & $speedPatcher -ClientRoot $upgrade -Mode Apply `
-        -BackupRoot $upgradeBackups | Out-Null
-    $upgradeExe = Join-Path $upgrade 'Origin.exe'
-    $finalBinaryHash = (Get-FileHash $upgradeExe -Algorithm SHA256).Hash
-    Set-SpeedV1Fixture $upgrade
-    & $speedPatcher -ClientRoot $upgrade -Mode Apply `
-        -BackupRoot $upgradeBackups | Out-Null
-    Assert-BothPatched $upgrade
-    Assert-Equal (Get-FileHash $upgradeExe -Algorithm SHA256).Hash (
-        $finalBinaryHash) 'V1 to V3 upgrade leaves audited EXE patch unchanged'
+    foreach ($legacyState in 'PatchedV1', 'PatchedV2', 'PatchedV3') {
+        $legacy = New-ClientFixture $legacyState.ToLowerInvariant()
+        $legacyBackups = Join-Path $testRoot (
+            'backups-' + $legacyState.ToLowerInvariant())
+        Normalize-Original $legacy $legacyBackups
+        [byte[]]$legacyBaseline = [IO.File]::ReadAllBytes(
+            (Join-Path $legacy 'Origin.exe'))
+        Set-LegacyFixture $legacy $legacyState
+        & $speedPatcher -ClientRoot $legacy -Mode Apply `
+            -BackupRoot $legacyBackups | Out-Null
+        Assert-Sid200Patched $legacy
+        [byte[]]$legacyFinal = [IO.File]::ReadAllBytes(
+            (Join-Path $legacy 'Origin.exe'))
+        Assert-Equal ([BitConverter]::ToString($legacyFinal)) (
+            [BitConverter]::ToString($legacyBaseline)) (
+            "$legacyState migration restores exact stock EXE")
+    }
+
+    $preserve = New-ClientFixture 'preserve-constellation'
+    $preserveBackups = Join-Path $testRoot 'backups-preserve'
+    Normalize-Original $preserve $preserveBackups
+    $sentinel = '-- unrelated constellation sentinel'
+    $constellationBefore = @{}
     foreach ($locale in 'en_us', 'zh_cn') {
-        $xmlPath = Join-Path $upgrade (
+        $path = Join-Path $preserve (
+            "Localization\$locale\UI\XML\Constellation.lua")
+        $text = [IO.File]::ReadAllText($path, $encoding) +
+            "`r`n$sentinel`r`n"
+        [IO.File]::WriteAllText($path, $text, $encoding)
+        $constellationBefore[$locale] = $text
+    }
+    & $speedPatcher -ClientRoot $preserve -Mode Apply `
+        -BackupRoot $preserveBackups | Out-Null
+    Assert-Sid200Patched $preserve
+    foreach ($locale in 'en_us', 'zh_cn') {
+        $path = Join-Path $preserve (
+            "Localization\$locale\UI\XML\Constellation.lua")
+        Assert-True ([IO.File]::ReadAllText($path, $encoding).Contains(
+                $sentinel)) "$locale unrelated Lua survives Apply"
+    }
+    & $speedPatcher -ClientRoot $preserve -Mode Revert `
+        -BackupRoot $preserveBackups | Out-Null
+    foreach ($locale in 'en_us', 'zh_cn') {
+        $path = Join-Path $preserve (
+            "Localization\$locale\UI\XML\Constellation.lua")
+        Assert-Equal ([IO.File]::ReadAllText($path, $encoding)) (
+            $constellationBefore[$locale]) (
+            "$locale unrelated Lua survives exact round trip")
+    }
+
+    $callbackOwner = New-ClientFixture 'callback-owner'
+    $callbackBackups = Join-Path $testRoot 'backups-callback-owner'
+    Normalize-Original $callbackOwner $callbackBackups
+    & $speedPatcher -ClientRoot $callbackOwner -Mode Apply `
+        -BackupRoot $callbackBackups | Out-Null
+    foreach ($locale in 'en_us', 'zh_cn') {
+        $path = Join-Path $callbackOwner (
             "Localization\$locale\UI\XML\PersonalInfoUI.xml")
-        $xml = [IO.File]::ReadAllText(
-            $xmlPath, [Text.UTF8Encoding]::new($false, $true))
-        Assert-Equal (Convert-PersonalInfoXml $xml $locale $true) $xml (
-            "$locale direct V3 conversion idempotence")
+        $text = [IO.File]::ReadAllText($path, $encoding).Replace(
+            'OnLoad="RebornPersonalInfoStatsLoad()" OnClose=',
+            'OnLoad="RebornPersonalInfoStatsLoad()" CustomOwner="keep" OnClose=')
+        [IO.File]::WriteAllText($path, $text, $encoding)
     }
-
-    $v2Upgrade = New-ClientFixture 'v2-upgrade'
-    $v2UpgradeBackups = Join-Path $testRoot 'backups-v2-upgrade'
-    Normalize-Original $v2Upgrade $v2UpgradeBackups
-    & $questPatcher -ClientExe (Join-Path $v2Upgrade 'Origin.exe') `
-        -Mode Apply -BackupRoot $v2UpgradeBackups | Out-Null
-    & $speedPatcher -ClientRoot $v2Upgrade -Mode Apply `
-        -BackupRoot $v2UpgradeBackups | Out-Null
-    Set-SpeedV2Fixture $v2Upgrade
-    $v2Exe = Join-Path $v2Upgrade 'Origin.exe'
-    $beforeV3Exe = (Get-FileHash $v2Exe -Algorithm SHA256).Hash
-    $beforeV3Lua = @{}
+    Assert-Equal (& $speedPatcher -ClientRoot $callbackOwner `
+        -Mode Status).State 'PatchedSid200' (
+        'Unrelated root attribute is accepted in patched layout')
+    & $speedPatcher -ClientRoot $callbackOwner -Mode Revert `
+        -BackupRoot $callbackBackups | Out-Null
     foreach ($locale in 'en_us', 'zh_cn') {
-        $beforeV3Lua[$locale] = (Get-FileHash (Join-Path $v2Upgrade (
-            "Localization\$locale\UI\XML\PersonalInfoSpeedStats.lua")) `
-            -Algorithm SHA256).Hash
+        $path = Join-Path $callbackOwner (
+            "Localization\$locale\UI\XML\PersonalInfoUI.xml")
+        $text = [IO.File]::ReadAllText($path, $encoding)
+        Assert-True $text.Contains('CustomOwner="keep"') (
+            "$locale unrelated root attribute survives Revert")
+        Assert-True (-not $text.Contains('RebornPersonalInfoStatsLoad')) (
+            "$locale owned OnLoad removed independently")
+        Assert-True (-not $text.Contains('RebornPersonalInfoStatsClose')) (
+            "$locale owned OnClose removed independently")
     }
-    & $speedPatcher -ClientRoot $v2Upgrade -Mode Apply `
-        -BackupRoot $v2UpgradeBackups | Out-Null
-    Assert-BothPatched $v2Upgrade
-    Assert-Equal (Get-FileHash $v2Exe -Algorithm SHA256).Hash (
-        $beforeV3Exe) 'V2 to V3 migration leaves EXE unchanged'
-    foreach ($locale in 'en_us', 'zh_cn') {
-        $luaPath = Join-Path $v2Upgrade (
-            "Localization\$locale\UI\XML\PersonalInfoSpeedStats.lua")
-        Assert-Equal (Get-FileHash $luaPath -Algorithm SHA256).Hash (
-            $beforeV3Lua[$locale]) "$locale V2 to V3 keeps hover Lua"
-    }
+    Assert-Equal (& $speedPatcher -ClientRoot $callbackOwner `
+        -Mode Status).State 'Original' (
+        'Callback-owner fixture reaches clean Original state')
 
     $xmlCorrupt = New-ClientFixture 'xml-corrupt'
     $xmlCorruptBackups = Join-Path $testRoot 'backups-xml-corrupt'
@@ -355,12 +260,9 @@ try {
         -BackupRoot $xmlCorruptBackups | Out-Null
     $badXmlPath = Join-Path $xmlCorrupt (
         'Localization\en_us\UI\XML\PersonalInfoUI.xml')
-    $badXml = [IO.File]::ReadAllText(
-        $badXmlPath, [Text.UTF8Encoding]::new($false, $true)).Replace(
-        'RebornPersonalInfoMovementSpeedHovered()',
-        'UnknownMovementSpeedHovered()')
-    [IO.File]::WriteAllText(
-        $badXmlPath, $badXml, [Text.UTF8Encoding]::new($false, $true))
+    $badXml = [IO.File]::ReadAllText($badXmlPath, $encoding).Replace(
+        'RebornPersonalInfoStatsUpdate()', 'UnknownStatsUpdate()')
+    [IO.File]::WriteAllText($badXmlPath, $badXml, $encoding)
     Assert-Throws {
         & $speedPatcher -ClientRoot $xmlCorrupt -Mode Status | Out-Null
     } 'unknown or partially applied' 'Unknown XML callback rejection'
@@ -372,29 +274,88 @@ try {
         -BackupRoot $luaCorruptBackups | Out-Null
     $badLuaPath = Join-Path $luaCorrupt (
         'Localization\zh_cn\UI\XML\PersonalInfoSpeedStats.lua')
-    [IO.File]::AppendAllText(
-        $badLuaPath, '-- unknown', [Text.UTF8Encoding]::new($false, $true))
+    [IO.File]::AppendAllText($badLuaPath, '-- unknown', $encoding)
     Assert-Throws {
         & $speedPatcher -ClientRoot $luaCorrupt -Mode Status | Out-Null
-    } 'unknown content' 'Unknown hover-script rejection'
+    } 'unknown content' 'Unknown PersonalInfo Lua rejection'
 
-    $corrupt = New-ClientFixture 'corrupt'
-    $corruptBackups = Join-Path $testRoot 'backups-corrupt'
-    Normalize-Original $corrupt $corruptBackups
-    & $speedPatcher -ClientRoot $corrupt -Mode Apply `
-        -BackupRoot $corruptBackups | Out-Null
-    $corruptExe = Join-Path $corrupt 'Origin.exe'
-    [byte[]]$corruptBytes = [IO.File]::ReadAllBytes($corruptExe)
-    $corruptBytes[0x5C3F9F] = 0xCC
-    [IO.File]::WriteAllBytes($corruptExe, $corruptBytes)
+    $constellationCorrupt = New-ClientFixture 'constellation-corrupt'
+    $constellationCorruptBackups = Join-Path $testRoot (
+        'backups-constellation-corrupt')
+    Normalize-Original $constellationCorrupt $constellationCorruptBackups
+    & $speedPatcher -ClientRoot $constellationCorrupt -Mode Apply `
+        -BackupRoot $constellationCorruptBackups | Out-Null
+    $badConstellationPath = Join-Path $constellationCorrupt (
+        'Localization\en_us\UI\XML\Constellation.lua')
+    $badConstellation = [IO.File]::ReadAllText(
+        $badConstellationPath, $encoding).Replace(
+        'REBORN_PERSONAL_INFO_STATS_BRANCH_END',
+        'REBORN_PERSONAL_INFO_STATS_BRANCH_BROKEN')
+    [IO.File]::WriteAllText(
+        $badConstellationPath, $badConstellation, $encoding)
     Assert-Throws {
-        & $speedPatcher -ClientRoot $corrupt -Mode Status | Out-Null
-    } 'unknown or partially applied' 'Unknown speed-cave byte rejection'
+        & $speedPatcher -ClientRoot $constellationCorrupt -Mode Status |
+            Out-Null
+    } 'unknown or partially applied SID200' (
+        'Unknown Constellation branch rejection')
 
-    Assert-Equal (Get-FileHash $fixtureExe -Algorithm SHA256).Hash `
-        $fixtureHash 'Source fixture remains unchanged'
+    $binaryCorrupt = New-ClientFixture 'binary-corrupt'
+    $binaryCorruptBackups = Join-Path $testRoot 'backups-binary-corrupt'
+    Normalize-Original $binaryCorrupt $binaryCorruptBackups
+    $badExe = Join-Path $binaryCorrupt 'Origin.exe'
+    [byte[]]$badBytes = [IO.File]::ReadAllBytes($badExe)
+    $badBytes[$profile.CaveOffset + $profile.CaveReserveLength - 1] = 0xCC
+    [IO.File]::WriteAllBytes($badExe, $badBytes)
+    Assert-Throws {
+        & $speedPatcher -ClientRoot $binaryCorrupt -Mode Status | Out-Null
+    } 'unknown or partially applied' 'Unknown owned-cave byte rejection'
+
+    Invoke-CharacterStatsAdvancedTests
+    Invoke-CharacterStatsXmlSecurityTests
+    Invoke-CharacterStatsLayoutTests
+    Invoke-CharacterStatsFrameTests
+    Invoke-CharacterStatsCompatibilityTests
+
+    foreach ($path in @(
+        $speedPatcher,
+        (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Binary.ps1'),
+        (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Core.ps1'),
+        (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Layout.ps1'),
+        (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Lua.ps1'),
+        (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Text.ps1'),
+        (Join-Path $PSScriptRoot (
+            'PatchClientCharacterSpeedStats.Transaction.ps1')),
+        $PSCommandPath,
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.Helpers.ps1')),
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.Advanced.ps1')),
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.XmlSecurity.ps1')),
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.Layout.ps1')),
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.Frame.ps1')),
+        (Join-Path $PSScriptRoot (
+            'TestClientCharacterSpeedStatsPatch.Compatibility.ps1')),
+        (Join-Path $PSScriptRoot (
+            'PatchClientCharacterSpeedStats.XmlValidation.ps1')),
+        (Join-Path $PSScriptRoot (
+            'PatchClientCharacterSpeedStats.XmlState.ps1')))) {
+        Assert-True ((Get-Item -LiteralPath $path).Length -lt 20000) (
+            "$(Split-Path $path -Leaf) is below 20KB")
+        Assert-True ((Get-Content -LiteralPath $path).Count -lt 600) (
+            "$(Split-Path $path -Leaf) is below 600 lines")
+    }
+    Assert-Equal (Get-FileHash $fixtureExe -Algorithm SHA256).Hash (
+        $fixtureHash) 'Source fixture remains unchanged'
+    Assert-True ($fixtureInitialState -in @(
+            'Original', 'LegacyPartial', 'PatchedV1', 'PatchedV2',
+            'PatchedV3', 'PatchedSid200V1', 'PatchedSid200FrameV1',
+            'PatchedSid200')) (
+        'Read-only source fixture status is recognized')
     Write-Host (
-        "Character speed-stat patch checks passed: $assertions assertions.")
+        "Character SID200 stat patch checks passed: $assertions assertions.")
 }
 finally {
     $resolvedArtifacts = [IO.Path]::GetFullPath($artifactRoot)

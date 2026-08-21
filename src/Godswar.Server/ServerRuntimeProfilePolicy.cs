@@ -24,7 +24,8 @@ internal enum ServerStartupRejectionReason
     RawTransportForbidden = 8,
     LegacyRawAuthenticationDisabled = 9,
     LegacyRawAuthenticationScopeInvalid = 10,
-    PlaintextMigrationForbidden = 11
+    PlaintextMigrationForbidden = 11,
+    TrainingDummyEntitlementForbidden = 12
 }
 
 internal sealed class ServerStartupConfigurationException :
@@ -134,6 +135,15 @@ internal static class ServerRuntimeProfilePolicy
                 "Plaintext credential migration is forbidden in Production.");
         }
 
+        if (runtimeProfile != ServerRuntimeProfileKind.LocalDevelopment &&
+            options.Game?.TrainingDummies?.Enabled == true)
+        {
+            throw Reject(
+                ServerStartupRejectionReason.
+                    TrainingDummyEntitlementForbidden,
+                "Training-dummy combat is restricted to LocalDevelopment.");
+        }
+
         return new ValidatedServerRuntimeProfile(
             runtimeProfile,
             storageProvider,
@@ -168,6 +178,9 @@ internal static class ServerRuntimeProfilePolicy
             ServerStartupRejectionReason.
                 PlaintextMigrationForbidden =>
                 "plaintext_migration_forbidden",
+            ServerStartupRejectionReason.
+                TrainingDummyEntitlementForbidden =>
+                "training_dummy_entitlement_forbidden",
             _ => "invalid_configuration"
         };
 

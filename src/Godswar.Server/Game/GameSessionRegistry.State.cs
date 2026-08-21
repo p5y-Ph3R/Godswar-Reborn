@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
-using Godswar.Server.Packets;
 using Godswar.Server.State;
 using Godswar.Server.World.Components.Players;
 
@@ -138,7 +137,12 @@ internal sealed partial class GameSessionRegistry
 
     private sealed class PlayerStatusState
     {
+        private string _lastPublishedElementalFingerprint =
+            ElementalClientStatusProjection.EmptyFingerprint;
+
         public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public object CharacterUiStatsGate { get; } = new();
 
         public Dictionary<int, ActiveRuntimeStatus> RuntimeStatuses { get; } = [];
 
@@ -148,10 +152,23 @@ internal sealed partial class GameSessionRegistry
 
         public string? LastFingerprint { get; set; }
 
+        public string LastPublishedElementalFingerprint
+        {
+            get => Volatile.Read(
+                ref _lastPublishedElementalFingerprint);
+            set => Volatile.Write(
+                ref _lastPublishedElementalFingerprint,
+                value);
+        }
+
         public ClientStatusAggregate LastPublishedAggregate { get; set; } =
             ClientStatusAggregate.Empty;
 
         public long Revision { get; set; }
+
+        public bool CharacterUiStatsV1Enabled { get; set; }
+
+        public DateTimeOffset? LastCharacterUiStatsV1ProbeAt { get; set; }
 
         public CancellationTokenSource Lifetime { get; } = new();
     }

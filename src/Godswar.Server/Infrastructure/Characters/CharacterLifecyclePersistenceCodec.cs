@@ -6,31 +6,71 @@ using System.Text.Json;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Messaging;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Infrastructure.Characters;
 
 internal static class CharacterLifecyclePersistenceCodec
 {
-    public const short ContractVersion = 1;
+    public const short LegacyContractVersion = 1;
+    public const short ContractVersion = 2;
     public const string PrincipalType = "account";
     public const string AggregateType = "account_character_slot";
     public const string ConsumerKey = "character_lifecycle_v1";
+    public const string RealmAggregateType =
+        "account_realm_character_slot";
+    public const string RealmConsumerKey = "character_lifecycle_v2";
     public const string OrderingPolicy = "strict";
     public const string RetentionPolicy = "permanent";
     public const string CommittedResultCode = "committed";
     public const string TerminalRejectedResultCode = "terminal_rejected";
 
     public static string AggregateKey(int accountId, short slot)
+        => AggregateKey(accountId, RealmId.Tempest, slot);
+
+    public static string AggregateKey(
+        int accountId,
+        RealmId realmId,
+        short slot)
     {
         if (accountId <= 0 ||
+            !realmId.IsValid ||
             slot != CharacterLifecycleCommandContract.SingleCharacterSlot)
         {
             throw new ArgumentOutOfRangeException(nameof(accountId));
         }
 
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"{accountId}:{slot}");
+        return realmId == RealmId.Tempest
+            ? string.Create(
+                CultureInfo.InvariantCulture,
+                $"{accountId}:{slot}")
+            : string.Create(
+                CultureInfo.InvariantCulture,
+                $"{accountId}:{realmId.Value}:{slot}");
+    }
+
+    public static string AggregateTypeFor(RealmId realmId)
+    {
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+
+        return realmId == RealmId.Tempest
+            ? AggregateType
+            : RealmAggregateType;
+    }
+
+    public static string ConsumerKeyFor(RealmId realmId)
+    {
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+
+        return realmId == RealmId.Tempest
+            ? ConsumerKey
+            : RealmConsumerKey;
     }
 
     public static string FamilyCode(CommandFamily family) =>
@@ -69,6 +109,7 @@ internal static class CharacterLifecyclePersistenceCodec
             writer.WriteNumber("family", (ushort)receipt.Family);
             writer.WriteNumber("status", (byte)receipt.Status);
             writer.WriteNumber("accountId", receipt.AccountId);
+            writer.WriteNumber("realmId", receipt.RealmId.Value);
             writer.WriteNumber("characterSlot", receipt.CharacterSlot);
             writer.WriteNumber("characterId", receipt.CharacterId);
             writer.WriteNumber(
@@ -108,6 +149,25 @@ internal static class CharacterLifecyclePersistenceCodec
         long expectedAuditId,
         CommandFamily expectedFamily,
         int expectedAccountId,
+        short expectedSlot) =>
+        DecodeAndVerify(
+            payloadJson,
+            expectedHash,
+            expectedResultCode,
+            expectedAuditId,
+            expectedFamily,
+            expectedAccountId,
+            RealmId.Tempest,
+            expectedSlot);
+
+    public static CharacterLifecycleReceipt DecodeAndVerify(
+        string payloadJson,
+        ReadOnlySpan<byte> expectedHash,
+        string expectedResultCode,
+        long expectedAuditId,
+        CommandFamily expectedFamily,
+        int expectedAccountId,
+        RealmId expectedRealmId,
         short expectedSlot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(payloadJson);
@@ -116,6 +176,7 @@ internal static class CharacterLifecyclePersistenceCodec
 
         if (receipt.Family != expectedFamily ||
             receipt.AccountId != expectedAccountId ||
+            receipt.RealmId != expectedRealmId ||
             receipt.CharacterSlot != expectedSlot ||
             !string.Equals(
                 ResultCode(receipt),
@@ -131,7 +192,7 @@ internal static class CharacterLifecyclePersistenceCodec
                 "The stored character lifecycle identity is inconsistent.");
         }
 
-        var actualHash = Hash(Encode(receipt));
+        var actualHash = Hash(payload);
         if (expectedHash.Length != actualHash.Length ||
             !CryptographicOperations.FixedTimeEquals(
                 expectedHash,
@@ -160,19 +221,25 @@ internal static class CharacterLifecyclePersistenceCodec
                     MaxDepth = 4
                 });
             var root = document.RootElement;
-            EnsureExactShape(root);
-            if (root.GetProperty("contractVersion").GetInt16() !=
-                ContractVersion)
+            var contractVersion =
+                root.GetProperty("contractVersion").GetInt16();
+            if (contractVersion is not (
+                    LegacyContractVersion or ContractVersion))
             {
                 throw new InvalidDataException(
                     "The stored character lifecycle contract is unsupported.");
             }
+            EnsureExactShape(root, contractVersion);
 
             receipt = new CharacterLifecycleReceipt(
                 (CommandFamily)root.GetProperty("family").GetUInt16(),
                 (CharacterLifecycleReceiptStatus)
-                    root.GetProperty("status").GetByte(),
+                root.GetProperty("status").GetByte(),
                 root.GetProperty("accountId").GetInt32(),
+                contractVersion == LegacyContractVersion
+                    ? RealmId.Tempest
+                    : new RealmId(
+                        root.GetProperty("realmId").GetInt32()),
                 root.GetProperty("characterSlot").GetInt16(),
                 root.GetProperty("characterId").GetInt32(),
                 root.GetProperty("lifecycleVersion").GetInt64(),
@@ -244,7 +311,9 @@ internal static class CharacterLifecyclePersistenceCodec
         root.GetProperty(name).GetString() ??
         throw new InvalidDataException($"The stored {name} is missing.");
 
-    private static void EnsureExactShape(JsonElement root)
+    private static void EnsureExactShape(
+        JsonElement root,
+        short contractVersion)
     {
         if (root.ValueKind != JsonValueKind.Object)
         {
@@ -261,6 +330,7 @@ internal static class CharacterLifecyclePersistenceCodec
                     "family" or
                     "status" or
                     "accountId" or
+                    "realmId" or
                     "characterSlot" or
                     "characterId" or
                     "lifecycleVersion" or
@@ -275,7 +345,14 @@ internal static class CharacterLifecyclePersistenceCodec
             }
         }
 
-        if (names.Count != 12)
+        var expectedCount = contractVersion == LegacyContractVersion
+            ? 12
+            : 13;
+        if (names.Count != expectedCount ||
+            contractVersion == LegacyContractVersion &&
+                names.Contains("realmId") ||
+            contractVersion == ContractVersion &&
+                !names.Contains("realmId"))
         {
             throw new InvalidDataException(
                 "The lifecycle receipt has missing fields.");

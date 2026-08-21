@@ -18,12 +18,14 @@ internal sealed partial class GameClientHandler
 
     private void StartPetOwnerMergeEnergyDrain()
     {
-        if (PetOwnerMergeLifecycle is null ||
+        if (_registry.IsTrainingDummyCore(_character) ||
+            PetOwnerMergeLifecycle is null ||
             _petOwnerMergeLifecycleTask is { IsCompleted: false })
         {
             return;
         }
 
+        CancelPetOwnerMergeEnergyRecharge();
         CancelPetOwnerMergeEnergyDrain();
         var generation = Interlocked.Increment(
             ref _petOwnerMergeLifecycleGeneration);
@@ -207,6 +209,10 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (_registry.IsTrainingDummyCore(_character))
+        {
+            return false;
+        }
         if (PetOwnerMergeLifecycle is not { } lifecycle ||
             !TryGetOwnerMergeLifecycleContext(
                 out var subject,
@@ -249,7 +255,8 @@ internal sealed partial class GameClientHandler
 
     private async Task EndPetOwnerMergeForSessionExitAsync()
     {
-        if (PetOwnerMergeLifecycle is not { } lifecycle ||
+        if (_registry.IsTrainingDummyCore(_character) ||
+            PetOwnerMergeLifecycle is not { } lifecycle ||
             !TryGetOwnerMergeLifecycleContext(
                 out var subject,
                 out var ownership))
@@ -280,7 +287,7 @@ internal sealed partial class GameClientHandler
         await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
             PacketBuilder.PetOwnerMergeEnded(
-                WorldObjectIds.ForPlayer(_character.Id)),
+                CurrentPlayerObjectId),
             CancellationToken.None,
             _session,
             "PetOwnerMergeSessionExitWorld");

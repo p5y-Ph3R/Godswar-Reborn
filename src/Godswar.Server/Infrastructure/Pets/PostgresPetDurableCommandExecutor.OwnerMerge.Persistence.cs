@@ -99,16 +99,18 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             connection,
             transaction);
         command.Parameters.AddWithValue("petId", petId);
-        var values = new List<PetOwnerMergeEffectValue>(16);
+        var values = new List<PetOwnerMergeStoredBonusValue>(
+            PetOwnerMergeStoredBonusCodec.TotalCount);
         var isCurrentRevision = true;
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var code = (PetOwnerMergeEffectCode)reader.GetInt16(0);
+            var code = reader.GetInt16(0);
             var value = reader.GetDecimal(1);
-            if (!Enum.IsDefined(code) || value < 0m ||
-                values.Any(existing => existing.Effect == code))
+            if (!PetOwnerMergeStoredBonusCodec.IsDefined(code) ||
+                value < 0m ||
+                values.Any(existing => existing.Code == code))
             {
                 isCurrentRevision = false;
                 continue;
@@ -123,14 +125,14 @@ internal sealed partial class PostgresPetDurableCommandExecutor
         }
 
         isCurrentRevision &= values.Count ==
-            Enum.GetValues<PetOwnerMergeEffectCode>().Length;
+            PetOwnerMergeStoredBonusCodec.TotalCount;
         // A stale or malformed derived projection is never trusted as an
         // authoritative contribution. Zero exists only so unmerge remains
         // available and can delete the invalid rows; startup reconciliation
         // rematerializes active merges before listeners start.
         return isCurrentRevision
             ? new OwnerMergeStoredContribution(
-                PetOwnerMergeContributionCalculator.FromEffectValues(values),
+                PetOwnerMergeStoredBonusCodec.FromStoredValues(values),
                 IsCurrentRevision: true)
             : new OwnerMergeStoredContribution(
                 PetOwnerStatContribution.Zero,
@@ -160,8 +162,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor
 
         if (plan.IsMerging)
         {
-            var effects = PetOwnerMergeContributionCalculator
-                .ToEffectValues(plan.StatContribution);
+            var effects = PetOwnerMergeStoredBonusCodec
+                .ToStoredValues(plan.StatContribution);
             await using var insert = CreateCommand(
                 """
                 INSERT INTO public.character_pet_character_bonuses (
@@ -186,7 +188,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor
             insert.Parameters.Add(
                 "effectCodes",
                 NpgsqlDbType.Array | NpgsqlDbType.Smallint).Value =
-                effects.Select(static value => (short)value.Effect).ToArray();
+                effects.Select(static value => value.Code).ToArray();
             insert.Parameters.Add(
                 "effectValues",
                 NpgsqlDbType.Array | NpgsqlDbType.Numeric).Value =

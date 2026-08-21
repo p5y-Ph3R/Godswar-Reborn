@@ -169,6 +169,7 @@ internal static class PlayerEcsSnapshotAdapter
             CriticalDamageFlatReduction =
                 stats.CriticalDamageFlatReduction,
             DamageReboundFlat = stats.DamageReboundFlat,
+            LifeAbsorptionFlat = stats.LifeAbsorptionFlat,
             BasicAttackIntervalMilliseconds =
                 stats.BasicAttackIntervalMilliseconds,
             BasicAttackRange = stats.BasicAttackRange

@@ -22,6 +22,10 @@ internal sealed record GameSessionContext(
 
     public bool PetOwnerMergeActive { get; init; }
 
+    public PetAptitude PetOwnerMergeAptitude { get; init; }
+
+    public short PetOwnerMergeCompletedRebirths { get; init; }
+
     public Func<MonsterDamageResult,
         Task<PreparedPveMonsterKillReward?>>?
         PreparePveMonsterKillReward { get; init; }

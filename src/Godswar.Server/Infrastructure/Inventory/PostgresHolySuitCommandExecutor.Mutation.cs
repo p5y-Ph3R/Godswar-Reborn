@@ -48,6 +48,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
                 connection,
                 transaction,
                 context.Subject.AccountId,
+                character.RealmId,
                 daily,
                 plan.DailyStoredExperienceAfter,
                 cancellationToken);
@@ -444,6 +445,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        Godswar.Server.Domain.World.Instances.RealmId realmId,
         DailyUsage daily,
         long after,
         CancellationToken cancellationToken)
@@ -463,7 +465,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             transaction);
         command.Parameters.AddWithValue("after", after);
         command.Parameters.AddWithValue("accountId", accountId);
-        command.Parameters.AddWithValue("realmId", TempestRealmId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("usageDay", daily.UsageDay);
         command.Parameters.AddWithValue("before", daily.StoredExperience);
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)

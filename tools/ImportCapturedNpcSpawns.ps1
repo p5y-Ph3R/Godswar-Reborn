@@ -31,7 +31,7 @@ function Test-FiniteSingle([single]$Value) {
 }
 
 function Test-ReservedPlayerObjectId([uint32]$ObjectId) {
-    return $ObjectId -eq 0x1448 -or ($ObjectId -ge 0x6000 -and $ObjectId -le 0x7FFF)
+    return $ObjectId -eq 0x1448 -or ($ObjectId -ge 1 -and $ObjectId -le 0x05DB)
 }
 
 $rows = docker exec $Container psql -U $User -d $Database -At -F "|" -c @"

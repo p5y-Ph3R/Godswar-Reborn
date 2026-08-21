@@ -18,6 +18,7 @@ internal static partial class ElementalClassSuitAttributeChecks
         CheckEquippedRoleAuthority();
         CheckRuntimeRefreshAndRegularSlotBoundary();
         CheckElementalExecutionAndPvpGate();
+        CheckElementalClientStatusProjection();
         CheckElementalRuntimeRegistry();
         await CheckCrossDomainCombatIdentityAsync();
         await CheckElementalLiveHandlersAsync();

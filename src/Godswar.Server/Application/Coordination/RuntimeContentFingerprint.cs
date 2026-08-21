@@ -6,7 +6,8 @@ namespace Godswar.Server.Application.Coordination;
 /// <summary>
 /// Identifies the complete process-pinned gameplay content set used by a
 /// worker. Coordination must reject placement across workers that pin a
-/// different world, item, pet, pet owner-Merge, or learned pet-skill revision.
+/// different world, item, pet, pet owner-Merge, learned pet-skill, or Holy
+/// Spirit balance revision.
 /// </summary>
 internal static class RuntimeContentFingerprint
 {
@@ -15,7 +16,8 @@ internal static class RuntimeContentFingerprint
         string itemRevision,
         string petRevision,
         string petOwnerMergeRevision,
-        string petLearnedSkillRevision)
+        string petLearnedSkillRevision,
+        string holySpiritBalanceRevision)
     {
         ValidateRevision(worldRevision, nameof(worldRevision));
         ValidateRevision(itemRevision, nameof(itemRevision));
@@ -26,14 +28,18 @@ internal static class RuntimeContentFingerprint
         ValidateRevision(
             petLearnedSkillRevision,
             nameof(petLearnedSkillRevision));
+        ValidateRevision(
+            holySpiritBalanceRevision,
+            nameof(holySpiritBalanceRevision));
 
         var canonical = Encoding.UTF8.GetBytes(
-            "runtime-content-v4\n" +
+            "runtime-content-v5\n" +
             $"world:{worldRevision}\n" +
             $"items:{itemRevision}\n" +
             $"pets:{petRevision}\n" +
             $"pet-owner-merge:{petOwnerMergeRevision}\n" +
-            $"pet-learned-skills:{petLearnedSkillRevision}\n");
+            $"pet-learned-skills:{petLearnedSkillRevision}\n" +
+            $"holy-spirit-balance:{holySpiritBalanceRevision}\n");
         return Convert.ToHexString(SHA256.HashData(canonical));
     }
 

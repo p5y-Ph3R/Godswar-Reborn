@@ -4,7 +4,7 @@ using Godswar.Server.State;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class PetOwnerMergeChecks
+internal static partial class PetOwnerMergeChecks
 {
     private static readonly IPetOwnerMergeContentCatalog OwnerMergeContent =
         PetOwnerMergeContentBaseline.Create();
@@ -14,6 +14,8 @@ internal static class PetOwnerMergeChecks
         CheckStockBaseAndAllFirstBands();
         CheckContinuousAgilityBoundaries();
         CheckFinalRoundingAndEffectRoundTrip();
+        CheckTechniqueReductionPolicy();
+        CheckTwentyThousandSavvyGoldenVectors();
         CheckPlayerVisibleSavvyTotal();
         CheckSoulContractEffectiveSavvy();
         CheckDurableReceiptContract();
@@ -130,7 +132,10 @@ internal static class PetOwnerMergeChecks
             stageOne.MaxHealth - baseline.MaxHealth == 150m &&
             stageSix.MaxHealth - baseline.MaxHealth == 400m &&
             stageOne.PhysicalAttack - baseline.PhysicalAttack == 9m &&
-            stageSix.PhysicalAttack - baseline.PhysicalAttack == 24m,
+            stageSix.PhysicalAttack - baseline.PhysicalAttack == 24m &&
+            baseline.TechniquePhysicalReduction == 2m &&
+            stageOne.TechniquePhysicalReduction == 2m &&
+            stageSix.TechniquePhysicalReduction == 3m,
             "stock Soul stages change authoritative owner-Merge contributions");
     }
 
@@ -180,8 +185,8 @@ internal static class PetOwnerMergeChecks
         Check.Equal(80m, baseline.DamageAbsorption, "Merge base absorption");
         Check.Equal(200m, baseline.PhysicalDamageIncrease, "Merge base physical increase");
         Check.Equal(150m, baseline.MagicDamageIncrease, "Merge base magic increase");
-        Check.Equal(300m, baseline.PhysicalDamageReduction, "Merge base physical reduction");
-        Check.Equal(240m, baseline.MagicDamageReduction, "Merge base magic reduction");
+        Check.Equal(600m, baseline.PhysicalDamageReduction, "Merge base physical fixed cancellation");
+        Check.Equal(480m, baseline.MagicDamageReduction, "Merge base magic fixed cancellation");
         Check.Equal(800m, baseline.CriticalDamageReduction, "Merge base critical reduction");
         Check.Equal(100m, baseline.LifeAbsorption, "Merge base life absorption");
         Check.Equal(150m, baseline.DamageRebound, "Merge base rebound");
@@ -195,7 +200,7 @@ internal static class PetOwnerMergeChecks
             PhysicalAttack: 280m,
             PhysicalDamageIncrease: 500m,
             PhysicalDefense: 200m,
-            PhysicalDamageReduction: 660m,
+            PhysicalDamageReduction: 1320m,
             DamageAbsorption: 170m,
             LifeAbsorption: 400m,
             MaxMana: 540m,
@@ -203,11 +208,21 @@ internal static class PetOwnerMergeChecks
             MagicAttack: 200m,
             MagicDamageIncrease: 390m,
             MagicDefense: 150m,
-            MagicDamageReduction: 540m,
+            MagicDamageReduction: 1080m,
             CriticalDamageReduction: 1700m,
-            DamageRebound: 600m);
+            DamageRebound: 510m,
+            TechniquePhysicalReduction: 9m,
+            TechniqueMagicReduction: 9m);
         Check.Equal(expected, allSixty,
             "all six stock first-band Merge curves map exactly");
+
+        var maxLuck = PetOwnerMergeContributionCalculator.Calculate(
+            new PetSavvy(0m, 0m, 0m, 0m, 0m, 20_000m),
+            OwnerMergeContent);
+        Check.Equal(
+            60_879m,
+            maxLuck.DamageRebound,
+            "20k Luck retains base plus the full reviewed rebound curve");
     }
 
     private static void CheckContinuousAgilityBoundaries()
@@ -217,31 +232,31 @@ internal static class PetOwnerMergeChecks
             maxMana: 540m,
             hit: 27.2m,
             magicAttack: 200m,
-            rebound: 240m);
+            rebound: 150m);
         CheckAgility(
             150m,
             maxMana: 846m,
             hit: 36.38m,
             magicAttack: 353m,
-            rebound: 354.75m);
+            rebound: 150m);
         CheckAgility(
             300m,
             maxMana: 1266m,
             hit: 48.98m,
             magicAttack: 563m,
-            rebound: 512.25m);
+            rebound: 150m);
         CheckAgility(
             600m,
             maxMana: 1986m,
             hit: 70.58m,
             magicAttack: 923m,
-            rebound: 782.25m);
+            rebound: 150m);
         CheckAgility(
             601m,
             maxMana: 1988m,
             hit: 70.64m,
             magicAttack: 924m,
-            rebound: 783m);
+            rebound: 150m);
 
         var below = PetOwnerMergeContributionCalculator.Calculate(
             new PetSavvy(59.999m, 0m, 0m, 0m, 0m, 0m),
@@ -309,6 +324,49 @@ internal static class PetOwnerMergeChecks
             "Merge rejects duplicate persisted effect rows");
     }
 
+    private static void CheckTechniqueReductionPolicy()
+    {
+        Check.Equal(
+            0m,
+            PetOwnerMergeContributionCalculator
+                .CalculateTechniqueReductionBasisPoints(3.333m),
+            "Technique percentage reduction rounds below its first midpoint");
+        Check.Equal(
+            1m,
+            PetOwnerMergeContributionCalculator
+                .CalculateTechniqueReductionBasisPoints(3.334m),
+            "Technique percentage reduction rounds away above its first midpoint");
+        Check.Equal(
+            3_000m,
+            PetOwnerMergeContributionCalculator
+                .CalculateTechniqueReductionBasisPoints(20_000m),
+            "Technique percentage reduction reaches its thirty-percent cap");
+        Check.Equal(
+            3_000m,
+            PetOwnerMergeContributionCalculator
+                .CalculateTechniqueReductionBasisPoints(200_000m),
+            "Technique percentage reduction remains capped");
+
+        var contribution = PetOwnerMergeContributionCalculator.Calculate(
+            new PetSavvy(0m, 0m, 0m, 20_000m, 0m, 0m),
+            OwnerMergeContent);
+        var native = PetOwnerMergeContributionCalculator
+            .ToEffectValues(contribution);
+        var stored = PetOwnerMergeStoredBonusCodec
+            .ToStoredValues(contribution);
+        Check.True(
+            native.Count == 16 &&
+            native.All(static value =>
+                (short)value.Effect is not 1001 and not 1002) &&
+            stored.Count == 18 &&
+            stored.Count(static value => value.Code >= 1001) == 2,
+            "server-only Technique reductions never enter native PetUnite fields");
+        Check.Equal(
+            contribution,
+            PetOwnerMergeStoredBonusCodec.FromStoredValues(stored),
+            "native and internal owner-Merge rows round-trip together");
+    }
+
     private static void CheckDurableReceiptContract()
     {
         foreach (var status in new[]
@@ -369,11 +427,15 @@ internal static class PetOwnerMergeChecks
         Check.True(
             sql.Contains("pet.contributes_to_character", StringComparison.Ordinal) &&
             sql.Contains("character_pet_character_bonuses", StringComparison.Ordinal) &&
+            sql.Contains("physical_append_damage", StringComparison.Ordinal) &&
+            sql.Contains("magic_append_damage", StringComparison.Ordinal) &&
+            sql.Contains("physical_flat_absorption", StringComparison.Ordinal) &&
+            sql.Contains("magic_flat_absorption", StringComparison.Ordinal) &&
+            sql.Contains("critical_damage_flat_reduction", StringComparison.Ordinal) &&
+            sql.Contains("life_absorption_flat", StringComparison.Ordinal) &&
+            sql.Contains("damage_rebound_flat", StringComparison.Ordinal) &&
             sql.Contains("physical_damage_reduction", StringComparison.Ordinal) &&
-            sql.Contains("magic_damage_reduction", StringComparison.Ordinal) &&
-            sql.Contains("critical_damage_reduction", StringComparison.Ordinal) &&
-            sql.Contains("life_absorption", StringComparison.Ordinal) &&
-            sql.Contains("damage_rebound", StringComparison.Ordinal),
+            sql.Contains("magic_damage_reduction", StringComparison.Ordinal),
             "calculated stats include all Merge-only typed channels behind the authoritative flag");
         foreach (var code in Enum.GetValues<PetOwnerMergeEffectCode>())
         {
@@ -384,5 +446,20 @@ internal static class PetOwnerMergeChecks
                         StringComparison.Ordinal),
                 $"Merge projection maps effect code {(short)code}");
         }
+        foreach (var code in Enum.GetValues<PetOwnerMergeInternalBonusCode>())
+        {
+            Check.True(
+                PostgresCharacterPetOwnerMergeProjectionSql
+                    .CommonTableExpression.Contains(
+                        $"WHEN {(short)code} THEN",
+                        StringComparison.Ordinal),
+                $"Merge projection maps internal code {(short)code}");
+        }
+        Check.True(
+            sql.Contains("WHEN 29 THEN 'physical_flat_absorption'", StringComparison.Ordinal) &&
+            sql.Contains("WHEN 30 THEN 'magic_flat_absorption'", StringComparison.Ordinal) &&
+            sql.Contains("WHEN 1001 THEN 'physical_damage_reduction'", StringComparison.Ordinal) &&
+            sql.Contains("WHEN 1002 THEN 'magic_damage_reduction'", StringComparison.Ordinal),
+            "native fixed cancellation and Reborn percentage reduction stay separate");
     }
 }

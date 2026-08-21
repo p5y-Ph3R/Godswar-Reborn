@@ -27,7 +27,7 @@ internal static partial class Program
         return Task.CompletedTask;
     }
 
-    private static Task CheckZodiacProtocolAsync()
+    private static async Task CheckZodiacProtocolAsync()
     {
         var capturedRequest = Convert.FromHexString(
             "180039280000000000000100000000000000000000000000");
@@ -148,7 +148,7 @@ internal static partial class Program
                 "180039284814000000000700080000000200000000000000")),
             "Zodiac SID7 accumulation gain matches the capture with the local object ID");
 
-        return Task.CompletedTask;
+        await CharacterUiStatsProtocolChecks.RunAsync();
     }
 
     private static Task CheckZodiacOnlineEnergyPolicyAsync()

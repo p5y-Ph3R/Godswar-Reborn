@@ -60,6 +60,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         await AssertWorkflowAndReplayAsync(connectionString, itemContent);
         await AssertAutomaticMaximumAsync(connectionString, itemContent);
         await AssertBoxFiveCapacityAsync(connectionString, itemContent);
+        await AssertRealmQuotaIsolationAsync(connectionString, itemContent);
         await AssertAdversarialAuthorityAsync(connectionString, itemContent);
     }
 

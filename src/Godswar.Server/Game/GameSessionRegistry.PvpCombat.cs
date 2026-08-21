@@ -46,6 +46,10 @@ internal sealed partial class GameSessionRegistry
         }
 
         TryGetRuntimeIncomingDamageMitigation(
+            attackingSession,
+            now,
+            out var attackerRuntime);
+        TryGetRuntimeIncomingDamageMitigation(
             targetSnapshot.Session,
             now,
             out var targetMitigation);
@@ -68,11 +72,10 @@ internal sealed partial class GameSessionRegistry
                     PvpBasicAttackRejectionReason.StaleWorldOwnership);
             }
 
-            var eligibility = _gameplayCatalogs.PvpWorldAuthority
-                .EvaluateOpposingFaction(
-                    attacker.Character,
-                    target.Character,
-                    now);
+            var eligibility = EvaluatePvpBasicAttack(
+                attacker.Character,
+                target.Character,
+                now);
             if (!eligibility.Allowed)
             {
                 return PvpBasicAttackDecision.Reject(
@@ -95,13 +98,27 @@ internal sealed partial class GameSessionRegistry
 
             var sourceStats = attacker.Character.CalculatedStats ??
                 CharacterStats.FromCharacter(attacker.Character);
+            var attackRange = PlayerCombatRules.ResolveBasicAttackRange(
+                sourceStats.BasicAttackRange);
+            if (eligibility.EntitlementKind ==
+                    PvpEntitlementKind.TrainingDummy &&
+                eligibility.Admits(
+                    attacker.CharacterId,
+                    target.CharacterId,
+                    attacker.MapId))
+            {
+                // Player-backed dummies retain a native player collision
+                // stand-off. Add the same bounded allowance used by selected
+                // hostile skills, but only after exact-dummy entitlement has
+                // been established. Ordinary PvP keeps authored weapon reach.
+                attackRange += SkillCombatResolver.TargetCollisionAllowance;
+            }
             if (!MonsterCombatResolver.IsWithinBasicAttackRange(
                     attackX,
                     attackZ,
                     target.Character.PositionX,
                     target.Character.PositionZ,
-                    PlayerCombatRules.ResolveBasicAttackRange(
-                        sourceStats.BasicAttackRange)))
+                    attackRange))
             {
                 return PvpBasicAttackDecision.Reject(
                     PvpBasicAttackRejectionReason.OutOfRange,
@@ -128,11 +145,10 @@ internal sealed partial class GameSessionRegistry
                 .ToArray();
             using (AcquirePvpVitalsLocks(participants))
             {
-                eligibility = _gameplayCatalogs.PvpWorldAuthority
-                    .EvaluateOpposingFaction(
-                        attacker.Character,
-                        target.Character,
-                        now);
+                eligibility = EvaluatePvpBasicAttack(
+                    attacker.Character,
+                    target.Character,
+                    now);
                 if (!eligibility.Allowed)
                 {
                     return PvpBasicAttackDecision.Reject(
@@ -142,18 +158,27 @@ internal sealed partial class GameSessionRegistry
 
                 var targetStats = target.Character.CalculatedStats ??
                     CharacterStats.FromCharacter(target.Character);
-                var targetCombat = CombatCharacterStatsAdapter.ToTarget(
-                    target.Character.Level,
-                    targetStats,
-                    targetMitigation.PhysicalDefenseBonus,
-                    targetMitigation.MagicDefenseBonus,
-                    ToCombatBasisPoints(
-                        targetMitigation.PhysicalDamageReduction),
-                    ToCombatBasisPoints(
-                        targetMitigation.MagicDamageReduction));
+                var targetCombat =
+                    CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
+                        CombatCharacterStatsAdapter.ToTarget(
+                            target.Character.Level,
+                            targetStats,
+                            targetMitigation.PhysicalDefenseBonus,
+                            targetMitigation.MagicDefenseBonus,
+                            ToCombatBasisPoints(
+                                targetMitigation.PhysicalDamageReduction),
+                            ToCombatBasisPoints(
+                                targetMitigation.MagicDamageReduction),
+                            targetMitigation.
+                                PhysicalDamageTakenIncreaseBasisPoints,
+                            targetMitigation.
+                                MagicDamageTakenIncreaseBasisPoints),
+                        targetMitigation.StatusAggregate);
                 var attackerCombat =
-                    CombatCharacterStatsAdapter.FromCharacter(
-                        attacker.Character);
+                    CombatCharacterStatsAdapter.ApplyRuntimeAttackerModifiers(
+                        CombatCharacterStatsAdapter.FromCharacter(
+                            attacker.Character),
+                        attackerRuntime.StatusAggregate);
                 if (TryAdjustPvpElementalResolutionInputsLocked(
                         attacker,
                         target,
@@ -187,7 +212,7 @@ internal sealed partial class GameSessionRegistry
                     attacker.Character.VitalsRevision,
                     target.Character.VitalsRevision,
                     admittedCombatRevision);
-                var resolution = PlayerCombatRules.ResolveBasicAttack(
+                var resolution = PlayerCombatRules.ResolvePvpBasicAttack(
                     attackerCombat,
                     targetCombat,
                     eventId);
@@ -279,6 +304,7 @@ internal sealed partial class GameSessionRegistry
         await Task.WhenAll(interruptions);
         await PublishPvpBasicAttackAsync(
             decision,
+            now,
             cancellationToken);
         await PublishPreparedPvpDeathStatusClearsAsync(
             preparedDeathStatusClears,

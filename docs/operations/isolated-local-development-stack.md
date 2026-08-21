@@ -26,7 +26,7 @@ other monitored paths.
 | Redis environment | `tempest-local` | `tempest-dev` |
 | Docker network | `reborn_default` | `reborn_dev_runtime` |
 | Server image | pinned `reborn-server` | `reborn-server:dev` |
-| Server container | `godswar-server` | `godswar-dev-server` |
+| Server container | `godswar-server` | `godswar-dev-tempest-openworld-01` |
 
 `docker-compose.dev.yml` is intentionally standalone. Do not layer it onto
 `docker-compose.yml`, invoke it with project name `reborn`, attach its
@@ -56,7 +56,7 @@ The same non-rotating upgrade can be invoked explicitly:
 ```
 
 Running the same command after source edits rebuilds/recreates only
-`godswar-dev-server`. Existing development database changes are preserved.
+`godswar-dev-tempest-openworld-01`. Existing development database changes are preserved.
 The command captures the monitored container identities before work and fails
 if the B20H server, Redis, Prometheus, or authoritative PostgreSQL identity
 changes. A gameplay/acceptance alert in the pinned B20H run remains visible in
@@ -68,6 +68,41 @@ Use the existing image without rebuilding only when that is intentional:
 ```powershell
 ./tools/StartDevelopmentStack.ps1 -SkipBuild
 ```
+
+## Local multi-realm proof of concept
+
+Start Tempest and Dwargon as two realm workers with one shared account
+authority, PostgreSQL database, Redis coordination service, image, and Docker
+network:
+
+```powershell
+./tools/StartDevelopmentStack.ps1 -MultiRealm
+```
+
+The workflow starts Tempest first so it can apply the forward multi-realm
+migrations, then starts and health-checks Dwargon from the already-built
+image. Only after both workers are healthy and confirmed to use that same
+image does it enable their local catalog endpoints in one PostgreSQL
+transaction. It never replaces the development database or uses
+`docker compose down`.
+
+| Realm | Container | Login | Game |
+|---|---|---|---|
+| Tempest (`1`) | `godswar-dev-tempest-openworld-01` | `127.1.1.111:5998` | `127.1.1.111:7000` |
+| Dwargon (`2`) | `godswar-dev-dwargon-openworld-01` | `127.1.1.112:5998` | `127.1.1.112:7000` |
+
+`public.server` is the parent realm catalog. Accounts stay global.
+`public.account_realm` owns each account's per-realm lifecycle version and
+slot limit, while `character_base.server_id` assigns each character to its
+home realm. Active character slots and mutable world-boss control are scoped
+by realm; globally shared content and globally unique character names remain
+shared intentionally.
+
+The future management workflow should follow the same order: create or update
+a disabled catalog row, provision and health-check its realm worker through a
+trusted deployment controller, then enable the row. The management website
+must request that workflow through the controller; it must not run Docker or
+cloud-orchestrator commands itself.
 
 ## Development database refresh
 
@@ -171,7 +206,7 @@ Inspect the development stack:
 
 ```powershell
 docker ps --filter 'label=com.docker.compose.project=reborn-dev'
-docker logs --tail 200 godswar-dev-server
+docker logs --tail 200 godswar-dev-tempest-openworld-01
 ```
 
 Stop only development services when required:

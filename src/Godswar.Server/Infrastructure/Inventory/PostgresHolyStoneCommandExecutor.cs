@@ -23,11 +23,13 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
     private readonly IHolyStoneUpgradeRandomSource _upgradeRandomSource;
     private readonly IHolySpiritEffectivenessRandomSource
         _holySpiritRandomSource;
+    private readonly HolySpiritBalanceSnapshot _holySpiritBalance;
 
     public PostgresHolyStoneCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
         GameplayItemContent itemContent,
+        HolySpiritBalanceSnapshot holySpiritBalance,
         IPostgresHolyStoneCommandProbe? probe = null,
         IHolyStoneUpgradeRandomSource? upgradeRandomSource = null,
         IHolySpiritEffectivenessRandomSource? holySpiritRandomSource = null)
@@ -49,6 +51,9 @@ internal sealed partial class PostgresHolyStoneCommandExecutor :
             new CryptographicHolyStoneUpgradeRandomSource();
         _holySpiritRandomSource = holySpiritRandomSource ??
             new CryptographicHolySpiritEffectivenessRandomSource();
+        _holySpiritBalance = holySpiritBalance ??
+            throw new ArgumentNullException(nameof(holySpiritBalance));
+        _holySpiritBalance.Validate();
     }
 
     public async Task<HolyStoneExecutionResult> ExecuteAsync(

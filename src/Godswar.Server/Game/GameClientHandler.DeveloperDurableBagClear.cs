@@ -150,6 +150,7 @@ internal sealed partial class GameClientHandler
 
         var accountSnapshot = await _characterSnapshots.ReadAsync(
             _account.Id,
+            _processRealmId,
             cancellationToken);
         if (!RevalidateCurrentPlayerOwnership(ownership))
         {

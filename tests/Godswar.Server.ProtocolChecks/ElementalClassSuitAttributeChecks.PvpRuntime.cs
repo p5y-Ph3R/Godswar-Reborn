@@ -107,7 +107,7 @@ internal static partial class ElementalClassSuitAttributeChecks
             target,
             attacker,
             element: null,
-            resolution => PlayerCombatRules.ResolveBasicAttack(
+            resolution => PlayerCombatRules.ResolvePvpBasicAttack(
                     dazzledAttacker,
                     targetCombat,
                     resolution.EventId)
@@ -118,7 +118,7 @@ internal static partial class ElementalClassSuitAttributeChecks
             target.VitalsRevision,
             attacker.VitalsRevision,
             reverseRevision);
-        var expectedDazzled = PlayerCombatRules.ResolveBasicAttack(
+        var expectedDazzled = PlayerCombatRules.ResolvePvpBasicAttack(
             dazzledAttacker,
             targetCombat,
             reverseEventId);
@@ -388,7 +388,7 @@ internal static partial class ElementalClassSuitAttributeChecks
                 attacker.VitalsRevision,
                 target.VitalsRevision,
                 revision);
-            var resolution = PlayerCombatRules.ResolveBasicAttack(
+            var resolution = PlayerCombatRules.ResolvePvpBasicAttack(
                 CombatCharacterStatsAdapter.FromCharacter(attacker),
                 targetStats,
                 eventId);

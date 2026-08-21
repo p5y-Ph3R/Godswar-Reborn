@@ -37,6 +37,29 @@ internal static class TalentProgressionPolicyChecks
             0,
             TalentProgression.CalculateUpgradeCost(100),
             "rank 100 remains terminal");
+        var effectiveRankMilestones = new Dictionary<int, int>
+        {
+            [40] = 40,
+            [60] = 80,
+            [80] = 140,
+            [90] = 190,
+            [100] = 260
+        };
+        foreach (var milestone in effectiveRankMilestones)
+        {
+            Check.Equal(
+                milestone.Value,
+                TalentProgression.CalculateEffectiveRankValue(milestone.Key),
+                $"talent rank {milestone.Key} has the reviewed effective rank");
+        }
+
+        var spearplay = SkillTalentSeeds.Talents.Single(
+            static talent => talent.Id == 55 && talent.ClassId == 1);
+        Check.Equal(
+            13_000m,
+            spearplay.EffectValue *
+            TalentProgression.CalculateEffectiveRankValue(100) * 10_000m,
+            "Archaian Spearplay rank 100 contributes exactly 13000bp");
 
         foreach (var professionId in ExpectedProfessionIds)
         {

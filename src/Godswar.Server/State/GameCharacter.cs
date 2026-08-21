@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.State;
 
@@ -15,6 +16,18 @@ internal sealed class GameCharacter
     public int Id { get; set; }
 
     public int AccountId { get; set; }
+
+    [JsonIgnore]
+    public RealmId RealmId { get; set; } = RealmId.Tempest;
+
+    [JsonPropertyName("RealmId")]
+    public int PersistedRealmId
+    {
+        get => RealmId.Value;
+        set => RealmId = value > 0
+            ? new RealmId(value)
+            : RealmId.Tempest;
+    }
 
     public short CharacterSlot { get; set; } =
         CharacterLifecyclePolicy.SingleCharacterSlot;

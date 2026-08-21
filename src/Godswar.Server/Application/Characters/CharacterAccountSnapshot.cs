@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -8,7 +9,10 @@ internal sealed record CharacterAccountSnapshot(
     string ProviderSnapshotToken,
     DateTimeOffset ReadAtUtc,
     CharacterSlotPolicy SlotPolicy,
-    CharacterLoadSnapshot? Character);
+    CharacterLoadSnapshot? Character)
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
 
 internal sealed record CharacterLoadSnapshot(
     CharacterIdentitySnapshot Identity,
@@ -36,7 +40,10 @@ internal sealed record CharacterIdentitySnapshot(
     string Name,
     DateTimeOffset CreatedAtUtc,
     short CharacterSlot = 0,
-    long LifecycleVersion = 1);
+    long LifecycleVersion = 1)
+{
+    public RealmId RealmId { get; init; } = RealmId.Tempest;
+}
 
 internal sealed record CharacterAppearanceSnapshot(
     byte Gender,

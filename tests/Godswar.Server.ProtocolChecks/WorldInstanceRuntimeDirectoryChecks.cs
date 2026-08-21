@@ -33,7 +33,8 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
             .Select(async _ =>
             {
                 await start.Task;
-                return await directory.GetOrCreateTempestOpenWorldAsync(
+                return await directory.GetOrCreateOpenWorldAsync(
+                    RealmId.Tempest,
                     legacyMapId: 1,
                     playerCapacity: 100,
                     CreatedAt,
@@ -77,7 +78,10 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
             ReferenceEquals(runtime, byId),
             "WorldInstanceId is the primary runtime lookup");
         Check.True(
-            directory.TryFindTempestOpenWorld(1, out var byMap) &&
+            directory.TryFindOpenWorld(
+                RealmId.Tempest,
+                1,
+                out var byMap) &&
             ReferenceEquals(runtime, byMap),
             "legacy byte map bridge is a projection to the primary runtime");
         Check.Equal(
@@ -113,7 +117,7 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
             directory.Snapshot().Count,
             "both dungeon runtimes are indexed by instance identity");
         Check.True(
-            !directory.TryFindTempestOpenWorld(40, out _),
+            !directory.TryFindOpenWorld(RealmId.Tempest, 40, out _),
             "dungeons never occupy the open-world compatibility projection");
 
         await using var firstSocket =
@@ -365,7 +369,8 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
             "stale drain exposes revision conflict");
 
         var draining = await DrainAsync(directory, battlefield);
-        var unavailable = await directory.GetOrCreateTempestOpenWorldAsync(
+        var unavailable = await directory.GetOrCreateOpenWorldAsync(
+            RealmId.Tempest,
             legacyMapId: 50,
             playerCapacity: 10,
             CreatedAt.AddMinutes(1),
@@ -516,29 +521,4 @@ internal static partial class WorldInstanceRuntimeDirectoryChecks
             KitBag = string.Empty
         };
 
-    private static void AssertStatus(
-        WorldInstanceRuntimeDirectoryStatus expected,
-        WorldInstanceRuntimeDirectoryResult actual,
-        string message)
-    {
-        Check.True(actual.Status == expected, message);
-        Check.Equal(
-            expected is
-                WorldInstanceRuntimeDirectoryStatus.Created or
-                WorldInstanceRuntimeDirectoryStatus.ExistingDefault or
-                WorldInstanceRuntimeDirectoryStatus.Draining or
-                WorldInstanceRuntimeDirectoryStatus.Closed or
-                WorldInstanceRuntimeDirectoryStatus.Removed,
-            actual.Succeeded,
-            $"{message} success classification");
-    }
-
-    private static void AssertPlacementStatus(
-        WorldInstancePlacementStatus expected,
-        WorldInstancePlacementResult actual,
-        string message)
-    {
-        Check.True(actual.Status == expected, message);
-        Check.True(actual.Succeeded, $"{message} succeeds");
-    }
 }

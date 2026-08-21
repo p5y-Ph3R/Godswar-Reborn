@@ -1,8 +1,10 @@
 using System.Data;
 using Godswar.Server.Application.Characters;
+using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Items;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -32,6 +34,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
     private readonly string _itemContentRevision;
     private readonly string? _gameplayContentRevision;
     private readonly string? _petLearnedSkillRevision;
+    private readonly HolySpiritBalanceSnapshot _holySpiritBalance;
 
     public PostgresCharacterSnapshotReader(
         string connectionString,
@@ -42,6 +45,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             probe: null,
             gameplayContentRevision: null,
             petLearnedSkillRevision: null,
+            holySpiritBalance: null,
             ownsDataSource: true)
     {
     }
@@ -56,6 +60,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             probe,
             gameplayContentRevision: null,
             petLearnedSkillRevision: null,
+            holySpiritBalance: null,
             ownsDataSource: true)
     {
     }
@@ -70,6 +75,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             probe,
             gameplayContentRevision: null,
             petLearnedSkillRevision: null,
+            holySpiritBalance: null,
             ownsDataSource: false)
     {
     }
@@ -84,6 +90,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             probe: null,
             gameplayContentRevision: gameplayContentRevision,
             petLearnedSkillRevision: null,
+            holySpiritBalance: null,
             ownsDataSource: false)
     {
     }
@@ -92,13 +99,15 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         NpgsqlDataSource dataSource,
         IItemTemplateCatalog itemTemplates,
         string gameplayContentRevision,
-        string petLearnedSkillRevision)
+        string petLearnedSkillRevision,
+        HolySpiritBalanceSnapshot? holySpiritBalance = null)
         : this(
             dataSource,
             itemTemplates,
             probe: null,
             gameplayContentRevision,
             petLearnedSkillRevision,
+            holySpiritBalance,
             ownsDataSource: false)
     {
     }
@@ -109,6 +118,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         IPostgresCharacterSnapshotReadProbe? probe,
         string? gameplayContentRevision,
         string? petLearnedSkillRevision,
+        HolySpiritBalanceSnapshot? holySpiritBalance,
         bool ownsDataSource)
     {
         _dataSource = dataSource ??
@@ -121,31 +131,49 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         _petLearnedSkillRevision =
             PostgresPetLearnedSkillContentBinding.ValidateOptional(
                 petLearnedSkillRevision);
+        _holySpiritBalance = holySpiritBalance ??
+            HolySpiritBalanceSnapshot.HistoricalAcceptanceEnvelope;
+        _holySpiritBalance.Validate();
         _probe = probe;
         _ownsDataSource = ownsDataSource;
     }
 
     public async Task<CharacterAccountSnapshot> ReadAsync(
         int accountId,
+        CancellationToken cancellationToken = default) =>
+        await ReadAsync(
+            accountId,
+            RealmId.Tempest,
+            cancellationToken);
+
+    public async Task<CharacterAccountSnapshot> ReadAsync(
+        int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default)
     {
-        if (accountId <= 0)
+        if (accountId <= 0 || !realmId.IsValid)
         {
             throw new CharacterSnapshotUnavailableException(
                 CharacterSnapshotFailureReason.InvalidData,
-                "A character snapshot requires a positive account ID.");
+                "A character snapshot requires positive account and realm IDs.");
         }
 
         try
         {
-            var read = await ReadTransactionAsync(accountId, cancellationToken);
+            var read = await ReadTransactionAsync(
+                accountId,
+                realmId,
+                cancellationToken);
             var snapshot = new CharacterAccountSnapshot(
                 CharacterSnapshotContractVersions.Current,
                 accountId,
                 read.ProviderSnapshotToken,
                 read.ReadAtUtc,
                 CharacterSlotPolicy.SingleCharacterV1,
-                read.Character);
+                read.Character)
+            {
+                RealmId = realmId
+            };
             CharacterSnapshotContract.Validate(snapshot);
             return snapshot;
         }
@@ -194,6 +222,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
 
     private async Task<TransactionReadResult> ReadTransactionAsync(
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken)
     {
         await using var connection =
@@ -208,6 +237,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
             connection,
             transaction,
             accountId,
+            realmId,
             cancellationToken);
         if (!metadata.AccountExists)
         {
@@ -215,11 +245,18 @@ internal sealed partial class PostgresCharacterSnapshotReader :
                 CharacterSnapshotFailureReason.AccountNotFound,
                 "The authenticated account no longer exists.");
         }
+        if (!metadata.RealmExists)
+        {
+            throw new CharacterSnapshotUnavailableException(
+                CharacterSnapshotFailureReason.InvalidData,
+                "The requested character realm does not exist.");
+        }
 
         var characters = await ReadCoreCharactersAsync(
             connection,
             transaction,
             accountId,
+            realmId,
             _itemContentRevision,
             cancellationToken);
         if (characters.Count > 1)
@@ -276,6 +313,7 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
@@ -289,11 +327,17 @@ internal sealed partial class PostgresCharacterSnapshotReader :
                     SELECT 1
                     FROM accounts
                     WHERE id = @accountId
+                ),
+                EXISTS (
+                    SELECT 1
+                    FROM server
+                    WHERE id = @realmId
                 );
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -318,13 +362,15 @@ internal sealed partial class PostgresCharacterSnapshotReader :
         return new SnapshotMetadata(
             readAt,
             token,
-            reader.GetBoolean(2));
+            reader.GetBoolean(2),
+            reader.GetBoolean(3));
     }
 
     private sealed record SnapshotMetadata(
         DateTimeOffset ReadAtUtc,
         string ProviderSnapshotToken,
-        bool AccountExists);
+        bool AccountExists,
+        bool RealmExists);
 
     private sealed record TransactionReadResult(
         string ProviderSnapshotToken,

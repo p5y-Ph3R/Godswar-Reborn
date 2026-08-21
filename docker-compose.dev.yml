@@ -81,7 +81,7 @@ services:
       dockerfile: Dockerfile
       args:
         GODSWAR_SOURCE_COMMIT: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
-    container_name: godswar-dev-server
+    container_name: godswar-dev-tempest-openworld-01
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +94,7 @@ services:
     command: []
     volumes:
       - ./deploy/local/redis-coordinated-worker.json:/app/config/redis-coordinated-worker.json:ro
+      - ./deploy/local/tempest-openworld-routes.json:/app/config/openworld-routes.json:ro
     secrets:
       - source: dev-postgres-connection-string
         target: postgres_connection_string
@@ -114,6 +115,8 @@ services:
       GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: "true"
       GODSWAR_DEVELOPER_COMMANDS_ENABLED: "true"
       GODSWAR_DEVELOPER_ACCOUNT_IDS: ${GODSWAR_DEV_DEVELOPER_ACCOUNT_IDS:-3,7,13,347}
+      GODSWAR_TRAINING_DUMMIES_ENABLED: "true"
+      GODSWAR_TRAINING_DUMMY_IDENTITIES: ${GODSWAR_DEV_TRAINING_DUMMY_IDENTITIES:-7001:7001:AresBulwark:1:0:148:-154,7002:7002:AresMirage:1:0:148:-162,7003:7003:AthenaBulwark:0:1:148:-154,7004:7004:AthenaMirage:0:1:148:-162}
       GODSWAR_MANAGEMENT_ENABLED: "true"
       GODSWAR_MANAGEMENT_BIND_HOST: 127.0.0.1
       GODSWAR_MANAGEMENT_PORT: "9090"
@@ -133,7 +136,9 @@ services:
       GODSWAR_COORDINATION_SERVER_TTL_SECONDS: "20"
       GODSWAR_COORDINATION_PLAYER_LEASE_RENEWAL_SECONDS: "10"
       GODSWAR_COORDINATION_PLAYER_LEASE_TTL_SECONDS: "30"
+      GODSWAR_WORLD_INSTANCE_REALM_ID: "1"
       GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID: tempest-dev-openworld-01
+      GODSWAR_WORLD_INSTANCE_ROUTE_MANIFEST_FILE: /app/config/openworld-routes.json
     ports:
       - "127.1.1.111:${GODSWAR_DEV_LOGIN_HOST_PORT:-5998}:5999"
       - "127.1.1.111:${GODSWAR_DEV_GAME_HOST_PORT:-7000}:7000"
@@ -151,6 +156,96 @@ services:
         max-file: "3"
     labels:
       com.reborn.environment.scope: isolated-development
+      com.reborn.realm.id: "1"
+      com.reborn.realm.name: Tempest
+      com.reborn.network.profile: legacy-raw-isolated-development
+      com.reborn.source.commit: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
+    restart: unless-stopped
+
+  server-dwargon:
+    profiles: ["multi-realm"]
+    image: reborn-server:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GODSWAR_SOURCE_COMMIT: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
+    container_name: godswar-dev-dwargon-openworld-01
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-coordination:
+        condition: service_healthy
+    entrypoint:
+      - dotnet
+      - Godswar.Server.dll
+      - /app/config/redis-coordinated-worker.json
+    command: []
+    volumes:
+      - ./deploy/local/redis-coordinated-worker.json:/app/config/redis-coordinated-worker.json:ro
+      - ./deploy/local/dwargon-openworld-routes.json:/app/config/openworld-routes.json:ro
+    secrets:
+      - source: dev-postgres-connection-string
+        target: postgres_connection_string
+      - source: dev-redis-connection-string
+        target: redis_connection_string
+    environment:
+      GODSWAR_RUNTIME_PROFILE: LocalDevelopment
+      GODSWAR_STORAGE_PROVIDER: postgres
+      GODSWAR_POSTGRES_CONNECTION_STRING_FILE: /run/secrets/postgres_connection_string
+      GODSWAR_LOGIN_BIND_HOST: 0.0.0.0
+      GODSWAR_LOGIN_PORT: "5999"
+      GODSWAR_GAME_BIND_HOST: 0.0.0.0
+      GODSWAR_GAME_PORT: "7000"
+      GODSWAR_GAME_PUBLIC_HOST: 127.1.1.112
+      GODSWAR_GAME_PUBLIC_PORT: ${GODSWAR_DEV_DWARGON_GAME_HOST_PORT:-7000}
+      GODSWAR_MONSTER_RUNTIME: Ecs
+      GODSWAR_PLAYER_RUNTIME: Ecs
+      GODSWAR_AUTH_ALLOW_LEGACY_RAW_AUTHENTICATION: "true"
+      GODSWAR_DEVELOPER_COMMANDS_ENABLED: "true"
+      GODSWAR_DEVELOPER_ACCOUNT_IDS: ${GODSWAR_DEV_DEVELOPER_ACCOUNT_IDS:-3,7,13,347}
+      GODSWAR_TRAINING_DUMMIES_ENABLED: "false"
+      GODSWAR_MANAGEMENT_ENABLED: "true"
+      GODSWAR_MANAGEMENT_BIND_HOST: 127.0.0.1
+      GODSWAR_MANAGEMENT_PORT: "9090"
+      GODSWAR_COORDINATION_PROVIDER: Redis
+      GODSWAR_COORDINATION_ENVIRONMENT: tempest-dev
+      GODSWAR_REDIS_CONNECTION_STRING_FILE: /run/secrets/redis_connection_string
+      GODSWAR_REDIS_REQUIRE_TLS: "false"
+      GODSWAR_REDIS_DATABASE: "0"
+      GODSWAR_COORDINATION_CAPACITY: "4096"
+      GODSWAR_REDIS_MAXIMUM_CONCURRENT_OPERATIONS: "128"
+      GODSWAR_REDIS_QUEUE_ADMISSION_TIMEOUT_MILLISECONDS: "25"
+      GODSWAR_REDIS_OPERATION_TIMEOUT_MILLISECONDS: "250"
+      GODSWAR_REDIS_CONNECT_TIMEOUT_MILLISECONDS: "1000"
+      GODSWAR_REDIS_CIRCUIT_FAILURE_THRESHOLD: "5"
+      GODSWAR_REDIS_CIRCUIT_OPEN_MILLISECONDS: "5000"
+      GODSWAR_COORDINATION_SERVER_HEARTBEAT_SECONDS: "5"
+      GODSWAR_COORDINATION_SERVER_TTL_SECONDS: "20"
+      GODSWAR_COORDINATION_PLAYER_LEASE_RENEWAL_SECONDS: "10"
+      GODSWAR_COORDINATION_PLAYER_LEASE_TTL_SECONDS: "30"
+      GODSWAR_WORLD_INSTANCE_REALM_ID: "2"
+      GODSWAR_WORLD_INSTANCE_SERVER_NODE_ID: dwargon-dev-openworld-01
+      GODSWAR_WORLD_INSTANCE_ROUTE_MANIFEST_FILE: /app/config/openworld-routes.json
+    ports:
+      - "127.1.1.112:${GODSWAR_DEV_DWARGON_LOGIN_HOST_PORT:-5998}:5999"
+      - "127.1.1.112:${GODSWAR_DEV_DWARGON_GAME_HOST_PORT:-7000}:7000"
+    healthcheck:
+      test: ["CMD", "/app/secure-healthcheck.sh"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 30s
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      com.reborn.environment.scope: isolated-development
+      com.reborn.realm.id: "2"
+      com.reborn.realm.name: Dwargon
       com.reborn.network.profile: legacy-raw-isolated-development
       com.reborn.source.commit: ${GODSWAR_DEV_SOURCE_REVISION:-dev-uncommitted}
     restart: unless-stopped

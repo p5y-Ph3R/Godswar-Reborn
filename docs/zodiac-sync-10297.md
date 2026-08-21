@@ -194,19 +194,39 @@ retail request capture):
 1800392800000000FF006600010000004927000000000000
 ```
 
-The server owns active-grid state, row-prefix rules, exact profession/Kind
-mapping, learned runtime-skill family, duplicate-in-row prevention, and
-current selection. A Kind maps to the five runtime ranks beginning at
-`(Kind % 10000) * 10`. PostgreSQL locks the owning character and atomically
-commits the exact grid update, permanent audit/inbox receipt, and one
-grid-scoped latest-wins outbox event. Secure native UUIDs use family `21` and
-survive reconnect; raw TCP remains an instrumented compatibility path.
+The server owns active-grid state, row-prefix rules, the shipped Kind catalog,
+duplicate-in-row prevention, and current selection. Attack grids require an
+own-profession learned runtime-skill family. Defense grids represent an
+incoming enemy family, so they accept shipped Kinds from any profession and
+do not require the defender to know that skill. A Kind maps to the five runtime
+ranks beginning at `(Kind % 10000) * 10`. PostgreSQL locks the owning character
+and atomically commits the exact grid update, permanent audit/inbox receipt,
+and one grid-scoped latest-wins outbox event. Secure native UUIDs use family
+`21` and survive reconnect; raw TCP remains an instrumented compatibility path.
 
 The native response handler blindly writes `v2`, so SID `102` is emitted only
 for the first committed success. Replays and rejections suppress it and use a
-full sync to repair stale UI before the secure terminal result. Combat-stat
-and MP-cost effects remain intentionally unwired as a separate gameplay
-slice. See
+full sync to repair stale UI before the secure terminal result.
+
+The first two rows now project the selected five-rank family into the
+authoritative skill definition before healing, damage, intonation, MP
+reservation/refund, direct PvE, ECS, and training-dummy resolution. Type `1`
+adds the shipped `SkillEff` to `Power2` and its fixed `MP` entry. Type `2` adds
+the displayed percentage to `Power1` and charges the shipped percentage as an
+additional amount of base MP, rounded up. Its malformed level-31 `210` entry
+is interpreted as `210%`; levels `46..50` retain their shipped `SkillEff` but
+cap MP at the final authored level-45 `300%` entry. If both attack rows match,
+their power and independently additive MP adjustments stack. Invalid attack
+state applies no adjustment and never disables the underlying cast.
+
+The defensive rows project their selected-family reductions only on the two
+current authoritative hostile player-skill paths against training dummies.
+Type `3` subtracts its shipped flat amount from resolved damage, saturating at
+zero. Type `4` then truncates the configured percentage from the remaining
+damage; reductions above `100%` also saturate at zero. Both adjustments preserve
+the original combat evidence apart from final `Damage`. They do not change
+ordinary basic attacks or PvE defender paths, and corrupt relevant defensive
+state fails closed to no adjustment. See
 [`data-architecture-b09-zodiac-grid-selection-20260730.md`](data-architecture-b09-zodiac-grid-selection-20260730.md).
 
 ## Captured accumulation event
@@ -270,6 +290,49 @@ preserves a manually granted test balance without allowing regular play to
 generate over-cap energy or silently destroying the balance on the next tick.
 
 To replace the emulator rates with retail values, capture a below-cap character through at least one tick in the first three daily online hours and one tick after three hours, recording SID `5` `v1/v2`. A capture spanning the UTC-8 day boundary plus the next login after an offline day is also needed to validate compensation delivery timing.
+
+## Reborn character-stat extension (SID `200`)
+
+The patched character panel negotiates one local, read-only Reborn extension
+over the existing Zodiac envelope. It sends this exact canonical request:
+
+```text
+1800392800000000C800C800010000000000000000000000
+```
+
+The request is 24 bytes with player ID `0`, module `200`, SID `200`, protocol
+version `1`, and two reserved zero values. The server does not send extension
+packets until the current session has supplied this capability probe. Repeated
+probes are idempotent and never mutate Zodiac or character state.
+
+The 24-byte local response uses player object ID `0x1448`, module `200`, and
+SID `200`:
+
+| Packet offset | Type | Meaning |
+|---:|---|---|
+| `+12` | `i32` | Effective locomotion speed in basis points (`10000` = `100%`) |
+| `+16` | `i32` | Effective physical penetration in basis points |
+| `+20` | `i32` | Effective magical penetration in basis points |
+
+For example, speed `10000`, physical penetration `333`, and magical
+penetration `8000` produce:
+
+```text
+1800392848140000C800C800102700004D010000401F0000
+```
+
+Native SID dispatch handles only `1..102`. SID `200` bypasses those native
+mutations but still invokes the shipped Lua `SMsg(sid,v1,v2,v3)` entry point,
+where the patched client consumes it before Zodiac UI initialization. SID
+`200` is therefore reserved globally, regardless of module. Stock clients do
+not probe and receive no custom packet.
+
+The panel displays physical penetration for Warrior/Champion and magical
+penetration for Priest/Mage. Both values mean the percentage of the matching
+defense ignored, not flat defense removal, and the displayed effective value
+is capped at `8000` (`80%`) to match combat resolution. This side channel is
+local-only; it is never placed in `PlayerStatusUpdate 10166`, inspection,
+visibility, or world broadcasts.
 
 ## Remaining gameplay SIDs
 

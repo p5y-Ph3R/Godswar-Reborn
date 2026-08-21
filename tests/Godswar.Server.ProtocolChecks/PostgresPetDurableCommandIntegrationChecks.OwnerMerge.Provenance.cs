@@ -100,11 +100,11 @@ internal static partial class
             petId,
             pinnedRevision);
         Check.True(
-            stamped.RowCount == 16 &&
-            stamped.PinnedRowCount == 16 &&
+            stamped.RowCount == 18 &&
+            stamped.PinnedRowCount == 18 &&
             stamped.DistinctRevisionCount == 1 &&
             stamped.NullRevisionCount == 0,
-            "a fresh owner-Merge stamps all 16 rows with exactly the " +
+            "a fresh owner-Merge stamps all 18 rows with exactly the " +
             "process-pinned balance revision");
 
         await CorruptOwnerMergeBalanceAsync(
@@ -248,7 +248,7 @@ internal static partial class
         command.Parameters.AddWithValue("staleRevision", staleRevision);
         var affected = await command.ExecuteNonQueryAsync();
         Check.Equal(
-            16,
+            PetOwnerMergeStoredBonusCodec.TotalCount,
             affected,
             $"owner-Merge {corruption} fixture corrupts the expected rows");
     }
@@ -290,7 +290,7 @@ internal static partial class
         {
             poison.Parameters.AddWithValue("petId", petId);
             Check.Equal(
-                15,
+                PetOwnerMergeStoredBonusCodec.TotalCount - 1,
                 await poison.ExecuteNonQueryAsync(),
                 "owner-Merge missing-row fixture poisons remaining rows");
         }

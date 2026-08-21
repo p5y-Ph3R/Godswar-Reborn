@@ -19,10 +19,10 @@ if ($database -notmatch $databasePattern) {
 . (Join-Path $PSScriptRoot `
     'RepairLocalDevelopmentPetRebirthExperience.Guards.ps1')
 $environment = Initialize-RebirthRepairEnvironment `
-    $postgresContainer 'godswar-dev-server' `
+    $postgresContainer 'godswar-dev-tempest-openworld-01' `
     'godswar-dev-redis-coordination'
 if ($environment.Server.State.Running) {
-    throw 'Stop godswar-dev-server before the exact-template clone test.'
+    throw 'Stop godswar-dev-tempest-openworld-01 before the exact-template clone test.'
 }
 
 function Invoke-AdminSql([string]$Sql) {

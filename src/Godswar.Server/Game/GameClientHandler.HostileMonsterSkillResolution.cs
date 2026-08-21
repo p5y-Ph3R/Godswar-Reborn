@@ -14,7 +14,8 @@ internal sealed partial class GameClientHandler
         MonsterRuntimeSnapshot target,
         ulong admittedCombatRevision,
         int targetOrder,
-        DateTimeOffset authoritativeAt)
+        DateTimeOffset authoritativeAt,
+        in ClientStatusAggregate runtimeModifiers)
     {
         var eventId = CombatEventIdentity.ForPlayerMonsterSkill(
             character.Id,
@@ -37,7 +38,8 @@ internal sealed partial class GameClientHandler
             combat,
             targetStats,
             eventId,
-            targetOrder);
+            targetOrder,
+            runtimeModifiers);
         return _registry.AdjustPveOutgoingResolution(
             _session,
             character,
@@ -104,7 +106,7 @@ internal sealed partial class GameClientHandler
                 cast.TargetObjectId,
                 PacketBuilder.SkillCastVisual(
                     packet.Buffer,
-                    WorldObjectIds.ForPlayer(character.Id)),
+                    CurrentPlayerObjectId),
                 cancellationToken,
                 _session,
                 "SkillMissCastWorld",

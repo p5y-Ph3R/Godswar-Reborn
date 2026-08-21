@@ -193,7 +193,10 @@ internal static partial class FocusedGameplayProjectionCompatibility
             stats.CriticalDamageFlatReduction,
             stats.DamageReboundFlat,
             stats.BasicAttackIntervalMilliseconds,
-            stats.BasicAttackRange);
+            stats.BasicAttackRange,
+            stats.StatusHit,
+            stats.StatusResistance,
+            stats.LifeAbsorptionFlat);
 
     public static CharacterPetSnapshot ToApplication(
         PetBootstrapSnapshot pet) =>

@@ -54,9 +54,9 @@ internal readonly record struct PetSavvy(
 }
 
 /// <summary>
-/// The sixteen character contributions shown in PetUnite.xml. These values
-/// must be calculated by an authoritative server policy, never accepted from
-/// a client packet.
+/// The sixteen character contributions shown in PetUnite.xml plus Reborn-only
+/// Technique mitigation. Native fixed-value effects remain distinct from the
+/// internal basis-point channels and are never accepted from a client packet.
 /// </summary>
 internal readonly record struct PetOwnerStatContribution(
     decimal MaxHealth,
@@ -74,7 +74,9 @@ internal readonly record struct PetOwnerStatContribution(
     decimal MagicDefense,
     decimal MagicDamageReduction,
     decimal CriticalDamageReduction,
-    decimal DamageRebound)
+    decimal DamageRebound,
+    decimal TechniquePhysicalReduction = 0m,
+    decimal TechniqueMagicReduction = 0m)
 {
     public static PetOwnerStatContribution Zero => default;
 
@@ -94,7 +96,9 @@ internal readonly record struct PetOwnerStatContribution(
         MagicDefense >= 0m &&
         MagicDamageReduction >= 0m &&
         CriticalDamageReduction >= 0m &&
-        DamageRebound >= 0m;
+        DamageRebound >= 0m &&
+        TechniquePhysicalReduction >= 0m &&
+        TechniqueMagicReduction >= 0m;
 }
 
 internal sealed record PetOwnerMergeState(

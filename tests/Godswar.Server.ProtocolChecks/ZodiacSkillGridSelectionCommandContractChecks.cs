@@ -47,6 +47,19 @@ internal static class ZodiacSkillGridSelectionCommandContractChecks
             "managed route accepts exact native SID-102 intent");
 
         BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(12),
+            8);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(16),
+            10_025);
+        Check.True(
+            ZodiacSyncRequest.TryParse(packet, out request) &&
+            request.IsSkillGridSelection &&
+            request.Value1 == 8 &&
+            request.Value2 == 10_025,
+            "managed route preserves an all-class defense selection");
+
+        BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(20),
             1);
         Check.True(
@@ -180,6 +193,28 @@ internal static class ZodiacSkillGridSelectionCommandContractChecks
             learned: false,
             ZodiacSkillGridSelectionStatus.SkillNotLearned,
             "selection requires a learned runtime family");
+
+        CheckStatus(
+            mage,
+            8,
+            10_025,
+            learned: false,
+            ZodiacSkillGridSelectionStatus.Succeeded,
+            "defense row accepts an enemy profession attack skill");
+        CheckStatus(
+            mage,
+            12,
+            20_028,
+            learned: false,
+            ZodiacSkillGridSelectionStatus.Succeeded,
+            "second defense row accepts an enemy profession skill");
+        CheckStatus(
+            mage,
+            9,
+            10_001,
+            learned: false,
+            ZodiacSkillGridSelectionStatus.SkillKindNotAllowedForClass,
+            "defense row still rejects a Kind absent from SkillChoice");
 
         var inactive = CreateCharacter(profession: 3);
         inactive.ZodiacSkillGridLevels![8] = 0;

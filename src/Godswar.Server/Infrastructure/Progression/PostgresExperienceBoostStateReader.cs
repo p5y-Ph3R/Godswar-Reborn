@@ -221,7 +221,7 @@ internal sealed class PostgresExperienceBoostStateReader :
     private const string PersonalAndAreaBoostsQuery =
         """
         WITH requested_character AS (
-            SELECT character.id
+            SELECT character.id, character.server_id
             FROM public.character_base character
             WHERE character.account_id = @accountId
               AND character.id = @characterId
@@ -303,6 +303,7 @@ internal sealed class PostgresExperienceBoostStateReader :
              )
          )
         WHERE control.map_id = @mapId
+          AND control.realm_id = character.server_id
           AND control.controlling_camp = @camp
           AND control.activated_at <= @readAt
           AND control.expires_at > @readAt

@@ -23,7 +23,7 @@ Import-Module (
 ) -Force
 
 $postgresContainer = 'godswar-dev-postgres'
-$serverContainer = 'godswar-dev-server'
+$serverContainer = 'godswar-dev-tempest-openworld-01'
 $database = 'godswar'
 $databaseUser = 'godswar'
 $itemId = 4109

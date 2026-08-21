@@ -90,7 +90,16 @@ internal sealed partial class GameSessionRegistry
             static value => new MutablePvpVitals(value));
         var sourceVitals = vitals[attacker.CharacterId];
         var targetVitals = vitals[target.CharacterId];
+        var passiveTrainingTarget =
+            eligibility.EntitlementKind ==
+                PvpEntitlementKind.TrainingDummy &&
+            eligibility.Admits(
+                attacker.CharacterId,
+                target.CharacterId,
+                attacker.MapId) &&
+            _trainingDummies.Contains(target.Character);
         var directDamage = targetVitals.ApplyDamage(resolution.Damage);
+        var allowTargetCounterDamage = !passiveTrainingTarget;
         var secondary = CombatSecondaryEffectPolicy.Resolve(
             checked((uint)directDamage),
             CombatCharacterStatsAdapter.FromCharacter(attacker.Character),
@@ -106,6 +115,7 @@ internal sealed partial class GameSessionRegistry
                 committedEvent,
                 directDamage,
                 candidates.Select(static value => value.Candidate).ToArray(),
+                allowTargetCounterDamage,
                 out post);
         }
 
@@ -133,8 +143,9 @@ internal sealed partial class GameSessionRegistry
                 post.SourceResonance.SourceHealthRecovery);
         var appliedElementalHealing = sourceVitals.ApplyHealthRecovery(
             requestedElementalHealing);
-        var reboundDamage = sourceVitals.ApplyDamage(
-            secondary.ReboundDamage);
+        var reboundDamage = allowTargetCounterDamage
+            ? sourceVitals.ApplyDamage(secondary.ReboundDamage)
+            : 0;
 
         var damageCommits = new List<PvpElementalDamageCommit>();
         var killCredits = new List<PvpKillCredit>();

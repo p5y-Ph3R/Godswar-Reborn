@@ -38,6 +38,11 @@ internal sealed partial class InMemoryWorkerCoordination
                     request.CharacterId,
                     out var current))
             {
+                if (current.Lease.AccountId != request.AccountId)
+                {
+                    return ValueTask.FromResult(
+                        new PlayerLeaseResult(Conflict(), null));
+                }
                 var same =
                     current.Lease.AccountId == request.AccountId &&
                     current.Lease.Ownership == request.Ownership &&
@@ -56,6 +61,16 @@ internal sealed partial class InMemoryWorkerCoordination
             {
                 return ValueTask.FromResult(
                     new PlayerLeaseResult(Overloaded(), null));
+            }
+
+            if (!request.AllowAccountReplacement &&
+                _playerByAccount.TryGetValue(
+                    request.AccountId,
+                    out var indexedCharacterId) &&
+                indexedCharacterId != request.CharacterId)
+            {
+                return ValueTask.FromResult(
+                    new PlayerLeaseResult(Conflict(), null));
             }
 
             RemoveAccountPlayer(request.AccountId, request.CharacterId);

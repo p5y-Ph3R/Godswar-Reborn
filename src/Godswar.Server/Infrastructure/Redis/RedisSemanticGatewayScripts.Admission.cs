@@ -57,6 +57,9 @@ internal static partial class RedisSemanticGatewayScripts
            redis.call('HGET', KEYS[1], 'username') ~= ARGV[3] then
             return {22, 0, 0, 0, 0}
         end
+        if redis.call('HGET', KEYS[1], 'realm') ~= ARGV[6] then
+            return {26, 0, 0, 0, 21}
+        end
         if redis.call('HGET', KEYS[1], 'state') ~= '2' then
             return {31, 0, 0, 0, 0}
         end

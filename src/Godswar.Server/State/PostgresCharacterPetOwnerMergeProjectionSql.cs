@@ -22,13 +22,15 @@ internal static class PostgresCharacterPetOwnerMergeProjectionSql
                     WHEN 6 THEN 'magic_attack'
                     WHEN 7 THEN 'magic_defense'
                     WHEN 10 THEN 'damage_absorb'
-                    WHEN 23 THEN 'physical_damage_bonus'
-                    WHEN 24 THEN 'magic_damage_bonus'
-                    WHEN 29 THEN 'physical_damage_reduction'
-                    WHEN 30 THEN 'magic_damage_reduction'
-                    WHEN 32 THEN 'critical_damage_reduction'
-                    WHEN 34 THEN 'life_absorption'
-                    WHEN 38 THEN 'damage_rebound'
+                    WHEN 23 THEN 'physical_append_damage'
+                    WHEN 24 THEN 'magic_append_damage'
+                    WHEN 29 THEN 'physical_flat_absorption'
+                    WHEN 30 THEN 'magic_flat_absorption'
+                    WHEN 32 THEN 'critical_damage_flat_reduction'
+                    WHEN 34 THEN 'life_absorption_flat'
+                    WHEN 38 THEN 'damage_rebound_flat'
+                    WHEN 1001 THEN 'physical_damage_reduction'
+                    WHEN 1002 THEN 'magic_damage_reduction'
                 END AS stat_name,
                 bonus.effect_value AS stat_value
             FROM public.character_pets pet

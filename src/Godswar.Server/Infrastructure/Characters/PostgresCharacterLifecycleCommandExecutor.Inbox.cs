@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -11,6 +12,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         int accountId,
+        RealmId realmId,
         CommandFamily family,
         byte[] operationId,
         CancellationToken cancellationToken)
@@ -39,6 +41,7 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
         AddIdentityParameters(
             command,
             accountId,
+            realmId,
             family,
             operationId);
         await using var reader =
@@ -105,10 +108,12 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
     private static CharacterLifecycleReceipt ValidateStoredReceipt(
         StoredInbox stored,
         CommandFamily family,
-        int accountId)
+        int accountId,
+        RealmId realmId)
     {
-        if (stored.ResultContractVersion !=
-            CharacterLifecyclePersistenceCodec.ContractVersion)
+        if (stored.ResultContractVersion is not (
+                CharacterLifecyclePersistenceCodec.LegacyContractVersion or
+                CharacterLifecyclePersistenceCodec.ContractVersion))
         {
             throw new InvalidDataException(
                 "The lifecycle result contract is unsupported.");
@@ -121,12 +126,14 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
             stored.AuditId,
             family,
             accountId,
+            realmId,
             CharacterLifecycleCommandContract.SingleCharacterSlot);
     }
 
     private static void AddIdentityParameters(
         NpgsqlCommand command,
         int accountId,
+        RealmId realmId,
         CommandFamily family,
         byte[] operationId)
     {
@@ -139,11 +146,12 @@ internal sealed partial class PostgresCharacterLifecycleCommandExecutor
                 System.Globalization.CultureInfo.InvariantCulture));
         command.Parameters.AddWithValue(
             "aggregateType",
-            CharacterLifecyclePersistenceCodec.AggregateType);
+            CharacterLifecyclePersistenceCodec.AggregateTypeFor(realmId));
         command.Parameters.AddWithValue(
             "aggregateKey",
             CharacterLifecyclePersistenceCodec.AggregateKey(
                 accountId,
+                realmId,
                 CharacterLifecycleCommandContract.SingleCharacterSlot));
         command.Parameters.AddWithValue(
             "commandFamily",

@@ -179,8 +179,9 @@ internal sealed partial class PostgresGameStore
         }
 
         var learned =
-            selectedSkillKind ==
-                ZodiacSkillGridSelectionCatalog.ClearSelection ||
+            !ZodiacSkillGridSelectionCatalog.RequiresLearnedSkill(
+                gridIndex,
+                selectedSkillKind) ||
             ZodiacSkillGridSelectionCatalog.IsAllowedForClass(
                 character.Profession,
                 selectedSkillKind) &&

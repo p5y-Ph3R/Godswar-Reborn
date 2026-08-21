@@ -55,6 +55,11 @@ internal static partial class PlayerCombatEcsParityChecks
             skill,
             eventId: 4);
 
+        Check.True(
+            critical.FormulaVersion == AuthoredCombatV1.Version &&
+            normal.FormulaVersion == AuthoredCombatV1.Version &&
+            miss.FormulaVersion == AuthoredCombatV1.Version,
+            "historical V1 outcomes retain their formula identity");
         Check.True(critical.Outcome == CombatHitOutcome.Critical,
             "event one deterministically resolves a critical");
         Check.Equal(8_485, critical.Rolls.HitRollBasisPoints,
@@ -106,6 +111,7 @@ internal static partial class PlayerCombatEcsParityChecks
 
         CheckMagicChannelAndLegacyParity(attacker, target);
         CheckTypedAbsorptionAdapter();
+        CheckRuntimeCombatRatingAdapters(attacker, target);
     }
 
     private static void CheckMagicChannelAndLegacyParity(
@@ -170,6 +176,86 @@ internal static partial class PlayerCombatEcsParityChecks
             "physical combat consumes only the projected typed flat");
         Check.Equal(22, target.MagicFlatAbsorption,
             "magic combat consumes only the projected typed flat");
+    }
+
+    private static void CheckRuntimeCombatRatingAdapters(
+        in CombatAttackerStats attacker,
+        in CombatTargetStats target)
+    {
+        var character = CreateAuthoredCharacter(attacker);
+        var runtime = new ClientStatusAggregate(
+            Hit: 60,
+            CriticalAppend: 24,
+            ExperienceBonus: 0f,
+            Dodge: 3_000,
+            CriticalResistance: 1_000);
+        var expectedAttacker =
+            CombatCharacterStatsAdapter.ApplyRuntimeAttackerModifiers(
+                attacker,
+                runtime);
+        var expectedTarget =
+            CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
+                target,
+                runtime);
+        var basic = MonsterCombatResolver.ResolvePlayerBasicAttack(
+            character,
+            target,
+            combatEventId: 7,
+            runtimeModifiers: runtime);
+        Check.True(
+            basic.FormulaVersion == AuthoredCombatV1.Version &&
+            basic.Rolls.HitChanceBasisPoints ==
+                AuthoredCombatV1.CalculateHitChanceBasisPoints(
+                    expectedAttacker,
+                    target) &&
+            basic.Rolls.CriticalChanceBasisPoints ==
+                AuthoredCombatV1.CalculateCriticalChanceBasisPoints(
+                    expectedAttacker,
+                    target),
+            "legacy PvE basic attacks consume transient Hit and Critical");
+
+        var skill = new SkillCombatDefinition(
+            SkillId: 9_003,
+            Target: 44,
+            AffectObj: 28,
+            Distance: 5f,
+            Range: 0f,
+            Mp: 0,
+            Property: 0,
+            Power1: 0m,
+            Power2: 0m,
+            CastTime: TimeSpan.Zero,
+            Cooldown: TimeSpan.Zero);
+        var skillResolution = SkillCombatResolver.ResolveDamage(
+            character,
+            skill,
+            target,
+            combatEventId: 7,
+            runtimeModifiers: runtime);
+        Check.Equal(
+            basic.Rolls,
+            skillResolution.Rolls,
+            "legacy PvE skills consume the same transient ratings once");
+
+        var targetCharacter = CreateAuthoredCharacter(attacker);
+        targetCharacter.CalculatedStats = new CharacterStats
+        {
+            Dodge = target.Dodge,
+            CriticalResistance = target.CriticalResistance
+        };
+        var incomingTarget = MonsterIncomingCombatPolicy.ResolveTargetStats(
+            targetCharacter,
+            new RuntimeIncomingDamageMitigation(
+                0m,
+                0m,
+                0,
+                0,
+                runtime));
+        Check.True(
+            incomingTarget.Dodge == expectedTarget.Dodge &&
+            incomingTarget.CriticalResistance ==
+                expectedTarget.CriticalResistance,
+            "monster attacks consume transient Dodge and Crit Resistance");
     }
 
     private static CombatAttackerStats CreateAuthoredAttacker() =>

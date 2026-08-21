@@ -22,14 +22,7 @@ internal static partial class Program
     {
         (string Name, Func<Task> Run)[] checks =
         [
-            ("Strongly typed ECS kernel", EcsKernelChecks.RunAsync),
-            ("Player runtime ECS shadow parity", PlayerRuntimeEcsShadowChecks.RunAsync),
-            ("Reversible player runtime ECS cutover", PlayerRuntimeEcsCutoverChecks.RunAsync),
-            ("Player and NPC ECS hydration parity", PlayerNpcEcsHydrationChecks.RunAsync),
-            ("Per-map player and NPC ECS runtime cutover", MapEcsShadowChecks.RunAsync),
-            ("Atomic map ECS publication and rollback", MapEcsRuntimeCutoverChecks.RunAsync),
-            ("Online NPC revision and object-ID collision rollback", NpcCatalogRevisionChecks.RunAsync),
-            ("Cross-map ECS transfer rollback state", MapEcsTransferRollbackChecks.RunAsync),
+            .. CoreRuntimeCheckCatalog.All,
             ("Authoritative hidden live-map transfer", MapLiveTransferChecks.RunAsync),
             ("Native handler map-transition readiness", MapTransitionHandlerChecks.RunAsync),
             ("Native Sparta backhaul skill catalog", BackhaulSkillCatalogChecks.RunAsync),
@@ -108,7 +101,11 @@ internal static partial class Program
             ("PostgreSQL Zodiac level-up race", PostgresZodiacLevelUpgradeIntegrationChecks.RunAsync),
             ("Zodiac skill-grid activation and persistence", CheckZodiacSkillGridActivationAsync),
             ("Zodiac skill-grid upgrade and persistence", CheckZodiacSkillGridUpgradeAsync),
+            (
+                ZodiacDefensiveSkillProjectionChecks.CheckName,
+                ZodiacDefensiveSkillProjectionChecks.RunAsync),
             ("PostgreSQL Zodiac skill-grid race", PostgresZodiacSkillGridIntegrationChecks.RunAsync),
+            (ZodiacOffensiveSkillProjectionChecks.CheckName, ZodiacOffensiveSkillProjectionChecks.RunAsync),
             ("Player passive recovery protocol", CheckPlayerRecoveryProtocolAsync),
             ("PlayerWorldSpawn layout", CheckPlayerWorldSpawnAsync),
             ("PlayerWorldSpawn captured appearance", CheckPlayerWorldAppearanceAsync),
@@ -194,6 +191,7 @@ internal static partial class Program
             ("Monster area-damage AOI revision delivery", CheckMonsterAreaDamageDeliveryAsync),
             ("Monster viewer registry AOI scoping", CheckMonsterViewerRegistryAsync),
             ("Map registry world-readiness gate", CheckMapRegistryWorldReadinessAsync),
+            .. PlayerWorldObjectIdChecks.All,
             (
                 "Password authentication primitives",
                 PasswordAuthenticationPrimitiveChecks.RunAsync),

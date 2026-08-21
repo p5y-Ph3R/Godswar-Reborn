@@ -7,28 +7,53 @@ namespace Godswar.Server.State;
 /// </summary>
 internal static class PostgresCharacterHolySpiritCombatProjectionSql
 {
-    public const string CommonTableExpressions =
-        """
+    public static readonly string CommonTableExpressions =
+        $$"""
         holy_spirit_effect_authority(
             effect_id,
             affinity,
             grade_one_minimum,
-            grade_one_maximum
+            grade_one_maximum,
+            grade_one_accepted_maximum
         ) AS (
             VALUES
-                (1, 1, 32, 80), (2, 1, 32, 80),
-                (3, 1, 20, 50), (4, 1, 24, 60),
-                (5, 1, 16, 40), (6, 1, 12, 30),
-                (7, 1, 24, 60), (8, 1, 40, 100),
-                (9, 2, 22, 55), (10, 2, 22, 55),
-                (11, 2, 16, 40), (12, 2, 14, 35),
-                (13, 2, 28, 70), (14, 2, 40, 100),
-                (19, 2, 16, 40), (20, 2, 16, 40)
+                (1, 1, 32, 80, 80), (2, 1, 32, 80, 80),
+                (3, 1, 20, 50, 50), (4, 1, 24, 60, 60),
+                (5, 1, 16, 40, 40), (6, 1, 12, 30, 30),
+                (7, 1, 24, 60, 60), (8, 1, 40, 100, 100),
+                (11, 2, 16, 40, 40), (12, 2, 14, 35, 35),
+                (14, 2, 40, 100, 100),
+                (19, 2, 16, 40, 40), (20, 2, 16, 40, 40)
+            UNION ALL
+            SELECT adjustable.effect_id,
+                   2,
+                   adjustable.grade_one_minimum,
+                   adjustable.grade_one_maximum,
+                   adjustable.grade_one_accepted_maximum
+            FROM (
+                VALUES
+                    (9, 22,
+                        @cooledPhysicalReductionGradeOneMaximum,
+                        80),
+                    (10, 22,
+                        @cooledMagicReductionGradeOneMaximum,
+                        80),
+                    (13, 28,
+                        @cooledCriticalReductionGradeOneMaximum,
+                        70)
+            ) adjustable(
+                effect_id,
+                grade_one_minimum,
+                grade_one_maximum,
+                grade_one_accepted_maximum)
         ),
-        holy_stone_socket_values AS (
+        holy_stone_socket_raw_values AS (
             SELECT
                 equipment.user_id,
                 socket.effect_id,
+                effect.grade_one_maximum,
+                effect.grade_one_accepted_maximum,
+                socket_level.safe_level,
                 COALESCE(
                     socket.effectiveness_value::numeric,
                     CASE
@@ -85,7 +110,8 @@ internal static class PostgresCharacterHolySpiritCombatProjectionSql
                   socket.effectiveness_value IS NULL
                   OR socket.effectiveness_value BETWEEN
                       effect.grade_one_minimum * socket.effect_level
-                      AND effect.grade_one_maximum * socket.effect_level
+                      AND effect.grade_one_accepted_maximum *
+                          socket.effect_level
               )
               AND owner.fighter_job_lv >=
                   COALESCE(template.min_level, 1)
@@ -97,6 +123,18 @@ internal static class PostgresCharacterHolySpiritCombatProjectionSql
                   cardinality(template.class_ids) = 0
                   OR owner.profession = ANY(template.class_ids)
               )
+        ),
+        holy_stone_socket_values AS (
+            SELECT
+                socket.user_id,
+                socket.effect_id,
+                CASE
+                    WHEN socket.effect_id IN (9, 10, 13) THEN LEAST(
+                        socket.stat_value,
+                        socket.grade_one_maximum * socket.safe_level)
+                    ELSE socket.stat_value
+                END AS stat_value
+            FROM holy_stone_socket_raw_values socket
         ),
         holy_stone_stat_values AS (
             SELECT

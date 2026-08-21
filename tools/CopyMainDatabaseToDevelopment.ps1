@@ -72,24 +72,15 @@ $configurationRoot = Get-DevelopmentConfigurationDirectory `
     $ConfigurationDirectory
 $environmentPath = Get-DevelopmentEnvironmentPath $ConfigurationDirectory
 $mainGuard = Get-MainObservationGuard
-$source = Get-DockerContainer 'godswar-postgres'
 $target = Assert-DevelopmentContainer `
     'godswar-dev-postgres' 'postgres'
-if ($source.State.Health.Status -cne 'healthy' -or
-    $target.State.Health.Status -cne 'healthy') {
-    throw 'Both source and development PostgreSQL must be healthy.'
+if ($target.State.Health.Status -cne 'healthy') {
+    throw 'Development PostgreSQL must be healthy.'
 }
 
-$sourceVolume = @($source.Mounts | Where-Object {
-    $_.Destination -ceq '/var/lib/postgresql/data'
-})
 $targetVolume = @($target.Mounts | Where-Object {
     $_.Destination -ceq '/var/lib/postgresql/data'
 })
-if ($sourceVolume.Count -ne 1 -or
-    $sourceVolume[0].Name -cne 'reborn_godswar-postgres-data') {
-    throw 'Source PostgreSQL is not the expected authoritative volume.'
-}
 if ($targetVolume.Count -ne 1 -or
     $targetVolume[0].Name -cne 'godswar-dev-postgres-data') {
     throw 'Target PostgreSQL is not the isolated development volume.'
@@ -107,6 +98,18 @@ if ($tableCount -gt 0 -and -not $AllowDevelopmentDataReplacement) {
         TargetVolume = [string]$targetVolume[0].Name
     }
     return
+}
+
+$source = Get-DockerContainer 'godswar-postgres'
+if ($source.State.Health.Status -cne 'healthy') {
+    throw 'Source PostgreSQL must be healthy for a development refresh.'
+}
+$sourceVolume = @($source.Mounts | Where-Object {
+    $_.Destination -ceq '/var/lib/postgresql/data'
+})
+if ($sourceVolume.Count -ne 1 -or
+    $sourceVolume[0].Name -cne 'reborn_godswar-postgres-data') {
+    throw 'Source PostgreSQL is not the expected authoritative volume.'
 }
 
 $leaseCountSql = Get-DevelopmentCloneLeaseCountSql
@@ -295,14 +298,14 @@ try {
         throw 'Development account/character/item counts differ from source.'
     }
 
-    $devServer = & docker ps -q --filter 'name=^/godswar-dev-server$'
+    $devServer = & docker ps -q --filter 'name=^/godswar-dev-tempest-openworld-01$'
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not verify the development server state.'
     }
     if (-not [string]::IsNullOrWhiteSpace(($devServer -join ''))) {
         Assert-DevelopmentContainer `
-            'godswar-dev-server' 'server' | Out-Null
-        & docker stop --time 45 godswar-dev-server | Out-Null
+            'godswar-dev-tempest-openworld-01' 'server' | Out-Null
+        & docker stop --time 45 godswar-dev-tempest-openworld-01 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw 'Could not stop the development server before replacement.'
         }

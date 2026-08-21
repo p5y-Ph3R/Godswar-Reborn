@@ -77,6 +77,7 @@ internal sealed partial class JsonGameStore
         {
             Id = character.Id,
             AccountId = character.AccountId,
+            RealmId = character.RealmId,
             CharacterSlot = character.CharacterSlot,
             LifecycleState = character.LifecycleState,
             LifecycleVersion = character.LifecycleVersion,

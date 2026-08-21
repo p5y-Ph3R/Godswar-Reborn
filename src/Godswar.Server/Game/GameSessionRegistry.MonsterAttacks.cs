@@ -249,7 +249,7 @@ internal sealed partial class GameSessionRegistry
 
         var monster = attack.Monster;
         var target = targetContext.Character;
-        var worldTargetObjectId = WorldObjectIds.ForPlayer(target.Id);
+        var worldTargetObjectId = targetContext.ObjectId;
         try
         {
             await TrySendWorldInstancePacketAsync(

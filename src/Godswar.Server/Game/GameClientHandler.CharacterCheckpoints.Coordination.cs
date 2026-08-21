@@ -16,12 +16,31 @@ internal sealed partial class GameClientHandler
 
         try
         {
-            await lease.DisposeAsync();
+            _ = await lease.ReleaseAsync();
         }
         catch (Exception error)
         {
             Console.WriteLine(
                 "[coordination] player lease release failed " +
+                $"reason={error.GetType().Name}");
+        }
+
+        try
+        {
+            var accountId = _account?.Id ?? _character?.AccountId ?? 0;
+            if (accountId > 0)
+            {
+                _ = await _accountPresence
+                    .TryMarkAccountPlayerOfflineAsync(
+                        accountId,
+                        lease.LeaseToken,
+                        CancellationToken.None);
+            }
+        }
+        catch (Exception error)
+        {
+            Console.WriteLine(
+                "[coordination] account presence release failed " +
                 $"reason={error.GetType().Name}");
         }
     }

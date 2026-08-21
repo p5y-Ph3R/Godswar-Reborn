@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Characters;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -116,6 +117,39 @@ internal static partial class CharacterLifecycleCommandContractChecks
             successfulCreate);
         _ = CharacterLifecycleExecutionResult.Duplicate(
             rejectedCreate);
+
+        var legacyPayload = InvalidReceiptPayload(
+            CommandFamily.CharacterCreate,
+            CharacterLifecycleReceiptStatus.Created,
+            null,
+            null,
+            Guid.NewGuid());
+        var legacyReceipt = CharacterLifecyclePersistenceCodec.Decode(
+            legacyPayload);
+        Check.Equal(
+            RealmId.Tempest.Value,
+            legacyReceipt.RealmId.Value,
+            "historical v1 lifecycle receipts decode as Tempest");
+
+        var dwargonReceipt = new CharacterLifecycleReceipt(
+            CommandFamily.CharacterCreate,
+            CharacterLifecycleReceiptStatus.Created,
+            347,
+            RealmId.Dwargon,
+            0,
+            10,
+            1,
+            "LifecycleHero",
+            null,
+            null,
+            "1",
+            Guid.NewGuid());
+        var decodedDwargon = CharacterLifecyclePersistenceCodec.Decode(
+            CharacterLifecyclePersistenceCodec.Encode(dwargonReceipt));
+        Check.Equal(
+            RealmId.Dwargon.Value,
+            decodedDwargon.RealmId.Value,
+            "v2 lifecycle receipts preserve their realm identity");
 
         Check.Throws<InvalidDataException>(
             () => CharacterLifecyclePersistenceCodec.Decode(

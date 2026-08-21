@@ -9,7 +9,8 @@ namespace Godswar.Server.ProtocolChecks;
 internal static partial class PostgresHolySuitCommandIntegrationChecks
 {
     private static async Task<Fixture> CreateFixtureAsync(
-        string connectionString)
+        string connectionString,
+        int realmId = 1)
     {
         var token = Guid.NewGuid().ToString("N")[..12];
         await using var connection = new NpgsqlConnection(connectionString);
@@ -24,14 +25,15 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         var character = new NpgsqlCommand(
             """
             INSERT INTO character_base(
-                account_id,name,camp,profession,fighter_job_lv,
+                account_id,server_id,name,camp,profession,fighter_job_lv,
                 fighter_job_exp,"Money","Stone")
-            VALUES(@accountId,@name,1,1,80,4000000000,0,0)
+            VALUES(@accountId,@realmId,@name,1,1,80,4000000000,0,0)
             RETURNING id;
             """,
             connection,
             transaction);
         character.Parameters.AddWithValue("accountId", accountId);
+        character.Parameters.AddWithValue("realmId", realmId);
         character.Parameters.AddWithValue("name", $"HS{token}");
         var characterId = Convert.ToInt32(
             await character.ExecuteScalarAsync());
@@ -63,7 +65,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         return new Fixture(
             accountId,
             characterId,
-            new CommandSubject(accountId, characterId));
+            new CommandSubject(accountId, characterId),
+            realmId);
     }
 
     private static async Task InsertItemAsync(
@@ -133,13 +136,14 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             """
             INSERT INTO holy_suit_daily_exp_storage(
                 account_id,realm_id,usage_day,stored_exp,operation_count)
-            VALUES(@accountId,1,@usageDay,@storedExperience,0)
+            VALUES(@accountId,@realmId,@usageDay,@storedExperience,0)
             ON CONFLICT(account_id,realm_id,usage_day) DO UPDATE
             SET stored_exp=EXCLUDED.stored_exp;
             """,
             connection);
         command.Parameters.AddWithValue("storedExperience", storedExperience);
         command.Parameters.AddWithValue("accountId", fixture.AccountId);
+        command.Parameters.AddWithValue("realmId", fixture.RealmId);
         command.Parameters.AddWithValue("usageDay", usageDay);
         Check.Equal(
             1,
@@ -176,7 +180,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
                     WHERE user_id=@characterId AND prop_id=9025)
             FROM character_base cb
             JOIN holy_suit_daily_exp_storage hs
-              ON hs.account_id=cb.account_id AND hs.realm_id=1
+              ON hs.account_id=cb.account_id
+             AND hs.realm_id=cb.server_id
              AND hs.usage_day=
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Singapore')::date
             WHERE cb.id=@characterId;
@@ -231,7 +236,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
     private sealed record Fixture(
         int AccountId,
         int CharacterId,
-        CommandSubject Subject);
+        CommandSubject Subject,
+        int RealmId);
 
     private sealed record DurableState(
         long Experience,

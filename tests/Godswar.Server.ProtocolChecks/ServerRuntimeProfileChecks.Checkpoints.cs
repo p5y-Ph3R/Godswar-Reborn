@@ -65,6 +65,11 @@ internal static partial class ServerRuntimeProfileChecks
                   },
                   "authentication": {
                     "allowLegacyRawAuthentication": true
+                  },
+                  "game": {
+                    "worldInstances": {
+                      "realmId": 1
+                    }
                   }
                 }
                 """);
@@ -84,6 +89,11 @@ internal static partial class ServerRuntimeProfileChecks
                   },
                   "authentication": {
                     "allowLegacyRawAuthentication": true
+                  },
+                  "game": {
+                    "worldInstances": {
+                      "realmId": 1
+                    }
                   }
                 }
                 """);

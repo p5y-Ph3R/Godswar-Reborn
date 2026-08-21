@@ -80,6 +80,7 @@ internal static partial class
             """
             INSERT INTO public.character_base (
                 account_id,
+                server_id,
                 name,
                 camp,
                 profession,
@@ -90,6 +91,7 @@ internal static partial class
             )
             VALUES (
                 @accountId,
+                1,
                 @name,
                 1,
                 0,

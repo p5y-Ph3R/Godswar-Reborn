@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
@@ -20,22 +21,21 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
     private readonly ISemanticGatewayCoordination _coordination;
     private readonly TimeSpan _coordinationTimeout;
     private readonly SemanticGatewayConnectionCoordinator _connections;
-    private readonly string _gamePublicHost;
-    private readonly int _gamePublicPort;
     private readonly ClientSession _session;
     private readonly TimeProvider _timeProvider;
     private bool _loginAttempted;
     private bool _redirectSent;
+    private RealmCatalogSnapshot? _advertisedRealms;
     private SemanticGatewayLoginGenerationLease? _generation;
+    private SemanticGatewayConnectionSource? _loginSource;
     private SemanticGatewayPrincipal? _principal;
+    private RealmCatalogEntry? _selectedRealm;
 
     public SemanticGatewayLoginHandler(
         ClientSession session,
         ISemanticGatewayDataSession data,
         ISemanticGatewayCoordination coordination,
         SemanticGatewayConnectionCoordinator connections,
-        string gamePublicHost,
-        int gamePublicPort,
         TimeSpan coordinationTimeout,
         TimeProvider? timeProvider = null)
     {
@@ -47,17 +47,6 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
             throw new ArgumentNullException(nameof(coordination));
         _connections = connections ??
             throw new ArgumentNullException(nameof(connections));
-        if (string.IsNullOrWhiteSpace(gamePublicHost) ||
-            gamePublicHost.Length > 253)
-        {
-            throw new ArgumentException(
-                "A bounded game redirect host is required.",
-                nameof(gamePublicHost));
-        }
-        if (gamePublicPort is < 1 or > ushort.MaxValue)
-        {
-            throw new ArgumentOutOfRangeException(nameof(gamePublicPort));
-        }
         if (coordinationTimeout <= TimeSpan.Zero ||
             coordinationTimeout > TimeSpan.FromMinutes(10))
         {
@@ -65,8 +54,6 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                 nameof(coordinationTimeout));
         }
 
-        _gamePublicHost = gamePublicHost;
-        _gamePublicPort = gamePublicPort;
         _coordinationTimeout = coordinationTimeout;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -92,19 +79,19 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                             cancellationToken);
                         break;
                     case Opcodes.SelectServer:
-                        if (_principal is null)
+                        if (!await HandleServerSelectionAsync(
+                                packet,
+                                cancellationToken))
                         {
-                            _session.Disconnect();
                             return;
                         }
-                        await _session.SendAsync(
-                            PacketBuilder.SendServer(),
-                            cancellationToken,
-                            "SemanticGatewaySendServer");
                         break;
                     case Opcodes.LoginReturnInfo:
                         if (_principal is null ||
+                            _selectedRealm is null ||
                             _generation is null ||
+                            !_generation.RealmGrant.Matches(
+                                _selectedRealm) ||
                             _redirectSent ||
                             !await _coordination.ActivateLoginAsync(
                                 _generation,
@@ -120,8 +107,7 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                             _generation.Sequence);
                         await _session.SendAsync(
                             PacketBuilder.GameServerRedirect(
-                                _gamePublicHost,
-                                _gamePublicPort),
+                                _selectedRealm),
                             cancellationToken,
                             "SemanticGatewayGameRedirect");
                         _redirectSent = true;
@@ -215,22 +201,20 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
                     return;
                 }
 
-                var started = await _coordination.StartLoginAsync(
-                    principal,
-                    source,
-                    NewCoordinationDeadline(),
+                var realms = await _data.ReadEnabledAsync(
                     cancellationToken);
-                if (!started.IsStarted)
+                if (realms.Entries.IsEmpty)
                 {
-                    await RejectAsync(cancellationToken);
+                    _session.Disconnect();
                     return;
                 }
 
-                _generation = started.Generation;
+                _advertisedRealms = realms;
+                _loginSource = source;
                 _principal = principal;
                 _session.MarkAuthenticated();
                 await _session.SendAsync(
-                    PacketBuilder.ServerList(),
+                    PacketBuilder.ServerList(realms),
                     cancellationToken,
                     "SemanticGatewayServerList");
             }
@@ -243,6 +227,58 @@ internal sealed class SemanticGatewayLoginHandler : IClientHandler
         {
             ClearCredentialField(packet.Buffer);
         }
+    }
+
+    private async Task<bool> HandleServerSelectionAsync(
+        GamePacket packet,
+        CancellationToken cancellationToken)
+    {
+        if (_principal is null ||
+            _loginSource is null ||
+            _advertisedRealms is null ||
+            _selectedRealm is not null ||
+            _generation is not null ||
+            !LegacyRealmSelectionPacket.TryRead(
+                packet,
+                out var realmId) ||
+            !_advertisedRealms.TryFind(
+                realmId,
+                out var advertised) ||
+            advertised is null)
+        {
+            _session.Disconnect();
+            return false;
+        }
+
+        var currentRealms = await _data.ReadEnabledAsync(
+            cancellationToken);
+        if (!currentRealms.TryFind(realmId, out var selected) ||
+            selected is null ||
+            selected != advertised)
+        {
+            _session.Disconnect();
+            return false;
+        }
+
+        var started = await _coordination.StartLoginAsync(
+            _principal.Value,
+            _loginSource.Value,
+            new SemanticGatewayRealmGrant(selected),
+            NewCoordinationDeadline(),
+            cancellationToken);
+        if (!started.IsStarted || started.Generation is null)
+        {
+            await RejectAsync(cancellationToken);
+            return false;
+        }
+
+        _generation = started.Generation;
+        _selectedRealm = selected;
+        await _session.SendAsync(
+            PacketBuilder.SendServer(selected),
+            cancellationToken,
+            "SemanticGatewaySendServer");
+        return true;
     }
 
     private bool TryGetRemoteAddress(out IPAddress address)

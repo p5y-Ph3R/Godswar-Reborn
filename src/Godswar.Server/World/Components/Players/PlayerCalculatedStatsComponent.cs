@@ -54,4 +54,5 @@ internal readonly record struct PlayerCalculatedStatsComponent(
     int CriticalDamageFlatReduction,
     int DamageReboundFlat,
     int BasicAttackIntervalMilliseconds,
-    float BasicAttackRange);
+    float BasicAttackRange,
+    int LifeAbsorptionFlat = 0);

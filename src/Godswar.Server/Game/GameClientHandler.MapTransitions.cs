@@ -216,7 +216,7 @@ internal sealed partial class GameClientHandler
             await _registry.BroadcastToWorldInstanceAsync(
                 sourceWorldInstanceId,
                 PacketBuilder.RemoveWorldObjects(
-                    WorldObjectIds.ForPlayer(characterId)),
+                    CurrentPlayerObjectId),
                 cancellationToken,
                 _session,
                 "MapTransitionSourceRemove");

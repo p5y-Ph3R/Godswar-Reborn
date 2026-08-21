@@ -77,6 +77,23 @@ internal static class CombatEventIdentity
             (ulong)admittedCombatRevision,
             0x5056504154544B02UL);
 
+    public static ulong ForPlayerSkill(
+        int attackerCharacterId,
+        int targetCharacterId,
+        long attackerVitalsRevision,
+        long targetVitalsRevision,
+        long admittedCombatRevision,
+        uint skillId) =>
+        Mix(
+            (ulong)(uint)attackerCharacterId,
+            (ulong)(uint)targetCharacterId,
+            (ulong)attackerVitalsRevision,
+            (ulong)targetVitalsRevision,
+            (ulong)admittedCombatRevision,
+            skillId,
+            0,
+            0x505650534B494C01UL);
+
     public static ulong ForMonsterCounterattack(
         uint monsterObjectId,
         uint spawnGeneration,

@@ -48,4 +48,7 @@ internal sealed record CharacterCalculatedStatsSnapshot(
     int CriticalDamageFlatReduction = 0,
     int DamageReboundFlat = 0,
     int BasicAttackIntervalMilliseconds = 1500,
-    float BasicAttackRange = 1.7f);
+    float BasicAttackRange = 1.7f,
+    int StatusHit = 0,
+    int StatusResistance = 0,
+    int LifeAbsorptionFlat = 0);

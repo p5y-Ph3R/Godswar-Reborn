@@ -17,7 +17,7 @@ internal static partial class Program
     private static Task CheckSkillCastTargetAndImpactAsync()
     {
         const uint localObjectId = 0x1448;
-        const uint remoteCasterId = 0x6002;
+        const uint remoteCasterId = 0x0002;
         const uint monsterId = 0x282C;
         var clientCast = new byte[40];
         BinaryPrimitives.WriteUInt16LittleEndian(clientCast.AsSpan(0, 2), (ushort)clientCast.Length);

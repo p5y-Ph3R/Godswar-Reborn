@@ -349,9 +349,9 @@ internal static partial class
         await using (var character = new NpgsqlCommand(
             """
             INSERT INTO public.character_base (
-                account_id, name, profession, fighter_job_lv
+                account_id, server_id, name, profession, fighter_job_lv
             )
-            VALUES (@accountId, @name, 0, 120)
+            VALUES (@accountId, 1, @name, 0, 120)
             RETURNING id;
             """,
             connection,

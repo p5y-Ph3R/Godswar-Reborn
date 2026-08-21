@@ -14,18 +14,26 @@ internal sealed class PostgresSemanticGatewayCharacterRouteReader(
     public async Task<SemanticGatewayCharacterRoute?>
         FindCharacterRouteAsync(
             int accountId,
+            RealmId realmId,
             CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+
         await using var command = _dataSource.CreateCommand("""
-            SELECT id, "Map"
+            SELECT id, server_id, "Map"
             FROM character_base
             WHERE account_id = @accountId
+              AND server_id = @realmId
               AND lifecycle_state = 'active'
             ORDER BY id
             LIMIT 2;
             """);
         command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -35,7 +43,8 @@ internal sealed class PostgresSemanticGatewayCharacterRouteReader(
 
         var route = new SemanticGatewayCharacterRoute(
             reader.GetInt32(0),
-            MapId.FromLegacy(checked((byte)reader.GetInt32(1))));
+            new RealmId(reader.GetInt32(1)),
+            MapId.FromLegacy(checked((byte)reader.GetInt32(2))));
         if (await reader.ReadAsync(cancellationToken))
         {
             throw new InvalidDataException(

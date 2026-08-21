@@ -10,7 +10,9 @@ internal sealed partial class GameSessionRegistry
 {
     private async Task PublishPvpBasicAttackAsync(
         PvpBasicAttackDecision decision,
-        CancellationToken cancellationToken)
+        DateTimeOffset statusObservedAt,
+        CancellationToken cancellationToken,
+        TrainingDummySkillAnimationProjection? trainingSkillAnimation = null)
     {
         var attacker = decision.Attacker;
         var target = decision.Target;
@@ -25,10 +27,8 @@ internal sealed partial class GameSessionRegistry
             return;
         }
 
-        var attackerWorldId = WorldObjectIds.ForPlayer(
-            attacker.CharacterId);
-        var targetWorldId = WorldObjectIds.ForPlayer(
-            target.CharacterId);
+        var attackerWorldId = attacker.ObjectId;
+        var targetWorldId = target.ObjectId;
         var selector = attacker.Character.Profession is 2 or 3
             ? (byte)5
             : (byte)3;
@@ -47,6 +47,40 @@ internal sealed partial class GameSessionRegistry
                 : targetWorldId;
             try
             {
+                if (trainingSkillAnimation is { } animation)
+                {
+                    var visualTargetId = animation.SelfArea
+                        ? attackerId
+                        : targetId;
+                    if (!await TrySendWorldInstancePacketAsync(
+                        runtime,
+                        recipient,
+                        PacketBuilder.SkillCastVisual(
+                            animation.ClientSkillCastPacket,
+                            attackerId,
+                            visualTargetId,
+                            animation.SkillId),
+                        cancellationToken,
+                        "TrainingDummySkillCastVisual"))
+                    {
+                        continue;
+                    }
+
+                    if (animation.ImpactBeforeDamage &&
+                        !await TrySendTrainingDummySkillImpactAsync(
+                            runtime,
+                            recipient,
+                            attacker,
+                            target,
+                            attackerId,
+                            targetId,
+                            animation,
+                            cancellationToken))
+                    {
+                        continue;
+                    }
+                }
+
                 if (!await TrySendWorldInstancePacketAsync(
                     runtime,
                     recipient,
@@ -61,6 +95,21 @@ internal sealed partial class GameSessionRegistry
                         (byte)decision.Resolution.Outcome),
                     cancellationToken,
                     "PvpBasicAttack"))
+                {
+                    continue;
+                }
+
+                if (trainingSkillAnimation is { } trailingAnimation &&
+                    !trailingAnimation.ImpactBeforeDamage &&
+                    !await TrySendTrainingDummySkillImpactAsync(
+                        runtime,
+                        recipient,
+                        attacker,
+                        target,
+                        attackerId,
+                        targetId,
+                        trailingAnimation,
+                        cancellationToken))
                 {
                     continue;
                 }
@@ -103,14 +152,12 @@ internal sealed partial class GameSessionRegistry
                             recipient.Session,
                             commit.Source.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(
-                            commit.Source.CharacterId);
+                        : commit.Source.ObjectId;
                     var committedTargetId = ReferenceEquals(
                             recipient.Session,
                             commit.Target.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(
-                            commit.Target.CharacterId);
+                        : commit.Target.ObjectId;
                     var committedSelector =
                         commit.Source.Character.Profession is 2 or 3
                             ? (byte)5
@@ -138,7 +185,7 @@ internal sealed partial class GameSessionRegistry
                             recipient.Session,
                             changed.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(changed.CharacterId);
+                        : changed.ObjectId;
                     await TrySendWorldInstancePacketAsync(
                         runtime,
                         recipient,
@@ -157,7 +204,7 @@ internal sealed partial class GameSessionRegistry
                             recipient.Session,
                             victim.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(victim.CharacterId);
+                        : victim.ObjectId;
                     await TrySendWorldInstancePacketAsync(
                         runtime,
                         recipient,
@@ -177,6 +224,83 @@ internal sealed partial class GameSessionRegistry
                 Remove(recipient.Session);
             }
         }
+
+        try
+        {
+            await PublishTrainingDummyElementalStatusIfChangedAsync(
+                target,
+                statusObservedAt,
+                "training-dummy-elemental-hit",
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (ex is IOException or ObjectDisposedException)
+            {
+                Remove(target.Session);
+            }
+            else
+            {
+                Console.WriteLine(
+                    "[elemental-status] committed-hit projection deferred " +
+                    $"target={target.DisplayName}: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            await PublishTrainingDummyHostileStatusApplicationAsync(
+                target,
+                decision.HostileStatusApplication ?? default,
+                statusObservedAt,
+                "training-dummy-hostile-hit",
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (ex is IOException or ObjectDisposedException)
+            {
+                Remove(target.Session);
+            }
+            else
+            {
+                Console.WriteLine(
+                    "[training-status] committed-hit projection deferred " +
+                    $"target={target.DisplayName}: {ex.Message}");
+            }
+        }
+    }
+
+    private Task<bool> TrySendTrainingDummySkillImpactAsync(
+        WorldInstanceRuntime runtime,
+        GameSessionContext recipient,
+        GameSessionContext attacker,
+        GameSessionContext target,
+        uint attackerId,
+        uint targetId,
+        in TrainingDummySkillAnimationProjection animation,
+        CancellationToken cancellationToken)
+    {
+        var impactTarget = animation.SelfArea
+            ? uint.MaxValue
+            : targetId;
+        var impactX = animation.SelfArea
+            ? attacker.Character.PositionX
+            : target.Character.PositionX;
+        var impactZ = animation.SelfArea
+            ? attacker.Character.PositionZ
+            : target.Character.PositionZ;
+        return TrySendWorldInstancePacketAsync(
+            runtime,
+            recipient,
+            PacketBuilder.SkillCastImpact(
+                attackerId,
+                impactTarget,
+                animation.SkillId,
+                impactX,
+                impactZ),
+            cancellationToken,
+            "TrainingDummySkillCastImpact");
     }
 
     private async Task PersistPvpVitalsAsync(

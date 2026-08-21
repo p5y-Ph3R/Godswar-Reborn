@@ -5,110 +5,35 @@ param(
     [ValidateSet('Status', 'Apply', 'Revert')]
     [string]$Mode = 'Status',
 
-    [string]$BackupRoot
+    [string]$BackupRoot,
+
+    [ValidateRange(0, 16)]
+    [int]$InternalTestFailAfterWrite = 0,
+
+    [scriptblock]$InternalTestBeforeBackup
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-function Convert-HexBytes([string]$Hex) {
-    $normalized = $Hex -replace '\s', ''
-    if (($normalized.Length -band 1) -ne 0) {
-        throw 'Hex text must contain an even number of digits.'
-    }
-    [byte[]]$result = for ($index = 0; $index -lt $normalized.Length;
-        $index += 2) {
-        [Convert]::ToByte($normalized.Substring($index, 2), 16)
-    }
-    return $result
-}
-
-function Test-Bytes([byte[]]$Data, [int]$Offset, [byte[]]$Expected) {
-    if ($Offset -lt 0 -or $Offset + $Expected.Length -gt $Data.Length) {
-        return $false
-    }
-    for ($index = 0; $index -lt $Expected.Length; $index++) {
-        if ($Data[$Offset + $index] -ne $Expected[$index]) {
-            return $false
-        }
-    }
-    return $true
-}
-
-function Copy-Bytes([byte[]]$Source, [byte[]]$Destination, [int]$Offset) {
-    [Array]::Copy($Source, 0, $Destination, $Offset, $Source.Length)
-}
-
-function Get-PeMetadata([byte[]]$Data) {
-    if ($Data.Length -lt 0x100 -or $Data[0] -ne 0x4D -or
-        $Data[1] -ne 0x5A) {
-        throw 'Origin.exe does not have a valid DOS header.'
-    }
-    $peOffset = [BitConverter]::ToInt32($Data, 0x3C)
-    if ($peOffset -lt 0x40 -or $peOffset + 24 -gt $Data.Length -or
-        [BitConverter]::ToUInt32($Data, $peOffset) -ne 0x00004550) {
-        throw 'Origin.exe does not have a valid PE header.'
-    }
-    $optionalSize = [BitConverter]::ToUInt16($Data, $peOffset + 20)
-    $optionalOffset = $peOffset + 24
-    $sectionCount = [BitConverter]::ToUInt16($Data, $peOffset + 6)
-    $sectionTable = $optionalOffset + $optionalSize
-    $sections = @()
-    for ($index = 0; $index -lt $sectionCount; $index++) {
-        $offset = $sectionTable + ($index * 40)
-        $sections += [pscustomobject]@{
-            Name = [Text.Encoding]::ASCII.GetString(
-                $Data[$offset..($offset + 7)]).Trim([char]0)
-            VirtualAddress = [BitConverter]::ToUInt32($Data, $offset + 12)
-            RawSize = [BitConverter]::ToUInt32($Data, $offset + 16)
-            RawOffset = [BitConverter]::ToUInt32($Data, $offset + 20)
-            Characteristics = [BitConverter]::ToUInt32($Data, $offset + 36)
-        }
-    }
-    return [pscustomobject]@{
-        Machine = [BitConverter]::ToUInt16($Data, $peOffset + 4)
-        OptionalMagic = [BitConverter]::ToUInt16($Data, $optionalOffset)
-        ImageBase = [BitConverter]::ToUInt32($Data, $optionalOffset + 28)
-        Sections = $sections
-    }
-}
-
-function Resolve-ExecutableVa(
-    [object]$Pe,
-    [int]$FileOffset,
-    [int]$Length,
-    [string]$ExpectedSection
-) {
-    foreach ($section in $Pe.Sections) {
-        if ($FileOffset -lt $section.RawOffset -or
-            $FileOffset + $Length -gt $section.RawOffset + $section.RawSize) {
-            continue
-        }
-        if ($section.Name -ne $ExpectedSection -or
-            ($section.Characteristics -band 0x20000000) -eq 0) {
-            throw "Origin.exe offset 0x$('{0:X}' -f $FileOffset) is not in the audited executable $ExpectedSection section."
-        }
-        return [uint64]$Pe.ImageBase + $section.VirtualAddress +
-            ([uint64]$FileOffset - $section.RawOffset)
-    }
-    throw "Origin.exe offset 0x$('{0:X}' -f $FileOffset) is outside a PE section."
-}
-
-function Get-NearBranchTarget(
-    [byte[]]$Code,
-    [int]$InstructionOffset,
-    [uint64]$CodeVa
-) {
-    return [int64]$CodeVa + $InstructionOffset + 5 +
-        [BitConverter]::ToInt32($Code, $InstructionOffset + 1)
-}
-
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Binary.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Text.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.XmlValidation.ps1')
 . (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Core.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Layout.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.XmlState.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Lua.ps1')
+. (Join-Path $PSScriptRoot 'PatchClientCharacterSpeedStats.Transaction.ps1')
 
 function Test-TargetClientRunning([string]$ExecutablePath) {
     $target = [IO.Path]::GetFullPath($ExecutablePath)
     foreach ($process in @(Get-Process Origin -ErrorAction SilentlyContinue)) {
-        try { $path = $process.Path } catch { $path = $null }
+        try { $path = $process.Path } catch {
+            throw 'Close every Origin.exe process; one executable path could not be verified.'
+        }
+        if ([string]::IsNullOrWhiteSpace($path)) {
+            throw 'Close every Origin.exe process; one executable path is unavailable.'
+        }
         if ($path -and [string]::Equals(
                 [IO.Path]::GetFullPath($path), $target,
                 [StringComparison]::OrdinalIgnoreCase)) {
@@ -118,214 +43,163 @@ function Test-TargetClientRunning([string]$ExecutablePath) {
     return $false
 }
 
-function Write-BytesAtomic([string]$Path, [byte[]]$Data) {
-    $temporary = "$Path.speed-stats-$([guid]::NewGuid().ToString('N')).tmp"
-    try {
-        [IO.File]::WriteAllBytes($temporary, $Data)
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
-    }
-    finally {
-        if (Test-Path -LiteralPath $temporary -PathType Leaf) {
-            Remove-Item -LiteralPath $temporary -Force
-        }
+function Invoke-InternalWriteCheckpoint {
+    $script:transactionWriteCount++
+    if ($InternalTestFailAfterWrite -gt 0 -and
+        $script:transactionWriteCount -eq $InternalTestFailAfterWrite) {
+        throw "Injected character-stat transaction failure after write $script:transactionWriteCount."
     }
 }
 
-function Write-Utf8Atomic([string]$Path, [string]$Text) {
-    $temporary = "$Path.speed-stats-$([guid]::NewGuid().ToString('N')).tmp"
-    try {
-        [IO.File]::WriteAllText(
-            $temporary, $Text, [Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
+function Get-PersonalInfoLuaState(
+    [string]$Path,
+    [string]$Locale,
+    [Text.Encoding]$Encoding
+) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return 'Original'
     }
-    finally {
-        if (Test-Path -LiteralPath $temporary -PathType Leaf) {
-            Remove-Item -LiteralPath $temporary -Force
-        }
+    [byte[]]$actual = [IO.File]::ReadAllBytes($Path)
+    [byte[]]$legacy = [Text.UTF8Encoding]::new($false, $true).GetBytes(
+        (Get-PersonalInfoSpeedLua $Locale))
+    [byte[]]$patchedV1 = [Text.UTF8Encoding]::new($false, $true).GetBytes(
+        (Get-PersonalInfoStatsLua $Locale $false))
+    [byte[]]$patched = [Text.UTF8Encoding]::new($false, $true).GetBytes(
+        (Get-PersonalInfoStatsLua $Locale))
+    if ($actual.Length -eq $legacy.Length -and
+        (Test-RebornBytes $actual 0 $legacy)) {
+        return 'Legacy'
     }
+    if ($actual.Length -eq $patchedV1.Length -and
+        (Test-RebornBytes $actual 0 $patchedV1)) {
+        return 'PatchedV1'
+    }
+    if ($actual.Length -eq $patched.Length -and
+        (Test-RebornBytes $actual 0 $patched)) {
+        return 'Patched'
+    }
+    throw "PersonalInfoSpeedStats.lua has unknown content or encoding for $Locale; exact BOM-less UTF-8 is required."
 }
 
-$expectedLength = 6676480
-$hookOffset = 0x1B5B97
-$hookVa = 0x005B5B97
-$caveOffset = 0x5C3F20
-$caveVa = 0x009C3F20
-$caveReserveLength = 0x80
-$epilogueVa = 0x005B5BD4
-$originalHook = Convert-HexBytes 'A1 AC 5E 57 01'
-$patchedHook = Convert-HexBytes 'E9 84 E3 40 00'
-$caveCode = Convert-HexBytes @'
-A1 AC 5E 57 01 6A 64 D9 80 8C 02 00 00 DA 0C 24
-DB 1C 24 8D 54 24 2C 68 3C 44 95 00 52 FF 15 D0
-C3 91 00 83 C4 0C 8B 8E 80 01 00 00 8B 11 8B 92
-84 00 00 00 8D 44 24 28 50 FF D2 A1 AC 5E 57 01
-6A 64 D9 80 90 02 00 00 DA 0C 24 DB 1C 24 8D 54
-24 2C 68 3C 44 95 00 52 FF 15 D0 C3 91 00 83 C4
-0C 8B 8E 7C 01 00 00 8B 11 8B 92 84 00 00 00 8D
-44 24 28 50 FF D2 E9 39 1C BF FF
-'@
-$emptyCave = [byte[]]::new($caveReserveLength)
-$patchedCave = [byte[]]::new($caveReserveLength)
-Copy-Bytes $caveCode $patchedCave 0
-$nativePrefix = Convert-HexBytes @'
-68 3C 44 95 00 52 FF D7 8B 8E 5C 01 00 00 8B 01
-8B 80 84 00 00 00 83 C4 0C 8D 54 24 28 52 FF D0
-'@
-$nativeSuffix = Convert-HexBytes @'
-80 B8 8C 07 00 00 02 75 44 68 08 02 00 00 8D 4C
-24 2C 51 6A FF 05 8D 07 00 00 50 6A 00 6A 00 FF
-'@
-$questEmpty = [byte[]]::new(0x20)
-$questPatched = [byte[]]::new(0x20)
-Copy-Bytes (Convert-HexBytes @'
-85 F6 74 14 8B 4E 08 85 C9 74 0D 83 7E 0C 00 74
-07 8B 01 E9 AD 65 C1 FF C3
-'@) $questPatched 0
+function Resolve-CombinedCharacterStatsState(
+    [string]$Binary,
+    [string]$Xml,
+    [string]$Lua,
+    [string]$Constellation
+) {
+    if ($Binary -eq 'Original' -and $Xml -eq 'Original' -and
+        $Lua -eq 'Original' -and $Constellation -eq 'Original') {
+        return 'Original'
+    }
+    if ($Binary -eq 'LegacyPatched' -and $Xml -eq 'Original' -and
+        $Lua -eq 'Original' -and $Constellation -eq 'Original') {
+        return 'LegacyPartial'
+    }
+    if ($Binary -eq 'LegacyPatched' -and $Xml -eq 'PatchedV1' -and
+        $Lua -eq 'Original' -and $Constellation -eq 'Original') {
+        return 'PatchedV1'
+    }
+    if ($Binary -eq 'LegacyPatched' -and
+        $Xml -in 'PatchedV2', 'PatchedV3' -and $Lua -eq 'Legacy' -and
+        $Constellation -eq 'Original') {
+        return $Xml
+    }
+    if ($Binary -eq 'Original' -and
+        $Xml -in 'PatchedSid200', 'PatchedSid200FrameV1' -and
+        $Lua -eq 'Patched' -and $Constellation -eq 'Patched') {
+        return $Xml
+    }
+    if ($Binary -eq 'Original' -and $Xml -eq 'PatchedSid200V1' -and
+        $Lua -eq 'PatchedV1' -and $Constellation -eq 'Patched') {
+        return 'PatchedSid200V1'
+    }
+    throw 'The character-stat binary, XML, and Lua files are partially applied.'
+}
 
+$profile = Get-CharacterStatsBinaryProfile
 $clientRootPath = [IO.Path]::GetFullPath($ClientRoot)
 $clientExe = Join-Path $clientRootPath 'Origin.exe'
-$xmlPaths = [ordered]@{
-    en_us = Join-Path $clientRootPath 'Localization\en_us\UI\XML\PersonalInfoUI.xml'
-    zh_cn = Join-Path $clientRootPath 'Localization\zh_cn\UI\XML\PersonalInfoUI.xml'
+$xmlPaths = [ordered]@{}
+$luaPaths = [ordered]@{}
+$constellationPaths = [ordered]@{}
+foreach ($locale in 'en_us', 'zh_cn') {
+    $directory = Join-Path $clientRootPath "Localization\$locale\UI\XML"
+    $xmlPaths[$locale] = Join-Path $directory 'PersonalInfoUI.xml'
+    $luaPaths[$locale] = Join-Path $directory 'PersonalInfoSpeedStats.lua'
+    $constellationPaths[$locale] = Join-Path $directory 'Constellation.lua'
 }
-$luaPaths = [ordered]@{
-    en_us = Join-Path $clientRootPath 'Localization\en_us\UI\XML\PersonalInfoSpeedStats.lua'
-    zh_cn = Join-Path $clientRootPath 'Localization\zh_cn\UI\XML\PersonalInfoSpeedStats.lua'
-}
+
 if (-not (Test-Path -LiteralPath $clientExe -PathType Leaf)) {
     throw "Origin.exe is missing: $clientExe"
 }
-foreach ($entry in $xmlPaths.GetEnumerator()) {
-    if (-not (Test-Path -LiteralPath $entry.Value -PathType Leaf)) {
-        throw "PersonalInfoUI.xml is missing for $($entry.Key): $($entry.Value)"
+foreach ($locale in $xmlPaths.Keys) {
+    foreach ($path in $xmlPaths[$locale], $constellationPaths[$locale]) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Required $locale client file is missing: $path"
+        }
     }
 }
 if ($Mode -ne 'Status' -and (Test-TargetClientRunning $clientExe)) {
-    throw 'Close Origin.exe before changing the character speed-stat UI.'
+    throw 'Close Origin.exe before changing the character-stat UI.'
 }
 
 [byte[]]$data = [IO.File]::ReadAllBytes($clientExe)
-if ($data.Length -ne $expectedLength) {
-    throw "Unexpected Origin.exe length: $($data.Length)."
-}
-$pe = Get-PeMetadata $data
-if ($pe.Machine -ne 0x014C -or $pe.OptionalMagic -ne 0x010B -or
-    $pe.ImageBase -ne 0x00400000 -or
-    (Resolve-ExecutableVa $pe $hookOffset 5 '.text') -ne $hookVa -or
-    (Resolve-ExecutableVa $pe $caveOffset $caveReserveLength '.rdata') -ne
-        $caveVa) {
-    throw 'Origin.exe is not the audited x86 PE32 build.'
-}
-if (-not (Test-Bytes $data ($hookOffset - $nativePrefix.Length) $nativePrefix) -or
-    -not (Test-Bytes $data ($hookOffset + 5) $nativeSuffix)) {
-    throw 'Origin.exe PersonalInfo update boundaries do not match the audited build.'
-}
-if (-not (Test-Bytes $data 0x5C3F00 $questEmpty) -and
-    -not (Test-Bytes $data 0x5C3F00 $questPatched)) {
-    throw 'The shared client cave has an unknown QuestView-owner state.'
-}
-if ($caveCode.Length -ne 123 -or
-    (Get-NearBranchTarget $patchedHook 0 $hookVa) -ne $caveVa -or
-    (Get-NearBranchTarget $caveCode 118 $caveVa) -ne $epilogueVa -or
-    -not (Test-Bytes $caveCode 7 (Convert-HexBytes 'D9 80 8C 02 00 00')) -or
-    -not (Test-Bytes $caveCode 66 (Convert-HexBytes 'D9 80 90 02 00 00'))) {
-    throw 'Character speed-stat trampoline invariants are invalid.'
-}
-
-$hasOriginalBinary =
-    (Test-Bytes $data $hookOffset $originalHook) -and
-    (Test-Bytes $data $caveOffset $emptyCave)
-$hasPatchedBinary =
-    (Test-Bytes $data $hookOffset $patchedHook) -and
-    (Test-Bytes $data $caveOffset $patchedCave)
-if (-not $hasOriginalBinary -and -not $hasPatchedBinary) {
-    throw 'Origin.exe has an unknown or partially applied character speed-stat state.'
-}
-$binaryState = if ($hasPatchedBinary) { 'Patched' } else { 'Original' }
+$binaryState = Get-CharacterStatsBinaryState $data $profile
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
 $xmlText = [ordered]@{}
+$constellationText = [ordered]@{}
 $xmlStates = @()
 $luaStates = @()
-foreach ($entry in $xmlPaths.GetEnumerator()) {
-    $text = [IO.File]::ReadAllText($entry.Value, $utf8)
-    $xmlText[$entry.Key] = $text
-    $xmlState = Get-PersonalInfoXmlState $text
-    if ($xmlState -eq 'PatchedV1') {
-        $movementFull = Get-SpeedFullLabel $entry.Key $true
-        $ridingFull = Get-SpeedFullLabel $entry.Key $false
-        if (-not $text.Contains("Text=`"$movementFull`" Visible=`"1`"") -or
-            -not $text.Contains("Text=`"$ridingFull`" />")) {
-            throw "PersonalInfoUI.xml has the wrong v1 labels for $($entry.Key)."
-        }
-    }
-    if ($xmlState -in 'PatchedV2', 'PatchedV3') {
-        $movementCompact = Get-SpeedCompactLabel $entry.Key $true
-        $ridingCompact = Get-SpeedCompactLabel $entry.Key $false
-        if (-not $text.Contains("Text=`"$movementCompact`" Visible=`"1`" CanHovered=`"1`"") -or
-            -not $text.Contains("Text=`"$ridingCompact`" CanHovered=`"1`"") -or
-            -not $text.Contains(
-                "./Localization/$($entry.Key)/UI/XML/PersonalInfoSpeedStats.lua")) {
-            throw "PersonalInfoUI.xml has the wrong localized speed labels for $($entry.Key)."
-        }
-    }
+$constellationStates = @()
+foreach ($locale in $xmlPaths.Keys) {
+    $xml = [IO.File]::ReadAllText($xmlPaths[$locale], $utf8)
+    $xmlText[$locale] = $xml
+    $xmlState = Get-PersonalInfoXmlState $xml
+    Assert-PersonalInfoLocale $xml $locale $xmlState
     $xmlStates += $xmlState
-    $luaPath = $luaPaths[$entry.Key]
-    if (-not (Test-Path -LiteralPath $luaPath -PathType Leaf)) {
-        $luaStates += 'Original'
-        continue
-    }
-    $actualLua = [IO.File]::ReadAllText($luaPath, $utf8)
-    if ($actualLua -ne (Get-PersonalInfoSpeedLua $entry.Key)) {
-        throw "PersonalInfoSpeedStats.lua has unknown content for $($entry.Key)."
-    }
-    $luaStates += 'Patched'
+    $luaStates += Get-PersonalInfoLuaState $luaPaths[$locale] $locale $utf8
+    $constellation = [IO.File]::ReadAllText(
+        $constellationPaths[$locale], $utf8)
+    $constellationText[$locale] = $constellation
+    $constellationStates += Get-ConstellationStatsLuaState $constellation
 }
 if (@($xmlStates | Select-Object -Unique).Count -ne 1 -or
-    @($luaStates | Select-Object -Unique).Count -ne 1) {
-    throw 'The character speed-stat binary and localized UI files are partially applied.'
+    @($luaStates | Select-Object -Unique).Count -ne 1 -or
+    @($constellationStates | Select-Object -Unique).Count -ne 1) {
+    throw 'Localized character-stat files do not have a uniform state.'
 }
-$state = if ($binaryState -eq 'Original' -and
-    $xmlStates[0] -eq 'Original' -and $luaStates[0] -eq 'Original') {
-    'Original'
-} elseif ($binaryState -eq 'Patched' -and
-    $xmlStates[0] -eq 'PatchedV1' -and $luaStates[0] -eq 'Original') {
-    'PatchedV1'
-} elseif ($binaryState -eq 'Patched' -and
-    $xmlStates[0] -eq 'PatchedV2' -and $luaStates[0] -eq 'Patched') {
-    'PatchedV2'
-} elseif ($binaryState -eq 'Patched' -and
-    $xmlStates[0] -eq 'PatchedV3' -and $luaStates[0] -eq 'Patched') {
-    'PatchedV3'
-} else {
-    throw 'The character speed-stat binary, XML, and hover scripts are partially applied.'
-}
+$state = Resolve-CombinedCharacterStatsState $binaryState $xmlStates[0] (
+    $luaStates[0]) $constellationStates[0]
 
 if ($Mode -eq 'Status') {
     [pscustomobject]@{
         Mode = $Mode
         Changed = $false
         State = $state
+        BinaryState = $binaryState
         Sha256 = (Get-FileHash $clientExe -Algorithm SHA256).Hash
-        HookVa = ('0x{0:X8}' -f $hookVa)
-        CaveVa = ('0x{0:X8}' -f $caveVa)
-        CaveReserveBytes = $caveReserveLength
-        WindowRectangle = switch ($state) {
-            'PatchedV2' { '100,100,363,692' }
-            'PatchedV3' { '100,100,363,652' }
-            default { '100,100,363,626' }
-        }
-        HoverImplementation = if ($state -in 'PatchedV2', 'PatchedV3') {
-            'localized Lua helper'
-        } else { 'none' }
-        MovementWireOffset = 56
-        RidingWireOffset = 60
+        HookVa = ('0x{0:X8}' -f $profile.HookVa)
+        CaveVa = ('0x{0:X8}' -f $profile.CaveVa)
+        CaveReserveBytes = $profile.CaveReserveLength
+        NpcInteractionSafe = $binaryState -eq 'Original'
+        WindowRectangle = if ($state -eq 'PatchedSid200') {
+            '100,100,454,652'
+        } elseif ($state -eq 'PatchedSid200FrameV1') {
+            '100,100,440,652 (frame v1)'
+        } elseif ($state -eq 'PatchedSid200V1') {
+            '100,100,363,652 (SID200 v1)'
+        } else { 'legacy or stock layout' }
+        Transport = if ($state -in 'PatchedSid200', 'PatchedSid200V1',
+            'PatchedSid200FrameV1') {
+            'pull-only ConsEvent SID 200'
+        } else { 'none or legacy opcode 10166 hook' }
         Locales = @($xmlPaths.Keys)
     }
     return
 }
 
 $targetPatched = $Mode -eq 'Apply'
-if (($targetPatched -and $state -eq 'PatchedV3') -or
+if (($targetPatched -and $state -eq 'PatchedSid200') -or
     (-not $targetPatched -and $state -eq 'Original')) {
     [pscustomobject]@{ Mode = $Mode; Changed = $false; State = $state }
     return
@@ -334,87 +208,258 @@ if (($targetPatched -and $state -eq 'PatchedV3') -or
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
     $BackupRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'backups'
 }
+if ($null -ne $InternalTestBeforeBackup) {
+    & $InternalTestBeforeBackup
+}
 $backupDirectory = Join-Path ([IO.Path]::GetFullPath($BackupRoot)) (
-    'client-character-speed-stats-' + $Mode + '-' +
+    'client-character-stats-' + $Mode + '-' +
     (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
 [IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
+$preStates = [Collections.Generic.List[object]]::new()
 $backupExe = Join-Path $backupDirectory 'Origin.exe'
 Copy-Item -LiteralPath $clientExe -Destination $backupExe
+$backupExeHash = Get-FileSha256 $backupExe
+$preStates.Add([pscustomobject]@{
+        Label = 'Origin.exe'
+        Path = $clientExe
+        Backup = $backupExe
+        Hash = $backupExeHash
+        WasAbsent = $false
+    }) | Out-Null
 $backupXml = [ordered]@{}
 $backupLua = [ordered]@{}
-foreach ($entry in $xmlPaths.GetEnumerator()) {
-    $backup = Join-Path $backupDirectory (
-        'PersonalInfoUI.' + $entry.Key + '.xml')
-    Copy-Item -LiteralPath $entry.Value -Destination $backup
-    $backupXml[$entry.Key] = $backup
-    $luaPath = $luaPaths[$entry.Key]
-    if (Test-Path -LiteralPath $luaPath -PathType Leaf) {
-        $luaBackup = Join-Path $backupDirectory (
-            'PersonalInfoSpeedStats.' + $entry.Key + '.lua')
-        Copy-Item -LiteralPath $luaPath -Destination $luaBackup
-        $backupLua[$entry.Key] = $luaBackup
+$backupConstellation = [ordered]@{}
+foreach ($locale in $xmlPaths.Keys) {
+    $backupXml[$locale] = Join-Path $backupDirectory (
+        "PersonalInfoUI.$locale.xml")
+    Copy-Item -LiteralPath $xmlPaths[$locale] -Destination $backupXml[$locale]
+    $preStates.Add([pscustomobject]@{
+            Label = "PersonalInfoUI.$locale.xml"
+            Path = $xmlPaths[$locale]
+            Backup = $backupXml[$locale]
+            Hash = Get-FileSha256 $backupXml[$locale]
+            WasAbsent = $false
+        }) | Out-Null
+    $backupConstellation[$locale] = Join-Path $backupDirectory (
+        "Constellation.$locale.lua")
+    Copy-Item -LiteralPath $constellationPaths[$locale] `
+        -Destination $backupConstellation[$locale]
+    $preStates.Add([pscustomobject]@{
+            Label = "Constellation.$locale.lua"
+            Path = $constellationPaths[$locale]
+            Backup = $backupConstellation[$locale]
+            Hash = Get-FileSha256 $backupConstellation[$locale]
+            WasAbsent = $false
+        }) | Out-Null
+    if (Test-Path -LiteralPath $luaPaths[$locale] -PathType Leaf) {
+        $backupLua[$locale] = Join-Path $backupDirectory (
+            "PersonalInfoSpeedStats.$locale.lua")
+        Copy-Item -LiteralPath $luaPaths[$locale] `
+            -Destination $backupLua[$locale]
+        $preStates.Add([pscustomobject]@{
+                Label = "PersonalInfoSpeedStats.$locale.lua"
+                Path = $luaPaths[$locale]
+                Backup = $backupLua[$locale]
+                Hash = Get-FileSha256 $backupLua[$locale]
+                WasAbsent = $false
+            }) | Out-Null
     } else {
-        $backupLua[$entry.Key] = $null
+        $backupLua[$locale] = $null
+        $preStates.Add([pscustomobject]@{
+                Label = "PersonalInfoSpeedStats.$locale.lua"
+                Path = $luaPaths[$locale]
+                Backup = $null
+                Hash = $null
+                WasAbsent = $true
+            }) | Out-Null
     }
 }
 
-if ($targetPatched) {
-    Copy-Bytes $patchedHook $data $hookOffset
-    Copy-Bytes $patchedCave $data $caveOffset
-} else {
-    Copy-Bytes $originalHook $data $hookOffset
-    Copy-Bytes $emptyCave $data $caveOffset
-}
-$targetXml = [ordered]@{}
-foreach ($entry in $xmlPaths.GetEnumerator()) {
-    $targetXml[$entry.Key] = Convert-PersonalInfoXml (
-        $xmlText[$entry.Key]) $entry.Key $targetPatched
-    $expectedXmlState = if ($targetPatched) { 'PatchedV3' } else { 'Original' }
-    if ((Get-PersonalInfoXmlState $targetXml[$entry.Key]) -ne
-        $expectedXmlState) {
-        throw "Generated $($entry.Key) UI state is invalid."
+$snapshotsByPath = @{}
+foreach ($snapshot in $preStates) {
+    $snapshotsByPath[$snapshot.Path] = $snapshot
+    if ($snapshot.WasAbsent) {
+        if (Test-Path -LiteralPath $snapshot.Path -PathType Leaf) {
+            throw "$($snapshot.Label) appeared while backups were created."
+        }
+        continue
+    }
+    if (-not (Test-Path -LiteralPath $snapshot.Path -PathType Leaf) -or
+        (Get-FileSha256 $snapshot.Path) -ne $snapshot.Hash) {
+        throw "$($snapshot.Label) changed while backups were created."
+    }
+    if ((Get-FileSha256 $snapshot.Backup) -ne $snapshot.Hash) {
+        throw "$($snapshot.Label) backup verification failed."
     }
 }
 
+[byte[]]$backupData = [IO.File]::ReadAllBytes($backupExe)
+$latestBinaryState = Get-CharacterStatsBinaryState $backupData $profile
+$latestXmlStates = @()
+$latestLuaStates = @()
+$latestConstellationStates = @()
+$latestXmlText = [ordered]@{}
+$latestConstellationText = [ordered]@{}
+$targetXmlBytes = [ordered]@{}
+$targetConstellationBytes = [ordered]@{}
+$targetLuaBytes = [ordered]@{}
+foreach ($locale in $xmlPaths.Keys) {
+    $latestXmlText[$locale] = [IO.File]::ReadAllText(
+        $backupXml[$locale], $utf8)
+    $xmlSnapshotState = Get-PersonalInfoXmlState $latestXmlText[$locale]
+    Assert-PersonalInfoLocale $latestXmlText[$locale] $locale (
+        $xmlSnapshotState)
+    $latestXmlStates += $xmlSnapshotState
+    if ($null -eq $backupLua[$locale]) {
+        $latestLuaStates += 'Original'
+    } else {
+        $latestLuaStates += Get-PersonalInfoLuaState (
+            $backupLua[$locale]) $locale $utf8
+    }
+    $latestConstellationText[$locale] = [IO.File]::ReadAllText(
+        $backupConstellation[$locale], $utf8)
+    $latestConstellationStates += Get-ConstellationStatsLuaState (
+        $latestConstellationText[$locale])
+}
+if (@($latestXmlStates | Select-Object -Unique).Count -ne 1 -or
+    @($latestLuaStates | Select-Object -Unique).Count -ne 1 -or
+    @($latestConstellationStates | Select-Object -Unique).Count -ne 1) {
+    throw 'Localized character-stat backup files do not have a uniform state.'
+}
+$latestState = Resolve-CombinedCharacterStatsState $latestBinaryState (
+    $latestXmlStates[0]) $latestLuaStates[0] $latestConstellationStates[0]
+if ($latestState -ne $state) {
+    throw 'Character-stat state changed while verified backups were created.'
+}
+
+$expectedXml = if ($targetPatched) { 'PatchedSid200' } else { 'Original' }
+$expectedConstellation = if ($targetPatched) { 'Patched' } else { 'Original' }
+foreach ($locale in $xmlPaths.Keys) {
+    $targetXml = Convert-PersonalInfoXml (
+        $latestXmlText[$locale]) $locale $targetPatched
+    if ((Get-PersonalInfoXmlState $targetXml) -ne $expectedXml) {
+        throw "Generated $locale PersonalInfoUI.xml state is invalid."
+    }
+    Assert-PersonalInfoLocale $targetXml $locale $expectedXml
+    $targetXmlBytes[$locale] = Get-Utf8Bytes $targetXml (
+        Test-Utf8Bom $backupXml[$locale])
+
+    $targetConstellation = Convert-ConstellationStatsLua (
+        $latestConstellationText[$locale]) $targetPatched
+    if ((Get-ConstellationStatsLuaState $targetConstellation) -ne
+        $expectedConstellation) {
+        throw "Generated $locale Constellation.lua state is invalid."
+    }
+    $targetConstellationBytes[$locale] = Get-Utf8Bytes (
+        $targetConstellation) (Test-Utf8Bom $backupConstellation[$locale])
+    $targetLuaBytes[$locale] = Get-Utf8Bytes (
+        Get-PersonalInfoStatsLua $locale) $false
+}
+Restore-CharacterStatsOriginalBinary $backupData $profile
+if ((Get-CharacterStatsBinaryState $backupData $profile) -ne 'Original') {
+    throw 'Generated Origin.exe state is invalid.'
+}
+
+$mutations = [Collections.Generic.List[object]]::new()
+$script:transactionWriteCount = 0
+if (Test-TargetClientRunning $clientExe) {
+    throw 'Origin.exe started while the character-stat transaction was staged.'
+}
 try {
-    Write-BytesAtomic $clientExe $data
-    foreach ($entry in $xmlPaths.GetEnumerator()) {
-        Write-Utf8Atomic $entry.Value $targetXml[$entry.Key]
-        $luaPath = $luaPaths[$entry.Key]
+    if ($latestBinaryState -ne 'Original') {
+        $snapshot = $snapshotsByPath[$clientExe]
+        Assert-CharacterStatsSnapshotCurrent $snapshot
+        $writtenHash = Get-BytesSha256 $backupData
+        Add-CharacterStatsMutation $mutations $snapshot $writtenHash $false
+        Write-BytesAtomic $clientExe $backupData $snapshot.Hash (
+            $snapshot.WasAbsent) -VerifyCurrent
+        Invoke-InternalWriteCheckpoint
+    }
+    foreach ($locale in $xmlPaths.Keys) {
+        $snapshot = $snapshotsByPath[$xmlPaths[$locale]]
+        Assert-CharacterStatsSnapshotCurrent $snapshot
+        $writtenHash = Get-BytesSha256 $targetXmlBytes[$locale]
+        Add-CharacterStatsMutation $mutations $snapshot $writtenHash $false
+        Write-BytesAtomic $xmlPaths[$locale] $targetXmlBytes[$locale] (
+            $snapshot.Hash) $snapshot.WasAbsent -VerifyCurrent
+        Invoke-InternalWriteCheckpoint
+        $snapshot = $snapshotsByPath[$constellationPaths[$locale]]
+        $writtenHash = Get-BytesSha256 $targetConstellationBytes[$locale]
+        if ($snapshot.Hash -ne $writtenHash) {
+            Assert-CharacterStatsSnapshotCurrent $snapshot
+            Add-CharacterStatsMutation $mutations $snapshot $writtenHash $false
+            Write-BytesAtomic $constellationPaths[$locale] (
+                $targetConstellationBytes[$locale]) $snapshot.Hash (
+                $snapshot.WasAbsent) -VerifyCurrent
+            Invoke-InternalWriteCheckpoint
+        }
         if ($targetPatched) {
-            Write-Utf8Atomic $luaPath (Get-PersonalInfoSpeedLua $entry.Key)
-        } elseif (Test-Path -LiteralPath $luaPath -PathType Leaf) {
-            Remove-Item -LiteralPath $luaPath -Force
+            $snapshot = $snapshotsByPath[$luaPaths[$locale]]
+            Assert-CharacterStatsSnapshotCurrent $snapshot
+            $writtenHash = Get-BytesSha256 $targetLuaBytes[$locale]
+            Add-CharacterStatsMutation $mutations $snapshot $writtenHash $false
+            Write-BytesAtomic $luaPaths[$locale] $targetLuaBytes[$locale] (
+                $snapshot.Hash) $snapshot.WasAbsent -VerifyCurrent
+            Invoke-InternalWriteCheckpoint
+        } elseif (Test-Path -LiteralPath $luaPaths[$locale] -PathType Leaf) {
+            $snapshot = $snapshotsByPath[$luaPaths[$locale]]
+            Assert-CharacterStatsSnapshotCurrent $snapshot
+            Add-CharacterStatsMutation $mutations $snapshot $null $true
+            Remove-Item -LiteralPath $luaPaths[$locale] -Force
+            Invoke-InternalWriteCheckpoint
         }
     }
     $verify = & $PSCommandPath -ClientRoot $clientRootPath -Mode Status
-    $expectedState = if ($targetPatched) { 'PatchedV3' } else { 'Original' }
+    $expectedState = if ($targetPatched) { 'PatchedSid200' } else { 'Original' }
     if ($verify.State -ne $expectedState) {
-        throw 'Character speed-stat post-write verification failed.'
+        throw 'Character-stat post-write verification failed.'
     }
 }
 catch {
-    Copy-Item -LiteralPath $backupExe -Destination $clientExe -Force
-    foreach ($entry in $xmlPaths.GetEnumerator()) {
-        Copy-Item -LiteralPath $backupXml[$entry.Key] `
-            -Destination $entry.Value -Force
-        $luaPath = $luaPaths[$entry.Key]
-        if ($null -ne $backupLua[$entry.Key]) {
-            Copy-Item -LiteralPath $backupLua[$entry.Key] `
-                -Destination $luaPath -Force
-        } elseif (Test-Path -LiteralPath $luaPath -PathType Leaf) {
-            Remove-Item -LiteralPath $luaPath -Force
+    $originalError = $_
+    $rollbackErrors = [Collections.Generic.List[string]]::new()
+    for ($index = $mutations.Count - 1; $index -ge 0; $index--) {
+        $mutation = $mutations[$index]
+        try {
+            Restore-CharacterStatsMutation $mutation
+        }
+        catch {
+            $rollbackErrors.Add(
+                "$($mutation.Label): $($_.Exception.Message)") | Out-Null
         }
     }
-    throw
+    foreach ($snapshot in $preStates) {
+        try {
+            if ($snapshot.WasAbsent) {
+                if (Test-Path -LiteralPath $snapshot.Path -PathType Leaf) {
+                    throw 'expected the pre-transaction file to be absent'
+                }
+            } elseif (-not (Test-Path -LiteralPath $snapshot.Path -PathType Leaf) -or
+                (Get-FileSha256 $snapshot.Path) -ne $snapshot.Hash) {
+                throw 'SHA-256 does not match the verified backup'
+            }
+        }
+        catch {
+            $rollbackErrors.Add(
+                "$($snapshot.Label) verification: $($_.Exception.Message)") |
+                Out-Null
+        }
+    }
+    if ($rollbackErrors.Count -gt 0) {
+        $message = $originalError.Exception.Message +
+            ' Rollback failures: ' + ($rollbackErrors -join '; ')
+        throw [InvalidOperationException]::new(
+            $message, $originalError.Exception)
+    }
+    throw $originalError
 }
 
 [pscustomobject]@{
     Mode = $Mode
     Changed = $true
-    State = if ($targetPatched) { 'PatchedV3' } else { 'Original' }
+    State = if ($targetPatched) { 'PatchedSid200' } else { 'Original' }
     Backup = $backupDirectory
     Sha256 = (Get-FileHash $clientExe -Algorithm SHA256).Hash
-    MovementDisplay = 'current authoritative locomotion multiplier'
-    RidingDisplay = 'equipped mount bonus'
+    SpeedDisplay = 'effective movement speed from SID 200 v1'
+    PenetrationDisplay = 'physical v2 for class 0/1; magical v3 for class 2/3'
 }

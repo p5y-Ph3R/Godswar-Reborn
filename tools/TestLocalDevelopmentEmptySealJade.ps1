@@ -18,7 +18,7 @@ if ($database -notmatch $databasePattern) {
 . (Join-Path $PSScriptRoot `
     'RepairLocalDevelopmentPetRebirthExperience.Guards.ps1')
 $null = Initialize-RebirthRepairEnvironment $postgresContainer `
-    'godswar-dev-server' 'godswar-dev-redis-coordination'
+    'godswar-dev-tempest-openworld-01' 'godswar-dev-redis-coordination'
 
 function Invoke-EmptySealJadeTestSql(
     [string]$TargetDatabase,

@@ -6,7 +6,7 @@ param(
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_.-]*$')]
     [string]$PostgresContainer = 'godswar-dev-postgres',
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_.-]*$')]
-    [string]$ServerContainer = 'godswar-dev-server',
+    [string]$ServerContainer = 'godswar-dev-tempest-openworld-01',
     [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]
     [string]$Database = 'godswar',
     [ValidatePattern('^[A-Za-z0-9_][A-Za-z0-9_.-]*$')]

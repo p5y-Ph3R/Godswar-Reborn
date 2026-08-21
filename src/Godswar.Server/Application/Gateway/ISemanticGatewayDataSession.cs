@@ -1,4 +1,5 @@
 using Godswar.Server.Domain.World.Instances;
+using Godswar.Server.Application.Realms;
 
 namespace Godswar.Server.Application.Gateway;
 
@@ -15,6 +16,7 @@ internal sealed record SemanticGatewayAuthenticatedAccount(
 /// </summary>
 internal sealed record SemanticGatewayCharacterRoute(
     int CharacterId,
+    RealmId RealmId,
     MapId MapId);
 
 /// <summary>
@@ -25,6 +27,7 @@ internal interface ISemanticGatewayCharacterRouteReader
 {
     Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default);
 }
 
@@ -32,7 +35,9 @@ internal interface ISemanticGatewayCharacterRouteReader
 /// Focused application boundary used by the semantic gateway. Persistence
 /// providers remain behind the infrastructure composition session.
 /// </summary>
-internal interface ISemanticGatewayDataSession : IAsyncDisposable
+internal interface ISemanticGatewayDataSession :
+    IRealmCatalogReader,
+    IAsyncDisposable
 {
     Task<SemanticGatewayAuthenticatedAccount?> AuthenticateAsync(
         string username,
@@ -41,5 +46,6 @@ internal interface ISemanticGatewayDataSession : IAsyncDisposable
 
     Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default);
 }

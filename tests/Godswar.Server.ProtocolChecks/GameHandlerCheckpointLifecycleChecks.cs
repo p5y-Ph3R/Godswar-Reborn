@@ -1,4 +1,5 @@
 using System.Reflection;
+using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Domain.World.Instances;
@@ -38,6 +39,7 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
         await CheckVitalsClampAdvancesRevisionAsync();
         await CheckCoordinationFailureReleasesPostgresFenceAsync();
         await CheckCoordinationReleasePrecedesPostgresReleaseAsync();
+        await CheckStaleCrossProcessPresenceReleaseAsync();
         await CheckGatewayLocalMapTransitionRouteAsync();
     }
 
@@ -275,7 +277,8 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
         ClientSession session,
         ICharacterSnapshotReader snapshotReader,
         ICharacterCheckpointCoordinator? characterCheckpoints,
-        IPlayerCoordinationLeaseIssuer? playerCoordination = null) =>
+        IPlayerCoordinationLeaseIssuer? playerCoordination = null,
+        IAccountPresenceWriter? accountPresence = null) =>
         new(
             session,
             new EmptyStore(),
@@ -283,7 +286,9 @@ internal static partial class GameHandlerCheckpointLifecycleChecks
             snapshotReader,
             WorldContentReaderTestFixtures.Empty,
             characterCheckpoints: characterCheckpoints,
-            playerCoordination: playerCoordination);
+            playerCoordination: playerCoordination,
+            accountPresence:
+                accountPresence ?? NoopAccountPresenceWriter.Instance);
 
     private static void InstallIdentity(
         GameClientHandler handler,

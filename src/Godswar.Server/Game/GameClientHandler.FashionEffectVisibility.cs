@@ -140,7 +140,7 @@ internal sealed partial class GameClientHandler
                 await _registry.BroadcastToCurrentWorldInstanceAsync(
                     _session,
                     PacketBuilder.EquipmentEffectVisibility(
-                        WorldObjectIds.ForPlayer(_character.Id),
+                        CurrentPlayerObjectId,
                         ResolveEquipmentEffectProjection(_character)),
                     cancellationToken,
                     includeRoutingSession: false,

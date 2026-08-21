@@ -1,5 +1,6 @@
 using System.Net;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
 using Godswar.Server.Networking.SemanticGateway;
 using Godswar.Server.Protocol;
@@ -13,12 +14,18 @@ internal static partial class SemanticGatewayChecks
     {
         var authority = CreateLoginAuthority();
         var principal = new SemanticGatewayPrincipal(7, "TEST");
-        var generationA = authority.BeginLogin(principal, Source());
+        var generationA = authority.BeginLogin(
+            principal,
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             generationA.IsStarted &&
             authority.ActivateLogin(generationA.Generation!),
             "generation A activates for relay coordination");
-        var generationB = authority.BeginLogin(principal, Source());
+        var generationB = authority.BeginLogin(
+            principal,
+            Source(),
+            SemanticGatewayTestRealm.TempestGrant);
         Check.True(
             generationB.IsStarted &&
             authority.ActivateLogin(generationB.Generation!),
@@ -111,7 +118,8 @@ internal static partial class SemanticGatewayChecks
             EncryptLoginStream(
                 "TEST",
                 "password",
-                Opcodes.LoginReturnInfo));
+                SelectRealmPacket(RealmId.Tempest),
+                OpcodePacket(Opcodes.LoginReturnInfo)));
         SemanticGatewayConnectionCoordinator
             .SemanticGatewayConnectionLease? matchingRelay = null;
         SemanticGatewayLoginGenerationLease? newerGeneration = null;
@@ -138,7 +146,8 @@ internal static partial class SemanticGatewayChecks
                 generation.Principal,
                 new SemanticGatewayConnectionSource(
                     GatewayConnectionId.New(),
-                    IPAddress.Loopback));
+                    IPAddress.Loopback),
+                generation.RealmGrant);
             Check.True(
                 replacement.IsStarted &&
                 authority.ActivateLogin(replacement.Generation!),
@@ -154,8 +163,6 @@ internal static partial class SemanticGatewayChecks
             data,
             CreateLoginCoordination(authority),
             connections,
-            "127.0.0.1",
-            41006,
             TimeSpan.FromSeconds(1));
         var failed = false;
         try
@@ -228,7 +235,7 @@ internal static partial class SemanticGatewayChecks
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (Interlocked.Increment(ref _writes) != 2)
+            if (Interlocked.Increment(ref _writes) != 3)
             {
                 return;
             }

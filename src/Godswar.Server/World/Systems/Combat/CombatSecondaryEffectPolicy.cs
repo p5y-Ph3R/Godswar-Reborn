@@ -39,10 +39,14 @@ internal static class CombatSecondaryEffectPolicy
                 CombatDamageProvenance.Rebound);
         }
 
-        var healing = ScaleCommittedDamage(
+        var percentageHealing = ScaleCommittedDamage(
             committedDamage,
             attacker.LifeAbsorptionBasisPoints,
             MaximumLifeAbsorptionBasisPoints);
+        var healing = Math.Min(
+            (ulong)uint.MaxValue,
+            (ulong)percentageHealing +
+            (uint)Math.Max(0, attacker.LifeAbsorptionFlat));
         var reboundPercent = ScaleCommittedDamage(
             committedDamage,
             target.DamageReboundBasisPoints,
@@ -52,7 +56,7 @@ internal static class CombatSecondaryEffectPolicy
             (ulong)reboundPercent +
             (uint)Math.Max(0, target.DamageReboundFlat));
         return new CombatSecondaryEffectResolution(
-            healing,
+            (uint)healing,
             (uint)rebound,
             CombatDamageProvenance.Rebound);
     }

@@ -47,15 +47,17 @@ void CheckCompatibilityAndUnrelated(Checks* checks) {
     BuildSelectionPacket(
         packet,
         8,
-        10'057,
+        10'025,
         LegacyZodiacCompatibilityModule,
         0xAABBCCDDU);
     checks->Require(
         TryReadLegacyZodiacSkillGridSelection(
             packet,
             sizeof(packet),
-            &command),
-        "Zodiac selection rejected module-zero compatibility");
+            &command) &&
+            command.gridIndex == 8 &&
+            command.selectedSkillKind == 10'025,
+        "Zodiac selection rejected an all-class defense choice");
 
     Write16(packet + 10, LegacyZodiacSkillGridUpgradeSid);
     checks->Require(

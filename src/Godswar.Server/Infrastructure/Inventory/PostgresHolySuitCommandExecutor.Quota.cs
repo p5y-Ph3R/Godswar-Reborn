@@ -49,7 +49,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             ) realm_clock
             LEFT JOIN public.holy_suit_daily_exp_storage usage
               ON usage.account_id = cb.account_id
-             AND usage.realm_id = @realmId
+             AND usage.realm_id = cb.server_id
              AND usage.usage_day = realm_clock.usage_day
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
@@ -68,7 +68,6 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         command.Parameters.AddWithValue(
             "ownerGeneration",
             ownership.Generation);
-        command.Parameters.AddWithValue("realmId", TempestRealmId);
         command.Parameters.AddWithValue(
             "realmDayTimeZone",
             policy.RealmDayTimeZone);

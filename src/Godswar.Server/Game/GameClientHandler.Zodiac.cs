@@ -24,6 +24,14 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (request.IsCharacterUiStatsV1Envelope)
+        {
+            await HandleCharacterUiStatsV1ProbeAsync(
+                request,
+                cancellationToken);
+            return;
+        }
+
         if (request.IsFullSync)
         {
             await SendZodiacFullSyncAsync(cancellationToken);

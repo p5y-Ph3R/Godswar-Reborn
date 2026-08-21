@@ -6,7 +6,8 @@ internal enum PvpEntitlementKind : byte
 {
     None,
     MutualDuel,
-    OpposingFaction
+    OpposingFaction,
+    TrainingDummy
 }
 
 internal enum PvpEligibilityFailure : byte
@@ -164,7 +165,8 @@ internal static class PvpCombatEligibilityPolicy
         if (grant.EntitlementId == Guid.Empty ||
             grant.Kind is not (
                 PvpEntitlementKind.MutualDuel or
-                PvpEntitlementKind.OpposingFaction) ||
+                PvpEntitlementKind.OpposingFaction or
+                PvpEntitlementKind.TrainingDummy) ||
             grant.FirstCharacterId <= 0 ||
             grant.SecondCharacterId <= 0 ||
             grant.FirstCharacterId == grant.SecondCharacterId ||

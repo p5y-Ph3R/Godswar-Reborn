@@ -1,3 +1,5 @@
+. (Join-Path $PSScriptRoot "TalentScalarAuthority.ps1")
+
 $classes = @(
     [pscustomobject]@{ Id = [Int16]0; Name = "warrior"; DisplayName = "Warrior"; Source = "Skill.ini class0 / Message.dat Warriorbuild" },
     [pscustomobject]@{ Id = [Int16]1; Name = "champion"; DisplayName = "Champion"; Source = "Skill.ini class1 / Message.dat Spearmanbuild" },
@@ -82,8 +84,10 @@ foreach ($classId in 0..3) {
         }
     }
 }
+Assert-TalentAuthorityCoverage $talentClassOrder
+$talentAuthorityModes = @{}
 
-$talents = @(
+$talentDefinitions = @(
     foreach ($sectionName in ($sections.Keys | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ } | Sort-Object)) {
         $section = $sections[[string]$sectionName]
         if (-not $talentClassOrder.ContainsKey($sectionName)) {
@@ -95,8 +99,26 @@ $talents = @(
         $iconPos = ConvertTo-IntegerPair $section["IconPos"]
         $iconSize = ConvertTo-IntegerPair $section["IconSize"]
         $classOrder = $talentClassOrder[$sectionName]
+        $effectValue = Resolve-AuthoritativeTalentEffectValue `
+            $sectionName `
+            $classOrder.ClassId `
+            $effectPair.Value `
+            $talentAuthorityModes
+        $legacySqlEffectValue = Resolve-LegacyTalentEffectValue `
+            $sectionName `
+            $classOrder.ClassId
+        $authoritativeSection = [ordered]@{}
+        $legacySqlSection = [ordered]@{}
+        foreach ($key in $section.Keys) {
+            $authoritativeSection[$key] = $section[$key]
+            $legacySqlSection[$key] = $section[$key]
+        }
+        $authoritativeSection[$effectKey] =
+            "$($effectPair.Id),$(Format-TalentScalar $effectValue)"
+        $legacySqlSection[$effectKey] =
+            "$($effectPair.Id),$(Format-TalentScalar $legacySqlEffectValue)"
 
-        [pscustomobject]@{
+        $parsedTalent = [pscustomobject]@{
             Id = [int]$sectionName
             ClassId = [Int16]$classOrder.ClassId
             TreeOrder = [Int16]$classOrder.TreeOrder
@@ -115,8 +137,30 @@ $talents = @(
             IconHeight = [int]$iconSize[1]
             StatsJson = ($section | ConvertTo-Json -Compress)
         }
+        $legacySqlTalent = $parsedTalent.PSObject.Copy()
+        $legacySqlTalent.EffectValue = $legacySqlEffectValue
+        $legacySqlTalent.StatsJson =
+            ($legacySqlSection | ConvertTo-Json -Compress)
+        $authoritativeTalent = $parsedTalent.PSObject.Copy()
+        $authoritativeTalent.EffectValue = $effectValue
+        $authoritativeTalent.StatsJson =
+            ($authoritativeSection | ConvertTo-Json -Compress)
+        [pscustomobject]@{
+            LegacySql = $legacySqlTalent
+            Authoritative = $authoritativeTalent
+        }
     }
-) | Sort-Object ClassId, TreeOrder
+)
+Assert-TalentAuthorityModes $talentAuthorityModes
+# The reviewed legacy migration is intentionally byte-stable for existing
+# baseline signatures. Its Champion rows keep client tooltip scalars even when
+# the input client is stock; gameplay authority is emitted separately below.
+$legacySqlTalents = @(
+    $talentDefinitions | ForEach-Object { $_.LegacySql }
+) |
+    Sort-Object ClassId, TreeOrder
+$talents = @($talentDefinitions | ForEach-Object { $_.Authoritative }) |
+    Sort-Object ClassId, TreeOrder
 
 $displayNames = @{}
 foreach ($line in Get-Content $equipNamePath) {

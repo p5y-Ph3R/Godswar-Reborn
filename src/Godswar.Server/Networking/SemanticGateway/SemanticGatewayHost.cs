@@ -74,8 +74,6 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
                 data,
                 _coordination,
                 _connections,
-                configuration.GamePublicHost,
-                configuration.GamePublicPort,
                 _coordinationTimeout,
                 clock),
             clock);
@@ -86,12 +84,17 @@ internal sealed class SemanticGatewayHost : IAsyncDisposable
                 data,
                 _coordination,
                 _connections,
-                map => configuration.TryResolveMap(
+                (realm, map) => configuration.TryResolveMap(
+                        realm,
                         map,
                         out var target)
                     ? target
                     : null,
-                configuration.BootstrapTarget,
+                realm => configuration.TryResolveBootstrap(
+                        realm,
+                        out var target)
+                    ? target
+                    : null,
                 node => configuration.TryGetWorker(
                         node,
                         out var worker)

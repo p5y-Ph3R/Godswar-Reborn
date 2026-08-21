@@ -1,10 +1,11 @@
-# Authored Base Combat V1
+# Authored Base Combat V1/V2
 
-Status: implemented in the working tree and under release verification. This is
-the Reborn V1 balance contract, not a claim that the original server formulas
-were recovered. Captured packet meanings are kept separate from authored
-arithmetic so a later capture-backed formula can be versioned without silently
-changing replay evidence.
+Status: implemented. V1 remains the frozen PvE and historical balance
+contract. V2 changes only admitted PvP Hit-versus-Dodge and
+Critical-versus-Critical-Resistance resolution. Neither is
+a claim that the original server formula was recovered. Captured packet
+meanings remain separate from authored arithmetic so formula evidence is never
+silently reinterpreted.
 
 ## Proven client contract
 
@@ -54,7 +55,7 @@ changing replay evidence.
 Percentage channels use basis points (`10,000 bp = 100%`). Rating and flat
 channels use whole stat/damage units.
 
-| Combat channel | Unit | V1 use |
+| Combat channel | Unit | Current use |
 |---|---:|---|
 | Physical / Magic Attack | flat | Selects the offensive base by profession or skill property |
 | Physical / Magic Defense | flat | Selected target defense before ignore-defense |
@@ -92,7 +93,7 @@ append damage, critical bonus, typed reductions/absorption, and rebound
 channels. Effects `15..18` remain gated because their material items do not yet
 have approved effectiveness and affinity definitions.
 
-## Reborn V1 formula
+## Reborn formula versions
 
 The basic channel is Magic for Priest/Mage professions (`2`/`3`) and Physical
 for Warrior/Champion. A combat skill uses Magic when its sealed `Property` is
@@ -103,17 +104,86 @@ and Critical Resistance `R`:
 
 ```text
 ratingScale = 100 + 25 * max(La, Lt)
-hitChanceBp  = clamp(9000 + 4000 * (H - D) /
-                     (ratingScale + H + D), 500, 9800)
-critChanceBp = clamp( 500 + 4500 * (C - R) /
-                     (ratingScale + C + R),   0, 5000)
+
+V1 hitChanceBp = clamp(9000 + 4000 * (H - D) /
+                       (ratingScale + H + D), 500, 9800)
+
+V2 when H >= D:
+  hitChanceBp = clamp(9000 + 4000 * (H - D) /
+                      (ratingScale + H + D), 500, 9800)
+
+V2 when H < D:
+  deficit = D - H
+  if deficit <= 500:
+    hitChanceBp = clamp(9000 - 12 * deficit, 500, 9800)
+  else:
+    hitChanceBp = clamp(3000 - 5 * (deficit - 500) / 3,
+                        500, 9800)
+
+V1 critChanceBp = clamp(500 + 4500 * (C - R) /
+                        (ratingScale + C + R), 0, 5000)
+
+V2 if C + R == 0:
+  critChanceBp = 0
+else:
+  critChanceBp = min(9000, 10000 * C / (C + R))
 ```
 
-Ratings are clamped non-negative before these calculations. Hit and critical
-rolls come from the formula version, authenticated identities, server-owned
-combat/health revisions, skill identity, and deterministic target order. Wall
-clock time and untrusted packet bytes never choose a roll. A miss consumes an
-otherwise admitted action but skips the critical roll and HP mutation.
+V1 remains current for PvE so existing monster ratings and the retained
+approximately-90-percent capture center do not change accidentally. V2 is
+current for admitted player-target basic attacks. It preserves V1 whenever
+Hit meets or exceeds Dodge. Once Dodge wins, each of the first 500 deficit
+points removes 12 basis points (0.12 percentage points) from the 90-percent
+baseline. This makes a 500-point deficit a hard matchup. Beyond that anchor,
+pressure tapers so additional Dodge remains useful until the 5-percent floor
+at a 2,000-point deficit. Its acceptance points include:
+
+| Hit | Dodge | V1 level 140 | V2 |
+|---:|---:|---:|---:|
+| 4,000 | 2,000 | 98.00% | 98.00% |
+| 4,000 | 4,000 | 90.00% | 90.00% |
+| 3,000 | 3,100 | 89.59% | 78.00% |
+| 3,000 | 3,250 | 88.99% | 60.00% |
+| 3,000 | 3,500 | 88.02% | 30.00% |
+| 4,000 | 6,000 | 84.12% | 5.00% |
+
+V2 also makes Critical and Critical Resistance a direct rating contest. The
+chance remains conditional on first passing Hit/Dodge. Any positive Critical
+against zero Critical Resistance reaches the 90-percent cap, equal positive
+ratings give 50 percent, and the higher side moves the ratio in its favor. If
+both ratings are zero, there is no natural critical chance:
+
+| Critical | Critical Resistance | V2 conditional critical chance |
+|---:|---:|---:|
+| 0 | 0 | 0.00% |
+| 1 | 0 | 90.00% |
+| 250 | 250 | 50.00% |
+| 500 | 0 | 90.00% |
+| 500 | 250 | 66.66% |
+| 500 | 430 | 53.76% |
+| 430 | 500 | 46.23% |
+| 250 | 500 | 33.33% |
+| 0 | 500 | 0.00% |
+
+Authoritative combat snapshots active runtime rating modifiers at the action's
+server timestamp. Sacred Zeal contributes its Hit and Critical ratings to the
+attacker; Gaia Care contributes Dodge and Critical Resistance to the target.
+Exact-expiry statuses (`ExpiresAt <= action time`) contribute nothing. These
+modifiers are ephemeral inputs and never mutate or persist base character
+stats. PvE consumes the same active modifiers through its frozen V1 chance
+curve, while admitted PvP basic attacks use V2.
+
+Critical Resistance changes critical frequency only. Critical Damage
+Reduction remains a separate magnitude channel that reduces the bonus portion
+of an already successful critical; neither stat changes normal-hit damage.
+
+Ratings are clamped non-negative before these calculations and integer division
+truncates toward zero. Raw hit and critical rolls come from authenticated
+identities, server-owned combat/health revisions, skill identity, and stable
+target order. Reproducing an outcome requires both that raw event evidence and
+its formula version. Wall clock time and untrusted packet bytes never choose a
+roll. A miss consumes an otherwise admitted action but skips the critical roll
+and HP mutation.
 
 For the selected Attack `A`, Defense `D`, ignore-defense `I`, skill coefficient
 `P1`, flat skill power `P2`, typed bonus `B`, append damage `X`, typed reduction
@@ -138,10 +208,10 @@ afterReduction   = preMitigation *
 finalDamage      = afterReduction - max(0, F)
 ```
 
-V1 uses saturating decimal intermediates and rounds the final result away from
-zero. An admitted basic hit floors at one damage. A positive damaging skill
-also floors at one after mitigation; a genuinely zero-power skill may remain
-zero and cannot mutate HP.
+Both versions share the same saturating damage and critical-damage calculation and
+round the final result away from zero. An admitted basic hit floors at one
+damage. A positive damaging skill also floors at one after mitigation; a
+genuinely zero-power skill may remain zero and cannot mutate HP.
 
 Post-commit effects are based on applied damage, not requested or overkill
 damage:
@@ -201,7 +271,7 @@ The exact 3/6/10 rules and per-grade curves remain centralized in
 
 ## PvP boundary
 
-PvP is default-deny. V1 admits only distinct, living, same-map Athens/Sparta
+PvP is default-deny. V2 admits only distinct, living, same-map Athens/Sparta
 opponents on sealed map mode `0`; every unknown or other map mode is safe.
 Admission, range, ownership, vitals, elemental state, and death attribution are
 revalidated and mutated inside one serialized registry transaction. The frozen

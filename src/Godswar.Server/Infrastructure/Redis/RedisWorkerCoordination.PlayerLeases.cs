@@ -29,7 +29,8 @@ internal sealed partial class RedisWorkerCoordination
                     [
                         _keys.Player(request.CharacterId),
                         _keys.Route(request.Route.WorldInstanceId),
-                        _keys.Worker(request.NodeId)
+                        _keys.Worker(request.NodeId),
+                        _keys.PlayerAccount(request.AccountId)
                     ],
                     [
                         request.AccountId,
@@ -43,7 +44,8 @@ internal sealed partial class RedisWorkerCoordination
                         request.Route.MapId.Value,
                         request.Route.WorldInstanceId.Value.ToString("N"),
                         (int)request.Presence,
-                        TtlMilliseconds(ttl)
+                        TtlMilliseconds(ttl),
+                        request.AllowAccountReplacement ? 1 : 0
                     ]),
                 cancellationToken);
             var response = RedisResultReader.Triple(result);
@@ -122,9 +124,12 @@ internal sealed partial class RedisWorkerCoordination
                     [
                         _keys.Player(lease.CharacterId),
                         _keys.Route(route.WorldInstanceId),
-                        _keys.Worker(lease.NodeId)
+                        _keys.Worker(lease.NodeId),
+                        _keys.PlayerAccount(lease.AccountId)
                     ],
                     [
+                        lease.AccountId,
+                        lease.CharacterId,
                         lease.Ownership.OwnerId.ToString("N"),
                         lease.Ownership.Generation,
                         lease.LeaseToken.ToString("N"),
@@ -185,8 +190,13 @@ internal sealed partial class RedisWorkerCoordination
                 deadline,
                 database => database.ScriptEvaluateAsync(
                     RedisCoordinationScripts.ReleasePlayer,
-                    [_keys.Player(lease.CharacterId)],
                     [
+                        _keys.Player(lease.CharacterId),
+                        _keys.PlayerAccount(lease.AccountId)
+                    ],
+                    [
+                        lease.AccountId,
+                        lease.CharacterId,
                         lease.Ownership.OwnerId.ToString("N"),
                         lease.Ownership.Generation,
                         lease.LeaseToken.ToString("N"),

@@ -16,6 +16,7 @@
       "runtime": "Ecs"
     },
     "worldInstances": {
+      "realmId": 1,
       "serverNodeId": "tempest-openworld-01",
       "maximumRuntimes": 256,
       "maximumPlayerAssignments": 4096,

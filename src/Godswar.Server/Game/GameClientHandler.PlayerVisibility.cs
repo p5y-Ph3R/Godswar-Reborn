@@ -31,7 +31,9 @@ internal sealed partial class GameClientHandler
             PacketBuilder.PlayerWorldSpawn(
                 player.Character,
                 player.ObjectId,
-                statusSnapshot.Effects),
+                statusSnapshot.Effects,
+                pkMode: _registry.TrainingDummySpawnPkMode(
+                    player.Character)),
             cancellationToken,
             "VisiblePlayerSpawn");
         await _session.SendAsync(
@@ -60,16 +62,21 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "VisiblePlayerPosition");
         await _session.SendAsync(
-            PacketBuilder.PlayerStatusUpdate(
+            PacketBuilder.RemotePlayerStatusUpdate(
                 player.Character,
                 player.ObjectId,
-                statusSnapshot.Aggregate),
+                statusSnapshot.Aggregate,
+                _registry.TrainingDummySpawnPkMode(
+                    player.Character)),
             cancellationToken,
             "VisiblePlayerStatus");
         if (player.PetOwnerMergeActive)
         {
             await _session.SendAsync(
-                PacketBuilder.PetOwnerMergeStarted(player.ObjectId),
+                PacketBuilder.PetOwnerMergeStarted(
+                    player.ObjectId,
+                    player.PetOwnerMergeAptitude,
+                    player.PetOwnerMergeCompletedRebirths),
                 cancellationToken,
                 "VisiblePlayerPetOwnerMerge");
         }
@@ -296,10 +303,12 @@ internal sealed partial class GameClientHandler
         Console.WriteLine(
             $"[inspect] sending target equipment requester={_character.Name} target={target.CharacterName} targetObject={target.ObjectId} equipment={PacketBuilder.EnterEquipmentSummary(target.Character)}");
         await _session.SendAsync(
-            PacketBuilder.PlayerInspectEquipmentStatusBundle(
+            PacketBuilder.PlayerInspectEquipmentRemoteStatusBundle(
                 target.Character,
                 inspectDetailObjectId,
-                statusSnapshot.Aggregate),
+                statusSnapshot.Aggregate,
+                _registry.TrainingDummySpawnPkMode(
+                    target.Character)),
             cancellationToken,
             "PlayerInspectEquipmentStatusBundle",
             framed: false);

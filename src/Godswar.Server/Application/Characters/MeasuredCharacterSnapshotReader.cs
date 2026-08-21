@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.Application.Characters;
 
@@ -23,6 +24,12 @@ internal sealed class MeasuredCharacterSnapshotReader :
 
     public async Task<CharacterAccountSnapshot> ReadAsync(
         int accountId,
+        CancellationToken cancellationToken = default) =>
+        await ReadAsync(accountId, RealmId.Tempest, cancellationToken);
+
+    public async Task<CharacterAccountSnapshot> ReadAsync(
+        int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default)
     {
         var started = Stopwatch.GetTimestamp();
@@ -31,6 +38,7 @@ internal sealed class MeasuredCharacterSnapshotReader :
         {
             var snapshot = await _inner.ReadAsync(
                 accountId,
+                realmId,
                 cancellationToken);
             outcome = snapshot.Character is null
                 ? "empty"

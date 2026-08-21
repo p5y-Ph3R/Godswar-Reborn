@@ -5,7 +5,7 @@ namespace Godswar.Server.ProtocolChecks;
 internal static class RuntimeContentFingerprintChecks
 {
     public const string CheckName =
-        "Combined world, item, pet, owner-Merge, and pet-skill runtime-content fingerprint";
+        "Combined gameplay and Holy-balance runtime-content fingerprint";
 
     public static Task RunAsync()
     {
@@ -19,12 +19,15 @@ internal static class RuntimeContentFingerprintChecks
             "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
         const string learnedSkills =
             "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE";
+        const string holyBalance =
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
         var baseline = RuntimeContentFingerprint.Create(
             world,
             items,
             pets,
             ownerMerge,
-            learnedSkills);
+            learnedSkills,
+            holyBalance);
 
         Check.Equal(64, baseline.Length, "combined fingerprint SHA-256 length");
         Check.Equal(
@@ -34,7 +37,8 @@ internal static class RuntimeContentFingerprintChecks
                 items,
                 pets,
                 ownerMerge,
-                learnedSkills),
+                learnedSkills,
+                holyBalance),
             "combined fingerprint determinism");
         Check.True(
             !baseline.Equals(
@@ -43,7 +47,8 @@ internal static class RuntimeContentFingerprintChecks
                     items,
                     pets,
                     ownerMerge,
-                    learnedSkills),
+                    learnedSkills,
+                    holyBalance),
                 StringComparison.Ordinal),
             "world revision participates in worker compatibility");
         Check.True(
@@ -53,7 +58,8 @@ internal static class RuntimeContentFingerprintChecks
                     "DBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
                     pets,
                     ownerMerge,
-                    learnedSkills),
+                    learnedSkills,
+                    holyBalance),
             StringComparison.Ordinal),
             "item revision participates in worker compatibility");
         Check.True(
@@ -63,7 +69,8 @@ internal static class RuntimeContentFingerprintChecks
                     items,
                     "ECCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
                     ownerMerge,
-                    learnedSkills),
+                    learnedSkills,
+                    holyBalance),
                 StringComparison.Ordinal),
             "pet revision participates in worker compatibility");
         Check.True(
@@ -73,7 +80,8 @@ internal static class RuntimeContentFingerprintChecks
                     items,
                     pets,
                     "FDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
-                    learnedSkills),
+                    learnedSkills,
+                    holyBalance),
                 StringComparison.Ordinal),
             "owner-Merge revision participates in worker compatibility");
         Check.True(
@@ -83,16 +91,29 @@ internal static class RuntimeContentFingerprintChecks
                     items,
                     pets,
                     ownerMerge,
-                    "FEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"),
+                    "FEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+                    holyBalance),
                 StringComparison.Ordinal),
             "learned pet-skill revision participates in worker compatibility");
+        Check.True(
+            !baseline.Equals(
+                RuntimeContentFingerprint.Create(
+                    world,
+                    items,
+                    pets,
+                    ownerMerge,
+                    learnedSkills,
+                    "AFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+                StringComparison.Ordinal),
+            "Holy Spirit balance participates in worker compatibility");
         Check.Throws<ArgumentException>(
             () => RuntimeContentFingerprint.Create(
                 world.ToLowerInvariant(),
                 items,
                 pets,
                 ownerMerge,
-                learnedSkills),
+                learnedSkills,
+                holyBalance),
             "lowercase revision is rejected instead of ambiguously normalized");
         Check.Throws<ArgumentException>(
             () => RuntimeContentFingerprint.Create(
@@ -100,7 +121,8 @@ internal static class RuntimeContentFingerprintChecks
                 items,
                 pets.ToLowerInvariant(),
                 ownerMerge,
-                learnedSkills),
+                learnedSkills,
+                holyBalance),
             "lowercase pet revision is rejected instead of ambiguously normalized");
         Check.Throws<ArgumentException>(
             () => RuntimeContentFingerprint.Create(
@@ -108,7 +130,8 @@ internal static class RuntimeContentFingerprintChecks
                 items,
                 pets,
                 ownerMerge.ToLowerInvariant(),
-                learnedSkills),
+                learnedSkills,
+                holyBalance),
             "lowercase owner-Merge revision is rejected");
         Check.Throws<ArgumentException>(
             () => RuntimeContentFingerprint.Create(
@@ -116,8 +139,18 @@ internal static class RuntimeContentFingerprintChecks
                 items,
                 pets,
                 ownerMerge,
-                learnedSkills.ToLowerInvariant()),
+                learnedSkills.ToLowerInvariant(),
+                holyBalance),
             "lowercase learned pet-skill revision is rejected");
+        Check.Throws<ArgumentException>(
+            () => RuntimeContentFingerprint.Create(
+                world,
+                items,
+                pets,
+                ownerMerge,
+                learnedSkills,
+                holyBalance.ToLowerInvariant()),
+            "lowercase Holy Spirit balance revision is rejected");
         return Task.CompletedTask;
     }
 }

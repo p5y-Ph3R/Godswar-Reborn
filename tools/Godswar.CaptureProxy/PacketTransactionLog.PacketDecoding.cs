@@ -117,7 +117,7 @@ sealed partial class PacketTransactionLog
 
     private static bool IsReservedPlayerObjectId(uint objectId)
     {
-        return objectId == 0x1448 || objectId is >= 0x6000 and <= 0x7FFF;
+        return objectId == 0x1448 || objectId is >= 1 and <= 0x05DB;
     }
 
     private static bool TryParseNpcDetailPacket(PacketTransactionRecord packet, out CapturedNpcDetailRecord detail)

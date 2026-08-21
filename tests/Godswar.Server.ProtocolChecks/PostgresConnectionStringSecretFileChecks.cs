@@ -40,6 +40,11 @@ internal static class PostgresConnectionStringSecretFileChecks
                   },
                   "authentication": {
                     "allowLegacyRawAuthentication": true
+                  },
+                  "game": {
+                    "worldInstances": {
+                      "realmId": 1
+                    }
                   }
                 }
                 """);

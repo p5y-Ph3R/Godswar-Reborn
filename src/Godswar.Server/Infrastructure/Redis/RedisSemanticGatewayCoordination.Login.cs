@@ -1,6 +1,8 @@
 using System.Net;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using StackExchange.Redis;
 
 namespace Godswar.Server.Infrastructure.Redis;
@@ -10,11 +12,13 @@ internal sealed partial class RedisSemanticGatewayCoordination
     public async ValueTask<SemanticGatewayLoginResult> StartLoginAsync(
         SemanticGatewayPrincipal principal,
         SemanticGatewayConnectionSource loginSource,
+        SemanticGatewayRealmGrant realmGrant,
         CoordinationDeadline deadline,
         CancellationToken cancellationToken)
     {
         RequirePrincipal(principal);
         RequireSource(loginSource);
+        ArgumentNullException.ThrowIfNull(realmGrant);
         EnsureAvailable(deadline, cancellationToken);
         var generationId = GatewayLoginGenerationId.New();
         var username = principal.CanonicalUsername!;
@@ -40,6 +44,10 @@ internal sealed partial class RedisSemanticGatewayCoordination
                     username,
                     loginSource.ConnectionId.ToString(),
                     loginSource.Address!.ToString(),
+                    realmGrant.RealmId.Value,
+                    realmGrant.Identifier,
+                    realmGrant.Host,
+                    realmGrant.GamePort,
                     TtlMilliseconds(_limits.LoginGenerationTtl),
                     TtlMilliseconds(StateStorageTtl),
                     _limits.MaximumLoginGenerations
@@ -66,6 +74,7 @@ internal sealed partial class RedisSemanticGatewayCoordination
             RedisSemanticGatewayResultReader.Int64(values[2]),
             principal,
             loginSource,
+            realmGrant,
             RedisSemanticGatewayResultReader.Timestamp(values[4]));
         var invalidated =
             RedisSemanticGatewayResultReader.Int32(values[3]);
@@ -185,7 +194,7 @@ internal sealed partial class RedisSemanticGatewayCoordination
                 [address.ToString()]),
             cancellationToken);
         var values =
-            RedisSemanticGatewayResultReader.Array(result, 8);
+            RedisSemanticGatewayResultReader.Array(result, 12);
         var status = LoginLookupStatus(values[0]);
         if (status != SemanticGatewayLoginLookupStatus.Found)
         {
@@ -214,7 +223,17 @@ internal sealed partial class RedisSemanticGatewayCoordination
                 RedisSemanticGatewayResultReader.Int64(values[2]),
                 principal,
                 source,
-                RedisSemanticGatewayResultReader.Timestamp(values[7]));
+                new SemanticGatewayRealmGrant(
+                    new RealmId(
+                        RedisSemanticGatewayResultReader.Int32(values[7])),
+                    RedisSemanticGatewayResultReader.Text(
+                        values[8],
+                        RealmCatalogEntry.IdentifierBytes),
+                    RedisSemanticGatewayResultReader.Text(
+                        values[9],
+                        RealmCatalogEntry.MaximumLegacyHostBytes),
+                    RedisSemanticGatewayResultReader.Int32(values[10])),
+                RedisSemanticGatewayResultReader.Timestamp(values[11]));
         CacheGeneration(generation);
         return new(status, generation);
     }
@@ -227,7 +246,11 @@ internal sealed partial class RedisSemanticGatewayCoordination
             generation.Principal.AccountId,
             generation.Principal.CanonicalUsername!,
             generation.LoginSource.ConnectionId.ToString(),
-            generation.LoginSource.Address!.ToString()
+            generation.LoginSource.Address!.ToString(),
+            generation.RealmGrant.RealmId.Value,
+            generation.RealmGrant.Identifier,
+            generation.RealmGrant.Host,
+            generation.RealmGrant.GamePort
         ];
 
     private void RemoveObservedAccountAdmissions(int accountId)
@@ -297,7 +320,8 @@ internal sealed partial class RedisSemanticGatewayCoordination
         if (!generation.GenerationId.IsValid ||
             generation.Sequence <= 0 ||
             !generation.Principal.IsValid ||
-            !generation.LoginSource.IsValid)
+            !generation.LoginSource.IsValid ||
+            generation.RealmGrant is null)
         {
             throw new ArgumentException(
                 "A valid login-generation lease is required.",

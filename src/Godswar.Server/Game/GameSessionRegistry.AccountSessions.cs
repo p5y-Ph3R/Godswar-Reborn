@@ -18,6 +18,88 @@ internal sealed partial class GameSessionRegistry
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
         ArgumentNullException.ThrowIfNull(session);
 
+        lock (_gate)
+        {
+            return ReplaceAccountSessionLocked(
+                accountId,
+                session);
+        }
+    }
+
+    internal AccountSessionReplacement
+        ReplaceAccountSessionAndDetachWorld(
+            int accountId,
+            ClientSession session)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        ArgumentNullException.ThrowIfNull(session);
+
+        lock (_gate)
+        {
+            _accountSessions.TryGetValue(
+                accountId,
+                out var existing);
+            if (existing is null ||
+                ReferenceEquals(existing.Session, session))
+            {
+                return new AccountSessionReplacement(
+                    ReplaceAccountSessionLocked(
+                        accountId,
+                        session),
+                    DetachedWorld: null);
+            }
+
+            var replacedSession = existing.Session;
+            DetachedPlayerWorldSession? detachedWorld = null;
+            if (_sessions.TryGetValue(
+                    replacedSession,
+                    out var context))
+            {
+                detachedWorld =
+                    ReserveDetachedPlayerWorldLocked(context);
+                try
+                {
+                    if (!RemoveCore(
+                            replacedSession,
+                            expectedOwnership: null,
+                            preservePlayerStatus: false))
+                    {
+                        throw new InvalidOperationException(
+                            "The replaced world session could not be detached.");
+                    }
+                }
+                catch
+                {
+                    ReleaseDetachedPlayerWorld(detachedWorld);
+                    throw;
+                }
+            }
+
+            try
+            {
+                ReplaceAccountSessionLocked(
+                    accountId,
+                    session);
+            }
+            catch
+            {
+                if (detachedWorld is not null)
+                {
+                    ReleaseDetachedPlayerWorld(detachedWorld);
+                }
+
+                throw;
+            }
+            return new AccountSessionReplacement(
+                replacedSession,
+                detachedWorld);
+        }
+    }
+
+    private ClientSession? ReplaceAccountSessionLocked(
+        int accountId,
+        ClientSession session)
+    {
         ClientSession? replaced = null;
         _accountSessions.AddOrUpdate(
             accountId,
@@ -281,3 +363,7 @@ internal sealed partial class GameSessionRegistry
         ClientSession Session,
         PlayerOwnershipFence Ownership);
 }
+
+internal readonly record struct AccountSessionReplacement(
+    ClientSession? ReplacedSession,
+    DetachedPlayerWorldSession? DetachedWorld);

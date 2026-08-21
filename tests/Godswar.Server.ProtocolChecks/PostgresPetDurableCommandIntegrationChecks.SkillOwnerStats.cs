@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.State;
 using Npgsql;
 using NpgsqlTypes;
@@ -151,6 +152,10 @@ internal static partial class
         command.Parameters.AddWithValue(
             PostgresPetLearnedSkillContentBinding.ParameterName,
             learned.Revision.Sha256);
+        PostgresHolySpiritBalanceBinding.AddParameters(
+            command,
+            await PostgresHolySpiritBalanceSnapshotReader.LoadAsync(
+                dataSource));
         await using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
         {

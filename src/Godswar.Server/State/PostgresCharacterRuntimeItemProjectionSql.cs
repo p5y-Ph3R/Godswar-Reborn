@@ -1,10 +1,7 @@
 namespace Godswar.Server.State;
 
-/// <summary>
-/// Runtime character projections whose item-derived values are bound to the
-/// content revision pinned by the server process. Compatibility views may
-/// follow the official publication pointer; active runtime reads may not.
-/// </summary>
+// Runtime reads stay bound to the process-pinned content revision rather
+// than following a mutable compatibility publication pointer.
 internal static partial class PostgresCharacterRuntimeItemProjectionSql
 {
     public static readonly string CalculatedStatsForCharacter =
@@ -47,6 +44,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     ('MagicRec', 'magic_defense', 1::numeric),
                     ('Hit', 'hit', 1::numeric),
                     ('Miss', 'dodge', 1::numeric),
+                    {{EquipmentStatusRatingValues}}
                     ('FuryAddAk', 'critical', 1::numeric),
                     ('FuryAddRec', 'critical_resistance', 1::numeric),
                     ('InjureImbibe', 'damage_absorb', 1::numeric),
@@ -122,6 +120,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     (0, 'physical_attack'), (1, 'physical_defense'),
                     (2, 'magic_attack'), (3, 'magic_defense'),
                     (4, 'hit'), (5, 'dodge'), (6, 'critical'),
+                    {{AttributeStatusRatingValues}}
                     (7, 'critical_resistance'),
                     (8, 'physical_damage_bonus'), (9, 'magic_damage_bonus'),
                     (10, 'damage_absorb'), (13, 'max_hp'), (14, 'max_mp'),
@@ -196,6 +195,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                     ('MagicAttack', 'magic_attack'),
                     ('MagicDefend', 'magic_defense'),
                     ('Hit', 'hit'), ('Miss', 'dodge'),
+                    {{TalentStatusRatingValues}}
                     ('FrenzyHit', 'critical'),
                     ('FrenzyMiss', 'critical_resistance'),
                     ('DamageSorb', 'damage_absorb'),
@@ -252,6 +252,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_defense'), 0) AS magic_defense,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'hit'), 0) AS hit,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'dodge'), 0) AS dodge,
+                {{StatusRatingTotals}}
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical'), 0) AS critical,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_resistance'), 0) AS critical_resistance,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_absorb'), 0) AS damage_absorb,
@@ -272,6 +273,7 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_reduction'), 0) AS critical_damage_reduction,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'life_absorption'), 0) AS life_absorption,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'damage_rebound'), 0) AS damage_rebound,
+                {{OwnerMergeInternalStatTotals}}
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'physical_flat_absorption'), 0) AS physical_flat_absorption,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'magic_flat_absorption'), 0) AS magic_flat_absorption,
                 COALESCE(SUM(stat_value) FILTER (WHERE stat_name = 'critical_damage_flat_reduction'), 0) AS critical_damage_flat_reduction,
@@ -331,7 +333,9 @@ internal static partial class PostgresCharacterRuntimeItemProjectionSql
             ROUND(COALESCE(stats.critical_damage_flat_reduction, 0))::integer AS critical_damage_flat_reduction,
             ROUND(COALESCE(stats.damage_rebound_flat, 0))::integer AS damage_rebound_flat,
             weapon_combat_projection.basic_attack_interval_milliseconds,
-            weapon_combat_projection.basic_attack_range
+            weapon_combat_projection.basic_attack_range,
+            {{StatusRatingSelects}},
+            {{OwnerMergeInternalStatSelects}}
         FROM character_base cb
         LEFT JOIN stat_totals stats ON stats.user_id = cb.id
         {{RankLateralJoinForCharacterAlias}}

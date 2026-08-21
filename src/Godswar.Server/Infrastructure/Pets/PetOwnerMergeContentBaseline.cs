@@ -3,16 +3,17 @@ using Godswar.Server.Application.Pets;
 namespace Godswar.Server.Infrastructure.Pets;
 
 /// <summary>
-/// Reviewed bootstrap balance used only when no official owner-Merge content
-/// publication exists. Once published, PostgreSQL is authoritative and the
-/// process pins that immutable revision until restart.
+/// Reviewed bootstrap balance used when no official owner-Merge publication
+/// exists or when upgrading its exact reviewed predecessor. Once published,
+/// PostgreSQL is authoritative and the process pins that immutable revision
+/// until restart.
 /// </summary>
 internal static class PetOwnerMergeContentBaseline
 {
-    public const string Source = "reviewed-pet-owner-merge-v1";
+    public const string Source = "reviewed-pet-owner-merge-v3";
 
     public const string PolicyVersion =
-        "project-pet-unite-piecewise-marginal-v2";
+        "project-pet-unite-piecewise-marginal-v4";
 
     private static readonly decimal[] BandMultipliers =
         [1.00m, 0.85m, 0.70m, 0.60m, 0.50m];
@@ -52,8 +53,8 @@ internal static class PetOwnerMergeContentBaseline
         B(PetOwnerMergeEffectCode.DamageAbsorption, 80m),
         B(PetOwnerMergeEffectCode.PhysicalDamageIncrease, 200m),
         B(PetOwnerMergeEffectCode.MagicDamageIncrease, 150m),
-        B(PetOwnerMergeEffectCode.PhysicalDamageReduction, 300m),
-        B(PetOwnerMergeEffectCode.MagicDamageReduction, 240m),
+        B(PetOwnerMergeEffectCode.PhysicalDamageReduction, 600m),
+        B(PetOwnerMergeEffectCode.MagicDamageReduction, 480m),
         B(PetOwnerMergeEffectCode.CriticalDamageReduction, 800m),
         B(PetOwnerMergeEffectCode.LifeAbsorption, 100m),
         B(PetOwnerMergeEffectCode.DamageRebound, 150m)
@@ -75,7 +76,7 @@ internal static class PetOwnerMergeContentBaseline
         R(PetOwnerMergeSavvyStat.Agility,
             PetOwnerMergeEffectCode.MagicAttack, 2m),
         R(PetOwnerMergeSavvyStat.Agility,
-            PetOwnerMergeEffectCode.DamageRebound, 1.5m),
+            PetOwnerMergeEffectCode.DamageRebound, 0m),
         R(PetOwnerMergeSavvyStat.Agility,
             PetOwnerMergeEffectCode.HitRate, 0.12m),
         R(PetOwnerMergeSavvyStat.Strength,
@@ -93,9 +94,9 @@ internal static class PetOwnerMergeContentBaseline
         R(PetOwnerMergeSavvyStat.Technique,
             PetOwnerMergeEffectCode.DodgeRate, 0.5m),
         R(PetOwnerMergeSavvyStat.Technique,
-            PetOwnerMergeEffectCode.PhysicalDamageReduction, 6m),
+            PetOwnerMergeEffectCode.PhysicalDamageReduction, 12m),
         R(PetOwnerMergeSavvyStat.Technique,
-            PetOwnerMergeEffectCode.MagicDamageReduction, 5m),
+            PetOwnerMergeEffectCode.MagicDamageReduction, 10m),
         R(PetOwnerMergeSavvyStat.Wisdom,
             PetOwnerMergeEffectCode.MaxHealth, 40m),
         R(PetOwnerMergeSavvyStat.Wisdom,

@@ -9,7 +9,7 @@ using Npgsql;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class
+internal static partial class
     PostgresZodiacSkillGridSelectionCommandIntegrationChecks
 {
     public const string CheckName =
@@ -187,6 +187,11 @@ internal static class
             afterFault.DuplicateCount == 1 &&
             afterFault.ConflictCount == 1,
             "PostgreSQL selection state and evidence counts are exact");
+
+        await CheckDefenseSelectionEligibilityAsync(
+            connectionString,
+            fixture,
+            executor);
     }
 
     private static PostgresZodiacSkillGridSelectionCommandExecutor
@@ -262,13 +267,13 @@ internal static class
         await using (var command = new NpgsqlCommand(
             """
             INSERT INTO public.character_base (
-                account_id, name, camp, profession, fighter_job_lv,
+                account_id, server_id, name, camp, profession, fighter_job_lv,
                 zodiac_level, zodiac_energy,
                 zodiac_energy_remainder_x100, "SkillPoint",
                 "Money", "Stone", wallet_revision, inventory_revision
             )
             VALUES (
-                @accountId, @name, 1, 3, 80,
+                @accountId, 1, @name, 1, 3, 80,
                 30, 1000, 0, 1000, 1000, 1000, 0, 0
             )
             RETURNING id;
@@ -288,7 +293,7 @@ internal static class
                 user_id, grid_index, level, selected_skill_id
             )
             SELECT @characterId, grid, 1, -1
-            FROM generate_series(0, 3) AS grid;
+            FROM unnest(ARRAY[0, 1, 2, 3, 8, 12]) AS grid;
 
             INSERT INTO public.character_skills (
                 user_id, skill_id, skill_level, source

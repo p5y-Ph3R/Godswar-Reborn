@@ -1,5 +1,6 @@
 using Npgsql;
 using NpgsqlTypes;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.ProtocolChecks;
 
@@ -45,12 +46,30 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             $"b20c_other_{token}",
             vipTier: 4,
             vipExpiresAtUtc);
+        await InsertAccountRealmAsync(
+            connection,
+            transaction,
+            primaryAccountId,
+            RealmId.Tempest);
+        await InsertAccountRealmAsync(
+            connection,
+            transaction,
+            otherAccountId,
+            RealmId.Dwargon);
         var characterId = await InsertCharacterAsync(
             connection,
             transaction,
             primaryAccountId,
             configuredArea.MapId,
-            $"B20C{token}");
+            $"B20C{token}",
+            RealmId.Tempest);
+        var dwargonCharacterId = await InsertCharacterAsync(
+            connection,
+            transaction,
+            otherAccountId,
+            configuredArea.MapId,
+            $"B20D{token}",
+            RealmId.Dwargon);
         await InsertPersonalBoostsAsync(
             connection,
             transaction,
@@ -63,6 +82,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             primaryAccountId,
             otherAccountId,
             characterId,
+            dwargonCharacterId,
             configuredArea.MapId,
             secondConfiguredArea.MapId,
             unconfiguredMapId,
@@ -191,7 +211,8 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         NpgsqlTransaction transaction,
         int accountId,
         short mapId,
-        string name)
+        string name,
+        RealmId realmId)
     {
         await using var command = new NpgsqlCommand(
             """
@@ -199,18 +220,45 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
                 account_id,
                 name,
                 camp,
+                server_id,
                 "Map",
                 lifecycle_state
             )
-            VALUES (@accountId, @name, 0, @mapId, 'active')
+            VALUES (
+                @accountId,
+                @name,
+                0,
+                @realmId,
+                @mapId,
+                'active'
+            )
             RETURNING id;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("name", name);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
         command.Parameters.AddWithValue("mapId", mapId);
         return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task InsertAccountRealmAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int accountId,
+        RealmId realmId)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO public.account_realm (account_id, realm_id)
+            VALUES (@accountId, @realmId);
+            """,
+            connection,
+            transaction);
+        command.Parameters.AddWithValue("accountId", accountId);
+        command.Parameters.AddWithValue("realmId", realmId.Value);
+        await command.ExecuteNonQueryAsync();
     }
 
     private static async Task InsertPersonalBoostsAsync(
@@ -280,8 +328,11 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             """
             SELECT count(*)
             FROM public.faction_area_experience_control
-            WHERE map_id = @configuredMapId
-               OR map_id = @unconfiguredMapId;
+            WHERE realm_id = @realmId
+              AND (
+                  map_id = @configuredMapId
+                  OR map_id = @unconfiguredMapId
+              );
             """);
         command.Parameters.AddWithValue(
             "configuredMapId",
@@ -289,20 +340,28 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         command.Parameters.AddWithValue(
             "unconfiguredMapId",
             fixture.UnconfiguredMapId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            RealmId.Tempest.Value);
         return Convert.ToInt64(await command.ExecuteScalarAsync());
     }
 
     private static async Task<string> ReadDeathTokenAsync(
         NpgsqlDataSource dataSource,
-        short mapId)
+        short mapId,
+        RealmId? realmId = null)
     {
         await using var command = dataSource.CreateCommand(
             """
             SELECT death_token
             FROM public.faction_area_experience_control
-            WHERE map_id = @mapId;
+            WHERE realm_id = @realmId
+              AND map_id = @mapId;
             """);
         command.Parameters.AddWithValue("mapId", mapId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            (realmId ?? RealmId.Tempest).Value);
         return Convert.ToString(await command.ExecuteScalarAsync()) ??
             throw new InvalidDataException(
                 "The durable world-boss death token is missing.");
@@ -394,6 +453,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
         int PrimaryAccountId,
         int OtherAccountId,
         int CharacterId,
+        int DwargonCharacterId,
         short ConfiguredMapId,
         short SecondConfiguredMapId,
         short UnconfiguredMapId,

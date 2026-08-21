@@ -223,8 +223,12 @@ internal sealed partial class PostgresReconciliationSnapshot
                     AND inbox.operation_id = audit.operation_id
                     AND inbox.request_hash = audit.request_hash
                     AND event.id IS NOT NULL
-                    AND event.consumer_key =
-                        'character_lifecycle_v1'
+                    AND event.consumer_key = CASE
+                        WHEN audit.aggregate_type =
+                            'account_character_slot'
+                            THEN 'character_lifecycle_v1'
+                        ELSE 'character_lifecycle_v2'
+                    END
                     AND event.event_type = 'character.purged'
                     AND event.aggregate_type =
                         audit.aggregate_type
@@ -241,10 +245,28 @@ internal sealed partial class PostgresReconciliationSnapshot
                 ON audit.principal_type = 'account'
                AND audit.principal_key =
                    purge_baseline.account_id::text
-               AND audit.aggregate_type =
-                   'account_character_slot'
-               AND audit.aggregate_key =
-                   purge_baseline.account_id::text || ':0'
+               AND (
+                   (
+                       COALESCE(
+                           audit.detail_payload ->> 'realmId',
+                           '1'
+                       ) = '1'
+                       AND audit.aggregate_type =
+                           'account_character_slot'
+                       AND audit.aggregate_key =
+                           purge_baseline.account_id::text || ':0'
+                   )
+                   OR (
+                       audit.detail_payload ->> 'realmId' ~
+                           '^[1-9][0-9]*$'
+                       AND audit.detail_payload ->> 'realmId' <> '1'
+                       AND audit.aggregate_type =
+                           'account_realm_character_slot'
+                       AND audit.aggregate_key =
+                           purge_baseline.account_id::text || ':' ||
+                           (audit.detail_payload ->> 'realmId') || ':0'
+                   )
+               )
                AND audit.command_family = 'character_purge'
                AND audit.detail_payload ->> 'characterId' =
                    keys.character_id::text

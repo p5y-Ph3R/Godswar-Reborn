@@ -16,8 +16,8 @@ internal sealed record SemanticGatewayGameConnectionDependencies(
     ISemanticGatewayDataSession Data,
     ISemanticGatewayCoordination Coordination,
     SemanticGatewayConnectionCoordinator Connections,
-    Func<MapId, SemanticGatewayRouteTarget?> ResolveMapRoute,
-    SemanticGatewayRouteTarget BootstrapRoute,
+    Func<RealmId, MapId, SemanticGatewayRouteTarget?> ResolveMapRoute,
+    Func<RealmId, SemanticGatewayRouteTarget?> ResolveBootstrapRoute,
     Func<ServerNodeId, SemanticGatewayWorkerTarget?> ResolveWorker,
     X509Certificate2 GatewayCertificate,
     BackhaulHandshakeGate HandshakeGate,
@@ -81,12 +81,47 @@ internal static partial class SemanticGatewayGameConnection
                 return SemanticGatewayGameOutcome.LoginNotFound;
             }
 
-            var principal = login.Generation.Principal;
+            var generation = login.Generation;
+            if (probe.RealmId != generation.RealmGrant.RealmId ||
+                !string.Equals(
+                    probe.Identifier,
+                    generation.RealmGrant.Identifier,
+                    StringComparison.Ordinal))
+            {
+                return SemanticGatewayGameOutcome.ProtocolRejected;
+            }
+
+            try
+            {
+                var currentRealms = await dependencies.Data.ReadEnabledAsync(
+                    cancellationToken);
+                if (!currentRealms.TryFind(
+                        generation.RealmGrant.RealmId,
+                        out var currentRealm) ||
+                    currentRealm is null ||
+                    !generation.RealmGrant.Matches(currentRealm))
+                {
+                    return SemanticGatewayGameOutcome.ProtocolRejected;
+                }
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                return SemanticGatewayGameOutcome.ServerShutdown;
+            }
+            catch
+            {
+                return SemanticGatewayGameOutcome.RouteUnavailable;
+            }
+
+            var principal = generation.Principal;
+            var selectedRealmId = generation.RealmGrant.RealmId;
             SemanticGatewayCharacterRoute? character;
             try
             {
                 character = await dependencies.Data.FindCharacterRouteAsync(
                     principal.AccountId,
+                    selectedRealmId,
                     cancellationToken);
             }
             catch (OperationCanceledException)
@@ -100,8 +135,10 @@ internal static partial class SemanticGatewayGameConnection
             }
 
             var target = character is null
-                ? dependencies.BootstrapRoute
-                : dependencies.ResolveMapRoute(character.MapId);
+                ? dependencies.ResolveBootstrapRoute(selectedRealmId)
+                : dependencies.ResolveMapRoute(
+                    character.RealmId,
+                    character.MapId);
             if (target is null)
             {
                 return SemanticGatewayGameOutcome.RouteUnavailable;

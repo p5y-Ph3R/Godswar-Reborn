@@ -268,10 +268,11 @@ internal static class
             """
             INSERT INTO public.character_base (
                 account_id,
+                server_id,
                 name,
                 zodiac_level
             )
-            VALUES (@accountId, @name, 1)
+            VALUES (@accountId, 1, @name, 1)
             RETURNING id;
             """,
             connection,

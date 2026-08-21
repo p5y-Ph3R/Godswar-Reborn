@@ -58,10 +58,12 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
 
     public SemanticGatewayLoginResult BeginLogin(
         SemanticGatewayPrincipal principal,
-        SemanticGatewayConnectionSource loginSource)
+        SemanticGatewayConnectionSource loginSource,
+        SemanticGatewayRealmGrant realmGrant)
     {
         RequirePrincipal(principal);
         RequireSource(loginSource);
+        ArgumentNullException.ThrowIfNull(realmGrant);
 
         lock (_gate)
         {
@@ -146,6 +148,7 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
                 generationSequence,
                 principal,
                 loginSource,
+                realmGrant,
                 expiresAt,
                 expiry);
             _generations.Add(generationId, generation);
@@ -231,6 +234,14 @@ internal sealed partial class SemanticGatewayAdmissionAuthority
                 return new(
                     SemanticGatewayAdmissionStatus.PrincipalMismatch,
                     null);
+            }
+            if (generation.RealmGrant.RealmId != target.RealmId)
+            {
+                _bindingRejections++;
+                return new(
+                    SemanticGatewayAdmissionStatus.RouteRejected,
+                    null,
+                    SemanticGatewayRouteSelectionStatus.RouteNotFound);
             }
             if (generation.State !=
                 SemanticGatewayLoginGenerationState.Activated)

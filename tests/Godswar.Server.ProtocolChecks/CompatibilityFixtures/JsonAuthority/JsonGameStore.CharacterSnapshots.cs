@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Domain.World.Instances;
 
 namespace Godswar.Server.State;
 
@@ -11,6 +12,15 @@ internal sealed partial class JsonGameStore :
 {
     public async Task<CharacterAccountSnapshot> ReadAsync(
         int accountId,
+        CancellationToken cancellationToken = default) =>
+        await ReadAsync(
+            accountId,
+            RealmId.Tempest,
+            cancellationToken);
+
+    public async Task<CharacterAccountSnapshot> ReadAsync(
+        int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default)
     {
         if (accountId <= 0)
@@ -35,6 +45,7 @@ internal sealed partial class JsonGameStore :
             var characters = database.Characters
                 .Where(character =>
                     character.AccountId == accountId &&
+                    character.RealmId == realmId &&
                     character.LifecycleState ==
                         CharacterLifecycleState.Active)
                 .OrderBy(character => character.Id)
@@ -58,7 +69,10 @@ internal sealed partial class JsonGameStore :
                     : MapCharacterSnapshot(
                         database,
                         characters[0],
-                        readAt));
+                        readAt))
+            {
+                RealmId = realmId
+            };
             CharacterSnapshotContract.Validate(snapshot);
             return snapshot;
         }
@@ -137,7 +151,10 @@ internal sealed partial class JsonGameStore :
                 character.Name,
                 ToUtcOffset(character.CreatedUtc),
                 character.CharacterSlot,
-                character.LifecycleVersion),
+                character.LifecycleVersion)
+            {
+                RealmId = character.RealmId
+            },
             new CharacterAppearanceSnapshot(
                 character.Gender,
                 character.Camp,
@@ -252,7 +269,8 @@ internal sealed partial class JsonGameStore :
             stats.CriticalDamageFlatReduction,
             stats.DamageReboundFlat,
             stats.BasicAttackIntervalMilliseconds,
-            stats.BasicAttackRange);
+            stats.BasicAttackRange,
+            LifeAbsorptionFlat: stats.LifeAbsorptionFlat);
     }
 
     private static ImmutableArray<CharacterSkillSnapshot> MapSkills(

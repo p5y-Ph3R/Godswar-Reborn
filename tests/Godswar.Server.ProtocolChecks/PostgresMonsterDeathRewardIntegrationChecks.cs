@@ -293,6 +293,7 @@ internal static partial class PostgresMonsterDeathRewardIntegrationChecks
             """
             INSERT INTO public.character_base (
                 account_id,
+                server_id,
                 name,
                 camp,
                 profession,
@@ -303,6 +304,7 @@ internal static partial class PostgresMonsterDeathRewardIntegrationChecks
             )
             VALUES (
                 @accountId,
+                1,
                 @name,
                 1,
                 0,

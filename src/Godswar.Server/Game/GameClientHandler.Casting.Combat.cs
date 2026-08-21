@@ -61,8 +61,7 @@ internal sealed partial class GameClientHandler
                     $"character={character.Name} skill={cast.SkillId}");
                 return;
             }
-            var worldObjectId =
-                WorldObjectIds.ForPlayer(character.Id);
+            var worldObjectId = CurrentPlayerObjectId;
             publishStartAsync = async token =>
             {
                 await _session.SendAsync(
@@ -117,8 +116,7 @@ internal sealed partial class GameClientHandler
             }
 
             expectedTargetSpawnGeneration = target.SpawnGeneration;
-            var worldObjectId =
-                WorldObjectIds.ForPlayer(character.Id);
+            var worldObjectId = CurrentPlayerObjectId;
             publishStartAsync = async token =>
             {
                 await _registry.DeliverMonsterPacketToViewerAsync(
@@ -154,7 +152,8 @@ internal sealed partial class GameClientHandler
                 packet,
                 token,
                 intonationCompleted: true,
-                expectedTargetSpawnGeneration),
+                expectedTargetSpawnGeneration,
+                intonedCombatSnapshot: combat),
             cancellationToken,
             () => IsIntonedCombatCompletionStillValid(
                 cast,

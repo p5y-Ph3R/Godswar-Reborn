@@ -147,6 +147,25 @@ internal sealed partial class PostgresGameStore
             accountId,
             cancellationToken);
 
+    Task IAccountPresenceWriter.MarkAccountPlayerOnlineAsync(
+        int accountId,
+        Guid presenceToken,
+        CancellationToken cancellationToken) =>
+        _accountStore.MarkAccountPlayerOnlineAsync(
+            accountId,
+            presenceToken,
+            cancellationToken);
+
+    Task<bool>
+        IAccountPresenceWriter.TryMarkAccountPlayerOfflineAsync(
+            int accountId,
+            Guid presenceToken,
+            CancellationToken cancellationToken) =>
+        _accountStore.TryMarkAccountPlayerOfflineAsync(
+            accountId,
+            presenceToken,
+            cancellationToken);
+
     private static GameAccount ToLegacyAccount(
         AccountIdentity account) =>
         new()

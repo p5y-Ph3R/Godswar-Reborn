@@ -12,24 +12,54 @@ internal sealed partial class PostgresGameStore
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        await using (var ensureMembership = connection.CreateCommand())
+        {
+            ensureMembership.Transaction = transaction;
+            ensureMembership.CommandText =
+                """
+                INSERT INTO account_realm (account_id, realm_id)
+                SELECT account_row.id, realm.id
+                FROM accounts account_row
+                CROSS JOIN server realm
+                WHERE account_row.id = @accountId
+                  AND realm.id = @realmId
+                  AND realm.enabled
+                ON CONFLICT (account_id, realm_id) DO NOTHING;
+                """;
+            ensureMembership.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            ensureMembership.Parameters.AddWithValue(
+                "realmId",
+                character.RealmId.Value);
+            await ensureMembership.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using (var lockAccount = connection.CreateCommand())
         {
             lockAccount.Transaction = transaction;
             lockAccount.CommandText =
                 """
-                SELECT character_lifecycle_version
-                FROM accounts
-                WHERE id = @accountId
+                SELECT membership.character_lifecycle_version
+                FROM account_realm membership
+                JOIN server realm
+                  ON realm.id = membership.realm_id
+                 AND realm.enabled
+                WHERE membership.account_id = @accountId
+                  AND membership.realm_id = @realmId
                 FOR UPDATE;
                 """;
             lockAccount.Parameters.AddWithValue(
                 "accountId",
                 character.AccountId);
+            lockAccount.Parameters.AddWithValue(
+                "realmId",
+                character.RealmId.Value);
             if (await lockAccount.ExecuteScalarAsync(
                     cancellationToken) is null)
             {
                 throw new InvalidOperationException(
-                    "Character creation requires an existing account.");
+                    "Character creation requires an enabled account realm.");
             }
         }
 
@@ -41,24 +71,32 @@ internal sealed partial class PostgresGameStore
                 SELECT EXISTS (
                     SELECT 1
                     FROM outbox_consumer_positions
-                    WHERE consumer_key = 'character_lifecycle_v1'
-                      AND aggregate_type =
-                          'account_character_slot'
-                      AND aggregate_key =
-                          @accountId::text || ':0'
+                    WHERE consumer_key = @consumerKey
+                      AND aggregate_type = @aggregateType
+                      AND aggregate_key = @aggregateKey
                     UNION ALL
                     SELECT 1
                     FROM outbox_events
-                    WHERE consumer_key = 'character_lifecycle_v1'
-                      AND aggregate_type =
-                          'account_character_slot'
-                      AND aggregate_key =
-                          @accountId::text || ':0'
+                    WHERE consumer_key = @consumerKey
+                      AND aggregate_type = @aggregateType
+                      AND aggregate_key = @aggregateKey
                 );
                 """;
             guardStream.Parameters.AddWithValue(
-                "accountId",
-                character.AccountId);
+                "consumerKey",
+                Infrastructure.Characters.CharacterLifecyclePersistenceCodec
+                    .ConsumerKeyFor(character.RealmId));
+            guardStream.Parameters.AddWithValue(
+                "aggregateType",
+                Infrastructure.Characters.CharacterLifecyclePersistenceCodec
+                    .AggregateTypeFor(character.RealmId));
+            guardStream.Parameters.AddWithValue(
+                "aggregateKey",
+                Infrastructure.Characters.CharacterLifecyclePersistenceCodec
+                    .AggregateKey(
+                        character.AccountId,
+                        character.RealmId,
+                        CharacterLifecyclePolicy.SingleCharacterSlot));
             if (await guardStream.ExecuteScalarAsync(
                     cancellationToken) is true)
             {
@@ -76,6 +114,7 @@ internal sealed partial class PostgresGameStore
                     SELECT 1
                     FROM character_base
                     WHERE account_id = @accountId
+                      AND server_id = @realmId
                       AND character_slot = @characterSlot
                       AND lifecycle_state = 'active'
                 );
@@ -83,6 +122,9 @@ internal sealed partial class PostgresGameStore
             checkSlot.Parameters.AddWithValue(
                 "accountId",
                 character.AccountId);
+            checkSlot.Parameters.AddWithValue(
+                "realmId",
+                character.RealmId.Value);
             checkSlot.Parameters.AddWithValue(
                 "characterSlot",
                 CharacterLifecyclePolicy.SingleCharacterSlot);
@@ -99,20 +141,46 @@ internal sealed partial class PostgresGameStore
             reserveVersion.Transaction = transaction;
             reserveVersion.CommandText =
                 """
-                UPDATE accounts
+                UPDATE account_realm
                 SET character_lifecycle_version =
                         character_lifecycle_version + 1
-                WHERE id = @accountId
+                WHERE account_id = @accountId
+                  AND realm_id = @realmId
                 RETURNING character_lifecycle_version;
                 """;
             reserveVersion.Parameters.AddWithValue(
                 "accountId",
                 character.AccountId);
+            reserveVersion.Parameters.AddWithValue(
+                "realmId",
+                character.RealmId.Value);
             var value = await reserveVersion.ExecuteScalarAsync(
                 cancellationToken);
             lifecycleVersion = value is long version
                 ? version
                 : Convert.ToInt64(value);
+        }
+        if (character.RealmId == RealmId.Tempest)
+        {
+            await using var mirrorVersion = connection.CreateCommand();
+            mirrorVersion.Transaction = transaction;
+            mirrorVersion.CommandText =
+                """
+                UPDATE accounts
+                SET character_lifecycle_version = @lifecycleVersion
+                WHERE id = @accountId;
+                """;
+            mirrorVersion.Parameters.AddWithValue(
+                "accountId",
+                character.AccountId);
+            mirrorVersion.Parameters.AddWithValue(
+                "lifecycleVersion",
+                lifecycleVersion);
+            if (await mirrorVersion.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                throw new InvalidDataException(
+                    "The Tempest lifecycle mirror was not updated.");
+            }
         }
         var characterId = 0;
         await using (var command = new NpgsqlCommand("""
@@ -149,7 +217,7 @@ internal sealed partial class PostgresGameStore
             command.Parameters.AddWithValue("accountId", character.AccountId);
             command.Parameters.AddWithValue(
                 "realmId",
-                RealmId.Tempest.Value);
+                character.RealmId.Value);
             command.Parameters.AddWithValue("name", character.Name);
             command.Parameters.AddWithValue("gender", character.Gender == 0 ? "female" : "male");
             command.Parameters.AddWithValue("camp", (short)character.Camp);
@@ -297,89 +365,6 @@ internal sealed partial class PostgresGameStore
 
         return await GetCharacterByIdAsync(characterId, cancellationToken)
             ?? throw new InvalidOperationException("Inserted character could not be reloaded.");
-    }
-
-    private static GameCharacter ReadCharacter(NpgsqlDataReader reader)
-    {
-        return new GameCharacter
-        {
-            Id = reader.GetInt32(0),
-            AccountId = reader.GetInt32(1),
-            Name = reader.GetString(2),
-            Gender = reader.GetString(3) == "female" ? (byte)0 : (byte)1,
-            Camp = (byte)reader.GetInt16(4),
-            Profession = (byte)reader.GetInt16(5),
-            Hair = (byte)reader.GetInt16(6),
-            Face = (byte)reader.GetInt16(7),
-            Faith = (byte)reader.GetInt16(8),
-            CurrentMap = (byte)reader.GetInt16(9),
-            Level = reader.GetInt32(10),
-            MaxHp = reader.GetInt32(11),
-            MaxMp = reader.GetInt32(12),
-            CurrentHp = reader.GetInt32(13),
-            CurrentMp = reader.GetInt32(14),
-            PositionX = reader.GetFloat(15),
-            PositionZ = reader.GetFloat(16),
-            CreatedUtc = reader.GetDateTime(17).ToUniversalTime(),
-            Equipment = reader.GetString(18),
-            KitBag = reader.GetString(19),
-            TalentPoints = reader.GetInt32(20),
-            TalentExperience = reader.GetInt32(21),
-            HolySuitPoints = reader.GetInt32(22),
-            WeaponRank = reader.GetInt16(23),
-            WeaponAuraEffect = reader.GetInt32(24),
-            ArmorRank = reader.GetInt16(25),
-            ArmorAuraEffect = reader.GetInt32(26),
-            Experience = reader.GetInt64(27),
-            VitalsRevision = reader.GetInt64(28),
-            ZodiacType = (byte)reader.GetInt16(29),
-            ZodiacLuckyStatus = reader.GetInt32(30),
-            ZodiacLuckyExpiresAt = reader.IsDBNull(31)
-                ? null
-                : new DateTimeOffset(reader.GetDateTime(31).ToUniversalTime()),
-            ZodiacLevel = (byte)reader.GetInt16(32),
-            ZodiacEnergy = reader.GetInt32(33),
-            ZodiacAccumulatedExperienceX100 = reader.GetInt32(34),
-            ZodiacAccumulatedTalentExperienceX100 = reader.GetInt32(35),
-            ZodiacEnergyRemainderX100 = reader.GetInt32(36),
-            ZodiacOnlineDay = reader.IsDBNull(37)
-                ? null
-                : reader.GetFieldValue<DateOnly>(37),
-            ZodiacOnlineDurationTicksToday = reader.GetInt64(38),
-            ZodiacLastOnlineAt = reader.IsDBNull(39)
-                ? null
-                : new DateTimeOffset(reader.GetDateTime(39).ToUniversalTime()),
-            ZodiacLastCompensationDay = reader.IsDBNull(40)
-                ? null
-                : reader.GetFieldValue<DateOnly>(40),
-            Silver = reader.GetInt32(41),
-            Gold = reader.GetInt32(42),
-            ZodiacSkillGridLevels =
-                ZodiacSkillGridActivation.NormalizeLevels(
-                    reader.GetFieldValue<int[]>(43)),
-            ZodiacSkillGridSkillIds =
-                ZodiacSkillGridActivation.NormalizeSkillIds(
-                    reader.GetFieldValue<int[]>(44)),
-            PositionRevision = reader.GetInt64(45),
-            CharacterSlot = reader.GetInt16(46),
-            LifecycleState = reader.GetString(47) == "active"
-                ? CharacterLifecycleState.Active
-                : CharacterLifecycleState.Deleted,
-            LifecycleVersion = reader.GetInt64(48),
-            DeletedAt = reader.IsDBNull(49)
-                ? null
-                : new DateTimeOffset(
-                    reader.GetDateTime(49).ToUniversalTime()),
-            RestoreUntil = reader.IsDBNull(50)
-                ? null
-                : new DateTimeOffset(
-                    reader.GetDateTime(50).ToUniversalTime()),
-            PurgeAfter = reader.IsDBNull(51)
-                ? null
-                : new DateTimeOffset(
-                    reader.GetDateTime(51).ToUniversalTime()),
-            FighterLevelSealed = reader.GetBoolean(52)
-        };
     }
 
 }

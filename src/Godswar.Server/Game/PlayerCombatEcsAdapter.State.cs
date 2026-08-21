@@ -15,7 +15,8 @@ internal sealed partial class PlayerCombatEcsAdapter
         GameSessionRegistry registry,
         GameCharacter character,
         uint objectId,
-        DateTimeOffset nextBasicAttackAt)
+        DateTimeOffset nextBasicAttackAt,
+        in ClientStatusAggregate runtimeModifiers)
     {
         if (_world is not null &&
             _world.IsAlive(_player) &&
@@ -41,7 +42,7 @@ internal sealed partial class PlayerCombatEcsAdapter
                     character.CurrentMap,
                     character.PositionX,
                     character.PositionZ),
-                SnapshotOffense(character),
+                SnapshotOffense(character, runtimeModifiers),
                 resources,
                 new PlayerCommittedProgressionSnapshot(
                     character.Level,
@@ -86,7 +87,8 @@ internal sealed partial class PlayerCombatEcsAdapter
 
     private PlayerCombatResourceSnapshot SynchronizePlayer(
         GameCharacter character,
-        DateTimeOffset nextBasicAttackAt)
+        DateTimeOffset nextBasicAttackAt,
+        in ClientStatusAggregate runtimeModifiers)
     {
         var world = _world!;
         var previous = world
@@ -102,7 +104,7 @@ internal sealed partial class PlayerCombatEcsAdapter
                 character.CurrentMap,
                 character.PositionX,
                 character.PositionZ));
-        world.Set(_player, SnapshotOffense(character));
+        world.Set(_player, SnapshotOffense(character, runtimeModifiers));
         world.Set(
             _player,
             new PlayerCombatResourceComponent(
@@ -325,7 +327,8 @@ internal sealed partial class PlayerCombatEcsAdapter
     }
 
     private static PlayerCombatOffenseComponent SnapshotOffense(
-        GameCharacter character)
+        GameCharacter character,
+        in ClientStatusAggregate runtimeModifiers)
     {
         var stats = character.CalculatedStats ??
                     CharacterStats.FromCharacter(character);
@@ -339,18 +342,27 @@ internal sealed partial class PlayerCombatEcsAdapter
             stats.MagicAppendDamage)
         {
             Level = character.Level,
-            Hit = stats.Hit,
-            Critical = stats.Critical,
+            Hit = SaturatingAddRating(stats.Hit, runtimeModifiers.Hit),
+            Critical = SaturatingAddRating(
+                stats.Critical,
+                runtimeModifiers.CriticalAppend),
             IgnorePhysicalDefenseBasisPoints =
                 stats.IgnorePhysicalDefense,
             IgnoreMagicDefenseBasisPoints = stats.IgnoreMagicDefense,
             CriticalDamageBasisPoints = stats.CriticalDamagePercent,
             CriticalDamageFlat = stats.CriticalDamageFlat,
             LifeAbsorptionBasisPoints = stats.LifeAbsorption,
+            LifeAbsorptionFlat = stats.LifeAbsorptionFlat,
             BasicAttackIntervalMilliseconds =
                 stats.BasicAttackIntervalMilliseconds
         };
     }
+
+    private static int SaturatingAddRating(int baseValue, int modifier) =>
+        (int)Math.Clamp(
+            (long)baseValue + modifier,
+            int.MinValue,
+            int.MaxValue);
 
     private static void MirrorResourceDelta(
         GameCharacter character,

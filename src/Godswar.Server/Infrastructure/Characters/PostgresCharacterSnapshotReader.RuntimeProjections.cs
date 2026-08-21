@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Data;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.Inventory;
 using Npgsql;
 
 namespace Godswar.Server.Infrastructure.Characters;
@@ -90,6 +91,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
         PostgresPetLearnedSkillContentBinding.AddParameter(
             command,
             _petLearnedSkillRevision);
+        PostgresHolySpiritBalanceBinding.AddParameters(
+            command,
+            _holySpiritBalance);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         return await ReadOptionalCalculatedStatsAsync(

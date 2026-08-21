@@ -7,6 +7,8 @@ namespace Godswar.Server.Packets;
 
 internal static partial class PacketBuilder
 {
+    private const int PlayerWorldPkModeOffset = 0x50;
+
     public static byte[] EquipmentVisualRefresh(GameCharacter character)
     {
         return EquipmentVisualRefresh(
@@ -92,7 +94,8 @@ internal static partial class PacketBuilder
     public static byte[] PlayerWorldSpawn(
         GameCharacter character,
         uint objectId,
-        IReadOnlyList<ClientStatusEffect>? effects = null)
+        IReadOnlyList<ClientStatusEffect>? effects = null,
+        byte? pkMode = null)
     {
         effects ??= [];
         if (effects.Count > PlayerWorldStatusMaximumCount)
@@ -113,6 +116,7 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(44, 4), Math.Max(1, character.CurrentHp));
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(48, 4), Math.Max(1, character.MaxHp));
         packet[52] = character.Gender;
+        packet[53] = character.Camp;
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet.AsSpan(54, 2),
             (ushort)Math.Clamp(character.Level, 1, ushort.MaxValue));
@@ -125,6 +129,14 @@ internal static partial class PacketBuilder
         // GameCharacter, so use the neutral value rather than shifting Z into it.
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(68, 4), 0f);
         BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(72, 4), 1f);
+        if (pkMode.HasValue)
+        {
+            // Native 0x2725 decoding reads this unsigned byte into the remote
+            // player's PK-mode field. Retain the captured template value when
+            // callers do not explicitly project a mode.
+            packet[PlayerWorldPkModeOffset] = pkMode.Value;
+        }
+
         PatchPlayerWorldAppearance(packet, character);
         packet.AsSpan(
             PlayerWorldStatusIdsOffset,

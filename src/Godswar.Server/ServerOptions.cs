@@ -65,6 +65,7 @@ internal sealed partial class ServerOptions
         Storage.Checkpoints ??= new CharacterCheckpointWorkerOptions();
         Storage.Reconciliation ??= new ReconciliationOptions();
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
+        Game.TrainingDummies ??= new TrainingDummyOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
@@ -130,6 +131,7 @@ internal sealed partial class ServerOptions
         Game.DeveloperCommands.Enabled = ReadBool(
             "GODSWAR_DEVELOPER_COMMANDS_ENABLED",
             Game.DeveloperCommands.Enabled);
+        ApplyTrainingDummyEnvironment();
         Game.ZodiacEnergy.Enabled = ReadBool(
             "GODSWAR_ZODIAC_ENERGY_ENABLED",
             Game.ZodiacEnergy.Enabled);
@@ -237,6 +239,7 @@ internal sealed partial class ServerOptions
     private ServerOptions Normalize(string optionsPath)
     {
         Game.DeveloperCommands ??= new DeveloperCommandOptions();
+        Game.TrainingDummies ??= new TrainingDummyOptions();
         Game.ZodiacEnergy ??= new ZodiacEnergyOptions();
         Game.Monsters ??= new MonsterRuntimeOptions();
         Game.Players ??= new PlayerRuntimeOptions();
@@ -255,6 +258,7 @@ internal sealed partial class ServerOptions
             .Where(accountId => accountId > 0)
             .Distinct()
             .ToArray();
+        Game.TrainingDummies.Normalize();
         Game.ZodiacEnergy.Normalize();
         Game.Monsters.Validate();
         Game.Players.Validate();
@@ -393,6 +397,8 @@ internal sealed class GameEndpointOptions : EndpointOptions
     public int PublicPort { get; set; }
 
     public DeveloperCommandOptions DeveloperCommands { get; set; } = new();
+
+    public TrainingDummyOptions TrainingDummies { get; set; } = new();
 
     public ZodiacEnergyOptions ZodiacEnergy { get; set; } = new();
 

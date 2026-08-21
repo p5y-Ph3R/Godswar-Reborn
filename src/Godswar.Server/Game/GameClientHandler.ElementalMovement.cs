@@ -12,6 +12,11 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        if (!IsHostileStatusMovementAllowed(observedAt))
+        {
+            return false;
+        }
+
         var runtime = _registry.GetRuntimeStatusAggregate(
             _session,
             observedAt);
@@ -28,6 +33,27 @@ internal sealed partial class GameClientHandler
         return authority.MovementAllowed;
     }
 
+    private bool IsHostileStatusMovementAllowed(DateTimeOffset observedAt)
+    {
+        if (_character is null)
+        {
+            return false;
+        }
+
+        var control = _registry.GetTrainingDummyHostileControl(
+            _session,
+            observedAt);
+        if ((control & HostileStatusControlFlags.NonMoving) != 0)
+        {
+            Console.WriteLine(
+                "[status] movement blocked " +
+                $"character={_character.Name} control={control}");
+            return false;
+        }
+
+        return true;
+    }
+
     private ElementalMovementAuthority ResolveElementalMovementAuthority(
         float baseMovementMultiplier,
         DateTimeOffset observedAt)
@@ -37,39 +63,13 @@ internal sealed partial class GameClientHandler
             return default;
         }
 
-        var encoded = AuthoredElementalCombatV1.EncodeMovementMultiplier(
-            baseMovementMultiplier);
-        encoded = ElementalResonanceExecutionPolicy.ApplyPassiveBonuses(
-            _character.ElementalEquipment,
-            maximumHealth: 0,
-            movementSpeed: encoded).MovementSpeed;
-        var allowed = true;
-        if (TryCaptureCurrentPlayerOwnership(out var ownership))
-        {
-            var fence = new ElementalCombatSessionFence(
-                _character.Id,
-                _character.CurrentMap,
-                ownership);
-            if (_registry.TryGetElementalStatusAdjustment(
-                    _session,
-                    fence,
-                    observedAt.ToUnixTimeMilliseconds(),
-                    encoded,
-                    physicalDefense: 0,
-                    magicDefense: 0,
-                    hitRating: 0,
-                    healingReceived: 0,
-                    out var status))
-            {
-                allowed = status.MovementAllowed;
-                encoded = status.MovementSpeed;
-            }
-        }
-
-        return new(
-            allowed,
-            AuthoredElementalCombatV1.DecodeMovementMultiplier(encoded),
-            encoded);
+        TryCaptureCurrentPlayerOwnership(out var ownership);
+        return _registry.ResolveElementalMovementAuthority(
+            _session,
+            _character,
+            ownership,
+            baseMovementMultiplier,
+            observedAt);
     }
 
     private ClientStatusAggregate ApplyElementalMovementStatus(

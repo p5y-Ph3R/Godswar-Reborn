@@ -173,7 +173,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
              AND ci.prop_id=9024
             LEFT JOIN holy_suit_daily_exp_storage usage
               ON usage.account_id=cb.account_id
-             AND usage.realm_id=1
+             AND usage.realm_id=cb.server_id
              AND usage.usage_day=
                  (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Singapore')::date
             WHERE cb.id=@characterId;

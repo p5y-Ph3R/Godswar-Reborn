@@ -17,6 +17,13 @@ internal sealed partial class GameClientHandler
                 "[pet] rejected unauthenticated owner Merge request");
             return;
         }
+        if (_registry.IsTrainingDummyCore(_character))
+        {
+            Console.WriteLine(
+                $"[pet] ignored pinned training-dummy owner Merge " +
+                $"character={_character.Name}");
+            return;
+        }
 
         if (packet.Length != PetOwnerMergeRequestLength ||
             packet.Buffer.Length != PetOwnerMergeRequestLength ||

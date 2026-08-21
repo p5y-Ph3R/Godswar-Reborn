@@ -119,6 +119,8 @@ internal sealed partial class GameClientHandler
             ulong CombatEventId)>(candidates.Length);
         var admittedCombatRevision =
             checked((ulong)NextAdmittedLegacyCombatRevision());
+        var runtimeCombatModifiers =
+            _registry.GetRuntimeStatusAggregate(_session, observedAt);
         var misses = 0;
         for (var targetOrder = 0;
              targetOrder < candidates.Length;
@@ -131,7 +133,8 @@ internal sealed partial class GameClientHandler
                 candidate,
                 admittedCombatRevision,
                 targetOrder,
-                observedAt);
+                observedAt,
+                runtimeCombatModifiers);
             if (!resolution.Hit)
             {
                 misses++;
@@ -263,7 +266,7 @@ internal sealed partial class GameClientHandler
                 $"[skill] area caster notification failed character={character.Name} skill={cast.SkillId}: {ex.Message}");
         }
 
-        var worldObjectId = WorldObjectIds.ForPlayer(character.Id);
+        var worldObjectId = CurrentPlayerObjectId;
         var worldVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(packet.Buffer, worldObjectId)
             : PacketBuilder.SelfTargetSkillCastVisual(

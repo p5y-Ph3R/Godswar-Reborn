@@ -1,7 +1,10 @@
 using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Database;
+using Godswar.Server.Infrastructure.Realms;
 using Godswar.Server.Security.Authentication;
 using Npgsql;
 
@@ -11,16 +14,19 @@ internal sealed class PostgresSemanticGatewayDataSession :
     ISemanticGatewayDataSession
 {
     private readonly AccountAuthenticationService _authentication;
+    private readonly IRealmCatalogReader _realms;
     private readonly ISemanticGatewayCharacterRouteReader _routes;
     private NpgsqlDataSource? _dataSource;
 
     private PostgresSemanticGatewayDataSession(
         NpgsqlDataSource dataSource,
         AccountAuthenticationService authentication,
+        IRealmCatalogReader realms,
         ISemanticGatewayCharacterRouteReader routes)
     {
         _dataSource = dataSource;
         _authentication = authentication;
+        _realms = realms;
         _routes = routes;
     }
 
@@ -43,6 +49,7 @@ internal sealed class PostgresSemanticGatewayDataSession :
                     accounts,
                     accounts,
                     options.Authentication),
+                new PostgresRealmCatalogReader(dataSource),
                 new PostgresSemanticGatewayCharacterRouteReader(
                     dataSource));
         }
@@ -73,12 +80,21 @@ internal sealed class PostgresSemanticGatewayDataSession :
 
     public Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         return _routes.FindCharacterRouteAsync(
             accountId,
+            realmId,
             cancellationToken);
+    }
+
+    public Task<RealmCatalogSnapshot> ReadEnabledAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return _realms.ReadEnabledAsync(cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

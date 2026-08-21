@@ -212,7 +212,8 @@ internal static class GameCharacterEcsHydrator
             stats.CriticalDamageFlatReduction,
             stats.DamageReboundFlat,
             stats.BasicAttackIntervalMilliseconds,
-            stats.BasicAttackRange);
+            stats.BasicAttackRange,
+            stats.LifeAbsorptionFlat);
 }
 
 internal readonly record struct PlayerTransformOverride(

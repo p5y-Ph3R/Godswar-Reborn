@@ -130,7 +130,7 @@ internal sealed partial class GameClientHandler : IClientHandler
         {
             await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
-            await StopPetOwnerMergeEnergyDrainAsync();
+            await StopPetOwnerMergeEnergyLifecycleAsync();
             _registry.UnregisterSkillCastInterruptionSink(_session);
             await StopPendingSkillCastsAsync();
 

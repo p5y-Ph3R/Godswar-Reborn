@@ -93,8 +93,9 @@ internal sealed partial class JsonGameStore
             }
 
             var learned =
-                selectedSkillKind ==
-                    ZodiacSkillGridSelectionCatalog.ClearSelection ||
+                !ZodiacSkillGridSelectionCatalog.RequiresLearnedSkill(
+                    gridIndex,
+                    selectedSkillKind) ||
                 SkillTalentSeeds.Skills.Any(skill =>
                     ZodiacSkillGridSelectionCatalog
                         .IsRuntimeSkillInFamily(

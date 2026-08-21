@@ -14,7 +14,7 @@ Set-StrictMode -Version Latest
 # This is intentionally not a general pet editor. It compensates only the
 # incorrect audit-8023 refund after its exact 90-level spend trail.
 $postgresContainer = 'godswar-dev-postgres'
-$serverContainer = 'godswar-dev-server'
+$serverContainer = 'godswar-dev-tempest-openworld-01'
 $redisContainer = 'godswar-dev-redis-coordination'
 $databaseUser = 'godswar'
 $wrongRefund = 127824945L

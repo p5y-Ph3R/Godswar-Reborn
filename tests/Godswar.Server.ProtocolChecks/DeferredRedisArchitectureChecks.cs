@@ -227,6 +227,10 @@ internal static class DeferredRedisArchitectureChecks
             root,
             "src/Godswar.Server/Infrastructure/Redis/" +
             "RedisCoordinationScripts.cs");
+        var keyBuilder = Read(
+            root,
+            "src/Godswar.Server/Infrastructure/Redis/" +
+            "RedisCoordinationKeyBuilder.cs");
         Check.True(
             !playerAdapter.Contains(
                 "FindRouteAsync(",
@@ -245,6 +249,30 @@ internal static class DeferredRedisArchitectureChecks
                 StringComparison.Ordinal),
             "player lease transitions validate route and worker proofs " +
             "inside one Redis script");
+        Check.True(
+            playerAdapter.Contains(
+                "_keys.PlayerAccount(",
+                StringComparison.Ordinal) &&
+            keyBuilder.Contains(
+                "Build(\"player-account\"",
+                StringComparison.Ordinal) &&
+            playerScripts.Contains(
+                "redis.call('DEL', previousPlayerKey)",
+                StringComparison.Ordinal) &&
+            playerScripts.Contains(
+                "ARGV[13] ~= '1'",
+                StringComparison.Ordinal) &&
+            playerAdapter.Contains(
+                "request.AllowAccountReplacement ? 1 : 0",
+                StringComparison.Ordinal) &&
+            playerScripts.Contains(
+                "local storedAccount =",
+                StringComparison.Ordinal) &&
+            playerScripts.Contains(
+                "redis.call('HGET', KEYS[2], 'player_key') == KEYS[1]",
+                StringComparison.Ordinal),
+            "Redis player leases preserve immutable character ownership, " +
+            "replace the account's prior character, and fence stale release");
         Check.True(
             executor.Contains(
                 "configuration.TieBreaker = string.Empty;",

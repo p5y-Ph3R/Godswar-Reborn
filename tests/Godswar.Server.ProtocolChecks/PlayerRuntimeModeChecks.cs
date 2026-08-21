@@ -93,6 +93,9 @@ internal static class PlayerRuntimeModeChecks
                 "allowLegacyRawAuthentication": true
               },
               "game": {
+                "worldInstances": {
+                  "realmId": 1
+                },
                 "players": {
                   "runtime": "{{runtime}}"
                 }

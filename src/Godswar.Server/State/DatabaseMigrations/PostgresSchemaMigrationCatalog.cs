@@ -276,6 +276,12 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateBagConsumableCooldownState(),
         CreatePetPhoenixRebirthBracket(),
         CreatePackedSealOwnershipHardening(),
-        CreateMonsterCombatAuthority()
+        CreateMonsterCombatAuthority(),
+        CreateMultiRealmCharacterAuthority(),
+        CreateRealmScopedWorldBossControl(),
+        CreateFencedAccountPresenceProjection(),
+        CreatePetOwnerMergeRebalance(),
+        CreateCooledHolyStoneBalance(),
+        CreateHolySpiritBalanceSettings()
     ];
 }

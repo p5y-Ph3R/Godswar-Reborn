@@ -53,6 +53,10 @@ internal sealed partial class GameSessionRegistry
                 commit,
                 cancellationToken);
         }
+
+        await ReconcileTrainingDummyElementalStatusesOnceAsync(
+            now,
+            cancellationToken);
     }
 
     private IReadOnlyList<PlayerElementalBurnCommit>
@@ -292,7 +296,7 @@ internal sealed partial class GameSessionRegistry
             return;
         }
 
-        var targetWorldId = WorldObjectIds.ForPlayer(target.CharacterId);
+        var targetWorldId = target.ObjectId;
         var currentSource = commit.Source;
         var sourceIsCurrent = currentSource is not null &&
             IsCurrentWorldSessionSnapshot(
@@ -314,8 +318,7 @@ internal sealed partial class GameSessionRegistry
                             recipient.Session,
                             currentSource.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(
-                            currentSource.CharacterId);
+                        : currentSource.ObjectId;
                     var selector = currentSource.Character.Profession is 2 or 3
                         ? (byte)5
                         : (byte)3;
@@ -352,8 +355,7 @@ internal sealed partial class GameSessionRegistry
                             recipient.Session,
                             currentSource.Session)
                         ? LocalPlayerObjectId
-                        : WorldObjectIds.ForPlayer(
-                            currentSource.CharacterId);
+                        : currentSource.ObjectId;
                     await TrySendWorldInstancePacketAsync(
                         runtime,
                         recipient,

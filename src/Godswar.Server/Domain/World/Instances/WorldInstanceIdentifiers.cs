@@ -10,6 +10,8 @@ internal readonly record struct RealmId
 {
     public static readonly RealmId Tempest = new(1);
 
+    public static readonly RealmId Dwargon = new(2);
+
     public RealmId(int value)
     {
         if (value <= 0)

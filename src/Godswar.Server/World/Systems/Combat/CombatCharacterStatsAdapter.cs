@@ -36,7 +36,8 @@ internal static class CombatCharacterStatsAdapter
             IgnoreMagicDefenseBasisPoints = stats.IgnoreMagicDefense,
             CriticalDamageBasisPoints = stats.CriticalDamagePercent,
             CriticalDamageFlat = stats.CriticalDamageFlat,
-            LifeAbsorptionBasisPoints = stats.LifeAbsorption
+            LifeAbsorptionBasisPoints = stats.LifeAbsorption,
+            LifeAbsorptionFlat = stats.LifeAbsorptionFlat
         };
     }
 
@@ -61,7 +62,30 @@ internal static class CombatCharacterStatsAdapter
             CriticalDamageBasisPoints =
                 offense.CriticalDamageBasisPoints,
             CriticalDamageFlat = offense.CriticalDamageFlat,
-            LifeAbsorptionBasisPoints = offense.LifeAbsorptionBasisPoints
+            LifeAbsorptionBasisPoints = offense.LifeAbsorptionBasisPoints,
+            LifeAbsorptionFlat = offense.LifeAbsorptionFlat
+        };
+
+    public static CombatAttackerStats ApplyRuntimeAttackerModifiers(
+        in CombatAttackerStats attacker,
+        in ClientStatusAggregate modifiers) =>
+        attacker with
+        {
+            Hit = SaturatingAdd(attacker.Hit, modifiers.Hit),
+            Critical = SaturatingAdd(
+                attacker.Critical,
+                modifiers.CriticalAppend)
+        };
+
+    public static CombatTargetStats ApplyRuntimeTargetModifiers(
+        in CombatTargetStats target,
+        in ClientStatusAggregate modifiers) =>
+        target with
+        {
+            Dodge = SaturatingAdd(target.Dodge, modifiers.Dodge),
+            CriticalResistance = SaturatingAdd(
+                target.CriticalResistance,
+                modifiers.CriticalResistance)
         };
 
     public static CombatTargetStats ToTarget(
@@ -70,7 +94,9 @@ internal static class CombatCharacterStatsAdapter
         int physicalDefenseBonus = 0,
         int magicDefenseBonus = 0,
         int physicalReductionBonusBasisPoints = 0,
-        int magicReductionBonusBasisPoints = 0)
+        int magicReductionBonusBasisPoints = 0,
+        int physicalDamageTakenIncreaseBasisPoints = 0,
+        int magicDamageTakenIncreaseBasisPoints = 0)
     {
         ArgumentNullException.ThrowIfNull(stats);
         return new CombatTargetStats
@@ -90,6 +116,12 @@ internal static class CombatCharacterStatsAdapter
             MagicDamageReductionBasisPoints = SaturatingAdd(
                 stats.MagicDamageReduction,
                 magicReductionBonusBasisPoints),
+            PhysicalDamageTakenIncreaseBasisPoints = Math.Max(
+                0,
+                physicalDamageTakenIncreaseBasisPoints),
+            MagicDamageTakenIncreaseBasisPoints = Math.Max(
+                0,
+                magicDamageTakenIncreaseBasisPoints),
             CriticalDamageReductionBasisPoints =
                 stats.CriticalDamageReduction,
             PhysicalFlatAbsorption =

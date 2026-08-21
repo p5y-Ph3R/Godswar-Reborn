@@ -194,6 +194,7 @@ internal sealed partial class
             transaction,
             envelope.Subject.CharacterId,
             character.Value.Profession,
+            envelope.Command.GridIndex,
             envelope.Command.SelectedSkillKind,
             cancellationToken);
         var selection = DeriveSelection(

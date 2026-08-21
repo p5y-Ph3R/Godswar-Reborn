@@ -13,9 +13,10 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
+        var now = DateTimeOffset.UtcNow;
         var status = await _registry.GetStatusSnapshotAsync(
             _session,
-            DateTimeOffset.UtcNow,
+            now,
             cancellationToken);
         await _session.SendAsync(
             PacketBuilder.PlayerStatusEffects(
@@ -25,9 +26,9 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             $"{reason}ExtendedStatus");
         await _session.SendAsync(
-            PacketBuilder.PlayerStatusUpdate(
-                _character,
-                status.Aggregate),
+            BuildLocalPlayerStatusUpdateAt(
+                status.Aggregate,
+                now),
             cancellationToken,
             $"{reason}GameData");
         return true;

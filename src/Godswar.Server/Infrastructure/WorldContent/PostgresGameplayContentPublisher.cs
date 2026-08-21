@@ -72,18 +72,23 @@ internal static partial class PostgresGameplayContentPublisher
                         connection,
                         transaction,
                         cancellationToken);
-                return current with { Created = false };
             }
             catch (WorldContentUnavailableException error)
                 when (error.Reason ==
                     WorldContentFailureReason.RevisionMismatch)
             {
-                return await UpgradeLegacyV2PublicationAsync(
+                current = await UpgradeLegacyV2PublicationAsync(
                     connection,
                     transaction,
                     current,
                     cancellationToken);
             }
+
+            return await EnsureChampionTalentAuthorityAsync(
+                connection,
+                transaction,
+                current,
+                cancellationToken);
         }
 
         var canonical = await ReadCanonicalSourceContentAsync(

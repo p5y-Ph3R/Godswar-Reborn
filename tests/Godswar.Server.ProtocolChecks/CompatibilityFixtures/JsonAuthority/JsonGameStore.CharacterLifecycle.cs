@@ -13,6 +13,15 @@ internal sealed partial class JsonGameStore
 
     public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
         int accountId,
+        CancellationToken cancellationToken = default) =>
+        await GetCharactersAsync(
+            accountId,
+            RealmId.Tempest,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<GameCharacter>> GetCharactersAsync(
+        int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -22,6 +31,7 @@ internal sealed partial class JsonGameStore
             return db.Characters
                 .Where(character =>
                     character.AccountId == accountId &&
+                    character.RealmId == realmId &&
                     character.LifecycleState ==
                         CharacterLifecycleState.Active)
                 .OrderBy(character => character.Id)
@@ -37,15 +47,31 @@ internal sealed partial class JsonGameStore
     public async Task<GameCharacter?> GetFirstCharacterAsync(
         int accountId,
         CancellationToken cancellationToken = default) =>
-        (await GetCharactersAsync(accountId, cancellationToken))
+        (await GetCharactersAsync(
+            accountId,
+            RealmId.Tempest,
+            cancellationToken))
+            .FirstOrDefault();
+
+    public async Task<GameCharacter?> GetFirstCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        CancellationToken cancellationToken = default) =>
+        (await GetCharactersAsync(accountId, realmId, cancellationToken))
             .FirstOrDefault();
 
     public async Task<SemanticGatewayCharacterRoute?>
         FindCharacterRouteAsync(
             int accountId,
+            RealmId realmId,
             CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
+        if (!realmId.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(realmId));
+        }
+
         await _lock.WaitAsync(cancellationToken);
         try
         {
@@ -53,12 +79,14 @@ internal sealed partial class JsonGameStore
                 .Characters
                 .Where(character =>
                     character.AccountId == accountId &&
+                    character.RealmId == realmId &&
                     character.LifecycleState ==
                         CharacterLifecycleState.Active)
                 .OrderBy(character => character.Id)
                 .Take(2)
                 .Select(character => new SemanticGatewayCharacterRoute(
                     character.Id,
+                    character.RealmId,
                     MapId.FromLegacy(character.CurrentMap)))
                 .ToArray();
             return routes.Length switch
@@ -334,6 +362,17 @@ internal sealed partial class JsonGameStore
     public async Task<GameCharacter> CreateCharacterAsync(
         int accountId,
         GameCharacter character,
+        CancellationToken cancellationToken = default) =>
+        await CreateCharacterAsync(
+            accountId,
+            RealmId.Tempest,
+            character,
+            cancellationToken);
+
+    public async Task<GameCharacter> CreateCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        GameCharacter character,
         CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -342,6 +381,7 @@ internal sealed partial class JsonGameStore
             var db = await LoadUnsafeAsync(cancellationToken);
             if (db.Characters.Any(existing =>
                     existing.AccountId == accountId &&
+                    existing.RealmId == realmId &&
                     existing.LifecycleState ==
                         CharacterLifecycleState.Active))
             {
@@ -353,12 +393,13 @@ internal sealed partial class JsonGameStore
                 CleanCharacterName(character.Name));
             character.Id = db.NextCharacterId++;
             character.AccountId = accountId;
+            character.RealmId = realmId;
             character.CharacterSlot =
                 CharacterLifecyclePolicy.SingleCharacterSlot;
             character.LifecycleState =
                 CharacterLifecycleState.Active;
             character.LifecycleVersion =
-                NextLifecycleVersion(db, accountId);
+                NextLifecycleVersion(db, accountId, realmId);
             character.DeletedAt = null;
             character.RestoreUntil = null;
             character.PurgeAfter = null;
@@ -387,6 +428,17 @@ internal sealed partial class JsonGameStore
     public async Task<bool> DeleteCharacterAsync(
         int accountId,
         string characterName,
+        CancellationToken cancellationToken = default) =>
+        await DeleteCharacterAsync(
+            accountId,
+            RealmId.Tempest,
+            characterName,
+            cancellationToken);
+
+    public async Task<bool> DeleteCharacterAsync(
+        int accountId,
+        RealmId realmId,
+        string characterName,
         CancellationToken cancellationToken = default)
     {
         characterName = CleanCharacterName(characterName);
@@ -396,6 +448,7 @@ internal sealed partial class JsonGameStore
             var db = await LoadUnsafeAsync(cancellationToken);
             var character = db.Characters.FirstOrDefault(candidate =>
                 candidate.AccountId == accountId &&
+                candidate.RealmId == realmId &&
                 candidate.LifecycleState ==
                     CharacterLifecycleState.Active &&
                 string.Equals(
@@ -411,7 +464,7 @@ internal sealed partial class JsonGameStore
             character.LifecycleState =
                 CharacterLifecycleState.Deleted;
             character.LifecycleVersion =
-                NextLifecycleVersion(db, accountId);
+                NextLifecycleVersion(db, accountId, realmId);
             character.DeletedAt = deletedAt;
             character.RestoreUntil =
                 deletedAt +
@@ -431,10 +484,13 @@ internal sealed partial class JsonGameStore
 
     private static long NextLifecycleVersion(
         GameDatabase database,
-        int accountId)
+        int accountId,
+        RealmId realmId)
     {
         var current = database.Characters
-            .Where(character => character.AccountId == accountId)
+            .Where(character =>
+                character.AccountId == accountId &&
+                character.RealmId == realmId)
             .Select(character => character.LifecycleVersion)
             .DefaultIfEmpty(0)
             .Max();

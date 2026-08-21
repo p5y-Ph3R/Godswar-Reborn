@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Progression;
 using Godswar.Server.Application.World;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Database;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.Infrastructure.World;
@@ -61,6 +62,7 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             var worldBossStore =
                 new PostgresWorldBossAreaControlStore(
                     dataSource,
+                    RealmId.Tempest,
                     gameplayPublication.Revision);
 
             await AssertInvalidAndNotConfiguredAsync(
@@ -71,6 +73,12 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
                 dataSource,
                 worldBossStore,
                 fixture);
+            await AssertRealmIsolationAsync(
+                dataSource,
+                boostReader,
+                worldBossStore,
+                fixture,
+                gameplayPublication.Revision);
             await AssertBoostCompositionAndOwnershipAsync(
                 boostReader,
                 fixture,
@@ -248,6 +256,78 @@ internal static partial class PostgresFocusedGameplayStateIntegrationChecks
             expired is null,
             "respawn suppression ends at the exact expiry boundary");
         return control;
+    }
+
+    private static async Task AssertRealmIsolationAsync(
+        NpgsqlDataSource dataSource,
+        PostgresExperienceBoostStateReader boostReader,
+        PostgresWorldBossAreaControlStore tempestStore,
+        Fixture fixture,
+        string gameplayContentRevision)
+    {
+        var dwargonStore = new PostgresWorldBossAreaControlStore(
+            dataSource,
+            RealmId.Dwargon,
+            gameplayContentRevision);
+        var request = new ExperienceBoostReadRequest(
+            fixture.OtherAccountId,
+            fixture.DwargonCharacterId,
+            0,
+            fixture.ConfiguredMapId,
+            fixture.ReadAtUtc);
+        var before = await boostReader.ReadAsync(request);
+        Check.True(
+            before.ActiveBoosts.All(static boost =>
+                boost.Kind != AppBoostKinds.FactionArea),
+            "Tempest area control cannot leak into a Dwargon character read");
+        Check.True(
+            await dwargonStore.ReadActiveAsync(
+                new WorldBossRespawnReadRequest(
+                    fixture.ConfiguredMapId,
+                    fixture.ReadAtUtc)) is null,
+            "Tempest respawn suppression cannot leak into Dwargon");
+
+        var dwargonActivation = await dwargonStore.ActivateAsync(
+            new WorldBossAreaActivation(
+                fixture.ConfiguredMapId,
+                fixture.BossTemplateKey,
+                1,
+                fixture.KilledAtUtc.AddMinutes(1),
+                $"dwargon:{fixture.Token}"));
+        Check.Equal(
+            (int)WorldBossAreaActivationDisposition.Committed,
+            (int)dwargonActivation.Disposition,
+            "Dwargon independently controls the same configured map");
+
+        var after = await boostReader.ReadAsync(
+            request with { Camp = 1 });
+        Check.Equal(
+            1,
+            after.ActiveBoosts.Count(static boost =>
+                boost.Kind == AppBoostKinds.FactionArea),
+            "Dwargon character receives only Dwargon area control");
+        Check.Equal(
+            fixture.DeathToken,
+            await ReadDeathTokenAsync(
+                dataSource,
+                fixture.ConfiguredMapId,
+                RealmId.Tempest),
+            "Dwargon activation preserves Tempest control");
+        Check.Equal(
+            $"dwargon:{fixture.Token}",
+            await ReadDeathTokenAsync(
+                dataSource,
+                fixture.ConfiguredMapId,
+                RealmId.Dwargon),
+            "Dwargon activation owns its realm control row");
+
+        var tempestRespawn = await tempestStore.ReadActiveAsync(
+            new WorldBossRespawnReadRequest(
+                fixture.ConfiguredMapId,
+                fixture.ReadAtUtc));
+        Check.True(
+            tempestRespawn is not null,
+            "Dwargon activation preserves Tempest respawn suppression");
     }
 
     private static async Task AssertBoostCompositionAndOwnershipAsync(

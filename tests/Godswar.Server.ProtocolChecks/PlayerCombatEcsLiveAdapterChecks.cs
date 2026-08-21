@@ -78,6 +78,7 @@ internal static partial class PlayerCombatEcsLiveAdapterChecks
             monsters[0].ObjectId);
         registry.Remove(socket.Session);
         await CheckLiveBasicAttackResolutionAsync();
+        await CheckLiveRuntimeStatusRatingsAsync();
         await CheckReconnectSafeCombatAdmissionAsync();
     }
 

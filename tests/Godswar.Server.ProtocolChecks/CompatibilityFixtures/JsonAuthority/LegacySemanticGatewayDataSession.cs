@@ -1,4 +1,6 @@
 using Godswar.Server.Application.Gateway;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Security.Authentication;
 
 namespace Godswar.Server.State;
@@ -71,8 +73,31 @@ internal sealed class JsonSemanticGatewayDataSession :
 
     public Task<SemanticGatewayCharacterRoute?> FindCharacterRouteAsync(
         int accountId,
+        RealmId realmId,
         CancellationToken cancellationToken = default) =>
-        FindCharacterRouteCoreAsync(accountId, cancellationToken);
+        FindCharacterRouteCoreAsync(
+            accountId,
+            realmId,
+            cancellationToken);
+
+    public Task<RealmCatalogSnapshot> ReadEnabledAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new RealmCatalogSnapshot(
+        [
+            new RealmCatalogEntry(
+                RealmId.Tempest,
+                "Tempest",
+                "KAL3jcIzqGgKvOf1dbYZKC8cS",
+                "127.1.1.110",
+                gamePort: 7_000,
+                serverLimit: 250,
+                recommended: true,
+                displayOrder: 1)
+        ]));
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -95,11 +120,13 @@ internal sealed class JsonSemanticGatewayDataSession :
     private Task<SemanticGatewayCharacterRoute?>
         FindCharacterRouteCoreAsync(
             int accountId,
+            RealmId realmId,
             CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         return _routes.FindCharacterRouteAsync(
             accountId,
+            realmId,
             cancellationToken);
     }
 

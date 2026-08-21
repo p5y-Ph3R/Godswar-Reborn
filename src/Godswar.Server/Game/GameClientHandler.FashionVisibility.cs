@@ -122,7 +122,7 @@ internal sealed partial class GameClientHandler
                 _session,
                 PacketBuilder.EquipmentVisualRefresh(
                     _character,
-                    WorldObjectIds.ForPlayer(_character.Id),
+                    CurrentPlayerObjectId,
                     _itemContent?.FashionAppearances),
                 cancellationToken,
                 includeRoutingSession: false,
@@ -132,7 +132,7 @@ internal sealed partial class GameClientHandler
             await _registry.BroadcastToCurrentWorldInstanceAsync(
                 _session,
                 PacketBuilder.EquipmentEffectVisibility(
-                    WorldObjectIds.ForPlayer(_character.Id),
+                    CurrentPlayerObjectId,
                     ResolveEquipmentEffectProjection(_character)),
                 cancellationToken,
                 includeRoutingSession: false,
