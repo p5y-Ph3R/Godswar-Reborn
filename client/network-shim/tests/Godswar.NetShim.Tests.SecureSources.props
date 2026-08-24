@@ -15,6 +15,7 @@
     <ClCompile Include="..\src\SecureGameControl.cpp" />
     <ClCompile Include="..\src\SecureGameGrantRegistry.cpp" />
     <ClCompile Include="..\src\SecureEquipmentBagTransferIdentity.cpp" />
+    <ClCompile Include="..\src\SecureWarehouseCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureForgeCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureHolyStoneCommandIdentity.cpp" />
     <ClCompile Include="..\src\SecureKitBagItemDeleteIdentity.cpp" />
@@ -30,6 +31,7 @@
     <ClCompile Include="..\src\SecurePendingOperationRegistry.ClassSuit.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Pets.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.EquipmentBagTransfer.cpp" />
+    <ClCompile Include="..\src\SecurePendingOperationRegistry.Warehouse.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.Forge.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyEquipment.cpp" />
     <ClCompile Include="..\src\SecurePendingOperationRegistry.HolyStone.cpp" />

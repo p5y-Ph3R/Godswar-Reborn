@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Messaging;
+using Godswar.Server.Infrastructure.Warehouse;
 
 namespace Godswar.Server.Infrastructure.Inventory;
 
@@ -42,6 +43,28 @@ internal sealed partial class CharacterInventoryOutboxConsumer :
                 DeveloperItemGrantPersistenceCodec.ContractVersion)
         {
             ValidateGrant(message);
+            return ValueTask.CompletedTask;
+        }
+
+        if (string.Equals(
+                message.EventType,
+                WarehouseTransferPersistenceCodec.EventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                WarehouseTransferPersistenceCodec.ContractVersion)
+        {
+            ValidateWarehouseTransfer(message);
+            return ValueTask.CompletedTask;
+        }
+
+        if (string.Equals(
+                message.EventType,
+                WarehouseExpansionPersistenceCodec.InventoryEventType,
+                StringComparison.Ordinal) &&
+            message.SchemaVersion ==
+                WarehouseExpansionPersistenceCodec.ContractVersion)
+        {
+            ValidateWarehouseKeyConsumption(message);
             return ValueTask.CompletedTask;
         }
 

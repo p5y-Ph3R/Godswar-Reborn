@@ -17,6 +17,63 @@ bool EqualBytes(
 bool HasSettlingResultCode(
     const SecureLegacyCommandResult& result) noexcept {
     if (result.commandFamily ==
+            SecureLegacyCommandFamily::WarehouseTransfer) {
+        const bool succeeded =
+            result.resultCode >= LegacyWarehouseDepositedResult &&
+            result.resultCode <= LegacyWarehouseSwappedResult;
+        if (succeeded) {
+            return (result.disposition ==
+                        SecureLegacyCommandDisposition::Applied ||
+                    result.disposition ==
+                        SecureLegacyCommandDisposition::Replayed) &&
+                result.inventoryRevision != 0;
+        }
+        if (result.resultCode >= LegacyWarehouseEmptySourceResult &&
+            result.resultCode <=
+                LegacyWarehouseStackIncompatibleResult) {
+            return result.disposition ==
+                SecureLegacyCommandDisposition::Rejected;
+        }
+        if (result.resultCode ==
+                LegacyWarehouseConcurrentConflictResult) {
+            return result.disposition ==
+                    SecureLegacyCommandDisposition::Rejected ||
+                result.disposition ==
+                    SecureLegacyCommandDisposition::Conflict;
+        }
+        return result.resultCode ==
+                LegacyWarehouseRestrictedItemResult &&
+            result.disposition ==
+                SecureLegacyCommandDisposition::Rejected;
+    }
+    if (result.commandFamily ==
+            SecureLegacyCommandFamily::WarehouseExpansion) {
+        const bool succeeded =
+            IsLegacyWarehouseExpansionSuccessResult(result.resultCode);
+        if (succeeded) {
+            return (result.disposition ==
+                        SecureLegacyCommandDisposition::Applied ||
+                    result.disposition ==
+                        SecureLegacyCommandDisposition::Replayed) &&
+                result.inventoryRevision != 0;
+        }
+        if (IsLegacyWarehouseMissingKeysResult(result.resultCode)) {
+            return result.disposition ==
+                SecureLegacyCommandDisposition::Rejected;
+        }
+        if (result.resultCode ==
+                LegacyWarehouseAlreadyMaximumResult) {
+            return result.disposition ==
+                SecureLegacyCommandDisposition::Rejected;
+        }
+        return result.resultCode ==
+                LegacyWarehouseExpansionFailedResult &&
+            (result.disposition ==
+                    SecureLegacyCommandDisposition::Rejected ||
+             result.disposition ==
+                    SecureLegacyCommandDisposition::Conflict);
+    }
+    if (result.commandFamily ==
         SecureLegacyCommandFamily::PetBind) {
         return result.resultCode ==
                 LegacyPetBindAlreadyBoundResultSubId ||

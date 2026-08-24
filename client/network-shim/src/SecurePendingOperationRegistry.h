@@ -3,6 +3,7 @@
 #include "SecureCharacterLifecycleIdentity.h"
 #include "SecureClassSuitCommandIdentity.h"
 #include "SecureEquipmentBagTransferIdentity.h"
+#include "SecureWarehouseCommandIdentity.h"
 #include "SecureForgeCommandIdentity.h"
 #include "SecureHolyStoneCommandIdentity.h"
 #include "SecureHolySuitCommandIdentity.h"
@@ -194,6 +195,20 @@ private:
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribePetCommand(
         const LegacyPetCommandIntent& intent,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeWarehousePacket(
+        const void* packet,
+        std::size_t packetBytes,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor,
+        bool* recognized) noexcept;
+    SecureOperationRegistryResult DescribeWarehouseTransfer(
+        const LegacyWarehouseTransferCommand& command,
+        std::uint64_t now,
+        LegacyPacketDescriptor* descriptor) noexcept;
+    SecureOperationRegistryResult DescribeWarehouseExpansion(
+        const LegacyWarehouseExpansionCommand& command,
         std::uint64_t now,
         LegacyPacketDescriptor* descriptor) noexcept;
     SecureOperationRegistryResult DescribeKitBagItemDelete(

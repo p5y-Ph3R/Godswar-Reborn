@@ -26,5 +26,6 @@ internal enum NpcDialogueBehavior
     HolyStone = 4,
     ClassSuit = 5,
     PetManager = 6,
-    PetPointReset = 7
+    PetPointReset = 7,
+    WarehouseManager = 10
 }

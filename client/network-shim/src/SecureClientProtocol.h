@@ -115,6 +115,8 @@ enum class SecureLegacyCommandFamily : std::uint16_t {
     PetBind = 53,
     PetSoulContract = 54,
     PetManagerUtility = 55,
+    WarehouseTransfer = 58,
+    WarehouseExpansion = 59,
 };
 
 struct SecureLegacyCommandResult final {

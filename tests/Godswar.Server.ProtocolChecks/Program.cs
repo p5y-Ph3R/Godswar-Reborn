@@ -154,6 +154,7 @@ internal static partial class Program
                 ElementalClassSuitAttributeChecks.CheckName,
                 ElementalClassSuitAttributeChecks.RunAsync),
             (ClassSuitHandlerChecks.CheckName, ClassSuitHandlerChecks.RunAsync),
+            .. WarehouseCheckCatalog.All,
             ("Atomic gear-enhancement persistence", GearEnhancementTransactionChecks.RunAsync),
             (
                 PostgresGearEnhancementIntegrationChecks.CheckName,

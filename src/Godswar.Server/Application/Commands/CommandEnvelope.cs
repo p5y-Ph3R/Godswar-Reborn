@@ -61,7 +61,9 @@ internal enum CommandFamily : ushort
     PetAppearanceChange = 52,
     PetBind = 53,
     PetSoulContract = 54,
-    PetManagerUtility = 55
+    PetManagerUtility = 55,
+    WarehouseTransfer = 58,
+    WarehouseExpansion = 59
 }
 
 internal enum CommandIdentityStrength : byte

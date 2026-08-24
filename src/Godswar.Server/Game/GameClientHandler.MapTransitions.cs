@@ -196,6 +196,7 @@ internal sealed partial class GameClientHandler
         ClearLocalNpcCatalog();
         ClearForgeSelection();
         ClearGearEnhancerSelection();
+        _warehouseAccessContext = null;
         ResetPlayerMovementEcs();
         _nextBasicAttackAt = DateTimeOffset.MinValue;
         _nextSkillCastAt.Clear();

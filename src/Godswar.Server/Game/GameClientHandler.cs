@@ -442,6 +442,9 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.StorageItem:
                 await HandleStorageItemAsync(packet, cancellationToken);
                 break;
+            case Opcodes.WarehouseTransfer:
+                await HandleWarehouseTransferAsync(packet, cancellationToken);
+                break;
             case Opcodes.ServerTimeRequest:
                 await _session.SendAsync(PacketBuilder.ServerTime(), cancellationToken, "ServerTime");
                 break;

@@ -21,7 +21,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
         "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
-        "zephyr-v1+mount-speed-v3+pets-v4";
+        "zephyr-v1+mount-speed-v3+pets-v4+wh-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(
@@ -86,6 +86,12 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     transaction,
                     existing.Revision,
                     cancellationToken);
+            var hasWarehouseItems =
+                await PublishedWarehouseItemsAreCompleteAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
             var hasMountSpeedProfile =
                 await PublishedMountSpeedProfileIsCurrentAsync(
                     connection,
@@ -97,6 +103,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                 hasSocketSpells &&
                 hasHolyStoneMaterials &&
                 hasPetItems &&
+                hasWarehouseItems &&
                 hasMountSpeedProfile &&
                 publishedHolySuit.OperationPolicy.Equals(
                     ReviewedHolySuitPolicy.OperationPolicy))
@@ -123,6 +130,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
                     existing.Revision,
                     cancellationToken);
                 await EnsurePetItemMutableTemplateCompatibilityAsync(
+                    connection,
+                    transaction,
+                    existing.Revision,
+                    cancellationToken);
+                await EnsureWarehouseMutableCompatibilityAsync(
                     connection,
                     transaction,
                     existing.Revision,
@@ -213,6 +225,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             revision,
             cancellationToken);
         await EnsurePetItemMutableTemplateCompatibilityAsync(
+            connection,
+            transaction,
+            revision,
+            cancellationToken);
+        await EnsureWarehouseMutableCompatibilityAsync(
             connection,
             transaction,
             revision,

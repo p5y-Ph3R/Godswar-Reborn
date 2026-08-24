@@ -3,6 +3,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Infrastructure;
@@ -117,5 +118,13 @@ internal sealed class GameClientHandlerFactory(
             realmCatalog:
                 postgresRuntime?.RealmCatalog,
             processRealmId:
-                processRealmId);
+                processRealmId,
+            warehouseSnapshots:
+                postgresRuntime?.WarehouseSnapshots,
+            warehouseTransferCommands:
+                postgresRuntime?.WarehouseTransferCommands,
+            warehouseExpansionCommands:
+                postgresRuntime?.WarehouseExpansionCommands,
+            warehouseExpansionPolicy:
+                postgresRuntime?.WarehouseExpansionPolicy);
 }

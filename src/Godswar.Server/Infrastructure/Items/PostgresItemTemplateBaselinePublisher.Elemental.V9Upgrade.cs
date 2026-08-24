@@ -89,6 +89,11 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             transaction,
             definitions,
             cancellationToken);
+        definitions = await ReconcileReviewedWarehouseItemsAsync(
+            connection,
+            transaction,
+            definitions,
+            cancellationToken);
         definitions = await ReplaceReviewedMountDefinitionsAsync(
             connection,
             transaction,
@@ -122,12 +127,19 @@ internal static partial class PostgresItemTemplateBaselinePublisher
             release.Source.Equals(
                 OfficialPetItemsV3Source,
                 StringComparison.Ordinal);
-        if (!isV2 && !isV3)
+        var isV4 = release.Revision.Equals(
+                "1851FC6EED26BC9DEDFAE2233479E1BCA6757392C5A7728DE68068B730C0D0AF",
+                StringComparison.Ordinal) &&
+            release.Source.Equals(
+                "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
+                "zephyr-v1+mount-speed-v3+pets-v4",
+                StringComparison.Ordinal);
+        if (!isV2 && !isV3 && !isV4)
         {
             throw new InvalidOperationException(
                 $"Manifest-v9 item revision {release.Revision} is not the " +
-                "exact reviewed pets-v2/v3 predecessor; pet items were not " +
-                "reconciled.");
+                "exact reviewed pets-v2/v3/v4 predecessor; Warehouse items " +
+                "were not reconciled.");
         }
     }
 

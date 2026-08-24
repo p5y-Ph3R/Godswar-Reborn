@@ -17,6 +17,44 @@ internal static class RuntimeContentFingerprint
         string petRevision,
         string petOwnerMergeRevision,
         string petLearnedSkillRevision,
+        string holySpiritBalanceRevision,
+        string warehouseExpansionPolicyRevision)
+    {
+        ValidateRevision(worldRevision, nameof(worldRevision));
+        ValidateRevision(itemRevision, nameof(itemRevision));
+        ValidateRevision(petRevision, nameof(petRevision));
+        ValidateRevision(
+            petOwnerMergeRevision,
+            nameof(petOwnerMergeRevision));
+        ValidateRevision(
+            petLearnedSkillRevision,
+            nameof(petLearnedSkillRevision));
+        ValidateRevision(
+            holySpiritBalanceRevision,
+            nameof(holySpiritBalanceRevision));
+        ValidateRevision(
+            warehouseExpansionPolicyRevision,
+            nameof(warehouseExpansionPolicyRevision));
+
+        var canonical = Encoding.UTF8.GetBytes(
+            "runtime-content-v6\n" +
+            $"world:{worldRevision}\n" +
+            $"items:{itemRevision}\n" +
+            $"pets:{petRevision}\n" +
+            $"pet-owner-merge:{petOwnerMergeRevision}\n" +
+            $"pet-learned-skills:{petLearnedSkillRevision}\n" +
+            $"holy-spirit-balance:{holySpiritBalanceRevision}\n" +
+            $"warehouse-expansion-policy:" +
+            $"{warehouseExpansionPolicyRevision}\n");
+        return Convert.ToHexString(SHA256.HashData(canonical));
+    }
+
+    public static string Create(
+        string worldRevision,
+        string itemRevision,
+        string petRevision,
+        string petOwnerMergeRevision,
+        string petLearnedSkillRevision,
         string holySpiritBalanceRevision)
     {
         ValidateRevision(worldRevision, nameof(worldRevision));

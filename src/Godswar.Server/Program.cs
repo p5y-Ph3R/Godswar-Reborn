@@ -48,29 +48,16 @@ try
         options.Storage.PostgresConnectionString);
     await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
         options.Storage.PostgresConnectionString);
-    var itemContent =
-        await ServerItemContentComposition.LoadAsync(options);
-    var petContent = await ServerPetContentComposition.LoadAsync(
-        options,
-        itemContent.Templates);
-    var petOwnerMergeContent =
-        await ServerPetOwnerMergeContentComposition.LoadAsync(options);
-    var petLearnedSkillContent = await ServerRuntimeContentComposition
-        .LoadLearnedSkillsAsync(options);
-    var holyBalance = await ServerRuntimeContentComposition
-        .LoadHolySpiritBalanceAsync(options);
-    var worldContent =
-        await ServerWorldContentComposition.TryLoadAsync(
-            options);
-    if (worldContent is null)
+    var runtimeContent = await ServerRuntimeContentComposition
+        .LoadStartupContentAsync(options);
+    if (runtimeContent is null)
     {
         return;
     }
-    RuntimeContentCompatibilityValidator.Validate(
-        itemContent.Templates,
-        worldContent.Gameplay);
-    var gameplayCatalogs = GameplayRuntimeCatalogs.Create(
-        worldContent.Gameplay);
+    var (worldContent, itemContent, petContent,
+        petOwnerMergeContent, petLearnedSkillContent,
+        holyBalance, warehousePolicy,
+        gameplayCatalogs) = runtimeContent;
     var gameplayContentRevision =
         worldContent.Manifest.Gameplay.Sha256;
     await using IGameStore store = new PostgresGameStore(
@@ -85,7 +72,8 @@ try
         ServerRuntimeContentComposition.CreateApplicationData(
             options, worldContent, itemContent, petContent,
             petOwnerMergeContent, petLearnedSkillContent,
-            holyBalance);
+            holyBalance,
+            warehousePolicy);
     var accountPersistence = ServerAccountPersistenceComposition.Create(
         postgresApplicationDataRuntime);
     var gameplayPersistence =
@@ -106,6 +94,7 @@ try
             petOwnerMergeContent,
             petLearnedSkillContent,
             holyBalance,
+            warehousePolicy,
             shutdown.Token);
 
     await using var characterCheckpoints =
@@ -227,23 +216,11 @@ try
     using var processSignals =
         ServerProcessSignalRegistration.Install(
             () => BeginRuntimeDrain());
-    ManagementTokenAuthenticator? loadedManagementToken = null;
-    try
+    if (!ServerManagementTokenComposition.TryLoad(
+            options,
+            observability,
+            out var loadedManagementToken))
     {
-        if (options.Operations.Management.Enabled)
-        {
-            loadedManagementToken =
-                ManagementDrainTokenFile.TryLoad(
-                    options.Operations.DrainTokenFile);
-        }
-    }
-    catch
-    {
-        observability.RecordLifecycle(
-            "management",
-            "configuration_rejected",
-            OperationalLogLevel.Error);
-        Environment.ExitCode = 2;
         return;
     }
     using var managementToken = loadedManagementToken;

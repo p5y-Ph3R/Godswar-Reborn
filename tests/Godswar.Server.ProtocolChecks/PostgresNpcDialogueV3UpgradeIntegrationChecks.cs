@@ -9,7 +9,7 @@ namespace Godswar.Server.ProtocolChecks;
 internal static class PostgresNpcDialogueV3UpgradeIntegrationChecks
 {
     public const string CheckName =
-        "PostgreSQL NPC dialogue rollback-to-V5 Pet Manager upgrade";
+        "PostgreSQL NPC dialogue rollback-to-Warehouse Manager upgrade";
     private const string ConnectionStringVariable =
         "GODSWAR_TEST_POSTGRES_CONNECTION_STRING";
 
@@ -57,14 +57,14 @@ internal static class PostgresNpcDialogueV3UpgradeIntegrationChecks
         var publication = await PostgresNpcDialogueBaselinePublisher
             .EnsurePublishedAsync(connectionString);
         Check.Equal(
-            NpcDialogueBaselineV5.ExpectedRevision,
+            NpcDialogueBaselineV8.ExpectedRevision,
             publication.Revision,
-            "V5 dialogue revision is published");
+            "Warehouse dialogue revision is published");
 
         if (beforeRevision is not null &&
             !string.Equals(
                 beforeRevision,
-                NpcDialogueBaselineV5.ExpectedRevision,
+                NpcDialogueBaselineV8.ExpectedRevision,
                 StringComparison.Ordinal))
         {
             await AssertPreviousReleaseRemainsAsync(
@@ -72,11 +72,15 @@ internal static class PostgresNpcDialogueV3UpgradeIntegrationChecks
                 beforeRevision);
             Check.True(
                 publication.Created,
-                "previous publication is promoted to immutable V5");
+                "previous publication is promoted to immutable Warehouse release");
         }
 
         await AssertHolyStoneRoutesAsync(dataSource);
         await AssertPetManagerRoutesAsync(dataSource);
+        _ = await PostgresMonsterContentBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
+        _ = await PostgresEnterBootstrapBaselinePublisher
+            .EnsurePublishedAsync(connectionString);
         var pinned = await PostgresWorldContentReaderLoader.LoadAsync(
             connectionString);
         foreach (var npcKey in new[] { "Athens_086", "Sparta_086" })
@@ -112,7 +116,7 @@ internal static class PostgresNpcDialogueV3UpgradeIntegrationChecks
         }
         var repeat = await PostgresNpcDialogueBaselinePublisher
             .EnsurePublishedAsync(connectionString);
-        Check.True(!repeat.Created, "V5 repeat publication is a no-op");
+        Check.True(!repeat.Created, "Warehouse repeat publication is a no-op");
     }
 
     private static async Task<string?> ReadPublishedRevisionAsync(

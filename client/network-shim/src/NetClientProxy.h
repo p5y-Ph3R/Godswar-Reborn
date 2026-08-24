@@ -3,6 +3,7 @@
 #include "AvatarPreviewGate.h"
 #include "LegacyClientApi.h"
 #include "NativeClientCoordinator.h"
+#include "OriginWarehousePageHost.h"
 #include "SecureClientRuntime.h"
 #include "SecureClientSession.h"
 
@@ -62,6 +63,7 @@ private:
     SecureClientSession* secureSession_ = nullptr;
     NativeProxyId proxyId_;
     AvatarPreviewGate avatarPreviewGate_;
+    OriginWarehousePageHost warehousePageHost_;
     SRWLOCK secureSendLock_{};
 };
 

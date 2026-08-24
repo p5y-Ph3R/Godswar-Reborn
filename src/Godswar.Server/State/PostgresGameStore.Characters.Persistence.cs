@@ -192,7 +192,8 @@ internal sealed partial class PostgresGameStore
                 zodiac_online_duration_ticks, zodiac_last_online_at, zodiac_last_compensation_day,
                 zodiac_accumulated_exp_x100, zodiac_accumulated_talent_exp_x100,
                 prestige, earl_rank, consortia, consortia_job, consortia_contribute,
-                store_num, bag_num, hair_style, face_shap, "Map", "Pos_X", "Pos_Z", "Money",
+                store_num, bag_num, warehouse_capacity, warehouse_revision,
+                hair_style, face_shap, "Map", "Pos_X", "Pos_Z", "Money",
                 "Stone", "SkillPoint", "SkillExp", holy_suit_points, "MaxHP", "MaxMP", "Register_time",
                 "LastLogin_time", mutetime, character_slot,
                 lifecycle_state, lifecycle_version
@@ -207,7 +208,7 @@ internal sealed partial class PostgresGameStore
                 @zodiacLastOnlineAt, @zodiacLastCompensationDay,
                 @zodiacAccumulatedExperienceX100, @zodiacAccumulatedTalentExperienceX100,
                 0, 0, 0, 0, 0,
-                10, 1, @hair, @face, @currentMap, @positionX, @positionZ, @silver,
+                10, 1, 40, 0, @hair, @face, @currentMap, @positionX, @positionZ, @silver,
                 @gold, @talentPoints, @talentExperience, @holySuitPoints, @maxHp, @maxMp, @createdUtc, @createdUtc, 0,
                 @characterSlot, 'active', @lifecycleVersion
             )

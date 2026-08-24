@@ -1,5 +1,6 @@
 #include "NetClientProxy.h"
 
+#include <cstdint>
 #include <new>
 
 namespace godswar::network {
@@ -107,6 +108,7 @@ ILegacyNetClient* NetClientProxy::CreateForTesting(
 std::uint32_t NetClientProxy::Release() {
     auto* legacyClient = legacyClient_;
     avatarPreviewGate_.Reset();
+    warehousePageHost_.Reset();
     StopSecureSession();
     legacyClient_ = nullptr;
     if (coordinator_ != nullptr) {
@@ -151,6 +153,7 @@ void NetClientProxy::SetHost(const char* host, std::uint16_t port) {
 
 bool NetClientProxy::Connect() {
     avatarPreviewGate_.Reset();
+    warehousePageHost_.Reset();
 
     if (coordinator_ == nullptr) {
         return legacyClient_->Connect();
@@ -194,6 +197,7 @@ bool NetClientProxy::Connect() {
 
 void NetClientProxy::DisConnect() {
     avatarPreviewGate_.Reset();
+    warehousePageHost_.Reset();
     if (secureSession_ != nullptr) {
         StopSecureSession();
     } else {
@@ -205,12 +209,23 @@ void NetClientProxy::DisConnect() {
 }
 
 void NetClientProxy::Process() {
+    static_cast<void>(warehouse_page_host_detail::
+        PrepareRuntimePatchOnLoad());
     if (secureSession_ != nullptr &&
         !secureSession_->Poll()) {
         StopSecureSession();
         if (coordinator_ != nullptr) {
             static_cast<void>(coordinator_->Reset(proxyId_));
         }
+    }
+    std::uint8_t pageRequest[12]{};
+    int pageRequestBytes = 0;
+    if (warehousePageHost_.TryBuildPageRequest(
+            pageRequest,
+            sizeof(pageRequest),
+            &pageRequestBytes)) {
+        warehousePageHost_.CompletePageRequestSend(
+            SendMsg(pageRequest, pageRequestBytes));
     }
     legacyClient_->Process();
 }
@@ -225,6 +240,7 @@ void* NetClientProxy::PickMsg() {
     }
 
     void* message = legacyClient_->PickMsg();
+    warehousePageHost_.ObserveServerMessage(message);
     if (secureSession_ != nullptr) {
         secureSession_->ObserveLegacyServerMessage(message);
     }
@@ -233,9 +249,18 @@ void* NetClientProxy::PickMsg() {
 
 bool NetClientProxy::SendMsg(const void* data, int size) {
     AcquireSRWLockExclusive(&secureSendLock_);
+    std::uint8_t warehousePacket[20]{};
+    const void* routedData = data;
+    if (warehousePageHost_.TryRewriteClientPacket(
+            data,
+            size,
+            warehousePacket,
+            sizeof(warehousePacket))) {
+        routedData = warehousePacket;
+    }
     if (secureSession_ != nullptr) {
         const auto routed =
-            secureSession_->RouteLegacyMovement(data, size);
+            secureSession_->RouteLegacyMovement(routedData, size);
         if (routed ==
             SecureRealtimeMovementRouteResult::Accepted) {
             ReleaseSRWLockExclusive(&secureSendLock_);
@@ -253,7 +278,7 @@ bool NetClientProxy::SendMsg(const void* data, int size) {
         secureSession_ == nullptr
             ? SecureLegacySendPreparationResult::NotRequired
             : secureSession_->PrepareLegacySend(
-                data,
+                routedData,
                 size,
                 &descriptorToken);
     if (preparation ==
@@ -262,7 +287,10 @@ bool NetClientProxy::SendMsg(const void* data, int size) {
         return false;
     }
 
-    const bool sent = legacyClient_->SendMsg(data, size);
+    const bool sent = legacyClient_->SendMsg(routedData, size);
+    if (sent) {
+        warehousePageHost_.ObserveClientPacket(routedData, size);
+    }
     if (!sent &&
         preparation ==
             SecureLegacySendPreparationResult::Prepared) {

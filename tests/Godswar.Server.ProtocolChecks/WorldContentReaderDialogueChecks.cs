@@ -397,21 +397,21 @@ internal static class WorldContentReaderDialogueChecks
                 text.Description))
             .OrderBy(static text => text.NpcKey, StringComparer.Ordinal)
             .ToArray();
-        var routes = NpcDialogueBaselineV5.CreateRoutes();
+        var routes = NpcDialogueBaselineV8.CreateRoutes();
         var revision = WorldContentRevisionHasher.HashNpcDialogues(
             texts,
             routes);
 
         Check.Equal(
-            NpcDialogueBaselineV5.ExpectedTextCount,
+            NpcDialogueBaselineV8.ExpectedTextCount,
             texts.Length,
             "V5 dialogue text count");
         Check.Equal(
-            NpcDialogueBaselineV5.ExpectedHashedEntryCount,
+            NpcDialogueBaselineV8.ExpectedHashedEntryCount,
             revision.EntryCount,
             "V5 dialogue hashed-entry count");
         Check.Equal(
-            NpcDialogueBaselineV5.ExpectedRevision,
+            NpcDialogueBaselineV8.ExpectedRevision,
             revision.Sha256,
             "V5 NPC-dialogue canonical revision golden vector");
         foreach (var npcKey in new[] { "Athens_086", "Sparta_086" })

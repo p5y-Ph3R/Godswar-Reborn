@@ -154,6 +154,10 @@ internal static class CommandMetrics
                 "pet_soul_contract",
             CommandFamily.PetManagerUtility =>
                 "pet_manager_utility",
+            CommandFamily.WarehouseTransfer =>
+                "warehouse_transfer",
+            CommandFamily.WarehouseExpansion =>
+                "warehouse_expansion",
             CommandFamily.MonsterRewardSettlement =>
                 "monster_reward_settlement",
             CommandFamily.ProgressionIntervalSettlement =>

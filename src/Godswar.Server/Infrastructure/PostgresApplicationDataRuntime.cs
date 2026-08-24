@@ -9,6 +9,7 @@ using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Database;
@@ -22,6 +23,7 @@ using Godswar.Server.Infrastructure.Realms;
 using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Infrastructure.World;
+using Godswar.Server.Infrastructure.Warehouse;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
@@ -52,6 +54,7 @@ internal sealed class PostgresApplicationDataRuntime :
         IPetOwnerMergeContentCatalog ownerMergeContent,
         IPetLearnedSkillContentCatalog learnedSkillContent,
         HolySpiritBalanceSnapshot holySpiritBalance,
+        WarehouseExpansionPolicySnapshot warehouseExpansionPolicy,
         ReconciliationOptions? reconciliationOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
@@ -62,6 +65,9 @@ internal sealed class PostgresApplicationDataRuntime :
         ArgumentNullException.ThrowIfNull(learnedSkillContent);
         ArgumentNullException.ThrowIfNull(holySpiritBalance);
         holySpiritBalance.Validate();
+        ArgumentNullException.ThrowIfNull(warehouseExpansionPolicy);
+        warehouseExpansionPolicy.Validate();
+        WarehouseExpansionPolicy = warehouseExpansionPolicy;
         gameplayContentRevision =
             PostgresGameplayContentBinding.ValidateRequired(
                 gameplayContentRevision);
@@ -194,6 +200,18 @@ internal sealed class PostgresApplicationDataRuntime :
                 petContent,
                 ownerMergeContent,
                 learnedSkillContent);
+        WarehouseSnapshots =
+            new PostgresWarehouseSnapshotReader(_dataSource);
+        WarehouseTransferCommands =
+            new PostgresWarehouseTransferCommandExecutor(
+                _dataSource,
+                outboxOptions,
+                itemContent.Templates);
+        WarehouseExpansionCommands =
+            new PostgresWarehouseExpansionCommandExecutor(
+                _dataSource,
+                outboxOptions,
+                warehouseExpansionPolicy);
         var outboxConsumers =
             PostgresOutboxConsumerCatalog.Create();
         _outboxDispatcher = new PostgresOutboxDispatcher(
@@ -316,6 +334,17 @@ internal sealed class PostgresApplicationDataRuntime :
     { get; }
 
     public IPetDurableCommandExecutor PetDurableCommands { get; }
+
+    public WarehouseExpansionPolicySnapshot WarehouseExpansionPolicy
+    { get; }
+
+    public IWarehouseSnapshotReader WarehouseSnapshots { get; }
+
+    public IWarehouseTransferCommandExecutor WarehouseTransferCommands
+    { get; }
+
+    public IWarehouseExpansionCommandExecutor WarehouseExpansionCommands
+    { get; }
 
     public bool OutboxEnabled { get; }
 

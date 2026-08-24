@@ -49,6 +49,9 @@ internal static partial class Program
                 PostgresEquipmentBagTransferCommandIntegrationChecks
                     .RunAsync),
             (
+                PostgresWarehouseCommandIntegrationChecks.CheckName,
+                PostgresWarehouseCommandIntegrationChecks.RunAsync),
+            (
                 PostgresHolyStoneCommandIntegrationChecks.CheckName,
                 PostgresHolyStoneCommandIntegrationChecks.RunAsync),
             (

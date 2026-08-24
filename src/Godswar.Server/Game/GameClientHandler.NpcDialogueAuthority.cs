@@ -1,4 +1,5 @@
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Packets;
 
@@ -67,6 +68,14 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         ClearGearEnhancerSelection();
+        if (route.Behavior == NpcDialogueBehavior.WarehouseManager)
+        {
+            await SendWarehouseManagerMenuAsync(
+                npc,
+                route,
+                cancellationToken);
+            return;
+        }
         if (route.Behavior == NpcDialogueBehavior.HolySuitDesign &&
             _character is { Level: < 70 })
         {

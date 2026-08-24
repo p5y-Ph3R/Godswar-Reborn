@@ -282,6 +282,10 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateFencedAccountPresenceProjection(),
         CreatePetOwnerMergeRebalance(),
         CreateCooledHolyStoneBalance(),
-        CreateHolySpiritBalanceSettings()
+        CreateHolySpiritBalanceSettings(),
+        CreateWarehouseFoundation(),
+        CreateWarehouseDialogueCapability(),
+        CreateWarehouseNineBoxCapacity(),
+        CreateWarehouseManagerStorageKeyCap()
     ];
 }

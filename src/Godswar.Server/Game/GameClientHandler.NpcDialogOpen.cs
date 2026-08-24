@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 
@@ -12,6 +13,7 @@ internal sealed partial class GameClientHandler
     {
         if (packet.Payload.Length < sizeof(uint))
         {
+            _warehouseAccessContext = null;
             Console.WriteLine("[npc] dialog open ignored: payload too short");
             return;
         }
@@ -21,9 +23,41 @@ internal sealed partial class GameClientHandler
             packet.Payload[..sizeof(uint)]);
         if (!TryResolveMapNpc(npcId, out var npc))
         {
+            _warehouseAccessContext = null;
             Console.WriteLine(
                 $"[npc] dialog open ignored: unknown npc={npcId} " +
                 $"map={_character?.CurrentMap.ToString() ?? "<none>"}");
+            return;
+        }
+
+        // The stock client can leave storage open while the related manager
+        // dialogue is used. Every unrelated NPC click invalidates the lease.
+        if (!WarehouseNpcProtocol.IsManagerEndpoint(
+                npc.NpcKey,
+                npc.InteractionId))
+        {
+            _warehouseAccessContext = null;
+        }
+
+        if (WarehouseNpcProtocol.IsWarehouseEndpoint(
+                npc.NpcKey,
+                npc.InteractionId))
+        {
+            if (packet.Length == 48 && packet.Buffer.Length == 48)
+            {
+                await _session.SendAsync(
+                    PacketBuilder.WarehouseDialogOpenAck(
+                        npc.InteractionId,
+                        npc.NpcKey),
+                    cancellationToken,
+                    "WarehouseDialogOpenAck");
+            }
+            else
+            {
+                Console.Error.WriteLine(
+                    "[warehouse] rejected non-canonical NPC click " +
+                    $"npc={npc.InteractionId} length={packet.Length}");
+            }
             return;
         }
 
@@ -72,23 +106,56 @@ internal sealed partial class GameClientHandler
         }
     }
 
-    private Task HandleNpcDialogPageRequestAsync(
+    private async Task HandleNpcDialogPageRequestAsync(
         GamePacket packet,
         CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
         if (packet.Payload.Length < sizeof(uint))
         {
             Console.WriteLine("[npc] page request ignored: payload too short");
-            return Task.CompletedTask;
+            return;
         }
 
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(
             packet.Payload[..sizeof(uint)]);
+        if (!TryResolveMapNpc(npcId, out var npc))
+        {
+            Console.WriteLine(
+                $"[npc] page request ignored: unknown npc={npcId}");
+            return;
+        }
+
+        if (WarehouseNpcProtocol.IsWarehouseEndpoint(
+                npc.NpcKey,
+                npc.InteractionId))
+        {
+            if (packet.Length == 8 && packet.Buffer.Length == 8)
+            {
+                await HandleWarehouseOpenAsync(npc, cancellationToken);
+            }
+            else if (packet.Length == 12 &&
+                     packet.Buffer.Length == 12 &&
+                     TryAuthorizeWarehouseTransfer(out var authorizedNpc) &&
+                     authorizedNpc.InteractionId == npc.InteractionId)
+            {
+                var page = BinaryPrimitives.ReadInt32LittleEndian(
+                    packet.Payload.Slice(sizeof(uint), sizeof(int)));
+                await HandleWarehouseOpenAsync(
+                    npc,
+                    cancellationToken,
+                    page,
+                    issueAccess: false);
+            }
+            else
+            {
+                Console.Error.WriteLine(
+                    "[warehouse] rejected non-canonical page request " +
+                    $"npc={npc.InteractionId} length={packet.Length}");
+            }
+            return;
+        }
+
         Console.WriteLine(
-            TryResolveMapNpc(npcId, out var npc)
-                ? $"[npc] page request npc={npcId} key={npc.NpcKey}"
-                : $"[npc] page request ignored: unknown npc={npcId}");
-        return Task.CompletedTask;
+            $"[npc] page request npc={npcId} key={npc.NpcKey}");
     }
 }

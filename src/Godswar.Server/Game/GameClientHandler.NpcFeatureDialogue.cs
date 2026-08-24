@@ -26,6 +26,19 @@ internal sealed partial class GameClientHandler
             return true;
         }
 
+        if (route.Behavior == NpcDialogueBehavior.WarehouseManager)
+        {
+            await HandleWarehouseManagerAsync(
+                packet,
+                route,
+                npcId,
+                dialogIndex,
+                subId,
+                arguments,
+                cancellationToken);
+            return true;
+        }
+
         if (route.Behavior is not (
                 NpcDialogueBehavior.PetManager or
                 NpcDialogueBehavior.PetPointReset))

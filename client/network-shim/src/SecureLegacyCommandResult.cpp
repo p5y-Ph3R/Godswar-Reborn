@@ -121,7 +121,11 @@ bool IsCommandFamily(
         family ==
             SecureLegacyCommandFamily::PetSoulContract ||
         family ==
-            SecureLegacyCommandFamily::PetManagerUtility;
+            SecureLegacyCommandFamily::PetManagerUtility ||
+        family ==
+            SecureLegacyCommandFamily::WarehouseTransfer ||
+        family ==
+            SecureLegacyCommandFamily::WarehouseExpansion;
 }
 
 bool HasValidRevision(

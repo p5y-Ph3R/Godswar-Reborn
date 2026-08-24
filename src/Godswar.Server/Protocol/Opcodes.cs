@@ -26,6 +26,9 @@ internal static class Opcodes
     public const ushort Revive = 10019;
     public const ushort Kitbag = 10022;
     public const ushort Storage = 10023;
+    // The installed Origin client maps its warehouse item snapshot handler to
+    // MSG_STORAGE (10034). Opcode 10023 is an unrelated world-object marker.
+    public const ushort WarehouseSnapshot = 10034;
     public const ushort BasicAttack = 10026;
     public const ushort Talk = 10035;
     public const ushort SkillCast = 10040;
@@ -36,6 +39,9 @@ internal static class Opcodes
     public const ushort StorageItem = 10052;
     public const ushort Sell = 10053;
     public const ushort BagItemAction = 10056;
+    // MSG_STORAGE_ITEM is bidirectional: the client requests a transfer and
+    // the server echoes the canonical descriptor after commit.
+    public const ushort WarehouseTransfer = 10059;
     // The installed client dispatch table maps 10090 to
     // MSG_PLAYER_ACCEPTQUESTS. Quest snapshots are character-specific and
     // must never be replayed from a captured login session.
@@ -132,6 +138,7 @@ internal static class Opcodes
             Revive => nameof(Revive),
             Kitbag => nameof(Kitbag),
             Storage => nameof(Storage),
+            WarehouseSnapshot => nameof(WarehouseSnapshot),
             BasicAttack => nameof(BasicAttack),
             Ping => nameof(Ping),
             Talk => nameof(Talk),
@@ -143,6 +150,7 @@ internal static class Opcodes
             StorageItem => nameof(StorageItem),
             Sell => nameof(Sell),
             BagItemAction => nameof(BagItemAction),
+            WarehouseTransfer => nameof(WarehouseTransfer),
             PlayerAcceptedQuests => nameof(PlayerAcceptedQuests),
             NpcDialogOpen => nameof(NpcDialogOpen),
             NpcDialogPageRequest => nameof(NpcDialogPageRequest),

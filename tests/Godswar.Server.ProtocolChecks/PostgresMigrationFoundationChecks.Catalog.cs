@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            100,
+            104,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -84,6 +84,45 @@ internal static partial class PostgresMigrationFoundationChecks
                 "map_mode BETWEEN 0 AND 5",
                 StringComparison.Ordinal),
             "sealed gameplay content retains constrained monster attack and map-mode PvP authority");
+        var warehouse = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260822_107_warehouse_foundation");
+        Check.Equal(
+            "6126E5629D6CBA2D165780A38317E881930E8FF469DF4C2570E50287DE2AF962",
+            warehouse.Checksum,
+            "warehouse foundation migration checksum is pinned");
+        var warehouseDialogue = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260822_108_warehouse_dialogue_v8");
+        Check.Equal(
+            "7679146CFFA67221885A5D77C7CE593935712DDD182D76CAAD6B7C0EB8AFA5C6",
+            warehouseDialogue.Checksum,
+            "warehouse dialogue migration checksum is pinned");
+        var warehouseNineBox = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260824_110_warehouse_nine_box_capacity");
+        Check.Equal(
+            "93671839CBA49565A2B360BC797B7F39B61D9AEF9F1C7C5F3FFAED519B327548",
+            warehouseNineBox.Checksum,
+            "nine-box warehouse migration checksum is pinned");
+        var warehouseManagerKeyCap = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260824_111_warehouse_manager_storage_key_cap");
+        Check.Equal(
+            "30E405F8D88F28B34E148C1871DC689D7F5C8481AD6771EDB0201BC5779D41E3",
+            warehouseManagerKeyCap.Checksum,
+            "Warehouse Manager Storage Box Key cap migration checksum is pinned");
+        Check.True(
+            warehouseNineBox.Sql.Contains(
+                "warehouse_capacity BETWEEN 40 AND 360",
+                StringComparison.Ordinal) &&
+            warehouseManagerKeyCap.Sql.Contains(
+                "(3, 160, 3, 4102)",
+                StringComparison.Ordinal) &&
+            !warehouseManagerKeyCap.Sql.Contains(
+                "(3, 200,",
+                StringComparison.Ordinal),
+            "warehouse structure supports nine boxes while Manager keys stop at SB4");
     }
 
     private static readonly string[] ExpectedMigrationIds =
@@ -187,6 +226,10 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260820_096_fenced_account_presence_projection",
         "20260821_097_pet_owner_merge_rebalance",
         "20260821_098_cooled_holy_stone_balance",
-        "20260821_099_holy_spirit_balance_settings"
+        "20260821_099_holy_spirit_balance_settings",
+        "20260822_107_warehouse_foundation",
+        "20260822_108_warehouse_dialogue_v8",
+        "20260824_110_warehouse_nine_box_capacity",
+        "20260824_111_warehouse_manager_storage_key_cap"
     ];
 }

@@ -152,6 +152,12 @@ SecurePendingOperationRegistry::DescribePacket(
     const auto petResult = DescribePetPacket(packet, packetBytes, now, descriptor);
     if (petResult != SecureOperationRegistryResult::Success ||
         descriptor->hasOperation) return petResult;
+    bool warehousePacket = false;
+    const auto warehouseResult = DescribeWarehousePacket(
+        packet, packetBytes, now, descriptor, &warehousePacket);
+    if (warehousePacket) {
+        return warehouseResult;
+    }
     if (IsLegacyForgeOpcode(opcode)) {
         return DescribeForgePacket(
             packet,

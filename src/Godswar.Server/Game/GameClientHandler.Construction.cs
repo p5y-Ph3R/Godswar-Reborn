@@ -7,6 +7,7 @@ using Godswar.Server.Application.Rewards;
 using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
@@ -94,7 +95,11 @@ internal sealed partial class GameClientHandler
         ISealedPetSnapshotReader? sealedPetSnapshots = null,
         TimeSpan? petOwnerMergeRechargeInterval = null,
         IRealmCatalogReader? realmCatalog = null,
-        RealmId? processRealmId = null)
+        RealmId? processRealmId = null,
+        IWarehouseSnapshotReader? warehouseSnapshots = null,
+        IWarehouseTransferCommandExecutor? warehouseTransferCommands = null,
+        IWarehouseExpansionCommandExecutor? warehouseExpansionCommands = null,
+        WarehouseExpansionPolicySnapshot? warehouseExpansionPolicy = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -173,6 +178,10 @@ internal sealed partial class GameClientHandler
         _requiresDurablePlayerCommands =
             requiresDurablePlayerCommands;
         _petDurableCommands = petDurableCommands;
+        _warehouseSnapshots = warehouseSnapshots;
+        _warehouseTransferCommands = warehouseTransferCommands;
+        _warehouseExpansionCommands = warehouseExpansionCommands;
+        _warehouseExpansionPolicy = warehouseExpansionPolicy;
         _petOwnerMergeEnergyInterval =
             petOwnerMergeEnergyInterval ?? TimeSpan.FromSeconds(3);
         _petOwnerMergeRechargeInterval =
@@ -226,6 +235,10 @@ internal sealed partial class GameClientHandler
                 _zodiacSkillGridSelectionCommands,
                 _characterLifecycleCommands,
                 _petDurableCommands,
+                _warehouseSnapshots,
+                _warehouseTransferCommands,
+                _warehouseExpansionCommands,
+                _warehouseExpansionPolicy,
                 _characterCheckpoints,
                 _sealedPetSnapshots
             }.Any(static provider => provider is null))

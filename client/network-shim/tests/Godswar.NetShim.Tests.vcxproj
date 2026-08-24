@@ -92,6 +92,9 @@
     <ClCompile Include="SecureEquipmentBagTransferIdentityTests.cpp" />
     <ClCompile Include="SecureEquipmentBagTransferParserTests.cpp" />
     <ClCompile Include="SecureEquipmentBagTransferRegistryTests.cpp" />
+    <ClCompile Include="SecureWarehouseIdentityTests.cpp" />
+    <ClCompile Include="SecureWarehouseParserTests.cpp" />
+    <ClCompile Include="SecureWarehouseRegistryTests.cpp" />
     <ClCompile Include="SecureCharacterLifecycleIdentityTests.cpp" />
     <ClCompile Include="SecureClassSuitIdentityTests.cpp" />
     <ClCompile Include="SecureClassSuitReferenceIdentityTests.cpp" />
@@ -149,6 +152,8 @@
     <ClCompile Include="WinSocketByteStreamTests.cpp" />
     <ClCompile Include="..\src\AvatarPreviewGate.cpp" />
     <ClCompile Include="..\src\OriginAvatarPreviewHost.cpp" />
+    <ClCompile Include="..\src\OriginWarehousePageHost.cpp" />
+    <ClCompile Include="..\src\OriginWarehousePageHost.Patches.cpp" />
     <ClCompile Include="..\src\BoundedChunkQueue.cpp" />
     <ClCompile Include="..\src\DevelopmentTlsCertificate.cpp" />
     <ClCompile Include="..\src\EndpointManifest.cpp" />
@@ -212,6 +217,8 @@
     <ClInclude Include="SecureEconomyIdentityTests.h" />
     <ClInclude Include="SecureEquipmentBagTransferIdentityTests.h" />
     <ClInclude Include="SecureEquipmentBagTransferTestSupport.h" />
+    <ClInclude Include="SecureWarehouseIdentityTests.h" />
+    <ClInclude Include="SecureWarehouseTestSupport.h" />
     <ClInclude Include="SecureGameControlTests.h" />
     <ClInclude Include="SecureGameControlTestSupport.h" />
     <ClInclude Include="SecureGameGrantRegistryTests.h" />
@@ -268,6 +275,7 @@
     <ClInclude Include="..\src\NativeClientCoordinator.h" />
     <ClInclude Include="..\src\NativeNetworkLimits.h" />
     <ClInclude Include="..\src\NetClientProxy.h" />
+    <ClInclude Include="..\src\OriginWarehousePageHost.h" />
     <ClInclude Include="..\src\OpaqueDuplexPump.h" />
     <ClInclude Include="..\src\SocketHandle.h" />
     <ClInclude Include="..\src\SchannelClientStream.h" />

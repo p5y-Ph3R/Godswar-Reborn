@@ -79,6 +79,8 @@ extern "C" void* __cdecl NetServiceCreate() {
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         ShimModule = instance;
+        static_cast<void>(godswar::network::warehouse_page_host_detail::
+            PrepareRuntimePatchOnLoad());
         DisableThreadLibraryCalls(instance);
     }
 

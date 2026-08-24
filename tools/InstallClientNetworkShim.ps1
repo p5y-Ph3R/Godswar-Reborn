@@ -14,11 +14,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$supportedOriginHash = `
-    'E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C'
+$supportedOriginHashes = @(
+    'E0F5BC951C6E37550F4D9CC1E25BFDCB4F020466ADD854DC2E7EA04E0D22F81C',
+    'C80FC15418BC1865731105AE05CE96DA3015FEC9E8E51337263D1C475301EEEE'
+)
 $supportedLegacyHash = `
     '1CC3F9AABBC339300DF06795AB22EAD1ACC7F4CBB47F2F2DBF36F1CF19BCA00C'
-$installerVersion = '1.1.0'
+$installerVersion = '1.2.0'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ShimPath) {
     $ShimPath = Join-Path $repoRoot `
@@ -151,7 +153,7 @@ foreach ($requiredPath in @($originPath, $netPath)) {
 }
 
 $originHash = Get-Sha256 $originPath
-if ($originHash -ne $supportedOriginHash) {
+if ($originHash -notin $supportedOriginHashes) {
     throw "Unsupported Origin.exe hash: $originHash"
 }
 
