@@ -35,20 +35,20 @@ internal sealed partial class GameClientHandler
         var bagItem = KitBagSlots.GetItem(
             _character.KitBag,
             bagSlot);
-        if (action == EquipmentBagTransferAction.Equip)
+        if (action is EquipmentBagTransferAction.Equip or
+            EquipmentBagTransferAction.Replace)
         {
             await HandleEquipItemAsync(
                 bagSlot,
                 requestedEquipmentSlot: equipmentSlot,
                 itemIdHint: bagItem.Id,
                 cancellationToken,
-                sendStorageTransferAck: true);
+                sendStorageTransferAck: true,
+                requireEmptyEquipmentSlot:
+                    action == EquipmentBagTransferAction.Equip);
             return;
         }
 
-        // Opcode 10052 has no direction bit. The native client treats a pair
-        // of occupied locations as a swap. Reject it so dropping equipped
-        // gear onto an occupied bag slot cannot unequip it.
         Console.WriteLine(
             $"[equip-re] StorageItem transfer ignored: " +
             $"equipmentSlot={equipmentSlot} " +

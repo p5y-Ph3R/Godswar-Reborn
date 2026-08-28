@@ -11,6 +11,7 @@ internal static partial class CharacterSnapshotContract
 
         if (wallet.Silver < 0 ||
             wallet.Gold < 0 ||
+            wallet.BindingGold < 0 ||
             wallet.MedusaHonorPoints < 0 ||
             wallet.MedusaRewardRevision < 0)
         {

@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
-using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
+using Godswar.Server.Domain.World.Content;
 
 namespace Godswar.Server.Game;
 
@@ -59,6 +59,13 @@ internal sealed partial class GameClientHandler
                     "[warehouse] rejected non-canonical NPC click " +
                     $"npc={npc.InteractionId} length={packet.Length}");
             }
+            return;
+        }
+
+        if (await TryHandleCapitalNpcDialogOpenAsync(
+                npc,
+                cancellationToken))
+        {
             return;
         }
 
@@ -153,6 +160,13 @@ internal sealed partial class GameClientHandler
                     "[warehouse] rejected non-canonical page request " +
                     $"npc={npc.InteractionId} length={packet.Length}");
             }
+            return;
+        }
+
+        if (await TryHandleCapitalNpcPageRequestAsync(
+                npc,
+                cancellationToken))
+        {
             return;
         }
 

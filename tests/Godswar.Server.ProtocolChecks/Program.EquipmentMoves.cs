@@ -129,8 +129,8 @@ internal static partial class Program
             GameClientHandler.ResolveEquipmentBagTransferAction(TestItemContent.Catalog,
                 occupiedTargetCharacter,
                 EquipmentSlots.Shield,
-                bagSlot: 55) == EquipmentBagTransferAction.Reject,
-            "two occupied locations reject instead of swapping during unequip");
+                bagSlot: 55) == EquipmentBagTransferAction.Replace,
+            "compatible bag gear replaces occupied equipment atomically");
 
         var emptyEquipmentCharacter = new GameCharacter
         {

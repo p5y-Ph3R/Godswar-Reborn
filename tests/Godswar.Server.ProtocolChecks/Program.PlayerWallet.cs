@@ -11,6 +11,7 @@ internal static partial class Program
         character.Silver = 38_832;
         character.Gold = 6;
         character.MedusaHonorPoints = 2_025;
+        character.BindingGold = 7_321;
         character.CurrentMap = 200;
         var packet = PacketBuilder.PlayerDetail(character);
 
@@ -30,6 +31,7 @@ internal static partial class Program
         Check.Equal(character.Silver, ReadInt32(packet, 116), "PlayerDetail captured silver field");
         Check.Equal(character.Gold, ReadInt32(packet, 120), "PlayerDetail captured gold field");
         Check.Equal(character.MedusaHonorPoints, ReadInt32(packet, 124), "PlayerDetail Medusa Honor field");
+        Check.Equal(character.BindingGold, ReadInt32(packet, 132), "PlayerDetail B-Gold field");
 
         return Task.CompletedTask;
     }
@@ -40,6 +42,7 @@ internal static partial class Program
         PlayerRemoteStatusProjectionChecks.Run();
         var character = CreateCharacter();
         character.MedusaHonorPoints = 2_025;
+        character.BindingGold = 4_321;
         character.CurrentMap = 200;
         const uint objectId = 0x7135B24E;
         var packet = PacketBuilder.PlayerStatusUpdate(character, objectId);
@@ -69,6 +72,7 @@ internal static partial class Program
         Check.Equal(0, ReadInt32(packet, 120), "remote PlayerStatusUpdate does not disclose silver");
         Check.Equal(0, ReadInt32(packet, 124), "remote PlayerStatusUpdate does not disclose gold");
         Check.Equal(0, ReadInt32(packet, 128), "remote PlayerStatusUpdate does not disclose Honor");
+        Check.Equal(0, ReadInt32(packet, 136), "remote PlayerStatusUpdate does not disclose B-Gold");
         Check.Equal(character.MaxHp, ReadInt32(packet, 144), "PlayerStatusUpdate max HP");
         Check.Equal(character.MaxMp, ReadInt32(packet, 148), "PlayerStatusUpdate max MP");
         Check.Equal(PlayerRecoveryCatalog.GetTotalHp(character), ReadInt32(packet, 152), "PlayerStatusUpdate HP recovery");
@@ -106,12 +110,14 @@ internal static partial class Program
         character.Silver = 10_010_000;
         character.Gold = 73;
         character.MedusaHonorPoints = 2_025;
+        character.BindingGold = 8_642;
         var localPacket = PacketBuilder.PlayerStatusUpdate(
             character,
             movementSpeedMultiplier: 1f);
         Check.Equal(character.Silver, ReadInt32(localPacket, 120), "local PlayerStatusUpdate silver");
         Check.Equal(character.Gold, ReadInt32(localPacket, 124), "local PlayerStatusUpdate gold");
         Check.Equal(character.MedusaHonorPoints, ReadInt32(localPacket, 128), "local PlayerStatusUpdate Honor");
+        Check.Equal(character.BindingGold, ReadInt32(localPacket, 136), "local PlayerStatusUpdate B-Gold");
         var mountedPacket = PacketBuilder.PlayerStatusUpdate(character, 1.24f);
         Check.Equal(1.24f, ReadSingle(mountedPacket, 56), "local PlayerStatusUpdate mounted locomotion multiplier");
 

@@ -101,6 +101,8 @@ internal sealed class GameCharacter
     // name here and translate it at the PostgreSQL boundary.
     public int Gold { get; set; } = 10;
 
+    public int BindingGold { get; set; }
+
     public int MedusaHonorPoints { get; set; }
 
     public long MedusaRewardRevision { get; set; }

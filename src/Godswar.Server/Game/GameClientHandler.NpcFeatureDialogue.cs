@@ -14,6 +14,16 @@ internal sealed partial class GameClientHandler
         IReadOnlyList<int> arguments,
         CancellationToken cancellationToken)
     {
+        if (route.Behavior == NpcDialogueBehavior.CreditExchange)
+        {
+            await HandleCapitalNpcCreditExchangeAsync(
+                npcId,
+                dialogIndex,
+                subId,
+                cancellationToken);
+            return true;
+        }
+
         if (route.Behavior == NpcDialogueBehavior.ClassSuit)
         {
             await HandleClassSuitAsync(

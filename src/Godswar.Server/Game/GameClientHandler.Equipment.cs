@@ -15,7 +15,8 @@ internal sealed partial class GameClientHandler
         int requestedEquipmentSlot,
         uint itemIdHint,
         CancellationToken cancellationToken,
-        bool sendStorageTransferAck = false)
+        bool sendStorageTransferAck = false,
+        bool requireEmptyEquipmentSlot = false)
     {
         if (_account is null || _character is null)
         {
@@ -127,7 +128,7 @@ internal sealed partial class GameClientHandler
             sourceSlot,
             requestedEquipmentSlot,
             cancellationToken,
-            requireEmptyEquipmentSlot: sendStorageTransferAck);
+            requireEmptyEquipmentSlot);
 
         if (updatedCharacter is null)
         {

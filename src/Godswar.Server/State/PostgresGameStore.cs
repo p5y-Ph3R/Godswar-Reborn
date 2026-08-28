@@ -67,7 +67,7 @@ internal sealed partial class PostgresGameStore :
         cb.position_revision,
         cb.character_slot, cb.lifecycle_state, cb.lifecycle_version,
         cb.deleted_at, cb.restore_until, cb.purge_after,
-        cb.fighter_level_sealed, cb.server_id
+        cb.fighter_level_sealed, cb.server_id, cb."BindingGold"
         """;
 
     private readonly NpgsqlDataSource _dataSource;

@@ -222,7 +222,8 @@ internal sealed partial class PostgresGameStore
                 ? null
                 : new DateTimeOffset(
                     reader.GetDateTime(51).ToUniversalTime()),
-            FighterLevelSealed = reader.GetBoolean(52)
+            FighterLevelSealed = reader.GetBoolean(52),
+            BindingGold = reader.GetInt32(54)
         };
     }
 

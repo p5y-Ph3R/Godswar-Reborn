@@ -9,6 +9,7 @@ internal static partial class PacketBuilder
 {
     private const int PlayerDetailMapIdOffset = 38;
     private const int PlayerDetailMedusaHonorOffset = 124;
+    private const int PlayerDetailBindingGoldOffset = 132;
 
     public static byte[] PlayerDetail(GameCharacter character)
     {
@@ -24,8 +25,8 @@ internal static partial class PacketBuilder
             packet.AsSpan(PlayerDetailMapIdOffset, sizeof(ushort)),
             character.CurrentMap);
         // MSG_PLAYERDETAIL copies wire offset 4 to GameData+0x25C. Thus the
-        // native Money/Stone fields at +0x2CC/+0x2D0 map to physical wire
-        // offsets 116/120 respectively.
+        // native Money/Stone/BindingGold fields at +0x2CC/+0x2D0/+0x2DC map
+        // to physical wire offsets 116/120/132 respectively.
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailMaxHpOffset, 4), character.MaxHp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailMaxMpOffset, 4), character.MaxMp);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(PlayerDetailCurrentHpOffset, 4), character.CurrentHp);
@@ -42,6 +43,9 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerDetailMedusaHonorOffset, 4),
             Math.Max(0, character.MedusaHonorPoints));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(PlayerDetailBindingGoldOffset, 4),
+            Math.Max(0, character.BindingGold));
         return packet;
     }
 

@@ -88,6 +88,7 @@ internal sealed record CharacterVitalsSnapshot(
 internal sealed record CharacterWalletSnapshot(
     int Silver,
     int Gold,
+    int BindingGold = 0,
     int MedusaHonorPoints = 0,
     long MedusaRewardRevision = 0);
 

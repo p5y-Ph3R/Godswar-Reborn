@@ -12,6 +12,12 @@ internal sealed partial class GameClientHandler
             NpcSpawnDefinition npc,
             CancellationToken cancellationToken)
     {
+        if (CapitalNpcServiceProtocol.TryResolve(npc, out var service) &&
+            service == CapitalNpcServiceKind.ExchangeMentor)
+        {
+            return [CapitalNpcServiceProtocol.ExchangeRoute(npc)];
+        }
+
         NpcDialogueContent dialogue;
         try
         {

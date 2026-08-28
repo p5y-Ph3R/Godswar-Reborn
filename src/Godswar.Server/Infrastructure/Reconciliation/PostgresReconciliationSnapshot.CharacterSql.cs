@@ -28,7 +28,10 @@ internal sealed partial class PostgresReconciliationSnapshot
                 ), 0)::bigint AS silver_delta,
                 COALESCE(sum(ledger.delta) FILTER (
                     WHERE ledger.currency_code = 'gold'
-                ), 0)::bigint AS gold_delta
+                ), 0)::bigint AS gold_delta,
+                COALESCE(sum(ledger.delta) FILTER (
+                    WHERE ledger.currency_code = 'binding_gold'
+                ), 0)::bigint AS binding_gold_delta
             FROM keys
             LEFT JOIN public.character_currency_ledger ledger
                 ON ledger.character_id = keys.character_id
@@ -305,6 +308,9 @@ internal sealed partial class PostgresReconciliationSnapshot
                     OR character_row."Stone"::bigint <>
                         baseline.gold +
                             wallet_ledger.gold_delta
+                    OR character_row."BindingGold"::bigint <>
+                        baseline.binding_gold +
+                            wallet_ledger.binding_gold_delta
                 ),
             baseline.character_id IS NULL,
             character_row.id IS NULL

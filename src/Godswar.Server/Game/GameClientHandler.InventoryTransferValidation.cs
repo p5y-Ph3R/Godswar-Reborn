@@ -111,14 +111,15 @@ internal sealed partial class GameClientHandler
             return EquipmentBagTransferAction.Unequip;
         }
 
-        if (equippedItem.IsEmpty &&
-            !bagItem.IsEmpty &&
+        if (!bagItem.IsEmpty &&
             EquipmentSlots.ResolveSlotForItem(
                 templates,
                 bagItem.Id,
                 equipmentSlot) == equipmentSlot)
         {
-            return EquipmentBagTransferAction.Equip;
+            return equippedItem.IsEmpty
+                ? EquipmentBagTransferAction.Equip
+                : EquipmentBagTransferAction.Replace;
         }
 
         return EquipmentBagTransferAction.Reject;

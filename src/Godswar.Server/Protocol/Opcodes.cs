@@ -54,6 +54,8 @@ internal static class Opcodes
     public const ushort NpcDialogPageRequest = 10068;
     public const ushort NpcFunctionAction = 10069;
     public const ushort NpcFunctionActionResponse = 10070;
+    public const ushort NpcShopCatalog = 10071;
+    public const ushort NpcShopPurchase = 10073;
     // Equipment forging uses the same opcode for the client request and the
     // server result. The selection and cancel packets are separate messages.
     public const ushort ForgeStart = 10109;
@@ -191,6 +193,8 @@ internal static class Opcodes
             NpcDialogPageRequest => nameof(NpcDialogPageRequest),
             NpcFunctionAction => nameof(NpcFunctionAction),
             NpcFunctionActionResponse => nameof(NpcFunctionActionResponse),
+            NpcShopCatalog => nameof(NpcShopCatalog),
+            NpcShopPurchase => nameof(NpcShopPurchase),
             ForgeStart => nameof(ForgeStart),
             ForgeSelection => nameof(ForgeSelection),
             ForgeReplacementSelection => nameof(ForgeReplacementSelection),

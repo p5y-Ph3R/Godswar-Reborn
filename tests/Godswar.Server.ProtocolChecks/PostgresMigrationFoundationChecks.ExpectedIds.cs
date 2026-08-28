@@ -104,13 +104,7 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260821_097_pet_owner_merge_rebalance",
         "20260821_098_cooled_holy_stone_balance",
         "20260821_099_holy_spirit_balance_settings",
-        "20260821_100_faction_crier_foundation",
-        "20260821_101_faction_crier_dialogue_v6",
-        "20260821_102_faction_crier_nzst_calendar",
         "20260821_103_realm_calendar_authority",
-        "20260821_104_cooled_holy_stone_reduction_7_percent",
-        "20260821_105_online_award_foundation",
-        "20260821_106_online_award_dialogue_v7",
         "20260822_107_warehouse_foundation",
         "20260822_108_warehouse_dialogue_v8",
         "20260822_109_instance_caller_dialogue_v9",
@@ -124,6 +118,7 @@ internal static partial class PostgresMigrationFoundationChecks
         "20260827_117_medusa_reward_policy",
         "20260828_118_medusa_monster_content",
         "20260828_119_medusa_external_score",
-        "20260828_120_medusa_external_health"
+        "20260828_120_medusa_external_health",
+        "20260828_121_capital_npc_binding_gold"
     ];
 }

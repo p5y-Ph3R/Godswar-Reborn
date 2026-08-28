@@ -58,6 +58,7 @@ internal static class PostgresCharacterEconomyBaseline
                     inventory_revision,
                     silver,
                     gold,
+                    binding_gold,
                     item_count,
                     baseline_source
                 )
@@ -68,6 +69,7 @@ internal static class PostgresCharacterEconomyBaseline
                     character_row.inventory_revision,
                     character_row."Money"::bigint,
                     character_row."Stone"::bigint,
+                    character_row."BindingGold"::bigint,
                     (
                         SELECT count(*)::integer
                         FROM public.character_items item_row

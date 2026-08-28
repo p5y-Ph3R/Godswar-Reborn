@@ -17,6 +17,7 @@ internal static partial class PacketBuilder
     private const int PlayerStatusSilverOffset = 120;
     private const int PlayerStatusGoldOffset = 124;
     private const int PlayerStatusMedusaHonorOffset = 128;
+    private const int PlayerStatusBindingGoldOffset = 136;
     private const int PlayerStatusPhysicalDefenseOffset = 164;
     private const int PlayerStatusMagicDefenseOffset = 172;
     private const int PlayerStatusHitOffset = 176;
@@ -183,8 +184,9 @@ internal static partial class PacketBuilder
         if (objectId == LocalPlayerObjectId)
         {
             // MSG_SYN_GAMEDATA copies wire offset 8 to GameData+0x25C.
-            // Money/Stone/Honor at +0x2CC/+0x2D0/+0x2D4 therefore map to
-            // physical wire offsets 120/124/128.
+            // Money/Stone/Honor/BindingGold at
+            // +0x2CC/+0x2D0/+0x2D4/+0x2DC therefore map to physical wire
+            // offsets 120/124/128/136.
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(PlayerStatusSilverOffset, 4),
                 Math.Max(0, character.Silver));
@@ -194,6 +196,9 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(PlayerStatusMedusaHonorOffset, 4),
                 Math.Max(0, character.MedusaHonorPoints));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(PlayerStatusBindingGoldOffset, 4),
+                Math.Max(0, character.BindingGold));
         }
 
         if (packet.Length >= PlayerStatusTalentPointsOffset + 4)

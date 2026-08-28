@@ -74,6 +74,18 @@ internal interface IGameStore : IAsyncDisposable
             MonsterLootPickupStatus.Unsupported,
             Character: null));
 
+    Task<CapitalShopPurchaseResult> PurchaseCapitalShopItemAsync(
+        int accountId,
+        int characterId,
+        Guid purchaseId,
+        CapitalShopOffer offer,
+        int quantity,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new CapitalShopPurchaseResult(
+            CapitalShopPurchaseStatus.UnsupportedItem,
+            Character: null,
+            CurrencyBalance: 0));
+
     Task<ZodiacSkillGridActivationResult?> ActivateZodiacSkillGridAsync(
         int accountId,
         int characterId,

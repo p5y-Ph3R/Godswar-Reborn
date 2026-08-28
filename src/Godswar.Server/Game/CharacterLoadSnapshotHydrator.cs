@@ -81,6 +81,7 @@ internal static partial class CharacterLoadSnapshotHydrator
             HolySuitPoints = snapshot.Progression.HolySuitPoints,
             Silver = snapshot.Wallet.Silver,
             Gold = snapshot.Wallet.Gold,
+            BindingGold = snapshot.Wallet.BindingGold,
             MedusaHonorPoints = snapshot.Wallet.MedusaHonorPoints,
             MedusaRewardRevision = snapshot.Wallet.MedusaRewardRevision,
             MaxHp = Math.Max(1, calculatedStats.MaxHp),

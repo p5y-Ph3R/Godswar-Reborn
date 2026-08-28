@@ -88,6 +88,7 @@ internal static class PlayerEcsSnapshotAdapter
             HolySuitPoints = progression.HolySuitPoints,
             Silver = snapshot.Wallet.Silver,
             Gold = snapshot.Wallet.Gold,
+            BindingGold = snapshot.Wallet.BindingGold,
             Equipment = equipment.Equipment,
             WeaponRank = equipment.WeaponRank,
             WeaponAuraEffect = equipment.WeaponAuraEffect,

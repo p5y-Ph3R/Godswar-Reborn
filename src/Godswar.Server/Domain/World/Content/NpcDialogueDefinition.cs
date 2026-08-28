@@ -30,5 +30,6 @@ internal enum NpcDialogueBehavior
     FactionCrier = 8,
     OnlineAward = 9,
     WarehouseManager = 10,
-    InstanceCaller = 11
+    InstanceCaller = 11,
+    CreditExchange = 12
 }

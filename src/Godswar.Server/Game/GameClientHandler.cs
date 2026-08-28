@@ -381,6 +381,7 @@ internal sealed partial class GameClientHandler : IClientHandler
             case Opcodes.NpcFunctionAction:
                 await HandleNpcFunctionActionAsync(packet, cancellationToken);
                 break;
+            case Opcodes.NpcShopPurchase: await HandleCapitalNpcShopPurchaseAsync(packet, cancellationToken); break;
             case Opcodes.GearEnhancerItemSelection:
                 HandleGearEnhancerItemSelection(packet);
                 break;

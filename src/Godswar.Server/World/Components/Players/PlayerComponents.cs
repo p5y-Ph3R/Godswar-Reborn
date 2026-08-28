@@ -59,7 +59,8 @@ internal readonly record struct PlayerProgressionComponent(
 
 internal readonly record struct PlayerWalletComponent(
     int Silver,
-    int Gold);
+    int Gold,
+    int BindingGold = 0);
 
 /// <summary>
 /// The committed equipment projection needed for world appearance. Kit-bag

@@ -4,5 +4,6 @@ internal enum EquipmentBagTransferAction
 {
     Reject,
     Unequip,
-    Equip
+    Equip,
+    Replace
 }

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using Godswar.Server.Domain.World.Content;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -132,14 +133,45 @@ internal static partial class PacketBuilder
         IReadOnlyList<int> dialogIndices,
         string scriptKey)
     {
+        return NpcDialogOpenAck(
+            npcId,
+            flags: 0x200,
+            packedDialog: PackNpcDialogIndices(dialogIndices),
+            scriptKey);
+    }
+
+    public static byte[] NpcDescriptionDialogOpenAck(
+        uint npcId,
+        string scriptKey) =>
+        NpcDialogOpenAck(
+            npcId,
+            flags: CapitalNpcServiceProtocol.DescriptionOpenFlags,
+            packedDialog: 0,
+            scriptKey);
+
+    public static byte[] NpcShopDialogOpenAck(
+        uint npcId,
+        string scriptKey) =>
+        NpcDialogOpenAck(
+            npcId,
+            flags: CapitalNpcServiceProtocol.ShopOpenFlags,
+            packedDialog: 0,
+            scriptKey);
+
+    private static byte[] NpcDialogOpenAck(
+        uint npcId,
+        int flags,
+        int packedDialog,
+        string scriptKey)
+    {
         var packet = new byte[48];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), NpcDialogOpenOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), npcId);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), 0x200);
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), flags);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(12, 4),
-            PackNpcDialogIndices(dialogIndices));
+            packedDialog);
         PacketText.WriteFixedAscii(packet.AsSpan(16, 32), scriptKey);
         return packet;
     }

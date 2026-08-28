@@ -165,6 +165,8 @@ internal static partial class Program
             ("Gear-enhancer initial NPC protocol", CheckGearEnhancerInitialProtocolAsync),
             ("Holy-suit design original NPC protocol", CheckHolySuitDesignProtocolAsync),
             ("Holy-suit bounded stock-client wire protocol", HolySuitWireProtocolChecks.RunAsync),
+            (CapitalNpcServiceProtocolChecks.CheckName,
+                CapitalNpcServiceProtocolChecks.RunAsync),
             .. MedusaCheckCatalog.All,
             (
                 CompactItemClassAttributeChecks.CheckName,

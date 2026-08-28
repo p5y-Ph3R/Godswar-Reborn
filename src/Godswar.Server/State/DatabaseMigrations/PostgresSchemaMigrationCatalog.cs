@@ -297,6 +297,7 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreateMedusaRewardPolicy(),
         CreateMedusaMonsterContent(),
         CreateMedusaExternalScore(),
-        CreateMedusaExternalHealth()
+        CreateMedusaExternalHealth(),
+        CreateCapitalNpcBindingGold()
     ];
 }

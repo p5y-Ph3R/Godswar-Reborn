@@ -122,7 +122,10 @@ internal static class GameCharacterEcsHydrator
                 character.HolySuitPoints));
         world.Add(
             entity,
-            new PlayerWalletComponent(character.Silver, character.Gold));
+            new PlayerWalletComponent(
+                character.Silver,
+                character.Gold,
+                character.BindingGold));
         world.Add(
             entity,
             new PlayerEquipmentAppearanceComponent(

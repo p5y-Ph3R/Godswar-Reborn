@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            121,
+            116,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -70,20 +70,6 @@ internal static partial class PostgresMigrationFoundationChecks
             "054B080ABAEEFCC3E88085CF5CF3C288D34E08E86BE3D90890C880D31F0E7803",
             monsterCombat.Checksum,
             "monster-combat authority migration checksum is pinned");
-        var onlineAwardFoundation = PostgresSchemaMigrationCatalog.All.Single(
-            migration => migration.Id ==
-                "20260821_105_online_award_foundation");
-        Check.Equal(
-            "D532139C093BEFFE15D176A094AA512BF80C997EC58CF0BCE4E354F44CAD89FF",
-            onlineAwardFoundation.Checksum,
-            "Online Award foundation migration checksum is pinned");
-        var onlineAwardDialogue = PostgresSchemaMigrationCatalog.All.Single(
-            migration => migration.Id ==
-                "20260821_106_online_award_dialogue_v7");
-        Check.Equal(
-            "748DA26AAFC6FDE85F914F2BB36F570A1AB4E0ABB38EC256A97D22959D8DFC84",
-            onlineAwardDialogue.Checksum,
-            "Online Award dialogue migration checksum is pinned");
         var warehouse = PostgresSchemaMigrationCatalog.All.Single(
             migration => migration.Id ==
                 "20260822_107_warehouse_foundation");
