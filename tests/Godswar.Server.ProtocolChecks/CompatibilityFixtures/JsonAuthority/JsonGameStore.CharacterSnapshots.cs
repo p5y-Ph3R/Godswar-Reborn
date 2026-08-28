@@ -161,7 +161,12 @@ internal sealed partial class JsonGameStore :
                 character.Profession,
                 character.Hair,
                 character.Face,
-                character.Faith),
+                character.Faith,
+                character.SelectedTitleId)
+            {
+                OwnedTitleIds = ImmutableArray.CreateRange(
+                    character.OwnedTitleIds)
+            },
             new CharacterLocationSnapshot(
                 character.CurrentMap,
                 character.PositionX,

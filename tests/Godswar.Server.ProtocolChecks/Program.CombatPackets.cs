@@ -269,6 +269,21 @@ internal static partial class Program
             result: 0);
         Check.True(monsterDamage.SequenceEqual(capturedMonsterDamage), "monster physical damage matches capture byte-for-byte");
 
+        Check.True(
+            PacketBuilder.ObjectFightState(
+                    0x262,
+                    engaged: false)
+                .SequenceEqual(Convert.FromHexString(
+                    "10002927620200000000000000000000")),
+            "object fight reset matches the original packet layout");
+        Check.True(
+            PacketBuilder.ObjectFightState(
+                    0x49F,
+                    engaged: true)
+                .SequenceEqual(Convert.FromHexString(
+                    "100029279F0400000000000001000000")),
+            "object fight engagement matches the original packet layout");
+
         var capturedDeath = Convert.FromHexString(
             "1C0022274F0200000000164300000000000012C30000000001000000");
         var death = PacketBuilder.PlayerDeath(

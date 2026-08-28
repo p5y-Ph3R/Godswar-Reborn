@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
 using Godswar.Server.State;
@@ -64,8 +65,15 @@ internal sealed partial class GameSessionRegistry
         bool force,
         bool broadcast,
         CancellationToken cancellationToken,
-        bool forceLocalGameDataSynchronization = false)
+        bool forceLocalGameDataSynchronization = false,
+        MedusaClientStatusEffectIdentity? requiredMedusaEffect = null,
+        long? expectedTargetVitalsRevision = null,
+        bool requireTargetDead = false,
+        Action<MedusaCharacterEffectAuthorityOutcome>?
+            medusaAuthorityObserved = null,
+        ExactStatusDisconnectClaims? claimedDisconnects = null)
     {
+        ArgumentNullException.ThrowIfNull(claimedDisconnects);
         if (!_sessions.TryGetValue(session, out var context))
         {
             return false;
@@ -98,36 +106,83 @@ internal sealed partial class GameSessionRegistry
                 now);
         }
 
+        var baselineSnapshot = snapshot;
         snapshot = MergeTrainingDummyClientStatusOverlays(
             context,
             snapshot,
             now,
             out var elementalOverlay,
+            out _,
+            out var medusaOverlay,
             out _);
+        medusaAuthorityObserved?.Invoke(
+            medusaOverlay.AuthorityOutcome);
+        var completeFence = new CompleteStatusPublicationFence(
+            state,
+            state.Revision,
+            baselineSnapshot,
+            snapshot.Fingerprint,
+            now);
+
+        // A complete replacement packet must never erase a possibly-active
+        // owner effect merely because its bound authority is partial, stale,
+        // or temporarily unavailable. Defer the entire 10167 publication.
+        if (medusaOverlay.IsBound && !medusaOverlay.CanPublish)
+        {
+            return false;
+        }
+        if (requiredMedusaEffect is { } required &&
+            (!medusaOverlay.Presentations.Any(presentation =>
+                 presentation.Identity == required) ||
+             !snapshot.Effects.Any(effect =>
+                 effect.StatusId == required.StatusId)))
+        {
+            return false;
+        }
 
         if (!force && string.Equals(
                 state.LastFingerprint,
                 snapshot.Fingerprint,
                 StringComparison.Ordinal))
         {
+            if (!TryCaptureStatusPublicationTarget(
+                    context,
+                    out var unchangedRuntime,
+                    out var unchangedLife) ||
+                !IsExactStatusPublicationTarget(
+                    unchangedRuntime,
+                    context,
+                    unchangedLife,
+                    medusaOverlay,
+                    expectedTargetVitalsRevision,
+                    requireTargetDead))
+            {
+                return false;
+            }
             state.LastPublishedElementalFingerprint =
                 elementalOverlay.Fingerprint;
             return false;
         }
-
-        await session.SendAsync(
-            PacketBuilder.PlayerStatusEffects(
-                context.Character,
-                snapshot.Effects,
-                snapshot.Aggregate),
-            cancellationToken,
-            "PlayerStatusEffects");
 
         var synchronizeLocalGameData =
             forceLocalGameDataSynchronization ||
             HasLocalGameDataAggregateChanged(
                 state.LastPublishedAggregate,
                 snapshot.Aggregate);
+        var statusPacket = PacketBuilder.PlayerStatusEffects(
+            context.Character,
+            snapshot.Effects,
+            snapshot.Aggregate);
+        if (!WorldInstances.TryFind(
+                context.WorldInstanceId,
+                out var runtime) ||
+            !_playerLifeRevisions.TryGetValue(
+                session,
+                out var lifeRevision))
+        {
+            return false;
+        }
+
         if (synchronizeLocalGameData)
         {
             // 10167 owns the native status list, while PersonalInfo reads its
@@ -140,26 +195,93 @@ internal sealed partial class GameSessionRegistry
                 context.Ownership,
                 snapshot.Aggregate,
                 now);
-            await session.SendAsync(
+            var admissionOutcome =
+                await TrySendStatusPacketPairExactAsync(
+                runtime,
+                context,
+                lifeRevision,
+                context,
+                lifeRevision,
+                medusaOverlay,
+                statusPacket,
                 PacketBuilder.PlayerStatusUpdate(
                     context.Character,
                     localAggregate),
-                cancellationToken,
-                "PlayerMovementSpeed");
+                    cancellationToken,
+                    "PlayerStatusEffectsAndMovementSpeed",
+                    expectedTargetVitalsRevision,
+                    requireTargetDead,
+                    medusaAuthorityObserved,
+                    completeFence with
+                    {
+                        LocalAggregate = localAggregate
+                    },
+                    completionStatusGate: state,
+                    claimedDisconnects: claimedDisconnects);
+            if (!WasAdmitted(admissionOutcome))
+            {
+                return false;
+            }
         }
+        else
+        {
+            var admissionOutcome =
+                await TrySendStatusPacketExactAsync(
+                    runtime,
+                    context,
+                    lifeRevision,
+                    context,
+                    lifeRevision,
+                    medusaOverlay,
+                    statusPacket,
+                    cancellationToken,
+                    "PlayerStatusEffects",
+                    expectedTargetVitalsRevision,
+                    requireTargetDead,
+                    medusaAuthorityObserved,
+                    completeFence,
+                    completionStatusGate: state,
+                    claimedDisconnects: claimedDisconnects);
+            if (!WasAdmitted(admissionOutcome))
+            {
+                return false;
+            }
+        }
+
+        InvokeProtocolCheckAfterMedusaStatusSelfAdmission();
 
         if (broadcast && context.WorldReady)
         {
-            await BroadcastToMapAsync(
-                context.MapId,
+            await PublishStatusPacketWorldExactAsync(
+                runtime,
+                context,
+                lifeRevision,
+                medusaOverlay,
                 PacketBuilder.PlayerStatusEffects(
                     context.Character,
                     context.ObjectId,
                     snapshot.Effects,
                     snapshot.Aggregate),
                 cancellationToken,
-                session,
-                "PlayerStatusEffectsWorld");
+                "PlayerStatusEffectsWorld",
+                expectedTargetVitalsRevision,
+                requireTargetDead,
+                completeFence: completeFence,
+                completionStatusGate: state,
+                claimedDisconnects: claimedDisconnects);
+        }
+
+        if (!IsExactStatusPublicationTarget(
+                runtime,
+                context,
+                lifeRevision,
+                medusaOverlay,
+                expectedTargetVitalsRevision,
+                requireTargetDead,
+                medusaAuthorityObserved,
+                completeFence))
+        {
+            return false;
         }
 
         state.LastPublishedAggregate = snapshot.Aggregate;
@@ -167,7 +289,7 @@ internal sealed partial class GameSessionRegistry
             elementalOverlay.Fingerprint;
         state.LastFingerprint = snapshot.Fingerprint;
         Console.WriteLine(
-            $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} pdef={snapshot.Aggregate.PhysicalDefense} mdef={snapshot.Aggregate.MagicDefense} dodge={snapshot.Aggregate.Dodge} critical-resistance={snapshot.Aggregate.CriticalResistance} exp={snapshot.Aggregate.ExperienceBonus:R} speed={snapshot.Aggregate.MovementSpeedMultiplier:R} game-data={synchronizeLocalGameData}");
+            $"[status] full sync character={context.DisplayName} reason={reason} count={snapshot.Effects.Count} control={snapshot.Aggregate.Control} hit={snapshot.Aggregate.Hit} critical={snapshot.Aggregate.CriticalAppend} pdef={snapshot.Aggregate.PhysicalDefense} mdef={snapshot.Aggregate.MagicDefense} dodge={snapshot.Aggregate.Dodge} critical-resistance={snapshot.Aggregate.CriticalResistance} exp={snapshot.Aggregate.ExperienceBonus:R} speed={snapshot.Aggregate.MovementSpeedMultiplier:R} game-data={synchronizeLocalGameData}");
         return true;
     }
 
@@ -227,6 +349,7 @@ internal sealed partial class GameSessionRegistry
                 await Task.Delay(delay, state.Lifetime.Token);
             }
 
+            var admissionClaims = new ExactStatusDisconnectClaims();
             await state.Gate.WaitAsync(state.Lifetime.Token);
             try
             {
@@ -247,11 +370,13 @@ internal sealed partial class GameSessionRegistry
                     $"status-{expected.StatusId}-expired",
                     force: true,
                     broadcast: true,
-                    state.Lifetime.Token);
+                    state.Lifetime.Token,
+                    claimedDisconnects: admissionClaims);
             }
             finally
             {
                 state.Gate.Release();
+                admissionClaims.CompleteAll(this);
             }
         }
         catch (OperationCanceledException) when (state.Lifetime.IsCancellationRequested)

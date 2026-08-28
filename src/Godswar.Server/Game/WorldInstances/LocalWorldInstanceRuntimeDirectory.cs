@@ -88,6 +88,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 createdAt,
                 registerOpenWorld: true,
                 instanceId: null,
+                preparation: null,
                 cancellationToken);
         }
         finally
@@ -96,13 +97,52 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         }
     }
 
-    public async ValueTask<WorldInstanceRuntimeDirectoryResult>
+    public ValueTask<WorldInstanceRuntimeDirectoryResult>
         CreateInstancedAsync(
             RealmId realmId,
             WorldMapId contentMapId,
             InstanceKind kind,
             int playerCapacity,
             DateTimeOffset createdAt,
+            CancellationToken cancellationToken) =>
+        CreateInstancedCoreAsync(
+            realmId,
+            contentMapId,
+            kind,
+            playerCapacity,
+            createdAt,
+            preparation: null,
+            cancellationToken);
+
+    public ValueTask<WorldInstanceRuntimeDirectoryResult>
+        CreatePreparedInstancedAsync(
+            RealmId realmId,
+            WorldMapId contentMapId,
+            InstanceKind kind,
+            int playerCapacity,
+            DateTimeOffset createdAt,
+            IWorldInstanceRuntimePreparation preparation,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        return CreateInstancedCoreAsync(
+            realmId,
+            contentMapId,
+            kind,
+            playerCapacity,
+            createdAt,
+            preparation,
+            cancellationToken);
+    }
+
+    private async ValueTask<WorldInstanceRuntimeDirectoryResult>
+        CreateInstancedCoreAsync(
+            RealmId realmId,
+            WorldMapId contentMapId,
+            InstanceKind kind,
+            int playerCapacity,
+            DateTimeOffset createdAt,
+            IWorldInstanceRuntimePreparation? preparation,
             CancellationToken cancellationToken)
     {
         if (kind == InstanceKind.OpenWorld || !Enum.IsDefined(kind))
@@ -129,6 +169,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 createdAt,
                 registerOpenWorld: false,
                 instanceId: null,
+                preparation,
                 cancellationToken);
         }
         finally
@@ -196,6 +237,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
                 createdAt,
                 registerOpenWorld: true,
                 instanceId,
+                preparation: null,
                 cancellationToken);
         }
         finally
@@ -328,6 +370,7 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         DateTimeOffset createdAt,
         bool registerOpenWorld,
         WorldInstanceId? instanceId,
+        IWorldInstanceRuntimePreparation? preparation,
         CancellationToken cancellationToken)
     {
         var descriptor = WorldInstanceDescriptor.Create(
@@ -341,6 +384,25 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         try
         {
             ValidateFactoryResult(descriptor, runtime);
+            if (preparation is not null)
+            {
+                InvokePreparationStep(
+                    runtime,
+                    descriptor,
+                    preparation.Prepare);
+                ValidateFactoryResult(descriptor, runtime);
+                InvokePreparationStep(
+                    runtime,
+                    descriptor,
+                    preparation.ValidatePrepared);
+                ValidateFactoryResult(descriptor, runtime);
+                if (runtime.Map.Population != 0)
+                {
+                    throw new InvalidOperationException(
+                        "A prepared world instance cannot publish with " +
+                        "preloaded player membership.");
+                }
+            }
         }
         catch
         {
@@ -348,9 +410,18 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
             throw;
         }
 
-        var registered = await _placement.RegisterAsync(
-            descriptor,
-            cancellationToken);
+        WorldInstancePlacementResult registered;
+        try
+        {
+            registered = await _placement.RegisterAsync(
+                descriptor,
+                cancellationToken);
+        }
+        catch
+        {
+            await runtime.DisposeAsync();
+            throw;
+        }
         if (!registered.Succeeded ||
             registered.Placement is null)
         {
@@ -397,6 +468,24 @@ internal sealed partial class LocalWorldInstanceRuntimeDirectory :
         return Result(
             WorldInstanceRuntimeDirectoryStatus.Created,
             runtime);
+    }
+
+    private static void InvokePreparationStep(
+        WorldInstanceRuntime runtime,
+        WorldInstanceDescriptor descriptor,
+        Action<IWorldInstanceRuntimePreparationContext> step)
+    {
+        var context = new WorldInstanceRuntimePreparationContext(
+            runtime,
+            descriptor);
+        try
+        {
+            step(context);
+        }
+        finally
+        {
+            context.Invalidate();
+        }
     }
 
     private async ValueTask RetireFailedCreationAsync(

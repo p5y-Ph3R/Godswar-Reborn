@@ -46,6 +46,9 @@ internal sealed partial class GameClientHandler
                 observedAt,
                 out var cooldownLease))
         {
+            await SendSkillCooldownRejectionAsync(
+                cancellationToken,
+                "SkillCooldownRejected");
             return;
         }
 
@@ -161,12 +164,17 @@ internal sealed partial class GameClientHandler
             resolution,
             damageResult);
         var pendingReward = damageResult.Killed
-            ? await PrepareMonsterKillRewardAsync(damageResult)
+            ? await PrepareClaimedMonsterKillRewardAsync(damageResult)
             : null;
         var elementalRewards =
             await PreparePveElementalKillRewardsAsync(
                 elementalAuthority,
                 elementalCommit);
+        await _registry.PublishMonsterClaimStateAsync(
+            _session,
+            character.CurrentMap,
+            damageResult,
+            cancellationToken);
         var reportedDamage = resolution.CapturedDamageValue;
         _registry.UpdateCharacter(
             _session,
@@ -182,7 +190,7 @@ internal sealed partial class GameClientHandler
         var selfDamage = PacketBuilder.SkillDamage(
             attackerObjectId: LocalPlayerObjectId,
             targetObjectId: cast.TargetObjectId,
-            resultFlags: 1,
+            resultFlags: damageResult.Killed ? 5u : 1u,
             damage: reportedDamage,
             skillId: cast.SkillId,
             targetX: targetX,
@@ -269,7 +277,7 @@ internal sealed partial class GameClientHandler
                 PacketBuilder.SkillDamage(
                     attackerObjectId: worldObjectId,
                     targetObjectId: cast.TargetObjectId,
-                    resultFlags: 1,
+                    resultFlags: damageResult.Killed ? 5u : 1u,
                     damage: reportedDamage,
                     skillId: cast.SkillId,
                     targetX: targetX,
@@ -313,9 +321,7 @@ internal sealed partial class GameClientHandler
 
         if (pendingReward is not null)
         {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
+            await pendingReward.PublishAsync(cancellationToken);
         }
 
         int currentMana;
@@ -344,10 +350,8 @@ internal sealed partial class GameClientHandler
             case PlayerCombatRejectionReason.InsufficientMana:
                 Console.WriteLine(
                     $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={decision.CurrentMana} cost={Math.Max(0, combat.Mp)}");
-                await _session.SendAsync(
-                    PacketBuilder.PlayerManaUpdate(
-                        LocalPlayerObjectId,
-                        decision.CurrentMana),
+                await SendInsufficientManaRejectionAsync(
+                    decision.CurrentMana,
                     cancellationToken,
                     "SkillManaRejected");
                 break;

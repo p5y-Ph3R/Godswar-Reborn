@@ -11,11 +11,11 @@ namespace Godswar.Server.Networking;
 /// queue during shutdown; otherwise newly available capacity may admit
 /// waiting producers after the current contents are removed.
 /// </remarks>
-internal sealed class BoundedByteQueue<T>
+internal sealed partial class BoundedByteQueue<T>
     where T : class
 {
     private readonly object _gate = new();
-    private readonly Queue<BoundedByteQueueEntry<T>> _items = [];
+    private readonly Queue<BoundedByteQueueEntry<T>> _items;
     private readonly LinkedList<PendingEnqueue> _waitingProducers = [];
     private readonly LinkedList<PendingDequeue> _waitingConsumers = [];
     private readonly int _capacityItems;
@@ -24,6 +24,7 @@ internal sealed class BoundedByteQueue<T>
     private long _currentBytes;
     private int _highWaterItems;
     private long _highWaterBytes;
+    private bool _isSealed;
     private bool _isCompleted;
     private Exception? _completionError;
 
@@ -34,6 +35,10 @@ internal sealed class BoundedByteQueue<T>
 
         _capacityItems = capacityItems;
         _capacityBytes = capacityBytes;
+        // Batch admission mutates the queue only after every entry has been
+        // validated. Reserve the entire authored item capacity up front so
+        // Queue<T> cannot grow (and fail) after a batch prefix is inserted.
+        _items = new Queue<BoundedByteQueueEntry<T>>(capacityItems);
     }
 
     /// <summary>
@@ -79,7 +84,7 @@ internal sealed class BoundedByteQueue<T>
 
         lock (_gate)
         {
-            if (_isCompleted)
+            if (_isSealed)
             {
                 completionError = CreateProducerCompletionException();
             }
@@ -193,15 +198,22 @@ internal sealed class BoundedByteQueue<T>
                 return false;
             }
 
+            _isSealed = true;
             _isCompleted = true;
-            _completionError = error;
+            _completionError ??= error;
 
             var producerError = CreateProducerCompletionException();
             while (_waitingProducers.First is { } producerNode)
             {
+                var settled = producerNode.Value.IsAdmitted
+                    ? producerNode.Value.SetResult()
+                    : producerNode.Value.SetException(producerError);
+                if (!settled)
+                {
+                    break;
+                }
                 _waitingProducers.RemoveFirst();
                 producerNode.Value.Node = null;
-                producerNode.Value.SetException(producerError);
             }
 
             PumpLocked();
@@ -288,9 +300,15 @@ internal sealed class BoundedByteQueue<T>
         {
             while (_items.Count > 0 && _waitingConsumers.First is { } consumerNode)
             {
+                var entry = _items.Peek();
+                if (!consumerNode.Value.SetResult(
+                        DequeueResult<T>.FromEntry(entry)))
+                {
+                    return;
+                }
+                _ = DequeueEntryLocked();
                 _waitingConsumers.RemoveFirst();
                 consumerNode.Value.Node = null;
-                consumerNode.Value.SetResult(DequeueItemLocked());
             }
 
             if (_isCompleted)
@@ -302,19 +320,33 @@ internal sealed class BoundedByteQueue<T>
 
                 return;
             }
-
-            var producerNode = _waitingProducers.First;
-            if (producerNode is null || !CanAdmit(producerNode.Value.ByteCount))
+            if (_isSealed)
             {
                 return;
             }
 
+            var producerNode = _waitingProducers.First;
+            if (producerNode is null)
+            {
+                return;
+            }
+            if (!producerNode.Value.IsAdmitted)
+            {
+                if (!CanAdmit(producerNode.Value.ByteCount))
+                {
+                    return;
+                }
+                EnqueueItemLocked(new BoundedByteQueueEntry<T>(
+                    producerNode.Value.Item,
+                    producerNode.Value.ByteCount));
+                producerNode.Value.IsAdmitted = true;
+            }
+            if (!producerNode.Value.SetResult())
+            {
+                return;
+            }
             _waitingProducers.RemoveFirst();
             producerNode.Value.Node = null;
-            EnqueueItemLocked(new BoundedByteQueueEntry<T>(
-                producerNode.Value.Item,
-                producerNode.Value.ByteCount));
-            producerNode.Value.SetResult();
         }
     }
 
@@ -322,17 +354,16 @@ internal sealed class BoundedByteQueue<T>
     {
         while (_waitingConsumers.First is { } consumerNode)
         {
+            var completed = _completionError is null
+                ? consumerNode.Value.SetResult(
+                    DequeueResult<T>.Completed)
+                : consumerNode.Value.SetException(_completionError);
+            if (!completed)
+            {
+                return;
+            }
             _waitingConsumers.RemoveFirst();
             consumerNode.Value.Node = null;
-
-            if (_completionError is null)
-            {
-                consumerNode.Value.SetResult(DequeueResult<T>.Completed);
-            }
-            else
-            {
-                consumerNode.Value.SetException(_completionError);
-            }
         }
     }
 
@@ -351,9 +382,14 @@ internal sealed class BoundedByteQueue<T>
                 return;
             }
 
-            _waitingProducers.Remove(pending.Node);
-            pending.Node = null;
-            pending.SetCanceled();
+            var settled = pending.IsAdmitted
+                ? pending.SetResult()
+                : pending.SetCanceled();
+            if (settled)
+            {
+                _waitingProducers.Remove(pending.Node);
+                pending.Node = null;
+            }
             PumpLocked();
         }
     }
@@ -367,179 +403,12 @@ internal sealed class BoundedByteQueue<T>
                 return;
             }
 
-            _waitingConsumers.Remove(pending.Node);
-            pending.Node = null;
-            pending.SetCanceled();
-        }
-    }
-
-    private abstract class PendingOperation
-    {
-        private readonly object _registrationGate = new();
-        private CancellationTokenRegistration _registration;
-        private bool _hasRegistration;
-        private bool _isFinished;
-
-        protected PendingOperation(CancellationToken cancellationToken)
-        {
-            CancellationToken = cancellationToken;
-        }
-
-        protected CancellationToken CancellationToken { get; }
-
-        protected void RegisterCancellation(object state, Action<object?> callback)
-        {
-            if (!CancellationToken.CanBeCanceled)
+            if (pending.SetCanceled())
             {
-                return;
-            }
-
-            var registration = CancellationToken.UnsafeRegister(callback, state);
-            var unregister = false;
-
-            lock (_registrationGate)
-            {
-                if (_isFinished)
-                {
-                    unregister = true;
-                }
-                else
-                {
-                    _registration = registration;
-                    _hasRegistration = true;
-                }
-            }
-
-            if (unregister)
-            {
-                registration.Unregister();
-            }
-        }
-
-        protected void Finish()
-        {
-            CancellationTokenRegistration registration = default;
-            var unregister = false;
-
-            lock (_registrationGate)
-            {
-                _isFinished = true;
-                if (_hasRegistration)
-                {
-                    registration = _registration;
-                    _hasRegistration = false;
-                    unregister = true;
-                }
-            }
-
-            if (unregister)
-            {
-                registration.Unregister();
+                _waitingConsumers.Remove(pending.Node);
+                pending.Node = null;
             }
         }
     }
 
-    private sealed class PendingEnqueue : PendingOperation
-    {
-        private readonly BoundedByteQueue<T> _owner;
-        private readonly TaskCompletionSource _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public PendingEnqueue(
-            BoundedByteQueue<T> owner,
-            T item,
-            int byteCount,
-            CancellationToken cancellationToken)
-            : base(cancellationToken)
-        {
-            _owner = owner;
-            Item = item;
-            ByteCount = byteCount;
-        }
-
-        public T Item { get; }
-
-        public int ByteCount { get; }
-
-        public LinkedListNode<PendingEnqueue>? Node { get; set; }
-
-        public Task Task => _completion.Task;
-
-        public void RegisterCancellation()
-        {
-            RegisterCancellation(
-                this,
-                static state =>
-                {
-                    var pending = (PendingEnqueue)state!;
-                    pending._owner.Cancel(pending);
-                });
-        }
-
-        public void SetResult()
-        {
-            Finish();
-            _completion.TrySetResult();
-        }
-
-        public void SetCanceled()
-        {
-            Finish();
-            _completion.TrySetCanceled(CancellationToken);
-        }
-
-        public void SetException(Exception error)
-        {
-            Finish();
-            _completion.TrySetException(error);
-        }
-    }
-
-    private sealed class PendingDequeue : PendingOperation
-    {
-        private readonly BoundedByteQueue<T> _owner;
-        private readonly TaskCompletionSource<DequeueResult<T>> _completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public PendingDequeue(
-            BoundedByteQueue<T> owner,
-            CancellationToken cancellationToken)
-            : base(cancellationToken)
-        {
-            _owner = owner;
-        }
-
-        public LinkedListNode<PendingDequeue>? Node { get; set; }
-
-        public Task<DequeueResult<T>> Task => _completion.Task;
-
-        public void RegisterCancellation()
-        {
-            RegisterCancellation(
-                this,
-                static state =>
-                {
-                    var pending = (PendingDequeue)state!;
-                    pending._owner.Cancel(pending);
-                });
-        }
-
-        public void SetResult(DequeueResult<T> result)
-        {
-            Finish();
-            _completion.TrySetResult(result);
-        }
-
-        public void SetCanceled()
-        {
-            Finish();
-            _completion.TrySetCanceled(CancellationToken);
-        }
-
-        public void SetException(Exception error)
-        {
-            Finish();
-            _completion.TrySetException(error);
-        }
-    }
 }

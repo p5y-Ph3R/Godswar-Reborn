@@ -47,6 +47,8 @@ internal sealed class MonsterEcsSimulationSystem(
                 ref context.World.Get<MonsterMovementComponent>(entity);
             ref var combat =
                 ref context.World.Get<MonsterCombatComponent>(entity);
+            ref var transform =
+                ref context.World.Get<MonsterTransformComponent>(entity);
             if (combat.StunnedUntil is { } stunnedUntil)
             {
                 if (frame.Now < stunnedUntil)
@@ -110,12 +112,58 @@ internal sealed class MonsterEcsSimulationSystem(
             if (combat.Phase ==
                 MonsterCombatPhase.AwaitingRetirement)
             {
-                Publish(
-                    context.Events,
-                    MonsterEcsState.RetireReturnedMonster(
+                if (MonsterEcsState.ShouldRetireReturnedMonster(
+                        context.World,
+                        entity))
+                {
+                    Publish(
+                        context.Events,
+                        MonsterEcsState.RetireReturnedMonster(
+                            context.World,
+                            entity,
+                            frame.Now));
+                }
+                else
+                {
+                    MonsterEcsState.SettleReturnedMonster(
+                        context.World,
+                        entity);
+                }
+
+                continue;
+            }
+
+            if (MonsterAggroPolicy.IsAggressive(
+                    identity.Definition.Tier) &&
+                MonsterAggroPolicy.TrySelectNearestAggressiveTarget(
+                    frame.Targets,
+                    transform.X,
+                    transform.Z,
+                    out var nearbyTarget))
+            {
+                var stoppedPatrol = MonsterEcsState.SetAggroTarget(
+                    ref movement,
+                    ref combat,
+                    nearbyTarget.CharacterId,
+                    frame.Now);
+                if (stoppedPatrol)
+                {
+                    Publish(
+                        context.Events,
+                        new MonsterRuntimeUpdate(
+                            MonsterRuntimeUpdateKind.Arrived,
+                            MonsterEcsState.Snapshot(
+                                context.World,
+                                entity),
+                            MovementEndField: 1));
+                }
+                frame.PositionsChanged |=
+                    MonsterEcsCombatSimulation.Advance(
                         context.World,
                         entity,
-                        frame.Now));
+                        nearbyTarget,
+                        frame.Now,
+                        context.Events);
                 continue;
             }
 
@@ -156,6 +204,21 @@ internal sealed class MonsterEcsSimulationSystem(
         ref MonsterLifecycleComponent lifecycle,
         HashSet<uint> deathsAnnounced)
     {
+        if (lifecycle.RespawnPolicy == MonsterRespawnPolicy.Never &&
+            lifecycle.RespawnAt is not null)
+        {
+            throw new InvalidOperationException(
+                "Never-respawn monster contains a scheduled respawn.");
+        }
+
+        if (lifecycle.RespawnPolicy is not (
+                MonsterRespawnPolicy.Timed or
+                MonsterRespawnPolicy.Never))
+        {
+            throw new InvalidOperationException(
+                "Monster lifecycle contains an unsupported respawn policy.");
+        }
+
         if (deathsAnnounced.Contains(objectId))
         {
             return;
@@ -203,6 +266,12 @@ internal sealed class MonsterEcsSimulationSystem(
         ref var random =
             ref world.Get<MonsterRandomComponent>(entity);
 
+        if (lifecycle.RespawnPolicy != MonsterRespawnPolicy.Timed)
+        {
+            throw new InvalidOperationException(
+                "Only timed monster lifecycles can respawn.");
+        }
+
         transform.X = transform.HomeX;
         transform.Z = transform.HomeZ;
         transform.Facing = transform.HomeFacing;
@@ -230,9 +299,11 @@ internal sealed class MonsterEcsSimulationSystem(
     {
         ref var transform =
             ref world.Get<MonsterTransformComponent>(entity);
+        ref var identity =
+            ref world.Get<MonsterIdentityComponent>(entity);
         var radius =
             MonsterEcsRules.CombatLeashRadius +
-            MonsterEcsRules.CombatRange;
+            identity.AttackRange;
         return MonsterEcsState.DistanceSquared(
             transform.HomeX,
             transform.HomeZ,

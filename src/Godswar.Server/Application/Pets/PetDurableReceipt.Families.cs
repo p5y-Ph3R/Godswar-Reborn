@@ -65,7 +65,9 @@ internal sealed partial record PetDurableReceipt
         };
 
     private bool MatchesBagActivation() =>
-        Status is PetDurableReceiptStatus.EggHatched or
+        Status is PetDurableReceiptStatus.PetCaptured or
+            PetDurableReceiptStatus.PetCaptureBagFull or
+            PetDurableReceiptStatus.EggHatched or
             PetDurableReceiptStatus.EquipmentEquipped or
             PetDurableReceiptStatus.PetShedExpanded or
             PetDurableReceiptStatus.PetSkillCellMadeAvailable or

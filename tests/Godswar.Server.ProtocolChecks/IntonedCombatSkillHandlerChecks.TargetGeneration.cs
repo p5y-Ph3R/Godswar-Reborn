@@ -41,9 +41,9 @@ internal static partial class IntonedCombatSkillHandlerChecks
             MonsterMapRuntime.DefaultRespawnDelay +
             MonsterMapRuntime.TickInterval,
             CancellationToken.None);
-        var despawn = await fixture.Socket.ReadPacketAsync(8);
+        var despawn = await fixture.Socket.ReadPacketAsync(12);
         Check.Equal(
-            (ushort)10023,
+            (ushort)10024,
             ReadOpcode(despawn),
             "Thunder generation fixture publishes old-generation disposal");
 

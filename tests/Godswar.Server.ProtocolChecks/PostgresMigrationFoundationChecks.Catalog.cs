@@ -7,7 +7,7 @@ internal static partial class PostgresMigrationFoundationChecks
     private static void CheckForwardOnlyCatalog()
     {
         Check.Equal(
-            104,
+            121,
             PostgresSchemaMigrationCatalog.All.Count,
             "migration catalog entry count");
         var baseline = PostgresSchemaMigrationCatalog.All[0];
@@ -70,20 +70,20 @@ internal static partial class PostgresMigrationFoundationChecks
             "054B080ABAEEFCC3E88085CF5CF3C288D34E08E86BE3D90890C880D31F0E7803",
             monsterCombat.Checksum,
             "monster-combat authority migration checksum is pinned");
-        Check.True(
-            monsterCombat.Sql.Contains(
-                "ADD COLUMN attack_type smallint",
-                StringComparison.Ordinal) &&
-            monsterCombat.Sql.Contains(
-                "attack_type IN (1, 2, 3)",
-                StringComparison.Ordinal) &&
-            monsterCombat.Sql.Contains(
-                "ADD COLUMN map_mode smallint",
-                StringComparison.Ordinal) &&
-            monsterCombat.Sql.Contains(
-                "map_mode BETWEEN 0 AND 5",
-                StringComparison.Ordinal),
-            "sealed gameplay content retains constrained monster attack and map-mode PvP authority");
+        var onlineAwardFoundation = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260821_105_online_award_foundation");
+        Check.Equal(
+            "D532139C093BEFFE15D176A094AA512BF80C997EC58CF0BCE4E354F44CAD89FF",
+            onlineAwardFoundation.Checksum,
+            "Online Award foundation migration checksum is pinned");
+        var onlineAwardDialogue = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260821_106_online_award_dialogue_v7");
+        Check.Equal(
+            "748DA26AAFC6FDE85F914F2BB36F570A1AB4E0ABB38EC256A97D22959D8DFC84",
+            onlineAwardDialogue.Checksum,
+            "Online Award dialogue migration checksum is pinned");
         var warehouse = PostgresSchemaMigrationCatalog.All.Single(
             migration => migration.Id ==
                 "20260822_107_warehouse_foundation");
@@ -98,6 +98,18 @@ internal static partial class PostgresMigrationFoundationChecks
             "7679146CFFA67221885A5D77C7CE593935712DDD182D76CAAD6B7C0EB8AFA5C6",
             warehouseDialogue.Checksum,
             "warehouse dialogue migration checksum is pinned");
+        var instanceCallerDialogue = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260822_109_instance_caller_dialogue_v9");
+        Check.Equal(
+            "19FF256FBC00F9670D2A7E13E67BCDEA228B1171EBDA4AA559056A4807AC1E3A",
+            instanceCallerDialogue.Checksum,
+            "Instance Caller dialogue migration checksum is pinned");
+        Check.True(
+            instanceCallerDialogue.Sql.Contains(
+                "behavior BETWEEN 1 AND 11",
+                StringComparison.Ordinal),
+            "Instance Caller migration extends only the finite behavior domain");
         var warehouseNineBox = PostgresSchemaMigrationCatalog.All.Single(
             migration => migration.Id ==
                 "20260824_110_warehouse_nine_box_capacity");
@@ -105,6 +117,23 @@ internal static partial class PostgresMigrationFoundationChecks
             "93671839CBA49565A2B360BC797B7F39B61D9AEF9F1C7C5F3FFAED519B327548",
             warehouseNineBox.Checksum,
             "nine-box warehouse migration checksum is pinned");
+        Check.True(
+            warehouseNineBox.Sql.Contains(
+                "warehouse_capacity BETWEEN 40 AND 360",
+                StringComparison.Ordinal) &&
+            warehouseNineBox.Sql.Contains(
+                "slot_index BETWEEN 0 AND 359",
+                StringComparison.Ordinal) &&
+            warehouseNineBox.Sql.Contains(
+                "level_count BETWEEN 1 AND 9",
+                StringComparison.Ordinal) &&
+            warehouseNineBox.Sql.Contains(
+                "FROM generate_series(1, NEW.level_count)",
+                StringComparison.Ordinal) &&
+            warehouseNineBox.Sql.Contains(
+                "publication_version = 2",
+                StringComparison.Ordinal),
+            "nine-box limits are durable while expansion values remain database-owned");
         var warehouseManagerKeyCap = PostgresSchemaMigrationCatalog.All.Single(
             migration => migration.Id ==
                 "20260824_111_warehouse_manager_storage_key_cap");
@@ -113,123 +142,225 @@ internal static partial class PostgresMigrationFoundationChecks
             warehouseManagerKeyCap.Checksum,
             "Warehouse Manager Storage Box Key cap migration checksum is pinned");
         Check.True(
-            warehouseNineBox.Sql.Contains(
-                "warehouse_capacity BETWEEN 40 AND 360",
+            warehouseManagerKeyCap.Sql.Contains(
+                "level_count, source, created_by)",
                 StringComparison.Ordinal) &&
             warehouseManagerKeyCap.Sql.Contains(
                 "(3, 160, 3, 4102)",
                 StringComparison.Ordinal) &&
             !warehouseManagerKeyCap.Sql.Contains(
                 "(3, 200,",
+                StringComparison.Ordinal) &&
+            warehouseManagerKeyCap.Sql.Contains(
+                "publication_version = 3",
+                StringComparison.Ordinal) &&
+            warehouseManagerKeyCap.Sql.Contains(
+                "AND revision = 2",
                 StringComparison.Ordinal),
-            "warehouse structure supports nine boxes while Manager keys stop at SB4");
+            "Warehouse Manager keys stop at SB4 without lowering the structural nine-box capacity");
+        Check.True(
+            warehouse.Sql.Contains(
+                "warehouse_capacity IN (40, 80, 120, 160)",
+                StringComparison.Ordinal) &&
+            warehouse.Sql.Contains(
+                "item_location IN (0, 1, 2, 3)",
+                StringComparison.Ordinal) &&
+            warehouse.Sql.Contains(
+                "DEFERRABLE INITIALLY DEFERRED",
+                StringComparison.Ordinal) &&
+            warehouse.Sql.Contains(
+                "warehouse_expansion_settlements",
+                StringComparison.Ordinal),
+            "warehouse capacity, item slots, and expansion evidence are durable");
+        var medusaTitles = PostgresSchemaMigrationCatalog.All.Single(
+            migration => migration.Id ==
+                "20260827_114_medusa_title_ownership");
+        Check.True(
+            medusaTitles.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS character_title_ownership",
+                StringComparison.Ordinal) &&
+            medusaTitles.Sql.Contains(
+                "selected_title_id",
+                StringComparison.Ordinal) &&
+            medusaTitles.Sql.Contains(
+                "awarded_title_id",
+                StringComparison.Ordinal) &&
+            medusaTitles.Sql.Contains(
+                "hard_points >= 0",
+                StringComparison.Ordinal) &&
+            medusaTitles.Sql.Contains(
+                "camp IN (0, 1)",
+                StringComparison.Ordinal) &&
+            medusaTitles.Sql.Contains(
+                "title = 6 AND title_id = 5152",
+                StringComparison.Ordinal),
+            "Medusa titles have durable ownership, selected projection, replay evidence, and title-only Mythic settlement");
+        var medusaCaptureRarity =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260827_115_medusa_pet_capture_rarity");
+        Check.True(
+            medusaCaptureRarity.Sql.Contains(
+                "difficulty IN (2, 3)",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "weight_basis_points",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "current_total <> 10000",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "(2, 10150,  1, 2000)",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "(2, 10150, 14,   50)",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "(3, 10150,  1,  400)",
+                StringComparison.Ordinal) &&
+            medusaCaptureRarity.Sql.Contains(
+                "(3, 10150, 14,  300)",
+                StringComparison.Ordinal),
+            "Medusa Rock Elf rarity is database-owned for Advanced and Mythic only");
+        var medusaDailyEntryLimit =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260827_116_medusa_daily_entry_limit");
+        Check.True(
+            medusaDailyEntryLimit.Sql.Contains(
+                "daily_entry_limit smallint NOT NULL",
+                StringComparison.Ordinal) &&
+            medusaDailyEntryLimit.Sql.Contains(
+                "VALUES ('medusa', 3)",
+                StringComparison.Ordinal) &&
+            medusaDailyEntryLimit.Sql.Contains(
+                "ADD CONSTRAINT medusa_daily_entries_pkey PRIMARY KEY",
+                StringComparison.Ordinal) &&
+            medusaDailyEntryLimit.Sql.Contains(
+                "reservation_id);",
+                StringComparison.Ordinal),
+            "Medusa daily attempts are database-owned and allow repeated reservations up to the configured limit");
+        var medusaRewardPolicy =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260827_117_medusa_reward_policy");
+        Check.True(
+            medusaRewardPolicy.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS medusa_reward_title_definitions",
+                StringComparison.Ordinal) &&
+            medusaRewardPolicy.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS medusa_completion_reward_rules",
+                StringComparison.Ordinal) &&
+            medusaRewardPolicy.Sql.Contains(
+                "physical_attack_basis_points",
+                StringComparison.Ordinal) &&
+            medusaRewardPolicy.Sql.Contains(
+                "(3, 2,  600, 3375, 6)",
+                StringComparison.Ordinal) &&
+            medusaRewardPolicy.Sql.Contains(
+                "(3, 2, 2400, 2700, NULL)",
+                StringComparison.Ordinal) &&
+            medusaRewardPolicy.Sql.Contains(
+                "fk_character_title_reward_definition",
+                StringComparison.Ordinal),
+            "Medusa points, title thresholds, client metadata, and title attributes are database-owned");
+        var medusaMonsterContent =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260828_118_medusa_monster_content");
+        Check.True(
+            medusaMonsterContent.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS public.medusa_monster_rules",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS public.medusa_monster_loot_rules",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS public.monster_loot_pickup_claims",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "CREATE TABLE IF NOT EXISTS public.monster_death_pet_experience",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "('boss-stheno','stheno',200,1000,5000,1116)",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "('boss-medusa',2,9916,10000,6,6)",
+                StringComparison.Ordinal),
+            "Medusa levels, HP, scores, movement, corpses, loot, and pet EXP are database-owned");
+        var medusaLootSeedIndex = medusaMonsterContent.Sql.IndexOf(
+            "('boss-medusa',2,9916,10000,6,6)",
+            StringComparison.Ordinal);
+        Check.True(
+            medusaMonsterContent.Sql.Contains(
+                "(9916, 'consume item', 'Rmaterial16', 'Punishment Dust'",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "(9940, 'consume item', 'Material10', 'Accuracy Stone'",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.Contains(
+                "(9941, 'consume item', 'Material11', 'Psychic Stone'",
+                StringComparison.Ordinal) &&
+            medusaMonsterContent.Sql.IndexOf(
+                "(9916, 'consume item', 'Rmaterial16', 'Punishment Dust'",
+                StringComparison.Ordinal) < medusaLootSeedIndex,
+            "Medusa boss loot item templates are seeded before foreign-key-bound loot rules");
+        var medusaExternalScore =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260828_119_medusa_external_score");
+        Check.True(
+            medusaExternalScore.Sql.Contains(
+                "medusa_completion_rewards_final_score_check",
+                StringComparison.Ordinal) &&
+            medusaExternalScore.Sql.Contains(
+                "CHECK (final_score >= 0)",
+                StringComparison.Ordinal) &&
+            medusaExternalScore.Sql.Contains(
+                "CHECK (final_score >= 3000)",
+                StringComparison.Ordinal),
+            "external-style completion scores remain durable without rewriting the actual total");
+        var medusaExternalHealth =
+            PostgresSchemaMigrationCatalog.All.Single(
+                migration => migration.Id ==
+                    "20260828_120_medusa_external_health");
+        Check.True(
+            medusaExternalHealth.Sql.Contains(
+                "('normal-mud-crocodile',800000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "('elite-priest-a-012',250000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "('elite-gorgon-wizard',8000000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "('boss-euryale',5000000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "('boss-stheno',3000000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "('boss-medusa',3500000)",
+                StringComparison.Ordinal) &&
+            medusaExternalHealth.Sql.Contains(
+                "VALUES (1,1), (2,2), (3,5)",
+                StringComparison.Ordinal),
+            "captured Normal health applies exact 2x Advanced and 5x Mythic scaling");
+        Check.True(
+            monsterCombat.Sql.Contains(
+                "ADD COLUMN attack_type smallint",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "attack_type IN (1, 2, 3)",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "ADD COLUMN map_mode smallint",
+                StringComparison.Ordinal) &&
+            monsterCombat.Sql.Contains(
+                "map_mode BETWEEN 0 AND 5",
+                StringComparison.Ordinal),
+            "sealed gameplay content retains constrained monster attack and map-mode PvP authority");
     }
 
-    private static readonly string[] ExpectedMigrationIds =
-    [
-        "20260723_000_legacy_schema_baseline",
-        "20260723_001_mount_ride_compatibility",
-        "20260723_002_mount_rank_guard",
-        "20260723_003_erebus_lion_mount",
-        "20260723_004_remove_redundant_indexes",
-        "20260723_005_starter_consumable_templates",
-        "20260723_006_archive_legacy_character_kitbag",
-        "20260723_007_character_item_template_foreign_key",
-        "20260723_008_zodiac_skill_grid_state",
-        "20260728_009_skill_cast_interrupt_opcode",
-        "20260728_010_pet_foundation",
-        "20260728_011_pet_aptitude_range",
-        "20260728_012_pet_aptitude_catalog",
-        "20260728_013_owned_pet_bootstrap_opcode",
-        "20260728_014_pet_presence_protocol",
-        "20260728_015_pet_presence_audit_operation",
-        "20260728_016_pet_growth_policy",
-        "20260728_017_pet_growth_midpoint_backfill",
-        "20260728_018_pet_growth_policy_v2",
-        "20260728_019_pet_initial_savvy_policy",
-        "20260729_020_pet_savvy_semantics",
-        "20260729_021_pet_savvy_semantics_hardening",
-        "20260729_022_pet_level_progression",
-        "20260729_023_npc_content_release",
-        "20260729_024_npc_dialogue_content_release",
-        "20260729_025_command_inbox_outbox_foundation",
-        "20260729_026_command_inbox_outbox_hardening",
-        "20260729_027_economy_ledger_foundation",
-        "20260729_028_economy_ledger_hardening",
-        "20260730_029_holy_stone_material_templates",
-        "20260730_030_character_checkpoint_versions",
-        "20260730_031_character_lifecycle_foundation",
-        "20260731_032_progression_reward_foundation",
-        "20260731_033_progression_interval_authority",
-        "20260731_034_pet_durability_foundation",
-        "20260731_035_tempest_realm_authority",
-        "20260801_036_monster_content_release",
-        "20260801_037_enter_bootstrap_content_release",
-        "20260801_038_item_template_content_release",
-        "20260801_039_gameplay_content_release",
-        "20260801_040_item_runtime_projection_cutover",
-        "20260801_041_item_policy_content_release",
-        "20260801_042_pet_content_release",
-        "20260801_043_item_content_header_seal_guard",
-        "20260801_044_item_material_content_release",
-        "20260801_045_item_material_recipe_content_release",
-        "20260801_046_holy_suit_content_release",
-        "20260801_047_fighter_level_seal",
-        "20260801_048_fighter_experience_uint32",
-        "20260802_049_holy_suit_singapore_day_boundary",
-        "20260802_050_holy_suit_fixed_daily_cap",
-        "20260802_051_npc_dialogue_multi_route",
-        "20260802_052_class_suit_item_content",
-        "20260803_053_class_suit_attribute_slots",
-        "20260803_054_elemental_class_suit_attributes",
-        "20260803_055_elemental_stone_icon_content",
-        "20260803_056_canonical_elemental_stone_content",
-        "20260804_057_socket_spell_item_templates",
-        "20260804_058_stock_holy_stone_material_templates",
-        "20260805_059_holy_spirit_effectiveness_values",
-        "20260810_060_fashion_slot_consistency",
-        "20260810_061_pet_skills_and_talents",
-        "20260810_062_pet_manager_dialogue",
-        "20260810_063_fashion_rank_projection_repair",
-        "20260810_064_zephyr_holy_stone_material_templates",
-        "20260810_065_pet_shed_capacity",
-        "20260810_066_pet_skill_cell_protocol",
-        "20260810_067_pet_skill_cell_protocol_correction",
-        "20260810_068_pet_point_reset_dialogue",
-        "20260810_069_pet_growth_savvy_semantics_v2",
-        "20260811_070_pet_initial_savvy_policy_v3",
-        "20260811_071_pet_phoenix_growth_activation",
-        "20260811_072_pet_quality_innate_talents",
-        "20260811_073_pet_owner_merge_content",
-        "20260811_074_pet_merge_balance_content",
-        "20260811_075_pet_durable_evidence_v2",
-        "20260811_076_pet_consumable_mutable_projection",
-        "20260811_077_pet_durable_evidence_v3",
-        "20260811_078_pet_scaled_added_value_v3",
-        "20260812_079_pet_growth_preview",
-        "20260812_080_pet_basic_savvy_preview",
-        "20260812_081_pet_rank_content",
-        "20260812_082_pet_hatch_evidence_hardening",
-        "20260812_083_pet_learned_skill_content",
-        "20260812_084_pet_merge_savvy_lookup_content",
-        "20260812_085_pet_magic_jade_appearance_groups",
-        "20260812_086_pet_appearance_change",
-        "20260812_087_pet_bind",
-        "20260813_088_pet_soul_contract",
-        "20260813_089_pet_manager_utility",
-        "20260813_090_bag_consumable_cooldown_state",
-        "20260813_091_pet_phoenix_rebirth_bracket",
-        "20260814_092_packed_seal_ownership_hardening",
-        "20260814_093_monster_combat_authority",
-        "20260820_094_multi_realm_character_authority",
-        "20260820_095_realm_scoped_world_boss_control",
-        "20260820_096_fenced_account_presence_projection",
-        "20260821_097_pet_owner_merge_rebalance",
-        "20260821_098_cooled_holy_stone_balance",
-        "20260821_099_holy_spirit_balance_settings",
-        "20260822_107_warehouse_foundation",
-        "20260822_108_warehouse_dialogue_v8",
-        "20260824_110_warehouse_nine_box_capacity",
-        "20260824_111_warehouse_manager_storage_key_cap"
-    ];
 }

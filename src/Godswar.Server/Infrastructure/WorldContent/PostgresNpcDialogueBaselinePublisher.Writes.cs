@@ -49,23 +49,23 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
         command.Parameters.AddWithValue(
             "text_count",
             NpgsqlDbType.Integer,
-            NpcDialogueBaselineV8.ExpectedTextCount);
+            NpcDialogueBaselineV9.ExpectedTextCount);
         command.Parameters.AddWithValue(
             "profile_count",
             NpgsqlDbType.Integer,
-            NpcDialogueBaselineV8.ExpectedProfileCount);
+            NpcDialogueBaselineV9.ExpectedProfileCount);
         command.Parameters.AddWithValue(
             "route_count",
             NpgsqlDbType.Integer,
-            NpcDialogueBaselineV8.ExpectedRouteCount);
+            NpcDialogueBaselineV9.ExpectedRouteCount);
         command.Parameters.AddWithValue(
             "menu_entry_count",
             NpgsqlDbType.Integer,
-            NpcDialogueBaselineV8.ExpectedMenuEntryCount);
+            NpcDialogueBaselineV9.ExpectedMenuEntryCount);
         command.Parameters.AddWithValue(
             "source",
             NpgsqlDbType.Varchar,
-            NpcDialogueBaselineV8.Source);
+            NpcDialogueBaselineV9.Source);
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
@@ -152,7 +152,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
                          connection,
                          transaction))
         {
-            foreach (var profile in NpcDialogueBaselineV8.Profiles)
+            foreach (var profile in NpcDialogueBaselineV9.Profiles)
             {
                 command.Parameters.Clear();
                 command.Parameters.AddWithValue(
@@ -201,7 +201,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             """,
             connection,
             transaction);
-        foreach (var profile in NpcDialogueBaselineV8.Profiles)
+        foreach (var profile in NpcDialogueBaselineV9.Profiles)
         {
             for (var index = 0;
                  index < profile.InitialMenuSubIds.Length;
@@ -259,7 +259,7 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
             """,
             connection,
             transaction);
-        foreach (var binding in NpcDialogueBaselineV8.Bindings)
+        foreach (var binding in NpcDialogueBaselineV9.Bindings)
         {
             command.Parameters.Clear();
             command.Parameters.AddWithValue(
@@ -342,25 +342,25 @@ internal static partial class PostgresNpcDialogueBaselinePublisher
                 spawnRevision,
                 StringComparison.Ordinal) ||
             reader.GetInt32(1) !=
-                NpcDialogueBaselineV8.ExpectedTextCount ||
+                NpcDialogueBaselineV9.ExpectedTextCount ||
             reader.GetInt32(2) !=
-                NpcDialogueBaselineV8.ExpectedProfileCount ||
+                NpcDialogueBaselineV9.ExpectedProfileCount ||
             reader.GetInt32(3) !=
-                NpcDialogueBaselineV8.ExpectedRouteCount ||
+                NpcDialogueBaselineV9.ExpectedRouteCount ||
             reader.GetInt32(4) !=
-                NpcDialogueBaselineV8.ExpectedMenuEntryCount ||
+                NpcDialogueBaselineV9.ExpectedMenuEntryCount ||
             !string.Equals(
                 reader.GetString(5),
-                NpcDialogueBaselineV8.Source,
+                NpcDialogueBaselineV9.Source,
                 StringComparison.Ordinal) ||
             reader.GetInt32(6) !=
-                NpcDialogueBaselineV8.ExpectedTextCount ||
+                NpcDialogueBaselineV9.ExpectedTextCount ||
             reader.GetInt32(7) !=
-                NpcDialogueBaselineV8.ExpectedProfileCount ||
+                NpcDialogueBaselineV9.ExpectedProfileCount ||
             reader.GetInt32(8) !=
-                NpcDialogueBaselineV8.ExpectedRouteCount ||
+                NpcDialogueBaselineV9.ExpectedRouteCount ||
             reader.GetInt32(9) !=
-                NpcDialogueBaselineV8.ExpectedMenuEntryCount)
+                NpcDialogueBaselineV9.ExpectedMenuEntryCount)
         {
             throw new InvalidDataException(
                 "The stored NPC dialogue release failed verification.");

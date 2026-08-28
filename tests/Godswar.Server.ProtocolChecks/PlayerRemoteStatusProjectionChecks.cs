@@ -190,9 +190,9 @@ internal static class PlayerRemoteStatusProjectionChecks
                 "PacketBuilder.PlayerInspectEquipmentStatusBundle("),
             "no game egress uses the legacy inspect-status bundle");
         Check.Equal(
-            2,
+            5,
             Count(allGameSource, "PacketBuilder.PlayerStatusUpdate("),
-            "the only direct legacy 10166 uses are the two local builders");
+            "all five direct legacy 10166 uses are self-only local builders");
         Check.Equal(
             1,
             Count(localPublishing, "PacketBuilder.PlayerStatusUpdate("),

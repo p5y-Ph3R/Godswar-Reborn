@@ -23,13 +23,14 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         var policy = _itemContent.HolySuit.OperationPolicy ??
             throw new InvalidOperationException(
                 "The pinned Holy Suit operation policy is unavailable.");
+        var usageDay = _realmCalendar.GetDay(DateTimeOffset.UtcNow);
         await using var connection =
             await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
             """
             SELECT
                 cb.fighter_job_lv,
-                realm_clock.usage_day,
+                @usageDay,
                 COALESCE(usage.stored_exp, 0),
                 EXISTS (
                     SELECT 1
@@ -42,17 +43,13 @@ internal sealed partial class PostgresHolySuitCommandExecutor
                            entitlement.expires_at > now())
                 )
             FROM public.character_base cb
-            CROSS JOIN LATERAL (
-                SELECT
-                    (CURRENT_TIMESTAMP AT TIME ZONE
-                        @realmDayTimeZone)::date AS usage_day
-            ) realm_clock
             LEFT JOIN public.holy_suit_daily_exp_storage usage
               ON usage.account_id = cb.account_id
              AND usage.realm_id = cb.server_id
-             AND usage.usage_day = realm_clock.usage_day
+             AND usage.usage_day = @usageDay
             WHERE cb.account_id = @accountId
               AND cb.id = @characterId
+              AND cb.server_id = @realmId
               AND cb.lifecycle_state = 'active'
               AND cb.checkpoint_owner_id = @ownerId
               AND cb.checkpoint_owner_generation = @ownerGeneration
@@ -64,13 +61,16 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         };
         command.Parameters.AddWithValue("accountId", subject.AccountId);
         command.Parameters.AddWithValue("characterId", subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
         command.Parameters.AddWithValue("ownerId", ownership.OwnerId);
         command.Parameters.AddWithValue(
             "ownerGeneration",
             ownership.Generation);
         command.Parameters.AddWithValue(
-            "realmDayTimeZone",
-            policy.RealmDayTimeZone);
+            "usageDay",
+            usageDay);
         command.Parameters.AddWithValue(
             "entitlementKey",
             policy.DailyQuotaBypassEntitlement);

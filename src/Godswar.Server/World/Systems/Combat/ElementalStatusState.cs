@@ -135,22 +135,81 @@ internal sealed class ElementalStatusState
         }
 
         Expire(authoritativeTimeMilliseconds);
+        return ComposeAdjustments(
+            authoritativeTimeMilliseconds,
+            movementSpeed,
+            physicalDefense,
+            magicDefense,
+            hitRating,
+            healingReceived);
+    }
+
+    /// <summary>
+    /// Reads the adjustment at an authoritative instant without lazily
+    /// expiring entries or advancing the status revision. Transaction
+    /// preflight uses this so a rejected hit cannot mutate target state.
+    /// </summary>
+    public ElementalStatusAdjustment PreviewAdjustments(
+        long authoritativeTimeMilliseconds,
+        long movementSpeed,
+        long physicalDefense,
+        long magicDefense,
+        long hitRating,
+        long healingReceived)
+    {
+        if (authoritativeTimeMilliseconds < 0 ||
+            movementSpeed < 0 ||
+            physicalDefense < 0 ||
+            magicDefense < 0 ||
+            hitRating < 0 ||
+            healingReceived < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(authoritativeTimeMilliseconds));
+        }
+
+        return ComposeAdjustments(
+            authoritativeTimeMilliseconds,
+            movementSpeed,
+            physicalDefense,
+            magicDefense,
+            hitRating,
+            healingReceived);
+    }
+
+    private ElementalStatusAdjustment ComposeAdjustments(
+        long authoritativeTimeMilliseconds,
+        long movementSpeed,
+        long physicalDefense,
+        long magicDefense,
+        long hitRating,
+        long healingReceived)
+    {
         var adjustedMovement = movementSpeed;
-        if (TryPotency(ElementalEffectKind.Drench, out var drench))
+        if (TryPotency(
+                ElementalEffectKind.Drench,
+                authoritativeTimeMilliseconds,
+                out var drench))
         {
             adjustedMovement = ElementalBasisPointMath.ScaleDown(
                 adjustedMovement,
                 drench);
         }
 
-        if (TryPotency(ElementalEffectKind.Gale, out var gale))
+        if (TryPotency(
+                ElementalEffectKind.Gale,
+                authoritativeTimeMilliseconds,
+                out var gale))
         {
             adjustedMovement = ElementalBasisPointMath.ScaleUp(
                 adjustedMovement,
                 gale);
         }
 
-        if (TryPotency(ElementalEffectKind.Fracture, out var fracture))
+        if (TryPotency(
+                ElementalEffectKind.Fracture,
+                authoritativeTimeMilliseconds,
+                out var fracture))
         {
             physicalDefense = ElementalBasisPointMath.ScaleDown(
                 physicalDefense,
@@ -160,12 +219,18 @@ internal sealed class ElementalStatusState
                 fracture);
         }
 
-        if (TryPotency(ElementalEffectKind.Dazzle, out var dazzle))
+        if (TryPotency(
+                ElementalEffectKind.Dazzle,
+                authoritativeTimeMilliseconds,
+                out var dazzle))
         {
             hitRating = ElementalBasisPointMath.ScaleDown(hitRating, dazzle);
         }
 
-        if (TryPotency(ElementalEffectKind.Wither, out var wither))
+        if (TryPotency(
+                ElementalEffectKind.Wither,
+                authoritativeTimeMilliseconds,
+                out var wither))
         {
             healingReceived = ElementalBasisPointMath.ScaleDown(
                 healingReceived,
@@ -173,7 +238,9 @@ internal sealed class ElementalStatusState
         }
 
         return new ElementalStatusAdjustment(
-            MovementAllowed: !_active.ContainsKey(ElementalEffectKind.Shock),
+            MovementAllowed: !IsActive(
+                ElementalEffectKind.Shock,
+                authoritativeTimeMilliseconds),
             adjustedMovement,
             physicalDefense,
             magicDefense,
@@ -256,9 +323,14 @@ internal sealed class ElementalStatusState
         }
     }
 
-    private bool TryPotency(ElementalEffectKind effect, out int potency)
+    private bool TryPotency(
+        ElementalEffectKind effect,
+        long authoritativeTimeMilliseconds,
+        out int potency)
     {
-        if (_active.TryGetValue(effect, out var active))
+        if (_active.TryGetValue(effect, out var active) &&
+            active.Application.ExpiresAtMilliseconds >
+                authoritativeTimeMilliseconds)
         {
             potency = active.Application.EffectivePotencyBasisPoints;
             return true;
@@ -267,6 +339,13 @@ internal sealed class ElementalStatusState
         potency = 0;
         return false;
     }
+
+    private bool IsActive(
+        ElementalEffectKind effect,
+        long authoritativeTimeMilliseconds) =>
+        _active.TryGetValue(effect, out var active) &&
+        active.Application.ExpiresAtMilliseconds >
+            authoritativeTimeMilliseconds;
 
     private void Expire(long authoritativeTimeMilliseconds)
     {

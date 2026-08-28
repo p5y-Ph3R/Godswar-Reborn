@@ -126,9 +126,16 @@ internal sealed partial class GameClientHandler
         int currentMana,
         CancellationToken cancellationToken)
     {
-        if (reason is not (
-                TrainingDummySkillRejectionReason.InsufficientMana or
-                TrainingDummySkillRejectionReason.PartialCommitFailure))
+        if (reason == TrainingDummySkillRejectionReason.InsufficientMana)
+        {
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
+                cancellationToken,
+                "TrainingDummySkillManaRejected");
+            return;
+        }
+        if (reason !=
+            TrainingDummySkillRejectionReason.PartialCommitFailure)
         {
             return;
         }
@@ -139,5 +146,11 @@ internal sealed partial class GameClientHandler
                 currentMana),
             cancellationToken,
             "TrainingDummySkillManaRejected");
+        if (HasPendingSkillCast)
+        {
+            await SendSkillCastRejectionInterruptAsync(
+                cancellationToken,
+                "TrainingDummySkillPartialRejected");
+        }
     }
 }

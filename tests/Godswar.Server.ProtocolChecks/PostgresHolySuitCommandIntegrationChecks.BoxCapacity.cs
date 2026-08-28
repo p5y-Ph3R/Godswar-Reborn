@@ -30,7 +30,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         var executor = new PostgresHolySuitCommandExecutor(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            itemContent);
+            itemContent,
+            TestRealmCalendar());
         var connection = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
@@ -101,7 +102,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         var executor = new PostgresHolySuitCommandExecutor(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            itemContent);
+            itemContent,
+            TestRealmCalendar());
         var result = await ExecuteAsync(
             executor,
             fixture,

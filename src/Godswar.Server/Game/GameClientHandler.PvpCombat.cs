@@ -82,8 +82,7 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        var stats = character.CalculatedStats ??
-            CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         _nextBasicAttackAt = now +
             PlayerCombatRules.ResolveBasicAttackCooldown(
                 stats.BasicAttackIntervalMilliseconds);

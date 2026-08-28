@@ -1,4 +1,5 @@
 using Godswar.Server.State;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.World.Systems.Combat;
 
 namespace Godswar.Server.Game;
@@ -51,8 +52,15 @@ internal sealed partial class GameClientHandler
             return false;
         }
 
-        return true;
+        return IsMedusaActionAllowed(
+            MedusaEncounterControlRestriction.Movement,
+            observedAt,
+            "movement");
     }
+
+    private bool IsNonWalkMovementBlocked() =>
+        _character is not null &&
+        !IsElementalMovementAllowed(DateTimeOffset.UtcNow);
 
     private ElementalMovementAuthority ResolveElementalMovementAuthority(
         float baseMovementMultiplier,

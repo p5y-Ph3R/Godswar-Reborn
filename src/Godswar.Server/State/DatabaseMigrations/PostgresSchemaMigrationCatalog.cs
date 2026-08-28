@@ -283,9 +283,20 @@ internal static partial class PostgresSchemaMigrationCatalog
         CreatePetOwnerMergeRebalance(),
         CreateCooledHolyStoneBalance(),
         CreateHolySpiritBalanceSettings(),
+        CreateRealmCalendarAuthority(),
         CreateWarehouseFoundation(),
         CreateWarehouseDialogueCapability(),
+        CreateInstanceCallerDialogueCapability(),
         CreateWarehouseNineBoxCapacity(),
-        CreateWarehouseManagerStorageKeyCap()
+        CreateWarehouseManagerStorageKeyCap(),
+        CreateMedusaDailyEntry(),
+        CreateMedusaCompletionRewards(),
+        CreateMedusaTitleOwnership(),
+        CreateMedusaPetCaptureRarity(),
+        CreateMedusaDailyEntryLimit(),
+        CreateMedusaRewardPolicy(),
+        CreateMedusaMonsterContent(),
+        CreateMedusaExternalScore(),
+        CreateMedusaExternalHealth()
     ];
 }

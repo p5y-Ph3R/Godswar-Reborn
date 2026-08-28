@@ -250,6 +250,14 @@ internal static class PetProtocolCheckCatalog
             "Raw-local stock-client pet hatch boundary",
             PetRawLocalProtocolChecks.RunAsync),
         (
+            PetCaptureContractChecks.CheckName,
+            PetCaptureContractChecks.RunAsync),
+        (
+            PostgresPetDurableCommandIntegrationChecks
+                .CaptureRarityCheckName,
+            PostgresPetDurableCommandIntegrationChecks
+                .RunCaptureRarityOnlyAsync),
+        (
             "Authoritative pet skill-cell item activation",
             PetSkillCellItemProtocolChecks.RunAsync),
         (

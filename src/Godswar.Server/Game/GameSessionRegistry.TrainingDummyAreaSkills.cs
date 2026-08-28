@@ -158,7 +158,15 @@ internal sealed partial class GameSessionRegistry
                 return TrainingDummyAreaSkillDecision.NotApplicable();
             }
 
-            using (AcquirePvpVitalsLocks(targets.Prepend(attacker)))
+            var participants = targets.Prepend(attacker).ToArray();
+            if (!HaveEstablishedPlayerLifeAuthoritiesLocked(
+                    participants))
+            {
+                return TrainingDummyAreaSkillDecision.Reject(
+                    TrainingDummySkillRejectionReason.StaleWorldOwnership,
+                    attacker.Character.CurrentMp);
+            }
+            using (AcquirePvpVitalsLocks(participants))
             {
                 if (GetPlayerSkillCastControl(attacker.Session, now) ==
                     PlayerSkillCastControl.Stunned)
@@ -215,8 +223,8 @@ internal sealed partial class GameSessionRegistry
                             currentMana);
                     }
 
-                    var targetStats = target.Character.CalculatedStats ??
-                        CharacterStats.FromCharacter(target.Character);
+                    var targetStats = CharacterStats.FromCharacter(
+                        target.Character);
                     var mitigation = targetMitigations[target.Session];
                     var targetCombat = CombatCharacterStatsAdapter
                         .ApplyRuntimeTargetModifiers(

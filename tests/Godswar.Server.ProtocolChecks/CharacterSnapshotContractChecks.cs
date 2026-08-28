@@ -299,6 +299,29 @@ internal static partial class CharacterSnapshotContractChecks
         Check.Equal(1, hydrated.Pets[0].Skills.Count, "pet skills hydrate");
         Check.Equal(1, hydrated.PersonalBoosts.Count, "raw personal boosts are retained");
 
+        var titledSource = source with
+        {
+            Character = source.Character! with
+            {
+                Appearance = source.Character.Appearance with
+                {
+                    SelectedTitleId = 5011,
+                    OwnedTitleIds = [5011U, 5152U]
+                }
+            }
+        };
+        var titledHydrated = CharacterLoadSnapshotHydrator.Hydrate(
+            titledSource) ?? throw new InvalidOperationException(
+                "Valid titled character snapshot did not hydrate.");
+        Check.Equal(
+            5011U,
+            titledHydrated.Character.SelectedTitleId,
+            "durable selected title hydrates into world appearance");
+        Check.True(
+            titledHydrated.Character.OwnedTitleIds.SequenceEqual(
+                [5011U, 5152U]),
+            "durable title ownership hydrates into the Title-dialog projection");
+
         var sealedHydrated = CharacterLoadSnapshotHydrator.Hydrate(
             CreateValidSnapshot(fighterLevelSealed: true)) ??
             throw new InvalidOperationException(

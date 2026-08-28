@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Characters;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -8,7 +10,11 @@ internal readonly record struct MonsterCombatTarget(
     float Z,
     bool IsAlive,
     uint ObjectId = 0,
-    long LifeRevision = 0);
+    long LifeRevision = 0,
+    PlayerOwnershipFence Ownership = default,
+    WorldInstanceId WorldInstanceId = default,
+    long WorldRevision = 0,
+    long WorldMembershipEpoch = 0);
 
 internal enum MonsterCombatPhase
 {
@@ -106,6 +112,10 @@ internal sealed record MonsterRuntimeUpdate(
     uint? TargetObjectId = null,
     long? TargetLifeRevision = null,
     long? TargetVitalsRevision = null,
+    PlayerOwnershipFence? TargetOwnership = null,
+    WorldInstanceId? TargetWorldInstanceId = null,
+    long? TargetWorldRevision = null,
+    long? TargetWorldMembershipEpoch = null,
     ulong AttackEventId = 0);
 
 internal sealed record MonsterRuntimeTick(
@@ -118,7 +128,9 @@ internal sealed record MonsterDamageResult(
     uint AfterHealth,
     bool Killed,
     MonsterRuntimeSnapshot Monster,
-    MonsterHealthMutation? HealthMutation);
+    MonsterHealthMutation? HealthMutation,
+    int? FirstHitCharacterId = null,
+    bool ClaimEstablished = false);
 
 internal readonly record struct MonsterAppearanceVersion(
     uint SpawnGeneration,

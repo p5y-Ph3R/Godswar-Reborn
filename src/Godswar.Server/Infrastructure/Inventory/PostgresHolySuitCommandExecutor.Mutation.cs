@@ -410,6 +410,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
                 inventory_revision = @inventoryRevision
             WHERE account_id = @accountId
               AND id = @characterId
+              AND server_id = @realmId
               AND fighter_job_exp = @experienceBefore
               AND progression_reward_revision = @expectedProgressionRevision
               AND inventory_revision = @expectedInventoryRevision;
@@ -427,6 +428,9 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         command.Parameters.AddWithValue(
             "characterId",
             context.Subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
         command.Parameters.AddWithValue("experienceBefore", before.Experience);
         command.Parameters.AddWithValue(
             "expectedProgressionRevision",

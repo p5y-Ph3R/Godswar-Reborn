@@ -64,7 +64,13 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 ToByte(reader.GetInt16(5), "profession"),
                 ToByte(reader.GetInt16(6), "hair"),
                 ToByte(reader.GetInt16(7), "face"),
-                ToByte(reader.GetInt16(8), "faith")),
+                ToByte(reader.GetInt16(8), "faith"),
+                checked((uint)reader.GetInt32(56)))
+            {
+                OwnedTitleIds = ImmutableArray.CreateRange(
+                    reader.GetFieldValue<int[]>(57)
+                        .Select(static titleId => checked((uint)titleId)))
+            },
             new CharacterLocationSnapshot(
                 ToByte(reader.GetInt16(9), "map"),
                 reader.GetFloat(15),
@@ -86,7 +92,9 @@ internal sealed partial class PostgresCharacterSnapshotReader
                 reader.GetInt64(28)),
             new CharacterWalletSnapshot(
                 reader.GetInt32(41),
-                reader.GetInt32(42)),
+                reader.GetInt32(42),
+                reader.GetInt32(54),
+                reader.GetInt64(55)),
             new CharacterLoadoutSnapshot(
                 reader.GetString(18),
                 reader.GetString(19),
@@ -239,7 +247,16 @@ internal sealed partial class PostgresCharacterSnapshotReader
             cb.fighter_level_sealed,
             cb.pet_shed_capacity,
             cb.pet_shed_revision,
-            cb.server_id
+            cb.server_id,
+            cb.medusa_honor_points,
+            cb.medusa_reward_revision,
+            cb.selected_title_id,
+            ARRAY(
+                SELECT ownership.title_id
+                FROM character_title_ownership ownership
+                WHERE ownership.character_id = cb.id
+                ORDER BY ownership.title_id
+            )
         FROM character_base cb
         {PostgresCharacterItemProjectionSql.FullJoinForCharacterAlias}
         WHERE cb.account_id = @accountId

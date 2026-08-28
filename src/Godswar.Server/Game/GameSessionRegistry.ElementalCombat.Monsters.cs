@@ -26,6 +26,8 @@ internal sealed partial class GameSessionRegistry
         CombatEventProvenance provenance,
         IReadOnlyList<PveElementalCommittedHit> committedHits,
         IReadOnlyList<MonsterRuntimeSnapshot> monsterSnapshot,
+        IReadOnlySet<(uint ObjectId, uint SpawnGeneration)>
+            medusaOwnedMonsters,
         DateTimeOffset committedAt)
     {
         var applications = new List<ElementalEffectApplication>();
@@ -61,6 +63,17 @@ internal sealed partial class GameSessionRegistry
                 IsPvp: false,
                 default);
             if (!combatEvent.IsCommittedDirectHit)
+            {
+                continue;
+            }
+
+            // Bound Medusa damage currently has no typed atomic handoff for
+            // periodic/status/resonance monster mutations. Suppress those
+            // secondary effects before the commit policy can mutate either
+            // the target status ledger or source resonance ledger.
+            if (medusaOwnedMonsters.Contains((
+                    damage.ObjectId,
+                    damage.Monster.SpawnGeneration)))
             {
                 continue;
             }

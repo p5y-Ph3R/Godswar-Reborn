@@ -8,6 +8,7 @@ namespace Godswar.Server.Packets;
 internal static partial class PacketBuilder
 {
     private const int PlayerWorldPkModeOffset = 0x50;
+    private const int PlayerWorldMapIdOffset = 0xB0;
 
     public static byte[] EquipmentVisualRefresh(GameCharacter character)
     {
@@ -137,6 +138,13 @@ internal static partial class PacketBuilder
             packet[PlayerWorldPkModeOffset] = pkMode.Value;
         }
 
+        // Native 0x2725 rejects a remote player when this map differs from the
+        // local player's current map. The captured template came from map 0,
+        // so instance appearances must replace it with the authoritative map.
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(PlayerWorldMapIdOffset, sizeof(ushort)),
+            character.CurrentMap);
+
         PatchPlayerWorldAppearance(packet, character);
         packet.AsSpan(
             PlayerWorldStatusIdsOffset,
@@ -203,9 +211,12 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), 0x27D7);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
-        // Offset 8 is the selected title text and offset 76 is a title id in the
-        // working captures. Neither is the character id. Until titles are modeled,
-        // the all-zero untitled body is the only truthful representation.
+        // The stock 10199/0x27D7 body is not an ownership list. Offsets 8-71
+        // are a 64-byte guild/legion-like auxiliary field (not title text),
+        // 72-75 remain opaque, and 76-79 carry the selected title ID.
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(76, sizeof(uint)),
+            character.SelectedTitleId);
         return packet;
     }
 

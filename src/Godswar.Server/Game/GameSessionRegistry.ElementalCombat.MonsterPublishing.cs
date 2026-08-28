@@ -54,7 +54,8 @@ internal sealed partial class GameSessionRegistry
                         source,
                         damage.ObjectId,
                         applied,
-                        selector),
+                        selector,
+                        damage.Killed),
                     mutation,
                     cancellationToken,
                     "PveElementalDamageSelf");
@@ -73,7 +74,8 @@ internal sealed partial class GameSessionRegistry
                     source,
                     damage.ObjectId,
                     applied,
-                    selector),
+                    selector,
+                    damage.Killed),
                 cancellationToken,
                 source.Session,
                 "PveElementalDamageWorld",
@@ -144,7 +146,7 @@ internal sealed partial class GameSessionRegistry
         }
     }
 
-    internal static async Task<
+    internal async Task<
         IReadOnlyList<PreparedPveMonsterKillReward>>
         PreparePveElementalKillRewardsAsync(
             GameSessionContext source,
@@ -152,11 +154,6 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(commit);
-        if (source.PreparePveMonsterKillReward is not { } prepareReward)
-        {
-            return [];
-        }
-
         var preparedRewards =
             new List<PreparedPveMonsterKillReward>();
         foreach (var terminal in commit.DamageCommits)
@@ -169,7 +166,10 @@ internal sealed partial class GameSessionRegistry
 
             try
             {
-                var prepared = await prepareReward(damage);
+                var prepared =
+                    await PrepareClaimedMonsterKillRewardAsync(
+                        source.Session,
+                        damage);
                 if (prepared is not null)
                 {
                     preparedRewards.Add(prepared);
@@ -192,7 +192,8 @@ internal sealed partial class GameSessionRegistry
         GameSessionContext source,
         uint targetObjectId,
         uint damage,
-        byte selector) =>
+        byte selector,
+        bool killed) =>
         PacketBuilder.PhysicalDamage(
             attackerObjectId,
             source.Character.PositionX,
@@ -200,6 +201,6 @@ internal sealed partial class GameSessionRegistry
             source.Character.PositionZ,
             targetObjectId,
             damage,
-            selector,
+            killed ? (byte)5 : selector,
             (byte)CombatHitOutcome.Normal);
 }

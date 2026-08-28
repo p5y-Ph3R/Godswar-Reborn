@@ -10,6 +10,7 @@ using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Warehouse;
+using Godswar.Server.Application.WorldInstances;
 using Godswar.Server.Infrastructure.Accounts;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Database;
@@ -24,6 +25,7 @@ using Godswar.Server.Infrastructure.Talents;
 using Godswar.Server.Infrastructure.Zodiac;
 using Godswar.Server.Infrastructure.World;
 using Godswar.Server.Infrastructure.Warehouse;
+using Godswar.Server.Infrastructure.WorldInstances;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.State;
 using Npgsql;
@@ -50,6 +52,7 @@ internal sealed class PostgresApplicationDataRuntime :
         GameplayItemContent itemContent,
         string gameplayContentRevision,
         RealmId realmId,
+        RealmCalendar realmCalendar,
         IPetContentCatalog petContent,
         IPetOwnerMergeContentCatalog ownerMergeContent,
         IPetLearnedSkillContentCatalog learnedSkillContent,
@@ -60,6 +63,13 @@ internal sealed class PostgresApplicationDataRuntime :
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         ArgumentNullException.ThrowIfNull(outboxOptions);
         ArgumentNullException.ThrowIfNull(itemContent);
+        ArgumentNullException.ThrowIfNull(realmCalendar);
+        if (realmCalendar.RealmId != realmId)
+        {
+            throw new ArgumentException(
+                "The selected calendar must belong to the process realm.",
+                nameof(realmCalendar));
+        }
         ArgumentNullException.ThrowIfNull(petContent);
         ArgumentNullException.ThrowIfNull(ownerMergeContent);
         ArgumentNullException.ThrowIfNull(learnedSkillContent);
@@ -169,7 +179,8 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresHolySuitCommandExecutor(
                 _dataSource,
                 outboxOptions,
-                itemContent);
+                itemContent,
+                realmCalendar);
         ZodiacSkillGridActivationCommands =
             new PostgresZodiacSkillGridActivationCommandExecutor(
                 _dataSource,
@@ -191,7 +202,8 @@ internal sealed class PostgresApplicationDataRuntime :
             new PostgresProgressionIntervalSettlementCommandExecutor(
                 _dataSource,
                 outboxOptions,
-                zodiacEnergyPolicy);
+                zodiacEnergyPolicy,
+                realmCalendar);
         PetDurableCommands =
             new PostgresPetDurableCommandExecutor(
                 _dataSource,
@@ -212,6 +224,10 @@ internal sealed class PostgresApplicationDataRuntime :
                 _dataSource,
                 outboxOptions,
                 warehouseExpansionPolicy);
+        MedusaDailyEntries =
+            new PostgresMedusaDailyEntryClaimStore(_dataSource);
+        MedusaCompletionRewards =
+            new PostgresMedusaCompletionRewardStore(_dataSource);
         var outboxConsumers =
             PostgresOutboxConsumerCatalog.Create();
         _outboxDispatcher = new PostgresOutboxDispatcher(
@@ -345,6 +361,10 @@ internal sealed class PostgresApplicationDataRuntime :
 
     public IWarehouseExpansionCommandExecutor WarehouseExpansionCommands
     { get; }
+
+    public IMedusaDailyEntryClaimStore MedusaDailyEntries { get; }
+
+    public IMedusaCompletionRewardStore MedusaCompletionRewards { get; }
 
     public bool OutboxEnabled { get; }
 

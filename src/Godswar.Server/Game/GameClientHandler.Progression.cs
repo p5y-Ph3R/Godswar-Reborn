@@ -22,6 +22,15 @@ internal sealed partial class GameClientHandler
         }
 
         var reward = MonsterRewardCatalog.Resolve(damageResult.Monster, _character.Level);
+        var awardedPetExperience =
+            MonsterRewardCatalog.ResolvePetExperience(damageResult.Monster);
+        if (_registry.TryResolveMedusaMonsterRule(
+                _session,
+                damageResult,
+                out var medusaRule))
+        {
+            awardedPetExperience = medusaRule.PetExperience;
+        }
         var rewardTime = DateTimeOffset.UtcNow;
         var experienceBoosts = ExperienceBoostState.Empty;
         if (reward.Experience > 0 || reward.TalentExperience > 0)
@@ -56,6 +65,7 @@ internal sealed partial class GameClientHandler
                 damageResult,
                 awardedExperience,
                 awardedTalentExperience,
+                awardedPetExperience,
                 rewardTime);
         }
         catch (PlayerOwnershipValidationException)
@@ -78,6 +88,20 @@ internal sealed partial class GameClientHandler
         }
 
         ApplyMonsterRewardProjection(settlement);
+        MonsterLootPresentation? monsterLoot = null;
+        try
+        {
+            monsterLoot = _registry.PrepareMedusaMonsterLoot(
+                _session,
+                damageResult,
+                settlement.DeathEventId,
+                rewardTime);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine(
+                $"[loot] preparation failed monster={damageResult.ObjectId}: {ex.Message}");
+        }
         var worldBossControl =
             await ActivateWorldBossAreaControlIfApplicableAsync(
                 damageResult,
@@ -90,7 +114,8 @@ internal sealed partial class GameClientHandler
             awardedExperience,
             awardedTalentExperience,
             settlement,
-            worldBossControl);
+            worldBossControl,
+            monsterLoot);
     }
 
     private async Task PublishMonsterKillRewardAsync(
@@ -250,6 +275,27 @@ internal sealed partial class GameClientHandler
             _character.TalentPoints,
             cancellationToken);
 
+        if (settlement.PetExperience is
+                { HasPetProjection: true } petExperience)
+        {
+            await _session.SendAsync(
+                PacketBuilder.PetExperience(
+                    petExperience.PetId!.Value,
+                    petExperience.TotalExperience!.Value),
+                cancellationToken,
+                "MonsterKillPetExperience");
+        }
+
+        if (pending.MonsterLoot is { Entries.Count: > 0 } loot)
+        {
+            await _session.SendAsync(
+                PacketBuilder.MonsterLoot(
+                    loot.MonsterObjectId,
+                    loot.Entries),
+                cancellationToken,
+                "MonsterLootAvailable");
+        }
+
         if (settlement.IsFirstCommit &&
             progression.TalentPointsGained > 0)
         {
@@ -266,32 +312,6 @@ internal sealed partial class GameClientHandler
             $"[reward] kill character={_character.Name} monster={damageResult.ObjectId} death={settlement.DeathEventId:N} durable={settlement.IsDurable} first={settlement.IsFirstCommit} level={progression.PreviousLevel}->{_character.Level} exp=+{(settlement.IsFirstCommit ? progression.ExperienceGained : 0)}->{_character.Experience} talent-exp=+{(settlement.IsFirstCommit ? progression.TalentExperienceGained : 0)}->{_character.TalentExperience} talent-points=+{(settlement.IsFirstCommit ? progression.TalentPointsGained : 0)}->{_character.TalentPoints}");
     }
 
-    private void ApplyMonsterRewardProjection(
-        MonsterRewardSettlement settlement)
-    {
-        if (_character is null)
-        {
-            return;
-        }
-
-        var progression = settlement.Progression;
-        var authoritative = settlement.Projection;
-        _character.Level =
-            authoritative?.Level ?? progression.CurrentLevel;
-        _character.Experience =
-            authoritative?.Experience ?? progression.CurrentExperience;
-        _character.TalentExperience =
-            authoritative?.TalentExperience ??
-            progression.CurrentTalentExperience;
-        _character.TalentPoints =
-            authoritative?.TalentPoints ??
-            progression.CurrentTalentPoints;
-        _registry.UpdateCharacter(
-            _session,
-            _character,
-            advanceWorldRevision: false);
-    }
-
     private sealed record PendingMonsterKillReward(
         MonsterDamageResult DamageResult,
         MonsterKillReward Reward,
@@ -299,7 +319,8 @@ internal sealed partial class GameClientHandler
         int AwardedExperience,
         int AwardedTalentExperience,
         MonsterRewardSettlement Settlement,
-        FactionAreaExperienceControl? WorldBossControl);
+        FactionAreaExperienceControl? WorldBossControl,
+        MonsterLootPresentation? MonsterLoot);
 
     private async Task<MonsterRewardSettlement?>
         SettleLegacyMonsterRewardAsync(

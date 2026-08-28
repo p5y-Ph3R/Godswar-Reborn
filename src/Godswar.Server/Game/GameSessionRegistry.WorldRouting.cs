@@ -327,10 +327,13 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(definitions);
         return InvokeWorldOwner(
             runtime,
-            map => map.InitializeMonsters(
-                definitions,
-                initializedAt ?? DateTimeOffset.UtcNow,
-                activeWorldBossRespawn).Count);
+            map => map.TryGetMedusaMonsterAttachmentSnapshot(
+                    out var medusa)
+                ? medusa.MonsterCount
+                : map.InitializeMonsters(
+                    definitions,
+                    initializedAt ?? DateTimeOffset.UtcNow,
+                    activeWorldBossRespawn).Count);
     }
 
     private IReadOnlyList<GameSessionContext>

@@ -68,8 +68,7 @@ internal sealed partial class GameSessionRegistry
                 PacketBuilder.CharacterUiStatsMinimumSpeedBasisPoints,
                 PacketBuilder.CharacterUiStatsMaximumSpeedBasisPoints),
             MidpointRounding.AwayFromZero);
-        var stats = character.CalculatedStats ??
-            CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         return PacketBuilder.NormalizeCharacterUiStatsV1(
             new CharacterUiStatsV1Projection(
                 speed,

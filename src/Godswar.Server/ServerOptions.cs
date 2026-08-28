@@ -153,9 +153,6 @@ internal sealed partial class ServerOptions
         Game.ZodiacEnergy.CompensationSeconds = ReadInt(
             "GODSWAR_ZODIAC_COMPENSATION_SECONDS",
             Game.ZodiacEnergy.CompensationSeconds);
-        Game.ZodiacEnergy.ServerUtcOffsetMinutes = ReadInt(
-            "GODSWAR_ZODIAC_SERVER_UTC_OFFSET_MINUTES",
-            Game.ZodiacEnergy.ServerUtcOffsetMinutes);
         Game.ZodiacEnergy.PersistenceIntervalSeconds = ReadInt(
             "GODSWAR_ZODIAC_PERSISTENCE_INTERVAL_SECONDS",
             Game.ZodiacEnergy.PersistenceIntervalSeconds);
@@ -443,9 +440,6 @@ internal sealed class ZodiacEnergyOptions
 
     public int CompensationSeconds { get; set; } = 60 * 60;
 
-    // PacketBuilder.ServerTime advertises the original fixed UTC-8 clock.
-    public int ServerUtcOffsetMinutes { get; set; } = -8 * 60;
-
     public int PersistenceIntervalSeconds { get; set; } = 30;
 
     public State.ZodiacEnergyPolicy Snapshot()
@@ -457,8 +451,7 @@ internal sealed class ZodiacEnergyOptions
             EmulatorBoostedEnergyPerTickX100,
             EmulatorNormalEnergyPerTickX100,
             CompensationOnlineThresholdSeconds,
-            CompensationSeconds,
-            ServerUtcOffsetMinutes);
+            CompensationSeconds);
         policy.Validate();
         return policy;
     }
@@ -473,7 +466,6 @@ internal sealed class ZodiacEnergyOptions
         CompensationOnlineThresholdSeconds = Math.Max(0, CompensationOnlineThresholdSeconds);
         CompensationSeconds = Math.Max(0, CompensationSeconds);
         CompensationSeconds -= CompensationSeconds % TickSeconds;
-        ServerUtcOffsetMinutes = Math.Clamp(ServerUtcOffsetMinutes, -14 * 60, 14 * 60);
         PersistenceIntervalSeconds = Math.Max(1, PersistenceIntervalSeconds);
     }
 }

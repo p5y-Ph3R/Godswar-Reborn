@@ -10,6 +10,17 @@ internal sealed partial class MapInstance
         PlayerTransformOverride? transformOverride = null)
     {
         ArgumentNullException.ThrowIfNull(context);
+        return ExecuteWithMedusaCharacterAdmission(
+            context.CharacterId,
+            () => StagePlayerTransferCore(
+                context,
+                transformOverride));
+    }
+
+    private PlayerTransfer StagePlayerTransferCore(
+        GameSessionContext context,
+        PlayerTransformOverride? transformOverride)
+    {
         lock (_membershipGate)
         {
             if (_sessions.ContainsKey(context.Session) ||

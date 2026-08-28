@@ -169,8 +169,8 @@ internal sealed partial class GameSessionRegistry
                                 attacker.Character),
                             attackerRuntime.StatusAggregate);
                     var mitigation = targetMitigations[target.Session];
-                    var targetStats = target.Character.CalculatedStats ??
-                        CharacterStats.FromCharacter(target.Character);
+                    var targetStats = CharacterStats.FromCharacter(
+                        target.Character);
                     var targetCombat = CombatCharacterStatsAdapter
                         .ApplyRuntimeTargetModifiers(
                             CombatCharacterStatsAdapter.ToTarget(

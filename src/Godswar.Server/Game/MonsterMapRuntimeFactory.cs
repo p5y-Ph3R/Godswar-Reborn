@@ -13,8 +13,11 @@ internal static class MonsterMapRuntimeFactory
         TimeSpan? corpseDespawnDelay = null,
         TimeSpan? respawnDelay = null,
         WorldBossRespawnState? activeWorldBossRespawn = null,
-        WorldBossCatalog? worldBossCatalog = null)
+        WorldBossCatalog? worldBossCatalog = null,
+        MonsterRespawnPolicy respawnPolicy = MonsterRespawnPolicy.Timed,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
     {
+        MonsterRespawnPolicyRules.Validate(respawnPolicy);
         var runtimeInstanceId = Guid.NewGuid();
         return mode switch
         {
@@ -26,7 +29,9 @@ internal static class MonsterMapRuntimeFactory
                 respawnDelay,
                 activeWorldBossRespawn,
                 runtimeInstanceId,
-                worldBossCatalog),
+                worldBossCatalog,
+                respawnPolicy,
+                monsterCombatProfiles),
             MonsterRuntimeMode.Ecs => new EcsMonsterMapRuntime(
                 mapId,
                 definitions,
@@ -35,7 +40,9 @@ internal static class MonsterMapRuntimeFactory
                 respawnDelay,
                 activeWorldBossRespawn,
                 runtimeInstanceId,
-                worldBossCatalog),
+                worldBossCatalog,
+                respawnPolicy,
+                monsterCombatProfiles),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(mode),
                 mode,

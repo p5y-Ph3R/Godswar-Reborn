@@ -33,6 +33,13 @@ internal sealed partial class GameClientHandler
             return true;
         }
 
+        if (await TryApplyMedusaIslandTraversalAsync(
+                movement,
+                cancellationToken))
+        {
+            return true;
+        }
+
         if (_character is null ||
             movement.MapId != _character.CurrentMap ||
             !MapTraversalDetector.TryDetectAndResolve(
@@ -67,6 +74,7 @@ internal sealed partial class GameClientHandler
             _character is null ||
             !_registered ||
             !_worldPresenceAnnounced ||
+            targetMapId is 200 or 204 ||
             _character.CurrentMap == targetMapId ||
             !_gameplayCatalogs.MapTraversal.TryGetMap(
                 _character.CurrentMap,
@@ -382,8 +390,13 @@ internal sealed partial class GameClientHandler
             _pendingMapTransition = null;
             transition.MarkCompleted();
         }
-        catch
+        catch (Exception error)
         {
+            Console.Error.WriteLine(
+                "[map] transition completion failed " +
+                $"character={_character.Name} " +
+                $"map={transition.SourceMapId}->{transition.TargetMapId}: " +
+                error.Message);
             _session.Disconnect();
             throw;
         }

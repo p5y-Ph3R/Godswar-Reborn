@@ -26,7 +26,7 @@ internal sealed partial class GameSessionRegistry
 
         lock (state.Gate)
         {
-            var adjusted = state.Statuses.ApplyAdjustments(
+            var adjusted = state.Statuses.PreviewAdjustments(
                 authoritativeAt.ToUnixTimeMilliseconds(),
                 movementSpeed: 0,
                 physicalDefense: Math.Max(
@@ -61,7 +61,7 @@ internal sealed partial class GameSessionRegistry
 
         lock (state.Gate)
         {
-            var adjusted = state.Statuses.ApplyAdjustments(
+            var adjusted = state.Statuses.PreviewAdjustments(
                 authoritativeAt.ToUnixTimeMilliseconds(),
                 movementSpeed: 0,
                 physicalDefense: 0,

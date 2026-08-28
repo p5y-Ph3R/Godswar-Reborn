@@ -48,6 +48,7 @@ internal static partial class IntonedCombatSkillHandlerChecks
         await CheckMovementInterruptionAsync(combat);
         await CheckTargetGenerationRefreshInterruptionAsync(combat);
         await CheckSuccessfulDelayedCompletionAsync(combat);
+        await CheckInsufficientManaRejectionsAsync(combat);
         await CheckZodiacProjectedIntonationAsync(combat);
         await CheckCooldownRejectedCompletionAsync(
             combat,

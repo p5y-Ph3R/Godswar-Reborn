@@ -40,7 +40,6 @@ internal sealed partial class GameSessionRegistry
                 "Health mutation and ordinary delivery generation do not match.",
                 nameof(expectedSpawnGeneration));
         }
-
         var sent = 0;
         var recipients = InvokeWorldOwner(
             runtime,
@@ -111,6 +110,10 @@ internal sealed partial class GameSessionRegistry
         CancellationToken cancellationToken,
         string? label)
     {
+        Console.WriteLine(
+            "[monster] health delivery reconciliation " +
+            $"label={label ?? "unknown"} " +
+            $"objects={string.Join(',', deliveryLease.ReconciliationObjectIds)}");
         await session.SendAsync(
             PacketBuilder.RemoveWorldObjects(
                 deliveryLease.ReconciliationObjectIds.ToArray()),
@@ -276,9 +279,9 @@ internal sealed partial class GameSessionRegistry
         {
             var directHits = deliveryLease.DirectHealthMutations
                 .Select(mutation => hitsByObjectId[mutation.ObjectId])
-                .Select(hit => new SkillClusterDamageEntry(
-                    hit.HealthMutation.ObjectId,
-                    hit.ReportedDamage))
+                .Select(hit => CreateMonsterAreaDamageEntry(
+                    hit,
+                    deliveryLease.TerminalObjectIds))
                 .ToArray();
             await session.SendAsync(
                 PacketBuilder.SkillClusterDamage(
@@ -384,9 +387,9 @@ internal sealed partial class GameSessionRegistry
                 {
                     var directHits = deliveryLease.DirectHealthMutations
                         .Select(mutation => hitsByObjectId[mutation.ObjectId])
-                        .Select(hit => new SkillClusterDamageEntry(
-                            hit.HealthMutation.ObjectId,
-                            hit.ReportedDamage))
+                        .Select(hit => CreateMonsterAreaDamageEntry(
+                            hit,
+                            deliveryLease.TerminalObjectIds))
                         .ToArray();
                     if (publishCastVisual)
                     {
@@ -428,5 +431,16 @@ internal sealed partial class GameSessionRegistry
 
         return sent;
     }
+
+    private static SkillClusterDamageEntry CreateMonsterAreaDamageEntry(
+        MonsterAreaDamageBroadcastHit hit,
+        IReadOnlyList<uint> terminalObjectIds) =>
+        new(
+            hit.HealthMutation.ObjectId,
+            hit.ReportedDamage,
+            AttackType: terminalObjectIds.Contains(
+                hit.HealthMutation.ObjectId)
+                ? (byte)5
+                : (byte)1);
 
 }

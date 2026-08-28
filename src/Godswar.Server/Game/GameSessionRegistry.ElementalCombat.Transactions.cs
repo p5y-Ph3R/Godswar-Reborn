@@ -165,9 +165,21 @@ internal sealed partial class GameSessionRegistry
                 return PveElementalCommitResult.Empty;
             }
 
-            var monsterSnapshot = InvokeWorldOwner(
+            var encounterSnapshot = InvokeWorldOwner(
                 runtime,
-                static map => map.SnapshotMonsters());
+                static map =>
+                {
+                    var monsters = map.SnapshotMonsters();
+                    var medusaOwned = map.TryGetMedusaOwnershipSnapshot(
+                        out var ownership)
+                        ? ownership.MonsterBindings
+                            .Select(static binding => (
+                                binding.Identity.ObjectId,
+                                binding.Identity.SpawnGeneration))
+                            .ToHashSet()
+                        : [];
+                    return (Monsters: monsters, MedusaOwned: medusaOwned);
+                });
             lock (_pveElementalCommitGate)
             lock (authority.Source.Character.VitalsSync)
             lock (authority.SourceState.Gate)
@@ -180,7 +192,8 @@ internal sealed partial class GameSessionRegistry
                     authority.SourceMaximumMana,
                     provenance,
                     committedHits,
-                    monsterSnapshot,
+                    encounterSnapshot.Monsters,
+                    encounterSnapshot.MedusaOwned,
                     committedAt);
             }
         }

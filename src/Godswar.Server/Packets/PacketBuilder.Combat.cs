@@ -51,6 +51,49 @@ internal static partial class PacketBuilder
         return packet;
     }
 
+    public static byte[] MonsterSkillCastVisual(
+        uint casterObjectId,
+        uint targetObjectId,
+        uint skillId,
+        float casterX,
+        float casterZ,
+        float targetX,
+        float targetZ)
+    {
+        var packet = new byte[40];
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(0, 2),
+            (ushort)packet.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(2, 2),
+            0x2738);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(4, 4),
+            casterObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(8, 4),
+            skillId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(16, 4),
+            targetObjectId);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            packet.AsSpan(20, 4),
+            10);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(24, 4),
+            casterX);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(28, 4),
+            casterZ);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(32, 4),
+            targetX);
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(36, 4),
+            targetZ);
+        return packet;
+    }
+
     public static byte[] SelfTargetSkillCastVisual(
         ReadOnlySpan<byte> clientSkillCastPacket,
         uint objectId)
@@ -345,14 +388,31 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] TalentExperienceGain(int gainedTalentExperience)
+    // Attribute-note type 5 is a Reborn extension. The client localization
+    // patch must publish Attr_Note_5 before the server emits this packet.
+    public static byte[] TalentPointGain(int gainedTalentPoints) =>
+        AttributeGain(
+            attributeNoteType: 5,
+            gainedTalentPoints);
+
+    public static byte[] TalentExperienceGain(int gainedTalentExperience) =>
+        AttributeGain(
+            attributeNoteType: 4,
+            gainedTalentExperience);
+
+    private static byte[] AttributeGain(
+        int attributeNoteType,
+        int gainedValue)
     {
         var packet = new byte[12];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), AttributeGainOpcode);
-        // Attribute-note type 4 is "Talent Exp" in the shipped client data.
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), 4);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8, 4), Math.Max(0, gainedTalentExperience));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(4, 4),
+            attributeNoteType);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(8, 4),
+            Math.Max(0, gainedValue));
         return packet;
     }
 

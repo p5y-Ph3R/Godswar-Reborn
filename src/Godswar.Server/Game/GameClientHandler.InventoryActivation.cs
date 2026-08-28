@@ -19,6 +19,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!IsHostileStatusItemUseAllowed(DateTimeOffset.UtcNow))
+        {
+            return;
+        }
+
         if (!TryReadBreakItemEquip(
                 packet.Payload,
                 out var sourceSlot))

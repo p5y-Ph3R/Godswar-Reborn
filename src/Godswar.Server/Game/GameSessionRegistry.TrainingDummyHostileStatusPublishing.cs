@@ -38,7 +38,9 @@ internal sealed partial class GameSessionRegistry
         PlayerStatusSnapshot baseline,
         DateTimeOffset now,
         out ElementalClientStatusOverlay elementalOverlay,
-        out TrainingDummyHostileStatusClientOverlay hostileOverlay)
+        out TrainingDummyHostileStatusClientOverlay hostileOverlay,
+        out MedusaClientStatusOverlay medusaOverlay,
+        out PlayerStatusSnapshot snapshotWithoutMedusa)
     {
         var elemental = MergeTrainingDummyElementalStatusOverlay(
             context,
@@ -48,9 +50,12 @@ internal sealed partial class GameSessionRegistry
         hostileOverlay = CaptureTrainingDummyHostileStatusOverlay(
             context,
             now);
-        return TrainingDummyHostileStatusClientProjection.Merge(
+        var hostile = TrainingDummyHostileStatusClientProjection.Merge(
             elemental,
             hostileOverlay);
+        snapshotWithoutMedusa = hostile;
+        medusaOverlay = CaptureMedusaClientStatusOverlay(context, now);
+        return MedusaClientStatusProjection.Merge(hostile, medusaOverlay);
     }
 
     internal async Task<bool>
@@ -73,6 +78,7 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -83,7 +89,8 @@ internal sealed partial class GameSessionRegistry
                 reason,
                 force: false,
                 broadcast: true,
-                cancellationToken);
+                cancellationToken,
+                claimedDisconnects: admissionClaims);
             if (decision.Applied && decision.ActiveStatus is { } active)
             {
                 ScheduleTrainingDummyHostileStatusExpiry(
@@ -98,6 +105,7 @@ internal sealed partial class GameSessionRegistry
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 
@@ -131,6 +139,7 @@ internal sealed partial class GameSessionRegistry
                 await Task.Delay(delay, state.Lifetime.Token);
             }
 
+            var admissionClaims = new ExactStatusDisconnectClaims();
             await state.Gate.WaitAsync(state.Lifetime.Token);
             try
             {
@@ -142,11 +151,13 @@ internal sealed partial class GameSessionRegistry
                     revision,
                     force: true,
                     broadcast: true,
-                    state.Lifetime.Token);
+                    state.Lifetime.Token,
+                    claimedDisconnects: admissionClaims);
             }
             finally
             {
                 state.Gate.Release();
+                admissionClaims.CompleteAll(this);
             }
         }
         catch (OperationCanceledException) when (

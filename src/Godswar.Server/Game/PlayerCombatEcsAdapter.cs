@@ -18,6 +18,7 @@ internal sealed partial class PlayerCombatEcsAdapter
 {
     private readonly object _gate = new();
     private readonly List<EntityId> _targetEntities = [];
+    private readonly Dictionary<uint, Guid> _targetRuntimeInstanceIds = [];
     private readonly Dictionary<KillKey, PlayerCombatKillGuard> _killGuards = [];
     private EcsWorld? _world;
     private EcsSystemScheduler? _scheduler;
@@ -78,7 +79,8 @@ internal sealed partial class PlayerCombatEcsAdapter
                 registry,
                 session,
                 character,
-                request);
+                request,
+                out var combatAuthority);
             var intentId = NextIntentId();
             PlayerCombatEcsBoundary.QueueIntent(
                 world,
@@ -150,10 +152,43 @@ internal sealed partial class PlayerCombatEcsAdapter
                 PlayerCombatMutationRejectionReason.None;
             foreach (var damageIntent in damageIntents)
             {
+                var resolvedIndex = Array.FindIndex(
+                    resolvedTargets,
+                    resolved =>
+                        resolved.TargetOrder ==
+                            damageIntent.TargetOrder &&
+                        resolved.TargetObjectId ==
+                            damageIntent.TargetObjectId);
+                if (resolvedIndex < 0)
+                {
+                    throw new InvalidOperationException(
+                        "A combat damage intent has no matching typed " +
+                        "resolution.");
+                }
+
                 var outcome = ApplyMutation(
                     registry,
+                    session,
                     damageIntent,
+                    resolvedTargets[resolvedIndex].Resolution,
+                    combatAuthority,
                     out var damageResult);
+                if (outcome.Applied &&
+                    outcome.AuthoritativeRequestedDamage is not null)
+                {
+                    resolvedTargets[resolvedIndex] =
+                        resolvedTargets[resolvedIndex] with
+                        {
+                            Resolution =
+                                resolvedTargets[resolvedIndex].Resolution
+                                    with
+                                    {
+                                        Damage = outcome
+                                            .AuthoritativeRequestedDamage
+                                            .Value
+                                    }
+                        };
+                }
                 PlayerCombatEcsBoundary.QueueMutationOutcome(
                     world,
                     _player,

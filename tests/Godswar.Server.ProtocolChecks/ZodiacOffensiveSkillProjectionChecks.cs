@@ -46,13 +46,14 @@ internal static class ZodiacOffensiveSkillProjectionChecks
             var projected = ZodiacOffensiveSkillProjection.Resolve(
                 character,
                 authored);
+            var additionalMana = Math.Min(90, sample.Mana);
             Check.True(
                 projected.Applied &&
                 projected.FlatGridIndex == 0 &&
                 projected.FlatLevel == sample.Level &&
                 projected.PercentageGridIndex == -1 &&
-                projected.AdditionalMana == sample.Mana &&
-                projected.Skill.Mp == 90 + sample.Mana &&
+                projected.AdditionalMana == additionalMana &&
+                projected.Skill.Mp == 90 + additionalMana &&
                 projected.Skill.Power1 == authored.Power1 &&
                 projected.Skill.Power2 == 40m + sample.Power,
                 $"Type-1 level {sample.Level} uses the shipped fixed power and MP entries");
@@ -90,8 +91,9 @@ internal static class ZodiacOffensiveSkillProjectionChecks
             var projected = ZodiacOffensiveSkillProjection.Resolve(
                 character,
                 authored);
-            var additionalMana =
-                (90 * sample.Percent + 99) / 100;
+            var additionalMana = Math.Min(
+                90,
+                (90 * sample.Percent + 99) / 100);
             Check.True(
                 projected.Applied &&
                 projected.PercentageLevel == sample.Requested &&
@@ -138,11 +140,11 @@ internal static class ZodiacOffensiveSkillProjectionChecks
         Check.True(
             succeeded &&
             percentageManaEffectiveLevel == 45 &&
-            additionalMana == 120 + 270 &&
-            projected.Mp == 480 &&
+            additionalMana == 90 &&
+            projected.Mp == 180 &&
             projected.Power1 == 1.45m &&
             projected.Power2 == 5_040m,
-            "matching Type-1 and Type-2 rows stack flat power, percentage power, fixed MP, and base-MP percentage");
+            "matching Type-1 and Type-2 rows retain their power while the combined MP surcharge is capped at authored MP");
     }
 
     private static void CheckFamilyMatchingAndFailClosedState()

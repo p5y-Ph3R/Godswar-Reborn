@@ -7,8 +7,11 @@ using Godswar.Server.Protocol;
 
 namespace Godswar.Server.Networking;
 
-internal sealed class ClientSession : IAsyncDisposable
+internal sealed partial class ClientSession : IAsyncDisposable
 {
+    private static readonly Exception SessionDisconnectedReason =
+        new OperationCanceledException("Session disconnected.");
+
     private readonly NetworkEndpointRole _endpointRole;
     private readonly BoundedReliableEgress _egress;
     private readonly CancellationTokenSource _lifetime = new();
@@ -39,11 +42,14 @@ internal sealed class ClientSession : IAsyncDisposable
             _options,
             endpointRole,
             WriteEncryptedAsync,
-            DisconnectTransport,
+            TerminalizeFromEgress,
             _timeProvider);
     }
 
     public string RemoteEndPoint => _transport.RemoteEndPoint;
+
+    internal bool IsDisconnected =>
+        Volatile.Read(ref _disconnected) != 0;
 
     // Raw packet bytes, endpoints, and credential-adjacent fields are never
     // production diagnostics. Protocol fixtures provide the supported packet
@@ -136,14 +142,43 @@ internal sealed class ClientSession : IAsyncDisposable
 
     public void Disconnect()
     {
-        if (Interlocked.Exchange(ref _disconnected, 1) != 0)
+        if (!TryClaimDisconnect())
         {
             return;
         }
 
-        CancelLifetime();
-        _egress.Abort(new OperationCanceledException("Session disconnected."));
-        DisconnectTransport();
+        CompleteClaimedDisconnect(SessionDisconnectedReason);
+    }
+
+    internal bool TryClaimDisconnect() =>
+        Interlocked.CompareExchange(ref _disconnected, 1, 0) == 0;
+
+    internal void CompleteClaimedDisconnect(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        try
+        {
+            CancelLifetime();
+        }
+        catch
+        {
+            // A cancellation callback cannot skip egress and transport
+            // teardown after the disconnect epoch has been claimed.
+        }
+        try
+        {
+            _egress.Abort(error);
+        }
+        catch
+        {
+        }
+        try
+        {
+            DisconnectTransport();
+        }
+        catch
+        {
+        }
     }
 
     public async Task<GamePacket?> ReadPacketAsync(CancellationToken cancellationToken)
@@ -466,11 +501,10 @@ internal sealed class ClientSession : IAsyncDisposable
     private void DeadlineExceeded(NetworkTimeoutStage stage)
     {
         NetworkRuntimeMetrics.RecordTimeout(_endpointRole, stage);
-        if (Interlocked.Exchange(ref _disconnected, 1) == 0)
+        var error = new NetworkDeadlineException(stage);
+        if (TryClaimDisconnect())
         {
-            CancelLifetime();
-            _egress.Abort(new NetworkDeadlineException(stage));
-            DisconnectTransport();
+            CompleteClaimedDisconnect(error);
         }
     }
 

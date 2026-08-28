@@ -15,12 +15,15 @@ internal sealed class PetHealingTalentSystem : IEcsSystem
         MonsterPlayerDamageSystem.SystemOrder + 10;
 
     private readonly ProcessPetHealingCooldownStore _cooldowns;
+    private readonly PetHealingCooldownTransaction? _transaction;
 
     public PetHealingTalentSystem(
-        ProcessPetHealingCooldownStore cooldowns)
+        ProcessPetHealingCooldownStore cooldowns,
+        PetHealingCooldownTransaction? transaction = null)
     {
         _cooldowns = cooldowns ??
             throw new ArgumentNullException(nameof(cooldowns));
+        _transaction = transaction;
     }
 
     public int Order => SystemOrder;
@@ -76,38 +79,57 @@ internal sealed class PetHealingTalentSystem : IEcsSystem
                 resolvedHealing,
                 Math.Max(0, vitals.MaximumHp - vitals.CurrentHp));
             if (appliedHealing <= 0 ||
-                !_cooldowns.TryClaim(
+                !_cooldowns.TryReserve(
                     new PetHealingCooldownKey(
                         identity.CharacterId,
                         pet.PetId),
                     damage.ResolvedAt,
                     PetHealingTalentPolicy.Cooldown,
-                    out var cooldownReadyAt))
+                    out var cooldownReadyAt,
+                    out var cooldownReservation))
             {
                 continue;
             }
 
-            var beforeHealth = vitals.CurrentHp;
-            var beforeRevision = vitals.Revision;
-            vitals.CurrentHp = checked(
-                vitals.CurrentHp + appliedHealing);
-            vitals.Revision = checked(vitals.Revision + 1);
-            context.Events.Publish(
-                new PetHealingAppliedEvent(
-                    damage.Player,
-                    damage.AttackEventId,
-                    identity.CharacterId,
-                    identity.ObjectId,
-                    pet.PetId,
-                    PetHealingTalentPolicy.Version,
-                    resolvedHealing,
-                    appliedHealing,
-                    beforeHealth,
-                    vitals.CurrentHp,
-                    beforeRevision,
-                    vitals.Revision,
-                    damage.ResolvedAt,
-                    cooldownReadyAt));
+            var transactionRecorded =
+                _transaction?.TryRecord(cooldownReservation) == true;
+            try
+            {
+                var beforeHealth = vitals.CurrentHp;
+                var beforeRevision = vitals.Revision;
+                vitals.CurrentHp = checked(
+                    vitals.CurrentHp + appliedHealing);
+                vitals.Revision = checked(vitals.Revision + 1);
+                context.Events.Publish(
+                    new PetHealingAppliedEvent(
+                        damage.Player,
+                        damage.AttackEventId,
+                        identity.CharacterId,
+                        identity.ObjectId,
+                        pet.PetId,
+                        PetHealingTalentPolicy.Version,
+                        resolvedHealing,
+                        appliedHealing,
+                        beforeHealth,
+                        vitals.CurrentHp,
+                        beforeRevision,
+                        vitals.Revision,
+                        damage.ResolvedAt,
+                        cooldownReadyAt,
+                        cooldownReservation));
+            }
+            catch
+            {
+                if (transactionRecorded)
+                {
+                    _transaction!.RollBack(_cooldowns);
+                }
+                else
+                {
+                    _cooldowns.RollBack(cooldownReservation);
+                }
+                throw;
+            }
         }
     }
 }

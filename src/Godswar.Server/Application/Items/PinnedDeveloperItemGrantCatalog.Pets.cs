@@ -7,6 +7,8 @@ internal sealed partial class PinnedDeveloperItemGrantCatalog
 {
     private static readonly PetConsumableGrantSpec[] PetConsumableGrantSpecs =
     [
+        new(10084, "Mysterious Tuck Net", "900,936", 0, true, 99,
+            ["capturetool", "catchtool", "tucknet"], Skill: 4734),
         new(10103, "Merged Spirit", "756,972", 15, false, 99,
             ["mergedspirit", "mergingspirit", "mergespirit"]),
         new(10104, "Rebirth Spirit", "792,972", 16, false, 99,
@@ -20,7 +22,8 @@ internal sealed partial class PinnedDeveloperItemGrantCatalog
         new(10108, "Seal Jade (Empty)", "936,972", null, false, 99,
             ["emptysealjade", "sealjadeempty", "sealstone"]),
         new(10134, "Morning Dew 5", "144,756", 18, true, 99,
-            ["mdew5", "morningdew5"]),
+            ["mdew5", "morningdew5"], Skill: 4721,
+            Values: 10_000_000),
         new(11015, "Pet Gender Reverser", "72,900", null, false, 1,
             ["petgenderreverser", "genderreverser"],
             "./Localization/en_us/UI/Texture/Icon.gwo")
@@ -131,23 +134,29 @@ internal sealed partial class PinnedDeveloperItemGrantCatalog
             (spec.Use
                 ? !HasString(root, "Use", "1")
                 : root.TryGetProperty("Use", out _)) ||
+            (spec.Skill.HasValue
+                ? !HasString(
+                    root,
+                    "Skill",
+                    spec.Skill.Value.ToString(
+                        CultureInfo.InvariantCulture))
+                : root.TryGetProperty("Skill", out _)) ||
+            (spec.Values.HasValue
+                ? !HasString(
+                    root,
+                    "Values",
+                    spec.Values.Value.ToString(
+                        CultureInfo.InvariantCulture))
+                : root.TryGetProperty("Values", out _)) ||
             root.EnumerateObject().Count() !=
                 8 + (spec.ItemType.HasValue ? 1 : 0) +
-                (spec.Use ? 1 : 0) +
-                (spec.ItemId == 10134 ? 2 : 0))
+                (spec.Use ? 1 : 0) + (spec.Skill.HasValue ? 1 : 0) +
+                (spec.Values.HasValue ? 1 : 0))
         {
             throw new InvalidOperationException(
                 $"Pet consumable {spec.ItemId} has invalid stack metadata.");
         }
 
-        if (spec.ItemId == 10134 &&
-            (!HasString(root, "Skill", "4721") ||
-             !HasString(root, "ItemType", "18") ||
-             !HasString(root, "Values", "10000000")))
-        {
-            throw new InvalidOperationException(
-                "Morning Dew 5 conflicts with the stock client definition.");
-        }
     }
 
     private sealed record PetConsumableGrantSpec(
@@ -158,7 +167,9 @@ internal sealed partial class PinnedDeveloperItemGrantCatalog
         bool Use,
         short StackCap,
         IReadOnlyList<string> Aliases,
-        string? Texture = null);
+        string? Texture = null,
+        int? Skill = null,
+        long? Values = null);
 
     private sealed record PetConsumableDeveloperGrant(
         PetConsumableGrantSpec Spec,

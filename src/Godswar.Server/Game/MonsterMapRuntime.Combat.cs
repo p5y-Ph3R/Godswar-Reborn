@@ -10,7 +10,7 @@ internal sealed partial class MonsterMapRuntime
     {
         var positionsChanged = false;
         var distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
-        if (distance <= CombatRange)
+        if (distance <= monster.AttackRange)
         {
             if (monster.CombatPhase == MonsterCombatPhase.Chasing || monster.IsMoving)
             {
@@ -45,7 +45,19 @@ internal sealed partial class MonsterMapRuntime
                         : target.ObjectId,
                     TargetLifeRevision: target.ObjectId == 0
                         ? null
-                        : target.LifeRevision));
+                        : target.LifeRevision,
+                    TargetOwnership: target.ObjectId == 0
+                        ? null
+                        : target.Ownership,
+                    TargetWorldInstanceId: target.ObjectId == 0
+                        ? null
+                        : target.WorldInstanceId,
+                    TargetWorldRevision: target.ObjectId == 0
+                        ? null
+                        : target.WorldRevision,
+                    TargetWorldMembershipEpoch: target.ObjectId == 0
+                        ? null
+                        : target.WorldMembershipEpoch));
             }
 
             return false;
@@ -72,7 +84,9 @@ internal sealed partial class MonsterMapRuntime
         {
             var stepAt = monster.NextMovementStepAt;
             distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
-            var remainingDistance = Math.Max(0d, distance - CombatRange);
+            var remainingDistance = Math.Max(
+                0d,
+                distance - monster.AttackRange);
             if (remainingDistance <= double.Epsilon)
             {
                 StopCombatMovement(monster);
@@ -102,7 +116,7 @@ internal sealed partial class MonsterMapRuntime
             positionsChanged = true;
 
             distance = Math.Sqrt(DistanceSquared(monster.CurrentX, monster.CurrentZ, target.X, target.Z));
-            if (distance <= CombatRange + 0.0001d)
+            if (distance <= monster.AttackRange + 0.0001d)
             {
                 StopCombatMovement(monster);
                 monster.CombatPhase = MonsterCombatPhase.Attacking;
@@ -146,7 +160,11 @@ internal sealed partial class MonsterMapRuntime
                     MonsterRuntimeUpdateKind.Returned,
                     CreateSnapshot(monster),
                     MovementEndField: 1));
-                updates.Add(RetireReturnedMonster(monster, stepAt));
+                if (ShouldRetireReturnedMonster(monster))
+                {
+                    updates.Add(RetireReturnedMonster(monster, stepAt));
+                }
+
                 break;
             }
 
@@ -190,12 +208,43 @@ internal sealed partial class MonsterMapRuntime
         monster.RemainingMovementTicks = 0;
     }
 
+    private static bool SetAggroTarget(
+        MonsterRuntimeState monster,
+        int characterId,
+        DateTimeOffset now)
+    {
+        var stoppedMovement = monster.IsMoving;
+        monster.AggroCharacterId = characterId;
+        monster.CombatPhase = MonsterCombatPhase.None;
+        monster.HasSentInitialChase = false;
+        StopCombatMovement(monster);
+        monster.MovementTicks = 0;
+        monster.NextAttackAt = now + TickInterval;
+        return stoppedMovement;
+    }
+
     private static MonsterRuntimeUpdate BeginReturnHome(
+        MonsterRuntimeState monster,
+        DateTimeOffset now)
+    {
+        var returnedImmediately = BeginReturnHomeState(monster, now);
+        return new MonsterRuntimeUpdate(
+            returnedImmediately
+                ? MonsterRuntimeUpdateKind.Returned
+                : MonsterRuntimeUpdateKind.Started,
+            CreateSnapshot(monster),
+            MovementMode: returnedImmediately ? 1u : 0u,
+            MovementEndField: returnedImmediately ? 1u : null);
+    }
+
+    private static bool BeginReturnHomeState(
         MonsterRuntimeState monster,
         DateTimeOffset now)
     {
         monster.StunnedUntil = null;
         monster.AggroCharacterId = null;
+        monster.FirstHitCharacterId = null;
+        monster.DamageThreat.Clear();
         monster.HasSentInitialChase = false;
         monster.NextAttackAt = default;
         monster.DespawnAt = null;
@@ -206,10 +255,7 @@ internal sealed partial class MonsterMapRuntime
         if (distance <= 0.0001d)
         {
             CompleteReturnHome(monster, now);
-            return new MonsterRuntimeUpdate(
-                MonsterRuntimeUpdateKind.Returned,
-                CreateSnapshot(monster),
-                MovementEndField: 1);
+            return true;
         }
 
         monster.CombatPhase = MonsterCombatPhase.Returning;
@@ -223,10 +269,7 @@ internal sealed partial class MonsterMapRuntime
             (float)((deltaZ / distance) * movementStep),
             monster.HomeX,
             monster.HomeZ);
-        return new MonsterRuntimeUpdate(
-            MonsterRuntimeUpdateKind.Started,
-            CreateSnapshot(monster),
-            MovementMode: 0);
+        return false;
     }
 
     private static void AddReturnStart(
@@ -236,7 +279,8 @@ internal sealed partial class MonsterMapRuntime
     {
         var returnUpdate = BeginReturnHome(monster, now);
         updates.Add(returnUpdate);
-        if (returnUpdate.Kind == MonsterRuntimeUpdateKind.Returned)
+        if (returnUpdate.Kind == MonsterRuntimeUpdateKind.Returned &&
+            ShouldRetireReturnedMonster(monster))
         {
             updates.Add(RetireReturnedMonster(monster, now));
         }
@@ -246,6 +290,8 @@ internal sealed partial class MonsterMapRuntime
     {
         monster.StunnedUntil = null;
         monster.AggroCharacterId = null;
+        monster.FirstHitCharacterId = null;
+        monster.DamageThreat.Clear();
         monster.CombatPhase = MonsterCombatPhase.AwaitingRetirement;
         monster.HasSentInitialChase = false;
         monster.NextAttackAt = default;
@@ -263,6 +309,12 @@ internal sealed partial class MonsterMapRuntime
         MonsterRuntimeState monster,
         DateTimeOffset now)
     {
+        if (monster.RespawnPolicy != MonsterRespawnPolicy.Timed)
+        {
+            throw new InvalidOperationException(
+                "Only timed monster lifecycles retire for replacement.");
+        }
+
         // Keep the damaged entity visible through its immutable exact-home
         // Returned snapshot, then retire it later in the same ordered update
         // batch. The following world tick publishes a new full-health runtime
@@ -276,10 +328,34 @@ internal sealed partial class MonsterMapRuntime
             CreateSnapshot(monster));
     }
 
+    private static bool ShouldRetireReturnedMonster(
+        MonsterRuntimeState monster) =>
+        monster.RespawnPolicy switch
+        {
+            MonsterRespawnPolicy.Timed => true,
+            MonsterRespawnPolicy.Never => false,
+            _ => throw new InvalidOperationException(
+                "Monster state contains an unsupported respawn policy.")
+        };
+
+    private static void SettleReturnedMonster(MonsterRuntimeState monster)
+    {
+        if (monster.RespawnPolicy != MonsterRespawnPolicy.Never ||
+            monster.CombatPhase != MonsterCombatPhase.AwaitingRetirement)
+        {
+            throw new InvalidOperationException(
+                "Only a returned never-respawn monster can settle in place.");
+        }
+
+        monster.CombatPhase = MonsterCombatPhase.None;
+    }
+
     private static void ResetCombat(MonsterRuntimeState monster, DateTimeOffset now)
     {
         monster.StunnedUntil = null;
         monster.AggroCharacterId = null;
+        monster.FirstHitCharacterId = null;
+        monster.DamageThreat.Clear();
         monster.CombatPhase = MonsterCombatPhase.None;
         monster.HasSentInitialChase = false;
         StopCombatMovement(monster);

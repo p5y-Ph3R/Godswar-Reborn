@@ -117,7 +117,9 @@ internal enum PetDurableReceiptStatus : byte
     PetSkillBookPriorTierRequired = 101,
     PetSkillBookTraitRequirementNotMet = 102,
     PetSkillBookNoOpenSlot = 103,
-    PetSkillBookInvalidState = 104
+    PetSkillBookInvalidState = 104,
+    PetCaptured = 105,
+    PetCaptureBagFull = 106
 }
 
 internal sealed partial record PetDurableReceipt(
@@ -149,7 +151,8 @@ internal sealed partial record PetDurableReceipt(
     PetSkillLearnEvidence? SkillLearn = null)
 {
     public bool Succeeded =>
-        Status is PetDurableReceiptStatus.EggHatched or
+        Status is PetDurableReceiptStatus.PetCaptured or
+            PetDurableReceiptStatus.EggHatched or
             PetDurableReceiptStatus.EquipmentEquipped or
             PetDurableReceiptStatus.PetLevelUpgraded or
             PetDurableReceiptStatus.PresenceChanged or
@@ -218,6 +221,8 @@ internal sealed partial record PetDurableReceipt(
                 (PresenceOperation is >= 1 and <= 3) ||
             Status == PetDurableReceiptStatus.EggHatched &&
                 (PetId <= 0 || KitBagSlot < 0) ||
+            Status == PetDurableReceiptStatus.PetCaptured &&
+                (PetId != 0 || KitBagSlot < 0) ||
             Status == PetDurableReceiptStatus.EquipmentEquipped &&
                 (KitBagSlot < 0 || EquipmentSlot < 0) ||
             Status is (

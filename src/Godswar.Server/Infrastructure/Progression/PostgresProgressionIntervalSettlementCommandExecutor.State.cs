@@ -28,6 +28,7 @@ internal sealed partial class
             FROM public.character_base
             WHERE account_id = @accountId
               AND id = @characterId
+              AND server_id = @realmId
               AND lifecycle_state = 'active'
             FOR UPDATE;
             """,
@@ -39,6 +40,9 @@ internal sealed partial class
         command.Parameters.AddWithValue(
             "characterId",
             subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -109,6 +113,7 @@ internal sealed partial class
                 zodiac_last_compensation_day = @lastCompensationDay
             WHERE account_id = @accountId
               AND id = @characterId
+              AND server_id = @realmId
               AND lifecycle_state = 'active';
             """,
             connection,
@@ -119,6 +124,9 @@ internal sealed partial class
         command.Parameters.AddWithValue(
             "characterId",
             subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
         command.Parameters.AddWithValue(
             "energy",
             accrual.CurrentEnergy);
@@ -184,6 +192,7 @@ internal sealed partial class
             WHERE modifier.character_id = @characterId
               AND character.id = modifier.character_id
               AND character.account_id = @accountId
+              AND character.server_id = @realmId
               AND character.lifecycle_state = 'active'
               AND (
                   modifier.remaining_online_ticks > 0
@@ -204,6 +213,9 @@ internal sealed partial class
         command.Parameters.AddWithValue(
             "characterId",
             subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
         command.Parameters.Add(
             "onlineFrom",
             NpgsqlDbType.TimestampTz).Value =

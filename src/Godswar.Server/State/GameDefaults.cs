@@ -30,6 +30,19 @@ internal static class GameDefaults
         character.PositionZ = StartingPositionZ;
     }
 
+    public static bool TryRecoverUnavailableInstanceLocation(
+        GameCharacter character)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        if (character.CurrentMap is not (200 or 204))
+        {
+            return false;
+        }
+
+        InitializeStartingLocation(character);
+        return true;
+    }
+
     public static string DefaultEquipment(byte profession)
     {
         return profession switch

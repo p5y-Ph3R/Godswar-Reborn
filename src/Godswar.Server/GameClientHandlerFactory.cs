@@ -2,6 +2,7 @@ using Godswar.Server.Application.Accounts;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Coordination;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Domain.World.Instances;
@@ -26,6 +27,7 @@ internal sealed class GameClientHandlerFactory(
     ICharacterCheckpointCoordinator characterCheckpoints,
     ServerGameplayPersistenceProviders gameplayPersistence,
     PostgresApplicationDataRuntime? postgresRuntime,
+    RealmCalendar realmCalendar,
     IPlayerCoordinationLeaseIssuer? playerCoordination = null,
     GameplayRuntimeCatalogs? gameplayCatalogs = null,
     GameplayItemContent? itemContent = null,
@@ -35,8 +37,11 @@ internal sealed class GameClientHandlerFactory(
     public GameClientHandler Create(
         ClientSession session,
         SecurePhase4AcceptanceFaults? phase4AcceptanceFaults = null,
-        LegacyAuthenticationAccess? legacyAuthenticationAccess = null) =>
-        new(
+        LegacyAuthenticationAccess? legacyAuthenticationAccess = null)
+    {
+        registry.ConfigureMedusaCompletionRewards(
+            postgresRuntime?.MedusaCompletionRewards);
+        return new(
             session,
             store,
             registry,
@@ -119,6 +124,9 @@ internal sealed class GameClientHandlerFactory(
                 postgresRuntime?.RealmCatalog,
             processRealmId:
                 processRealmId,
+            realmCalendar:
+                realmCalendar ?? throw new ArgumentNullException(
+                    nameof(realmCalendar)),
             warehouseSnapshots:
                 postgresRuntime?.WarehouseSnapshots,
             warehouseTransferCommands:
@@ -126,5 +134,8 @@ internal sealed class GameClientHandlerFactory(
             warehouseExpansionCommands:
                 postgresRuntime?.WarehouseExpansionCommands,
             warehouseExpansionPolicy:
-                postgresRuntime?.WarehouseExpansionPolicy);
+                postgresRuntime?.WarehouseExpansionPolicy,
+            medusaDailyEntries:
+                postgresRuntime?.MedusaDailyEntries);
+    }
 }

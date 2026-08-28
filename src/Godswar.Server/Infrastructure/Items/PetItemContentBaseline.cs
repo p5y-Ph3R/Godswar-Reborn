@@ -28,6 +28,8 @@ internal static class PetItemContentBaseline
             Skill: 4720,
             Mode: 4,
             Use: 1),
+        new(10084, "Pet10084", "Mysterious Tuck Net", "900,936", 99,
+            ItemType: 0, Skill: 4734, Use: 1),
         new(10099, "Pet10099", "Pet Enhance Spring", "648,936", 99, 5, Use: 1),
         new(10100, "Pet10100", "Golden Apple Juice", "504,936", 99, 1, Use: 1),
         new(10101, "Pet10101", "Strong Purge Potion", "612,936", 99),

@@ -11,21 +11,20 @@ namespace Godswar.Server.Infrastructure.WorldContent;
 internal static class NpcDialogueBaselineV8
 {
     public const int ExpectedTextCount = 383;
-    public const int ExpectedProfileCount = 8;
-    public const int ExpectedRouteCount = 16;
-    public const int ExpectedMenuEntryCount = 47;
+    public const int ExpectedProfileCount = 10;
+    public const int ExpectedRouteCount = 20;
+    public const int ExpectedMenuEntryCount = 53;
     public const int ExpectedHashedEntryCount =
         ExpectedTextCount + ExpectedRouteCount;
     public const string ExpectedSpawnRevision =
-        NpcDialogueBaselineV5.ExpectedSpawnRevision;
+        NpcDialogueBaselineV7.ExpectedSpawnRevision;
     public const string ExpectedRevision =
-        "A4D40EC92EC6B637C2743A402DC38D3D4BA45E20AB3124C1D6FCEF284852ABB4";
-    public const string Source =
-        "reviewed-published-npc-dialogue-warehouse-v1";
+        "5D36E9C62A8D68B9209C4B2FC149DC2D6DA3225D182382976D919A003E37040B";
+    public const string Source = "reviewed-published-npc-dialogue-v8";
 
     public static ImmutableArray<NpcDialogueProfileBaseline> Profiles { get; } =
     [
-        .. NpcDialogueBaselineV5.Profiles,
+        .. NpcDialogueBaselineV7.Profiles,
         new(
             "warehouse_manager",
             WarehouseNpcProtocol.ManagerDialogIndex,
@@ -36,7 +35,7 @@ internal static class NpcDialogueBaselineV8
 
     public static ImmutableArray<NpcDialogueBindingBaseline> Bindings { get; } =
     [
-        .. NpcDialogueBaselineV5.Bindings,
+        .. NpcDialogueBaselineV7.Bindings,
         new("Athens_134", "Athens_134", "warehouse_manager"),
         new("Sparta_134", "Sparta_134", "warehouse_manager")
     ];

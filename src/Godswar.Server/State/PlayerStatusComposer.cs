@@ -24,7 +24,39 @@ internal sealed record ActiveRuntimeStatus(
 internal sealed record PlayerStatusSnapshot(
     IReadOnlyList<ClientStatusEffect> Effects,
     ClientStatusAggregate Aggregate,
-    string Fingerprint);
+    string Fingerprint)
+{
+    public IReadOnlyList<ClientStatusPresentation> Presentations
+        { get; init; } = Effects
+            .Select(static effect => new ClientStatusPresentation(
+                effect,
+                Beneficial: false,
+                Priority: 0,
+                ClientStatusPresentationClass.AuthoritativeBaseline))
+            .ToArray();
+}
+
+internal enum ClientStatusPresentationClass : byte
+{
+    AuthoritativeControl = 1,
+    MedusaAmplifier = 2,
+    AuthoritativeBaseline = 3,
+    DisplayOnly = 4
+}
+
+internal readonly record struct ClientStatusPresentation(
+    ClientStatusEffect Effect,
+    bool Beneficial,
+    int Priority,
+    ClientStatusPresentationClass PresentationClass,
+    ClientStatusPresentationSource Source =
+        ClientStatusPresentationSource.AuthoritativeBaseline);
+
+internal enum ClientStatusPresentationSource : byte
+{
+    AuthoritativeBaseline = 0,
+    Medusa = 1
+}
 
 /// <summary>
 /// Composes MSG_STATUS as a complete replacement snapshot. The original server
@@ -53,29 +85,23 @@ internal static class PlayerStatusComposer
             .OrderBy(static status => status.StatusId)
             .ToArray();
 
-        var beneficialCount = activeExperience.Length +
-            activeRuntime.Count(static status => status.Beneficial);
-        var totalCount = activeExperience.Length + activeRuntime.Length;
-        if (beneficialCount > MaximumBeneficialStatuses)
-        {
-            throw new InvalidOperationException(
-                $"The client supports at most {MaximumBeneficialStatuses} beneficial statuses.");
-        }
-
-        if (totalCount > MaximumTotalStatuses)
-        {
-            throw new InvalidOperationException(
-                $"The client supports at most {MaximumTotalStatuses} total statuses.");
-        }
-
-        var effects = activeExperience
-            .Select(boost => new ClientStatusEffect(
-                checked((uint)boost.StatusId),
-                boost.RemainingSeconds(now)))
-            .Concat(activeRuntime.Select(status => new ClientStatusEffect(
-                status.StatusId,
-                status.RemainingSeconds(now))))
-            .OrderBy(static effect => effect.StatusId)
+        var presentations = activeExperience
+            .Select(boost => new ClientStatusPresentation(
+                new(
+                    checked((uint)boost.StatusId),
+                    boost.RemainingSeconds(now)),
+                Beneficial: true,
+                boost.Priority,
+                ClientStatusPresentationClass.AuthoritativeBaseline))
+            .Concat(activeRuntime.Select(status =>
+                new ClientStatusPresentation(
+                    new(
+                        status.StatusId,
+                        status.RemainingSeconds(now)),
+                    status.Beneficial,
+                    status.Priority,
+                    ClientStatusPresentationClass
+                        .AuthoritativeBaseline)))
             .ToArray();
 
         var experienceBonusBasisPoints = activeExperience
@@ -107,6 +133,10 @@ internal static class PlayerStatusComposer
             static (sum, status) => sum + status.MovementSpeedBonus);
         var isRiding = activeRuntime.Any(
             static status => status.Kind == MountCatalog.RuntimeStatusKind);
+        var control = activeRuntime.Aggregate(
+            HostileStatusControlFlags.None,
+            static (current, status) =>
+                current | status.Modifiers.Control);
         var aggregate = new ClientStatusAggregate(
             (int)Math.Clamp(hit, int.MinValue, int.MaxValue),
             (int)Math.Clamp(criticalAppend, int.MinValue, int.MaxValue),
@@ -119,7 +149,8 @@ internal static class PlayerStatusComposer
             (int)Math.Clamp(
                 criticalResistance,
                 int.MinValue,
-                int.MaxValue));
+                int.MaxValue),
+            Control: control);
 
         // Remaining seconds intentionally do not participate. Otherwise the
         // periodic reconciliation loop would resend an unchanged status set.
@@ -138,6 +169,7 @@ internal static class PlayerStatusComposer
                 $"{status.Modifiers.MagicDefense}:" +
                 $"{status.Modifiers.Dodge}:" +
                 $"{status.Modifiers.CriticalResistance}:" +
+                $"{status.Modifiers.Control}:" +
                 $"{status.PhysicalDamageReduction}:" +
                 $"{status.MagicDamageReduction}:{status.MovementSpeedBonus:R}:" +
                 $"{status.Revision}"));
@@ -145,8 +177,13 @@ internal static class PlayerStatusComposer
             $"{aggregate.Hit}:{aggregate.CriticalAppend}:{aggregate.ExperienceBonus:R}:" +
             $"{aggregate.MovementSpeedMultiplier:R}:{aggregate.IsRiding}:" +
             $"{aggregate.PhysicalDefense}:{aggregate.MagicDefense}:" +
-            $"{aggregate.Dodge}:{aggregate.CriticalResistance}";
+            $"{aggregate.Dodge}:{aggregate.CriticalResistance}:" +
+            $"{aggregate.Control}";
 
-        return new PlayerStatusSnapshot(effects, aggregate, fingerprint);
+        return PlayerStatusCapacityPolicy.Apply(
+            new PlayerStatusSnapshot([], aggregate, fingerprint)
+            {
+                Presentations = presentations
+            });
     }
 }

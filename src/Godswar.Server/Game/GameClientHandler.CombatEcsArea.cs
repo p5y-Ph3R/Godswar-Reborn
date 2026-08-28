@@ -49,6 +49,9 @@ internal sealed partial class GameClientHandler
                 observedAt,
                 out var cooldownLease))
         {
+            await SendSkillCooldownRejectionAsync(
+                cancellationToken,
+                "AreaSkillCooldownRejected");
             return;
         }
 
@@ -83,10 +86,8 @@ internal sealed partial class GameClientHandler
             {
                 Console.WriteLine(
                     $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={decision.CurrentMana} cost={manaCost}");
-                await _session.SendAsync(
-                    PacketBuilder.PlayerManaUpdate(
-                        LocalPlayerObjectId,
-                        decision.CurrentMana),
+                await SendInsufficientManaRejectionAsync(
+                    decision.CurrentMana,
                     cancellationToken,
                     "AreaSkillManaRejected");
             }
@@ -121,10 +122,11 @@ internal sealed partial class GameClientHandler
             _session,
             character,
             advanceWorldRevision: false);
-        var pendingRewards = new List<PendingMonsterKillReward>();
+        var pendingRewards = new List<PreparedPveMonsterKillReward>();
         foreach (var hit in hits.Where(static hit => hit.Result.Killed))
         {
-            var pending = await PrepareMonsterKillRewardAsync(hit.Result);
+            var pending =
+                await PrepareClaimedMonsterKillRewardAsync(hit.Result);
             if (pending is not null)
             {
                 pendingRewards.Add(pending);
@@ -134,6 +136,15 @@ internal sealed partial class GameClientHandler
             await PreparePveElementalKillRewardsAsync(
                 elementalAuthority,
                 elementalCommit);
+
+        foreach (var hit in hits)
+        {
+            await _registry.PublishMonsterClaimStateAsync(
+                _session,
+                character.CurrentMap,
+                hit.Result,
+                cancellationToken);
+        }
 
         var selfVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(
@@ -261,9 +272,7 @@ internal sealed partial class GameClientHandler
 
         foreach (var pendingReward in pendingRewards)
         {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
+            await pendingReward.PublishAsync(cancellationToken);
         }
 
         int currentMana;

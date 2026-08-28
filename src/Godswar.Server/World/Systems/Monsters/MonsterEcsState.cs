@@ -111,6 +111,22 @@ internal static class MonsterEcsState
             movement.VelocityZ);
     }
 
+    public static bool SetAggroTarget(
+        ref MonsterMovementComponent movement,
+        ref MonsterCombatComponent combat,
+        int characterId,
+        DateTimeOffset now)
+    {
+        var stoppedMovement = movement.IsMoving;
+        combat.AggroCharacterId = characterId;
+        combat.Phase = MonsterCombatPhase.None;
+        combat.HasSentInitialChase = false;
+        StopCombatMovement(ref movement);
+        movement.MovementTicks = 0;
+        combat.NextAttackAt = now + MonsterEcsRules.TickInterval;
+        return stoppedMovement;
+    }
+
     public static void ResetCombat(
         EcsWorld world,
         EntityId entity,
@@ -122,6 +138,8 @@ internal static class MonsterEcsState
 
         combat.StunnedUntil = null;
         combat.AggroCharacterId = null;
+        combat.FirstHitCharacterId = null;
+        combat.DamageThreat = null;
         combat.Phase = MonsterCombatPhase.None;
         combat.HasSentInitialChase = false;
         StopCombatMovement(ref movement);
@@ -136,6 +154,24 @@ internal static class MonsterEcsState
         EntityId entity,
         DateTimeOffset now)
     {
+        var returnedImmediately = BeginReturnHomeState(
+            world,
+            entity,
+            now);
+        return new MonsterRuntimeUpdate(
+            returnedImmediately
+                ? MonsterRuntimeUpdateKind.Returned
+                : MonsterRuntimeUpdateKind.Started,
+            Snapshot(world, entity),
+            MovementMode: returnedImmediately ? 1u : 0u,
+            MovementEndField: returnedImmediately ? 1u : null);
+    }
+
+    public static bool BeginReturnHomeState(
+        EcsWorld world,
+        EntityId entity,
+        DateTimeOffset now)
+    {
         ref var transform = ref world.Get<MonsterTransformComponent>(entity);
         ref var movement = ref world.Get<MonsterMovementComponent>(entity);
         ref var combat = ref world.Get<MonsterCombatComponent>(entity);
@@ -143,6 +179,8 @@ internal static class MonsterEcsState
 
         combat.StunnedUntil = null;
         combat.AggroCharacterId = null;
+        combat.FirstHitCharacterId = null;
+        combat.DamageThreat = null;
         combat.HasSentInitialChase = false;
         combat.NextAttackAt = default;
         lifecycle.DespawnAt = null;
@@ -154,10 +192,7 @@ internal static class MonsterEcsState
         if (distance <= 0.0001d)
         {
             CompleteReturnHome(world, entity, now);
-            return new MonsterRuntimeUpdate(
-                MonsterRuntimeUpdateKind.Returned,
-                Snapshot(world, entity),
-                MovementEndField: 1);
+            return true;
         }
 
         combat.Phase = MonsterCombatPhase.Returning;
@@ -175,10 +210,7 @@ internal static class MonsterEcsState
             (float)((deltaZ / distance) * movementStep),
             transform.HomeX,
             transform.HomeZ);
-        return new MonsterRuntimeUpdate(
-            MonsterRuntimeUpdateKind.Started,
-            Snapshot(world, entity),
-            MovementMode: 0);
+        return false;
     }
 
     public static void CompleteReturnHome(
@@ -193,6 +225,8 @@ internal static class MonsterEcsState
 
         combat.StunnedUntil = null;
         combat.AggroCharacterId = null;
+        combat.FirstHitCharacterId = null;
+        combat.DamageThreat = null;
         combat.Phase = MonsterCombatPhase.AwaitingRetirement;
         combat.HasSentInitialChase = false;
         combat.NextAttackAt = default;
@@ -214,6 +248,12 @@ internal static class MonsterEcsState
     {
         ref var vitals = ref world.Get<MonsterVitalsComponent>(entity);
         ref var lifecycle = ref world.Get<MonsterLifecycleComponent>(entity);
+        if (lifecycle.RespawnPolicy != MonsterRespawnPolicy.Timed)
+        {
+            throw new InvalidOperationException(
+                "Only timed monster lifecycles retire for replacement.");
+        }
+
         vitals.IsAlive = false;
         vitals.IsSpawned = false;
         lifecycle.DespawnAt = null;
@@ -221,6 +261,36 @@ internal static class MonsterEcsState
         return new MonsterRuntimeUpdate(
             MonsterRuntimeUpdateKind.Despawned,
             Snapshot(world, entity));
+    }
+
+    public static bool ShouldRetireReturnedMonster(
+        EcsWorld world,
+        EntityId entity)
+    {
+        ref var lifecycle = ref world.Get<MonsterLifecycleComponent>(entity);
+        return lifecycle.RespawnPolicy switch
+        {
+            MonsterRespawnPolicy.Timed => true,
+            MonsterRespawnPolicy.Never => false,
+            _ => throw new InvalidOperationException(
+                "Monster lifecycle contains an unsupported respawn policy.")
+        };
+    }
+
+    public static void SettleReturnedMonster(
+        EcsWorld world,
+        EntityId entity)
+    {
+        ref var lifecycle = ref world.Get<MonsterLifecycleComponent>(entity);
+        ref var combat = ref world.Get<MonsterCombatComponent>(entity);
+        if (lifecycle.RespawnPolicy != MonsterRespawnPolicy.Never ||
+            combat.Phase != MonsterCombatPhase.AwaitingRetirement)
+        {
+            throw new InvalidOperationException(
+                "Only a returned never-respawn monster can settle in place.");
+        }
+
+        combat.Phase = MonsterCombatPhase.None;
     }
 
     public static double DistanceSquared(

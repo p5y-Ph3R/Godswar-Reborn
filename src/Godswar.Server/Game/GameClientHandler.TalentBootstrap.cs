@@ -10,21 +10,19 @@ internal sealed partial class GameClientHandler
         IReadOnlyList<TalentState> talentStates,
         string reason,
         CancellationToken cancellationToken,
-        bool includeTalentRankList = true,
-        bool useCapturedSkillList = false)
+        bool includeTalentRankList = true)
     {
         Console.WriteLine(
-            $"[talent] bootstrap reason={reason} character={_character?.Name ?? "<none>"} skills={skillStates.Count} talents={talentStates.Count} points={_character?.TalentPoints ?? 0} includeRanks={includeTalentRankList} capturedSkillList={useCapturedSkillList}");
+            $"[talent] bootstrap reason={reason} character={_character?.Name ?? "<none>"} skills={skillStates.Count} talents={talentStates.Count} points={_character?.TalentPoints ?? 0} includeRanks={includeTalentRankList}");
 
-        var skillList = useCapturedSkillList
-            ? PacketBuilder.SkillListBootstrap()
-            : PacketBuilder.SkillList(skillStates);
-        if (skillList.Length > 0)
+        if (_character is { } character)
         {
             await _session.SendAsync(
-                skillList,
+                PacketBuilder.MedusaDesignationInfo(
+                    character.SelectedTitleId,
+                    character.OwnedTitleIds),
                 cancellationToken,
-                "SkillList");
+                "DesignationInfo");
         }
 
         if (!includeTalentRankList)

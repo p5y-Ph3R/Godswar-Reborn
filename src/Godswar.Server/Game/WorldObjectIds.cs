@@ -3,9 +3,25 @@ namespace Godswar.Server.Game;
 internal static class WorldObjectIds
 {
     private const uint LocalPlayerObjectId = 0x1448;
-    // Stock 0x2728 classifies IDs >= 0x1F40 as monsters. Captures place
-    // remote players in 1..0x05DB, so this range is required for corpse
-    // removal to reach the native player registry.
+    internal const uint FirstMonsterObjectId = 0x1F40;
+    internal const uint LastMonsterObjectId = 49_999;
+    internal const uint FirstMedusaMonsterObjectId = 40_000;
+    internal const uint MedusaBabyRockElfObjectId = 40_136;
+    internal const uint SecondMedusaBabyRockElfObjectId = 40_137;
+    internal static readonly uint[] MedusaBabyRockElfObjectIds =
+    [
+        MedusaBabyRockElfObjectId,
+        SecondMedusaBabyRockElfObjectId
+    ];
+
+    internal static bool IsMedusaBabyRockElf(uint objectId) =>
+        objectId is MedusaBabyRockElfObjectId or
+            SecondMedusaBabyRockElfObjectId;
+
+    // Authored live monsters must use the stock client's ordinary
+    // 8000..49999 monster registry. The client has a separate legacy branch
+    // for 95000..99999, but live objects in that branch crash during nearby
+    // object processing.
     internal const uint FirstRemotePlayerObjectId = 1;
     internal const uint LastRemotePlayerObjectId = 0x05DB;
     internal const int RemotePlayerObjectIdCapacity =
@@ -50,6 +66,9 @@ internal static class WorldObjectIds
         return objectId >= FirstRemotePlayerObjectId &&
             objectId <= LastRemotePlayerObjectId;
     }
+
+    public static bool IsMonster(uint objectId) =>
+        objectId is >= FirstMonsterObjectId and <= LastMonsterObjectId;
 
     public static bool IsReservedForPlayer(uint objectId)
     {

@@ -77,6 +77,10 @@ internal static partial class Program
         Check.Equal(character.Camp, packet[53], "PlayerWorldSpawn camp");
         Check.Equal(character.Face, packet[56], "PlayerWorldSpawn face");
         Check.Equal((byte)5, packet[80], "PlayerWorldSpawn default PK mode");
+        Check.Equal(
+            (ushort)character.CurrentMap,
+            ReadUInt16(packet, 176),
+            "PlayerWorldSpawn authoritative map at offset 176");
 
         var explicitPkMode = PacketBuilder.PlayerWorldSpawn(
             character,
@@ -285,10 +289,36 @@ internal static partial class Program
             "zero pet ID cannot create a presence packet");
 
         var title = PacketBuilder.PlayerTitleInfo(character, objectId);
+        Check.Equal(80, title.Length, "PlayerTitleInfo exact packet length");
+        Check.Equal(
+            (ushort)80,
+            ReadUInt16(title, 0),
+            "PlayerTitleInfo exact length prefix");
+        Check.Equal(
+            (ushort)0x27D7,
+            ReadUInt16(title, 2),
+            "PlayerTitleInfo exact opcode");
         Check.Equal(objectId, ReadUInt32(title, 4), "PlayerTitleInfo object id");
         Check.True(
-            title.AsSpan(8).IndexOfAnyExcept((byte)0) < 0,
-            "PlayerTitleInfo untitled body is zero");
+            title.AsSpan(8, 64).IndexOfAnyExcept((byte)0) < 0,
+            "PlayerTitleInfo neutral auxiliary body is zero");
+        Check.Equal(
+            0U,
+            ReadUInt32(title, 72),
+            "PlayerTitleInfo opaque word remains neutral");
+        Check.Equal(
+            0U,
+            ReadUInt32(title, 76),
+            "PlayerTitleInfo is untitled when no title is selected");
+
+        character.SelectedTitleId = 5011;
+        var selectedTitle = PacketBuilder.PlayerTitleInfo(
+            character,
+            objectId);
+        Check.Equal(
+            5011U,
+            ReadUInt32(selectedTitle, 76),
+            "PlayerTitleInfo projects the durable selected title ID");
 
         CheckFashionAppearanceProjection();
 

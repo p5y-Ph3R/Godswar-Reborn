@@ -1,5 +1,6 @@
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
@@ -17,10 +18,32 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
             connectionString,
             realmId: 2);
         await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        var wrongRealmExecutor = new PostgresHolySuitCommandExecutor(
+            dataSource,
+            new PostgresOutboxDispatcherOptions(),
+            itemContent,
+            TestRealmCalendar(realmId: 1));
+        var wrongRealmResult = await ExecuteAsync(
+            wrongRealmExecutor,
+            fixture,
+            new CommandConnectionCorrelation(
+                Guid.NewGuid(),
+                CommandTransportKind.SecureTlsLegacy),
+            Guid.NewGuid(),
+            HolySuitCommandOperation.StoreExperience,
+            primarySlot: 0,
+            primaryState: Item(9023, bound: 1).ToCompactString(),
+            experience: 50_000_000);
+        Check.Equal(
+            (int)HolySuitExecutionDisposition.PreconditionFailed,
+            (int)wrongRealmResult.Disposition,
+            "a Tempest calendar cannot mutate a Dwargon character");
+
         var executor = new PostgresHolySuitCommandExecutor(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            itemContent);
+            itemContent,
+            TestRealmCalendar(fixture.RealmId));
         var ownership = PlayerOwnershipTestFences.ForCharacter(
             fixture.CharacterId);
         var initial = await executor.ReadStoreQuotaAsync(
@@ -74,6 +97,54 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
                 realmId: 2,
                 initial.UsageDay),
             "Dwargon storage advances only its own daily usage row");
+    }
+
+    private static async Task AssertRealmDayFromEnvelopeAsync(
+        string connectionString,
+        GameplayItemContent itemContent)
+    {
+        var fixture = await CreateFixtureAsync(
+            connectionString,
+            realmId: RealmId.Tempest.Value);
+        await using var dataSource = NpgsqlDataSource.Create(connectionString);
+        var executor = new PostgresHolySuitCommandExecutor(
+            dataSource,
+            new PostgresOutboxDispatcherOptions(),
+            itemContent,
+            TestRealmCalendar());
+        var receivedAt = new DateTimeOffset(
+            2027,
+            1,
+            1,
+            16,
+            0,
+            0,
+            TimeSpan.Zero);
+        var result = await ExecuteAsync(
+            executor,
+            fixture,
+            new CommandConnectionCorrelation(
+                Guid.NewGuid(),
+                CommandTransportKind.SecureTlsLegacy),
+            Guid.NewGuid(),
+            HolySuitCommandOperation.StoreExperience,
+            primarySlot: 0,
+            primaryState: Item(9023, bound: 1).ToCompactString(),
+            experience: 50_000_000,
+            receivedAt: receivedAt);
+        Require(
+            result,
+            HolySuitExecutionDisposition.Committed,
+            HolySuitCommandResultStatus.ExperienceStored,
+            "Holy Suit command realm day");
+        Check.Equal(
+            50_000_000L,
+            await ReadDailyStoredExperienceAsync(
+                connectionString,
+                fixture.AccountId,
+                fixture.RealmId,
+                new DateOnly(2027, 1, 2)),
+            "Holy Suit persists the RealmCalendar-derived Manila day");
     }
 
     private static async Task SetDailyStoredExperienceForRealmAsync(

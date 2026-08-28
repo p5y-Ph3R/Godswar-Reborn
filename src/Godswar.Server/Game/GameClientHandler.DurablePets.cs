@@ -10,10 +10,12 @@ internal sealed partial class GameClientHandler
 {
     private readonly IPetDurableCommandExecutor? _petDurableCommands;
 
-    private async Task HandleDurableBagItemActivationAsync(
-        PetCommandOperationIdentity identity,
-        int kitBagSlot,
-        CancellationToken cancellationToken)
+    private async Task<PetDurableReceipt?>
+        HandleDurableBagItemActivationAsync(
+            PetCommandOperationIdentity identity,
+            int kitBagSlot,
+            CancellationToken cancellationToken,
+            PetCaptureIntent? captureIntent = null)
     {
         if (!TryCreatePetSubject(identity, out var subject) ||
             _petDurableCommands is null)
@@ -22,7 +24,7 @@ internal sealed partial class GameClientHandler
                 CommandFamily.BagItemActivation,
                 identity,
                 "provider or active character is unavailable");
-            return;
+            return null;
         }
 
         var correlation = PetCorrelation(identity);
@@ -35,27 +37,35 @@ internal sealed partial class GameClientHandler
                 MountCatalog.RuntimeStatusKind,
                 DateTimeOffset.UtcNow)
                 ? BagItemActivationExecutionConstraint.RideRuntimeBlocked
-                : BagItemActivationExecutionConstraint.None);
+                : BagItemActivationExecutionConstraint.None,
+            captureIntent);
         var unownedEnvelope = identity.IsSecureClient
             ? BagItemActivationCommandEnvelope.Create(
                 subject,
                 correlation,
                 DateTimeOffset.UtcNow,
                 command)
-            : BagItemActivationCommandEnvelope.CreateRawLocal(
-                subject,
-                correlation,
-                DateTimeOffset.UtcNow,
-                command);
+            : identity.IsRawLocalServer
+                ? BagItemActivationCommandEnvelope.CreateRawLocal(
+                    subject,
+                    correlation,
+                    DateTimeOffset.UtcNow,
+                    command)
+                : BagItemActivationCommandEnvelope
+                    .CreateServerSessionLifecycle(
+                        subject,
+                        correlation,
+                        DateTimeOffset.UtcNow,
+                        command);
         if (!TryBindCurrentPlayerOwnership(
                 unownedEnvelope,
                 out var envelope,
                 out var ownership))
         {
-            return;
+            return null;
         }
 
-        await ExecuteAndCompletePetCommandAsync(
+        return await ExecuteAndCompletePetCommandAsync(
             identity,
             CommandFamily.BagItemActivation,
             ownership,

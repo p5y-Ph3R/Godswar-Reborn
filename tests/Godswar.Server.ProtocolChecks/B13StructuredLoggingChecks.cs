@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
+using Godswar.Server.Operations;
 using Godswar.Server.Operations.Observability;
 
 namespace Godswar.Server.ProtocolChecks;
@@ -12,11 +13,32 @@ internal static class B13StructuredLoggingChecks
         CheckStructuredJson();
         CheckLegacyRedactionAndBounds();
         CheckConsoleBoundaryOwnership();
+        CheckLocalGameplayLogPolicy();
         CheckRateAndSizeLimits();
         CheckSinkFailureIsolation();
         CheckSlowSinkDoesNotBlockProducers();
         CheckShutdownIsBoundedAndAccounted();
         return Task.CompletedTask;
+    }
+
+    private static void CheckLocalGameplayLogPolicy()
+    {
+        Check.True(
+            !ServerObservabilityRuntime.ShouldInstallConsoleBoundary(
+                requested: true,
+                nameof(ServerRuntimeProfileKind.LocalDevelopment),
+                "true"),
+            "explicit local gameplay capture retains raw console diagnostics");
+        Check.True(
+            ServerObservabilityRuntime.ShouldInstallConsoleBoundary(
+                requested: true,
+                nameof(ServerRuntimeProfileKind.Production),
+                "true") &&
+            ServerObservabilityRuntime.ShouldInstallConsoleBoundary(
+                requested: true,
+                nameof(ServerRuntimeProfileKind.LocalDevelopment),
+                localGameplayLogs: null),
+            "production and ordinary local runs retain the privacy boundary");
     }
 
     private static void CheckStructuredJson()

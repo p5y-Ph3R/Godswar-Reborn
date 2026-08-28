@@ -8,15 +8,36 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
+#if DEBUG
+    internal Action<WorldInstanceId, MonsterRuntimeTick>?
+        ProtocolCheckMonsterWorldTickObserved { get; set; }
+#endif
+
     internal async Task AdvanceMonsterWorldOnceAsync(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var ticks = new List<WorldInstanceMonsterTick>();
+        var medusaLeaderUiDeliveries =
+            new List<MedusaLeaderUiDelivery>();
+        var medusaInstanceRosterDeliveries =
+            new List<MedusaInstanceRosterDelivery>();
+        var medusaCompletionEgresses =
+            new List<MedusaCompletionEgress>();
+        var medusaTerminationEgresses =
+            new List<MedusaTerminationEgress>();
         foreach (var runtime in WorldInstances.Snapshot())
         {
             if (runtime.Descriptor.LifecycleState ==
                 WorldInstanceLifecycleState.Closed)
+            {
+                continue;
+            }
+
+            if (!await DrainMedusaPeriodicDamageAsync(
+                    runtime,
+                    now,
+                    cancellationToken))
             {
                 continue;
             }
@@ -29,8 +50,34 @@ internal sealed partial class GameSessionRegistry
                     PlayerRuntimeMode.Ecs
                     ? map.AdvanceMonsters(
                         now,
-                        GetPlayerLifeRevision)
+                        session => TryGetPlayerLifeRevision(
+                            session,
+                            out var lifeRevision)
+                            ? lifeRevision
+                            : null)
                     : map.AdvanceMonsters(now));
+#if DEBUG
+            ProtocolCheckMonsterWorldTickObserved?.Invoke(
+                runtime.InstanceId,
+                tick);
+#endif
+            if (CaptureMedusaLeaderUiDelivery(runtime, now) is
+                { } leaderUi)
+            {
+                medusaLeaderUiDeliveries.Add(leaderUi);
+            }
+            medusaInstanceRosterDeliveries.AddRange(
+                CaptureMedusaInstanceRosterDeliveries(runtime));
+            if (CaptureMedusaCompletionEgress(runtime, now) is
+                { } completionEgress)
+            {
+                medusaCompletionEgresses.Add(completionEgress);
+            }
+            if (CaptureMedusaTerminationEgress(runtime) is
+                { } terminationEgress)
+            {
+                medusaTerminationEgresses.Add(terminationEgress);
+            }
             if (!tick.PositionsChanged && tick.Updates.Count == 0)
             {
                 continue;
@@ -68,18 +115,22 @@ internal sealed partial class GameSessionRegistry
                         await ProcessMonsterAttackAsync(
                             worldTick.Runtime,
                             attack,
-                            token);
+                            token,
+                            now);
                     }
                     catch (
                         MonsterAttackTargetUnavailableException
                             ex)
                     {
-                        InvokeWorldOwner(
-                            worldTick.Runtime,
-                            map =>
-                                map.ClearMonsterAggroForCharacter(
-                                    ex.TargetCharacterId,
-                                    now));
+                        if (!HasExactEmittedMonsterTarget(attack))
+                        {
+                            InvokeWorldOwner(
+                                worldTick.Runtime,
+                                map =>
+                                    map.ClearMonsterAggroForCharacter(
+                                        ex.TargetCharacterId,
+                                        now));
+                        }
                         Console.WriteLine(
                             $"[monster] skipped stale target " +
                             $"character={ex.TargetCharacterId} " +
@@ -89,6 +140,20 @@ internal sealed partial class GameSessionRegistry
                     }
                 }
             });
+
+        foreach (var delivery in medusaLeaderUiDeliveries)
+        {
+            await PublishMedusaLeaderUiDeliveryAsync(
+                delivery,
+                cancellationToken);
+        }
+
+        foreach (var delivery in medusaInstanceRosterDeliveries)
+        {
+            await PublishMedusaInstanceRosterDeliveryAsync(
+                delivery,
+                cancellationToken);
+        }
 
         var deliveries = RoundRobinMonsterDeliveries(ticks);
         await Parallel.ForEachAsync(
@@ -117,6 +182,20 @@ internal sealed partial class GameSessionRegistry
                     Remove(delivery.Context.Session);
                 }
             });
+
+        foreach (var egress in medusaCompletionEgresses)
+        {
+            await PublishMedusaCompletionEgressAsync(
+                egress,
+                cancellationToken);
+        }
+
+        foreach (var egress in medusaTerminationEgresses)
+        {
+            await PublishMedusaTerminationEgressAsync(
+                egress,
+                cancellationToken);
+        }
     }
 
     private static IReadOnlyList<MonsterTickDelivery>
@@ -238,7 +317,7 @@ internal sealed partial class GameSessionRegistry
                      !returnedOutsideViewerAoi.Contains(objectId)))
         {
             await context.Session.SendAsync(
-                PacketBuilder.MonsterLifecycleMarker(objectId),
+                PacketBuilder.RemoveWorldObjects(objectId),
                 cancellationToken,
                 "MonsterCorpseDespawn");
         }
@@ -324,6 +403,16 @@ internal sealed partial class GameSessionRegistry
                 // calculated but before a slower viewer send. Never resurrect a
                 // cancelled leg with a stale movement packet.
                 continue;
+            }
+
+            if (update.Kind == MonsterRuntimeUpdateKind.Returned)
+            {
+                await context.Session.SendAsync(
+                    PacketBuilder.ObjectFightState(
+                        monster.ObjectId,
+                        engaged: false),
+                    cancellationToken,
+                    "MonsterLeashFightReset");
             }
 
             var packet = update.Kind switch

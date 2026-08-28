@@ -18,7 +18,8 @@ internal sealed partial class GameSessionRegistry
         float targetZ)
     {
         ArgumentNullException.ThrowIfNull(session);
-        if (targetMapId == expectedSourceMapId ||
+        if (targetMapId is 200 or 204 ||
+            targetMapId == expectedSourceMapId ||
             !_gameplayCatalogs.MapTraversal.TryGetMap(
                 expectedSourceMapId,
                 out _) ||
@@ -99,6 +100,9 @@ internal sealed partial class GameSessionRegistry
     {
         if (target.Descriptor.LifecycleState !=
                 WorldInstanceLifecycleState.Active ||
+            !MayEnterWorldInstance(
+                target,
+                existing.CharacterId) ||
             existing.Character.CurrentMap != existing.MapId ||
             !existing.WorldReady ||
             existing.Ownership.IsValid &&
@@ -123,7 +127,8 @@ internal sealed partial class GameSessionRegistry
             MapId = target.MapId,
             Character = character,
             WorldReady = false,
-            WorldRevision = nextWorldRevision
+            WorldRevision = nextWorldRevision,
+            WorldMembershipEpoch = NextWorldMembershipEpochLocked()
         };
 
         EnsureMapObjectIdAvailable(updated);

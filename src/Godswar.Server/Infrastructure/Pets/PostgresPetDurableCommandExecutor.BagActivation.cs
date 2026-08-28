@@ -29,6 +29,19 @@ internal sealed partial class PostgresPetDurableCommandExecutor
                 KitBagSlot: command.KitBagSlot);
         }
 
+        if (command.Capture is { } capture)
+        {
+            return await CapturePetEggAsync(
+                connection,
+                transaction,
+                envelope.Subject.CharacterId,
+                command.KitBagSlot,
+                item,
+                capture,
+                character,
+                cancellationToken);
+        }
+
         if (_petContent.TryGetSpeciesByEggItemId(
                 checked((uint)item.PropId),
                 out var species))

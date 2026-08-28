@@ -134,12 +134,16 @@ internal sealed partial class GameClientHandler
                         : "[status] stale-session boost tail deferred");
             }
         }
-        if (!hasGatewayAdmission &&
-            !await RefreshCharacterSnapshotAsync(
-                "login",
-                cancellationToken))
+        if (!hasGatewayAdmission)
         {
-            return;
+            if (!await RefreshCharacterSnapshotAsync(
+                    "login",
+                    cancellationToken))
+            {
+                return;
+            }
+
+            PrepareUnavailableInstanceReconnectRecovery();
         }
         if (!_registry.IsCurrentAccountSession(
                 _account.Id,
@@ -278,6 +282,11 @@ internal sealed partial class GameClientHandler
         {
             return;
         }
+        if (!await PersistUnavailableInstanceReconnectRecoveryAsync(
+                cancellationToken))
+        {
+            return;
+        }
 
         var trainingDummyEntry =
             _registry.IsTrainingDummyCore(_character);
@@ -320,7 +329,7 @@ internal sealed partial class GameClientHandler
             _characterLoadSnapshot?.PetShed.OpenedCellCount ??
                 PetShedCapacityPolicy.DefaultOpenedCellCount);
         Console.WriteLine(
-            $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
+            $"[game] enter name={_character.Name} profession={_character.Profession} level={_character.Level} honor={_character.MedusaHonorPoints} equipment={PacketBuilder.EnterEquipmentSummary(_character)} main={enterMain.Length} kitbagDetail={kitBagDetailPages.Length} kitbagIndex={kitBagSlotIndexes.Length} skills={skillStates.Count} talents={talentStates.Count} pets={ownedPets.Count}");
 
         await _session.SendAsync(enterMain, cancellationToken, "EnterMain");
         await _session.SendAsync(
@@ -355,7 +364,12 @@ internal sealed partial class GameClientHandler
                 cancellationToken,
                 "PetEnergyBootstrap");
         }
-        await _session.SendAsync(PacketBuilder.SkillListBootstrap(), cancellationToken, "SkillList");
+        await _session.SendAsync(
+            PacketBuilder.MedusaDesignationInfo(
+                _character.SelectedTitleId,
+                _character.OwnedTitleIds),
+            cancellationToken,
+            "DesignationInfo");
         await _session.SendAsync(PacketBuilder.EnterComplete(), cancellationToken, "EnterComplete");
     }
 

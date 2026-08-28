@@ -83,21 +83,30 @@ internal sealed partial class GameClientHandler
         {
             if (cooldownRejected)
             {
+                await SendSkillCooldownRejectionAsync(
+                    cancellationToken,
+                    "AreaSkillCooldownRejected");
                 return;
             }
 
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "AreaSkillManaRejected");
             return;
         }
 
-        var candidates = _registry.GetMapMonsterSnapshots(
+        var capturedCandidates =
+            _registry.TryCapturePlayerMonsterTargets(
                 _session,
-                character.CurrentMap)
+                character.CurrentMap,
+                out var combatTargets,
+                out var combatAuthority)
+                ? combatTargets
+                : [];
+        var candidates = capturedCandidates
             .Where(monster =>
                 monster.IsSpawned &&
                 monster.IsAlive &&
@@ -152,15 +161,22 @@ internal sealed partial class GameClientHandler
                 break;
             }
 
-            if (_registry.TryApplyMonsterDamage(
+            if (_registry.TryCommitPlayerMonsterDamageGuarded(
+                    _session,
                     character.CurrentMap,
                     candidate.ObjectId,
-                    resolution.Damage,
+                    candidate.RuntimeInstanceId,
                     character.Id,
                     candidate.SpawnGeneration,
-                    out var damageResult) &&
+                    candidate.HealthRevision,
+                    combatAuthority,
+                    observedAt,
+                    resolution,
+                    out var damageCommit) &&
+                damageCommit.DamageResult is { } damageResult &&
                 damageResult.BeforeHealth != damageResult.AfterHealth)
             {
+                resolution = damageCommit.Resolution;
                 // The original protocol reports resolved damage, even if the
                 // target had less health remaining.
                 hits.Add((
@@ -187,10 +203,11 @@ internal sealed partial class GameClientHandler
                     hit.Result))
                 .ToArray());
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
-        var pendingRewards = new List<PendingMonsterKillReward>();
+        var pendingRewards = new List<PreparedPveMonsterKillReward>();
         foreach (var hit in hits.Where(static hit => hit.Result.Killed))
         {
-            var pending = await PrepareMonsterKillRewardAsync(hit.Result);
+            var pending =
+                await PrepareClaimedMonsterKillRewardAsync(hit.Result);
             if (pending is not null)
             {
                 pendingRewards.Add(pending);
@@ -200,6 +217,15 @@ internal sealed partial class GameClientHandler
             await PreparePveElementalKillRewardsAsync(
                 elementalAuthority,
                 elementalCommit);
+
+        foreach (var hit in hits)
+        {
+            await _registry.PublishMonsterClaimStateAsync(
+                _session,
+                character.CurrentMap,
+                hit.Result,
+                cancellationToken);
+        }
 
         var selfVisual = isGroundTargeted
             ? PacketBuilder.SkillCastVisual(
@@ -327,9 +353,7 @@ internal sealed partial class GameClientHandler
 
         foreach (var pendingReward in pendingRewards)
         {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
+            await pendingReward.PublishAsync(cancellationToken);
         }
 
         var appliedDamage = hits.Aggregate(

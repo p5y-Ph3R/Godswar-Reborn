@@ -242,11 +242,12 @@ internal sealed partial class GameClientHandler
         await SendTalentRankPacketsAsync(skillStates, talentStates, "post-enter", cancellationToken);
         await _session.SendAsync(PacketBuilder.PlayerUnknown10098(0), cancellationToken, "PlayerUnknown10098");
         await _session.SendAsync(PacketBuilder.PlayerUnknown10098(1), cancellationToken, "PlayerUnknown10098");
-        var skillList = PacketBuilder.SkillList(skillStates);
-        if (skillList.Length > 0)
-        {
-            await _session.SendAsync(skillList, cancellationToken, "SkillList");
-        }
+        await _session.SendAsync(
+            PacketBuilder.MedusaDesignationInfo(
+                _character.SelectedTitleId,
+                _character.OwnedTitleIds),
+            cancellationToken,
+            "DesignationInfo");
 
         // Opcode 10357 is the final enter/UI-ready boundary. Publish exactly one
         // complete 10167 snapshot here, after both the local object and UI exist.

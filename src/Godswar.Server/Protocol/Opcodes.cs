@@ -27,10 +27,14 @@ internal static class Opcodes
     public const ushort Kitbag = 10022;
     public const ushort Storage = 10023;
     // The installed Origin client maps its warehouse item snapshot handler to
-    // MSG_STORAGE (10034). Opcode 10023 is an unrelated world-object marker.
+    // MSG_STORAGE (10034). Opcode 10023 is the unrelated world-object marker
+    // retained above; captured eight-byte 10023 frames are not warehouse data.
     public const ushort WarehouseSnapshot = 10034;
     public const ushort BasicAttack = 10026;
+    public const ushort MonsterDrops = 10029;
     public const ushort Talk = 10035;
+    // MSG_PYTHON_NOTE drives the stock client's on-screen announcement text.
+    public const ushort PythonNote = 10038;
     public const ushort SkillCast = 10040;
     public const ushort PickupDrops = 10048;
     public const ushort UseOrEquip = 10049;
@@ -40,7 +44,7 @@ internal static class Opcodes
     public const ushort Sell = 10053;
     public const ushort BagItemAction = 10056;
     // MSG_STORAGE_ITEM is bidirectional: the client requests a transfer and
-    // the server echoes the canonical descriptor after commit.
+    // the server echoes the same canonical 20-byte descriptor after commit.
     public const ushort WarehouseTransfer = 10059;
     // The installed client dispatch table maps 10090 to
     // MSG_PLAYER_ACCEPTQUESTS. Quest snapshots are character-specific and
@@ -58,7 +62,20 @@ internal static class Opcodes
     public const ushort ForgeReplacementAction = 10112;
     public const ushort ItemInfoRequest = 10114;
     public const ushort ForgeCancel = 10117;
+    public const ushort PartyInvite = 10123;
+    public const ushort PartyRequest = 10124;
     public const ushort PlayerNameInspectRequest = 10125;
+    public const ushort PartyAccept = 10126;
+    public const ushort PartyRemove = 10127;
+    public const ushort PartyChangeLeader = 10128;
+    public const ushort PartyDissolve = 10129;
+    public const ushort PartyLeave = 10130;
+    public const ushort PartyTip = 10131;
+    public const ushort PartyReject = 10132;
+    public const ushort PartyRefresh = 10133;
+    public const ushort PartyDestroy = 10134;
+    public const ushort ServerNote = 10169;
+    public const ushort DesignationInfo = 10196;
     // Cast interruption is bidirectional in the native protocol. Both the
     // client report and the authoritative server notification use the same
     // eight-byte frame: length, opcode, and caster ID in the receiver's
@@ -75,6 +92,22 @@ internal static class Opcodes
     // Native Fashion Effect sends a 16-byte request. The server publishes a
     // 12-byte per-avatar effect-visibility projection on the same opcode.
     public const ushort FashionEffectVisibility = 10202;
+    public const ushort RepetitionNotice = 10216;
+    public const ushort RepetitionResponse = 10217;
+    public const ushort RepetitionInstanceMembers = 10218;
+    public const ushort RepetitionLeave = 10221;
+    public const ushort RepetitionInvitation = 10224;
+    public const ushort RepetitionCompletionState = 10227;
+    public const ushort RepetitionFightInfo = 10229;
+    public const ushort RepetitionReward = 10230;
+    public const ushort RepetitionReset = 10231;
+    public const ushort RepetitionSync = 10232;
+    // The active repetition panel sends a six-byte action frame. Its first
+    // payload byte is the action (zero is the Terminate button); the stock
+    // client leaves the final byte uninitialized, so it is never authoritative.
+    public const ushort RepetitionPanelAction = 10313;
+    public const ushort PetCaptureRequest = 10252;
+    public const ushort MonsterClaimState = 10322;
     public const ushort PlayerInspectVisualRequest = 10279;
     public const ushort PetTakeRequest = 10239;
     public const ushort PetCallOutRequest = 10240;
@@ -140,8 +173,10 @@ internal static class Opcodes
             Storage => nameof(Storage),
             WarehouseSnapshot => nameof(WarehouseSnapshot),
             BasicAttack => nameof(BasicAttack),
+            MonsterDrops => nameof(MonsterDrops),
             Ping => nameof(Ping),
             Talk => nameof(Talk),
+            PythonNote => nameof(PythonNote),
             SkillCast => nameof(SkillCast),
             PickupDrops => nameof(PickupDrops),
             UseOrEquip => nameof(UseOrEquip),
@@ -162,12 +197,38 @@ internal static class Opcodes
             ForgeReplacementAction => nameof(ForgeReplacementAction),
             ItemInfoRequest => nameof(ItemInfoRequest),
             ForgeCancel => nameof(ForgeCancel),
+            PartyInvite => nameof(PartyInvite),
+            PartyRequest => nameof(PartyRequest),
             PlayerNameInspectRequest => nameof(PlayerNameInspectRequest),
+            PartyAccept => nameof(PartyAccept),
+            PartyRemove => nameof(PartyRemove),
+            PartyChangeLeader => nameof(PartyChangeLeader),
+            PartyDissolve => nameof(PartyDissolve),
+            PartyLeave => nameof(PartyLeave),
+            PartyTip => nameof(PartyTip),
+            PartyReject => nameof(PartyReject),
+            PartyRefresh => nameof(PartyRefresh),
+            PartyDestroy => nameof(PartyDestroy),
+            ServerNote => nameof(ServerNote),
+            DesignationInfo => nameof(DesignationInfo),
             SkillCastInterrupt => nameof(SkillCastInterrupt),
             PlayerInspectRequest => nameof(PlayerInspectRequest),
             GearEnhancerItemSelection => nameof(GearEnhancerItemSelection),
             PlayerDetailRequest => nameof(PlayerDetailRequest),
             FashionEffectVisibility => nameof(FashionEffectVisibility),
+            RepetitionNotice => nameof(RepetitionNotice),
+            RepetitionResponse => nameof(RepetitionResponse),
+            RepetitionInstanceMembers => nameof(RepetitionInstanceMembers),
+            RepetitionLeave => nameof(RepetitionLeave),
+            RepetitionInvitation => nameof(RepetitionInvitation),
+            RepetitionCompletionState => nameof(RepetitionCompletionState),
+            RepetitionFightInfo => nameof(RepetitionFightInfo),
+            RepetitionReward => nameof(RepetitionReward),
+            RepetitionReset => nameof(RepetitionReset),
+            RepetitionSync => nameof(RepetitionSync),
+            RepetitionPanelAction => nameof(RepetitionPanelAction),
+            PetCaptureRequest => nameof(PetCaptureRequest),
+            MonsterClaimState => nameof(MonsterClaimState),
             PlayerInspectVisualRequest => nameof(PlayerInspectVisualRequest),
             PetTakeRequest => nameof(PetTakeRequest),
             PetCallOutRequest => nameof(PetCallOutRequest),

@@ -387,8 +387,7 @@ internal sealed partial class GameClientHandler
 
     private async Task RefreshNearbyWorldObjectsAsync(
         string reason,
-        CancellationToken cancellationToken,
-        bool forceMonsterRefresh = false)
+        CancellationToken cancellationToken)
     {
         if (_character is null ||
             _npcVisibility is null ||
@@ -406,8 +405,7 @@ internal sealed partial class GameClientHandler
             _character.CurrentMap,
             _character.PositionX,
             _character.PositionZ,
-            cancellationToken,
-            forceMonsterRefresh);
+            cancellationToken);
         if (monsterTransition is null)
         {
             return;

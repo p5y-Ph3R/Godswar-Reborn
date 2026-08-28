@@ -22,16 +22,22 @@ internal sealed partial class GameClientHandler
             _session,
             DateTimeOffset.UtcNow,
             cancellationToken);
-        var recipients = await _registry.BroadcastToMapAsync(
-            _character.CurrentMap,
-            PacketBuilder.PlayerWorldSpawn(
+        var spawnPacket = PacketBuilder.PlayerWorldSpawn(
                 _character,
                 objectId,
                 statusSnapshot.Effects,
-                pkMode: _registry.TrainingDummySpawnPkMode(_character)),
-            cancellationToken,
-            _session,
-            "PlayerWorldSpawnRefresh");
+                pkMode: _registry.TrainingDummySpawnPkMode(_character));
+        var recipients =
+            await _registry.TryBroadcastMedusaWorldSpawnRefreshAsync(
+                _session,
+                cancellationToken,
+                "PlayerWorldSpawnRefresh") ??
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                spawnPacket,
+                cancellationToken,
+                _session,
+                "PlayerWorldSpawnRefresh");
 
         if (recipients > 0)
         {
@@ -180,14 +186,12 @@ internal sealed partial class GameClientHandler
             }
         }
 
-        // The initial monster snapshot is committed before this session becomes
-        // WorldReady, so its generation or runtime health/state may drift during
-        // bootstrap without a live broadcast. Force one ordered remove + fresh
-        // appearance at activation; normal AOI updates remain incremental after it.
+        // The initial monster snapshot already owns the exact client objects.
+        // Reconcile the current AOI without removing and recreating every visible
+        // monster; that stock-client sequence duplicates world-map markers.
         await RefreshNearbyWorldObjectsAsync(
             "activation-reconcile",
-            cancellationToken,
-            forceMonsterRefresh: true);
+            cancellationToken);
 
         // Position changes deliberately do not invalidate the durable-state
         // barrier. Send one current position after activation so movement that
@@ -205,6 +209,22 @@ internal sealed partial class GameClientHandler
                 PacketBuilder.PlayerWorldPosition(player.Character, player.ObjectId),
                 cancellationToken,
                 "VisiblePlayerActivationPosition");
+        }
+
+        // Bound Medusa status projection is intentionally withheld while this
+        // viewer is not WorldReady. Replay complete current snapshots only after
+        // activation, under the exact target/viewer/instance/life fences.
+        foreach (var player in activationPlayers)
+        {
+            if (!sentWorldRevisions.ContainsKey(player.ObjectId))
+            {
+                continue;
+            }
+
+            await _registry.SendBoundMedusaStatusSnapshotToViewerAsync(
+                player,
+                _session,
+                cancellationToken);
         }
 
         // Re-snapshot after the position sends. If a player disconnected during
@@ -243,15 +263,21 @@ internal sealed partial class GameClientHandler
                 _session,
                 "TrainingDummyPreSpawnReset");
         }
-        var spawnRecipients = await _registry.BroadcastToMapAsync(
-            _character.CurrentMap,
-            PacketBuilder.PlayerWorldSpawn(
+        var spawnPacket = PacketBuilder.PlayerWorldSpawn(
                 _character,
                 objectId,
                 statusSnapshot.Effects,
-                pkMode: _registry.TrainingDummySpawnPkMode(_character)),
-            cancellationToken,
-            _session);
+                pkMode: _registry.TrainingDummySpawnPkMode(_character));
+        var spawnRecipients =
+            await _registry.TryBroadcastMedusaWorldSpawnRefreshAsync(
+                _session,
+                cancellationToken,
+                "PlayerWorldSpawn") ??
+            await _registry.BroadcastToMapAsync(
+                _character.CurrentMap,
+                spawnPacket,
+                cancellationToken,
+                _session);
         if (spawnRecipients > 0)
         {
             Console.WriteLine(

@@ -36,6 +36,9 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected cooldown character={character.Name} skill={cast.SkillId} remaining={(nextCastAt - now).TotalSeconds:F2}");
+            await SendSkillCooldownRejectionAsync(
+                cancellationToken,
+                "StunSkillCooldownRejected");
             return;
         }
 
@@ -62,8 +65,8 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "StunSkillManaRejected");
             return;
@@ -231,6 +234,9 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected cooldown character={character.Name} skill={cast.SkillId} remaining={(nextCastAt - now).TotalSeconds:F2}");
+            await SendSkillCooldownRejectionAsync(
+                cancellationToken,
+                "StatusSkillCooldownRejected");
             return;
         }
 
@@ -266,8 +272,8 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "StatusSkillManaRejected");
             return;

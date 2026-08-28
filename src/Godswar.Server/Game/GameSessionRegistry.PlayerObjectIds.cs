@@ -13,8 +13,18 @@ internal sealed partial class GameSessionRegistry
         int accountId,
         GameCharacter character,
         bool worldReady = true,
-        DateTimeOffset? joinedAt = null) =>
-        JoinWorldInstanceCore(
+        DateTimeOffset? joinedAt = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(character);
+        if (character.CurrentMap is 200 or 204)
+        {
+            throw new InvalidOperationException(
+                "Medusa Island reconnect requires a durable exact-instance " +
+                "assignment; default map-only fallback is forbidden.");
+        }
+
+        return JoinWorldInstanceCore(
             session,
             accountId,
             character,
@@ -23,6 +33,7 @@ internal sealed partial class GameSessionRegistry
                 character.CurrentMap),
             worldReady: worldReady,
             joinedAt: joinedAt);
+    }
 
     internal uint GetRequiredPlayerObjectId(
         ClientSession session)

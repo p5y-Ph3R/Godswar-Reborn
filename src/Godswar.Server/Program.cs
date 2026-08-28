@@ -48,6 +48,8 @@ try
         options.Storage.PostgresConnectionString);
     await PostgresRelationalContentBaselineBootstrapper.EnsureAsync(
         options.Storage.PostgresConnectionString);
+    var (realmCalendars, realmCalendar) =
+        await ServerRealmCalendarStartup.LoadForProcessAsync(options);
     var runtimeContent = await ServerRuntimeContentComposition
         .LoadStartupContentAsync(options);
     if (runtimeContent is null)
@@ -73,7 +75,8 @@ try
             options, worldContent, itemContent, petContent,
             petOwnerMergeContent, petLearnedSkillContent,
             holyBalance,
-            warehousePolicy);
+            warehousePolicy,
+            realmCalendar);
     var accountPersistence = ServerAccountPersistenceComposition.Create(
         postgresApplicationDataRuntime);
     var gameplayPersistence =
@@ -95,6 +98,7 @@ try
             petLearnedSkillContent,
             holyBalance,
             warehousePolicy,
+            realmCalendars,
             shutdown.Token);
 
     await using var characterCheckpoints =
@@ -129,6 +133,7 @@ try
         characterCheckpoints,
         gameplayPersistence,
         postgresApplicationDataRuntime,
+        realmCalendar,
         coordination.Worker,
         gameplayCatalogs,
         itemContent,

@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.Infrastructure.Progression;
 using Godswar.Server.State;
@@ -59,14 +61,17 @@ internal static class
             BoostedEnergyPerTickX100: 100,
             NormalEnergyPerTickX100: 100,
             CompensationOnlineThresholdSeconds: 0,
-            CompensationSeconds: 0,
-            ServerUtcOffsetMinutes: 0);
+            CompensationSeconds: 0);
+        var realmCalendar = RealmCalendar.CreateForTesting(
+            RealmId.Tempest,
+            "Asia/Manila");
         var options = new PostgresOutboxDispatcherOptions();
         var executor =
             new PostgresProgressionIntervalSettlementCommandExecutor(
                 dataSource,
                 options,
-                policy);
+                policy,
+                realmCalendar);
         var sessionId = Guid.NewGuid();
         var from = new DateTimeOffset(
             2026,
@@ -82,6 +87,19 @@ internal static class
             1,
             from,
             from.AddSeconds(30));
+        var wrongRealmExecutor =
+            new PostgresProgressionIntervalSettlementCommandExecutor(
+                dataSource,
+                options,
+                policy,
+                RealmCalendar.CreateForTesting(
+                    RealmId.Dwargon,
+                    "Asia/Manila"));
+        var wrongRealm = await wrongRealmExecutor.ExecuteAsync(first);
+        Check.Equal(
+            (int)ProgressionIntervalSettlementDisposition.CharacterNotFound,
+            (int)wrongRealm.Disposition,
+            "a Dwargon calendar cannot settle a Tempest character");
 
         var concurrent = await Task.WhenAll(
             executor.ExecuteAsync(first),
@@ -116,7 +134,8 @@ internal static class
             new PostgresProgressionIntervalSettlementCommandExecutor(
                 dataSource,
                 options,
-                policy);
+                policy,
+                realmCalendar);
         var restartReplay =
             await restartedExecutor.ExecuteAsync(first);
         Check.Equal(

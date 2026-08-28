@@ -57,6 +57,29 @@ internal sealed class RuntimePolicySessionSocket : IAsyncDisposable
         return packet;
     }
 
+    public async Task<byte[]> ReadPacketAsync()
+    {
+        using var timeout = new CancellationTokenSource(
+            TimeSpan.FromSeconds(5));
+        var lengthBytes = new byte[sizeof(ushort)];
+        await _inbound.GetStream().ReadExactlyAsync(
+            lengthBytes,
+            timeout.Token);
+        _cipher.Transform(lengthBytes);
+        var length = BinaryPrimitives.ReadUInt16LittleEndian(lengthBytes);
+        Check.True(
+            length >= 4,
+            "runtime-policy packet has a valid declared length");
+
+        var packet = new byte[length];
+        lengthBytes.CopyTo(packet, 0);
+        await _inbound.GetStream().ReadExactlyAsync(
+            packet.AsMemory(sizeof(ushort)),
+            timeout.Token);
+        _cipher.Transform(packet.AsSpan(sizeof(ushort)));
+        return packet;
+    }
+
     public async ValueTask DisposeAsync()
     {
         await Session.DisposeAsync();

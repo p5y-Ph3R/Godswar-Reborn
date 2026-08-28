@@ -16,8 +16,10 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
     internal const int MaximumMovementTicks = 21;
     internal const int MinimumIdleTicks = 15 * TicksPerSecond;
     internal const int MaximumIdleTicks = 20 * TicksPerSecond;
-    internal const float CombatRange = 3f;
-    internal const int AttackCooldownTicks = 21;
+    internal const float CombatRange = MonsterAttackRangePolicy.MeleeRange;
+    internal const float AggroDetectionRadius =
+        MonsterAggroPolicy.DetectionRadius;
+    internal const int AttackCooldownTicks = 23;
     internal static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1d / TicksPerSecond);
     internal static readonly TimeSpan AttackCooldown = TimeSpan.FromTicks(TickInterval.Ticks * AttackCooldownTicks);
     internal static readonly TimeSpan DefaultCorpseDespawnDelay = TimeSpan.FromSeconds(5);
@@ -27,7 +29,7 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
     private readonly Dictionary<uint, MonsterRuntimeState> _monsters;
     private readonly Queue<MonsterRuntimeUpdate> _pendingUpdates = new();
     private readonly TimeSpan _corpseDespawnDelay;
-    private readonly TimeSpan _respawnDelay;
+    private readonly TimeSpan? _respawnDelay;
     private readonly Guid _runtimeInstanceId;
     private readonly WorldBossCatalog _worldBossCatalog;
 
@@ -39,15 +41,19 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
         TimeSpan? respawnDelay = null,
         WorldBossRespawnState? activeWorldBossRespawn = null,
         Guid? runtimeInstanceId = null,
-        WorldBossCatalog? worldBossCatalog = null)
+        WorldBossCatalog? worldBossCatalog = null,
+        MonsterRespawnPolicy respawnPolicy = MonsterRespawnPolicy.Timed,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
+        var capturedDefinitions = definitions.ToArray();
         MapId = mapId;
         _runtimeInstanceId =
             MonsterRuntimeIdentity.Resolve(runtimeInstanceId);
         _worldBossCatalog = worldBossCatalog ?? WorldBossCatalog.Empty;
+        var resolvedCombatProfiles = monsterCombatProfiles ??
+            MonsterCombatProfileCatalog.Empty;
         _corpseDespawnDelay = corpseDespawnDelay ?? DefaultCorpseDespawnDelay;
-        _respawnDelay = respawnDelay ?? DefaultRespawnDelay;
         if (_corpseDespawnDelay <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
@@ -55,14 +61,18 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                 "Monster corpse-despawn delay must be positive.");
         }
 
-        if (_respawnDelay <= _corpseDespawnDelay)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(respawnDelay),
-                "Monster respawn delay must be later than corpse despawn.");
-        }
+        _respawnDelay = MonsterRespawnPolicyRules.ResolveOrdinaryDelay(
+            respawnPolicy,
+            _corpseDespawnDelay,
+            respawnDelay);
+        MonsterRespawnPolicyRules.RejectTimedWorldBossConfiguration(
+            respawnPolicy,
+            mapId,
+            capturedDefinitions,
+            activeWorldBossRespawn,
+            _worldBossCatalog);
 
-        _monsters = definitions
+        _monsters = capturedDefinitions
             .OrderBy(definition => definition.ObjectId)
             .ToDictionary(
                 definition => definition.ObjectId,
@@ -71,7 +81,11 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                     definition,
                     initializedAt,
                     activeWorldBossRespawn,
-                    _runtimeInstanceId));
+                    _runtimeInstanceId,
+                    respawnPolicy,
+                    MonsterAttackRangePolicy.Resolve(
+                        resolvedCombatProfiles.Resolve(definition),
+                        definition)));
     }
 
     public byte MapId { get; }
@@ -199,15 +213,42 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                     beforeHealth,
                     false,
                     CreateSnapshot(monster),
-                    HealthMutation: null);
+                    HealthMutation: null,
+                    monster.FirstHitCharacterId);
                 return true;
             }
 
-            monster.CurrentHealth = damage >= beforeHealth
+            var afterHealth = damage >= beforeHealth
                 ? 0
                 : beforeHealth - damage;
-            monster.HealthRevision = checked(beforeHealthRevision + 1);
-            var killed = monster.CurrentHealth == 0;
+            var afterHealthRevision = checked(beforeHealthRevision + 1);
+            var killed = afterHealth == 0;
+            var firstHitCharacterId = monster.FirstHitCharacterId;
+            var claimEstablished =
+                !periodic &&
+                attackerCharacterId is > 0 &&
+                firstHitCharacterId is null;
+            if (!periodic && attackerCharacterId is > 0)
+            {
+                firstHitCharacterId ??= attackerCharacterId;
+            }
+            Dictionary<int, ulong>? nextThreat = null;
+            var nextAggroCharacterId =
+                monster.AggroCharacterId.GetValueOrDefault();
+            if (!killed && !periodic && attackerCharacterId is > 0)
+            {
+                nextThreat = MonsterAggroPolicy.RecordDamage(
+                    monster.DamageThreat,
+                    attackerCharacterId.Value,
+                    beforeHealth - afterHealth,
+                    monster.AggroCharacterId,
+                    out var leaderCharacterId);
+                nextAggroCharacterId = leaderCharacterId;
+            }
+
+            monster.CurrentHealth = afterHealth;
+            monster.HealthRevision = afterHealthRevision;
+            monster.FirstHitCharacterId = firstHitCharacterId;
             if (killed)
             {
                 ResetCombat(monster, now);
@@ -218,28 +259,31 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                 monster.MovementTicks = 0;
                 monster.RemainingMovementTicks = 0;
                 monster.DespawnAt = now + _corpseDespawnDelay;
-                var respawnDelay = _worldBossCatalog.ResolveRespawnInterval(
-                    MapId,
-                    monster.Definition.TemplateKey,
-                    _respawnDelay);
-                monster.RespawnAt = now + respawnDelay;
+                monster.RespawnAt = monster.RespawnPolicy switch
+                {
+                    MonsterRespawnPolicy.Timed => now +
+                        _worldBossCatalog.ResolveRespawnInterval(
+                            MapId,
+                            monster.Definition.TemplateKey,
+                            _respawnDelay!.Value),
+                    MonsterRespawnPolicy.Never => null,
+                    _ => throw new InvalidOperationException(
+                        "Monster state contains an unsupported respawn policy.")
+                };
                 _pendingUpdates.Enqueue(new MonsterRuntimeUpdate(
                     MonsterRuntimeUpdateKind.Died,
                     CreateSnapshot(monster)));
             }
-            else if (!periodic &&
-                     attackerCharacterId is > 0 &&
-                     monster.AggroCharacterId != attackerCharacterId)
+            else if (nextThreat is not null)
             {
-                monster.AggroCharacterId = attackerCharacterId;
-                monster.CombatPhase = MonsterCombatPhase.None;
-                monster.HasSentInitialChase = false;
-                monster.IsMoving = false;
-                monster.VelocityX = 0;
-                monster.VelocityZ = 0;
-                monster.MovementTicks = 0;
-                monster.RemainingMovementTicks = 0;
-                monster.NextAttackAt = now + TickInterval;
+                monster.DamageThreat = nextThreat;
+                if (monster.AggroCharacterId != nextAggroCharacterId)
+                {
+                    SetAggroTarget(
+                        monster,
+                        nextAggroCharacterId,
+                        now);
+                }
             }
 
             result = new MonsterDamageResult(
@@ -252,7 +296,9 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
                     objectId,
                     monster.SpawnGeneration,
                     beforeHealthRevision,
-                    monster.HealthRevision));
+                    monster.HealthRevision),
+                firstHitCharacterId,
+                claimEstablished);
             return true;
         }
     }
@@ -334,7 +380,11 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
             // allowing the monster to move or attack until the status expires.
             // Resetting the phase also prevents a pre-stun attack timestamp
             // from being replayed as a catch-up strike after expiry.
-            monster.AggroCharacterId = attackerCharacterId;
+            monster.AggroCharacterId =
+                MonsterAggroPolicy.SelectLeader(
+                    monster.DamageThreat,
+                    monster.AggroCharacterId) ??
+                attackerCharacterId;
             monster.CombatPhase = MonsterCombatPhase.None;
             monster.HasSentInitialChase = false;
             monster.StunnedUntil = stunnedUntil;
@@ -363,9 +413,55 @@ internal sealed partial class MonsterMapRuntime : IMonsterMapRuntime
     {
         lock (_gate)
         {
-            foreach (var monster in _monsters.Values.Where(monster => monster.AggroCharacterId == characterId))
+            foreach (var monster in _monsters.Values)
             {
-                _pendingUpdates.Enqueue(BeginReturnHome(monster, now));
+                monster.DamageThreat.Remove(characterId);
+                if (monster.AggroCharacterId != characterId)
+                {
+                    continue;
+                }
+
+                var nextTarget = MonsterAggroPolicy.SelectLeader(
+                    monster.DamageThreat,
+                    currentTargetCharacterId: null);
+                if (nextTarget.HasValue)
+                {
+                    SetAggroTarget(monster, nextTarget.Value, now);
+                }
+                else
+                {
+                    _pendingUpdates.Enqueue(BeginReturnHome(monster, now));
+                }
+            }
+        }
+    }
+
+    public void ClearAggroForCharacterStateOnly(
+        int characterId,
+        DateTimeOffset now)
+    {
+        lock (_gate)
+        {
+            foreach (var pair in _monsters)
+            {
+                var monster = pair.Value;
+                monster.DamageThreat.Remove(characterId);
+                if (monster.AggroCharacterId != characterId)
+                {
+                    continue;
+                }
+
+                var nextTarget = MonsterAggroPolicy.SelectLeader(
+                    monster.DamageThreat,
+                    currentTargetCharacterId: null);
+                if (nextTarget.HasValue)
+                {
+                    SetAggroTarget(monster, nextTarget.Value, now);
+                }
+                else
+                {
+                    _ = BeginReturnHomeState(monster, now);
+                }
             }
         }
     }

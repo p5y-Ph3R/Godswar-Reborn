@@ -83,7 +83,7 @@ internal static class TrainingDummyHostileStatusClientProjection
         // changes baseline authority or aggregate mechanics. At capacity the
         // display-only elemental Burn is displaced first, then baseline IDs
         // are retained in stable ascending order.
-        var admittedHostile = overlay.Presentations
+        var authoritativeHostile = overlay.Presentations
             .GroupBy(static presentation => presentation.Effect.StatusId)
             .Select(static group => group
                 .OrderByDescending(static presentation =>
@@ -94,35 +94,32 @@ internal static class TrainingDummyHostileStatusClientProjection
             .OrderByDescending(static presentation =>
                 presentation.Definition.Priority)
             .ThenBy(static presentation => presentation.Effect.StatusId)
-            .Take(PlayerStatusComposer.MaximumTotalStatuses)
             .ToArray();
-        var hostileIds = admittedHostile
-            .Select(static presentation => presentation.Effect.StatusId)
-            .ToHashSet();
-        var baselineCapacity =
-            PlayerStatusComposer.MaximumTotalStatuses -
-            admittedHostile.Length;
-        var admittedBaseline = baseline.Effects
-            .Where(effect => !hostileIds.Contains(effect.StatusId))
-            .OrderBy(static effect =>
-                effect.StatusId == ElementalClientStatusProjection.BurnStatusId
-                    ? 1
-                    : 0)
-            .ThenBy(static effect => effect.StatusId)
-            .Take(baselineCapacity);
-        var effects = admittedBaseline
-            .Concat(admittedHostile.Select(static presentation =>
-                presentation.Effect))
-            .OrderBy(static effect => effect.StatusId)
+        var presentations = baseline.Presentations
+            .Concat(authoritativeHostile.Select(static presentation =>
+                new ClientStatusPresentation(
+                    presentation.Effect,
+                    Beneficial: false,
+                    presentation.Definition.Priority,
+                    presentation.Definition.Control ==
+                        HostileStatusControlFlags.None
+                            ? ClientStatusPresentationClass
+                                .AuthoritativeBaseline
+                            : ClientStatusPresentationClass
+                                .AuthoritativeControl)))
             .ToArray();
-        var physicalDefense = admittedHostile.Aggregate(
+        var physicalDefense = authoritativeHostile.Aggregate(
             0L,
             static (sum, presentation) => sum +
                 presentation.Definition.PhysicalDefenseModifier);
-        var magicDefense = admittedHostile.Aggregate(
+        var magicDefense = authoritativeHostile.Aggregate(
             0L,
             static (sum, presentation) => sum +
                 presentation.Definition.MagicDefenseModifier);
+        var control = authoritativeHostile.Aggregate(
+            HostileStatusControlFlags.None,
+            static (current, presentation) =>
+                current | presentation.Definition.Control);
         var aggregate = baseline.Aggregate with
         {
             PhysicalDefense = SaturatingAdd(
@@ -130,17 +127,18 @@ internal static class TrainingDummyHostileStatusClientProjection
                 physicalDefense),
             MagicDefense = SaturatingAdd(
                 baseline.Aggregate.MagicDefense,
-                magicDefense)
+                magicDefense),
+            Control = baseline.Aggregate.Control | control
         };
-        return baseline with
+        return PlayerStatusCapacityPolicy.Apply(baseline with
         {
-            Effects = effects,
+            Presentations = presentations,
             Aggregate = aggregate,
             Fingerprint = $"{baseline.Fingerprint}#{overlay.Fingerprint}:" +
-                string.Join(',', admittedHostile.Select(
+                string.Join(',', authoritativeHostile.Select(
                     static presentation =>
                         presentation.Effect.StatusId))
-        };
+        });
     }
 
     private static int SaturatingAdd(int left, long right) =>

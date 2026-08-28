@@ -101,6 +101,14 @@ internal sealed class GameCharacter
     // name here and translate it at the PostgreSQL boundary.
     public int Gold { get; set; } = 10;
 
+    public int MedusaHonorPoints { get; set; }
+
+    public long MedusaRewardRevision { get; set; }
+
+    public uint SelectedTitleId { get; set; }
+
+    public uint[] OwnedTitleIds { get; set; } = [];
+
     public int MaxHp { get; set; } = 1500;
 
     public int MaxMp { get; set; } = 177;
@@ -176,6 +184,17 @@ internal sealed class GameCharacter
     {
         VitalsRevision = checked(VitalsRevision + 1);
         return VitalsRevision;
+    }
+
+    internal void AddOwnedTitle(uint titleId)
+    {
+        if (titleId == 0 || OwnedTitleIds.Contains(titleId))
+        {
+            return;
+        }
+
+        OwnedTitleIds = [.. OwnedTitleIds, titleId];
+        Array.Sort(OwnedTitleIds);
     }
 
     internal long MarkPositionChanged()

@@ -50,14 +50,21 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentNullException.ThrowIfNull(session);
         GameSessionContext? source;
+        WorldInstanceRuntime? runtime;
         lock (_gate)
         {
-            _sessions.TryGetValue(session, out source);
+            if (!_sessions.TryGetValue(session, out source) ||
+                !TryGetWorldInstance(source, out runtime))
+            {
+                source = null;
+                runtime = null;
+            }
         }
 
         return source is null
             ? default
             : CommitMonsterRebound(
+                runtime!,
                 source,
                 monster,
                 combatEventId,
@@ -66,6 +73,7 @@ internal sealed partial class GameSessionRegistry
     }
 
     private PveMonsterReboundCommit CommitMonsterRebound(
+        WorldInstanceRuntime runtime,
         GameSessionContext source,
         MonsterRuntimeSnapshot monster,
         ulong combatEventId,
@@ -83,7 +91,7 @@ internal sealed partial class GameSessionRegistry
             monster.ObjectId,
             monster.SpawnGeneration,
             combatEventId);
-        if (!_pveMonsterReboundLedger.TryClaim(key))
+        if (!_pveMonsterReboundLedger.TryReserve(key))
         {
             return new PveMonsterReboundCommit(
                 false,
@@ -93,16 +101,31 @@ internal sealed partial class GameSessionRegistry
                 null);
         }
 
-        var applied = TryApplyMonsterDamage(
-            source.MapId,
-            monster.ObjectId,
-            requestedReboundDamage,
-            source.CharacterId,
-            monster.SpawnGeneration,
-            out var damageResult);
+        bool applied;
+        MonsterDamageResult damageResult;
+        try
+        {
+            applied = TryApplyMonsterSecondaryDamageExact(
+                runtime,
+                source,
+                monster,
+                requestedReboundDamage,
+                source.CharacterId,
+                DateTimeOffset.UtcNow,
+                out damageResult);
+        }
+        catch
+        {
+            _pveMonsterReboundLedger.Release(key);
+            throw;
+        }
         if (!applied)
         {
             _pveMonsterReboundLedger.Release(key);
+        }
+        else
+        {
+            _pveMonsterReboundLedger.Complete(key);
         }
 
         return new PveMonsterReboundCommit(
@@ -195,13 +218,12 @@ internal sealed partial class GameSessionRegistry
             $"killed={damageResult.Killed} viewers={viewers}");
     }
 
-    private static async Task<PreparedPveMonsterKillReward?>
+    private async Task<PreparedPveMonsterKillReward?>
         PrepareMonsterReboundRewardAsync(
             GameSessionContext source,
             PveMonsterReboundCommit commit)
     {
-        if (commit.DamageResult is not { Killed: true } damageResult ||
-            source.PreparePveMonsterKillReward is not { } prepare)
+        if (commit.DamageResult is not { Killed: true } damageResult)
         {
             return null;
         }
@@ -211,7 +233,9 @@ internal sealed partial class GameSessionRegistry
             // This phase owns durable settlement and must run before any
             // cancellable rebound transport. Packet publication remains
             // deferred until after the terminal damage packet.
-            return await prepare(damageResult);
+            return await PrepareClaimedMonsterKillRewardAsync(
+                source.Session,
+                damageResult);
         }
         catch (Exception ex)
         {

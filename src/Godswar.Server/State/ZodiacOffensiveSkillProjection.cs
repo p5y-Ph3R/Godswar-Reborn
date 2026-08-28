@@ -63,8 +63,9 @@ internal static class ZodiacOffensiveSkillProjection
     ];
 
     // Type=2 MP has only 45 shipped entries. Levels 46-50 keep their authored
-    // SkillEff but cap only MP at level 45/300%. Entry 31 is the literal "210"
-    // between 200% and 220%, so it is normalized as the obvious 210% typo.
+    // SkillEff and use the level-45 lookup, but the combined Type-1/Type-2 MP
+    // surcharge is capped to 100% of the skill's authored MP. Entry 31 is the
+    // literal "210" between 200% and 220%, so it is normalized as 210%.
     private static readonly int[] PercentageAdditionalMana =
     [
         5, 10, 15, 20, 25, 30, 35, 40, 45, 50,
@@ -245,7 +246,9 @@ internal static class ZodiacOffensiveSkillProjection
                     authored.Mp,
                     PercentageAdditionalMana[
                         percentageManaEffectiveLevel - 1]);
-            additionalMana = checked(flatMana + percentageMana);
+            additionalMana = Math.Min(
+                authored.Mp,
+                checked(flatMana + percentageMana));
             projected = authored with
             {
                 Mp = checked(authored.Mp + additionalMana),

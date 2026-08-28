@@ -53,7 +53,7 @@ internal static class MonsterCombatResolver
         // Captures establish tier 1/2/3 base attacks of 24/27/31. Keep the
         // extrapolation isolated here until higher-tier combat data is captured.
         var baseAttack = 21 + (3 * boundedTier) + (boundedTier / 3);
-        var stats = target.CalculatedStats ?? CharacterStats.FromCharacter(target);
+        var stats = CharacterStats.FromCharacter(target);
         var effectivePhysicalDefense = Math.Clamp(
             (long)stats.PhysicalDefense + physicalDefenseBonus,
             0L,
@@ -137,6 +137,13 @@ internal static class MonsterCombatResolver
         ArgumentNullException.ThrowIfNull(ranges);
         return ranges.Resolve(target.MapId, target.TemplateKey);
     }
+
+    public static float ResolvePlayerBasicAttackRange(
+        CapturedMonsterSpawn target,
+        MonsterCombatRangeCatalog ranges,
+        float authoredPlayerRange) => Math.Max(
+        PlayerCombatRules.ResolveBasicAttackRange(authoredPlayerRange),
+        ResolvePlayerBasicAttackRange(target, ranges));
 }
 
 /// <summary>

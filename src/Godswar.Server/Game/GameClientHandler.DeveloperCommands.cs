@@ -20,6 +20,13 @@ internal sealed partial class GameClientHandler
         GamePacket packet,
         CancellationToken cancellationToken)
     {
+        if (await HandleDeveloperMedusaTitleCommandAsync(
+                packet,
+                cancellationToken))
+        {
+            return true;
+        }
+
         if (!TryReadTalkText(packet.Payload, out var text) ||
             !DeveloperItemCommand.TryParse(
                 text,

@@ -5,7 +5,8 @@ namespace Godswar.Server.World.Components.Monsters;
 
 internal readonly record struct MonsterIdentityComponent(
     CapturedMonsterSpawn Definition,
-    Guid RuntimeInstanceId);
+    Guid RuntimeInstanceId,
+    float AttackRange);
 
 internal struct MonsterTransformComponent
 {
@@ -72,6 +73,8 @@ internal struct MonsterMovementComponent
 internal struct MonsterCombatComponent
 {
     public int? AggroCharacterId;
+    public int? FirstHitCharacterId;
+    public Dictionary<int, ulong>? DamageThreat;
     public MonsterCombatPhase Phase;
     public bool HasSentInitialChase;
     public DateTimeOffset NextAttackAt;
@@ -83,13 +86,49 @@ internal struct MonsterLifecycleComponent
     public MonsterLifecycleComponent(
         TimeSpan corpseDespawnDelay,
         TimeSpan respawnDelay)
+        : this(
+            corpseDespawnDelay,
+            respawnDelay,
+            MonsterRespawnPolicy.Timed)
     {
+    }
+
+    public MonsterLifecycleComponent(
+        TimeSpan corpseDespawnDelay,
+        TimeSpan? respawnDelay,
+        MonsterRespawnPolicy respawnPolicy)
+    {
+        MonsterRespawnPolicyRules.Validate(respawnPolicy);
+        if (corpseDespawnDelay <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(corpseDespawnDelay));
+        }
+
+        if (respawnPolicy == MonsterRespawnPolicy.Timed &&
+            (respawnDelay is null || respawnDelay <= corpseDespawnDelay))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(respawnDelay),
+                "Timed respawn must be later than corpse despawn.");
+        }
+
+        if (respawnPolicy == MonsterRespawnPolicy.Never &&
+            respawnDelay is not null)
+        {
+            throw new ArgumentException(
+                "Never-respawn lifecycle cannot contain a respawn delay.",
+                nameof(respawnDelay));
+        }
+
         CorpseDespawnDelay = corpseDespawnDelay;
         RespawnDelay = respawnDelay;
+        RespawnPolicy = respawnPolicy;
     }
 
     public TimeSpan CorpseDespawnDelay;
-    public TimeSpan RespawnDelay;
+    public TimeSpan? RespawnDelay;
+    public MonsterRespawnPolicy RespawnPolicy;
     public DateTimeOffset? DespawnAt;
     public DateTimeOffset? RespawnAt;
 }

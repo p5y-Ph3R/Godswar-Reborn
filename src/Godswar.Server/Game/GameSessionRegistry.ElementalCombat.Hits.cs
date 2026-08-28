@@ -71,6 +71,97 @@ internal sealed partial class GameSessionRegistry
         }
     }
 
+    private bool TryReserveElementalIncomingHit(
+        ClientSession session,
+        ElementalCombatSessionFence fence,
+        DeterministicCombatEventContext combatEvent,
+        ElementalEquipmentProfile targetProfile,
+        long originalDamage,
+        long currentHealth,
+        long maximumHealth,
+        long maximumMana,
+        out IncomingResonanceAdjustment adjustment,
+        out ElementalIncomingMutationReservation? reservation)
+    {
+        adjustment = default;
+        reservation = null;
+        if (!IsTargetEvent(fence, combatEvent) ||
+            !TryGetElementalCombatSession(session, fence, out var state))
+        {
+            return false;
+        }
+
+        Monitor.Enter(state.Gate);
+        ElementalResonanceState.TransactionSnapshot? snapshot = null;
+        try
+        {
+            snapshot = state.Resonance.CaptureTransactionSnapshot();
+            adjustment = ElementalResonanceExecutionPolicy
+                .AdjustIncomingDirectDamage(
+                    combatEvent,
+                    targetProfile,
+                    state.Resonance,
+                    originalDamage,
+                    currentHealth,
+                    maximumHealth,
+                    maximumMana);
+            reservation = new(
+                state,
+                snapshot!);
+            return true;
+        }
+        catch
+        {
+            if (snapshot is { } captured)
+            {
+                state.Resonance.RestoreTransactionSnapshot(captured);
+            }
+            Monitor.Exit(state.Gate);
+            throw;
+        }
+    }
+
+    private sealed class ElementalIncomingMutationReservation
+    {
+        private readonly ElementalCombatSessionState _state;
+        private readonly ElementalResonanceState.TransactionSnapshot
+            _snapshot;
+        private bool _completed;
+
+        public bool IsCompleted => _completed;
+
+        public ElementalIncomingMutationReservation(
+            ElementalCombatSessionState state,
+            ElementalResonanceState.TransactionSnapshot snapshot)
+        {
+            _state = state;
+            _snapshot = snapshot;
+        }
+
+        public void Commit()
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            _completed = true;
+            Monitor.Exit(_state.Gate);
+        }
+
+        public void RollBack()
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            _state.Resonance.RestoreTransactionSnapshot(_snapshot);
+            _completed = true;
+            Monitor.Exit(_state.Gate);
+        }
+    }
+
     // The caller must invoke this on the target actor's serialized lane. The
     // registry owns the source resonance state but intentionally performs no
     // target discovery or HP mutation.

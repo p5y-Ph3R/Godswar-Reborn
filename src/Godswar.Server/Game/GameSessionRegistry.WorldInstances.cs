@@ -39,6 +39,37 @@ internal sealed partial class GameSessionRegistry
             cancellationToken);
     }
 
+    internal async ValueTask<PreparedWorldInstanceCreationResult>
+        CreatePreparedLocalWorldInstanceAsync(
+            RealmId realmId,
+            WorldMapId contentMapId,
+            InstanceKind kind,
+            int playerCapacity,
+            IWorldInstanceRuntimePreparation preparation,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        if (realmId != _worldInstanceOptions.ProcessRealmId)
+        {
+            throw new InvalidOperationException(
+                "A game process cannot create a prepared world instance " +
+                "for another realm.");
+        }
+
+        var result = await WorldInstances.CreatePreparedInstancedAsync(
+            realmId,
+            contentMapId,
+            kind,
+            playerCapacity,
+            DateTimeOffset.UtcNow,
+            preparation,
+            cancellationToken);
+        return new(
+            result.Status,
+            result.Runtime?.Descriptor,
+            result.PlacementStatus);
+    }
+
     internal bool TryGetWorldInstance(
         WorldInstanceId instanceId,
         out WorldInstanceDescriptor descriptor)
@@ -59,6 +90,7 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(admission);
         return admission.TargetNodeId ==
                 _worldInstanceOptions.ProcessServerNodeId &&
+            admission.MapId.Value is not (200 or 204) &&
             _worldInstanceOptions.TryFindStaticOpenWorld(
                 admission.RealmId,
                 admission.MapId,
@@ -145,7 +177,8 @@ internal sealed partial class GameSessionRegistry
                             _worldInstanceOptions.MailboxCapacity,
                             _worldInstanceOptions
                                 .ShutdownDrainTimeout,
-                            _gameplayCatalogs.WorldBosses),
+                            _gameplayCatalogs.WorldBosses,
+                            _gameplayCatalogs.MonsterCombatProfiles),
                         _worldInstanceOptions.OwnerInvocationTimeout,
                         _worldInstanceOptions.ShutdownDrainTimeout);
             }

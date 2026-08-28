@@ -13,8 +13,7 @@ internal sealed partial class GameSessionRegistry
         long expectedLifeRevision,
         MountRideDefinition mount,
         DateTimeOffset now,
-        CancellationToken cancellationToken,
-        bool castCompletionClaimed = false)
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!TryGetOrCreatePlayerStatusState(session, out var state))
@@ -22,6 +21,7 @@ internal sealed partial class GameSessionRegistry
             return null;
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -34,8 +34,7 @@ internal sealed partial class GameSessionRegistry
                     !context.WorldReady ||
                     context.CharacterId != expectedCharacterId ||
                     !_playerLifeRevisions.TryGetValue(session, out var lifeRevision) ||
-                    (!castCompletionClaimed &&
-                     lifeRevision != expectedLifeRevision))
+                    lifeRevision != expectedLifeRevision)
                 {
                     return null;
                 }
@@ -44,8 +43,7 @@ internal sealed partial class GameSessionRegistry
                 accountId = context.AccountId;
                 lock (character.VitalsSync)
                 {
-                    if ((!castCompletionClaimed &&
-                         character.CurrentHp <= 0) ||
+                    if (character.CurrentHp <= 0 ||
                         character.Level < mount.MountLevel ||
                         !RequireItemContent().Mounts.TryGetEquippedRideDefinition(character, out var currentMount) ||
                         currentMount != mount ||
@@ -129,12 +127,14 @@ internal sealed partial class GameSessionRegistry
                 force: true,
                 broadcast: true,
                 cancellationToken,
-                forceLocalGameDataSynchronization: true);
+                forceLocalGameDataSynchronization: true,
+                claimedDisconnects: admissionClaims);
             return new MountRideActivationCommit(character, currentMana, StatusChanged: true);
         }
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 
@@ -152,6 +152,7 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -176,12 +177,83 @@ internal sealed partial class GameSessionRegistry
                 broadcast: true,
                 cancellationToken,
                 forceLocalGameDataSynchronization:
-                    kind == MountCatalog.RuntimeStatusKind);
+                    kind == MountCatalog.RuntimeStatusKind,
+                claimedDisconnects: admissionClaims);
             return true;
         }
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
+        }
+    }
+
+    private bool RemovePersistentRuntimeStatusForLifeRevisionLocked(
+        ClientSession session,
+        PlayerStatusState state,
+        long expectedLifeRevision,
+        int kind)
+    {
+        if (!Monitor.IsEntered(_gate))
+        {
+            throw new SynchronizationLockException(
+                "Runtime-status life cleanup requires registry authority.");
+        }
+        if (!_sessions.ContainsKey(session) ||
+            !_playerLifeRevisions.TryGetValue(
+                session,
+                out var lifeRevision) ||
+            lifeRevision != expectedLifeRevision ||
+            !state.RuntimeStatuses.Remove(kind))
+        {
+            return false;
+        }
+
+        if (kind != MountCatalog.RuntimeStatusKind)
+        {
+            RefreshSkillCastControlSnapshot(state);
+        }
+        return true;
+    }
+
+    private async Task PublishRuntimeStatusRemovalAsync(
+        ClientSession session,
+        DateTimeOffset now,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (!_playerStatusStates.TryGetValue(session, out var state))
+        {
+            return;
+        }
+
+        var admissionClaims = new ExactStatusDisconnectClaims();
+        await state.Gate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_gate)
+            {
+                if (!_sessions.ContainsKey(session))
+                {
+                    return;
+                }
+            }
+
+            await PublishStatusSnapshotLockedAsync(
+                session,
+                state,
+                now,
+                reason,
+                force: true,
+                broadcast: true,
+                cancellationToken,
+                forceLocalGameDataSynchronization: true,
+                claimedDisconnects: admissionClaims);
+        }
+        finally
+        {
+            state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 
@@ -318,97 +390,6 @@ internal sealed partial class GameSessionRegistry
                 int.MinValue,
                 int.MaxValue);
             return true;
-        }
-        finally
-        {
-            state.Gate.Release();
-        }
-    }
-
-    public async Task SendStatusSnapshotToViewerAsync(
-        GameSessionContext player,
-        ClientSession viewer,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(player);
-        ArgumentNullException.ThrowIfNull(viewer);
-
-        var snapshot = await GetStatusSnapshotAsync(
-            player.Session,
-            DateTimeOffset.UtcNow,
-            cancellationToken);
-
-        await viewer.SendAsync(
-            PacketBuilder.PlayerStatusEffects(
-                player.Character,
-                player.ObjectId,
-                snapshot.Effects,
-                snapshot.Aggregate),
-            cancellationToken,
-            "VisiblePlayerStatusEffects");
-    }
-
-    internal async Task<PlayerStatusSnapshot> GetStatusSnapshotAsync(
-        ClientSession session,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        if (!_playerStatusStates.TryGetValue(session, out var state))
-        {
-            var baseline = PlayerStatusComposer.Compose(
-                ExperienceBoostState.Empty,
-                [],
-                now);
-            return _sessions.TryGetValue(session, out var context)
-                ? MergeTrainingDummyClientStatusOverlays(
-                    context,
-                    baseline,
-                    now,
-                    out _,
-                    out _)
-                : baseline;
-        }
-
-        await state.Gate.WaitAsync(cancellationToken);
-        try
-        {
-            PlayerStatusSnapshot? snapshot = null;
-            GameSessionContext? context = null;
-            if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
-            {
-                lock (_gate)
-                {
-                    if (_sessions.TryGetValue(
-                            session,
-                            out var currentContext))
-                    {
-                        snapshot = EvaluatePlayerStatusEcsLocked(
-                                session,
-                                state,
-                                currentContext,
-                                now)
-                            .Snapshot;
-                        context = currentContext;
-                    }
-                }
-            }
-
-            snapshot ??= PlayerStatusComposer.Compose(
-                    state.ExperienceBoosts,
-                    state.RuntimeStatuses.Values,
-                    now);
-            context ??= _sessions.TryGetValue(session, out var current)
-                ? current
-                : null;
-            return context is null
-                ? snapshot
-                : MergeTrainingDummyClientStatusOverlays(
-                    context,
-                    snapshot,
-                    now,
-                    out _,
-                    out _);
         }
         finally
         {

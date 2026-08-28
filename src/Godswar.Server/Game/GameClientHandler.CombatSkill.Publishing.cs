@@ -18,6 +18,11 @@ internal sealed partial class GameClientHandler
             CancellationToken cancellationToken)
     {
         var character = _character!;
+        await _registry.PublishMonsterClaimStateAsync(
+            _session,
+            character.CurrentMap,
+            damageResult,
+            cancellationToken);
         var targetX = damageResult.Monster.X;
         var targetZ = damageResult.Monster.Z;
         var selfVisual = PacketBuilder.SkillCastVisual(
@@ -26,7 +31,7 @@ internal sealed partial class GameClientHandler
         var selfDamage = PacketBuilder.SkillDamage(
             LocalPlayerObjectId,
             cast.TargetObjectId,
-            resultFlags: 1,
+            resultFlags: damageResult.Killed ? (byte)5 : (byte)1,
             reportedDamage,
             cast.SkillId,
             targetX,
@@ -113,7 +118,7 @@ internal sealed partial class GameClientHandler
                 PacketBuilder.SkillDamage(
                     worldObjectId,
                     cast.TargetObjectId,
-                    resultFlags: 1,
+                    resultFlags: damageResult.Killed ? (byte)5 : (byte)1,
                     reportedDamage,
                     cast.SkillId,
                     targetX,

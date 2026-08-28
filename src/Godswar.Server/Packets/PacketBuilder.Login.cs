@@ -126,25 +126,32 @@ internal static partial class PacketBuilder
         return packet;
     }
 
-    public static byte[] ServerTime()
-    {
-        return ServerTime(DateTimeOffset.UtcNow);
-    }
+    public static byte[] ServerTime(RealmCalendar realmCalendar) =>
+        ServerTime(realmCalendar, DateTimeOffset.UtcNow);
 
-    public static byte[] ServerTime(DateTimeOffset now)
+    public static byte[] ServerTime(
+        RealmCalendar realmCalendar,
+        DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(realmCalendar);
         var unixSeconds = now.ToUnixTimeSeconds();
         if (unixSeconds is < 0 or > uint.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(now));
         }
 
-        // Working-server captures use a fixed UTC-8 game-server offset even
-        // during daylight-saving months, followed by the current Unix time.
+        var realmUtcOffsetSeconds = checked((int)
+            realmCalendar.GetUtcOffset(now).TotalSeconds);
+        // Origin converts the packet clock as Unix seconds minus this field,
+        // so the native wire value is UTC minus local time (the bias), not
+        // the conventional local-minus-UTC offset.
+        var nativeUtcBiasSeconds = checked(-realmUtcOffsetSeconds);
         var packet = new byte[14];
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, 2), (ushort)packet.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), Opcodes.ServerTimeRequest);
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4, 4), OriginalServerUtcOffsetSeconds);
+        BinaryPrimitives.WriteInt32LittleEndian(
+            packet.AsSpan(4, 4),
+            nativeUtcBiasSeconds);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(8, 4), (uint)unixSeconds);
         return packet;
     }

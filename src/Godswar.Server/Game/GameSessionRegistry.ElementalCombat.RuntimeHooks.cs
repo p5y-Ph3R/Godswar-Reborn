@@ -36,6 +36,36 @@ internal sealed partial class GameSessionRegistry
         }
     }
 
+    private bool TryPreviewElementalStatusAdjustment(
+        ClientSession session,
+        ElementalCombatSessionFence fence,
+        long authoritativeTimeMilliseconds,
+        long movementSpeed,
+        long physicalDefense,
+        long magicDefense,
+        long hitRating,
+        long healingReceived,
+        out ElementalStatusAdjustment adjustment)
+    {
+        adjustment = default;
+        if (!TryGetElementalCombatSession(session, fence, out var state))
+        {
+            return false;
+        }
+
+        lock (state.Gate)
+        {
+            adjustment = state.Statuses.PreviewAdjustments(
+                authoritativeTimeMilliseconds,
+                movementSpeed,
+                physicalDefense,
+                magicDefense,
+                hitRating,
+                healingReceived);
+            return true;
+        }
+    }
+
     internal bool TryProcessAcceptedElementalMovement(
         ClientSession session,
         ElementalCombatSessionFence fence,

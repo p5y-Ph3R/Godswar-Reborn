@@ -26,6 +26,7 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
     private readonly IPetOwnerMergeContentCatalog _ownerMergeContent;
     private readonly IPetLearnedSkillContentCatalog _learnedSkillContent;
     private readonly IPetHatchRankRollSource _petHatchRankRollSource;
+    private readonly IPetCaptureRarityRollSource _petCaptureRarityRollSource;
 
     public PostgresPetDurableCommandExecutor(
         NpgsqlDataSource dataSource,
@@ -34,7 +35,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
         IPetContentCatalog petContent,
         IPetOwnerMergeContentCatalog ownerMergeContent,
         IPetLearnedSkillContentCatalog learnedSkillContent,
-        IPetHatchRankRollSource? petHatchRankRollSource = null)
+        IPetHatchRankRollSource? petHatchRankRollSource = null,
+        IPetCaptureRarityRollSource? petCaptureRarityRollSource = null)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -49,6 +51,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
             throw new ArgumentNullException(nameof(learnedSkillContent));
         _petHatchRankRollSource = petHatchRankRollSource ??
             CryptographicPetHatchRankRollSource.Instance;
+        _petCaptureRarityRollSource = petCaptureRarityRollSource ??
+            CryptographicPetCaptureRarityRollSource.Instance;
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -428,7 +432,8 @@ internal sealed partial class PostgresPetDurableCommandExecutor :
         PetSkillLearnEvidence? SkillLearn = null)
     {
         public bool Succeeded =>
-            Status is PetDurableReceiptStatus.EggHatched or
+            Status is PetDurableReceiptStatus.PetCaptured or
+                PetDurableReceiptStatus.EggHatched or
                 PetDurableReceiptStatus.EquipmentEquipped or
                 PetDurableReceiptStatus.PetLevelUpgraded or
                 PetDurableReceiptStatus.PresenceChanged or

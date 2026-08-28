@@ -49,6 +49,42 @@ internal static partial class Program
 
         Check.Equal(GameDefaults.AthensCamp, invalid.Camp, "invalid camp uses the safe Athens default");
         Check.Equal(GameDefaults.AthensCapitalMap, invalid.CurrentMap, "invalid camp uses the Athens capital");
+
+        var strandedSpartan = new GameCharacter
+        {
+            Camp = GameDefaults.SpartaCamp,
+            CurrentMap = 200,
+            PositionX = 210f,
+            PositionZ = -220f,
+            PositionRevision = 7
+        };
+        Check.True(
+            GameDefaults.TryRecoverUnavailableInstanceLocation(
+                strandedSpartan),
+            "an unavailable Medusa map is recovered on login");
+        Check.True(
+            strandedSpartan.CurrentMap == GameDefaults.SpartaCapitalMap &&
+            strandedSpartan.PositionX == GameDefaults.StartingPositionX &&
+            strandedSpartan.PositionZ == GameDefaults.StartingPositionZ &&
+            strandedSpartan.PositionRevision == 7,
+            "a stranded Spartan is prepared to return to Sparta");
+
+        var ordinarySavedLocation = new GameCharacter
+        {
+            Camp = GameDefaults.SpartaCamp,
+            CurrentMap = 17,
+            PositionX = 31f,
+            PositionZ = 47f,
+            PositionRevision = 9
+        };
+        Check.True(
+            !GameDefaults.TryRecoverUnavailableInstanceLocation(
+                ordinarySavedLocation) &&
+            ordinarySavedLocation.CurrentMap == 17 &&
+            ordinarySavedLocation.PositionX == 31f &&
+            ordinarySavedLocation.PositionZ == 47f &&
+            ordinarySavedLocation.PositionRevision == 9,
+            "ordinary saved world locations remain unchanged");
         return Task.CompletedTask;
     }
 

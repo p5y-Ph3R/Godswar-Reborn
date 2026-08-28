@@ -16,9 +16,12 @@ internal sealed partial class GameSessionRegistry
     private static readonly TimeSpan PlayerRecoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<ClientSession, GameSessionContext> _sessions = [];
-    private readonly ConcurrentDictionary<int, DateTimeOffset> _nextPlayerRecoveryAt = [];
+    private readonly ConcurrentDictionary<
+        int,
+        PlayerRecoveryDeadline> _nextPlayerRecoveryAt = [];
     private readonly ConcurrentDictionary<ClientSession, PlayerStatusState> _playerStatusStates = [];
     private readonly ConcurrentDictionary<ClientSession, long> _playerLifeRevisions = [];
+    private long _nextWorldMembershipEpoch;
     private readonly ConcurrentDictionary<ClientSession, ZodiacOnlineSessionState> _zodiacOnlineSessions = [];
     private readonly ConcurrentDictionary<ClientSession, ProgressionBoostOnlineSessionState> _progressionBoostOnlineSessions = [];
     private readonly ConcurrentDictionary<int, ClientSession> _progressionBoostCharacterOwners = [];
@@ -50,6 +53,8 @@ internal sealed partial class GameSessionRegistry
     {
         _worldInstanceOptions = SnapshotWorldInstanceOptions(
             worldInstanceOptions);
+        _medusaPeriodicDamageLedger = new(
+            _worldInstanceOptions.MaximumRuntimes);
         var persistence = ResolveFocusedPersistence(
             store,
             zodiacLevelStore,
@@ -184,6 +189,7 @@ internal sealed partial class GameSessionRegistry
             if (!preservePlayerStatus)
             {
                 _playerLifeRevisions.TryRemove(session, out _);
+                RemovePartySessionLocked(context.CharacterId);
             }
         }
 
@@ -202,12 +208,17 @@ internal sealed partial class GameSessionRegistry
 
     public void RemovePlayerStatusState(ClientSession session)
     {
-        if (_playerStatusStates.TryRemove(session, out var statusState))
+        ArgumentNullException.ThrowIfNull(session);
+        PlayerStatusState? statusState;
+        lock (_gate)
         {
-            statusState.Lifetime.Cancel();
+            _ = _playerStatusStates.TryRemove(
+                session,
+                out statusState);
+            _playerLifeRevisions.TryRemove(session, out _);
         }
 
-        _playerLifeRevisions.TryRemove(session, out _);
+        statusState?.Lifetime.Cancel();
     }
 
     public void UpdateCharacter(
@@ -250,6 +261,8 @@ internal sealed partial class GameSessionRegistry
                     "The character realm does not match its world " +
                     "instance.");
             }
+            var instanceChanged =
+                existing.WorldInstanceId != worldInstance.InstanceId;
             var updated = existing with
             {
                 CharacterId = character.Id,
@@ -260,14 +273,27 @@ internal sealed partial class GameSessionRegistry
                 Character = character,
                 WorldRevision = advanceWorldRevision
                     ? existing.WorldRevision + 1
-                    : existing.WorldRevision
+                    : existing.WorldRevision,
+                WorldMembershipEpoch = instanceChanged
+                    ? NextWorldMembershipEpochLocked()
+                    : existing.WorldMembershipEpoch
             };
+
+            if (updated == existing)
+            {
+                // Routine same-character refreshes still have to project the
+                // mutable character into the map/ECS shadow. Preserve the
+                // immutable membership record itself, though: replacing a
+                // value-equal context would manufacture a false routing epoch
+                // and suppress an already-committed exact combat/status
+                // publication. Real joins/transfers/reacquisitions continue
+                // to replace it and therefore retain ReferenceEquals fencing.
+                AddToMap(existing);
+                return;
+            }
 
             EnsureMapObjectIdAvailable(updated);
 
-            var instanceChanged =
-                existing.WorldInstanceId !=
-                    updated.WorldInstanceId;
             var placementChange =
                 PrepareWorldPlacement(existing, updated);
             WorldInstancePlayerTransfer? transfer = null;
@@ -327,7 +353,21 @@ internal sealed partial class GameSessionRegistry
     public long GetPlayerLifeRevision(ClientSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
-        return _playerLifeRevisions.GetOrAdd(session, 0);
+        return _playerLifeRevisions.TryGetValue(
+            session,
+            out var lifeRevision)
+            ? lifeRevision
+            : -1;
+    }
+
+    public bool TryGetPlayerLifeRevision(
+        ClientSession session,
+        out long lifeRevision)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return _playerLifeRevisions.TryGetValue(
+            session,
+            out lifeRevision);
     }
 
     public long AdvancePlayerLifeRevision(ClientSession session) =>
@@ -342,22 +382,76 @@ internal sealed partial class GameSessionRegistry
         ArgumentNullException.ThrowIfNull(session);
         lock (_gate)
         {
-            var revision = _playerLifeRevisions.AddOrUpdate(
-                session,
-                1,
-                static (_, revision) => revision + 1);
-            if (_sessions.TryGetValue(session, out var context))
+            if (!_sessions.ContainsKey(session) ||
+                !_playerLifeRevisions.TryGetValue(
+                    session,
+                    out var currentRevision))
             {
-                ClearElementalCombatLifeState(session);
-                ClearTrainingDummyHostileStatusesLocked(session);
-                _nextPlayerRecoveryAt[context.CharacterId] =
-                    advancedAt + PlayerRecoveryInterval;
-                ResetPlayerRecoveryEcs(session);
-                ResetPlayerVitalsDamageEcs(session);
+                return -1;
             }
+            var nextRecoveryAt =
+                advancedAt + PlayerRecoveryInterval;
+            var recoveryDeadline =
+                GetOrCreatePlayerRecoveryDeadlineLocked(
+                    session);
+            var revision = checked(currentRevision + 1);
+            if (!_playerLifeRevisions.TryUpdate(
+                    session,
+                    revision,
+                    currentRevision))
+            {
+                return -1;
+            }
+            ApplyPlayerLifeAdvanceSideEffectsLocked(
+                session,
+                nextRecoveryAt,
+                recoveryDeadline,
+                advancedAt,
+                resetIncomingDamage: true);
 
             return revision;
         }
+    }
+
+    private void ApplyPlayerLifeAdvanceSideEffectsLocked(
+        ClientSession session,
+        DateTimeOffset nextRecoveryAt,
+        PlayerRecoveryDeadline recoveryDeadline,
+        DateTimeOffset lifeAdvancedAt,
+        bool resetIncomingDamage)
+    {
+        if (!_sessions.TryGetValue(session, out var context))
+        {
+            return;
+        }
+
+        ClearBoundMedusaEffectsForExpiredLifeLocked(
+            context,
+            lifeAdvancedAt);
+        ClearElementalCombatLifeState(session);
+        ClearTrainingDummyHostileStatusesLocked(session);
+        recoveryDeadline.Write(nextRecoveryAt);
+        ResetPlayerRecoveryEcs(session);
+        if (resetIncomingDamage)
+        {
+            ResetPlayerVitalsDamageEcs(session);
+        }
+    }
+
+    private PlayerRecoveryDeadline
+        GetOrCreatePlayerRecoveryDeadlineLocked(
+            ClientSession session)
+    {
+        if (!_sessions.TryGetValue(session, out var context))
+        {
+            throw new InvalidOperationException(
+                "Player recovery requires a joined session.");
+        }
+
+        return _nextPlayerRecoveryAt.GetOrAdd(
+            context.CharacterId,
+            static _ => new PlayerRecoveryDeadline(
+                DateTimeOffset.UnixEpoch));
     }
 
     public bool TryMarkWorldReady(

@@ -1,3 +1,5 @@
+using Godswar.Server.Application.Realms;
+
 namespace Godswar.Server.State;
 
 internal readonly record struct ZodiacEnergyPolicy(
@@ -7,11 +9,8 @@ internal readonly record struct ZodiacEnergyPolicy(
     int BoostedEnergyPerTickX100,
     int NormalEnergyPerTickX100,
     int CompensationOnlineThresholdSeconds,
-    int CompensationSeconds,
-    int ServerUtcOffsetMinutes)
+    int CompensationSeconds)
 {
-    public TimeSpan ServerUtcOffset => TimeSpan.FromMinutes(ServerUtcOffsetMinutes);
-
     public void Validate()
     {
         if (TickSeconds <= 0)
@@ -44,10 +43,6 @@ internal readonly record struct ZodiacEnergyPolicy(
             throw new ArgumentOutOfRangeException(nameof(CompensationSeconds));
         }
 
-        if (ServerUtcOffsetMinutes is < -14 * 60 or > 14 * 60)
-        {
-            throw new ArgumentOutOfRangeException(nameof(ServerUtcOffsetMinutes));
-        }
     }
 }
 
@@ -67,9 +62,11 @@ internal static class ZodiacEnergyAccrual
         GameCharacter character,
         DateTimeOffset onlineFrom,
         DateTimeOffset onlineUntil,
-        ZodiacEnergyPolicy policy)
+        ZodiacEnergyPolicy policy,
+        RealmCalendar realmCalendar)
     {
         ArgumentNullException.ThrowIfNull(character);
+        ArgumentNullException.ThrowIfNull(realmCalendar);
         policy.Validate();
 
         if (onlineUntil < onlineFrom)
@@ -86,7 +83,7 @@ internal static class ZodiacEnergyAccrual
             persistedLastOnlineAt > onlineUntil)
         {
             var persistedDay = character.ZodiacOnlineDay ??
-                GetServerDay(persistedLastOnlineAt, policy.ServerUtcOffset);
+                realmCalendar.GetDay(persistedLastOnlineAt);
             character.ZodiacOnlineDay = persistedDay;
             return new ZodiacEnergyAccrualResult(
                 0,
@@ -114,14 +111,14 @@ internal static class ZodiacEnergyAccrual
         var compensationApplied = false;
         EnsureDay(
             character,
-            GetServerDay(cursor, policy.ServerUtcOffset),
+            realmCalendar.GetDay(cursor),
             policy,
             ref gainedEnergyX100,
             ref compensationApplied);
 
         while (cursor < onlineUntil)
         {
-            var serverDay = GetServerDay(cursor, policy.ServerUtcOffset);
+            var serverDay = realmCalendar.GetDay(cursor);
             EnsureDay(
                 character,
                 serverDay,
@@ -129,9 +126,7 @@ internal static class ZodiacEnergyAccrual
                 ref gainedEnergyX100,
                 ref compensationApplied);
 
-            var nextDay = new DateTimeOffset(
-                serverDay.AddDays(1).ToDateTime(TimeOnly.MinValue),
-                policy.ServerUtcOffset);
+            var nextDay = realmCalendar.GetNextDayBoundary(cursor);
             var segmentEnd = onlineUntil < nextDay ? onlineUntil : nextDay;
             var durationTicks = Math.Max(0L, (segmentEnd - cursor).Ticks);
             if (policy.Enabled && durationTicks > 0)
@@ -148,12 +143,12 @@ internal static class ZodiacEnergyAccrual
             cursor = segmentEnd;
         }
 
-        // An interval ending exactly at original-server midnight belongs to the
+        // An interval ending exactly at realm midnight belongs to the
         // new day. Rotate the persisted day now so a disconnect at that instant
         // cannot defer or duplicate compensation on the next login.
         EnsureDay(
             character,
-            GetServerDay(onlineUntil, policy.ServerUtcOffset),
+            realmCalendar.GetDay(onlineUntil),
             policy,
             ref gainedEnergyX100,
             ref compensationApplied);
@@ -168,11 +163,6 @@ internal static class ZodiacEnergyAccrual
             onlineUntil,
             character.ZodiacLastCompensationDay,
             compensationApplied);
-    }
-
-    internal static DateOnly GetServerDay(DateTimeOffset instant, TimeSpan serverUtcOffset)
-    {
-        return DateOnly.FromDateTime(instant.ToOffset(serverUtcOffset).DateTime);
     }
 
     private static int ApplyOnlineDuration(

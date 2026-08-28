@@ -23,10 +23,16 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             .Select(static item => item.Id)
             .Order()
             .ToArray();
+        var nameplateIds = Enumerable.Range(3820, 6).ToArray();
+        var historicalExclusions = bookIds.Concat(nameplateIds)
+            .Append(WarehouseItemContentBaseline.StorageBoxKeyItemId)
+            .Append(CaptureToolItemId)
+            .ToArray();
         var tombstones = await BuildOfficialElementalTombstonesAsync(
             dataSource);
         var predecessor = original.All
-            .Where(item => !bookIds.Contains(checked((int)item.Id)))
+            .Where(item => !historicalExclusions.Contains(
+                checked((int)item.Id)))
             .ToDictionary(static item => item.Id);
         foreach (var tombstone in tombstones)
         {
@@ -55,7 +61,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 computed,
                 OfficialPetItemsV2Source,
                 definitions.Length,
-                bookIds,
+                historicalExclusions,
                 missingTombstones);
             var predecessorFingerprint =
                 await ReadCompleteRevisionFingerprintAsync(
@@ -73,7 +79,11 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                        (SELECT count(*)::integer
                         FROM item_template_content_definitions definition
                         WHERE definition.revision = publication.revision
-                          AND definition.id = ANY(@tombstoneIds))
+                          AND definition.id = ANY(@tombstoneIds)),
+                       (SELECT count(*)::integer
+                        FROM item_template_content_definitions definition
+                        WHERE definition.revision = publication.revision
+                          AND definition.id = @warehouseKeyId)
                 FROM item_template_content_publication publication
                 JOIN item_template_content_revisions release
                   ON release.revision = publication.revision
@@ -84,15 +94,19 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 "tombstoneIds",
                 tombstones.Select(static item => checked((int)item.Id))
                     .ToArray());
+            command.Parameters.AddWithValue(
+                "warehouseKeyId",
+                WarehouseItemContentBaseline.StorageBoxKeyItemId);
             await using var reader = await command.ExecuteReaderAsync();
             Check.True(
                 await reader.ReadAsync() &&
-                reader.GetInt32(0) == 1764 &&
+                reader.GetInt32(0) == 1772 &&
                 reader.GetInt32(1) == 30 &&
-                reader.GetInt32(2) == 14,
-                "exact live pets-v2 upgrade retains 14 tombstones and adds 30 books");
+                reader.GetInt32(2) == 14 &&
+                reader.GetInt32(3) == 1,
+                "exact live pets-v2 upgrade retains tombstones, books, Nameplates, the Storage Box Key, and the capture tool");
             Check.True(
-                upgraded.Revision != computed &&
+                upgraded.Revision == OfficialPetItemsV5Revision &&
                 await ReadCompleteRevisionFingerprintAsync(
                     dataSource,
                     computed) == predecessorFingerprint,
@@ -102,7 +116,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
                 .EnsurePublishedAsync(dataSource);
             Check.True(
                 repeated.Revision == upgraded.Revision && !repeated.Created,
-                "live-lineage pets-v4 publication is idempotent");
+                "live-lineage capture-tool publication is idempotent");
         }
         finally
         {
@@ -141,7 +155,8 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             }
             catch (InvalidOperationException exception) when (
                 exception.Message.Contains(
-                    "exact reviewed pets-v2/v3 predecessor",
+                    "exact reviewed pets-v2/v3/v4, Nameplates-v1, or " +
+                    "Warehouse-v1 predecessor",
                     StringComparison.Ordinal))
             {
                 return;

@@ -82,6 +82,9 @@ internal static partial class PacketBuilder
         PacketText.WriteFixedAscii(packet.AsSpan(nameOffset, 32), character.Name);
 
         var fieldBase = nameOffset + 32;
+        var calculatedStats = character.CalculatedStats is null
+            ? null
+            : CharacterStats.FromCharacter(character);
         if (packet.Length > fieldBase)
         {
             packet[fieldBase] = character.Gender;
@@ -128,7 +131,8 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 108, 4), character.MaxMp);
         }
 
-        if (packet.Length >= fieldBase + 152 && character.CalculatedStats is { } stats)
+        if (packet.Length >= fieldBase + 152 &&
+            calculatedStats is { } stats)
         {
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(fieldBase + 112, 4),
@@ -146,18 +150,21 @@ internal static partial class PacketBuilder
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 148, 4), stats.CriticalResistance);
         }
 
-        if (packet.Length >= fieldBase + 160 && character.CalculatedStats is { } extendedStats)
+        if (packet.Length >= fieldBase + 160 &&
+            calculatedStats is { } extendedStats)
         {
             BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 152, 4), ToClientPercent(extendedStats.PhysicalDamageBonus));
             BinaryPrimitives.WriteSingleLittleEndian(packet.AsSpan(fieldBase + 156, 4), ToClientPercent(extendedStats.MagicDamageBonus));
         }
 
-        if (packet.Length >= fieldBase + 164 && character.CalculatedStats is { } defensePierceStats)
+        if (packet.Length >= fieldBase + 164 &&
+            calculatedStats is { } defensePierceStats)
         {
             BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(fieldBase + 160, 4), defensePierceStats.DamageAbsorb);
         }
 
-        if (packet.Length >= fieldBase + 172 && character.CalculatedStats is { } healingStats)
+        if (packet.Length >= fieldBase + 172 &&
+            calculatedStats is { } healingStats)
         {
             // The legacy GameData fields immediately following DamageAbsorb
             // are healing received (AcceptCure) and outgoing healing (Cure).

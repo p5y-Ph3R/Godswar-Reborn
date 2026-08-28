@@ -117,6 +117,7 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -128,11 +129,13 @@ internal sealed partial class GameSessionRegistry
                 reason,
                 force,
                 broadcast,
-                cancellationToken);
+                cancellationToken,
+                claimedDisconnects: admissionClaims);
         }
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 
@@ -152,6 +155,7 @@ internal sealed partial class GameSessionRegistry
 
         ActiveRuntimeStatus? appliedStatus = null;
         var applied = false;
+        var admissionClaims = new ExactStatusDisconnectClaims();
         var interruptionTask = Task.CompletedTask;
         TaskCompletionSource? interruptionNotificationBarrier = null;
         try
@@ -219,12 +223,14 @@ internal sealed partial class GameSessionRegistry
                     reason,
                     force: true,
                     broadcast: true,
-                    cancellationToken);
+                    cancellationToken,
+                    claimedDisconnects: admissionClaims);
                 applied = true;
             }
             finally
             {
                 state.Gate.Release();
+                admissionClaims.CompleteAll(this);
                 if (appliedStatus is not null)
                 {
                     ScheduleRuntimeStatusExpiry(
@@ -314,6 +320,7 @@ internal sealed partial class GameSessionRegistry
             return false;
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -355,12 +362,14 @@ internal sealed partial class GameSessionRegistry
                 broadcast: true,
                 cancellationToken,
                 forceLocalGameDataSynchronization:
-                    kind == MountCatalog.RuntimeStatusKind);
+                    kind == MountCatalog.RuntimeStatusKind,
+                claimedDisconnects: admissionClaims);
             return true;
         }
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 

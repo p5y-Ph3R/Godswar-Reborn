@@ -14,7 +14,12 @@ internal sealed partial class GameSessionRegistry
         uint ownerObjectId,
         PlayerPetHealingEcsDecision healing,
         string audience,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? expectedRecipientLifeRevision = null,
+        GameSessionContext? eventTarget = null,
+        long? expectedTargetLifeRevision = null,
+        long? expectedTargetVitalsRevision = null,
+        bool requireTargetDead = false)
     {
         int currentHp;
         int currentMp;
@@ -33,17 +38,48 @@ internal sealed partial class GameSessionRegistry
             owner.PositionZ,
             currentHp,
             currentMp);
-        await TrySendWorldInstancePacketAsync(
-            runtime,
-            recipient,
-            packets.CombatText,
-            cancellationToken,
-            $"PetHealingCombatText{audience}");
-        await TrySendWorldInstancePacketAsync(
-            runtime,
-            recipient,
-            packets.AuthoritativeVitals,
-            cancellationToken,
-            $"PetHealingVitals{audience}");
+        if (expectedRecipientLifeRevision is { } lifeRevision)
+        {
+            var exactTarget = eventTarget ?? recipient;
+            var targetLifeRevision =
+                expectedTargetLifeRevision ?? lifeRevision;
+            await TrySendMonsterAttackPacketExactAsync(
+                runtime,
+                recipient,
+                lifeRevision,
+                exactTarget,
+                targetLifeRevision,
+                packets.CombatText,
+                cancellationToken,
+                $"PetHealingCombatText{audience}",
+                expectedTargetVitalsRevision,
+                requireTargetDead);
+            await TrySendMonsterAttackPacketExactAsync(
+                runtime,
+                recipient,
+                lifeRevision,
+                exactTarget,
+                targetLifeRevision,
+                packets.AuthoritativeVitals,
+                cancellationToken,
+                $"PetHealingVitals{audience}",
+                expectedTargetVitalsRevision,
+                requireTargetDead);
+        }
+        else
+        {
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                recipient,
+                packets.CombatText,
+                cancellationToken,
+                $"PetHealingCombatText{audience}");
+            await TrySendWorldInstancePacketAsync(
+                runtime,
+                recipient,
+                packets.AuthoritativeVitals,
+                cancellationToken,
+                $"PetHealingVitals{audience}");
+        }
     }
 }

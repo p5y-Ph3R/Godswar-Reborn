@@ -74,6 +74,7 @@ internal sealed partial class GameSessionRegistry
                 if (!_sessions.TryGetValue(session, out var target) ||
                     !target.WorldReady ||
                     target.Character.CurrentHp <= 0 ||
+                    !_playerLifeRevisions.ContainsKey(session) ||
                     state.Identity.CharacterId != target.CharacterId ||
                     state.Identity.MapId != target.MapId ||
                     state.Identity.WorldInstanceId != target.WorldInstanceId ||
@@ -107,6 +108,11 @@ internal sealed partial class GameSessionRegistry
                     source = FindCurrentElementalSourceLocked(
                         target,
                         due[0].SourceCharacterId);
+                    if (source is not null &&
+                        !_playerLifeRevisions.ContainsKey(source.Session))
+                    {
+                        source = null;
+                    }
                     eligibility = source is null
                         ? default
                         : _gameplayCatalogs.PvpWorldAuthority

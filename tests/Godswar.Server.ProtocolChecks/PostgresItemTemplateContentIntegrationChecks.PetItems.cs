@@ -71,7 +71,7 @@ internal static partial class PostgresItemTemplateContentIntegrationChecks
             AssertPetItemStats(reader.GetString(20), seed);
             Check.True(
                 reader.GetString(21).Contains(
-                    "pets-v4",
+                    "pets-v5",
                     StringComparison.Ordinal) &&
                 reader.GetInt16(22) == 9,
                 "pet items remain part of the manifest-v9 release");

@@ -14,6 +14,7 @@ internal sealed partial class MapInstance
     private readonly MonsterRuntimeMode _monsterRuntimeMode;
     private readonly PlayerRuntimeMode _playerRuntimeMode;
     private readonly WorldBossCatalog _worldBossCatalog;
+    private readonly MonsterCombatProfileCatalog _monsterCombatProfiles;
     private IMonsterMapRuntime? _monsterRuntime;
 
     public int Population => _playerRuntimeMode == PlayerRuntimeMode.Ecs
@@ -21,6 +22,13 @@ internal sealed partial class MapInstance
         : _sessions.Count;
 
     public void AddOrUpdate(GameSessionContext context)
+    {
+        ExecuteWithMedusaCharacterAdmission(
+            context.CharacterId,
+            () => AddOrUpdateCore(context));
+    }
+
+    private void AddOrUpdateCore(GameSessionContext context)
     {
         lock (_membershipGate)
         {
@@ -146,22 +154,33 @@ internal sealed partial class MapInstance
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
-        lock (_monsterRuntimeGate)
+        lock (_medusaOwnershipGate)
         {
-            if (_monsterRuntime is not null &&
-                _monsterRuntime.TryApplyDamage(
-                    objectId,
-                    damage,
-                    attackerCharacterId,
-                    expectedSpawnGeneration,
-                    now,
-                    out result))
+            // An owned Medusa runtime requires a typed CombatResolution so
+            // channel reduction and the lethal run claim share one commit.
+            if (_medusaInstanceOwner is not null)
             {
-                return true;
+                result = default!;
+                return false;
             }
 
-            result = default!;
-            return false;
+            lock (_monsterRuntimeGate)
+            {
+                if (_monsterRuntime is not null &&
+                    _monsterRuntime.TryApplyDamage(
+                        objectId,
+                        damage,
+                        attackerCharacterId,
+                        expectedSpawnGeneration,
+                        now,
+                        out result))
+                {
+                    return true;
+                }
+
+                result = default!;
+                return false;
+            }
         }
     }
 
@@ -174,29 +193,38 @@ internal sealed partial class MapInstance
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
-        lock (_monsterRuntimeGate)
+        lock (_medusaOwnershipGate)
         {
-            if (_monsterRuntime is not null &&
-                _monsterRuntime.TryGetSnapshot(
-                    objectId,
-                    out var snapshot) &&
-                snapshot.SpawnGeneration ==
-                    expectedSpawnGeneration &&
-                snapshot.HealthRevision ==
-                    expectedHealthRevision &&
-                _monsterRuntime.TryApplyDamage(
-                    objectId,
-                    damage,
-                    attackerCharacterId,
-                    expectedSpawnGeneration,
-                    now,
-                    out result))
+            if (_medusaInstanceOwner is not null)
             {
-                return true;
+                result = default!;
+                return false;
             }
 
-            result = default!;
-            return false;
+            lock (_monsterRuntimeGate)
+            {
+                if (_monsterRuntime is not null &&
+                    _monsterRuntime.TryGetSnapshot(
+                        objectId,
+                        out var snapshot) &&
+                    snapshot.SpawnGeneration ==
+                        expectedSpawnGeneration &&
+                    snapshot.HealthRevision ==
+                        expectedHealthRevision &&
+                    _monsterRuntime.TryApplyDamage(
+                        objectId,
+                        damage,
+                        attackerCharacterId,
+                        expectedSpawnGeneration,
+                        now,
+                        out result))
+                {
+                    return true;
+                }
+
+                result = default!;
+                return false;
+            }
         }
     }
 
@@ -243,51 +271,6 @@ internal sealed partial class MapInstance
         }
     }
 
-    public MonsterRuntimeTick AdvanceMonsters(
-        DateTimeOffset now,
-        Func<ClientSession, long>? lifeRevisionResolver = null)
-    {
-        MonsterCombatTarget[] combatTargets;
-        if (lifeRevisionResolver is null)
-        {
-            // Preserve the original Legacy/runtime-test target projection.
-            combatTargets = Snapshot()
-                .Where(context => context.WorldReady)
-                .Select(context => new MonsterCombatTarget(
-                    context.CharacterId,
-                    context.Character.PositionX,
-                    context.Character.PositionZ,
-                    context.Character.CurrentHp > 0))
-                .ToArray();
-        }
-        else
-        {
-            combatTargets = Snapshot()
-                .Where(context => context.WorldReady)
-                .Select(context =>
-                {
-                    var lifeRevision =
-                        lifeRevisionResolver(context.Session);
-                    lock (context.Character.VitalsSync)
-                    {
-                        return new MonsterCombatTarget(
-                            context.CharacterId,
-                            context.Character.PositionX,
-                            context.Character.PositionZ,
-                            context.Character.CurrentHp > 0,
-                            context.ObjectId,
-                            lifeRevision);
-                    }
-                })
-                .ToArray();
-        }
-
-        lock (_monsterRuntimeGate)
-        {
-            return _monsterRuntime?.Advance(now, combatTargets) ?? new MonsterRuntimeTick(false, []);
-        }
-    }
-
     public void ClearMonsterAggroForCharacter(int characterId, DateTimeOffset now)
     {
         lock (_monsterRuntimeGate)
@@ -331,7 +314,7 @@ internal sealed partial class MapInstance
                 return null;
             }
 
-            var desired = SnapshotMonsters()
+            var nearbySpawned = SnapshotMonsters()
                 .Where(monster =>
                     monster.IsSpawned &&
                     WorldSectorVisibilityTracker<CapturedMonsterSpawn>.TryGetCell(
@@ -343,17 +326,29 @@ internal sealed partial class MapInstance
                         monsterCell))
                 .OrderBy(monster => monster.ObjectId)
                 .ToArray();
+            var desired = nearbySpawned
+                .Where(monster =>
+                    monster.IsAlive ||
+                    !forceRefreshVisible &&
+                    viewer.VisibleMonsterVersions.TryGetValue(
+                        monster.ObjectId,
+                        out var visibleVersion) &&
+                    visibleVersion.SpawnGeneration ==
+                        monster.SpawnGeneration)
+                .ToArray();
             var desiredVersions = desired
                 .ToDictionary(
                     monster => monster.ObjectId,
                     monster => monster.AppearanceVersion);
             var entering = desired
                 .Where(monster =>
-                    forceRefreshVisible ||
-                    !viewer.VisibleMonsterVersions.TryGetValue(
-                        monster.ObjectId,
-                        out var visibleVersion) ||
-                    visibleVersion.SpawnGeneration != monster.SpawnGeneration)
+                    monster.IsAlive &&
+                    (forceRefreshVisible ||
+                     !viewer.VisibleMonsterVersions.TryGetValue(
+                         monster.ObjectId,
+                         out var visibleVersion) ||
+                     visibleVersion.SpawnGeneration !=
+                         monster.SpawnGeneration))
                 .ToArray();
             var leaving = viewer.VisibleMonsterVersions
                 .Where(entry =>
@@ -473,7 +468,7 @@ internal sealed partial class MapInstance
                 return null;
             }
 
-            return new MonsterViewerDeliveryLease(viewer, [], [], []);
+            return new MonsterViewerDeliveryLease(viewer, [], [], [], []);
         }
 
         var directMutations = new List<MonsterHealthMutation>(healthMutations!.Count);
@@ -534,6 +529,7 @@ internal sealed partial class MapInstance
             foreach (var reconciliationObjectId in reconciliationObjectIds)
             {
                 if (currentMonsters.TryGetValue(reconciliationObjectId, out var monster) &&
+                    monster.IsAlive &&
                     monster.IsSpawned &&
                     viewer.PlayerCell is { } playerCell &&
                     WorldSectorVisibilityTracker<CapturedMonsterSpawn>.TryGetCell(
@@ -553,6 +549,7 @@ internal sealed partial class MapInstance
             viewer,
             directMutations,
             reconciliationObjectIds,
-            reconciliationMonsters);
+            reconciliationMonsters,
+            ResolveTerminalMonsterMutations(directMutations));
     }
 }

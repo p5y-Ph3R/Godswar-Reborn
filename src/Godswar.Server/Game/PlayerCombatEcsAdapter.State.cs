@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Godswar.Server.Ecs;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Boundaries.Combat;
@@ -68,6 +69,7 @@ internal sealed partial class PlayerCombatEcsAdapter
         _characterId = character.Id;
         _objectId = objectId;
         _targetEntities.Clear();
+        _targetRuntimeInstanceIds.Clear();
         _killGuards.Clear();
         _lastDecision = null;
         _lastProjection = null;
@@ -129,7 +131,8 @@ internal sealed partial class PlayerCombatEcsAdapter
         GameSessionRegistry registry,
         ClientSession session,
         GameCharacter character,
-        in PlayerCombatEcsRequest request)
+        in PlayerCombatEcsRequest request,
+        out PlayerMonsterCombatAuthority combatAuthority)
     {
         var world = _world!;
         foreach (var entity in _targetEntities)
@@ -138,20 +141,34 @@ internal sealed partial class PlayerCombatEcsAdapter
         }
 
         _targetEntities.Clear();
+        _targetRuntimeInstanceIds.Clear();
         MonsterRuntimeSnapshot? selected = null;
-        var snapshots = request.Kind == PlayerCombatIntentKind.AreaSkill
-            ? registry.GetMapMonsterSnapshots(
+        IReadOnlyList<MonsterRuntimeSnapshot> snapshots;
+        if (request.Kind == PlayerCombatIntentKind.AreaSkill)
+        {
+            snapshots = registry.TryCapturePlayerMonsterTargets(
                 session,
-                character.CurrentMap)
-            : registry.TryGetMonsterSnapshot(
+                character.CurrentMap,
+                out var captured,
+                out combatAuthority)
+                ? captured
+                : [];
+        }
+        else
+        {
+            snapshots = registry.TryCapturePlayerMonsterTarget(
                 session,
                 character.CurrentMap,
                 request.TargetObjectId,
-                out var target)
+                out var target,
+                out combatAuthority)
                 ? [target]
                 : [];
+        }
         foreach (var snapshot in snapshots)
         {
+            _targetRuntimeInstanceIds[snapshot.ObjectId] =
+                snapshot.RuntimeInstanceId;
             var visible = registry.IsMonsterVisibleTo(
                 session,
                 snapshot.ObjectId,
@@ -179,9 +196,12 @@ internal sealed partial class PlayerCombatEcsAdapter
                     snapshot.SpawnGeneration,
                     snapshot.HealthRevision,
                     request.Kind == PlayerCombatIntentKind.BasicAttack
-                        ? PlayerCombatRules.ResolveBasicAttackRange(
-                            (character.CalculatedStats ??
-                             CharacterStats.FromCharacter(character))
+                        ? MonsterCombatResolver
+                            .ResolvePlayerBasicAttackRange(
+                            snapshot.Definition,
+                            registry.GameplayCatalogs
+                                .MonsterCombatRanges,
+                            CharacterStats.FromCharacter(character)
                             .BasicAttackRange)
                         : PlayerCombatRules
                             .DefaultBasicAttackRange)
@@ -222,18 +242,29 @@ internal sealed partial class PlayerCombatEcsAdapter
 
     private PlayerCombatMutationOutcomeComponent ApplyMutation(
         GameSessionRegistry registry,
+        ClientSession session,
         in PlayerCombatDamageIntentEvent intent,
+        in CombatResolution resolution,
+        in PlayerMonsterCombatAuthority combatAuthority,
         out MonsterDamageResult? result)
     {
-        if (registry.TryApplyMonsterDamageGuarded(
+        MedusaPlayerMonsterDamageCommit commit = default;
+        if (_targetRuntimeInstanceIds.TryGetValue(
+                intent.TargetObjectId,
+                out var expectedRuntimeInstanceId) &&
+            registry.TryCommitPlayerMonsterDamageGuarded(
+                session,
                 intent.MapId,
                 intent.TargetObjectId,
-                intent.RequestedDamage,
+                expectedRuntimeInstanceId,
                 intent.CharacterId,
                 intent.ExpectedSpawnGeneration,
                 intent.ExpectedHealthRevision,
+                combatAuthority,
                 DateTimeOffset.UtcNow,
-                out var applied) &&
+                resolution,
+                out commit) &&
+            commit.DamageResult is { } applied &&
             applied.HealthMutation is { } mutation &&
             applied.BeforeHealth != applied.AfterHealth)
         {
@@ -249,33 +280,22 @@ internal sealed partial class PlayerCombatEcsAdapter
                 applied.AfterHealth,
                 mutation.AfterHealthRevision,
                 applied.Killed,
-                PlayerCombatMutationRejectionReason.None);
+                PlayerCombatMutationRejectionReason.None)
+            {
+                AuthoritativeRequestedDamage =
+                    commit.Resolution.Damage
+            };
         }
 
         result = null;
-        var rejection =
-            PlayerCombatMutationRejectionReason.TargetRejected;
-        if (registry.TryGetMonsterSnapshot(
-                intent.MapId,
-                intent.TargetObjectId,
-                intent.CharacterId,
-                out var current))
+        var rejection = commit.Outcome switch
         {
-            if (current.SpawnGeneration !=
-                intent.ExpectedSpawnGeneration)
-            {
-                rejection =
-                    PlayerCombatMutationRejectionReason
-                        .GenerationMismatch;
-            }
-            else if (current.HealthRevision !=
-                     intent.ExpectedHealthRevision)
-            {
-                rejection =
-                    PlayerCombatMutationRejectionReason
-                        .RevisionMismatch;
-            }
-        }
+            MedusaPlayerMonsterDamageOutcome.StaleMonsterGeneration =>
+                PlayerCombatMutationRejectionReason.GenerationMismatch,
+            MedusaPlayerMonsterDamageOutcome.StaleHealthRevision =>
+                PlayerCombatMutationRejectionReason.RevisionMismatch,
+            _ => PlayerCombatMutationRejectionReason.TargetRejected
+        };
 
         return new PlayerCombatMutationOutcomeComponent(
             intent.IntentId,
@@ -330,8 +350,7 @@ internal sealed partial class PlayerCombatEcsAdapter
         GameCharacter character,
         in ClientStatusAggregate runtimeModifiers)
     {
-        var stats = character.CalculatedStats ??
-                    CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         return new PlayerCombatOffenseComponent(
             character.Profession,
             stats.PhysicalAttack,

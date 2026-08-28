@@ -218,8 +218,10 @@ internal static partial class CharacterSnapshotHandlerChecks
         Check.True(
             Contains(
                 clearBytes,
-                PacketBuilder.SkillList(hydrated.Skills)),
-            "the client receives snapshot-backed learned skills");
+                PacketBuilder.MedusaDesignationInfo(
+                    hydrated.Character.SelectedTitleId,
+                    hydrated.Character.OwnedTitleIds)),
+            "the client receives snapshot-backed title ownership");
         var fashionAppearance = PacketBuilder.EquipmentVisualRefresh(
             hydrated.Character,
             TestItemContent.Content.FashionAppearances);

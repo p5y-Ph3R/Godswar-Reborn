@@ -22,6 +22,7 @@ internal sealed partial class GameSessionRegistry
         mitigation = default;
         if (!_playerStatusStates.TryGetValue(session, out var state))
         {
+            RuntimeStatusSessionLookupHook?.Invoke();
             lock (_gate)
             {
                 if (!_sessions.TryGetValue(session, out var context))
@@ -101,6 +102,65 @@ internal sealed partial class GameSessionRegistry
                 statusAggregate,
                 hostile);
             return true;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    internal bool TryPreviewRuntimeIncomingDamageMitigation(
+        ClientSession session,
+        DateTimeOffset now,
+        out RuntimeIncomingDamageMitigation mitigation)
+    {
+        mitigation = default;
+        if (!_playerStatusStates.TryGetValue(session, out var state))
+        {
+            lock (_gate)
+            {
+                if (!_sessions.TryGetValue(session, out var context))
+                {
+                    return false;
+                }
+
+                mitigation = ComposeIncomingMitigation(
+                    [],
+                    ClientStatusAggregate.Empty,
+                    PreviewTrainingDummyHostileIncomingModifiersLocked(
+                        context,
+                        now));
+                return true;
+            }
+        }
+
+        state.Gate.Wait();
+        try
+        {
+            var active = state.RuntimeStatuses.Values
+                .Where(status => status.ExpiresAt > now)
+                .ToArray();
+            var aggregate = PlayerStatusComposer.Compose(
+                    state.ExperienceBoosts,
+                    active,
+                    now)
+                .Aggregate;
+            RuntimeStatusSessionLookupHook?.Invoke();
+            lock (_gate)
+            {
+                if (!_sessions.TryGetValue(session, out var context))
+                {
+                    return false;
+                }
+
+                mitigation = ComposeIncomingMitigation(
+                    active,
+                    aggregate,
+                    PreviewTrainingDummyHostileIncomingModifiersLocked(
+                        context,
+                        now));
+                return true;
+            }
         }
         finally
         {

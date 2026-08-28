@@ -68,6 +68,7 @@ internal sealed partial class GameClientHandler
         CancellationToken cancellationToken)
     {
         ClearGearEnhancerSelection();
+        ClearInstanceCallerPageContext();
         if (route.Behavior == NpcDialogueBehavior.WarehouseManager)
         {
             await SendWarehouseManagerMenuAsync(

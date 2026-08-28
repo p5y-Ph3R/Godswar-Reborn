@@ -61,6 +61,12 @@ internal sealed partial class GameClientHandler
         {
             return false;
         }
+        if (!_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var lifeRevision))
+        {
+            return false;
+        }
 
         var context = new PendingSkillCastContext(
             character.Id,
@@ -68,7 +74,7 @@ internal sealed partial class GameClientHandler
             character.CurrentMap,
             character.PositionX,
             character.PositionZ,
-            _registry.GetPlayerLifeRevision(_session));
+            lifeRevision);
         PendingSkillCast pending;
         Task lifecycleTask;
         lock (_skillCastSync)
@@ -158,6 +164,7 @@ internal sealed partial class GameClientHandler
     {
         await pending.WaitForLifecycleStartAsync();
         var cancellationToken = pending.CancellationToken;
+        var startPublished = false;
         try
         {
             try
@@ -166,6 +173,7 @@ internal sealed partial class GameClientHandler
                 // start publication. Cancelling an admitted reliable write
                 // would make the egress terminal and disconnect the client.
                 await publishStartAsync(publicationToken);
+                startPublished = true;
                 pending.CompleteStartPublication(error: null);
             }
             catch (Exception error)
@@ -265,6 +273,24 @@ internal sealed partial class GameClientHandler
         }
         catch (Exception error)
         {
+            if (startPublished)
+            {
+                try
+                {
+                    await PublishSkillCastInterruptedAsync(
+                        pending,
+                        SkillCastInterruptionReason.InvalidState,
+                        CancellationToken.None);
+                }
+                catch (Exception notificationError)
+                {
+                    Console.WriteLine(
+                        $"[skill] failed cast cleanup notification " +
+                        $"skill={pending.SkillId}: " +
+                        notificationError.Message);
+                }
+            }
+
             lock (_skillCastSync)
             {
                 if (ReferenceEquals(_pendingSkillCast, pending))
@@ -457,6 +483,17 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        // The stock capture flow sends 10171 when its six-second progress
+        // bar finishes. Movement, death, and control effects interrupt the
+        // authoritative cast through their own server-side gates, so this
+        // client finish marker must not cancel the pending capture.
+        if (IsPetCaptureCastPending())
+        {
+            Console.WriteLine(
+                "[pet-capture] accepted client cast-finish marker");
+            return;
+        }
+
         await InterruptPendingSkillCastAsync(
             SkillCastInterruptionReason.ClientRequest,
             cancellationToken);
@@ -475,8 +512,10 @@ internal sealed partial class GameClientHandler
             !_worldPresenceAnnounced ||
             !RevalidateCurrentWorldEffectOwnership(
                 "pending_skill_completion") ||
-            _registry.GetPlayerLifeRevision(_session) !=
-                context.LifeRevision ||
+            !_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var lifeRevision) ||
+            lifeRevision != context.LifeRevision ||
             MathF.Abs(character.PositionX - context.StartX) >
                 SkillCastMovementTolerance ||
             MathF.Abs(character.PositionZ - context.StartZ) >

@@ -161,6 +161,17 @@ internal static partial class PlayerCombatEcsParityChecks
             $"{resolution.Outcome} packet carries captured damage encoding");
         Check.Equal((byte)resolution.Outcome, packet[29],
             $"{resolution.Outcome} packet carries its outcome byte");
+        if (resolution.Hit)
+        {
+            var lethal = GameClientHandler.BuildResolvedBasicAttackPacket(
+                0x1448,
+                ResolutionTargetObjectId,
+                3,
+                resolution,
+                killed: true);
+            Check.Equal((byte)5, lethal[28],
+                "lethal basic attack carries the native death-animation flag");
+        }
         if (!resolution.Hit)
         {
             Check.Equal(uint.MaxValue,

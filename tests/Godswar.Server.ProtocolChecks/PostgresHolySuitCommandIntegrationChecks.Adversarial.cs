@@ -210,7 +210,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         new(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            itemContent);
+            itemContent,
+            TestRealmCalendar());
 
     private static CommandConnectionCorrelation CreateSecureConnection() =>
         new(Guid.NewGuid(), CommandTransportKind.SecureTlsLegacy);

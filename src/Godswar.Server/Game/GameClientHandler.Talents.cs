@@ -26,6 +26,11 @@ internal sealed partial class GameClientHandler
             return;
         }
 
+        if (!IsHostileStatusItemUseAllowed(DateTimeOffset.UtcNow))
+        {
+            return;
+        }
+
         var receivedAt = DateTimeOffset.UtcNow;
         if (!LegacyTalentUpgradeCommandAdapter.TryAdapt(
                 packet.Payload,

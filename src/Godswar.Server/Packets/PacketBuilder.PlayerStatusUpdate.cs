@@ -6,6 +6,7 @@ namespace Godswar.Server.Packets;
 internal static partial class PacketBuilder
 {
     private const ushort PlayerStatusUpdateOpcode = 0x27B6;
+    private const int PlayerStatusMapIdOffset = 42;
     private const int PlayerStatusMovementSpeedMultiplierOffset = 56;
     // Wire offset 60 is copied to GameData+0x290. Although that dword looks
     // unused in the status panel, the native NPC interaction path reads byte
@@ -15,6 +16,7 @@ internal static partial class PacketBuilder
     private const int PlayerStatusCampOffset = 62;
     private const int PlayerStatusSilverOffset = 120;
     private const int PlayerStatusGoldOffset = 124;
+    private const int PlayerStatusMedusaHonorOffset = 128;
     private const int PlayerStatusPhysicalDefenseOffset = 164;
     private const int PlayerStatusMagicDefenseOffset = 172;
     private const int PlayerStatusHitOffset = 176;
@@ -117,6 +119,11 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(2, 2), PlayerStatusUpdateOpcode);
         BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(4, 4), objectId);
         PatchReferencePlayerPacket(packet, character, nameOffset: 8);
+        // MSG_SYN_GAMEDATA copies wire offset 8 to GameData+0x25C. Preserve
+        // the current-map word at GameData+0x27E across status refreshes.
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            packet.AsSpan(PlayerStatusMapIdOffset, sizeof(ushort)),
+            character.CurrentMap);
         // MSG_SYN_GAMEDATA copies this field into the local GameData movement
         // speed. Opcode 10167 carries the status/aura snapshot, but it does not
         // update the locomotion value used by client movement prediction.
@@ -128,8 +135,7 @@ internal static partial class PacketBuilder
         // valid 0/1 keeps player hostility and NPC faction checks coherent.
         packet.AsSpan(PlayerStatusInteractionIdentityOffset, sizeof(uint)).Clear();
         packet[PlayerStatusCampOffset] = character.Camp;
-        var stats = character.CalculatedStats ??
-            CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusPhysicalDefenseOffset, sizeof(int)),
             SaturatingStatusValue(
@@ -176,14 +182,18 @@ internal static partial class PacketBuilder
             attackInterval);
         if (objectId == LocalPlayerObjectId)
         {
-            // MSG_SYN_GAMEDATA copies these wire fields into the local
-            // GameData Money/Stone values that drive the wallet UI.
+            // MSG_SYN_GAMEDATA copies wire offset 8 to GameData+0x25C.
+            // Money/Stone/Honor at +0x2CC/+0x2D0/+0x2D4 therefore map to
+            // physical wire offsets 120/124/128.
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(PlayerStatusSilverOffset, 4),
                 Math.Max(0, character.Silver));
             BinaryPrimitives.WriteInt32LittleEndian(
                 packet.AsSpan(PlayerStatusGoldOffset, 4),
                 Math.Max(0, character.Gold));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                packet.AsSpan(PlayerStatusMedusaHonorOffset, 4),
+                Math.Max(0, character.MedusaHonorPoints));
         }
 
         if (packet.Length >= PlayerStatusTalentPointsOffset + 4)

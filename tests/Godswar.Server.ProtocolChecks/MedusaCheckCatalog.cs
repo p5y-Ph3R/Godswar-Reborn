@@ -1,0 +1,104 @@
+namespace Godswar.Server.ProtocolChecks;
+
+internal static class MedusaCheckCatalog
+{
+    public static readonly (string Name, Func<Task> Run)[] All =
+    [
+        (
+            PartySystemChecks.CheckName,
+            PartySystemChecks.RunAsync),
+        (
+            InstanceCallerProtocolChecks.CheckName,
+            InstanceCallerProtocolChecks.RunAsync),
+        (
+            InstanceCallerHandlerChecks.CheckName,
+            InstanceCallerHandlerChecks.RunAsync),
+        (
+            MedusaIslandPolicyChecks.CheckName,
+            MedusaIslandPolicyChecks.RunAsync),
+        (
+            MedusaIslandHardPointPolicyChecks.CheckName,
+            MedusaIslandHardPointPolicyChecks.RunAsync),
+        (
+            MedusaCompletionRewardPolicyChecks.CheckName,
+            MedusaCompletionRewardPolicyChecks.RunAsync),
+        (
+            MedusaFactionAnnouncementChecks.CheckName,
+            MedusaFactionAnnouncementChecks.RunAsync),
+        (
+            MedusaDesignationProtocolChecks.CheckName,
+            MedusaDesignationProtocolChecks.RunAsync),
+        (
+            MedusaTitleAttributePolicyChecks.CheckName,
+            MedusaTitleAttributePolicyChecks.RunAsync),
+        (
+            MedusaIslandEncounterPolicyChecks.CheckName,
+            MedusaIslandEncounterPolicyChecks.RunAsync),
+        (
+            MedusaIslandCombatOverrideChecks.CheckName,
+            MedusaIslandCombatOverrideChecks.RunAsync),
+        (
+            MedusaRunRuntimeConstructionChecks.CheckName,
+            MedusaRunRuntimeConstructionChecks.RunAsync),
+        (
+            MedusaRunRuntimeLifecycleChecks.CheckName,
+            MedusaRunRuntimeLifecycleChecks.RunAsync),
+        (
+            MedusaIslandRosterPolicyChecks.CheckName,
+            MedusaIslandRosterPolicyChecks.RunAsync),
+        (
+            MedusaMonsterContentChecks.CheckName,
+            MedusaMonsterContentChecks.RunAsync),
+        (
+            MedusaEncounterMechanicsRuntimeChecks.CheckName,
+            MedusaEncounterMechanicsRuntimeChecks.RunAsync),
+        (
+            MedusaIslandPlacementPolicyChecks.CheckName,
+            MedusaIslandPlacementPolicyChecks.RunAsync),
+        (
+            MedusaPreparedWorldInstanceCreationChecks.CheckName,
+            MedusaPreparedWorldInstanceCreationChecks.RunAsync),
+        (
+            "Medusa damage-safe prompt corpse cleanup",
+            MedusaInstanceOwnershipChecks
+                .RunMedusaCorpseCleanupChecksAsync),
+        (
+            MedusaInstanceOwnershipChecks.CheckName,
+            MedusaInstanceOwnershipChecks.RunAsync),
+        (
+            "Medusa control-status deterministic proc chance",
+            MedusaInstanceOwnershipChecks
+                .RunControlStatusProcChecksAsync),
+        (
+            "Monster death and corpse removal delivery",
+            Program.CheckMonsterDeathDeliveryAsync),
+        (
+            "Medusa controlled movement reconciliation",
+            MedusaInstanceOwnershipChecks
+                .RunControlledMovementReconciliationAsync),
+        (
+            MedusaInstanceAdmissionChecks.CheckName,
+            MedusaInstanceAdmissionChecks.RunAsync),
+        (
+            MedusaMonsterBootstrapPolicyChecks.CheckName,
+            MedusaMonsterBootstrapPolicyChecks.RunAsync),
+        (
+            MedusaDurableAdmissionFoundationChecks.CheckName,
+            MedusaDurableAdmissionFoundationChecks.RunAsync),
+        (
+            MedusaTitleAwardFoundationChecks.CheckName,
+            MedusaTitleAwardFoundationChecks.RunAsync),
+        (
+            MedusaAdmissionSagaCoordinatorChecks.CheckName,
+            MedusaAdmissionSagaCoordinatorChecks.RunAsync),
+        (
+            PostgresMedusaDurableAdmissionStoreChecks.CheckName,
+            PostgresMedusaDurableAdmissionStoreChecks.RunAsync),
+        (
+            PostgresMedusaDailyEntryLimitChecks.CheckName,
+            PostgresMedusaDailyEntryLimitChecks.RunAsync),
+        (
+            PostgresMedusaTitleAwardStoreChecks.CheckName,
+            PostgresMedusaTitleAwardStoreChecks.RunAsync)
+    ];
+}

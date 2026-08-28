@@ -1,4 +1,5 @@
 using Godswar.Server.Ecs;
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.State;
 using Godswar.Server.World.Boundaries.Combat;
 using Godswar.Server.World.Components.Combat;
@@ -67,6 +68,8 @@ internal sealed class PlayerVitalsDamageEcsAdapter
 {
     private readonly object _gate = new();
     private readonly ProcessPetHealingCooldownStore _petHealingCooldowns;
+    private readonly PetHealingCooldownTransaction
+        _petHealingTransaction = new();
     private EcsWorld? _world;
     private EcsSystemScheduler? _scheduler;
     private MonsterPlayerDamageEntity _player;
@@ -127,7 +130,9 @@ internal sealed class PlayerVitalsDamageEcsAdapter
         uint playerObjectId,
         long currentLifeRevision,
         in PlayerMonsterDamageEcsRequest request,
-        Action? beforeLethalCommit = null)
+        Action? beforeLethalCommit = null,
+        MedusaPeriodicDamageHpCommitObserver? periodicHpCommitObserver =
+            null)
     {
         ArgumentNullException.ThrowIfNull(character);
         ArgumentOutOfRangeException.ThrowIfNegative(
@@ -153,156 +158,214 @@ internal sealed class PlayerVitalsDamageEcsAdapter
                         world,
                         _player,
                         _activePet);
-                MonsterPlayerDamageEcsBoundary.QueueDamage(
-                    world,
-                    _player,
-                    new MonsterPlayerDamageIntentComponent(
-                        request.AttackEventId,
-                        request.MonsterObjectId,
-                        request.MonsterSpawnGeneration,
-                        request.ExpectedCharacterId,
-                        request.ExpectedPlayerObjectId,
-                        request.ExpectedLifeRevision,
-                        request.ExpectedVitalsRevision,
-                        request.ResolvedDamage,
-                        request.ResolvedAt,
-                        request.HealingReceivedBasisPoints));
-                scheduler.RunTick(TimeSpan.Zero);
-
-                var applied = scheduler.Events
-                    .Read<MonsterPlayerDamageAppliedEvent>();
-                var rejected = scheduler.Events
-                    .Read<MonsterPlayerDamageRejectedEvent>();
-                var deaths = scheduler.Events
-                    .Read<MonsterPlayerDeathDecisionEvent>();
-                var petHealing = scheduler.Events
-                    .Read<PetHealingAppliedEvent>();
-                if (applied.Length + rejected.Length != 1 ||
-                    applied.Length > 1 ||
-                    rejected.Length > 1 ||
-                    petHealing.Length > 1)
+                var transactionSnapshot =
+                    CaptureTransactionSnapshot(world);
+                var characterMutationStarted = false;
+                _petHealingTransaction.Begin();
+                try
                 {
-                    throw new InvalidOperationException(
-                        "Incoming damage ECS did not emit exactly one decision.");
-                }
+                    MonsterPlayerDamageEcsBoundary.QueueDamage(
+                        world,
+                        _player,
+                        new MonsterPlayerDamageIntentComponent(
+                            request.AttackEventId,
+                            request.MonsterObjectId,
+                            request.MonsterSpawnGeneration,
+                            request.ExpectedCharacterId,
+                            request.ExpectedPlayerObjectId,
+                            request.ExpectedLifeRevision,
+                            request.ExpectedVitalsRevision,
+                            request.ResolvedDamage,
+                            request.ResolvedAt,
+                            request.HealingReceivedBasisPoints));
+                    scheduler.RunTick(TimeSpan.Zero);
 
-                PlayerMonsterDamageEcsDecision decision;
-                if (applied.Length == 1)
-                {
-                    var result = applied[0];
-                    if (deaths.Length != (result.Killed ? 1 : 0))
+                    var applied = scheduler.Events
+                        .Read<MonsterPlayerDamageAppliedEvent>();
+                    var rejected = scheduler.Events
+                        .Read<MonsterPlayerDamageRejectedEvent>();
+                    var deaths = scheduler.Events
+                        .Read<MonsterPlayerDeathDecisionEvent>();
+                    var petHealing = scheduler.Events
+                        .Read<PetHealingAppliedEvent>();
+                    if (applied.Length + rejected.Length != 1 ||
+                        applied.Length > 1 ||
+                        rejected.Length > 1 ||
+                        petHealing.Length > 1)
                     {
                         throw new InvalidOperationException(
-                            "Incoming damage ECS emitted an inconsistent death decision.");
-                    }
-                    if ((result.Killed && petHealing.Length != 0) ||
-                        petHealing.Length == 1 &&
-                        (petHealing[0].AttackEventId !=
-                             result.AttackEventId ||
-                         petHealing[0].BeforeHealth !=
-                             result.AfterHealth ||
-                         petHealing[0].BeforeVitalsRevision !=
-                             result.AfterVitalsRevision))
-                    {
-                        throw new InvalidOperationException(
-                            "Incoming damage ECS emitted an inconsistent pet-healing decision.");
+                            "Incoming damage ECS did not emit exactly one decision.");
                     }
 
-                    if (result.Killed)
+                    PlayerMonsterDamageEcsDecision decision;
+                    if (applied.Length == 1)
                     {
-                        beforeLethalCommit?.Invoke();
-                    }
-
-                    character.CurrentHp = result.AfterHealth;
-                    var appliedRevision =
-                        character.MarkVitalsChanged();
-                    if (appliedRevision !=
-                        result.AfterVitalsRevision)
-                    {
-                        throw new InvalidOperationException(
-                            "Incoming damage ECS and GameCharacter vitals revisions diverged.");
-                    }
-
-                    PlayerPetHealingEcsDecision? healingDecision = null;
-                    if (petHealing.Length == 1)
-                    {
-                        var healing = petHealing[0];
-                        character.CurrentHp = healing.AfterHealth;
-                        var healingRevision =
-                            character.MarkVitalsChanged();
-                        if (healingRevision !=
-                            healing.AfterVitalsRevision)
+                        var result = applied[0];
+                        if (deaths.Length != (result.Killed ? 1 : 0))
                         {
                             throw new InvalidOperationException(
-                                "Pet Healing ECS and GameCharacter vitals revisions diverged.");
+                                "Incoming damage ECS emitted an inconsistent death decision.");
+                        }
+                        if ((result.Killed && petHealing.Length != 0) ||
+                            petHealing.Length == 1 &&
+                            (petHealing[0].AttackEventId !=
+                                 result.AttackEventId ||
+                             petHealing[0].BeforeHealth !=
+                                 result.AfterHealth ||
+                             petHealing[0].BeforeVitalsRevision !=
+                                 result.AfterVitalsRevision))
+                        {
+                            throw new InvalidOperationException(
+                                "Incoming damage ECS emitted an inconsistent pet-healing decision.");
+                        }
+                        if (periodicHpCommitObserver is not null &&
+                            petHealing.Length != 0)
+                        {
+                            throw new InvalidOperationException(
+                                "Periodic direct health loss cannot apply pet healing.");
                         }
 
-                        healingDecision =
-                            new PlayerPetHealingEcsDecision(
-                                healing.PetId,
-                                healing.PolicyVersion,
-                                healing.ResolvedHealing,
-                                healing.AppliedHealing,
-                                healing.BeforeHealth,
-                                healing.AfterHealth,
-                                healing.BeforeVitalsRevision,
-                                healing.AfterVitalsRevision,
-                                healing.AppliedAt,
-                                healing.CooldownReadyAt);
+                        var expectedAppliedRevision = checked(
+                            character.VitalsRevision + 1);
+                        if (result.BeforeVitalsRevision !=
+                                character.VitalsRevision ||
+                            result.AfterVitalsRevision !=
+                                expectedAppliedRevision ||
+                            petHealing.Length == 1 &&
+                            petHealing[0].AfterVitalsRevision != checked(
+                                expectedAppliedRevision + 1))
+                        {
+                            // Validate the complete revision chain before the
+                            // first GameCharacter mutation. The transaction
+                            // snapshot below restores ECS replay authority if
+                            // any such proof fails.
+                            throw new InvalidOperationException(
+                                "Incoming damage ECS produced an invalid vitals revision chain.");
+                        }
+
+                        if (result.Killed)
+                        {
+                            beforeLethalCommit?.Invoke();
+                            if (!CharacterVitalsMatch(
+                                    character,
+                                    transactionSnapshot.Vitals))
+                            {
+                                throw new InvalidOperationException(
+                                    "Death interruption mutated authoritative player vitals.");
+                            }
+                        }
+
+                        characterMutationStarted = true;
+                        character.CurrentHp = result.AfterHealth;
+                        var appliedRevision =
+                            character.MarkVitalsChanged();
+                        System.Diagnostics.Debug.Assert(
+                            appliedRevision == result.AfterVitalsRevision);
+
+                        PlayerPetHealingEcsDecision? healingDecision = null;
+                        if (petHealing.Length == 1)
+                        {
+                            var healing = petHealing[0];
+                            character.CurrentHp = healing.AfterHealth;
+                            var healingRevision =
+                                character.MarkVitalsChanged();
+                            System.Diagnostics.Debug.Assert(
+                                healingRevision ==
+                                    healing.AfterVitalsRevision);
+
+                            healingDecision =
+                                new PlayerPetHealingEcsDecision(
+                                    healing.PetId,
+                                    healing.PolicyVersion,
+                                    healing.ResolvedHealing,
+                                    healing.AppliedHealing,
+                                    healing.BeforeHealth,
+                                    healing.AfterHealth,
+                                    healing.BeforeVitalsRevision,
+                                    healing.AfterVitalsRevision,
+                                    healing.AppliedAt,
+                                    healing.CooldownReadyAt);
+                        }
+
+                        decision = new PlayerMonsterDamageEcsDecision(
+                            Applied: true,
+                            result.Killed,
+                            MonsterPlayerDamageRejectionReason.None,
+                            result.DecisionSequence,
+                            result.AttackEventId,
+                            result.MonsterObjectId,
+                            result.RequestedDamage,
+                            result.AppliedDamage,
+                            result.BeforeHealth,
+                            result.AfterHealth,
+                            result.BeforeVitalsRevision,
+                            result.AfterVitalsRevision,
+                            result.BeforeLifeRevision,
+                            result.AfterLifeRevision,
+                            ReadLastAttackEventId(world),
+                            healingDecision);
+                        periodicHpCommitObserver?.MarkHpCommitted(
+                            new MedusaPeriodicDamageHpCommitEvidence(
+                                decision.AttackEventId,
+                                decision.BeforeHealth,
+                                decision.AfterHealth,
+                                decision.BeforeVitalsRevision,
+                                decision.AfterVitalsRevision,
+                                decision.BeforeLifeRevision,
+                                decision.AfterLifeRevision));
+                    }
+                    else
+                    {
+                        if (deaths.Length != 0)
+                        {
+                            throw new InvalidOperationException(
+                                "Rejected incoming damage emitted a death decision.");
+                        }
+                        if (petHealing.Length != 0)
+                        {
+                            throw new InvalidOperationException(
+                                "Rejected incoming damage emitted pet Healing.");
+                        }
+
+                        var result = rejected[0];
+                        decision = new PlayerMonsterDamageEcsDecision(
+                            Applied: false,
+                            Killed: false,
+                            result.Reason,
+                            result.DecisionSequence,
+                            result.AttackEventId,
+                            result.MonsterObjectId,
+                            request.ResolvedDamage,
+                            AppliedDamage: 0,
+                            result.CurrentHealth,
+                            result.CurrentHealth,
+                            result.CurrentVitalsRevision,
+                            result.CurrentVitalsRevision,
+                            result.CurrentLifeRevision,
+                            result.CurrentLifeRevision,
+                            result.LastAttackEventId);
                     }
 
-                    decision = new PlayerMonsterDamageEcsDecision(
-                        Applied: true,
-                        result.Killed,
-                        MonsterPlayerDamageRejectionReason.None,
-                        result.DecisionSequence,
-                        result.AttackEventId,
-                        result.MonsterObjectId,
-                        result.RequestedDamage,
-                        result.AppliedDamage,
-                        result.BeforeHealth,
-                        result.AfterHealth,
-                        result.BeforeVitalsRevision,
-                        result.AfterVitalsRevision,
-                        result.BeforeLifeRevision,
-                        result.AfterLifeRevision,
-                        ReadLastAttackEventId(world),
-                        healingDecision);
+                    _lastDecision = decision;
+                    _petHealingTransaction.Commit();
+                    return decision;
                 }
-                else
+                catch
                 {
-                    if (deaths.Length != 0)
+                    if (!characterMutationStarted)
                     {
-                        throw new InvalidOperationException(
-                            "Rejected incoming damage emitted a death decision.");
-                    }
-                    if (petHealing.Length != 0)
-                    {
-                        throw new InvalidOperationException(
-                            "Rejected incoming damage emitted pet Healing.");
+                        _petHealingTransaction.RollBack(
+                            _petHealingCooldowns);
+                        RestoreCharacterSnapshot(
+                            character,
+                            transactionSnapshot.Vitals);
+                        RestoreTransactionSnapshot(
+                            world,
+                            transactionSnapshot);
                     }
 
-                    var result = rejected[0];
-                    decision = new PlayerMonsterDamageEcsDecision(
-                        Applied: false,
-                        Killed: false,
-                        result.Reason,
-                        result.DecisionSequence,
-                        result.AttackEventId,
-                        result.MonsterObjectId,
-                        request.ResolvedDamage,
-                        AppliedDamage: 0,
-                        result.CurrentHealth,
-                        result.CurrentHealth,
-                        result.CurrentVitalsRevision,
-                        result.CurrentVitalsRevision,
-                        result.CurrentLifeRevision,
-                        result.CurrentLifeRevision,
-                        result.LastAttackEventId);
+                    throw;
                 }
-
-                _lastDecision = decision;
-                return decision;
             }
         }
     }
@@ -326,7 +389,9 @@ internal sealed class PlayerVitalsDamageEcsAdapter
         var scheduler = new EcsSystemScheduler(world);
         scheduler.AddSystem(new MonsterPlayerDamageSystem());
         scheduler.AddSystem(
-            new PetHealingTalentSystem(_petHealingCooldowns));
+            new PetHealingTalentSystem(
+                _petHealingCooldowns,
+                _petHealingTransaction));
         _world = world;
         _scheduler = scheduler;
         _player = player;
@@ -338,6 +403,61 @@ internal sealed class PlayerVitalsDamageEcsAdapter
     private ulong ReadLastAttackEventId(EcsWorld world) =>
         world.Get<MonsterPlayerDamageStateComponent>(
             _player.Entity).LastAttackEventId;
+
+    private DamageTransactionSnapshot CaptureTransactionSnapshot(
+        EcsWorld world)
+    {
+        var hasIntent = world.TryGet<
+            MonsterPlayerDamageIntentComponent>(
+                _player.Entity,
+                out var intent);
+        return new DamageTransactionSnapshot(
+            world.Get<PlayerVitalsComponent>(_player.Entity),
+            world.Get<MonsterPlayerDamageStateComponent>(
+                _player.Entity),
+            hasIntent,
+            intent);
+    }
+
+    private void RestoreTransactionSnapshot(
+        EcsWorld world,
+        in DamageTransactionSnapshot snapshot)
+    {
+        world.Set(_player.Entity, snapshot.Vitals);
+        world.Set(_player.Entity, snapshot.DamageState);
+        if (snapshot.HadIntent)
+        {
+            world.Set(_player.Entity, snapshot.Intent);
+        }
+        else
+        {
+            world.Remove<MonsterPlayerDamageIntentComponent>(
+                _player.Entity);
+        }
+    }
+
+    private static void RestoreCharacterSnapshot(
+        GameCharacter character,
+        in PlayerVitalsComponent vitals)
+    {
+        // A pre-lethal interruption callback is notification authority, not
+        // vitals authority. Undo any accidental reentrant mutation together
+        // with the ECS transaction before surfacing its failure.
+        character.CurrentHp = vitals.CurrentHp;
+        character.MaxHp = vitals.MaximumHp;
+        character.CurrentMp = vitals.CurrentMp;
+        character.MaxMp = vitals.MaximumMp;
+        character.VitalsRevision = vitals.Revision;
+    }
+
+    private static bool CharacterVitalsMatch(
+        GameCharacter character,
+        in PlayerVitalsComponent vitals) =>
+        character.CurrentHp == vitals.CurrentHp &&
+        character.MaxHp == vitals.MaximumHp &&
+        character.CurrentMp == vitals.CurrentMp &&
+        character.MaxMp == vitals.MaximumMp &&
+        character.VitalsRevision == vitals.Revision;
 
     private static MonsterPlayerDamageHydrationSnapshot
         SnapshotPlayer(
@@ -354,4 +474,10 @@ internal sealed class PlayerVitalsDamageEcsAdapter
             character.MaxMp,
             character.VitalsRevision,
             lifeRevision);
+
+    private readonly record struct DamageTransactionSnapshot(
+        PlayerVitalsComponent Vitals,
+        MonsterPlayerDamageStateComponent DamageState,
+        bool HadIntent,
+        MonsterPlayerDamageIntentComponent Intent);
 }

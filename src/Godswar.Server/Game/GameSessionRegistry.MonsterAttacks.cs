@@ -32,14 +32,29 @@ internal sealed partial class GameSessionRegistry
     private async Task ProcessMonsterAttackAsync(
         WorldInstanceRuntime runtime,
         MonsterRuntimeUpdate attack,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? capturedWorldTime = null)
     {
         if (_playerRuntimeMode == PlayerRuntimeMode.Ecs)
         {
             await ProcessMonsterAttackEcsAsync(
                 runtime,
                 attack,
-                cancellationToken);
+                cancellationToken,
+                capturedWorldTime);
+            return;
+        }
+
+        // A bound Medusa run owns ECS-only source, life, and effect
+        // authority. Falling through to legacy HP mutation would discard
+        // those fences. Ordinary unbound legacy maps retain their existing
+        // behavior.
+        if (IsLegacyMedusaMonsterAttackUnsupported(runtime))
+        {
+            Console.WriteLine(
+                $"[medusa] rejected legacy monster attack " +
+                $"instance={runtime.InstanceId} " +
+                $"monster={attack.Monster.ObjectId}");
             return;
         }
 
@@ -95,9 +110,17 @@ internal sealed partial class GameSessionRegistry
             targetContext = ResolveCurrentMonsterAttackTarget(
                 runtime,
                 members,
-                targetCharacterId);
+                targetCharacterId,
+                attack);
             if (targetContext is null)
             {
+                damage = 0;
+            }
+            else if (!_playerLifeRevisions.TryGetValue(
+                         targetContext.Session,
+                         out var targetLifeRevision))
+            {
+                targetContext = null;
                 damage = 0;
             }
             else
@@ -194,11 +217,19 @@ internal sealed partial class GameSessionRegistry
                                     appliedPlayerDamage);
                             if (killed)
                             {
-                                deathLifeRevision =
-                                    _playerLifeRevisions.AddOrUpdate(
+                                var advancedLifeRevision = checked(
+                                    targetLifeRevision + 1);
+                                if (!_playerLifeRevisions.TryUpdate(
                                         targetContext.Session,
-                                        1,
-                                        static (_, revision) => revision + 1);
+                                        advancedLifeRevision,
+                                        targetLifeRevision))
+                                {
+                                    throw new InvalidOperationException(
+                                        "Established player life authority " +
+                                        "changed while the registry gate " +
+                                        "was held.");
+                                }
+                                deathLifeRevision = advancedLifeRevision;
                             }
                         }
                     }
@@ -208,10 +239,13 @@ internal sealed partial class GameSessionRegistry
 
         if (targetContext is null)
         {
-            ClearMonsterAttackAggro(
-                runtime,
-                targetCharacterId,
-                DateTimeOffset.UtcNow);
+            if (!HasExactEmittedMonsterTarget(attack))
+            {
+                ClearMonsterAttackAggro(
+                    runtime,
+                    targetCharacterId,
+                    DateTimeOffset.UtcNow);
+            }
             return;
         }
 
@@ -223,6 +257,7 @@ internal sealed partial class GameSessionRegistry
         }
 
         var reboundCommit = CommitMonsterRebound(
+            runtime,
             targetContext,
             attack.Monster,
             combatEventId,
@@ -230,8 +265,9 @@ internal sealed partial class GameSessionRegistry
             reboundDamage);
         var elementalReflection =
             CommitMonsterIncomingElementalReflection(
+                runtime,
                 targetContext,
-                attack.Monster,
+                reboundCommit.DamageResult?.Monster ?? attack.Monster,
                 elementalPostCommit.Reflection);
         var preparedReboundReward =
             await PrepareMonsterReboundRewardAsync(
@@ -259,8 +295,8 @@ internal sealed partial class GameSessionRegistry
                     monster.ObjectId,
                     LocalPlayerObjectId,
                     2000,
-                    attack.TargetX,
-                    attack.TargetZ),
+                    monster.X,
+                    monster.Z),
                 cancellationToken,
                 "MonsterAttackImpactSelf");
             await TrySendWorldInstancePacketAsync(
@@ -329,8 +365,8 @@ internal sealed partial class GameSessionRegistry
                         monster.ObjectId,
                         worldTargetObjectId,
                         2000,
-                        attack.TargetX,
-                        attack.TargetZ),
+                        monster.X,
+                        monster.Z),
                     cancellationToken,
                     "MonsterAttackImpactWorld");
                 await TrySendWorldInstancePacketAsync(
@@ -434,44 +470,5 @@ internal sealed partial class GameSessionRegistry
         Console.WriteLine(
             $"[monster] attack monster={monster.ObjectId} tier={monster.Definition.Tier} target={targetContext.DisplayName} damage={damage} hp={target.CurrentHp}/{target.MaxHp} killed={killed}");
     }
-
-    private IReadOnlyList<GameSessionContext>
-        SnapshotMonsterAttackMembers(
-            WorldInstanceRuntime runtime) =>
-        InvokeWorldOwner(
-            runtime,
-            static map => map.Snapshot());
-
-    private GameSessionContext? ResolveCurrentMonsterAttackTarget(
-        WorldInstanceRuntime runtime,
-        IReadOnlyList<GameSessionContext> members,
-        int targetCharacterId)
-    {
-        var candidate = members.FirstOrDefault(context =>
-            context.WorldReady &&
-            context.CharacterId == targetCharacterId);
-        if (candidate is null ||
-            !_sessions.TryGetValue(
-                candidate.Session,
-                out var current) ||
-            current.WorldInstanceId != runtime.InstanceId ||
-            current.CharacterId != targetCharacterId ||
-            !current.WorldReady)
-        {
-            return null;
-        }
-
-        return current;
-    }
-
-    private void ClearMonsterAttackAggro(
-        WorldInstanceRuntime runtime,
-        int targetCharacterId,
-        DateTimeOffset now) =>
-        InvokeWorldOwner(
-            runtime,
-            map => map.ClearMonsterAggroForCharacter(
-                targetCharacterId,
-                now));
 
 }

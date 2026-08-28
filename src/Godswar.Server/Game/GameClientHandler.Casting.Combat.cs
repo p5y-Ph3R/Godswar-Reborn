@@ -27,10 +27,8 @@ internal sealed partial class GameClientHandler
         var manaCost = Math.Max(0, combat.Mp);
         if (currentMana < manaCost)
         {
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "IntonedSkillManaRejected");
             Console.WriteLine(
@@ -119,7 +117,8 @@ internal sealed partial class GameClientHandler
             var worldObjectId = CurrentPlayerObjectId;
             publishStartAsync = async token =>
             {
-                await _registry.DeliverMonsterPacketToViewerAsync(
+                if (!await _registry
+                    .DeliverMonsterCastStartToViewerAdmissionAsync(
                     _session,
                     character.CurrentMap,
                     cast.TargetObjectId,
@@ -128,18 +127,22 @@ internal sealed partial class GameClientHandler
                         LocalPlayerObjectId),
                     target.SpawnGeneration,
                     token,
-                    "IntonedSkillCastSelf");
-                await _registry.BroadcastToMonsterViewersAsync(
+                    "IntonedSkillCastSelf"))
+                {
+                    throw new InvalidOperationException(
+                        "The intoned cast start could not be admitted.");
+                }
+                await _registry
+                    .BroadcastMonsterCastStartToViewersAdmissionAsync(
+                    _session,
                     character.CurrentMap,
                     cast.TargetObjectId,
                     PacketBuilder.SkillCastVisual(
                         packet.Buffer,
                         worldObjectId),
+                    target.SpawnGeneration,
                     token,
-                    _session,
-                    "IntonedSkillCastWorld",
-                    expectedSpawnGeneration:
-                        target.SpawnGeneration);
+                    "IntonedSkillCastWorld");
             };
         }
 
@@ -177,14 +180,6 @@ internal sealed partial class GameClientHandler
         if (character is null)
         {
             return false;
-        }
-
-        lock (character.VitalsSync)
-        {
-            if (character.CurrentMp < Math.Max(0, combat.Mp))
-            {
-                return false;
-            }
         }
 
         if (SkillCombatResolver.IsHostileMonsterAreaSkill(combat))

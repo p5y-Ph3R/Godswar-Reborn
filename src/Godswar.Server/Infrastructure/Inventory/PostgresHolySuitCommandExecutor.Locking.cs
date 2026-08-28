@@ -24,12 +24,16 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             FROM public.character_base
             WHERE account_id = @accountId
               AND id = @characterId
+              AND server_id = @realmId
             FOR UPDATE;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", subject.AccountId);
         command.Parameters.AddWithValue("characterId", subject.CharacterId);
+        command.Parameters.AddWithValue(
+            "realmId",
+            _realmCalendar.RealmId.Value);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -124,11 +128,9 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         NpgsqlTransaction transaction,
         int accountId,
         RealmId realmId,
+        DateOnly usageDay,
         CancellationToken cancellationToken)
     {
-        var realmDayTimeZone = _itemContent.HolySuit.OperationPolicy?
-            .RealmDayTimeZone ?? throw new InvalidDataException(
-                "The pinned Holy Suit realm-day policy is unavailable.");
         await using (var create = CreateCommand(
             """
             INSERT INTO public.holy_suit_daily_exp_storage (
@@ -141,8 +143,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             VALUES (
                 @accountId,
                 @realmId,
-                (CURRENT_TIMESTAMP AT TIME ZONE
-                    @realmDayTimeZone)::date,
+                @usageDay,
                 0,
                 0
             )
@@ -154,9 +155,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor
         {
             create.Parameters.AddWithValue("accountId", accountId);
             create.Parameters.AddWithValue("realmId", realmId.Value);
-            create.Parameters.AddWithValue(
-                "realmDayTimeZone",
-                realmDayTimeZone);
+            create.Parameters.AddWithValue("usageDay", usageDay);
             await create.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -166,17 +165,14 @@ internal sealed partial class PostgresHolySuitCommandExecutor
             FROM public.holy_suit_daily_exp_storage
             WHERE account_id = @accountId
               AND realm_id = @realmId
-              AND usage_day = (CURRENT_TIMESTAMP AT TIME ZONE
-                  @realmDayTimeZone)::date
+              AND usage_day = @usageDay
             FOR UPDATE;
             """,
             connection,
             transaction);
         command.Parameters.AddWithValue("accountId", accountId);
         command.Parameters.AddWithValue("realmId", realmId.Value);
-        command.Parameters.AddWithValue(
-            "realmDayTimeZone",
-            realmDayTimeZone);
+        command.Parameters.AddWithValue("usageDay", usageDay);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))

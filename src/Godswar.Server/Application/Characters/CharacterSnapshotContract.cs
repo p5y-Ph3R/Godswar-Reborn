@@ -4,7 +4,7 @@ using Godswar.Server.Application.Pets;
 
 namespace Godswar.Server.Application.Characters;
 
-internal static class CharacterSnapshotContract
+internal static partial class CharacterSnapshotContract
 {
     public static void Validate(CharacterAccountSnapshot snapshot)
     {
@@ -72,10 +72,7 @@ internal static class CharacterSnapshotContract
                 "SingleCharacterV1 bounds.");
         }
 
-        if (snapshot.Appearance is null)
-        {
-            throw Invalid("Character appearance is missing.");
-        }
+        ValidateAppearance(snapshot.Appearance);
 
         ValidateLocation(snapshot.Location);
         ValidateProgression(snapshot.Progression);
@@ -158,19 +155,6 @@ internal static class CharacterSnapshotContract
             vitals.Revision < 0)
         {
             throw Invalid("Character vitals are outside the persisted bounds.");
-        }
-    }
-
-    private static void ValidateWallet(CharacterWalletSnapshot wallet)
-    {
-        if (wallet is null)
-        {
-            throw Invalid("Character wallet is missing.");
-        }
-
-        if (wallet.Silver < 0 || wallet.Gold < 0)
-        {
-            throw Invalid("Character wallet contains a negative balance.");
         }
     }
 

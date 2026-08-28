@@ -12,6 +12,12 @@ internal sealed partial class GameSessionRegistry
             CancellationToken,
             Task?,
             Task>> _skillCastInterruptionSinks = [];
+    private readonly ConcurrentDictionary<
+        ClientSession,
+        Func<
+            SkillCastInterruptionReason,
+            PreparedSkillCastInterruption?>>
+        _preparedSkillCastInterruptionSinks = [];
 
     public void RegisterSkillCastInterruptionSink(
         ClientSession session,
@@ -36,6 +42,29 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentNullException.ThrowIfNull(session);
         _skillCastInterruptionSinks.TryRemove(session, out _);
+    }
+
+    internal void RegisterPreparedSkillCastInterruptionSink(
+        ClientSession session,
+        Func<
+            SkillCastInterruptionReason,
+            PreparedSkillCastInterruption?> sink)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(sink);
+        if (!_preparedSkillCastInterruptionSinks.TryAdd(session, sink))
+        {
+            throw new InvalidOperationException(
+                "A prepared skill-cast interruption sink is already " +
+                "registered for this session.");
+        }
+    }
+
+    internal void UnregisterPreparedSkillCastInterruptionSink(
+        ClientSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        _preparedSkillCastInterruptionSinks.TryRemove(session, out _);
     }
 
     public Task RequestSkillCastInterruptionAsync(

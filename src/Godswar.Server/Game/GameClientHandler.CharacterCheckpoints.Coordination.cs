@@ -83,6 +83,15 @@ internal sealed partial class GameClientHandler
             byte mapId,
             CancellationToken cancellationToken)
     {
+        if (IsCurrentLocalDungeon(mapId))
+        {
+            // Dynamic dungeons are process-local children of the admitted
+            // worker route, not independently gateway-routable open worlds.
+            // Keep the current node lease while exact instance ownership is
+            // held by GameSessionRegistry.
+            return _playerCoordinationLease?.IsCurrent ??
+                _playerCoordination?.IsEnabled != true;
+        }
         if (_playerCoordinationLease is null)
         {
             return _playerCoordination?.IsEnabled != true;
@@ -102,6 +111,11 @@ internal sealed partial class GameClientHandler
         byte mapId,
         CancellationToken cancellationToken)
     {
+        if (IsCurrentLocalDungeon(mapId))
+        {
+            return _playerCoordinationLease?.IsCurrent ??
+                _playerCoordination?.IsEnabled != true;
+        }
         if (_playerCoordinationLease is null)
         {
             return _playerCoordination?.IsEnabled != true;
@@ -116,4 +130,14 @@ internal sealed partial class GameClientHandler
         }
         return true;
     }
+
+    private bool IsCurrentLocalDungeon(byte mapId) =>
+        mapId is 200 or 204 &&
+        _registry.TryGetSessionWorldInstanceId(
+            _session,
+            out var instanceId) &&
+        _registry.TryGetWorldInstance(instanceId, out var descriptor) &&
+        descriptor.MapId.Value == mapId &&
+        descriptor.Kind ==
+            Domain.World.Instances.InstanceKind.Dungeon;
 }

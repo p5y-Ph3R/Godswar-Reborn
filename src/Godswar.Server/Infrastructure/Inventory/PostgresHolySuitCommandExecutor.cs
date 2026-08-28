@@ -5,6 +5,7 @@ using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Items;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
@@ -21,17 +22,21 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly GameplayItemContent _itemContent;
+    private readonly RealmCalendar _realmCalendar;
 
     public PostgresHolySuitCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
-        GameplayItemContent itemContent)
+        GameplayItemContent itemContent,
+        RealmCalendar realmCalendar)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
         _ownershipGuard = new PostgresPlayerOwnershipGuard(_dataSource);
         _itemContent = itemContent ??
             throw new ArgumentNullException(nameof(itemContent));
+        _realmCalendar = realmCalendar ??
+            throw new ArgumentNullException(nameof(realmCalendar));
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _commandTimeoutSeconds = Math.Max(
@@ -73,7 +78,8 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
                 envelope.Ownership,
                 envelope.OperationId,
                 envelope.RequestHash,
-                envelope.Command);
+                envelope.Command,
+                _realmCalendar.GetDay(envelope.ReceivedAt));
             var result = await ExecuteTransactionAsync(
                 context,
                 cancellationToken);
@@ -202,6 +208,7 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
                 transaction,
                 context.Subject.AccountId,
                 character.Value.RealmId,
+                context.RealmDay,
                 cancellationToken)
             : DailyUsage.None;
         var battlePass = context.Command.Operation ==
@@ -325,7 +332,8 @@ internal sealed partial class PostgresHolySuitCommandExecutor :
         PlayerOwnershipFence Ownership,
         string OperationId,
         string RequestHash,
-        HolySuitCommand Command)
+        HolySuitCommand Command,
+        DateOnly RealmDay)
     {
         public CommandFamily Family =>
             HolySuitCommandEnvelope.Family(Command.Operation);

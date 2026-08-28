@@ -79,9 +79,7 @@ internal sealed partial class GameClientHandler : IClientHandler
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        _registry.RegisterSkillCastInterruptionSink(
-            _session,
-            InterruptPendingSkillCastAsync);
+        RegisterSkillCastInterruption();
         try
         {
             StartNpcCatalogUpdates();
@@ -131,10 +129,11 @@ internal sealed partial class GameClientHandler : IClientHandler
             await StopRealtimeMovementAsync();
             await StopNpcCatalogUpdatesAsync();
             await StopPetOwnerMergeEnergyLifecycleAsync();
-            _registry.UnregisterSkillCastInterruptionSink(_session);
+            UnregisterSkillCastInterruption();
             await StopPendingSkillCastsAsync();
 
             ClearGearEnhancerSelection();
+            ClearInstanceCallerPageContext();
             try
             {
                 await _registry.FinishProgressionBoostOnlineSessionAsync(
@@ -173,6 +172,7 @@ internal sealed partial class GameClientHandler : IClientHandler
 
             if (_registered)
             {
+                await LeavePartyForSessionExitAsync();
                 try
                 {
                     await BroadcastPlayerLeaveAsync(CancellationToken.None);
@@ -248,6 +248,9 @@ internal sealed partial class GameClientHandler : IClientHandler
             return;
         }
 
+        if (await TryHandlePartyPacketAsync(packet, cancellationToken)) return;
+        if (await TryHandlePetCapturePacketAsync(packet, cancellationToken)) return;
+
         switch (packet.Opcode)
         {
             case Opcodes.LoginGameServer:
@@ -286,6 +289,11 @@ internal sealed partial class GameClientHandler : IClientHandler
                     break;
                 }
                 if (IsMapTransitionPending)
+                {
+                    break;
+                }
+                if (packet.Opcode != Opcodes.Walk &&
+                    RejectBlockedNonWalkMovement())
                 {
                     break;
                 }
@@ -328,10 +336,12 @@ internal sealed partial class GameClientHandler : IClientHandler
                 break;
             case Opcodes.Kitbag:
             case Opcodes.Storage:
-            case Opcodes.PickupDrops:
             case Opcodes.MoveItem:
             case Opcodes.Sell:
                 LogInventoryPacket(packet);
+                break;
+            case Opcodes.PickupDrops:
+                await HandleMonsterLootPickupAsync(packet, cancellationToken);
                 break;
             case Opcodes.UseOrEquip:
                 await HandleUseOrEquipAsync(packet, cancellationToken);
@@ -358,8 +368,6 @@ internal sealed partial class GameClientHandler : IClientHandler
                 break;
             case Opcodes.ForgeReplacementSelection:
             case Opcodes.ForgeReplacementAction:
-                // Replacement mode is not implemented. It shares the forge UI,
-                // so entering it must invalidate any ordinary-forge batch.
                 ClearForgeSelection();
                 Console.WriteLine(
                     $"[forge] ignored unsupported {Opcodes.Name(packet.Opcode)} opcode={packet.Opcode}");
@@ -446,7 +454,10 @@ internal sealed partial class GameClientHandler : IClientHandler
                 await HandleWarehouseTransferAsync(packet, cancellationToken);
                 break;
             case Opcodes.ServerTimeRequest:
-                await _session.SendAsync(PacketBuilder.ServerTime(), cancellationToken, "ServerTime");
+                await _session.SendAsync(
+                    PacketBuilder.ServerTime(_realmCalendar),
+                    cancellationToken,
+                    "ServerTime");
                 break;
             case Opcodes.ClientReady:
                 await HandleClientReadyAsync(cancellationToken);
@@ -477,11 +488,4 @@ internal sealed partial class GameClientHandler : IClientHandler
         }
     }
 
-}
-
-internal enum EquipmentBagTransferAction
-{
-    Reject,
-    Unequip,
-    Equip
 }

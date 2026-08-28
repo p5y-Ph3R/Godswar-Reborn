@@ -15,6 +15,7 @@ internal sealed partial class GameClientHandler
             MonsterDamageResult damageResult,
             int awardedExperience,
             int awardedTalentExperience,
+            int awardedPetExperience,
             DateTimeOffset receivedAt)
         =>
         await MonsterDeathRewardCommitBoundary.ExecuteAsync(
@@ -22,6 +23,7 @@ internal sealed partial class GameClientHandler
                 damageResult,
                 awardedExperience,
                 awardedTalentExperience,
+                awardedPetExperience,
                 receivedAt,
                 cancellationToken),
             allowImmediateReplay:
@@ -36,6 +38,7 @@ internal sealed partial class GameClientHandler
         MonsterDamageResult damageResult,
         int awardedExperience,
         int awardedTalentExperience,
+        int awardedPetExperience,
         DateTimeOffset receivedAt,
         CancellationToken cancellationToken)
     {
@@ -103,13 +106,17 @@ internal sealed partial class GameClientHandler
                 return null;
             }
 
-            return new MonsterRewardSettlement(
+            var settlement = new MonsterRewardSettlement(
                 command.DeathEventId,
                 ToLegacyProgressionResult(execution.Receipt),
                 execution.Projection,
                 execution.Disposition ==
                     MonsterDeathRewardExecutionDisposition.Committed,
                 IsDurable: true);
+            return await AttachPetMonsterExperienceAsync(
+                settlement,
+                awardedPetExperience,
+                cancellationToken);
         }
 
         if (_requiresDurableMonsterRewardCommands)
@@ -121,11 +128,37 @@ internal sealed partial class GameClientHandler
             return null;
         }
 
-        return await SettleLegacyMonsterRewardAsync(
+        var legacy = await SettleLegacyMonsterRewardAsync(
             command.DeathEventId,
             awardedExperience,
             awardedTalentExperience,
             cancellationToken);
+        return legacy is null
+            ? null
+            : await AttachPetMonsterExperienceAsync(
+                legacy,
+                awardedPetExperience,
+                cancellationToken);
+    }
+
+    private async Task<MonsterRewardSettlement>
+        AttachPetMonsterExperienceAsync(
+            MonsterRewardSettlement settlement,
+            int awardedPetExperience,
+            CancellationToken cancellationToken)
+    {
+        if (_account is null || _character is null)
+        {
+            return settlement;
+        }
+
+        var result = await _store.ApplyPetMonsterKillExperienceAsync(
+            _account.Id,
+            _character.Id,
+            settlement.DeathEventId,
+            awardedPetExperience,
+            cancellationToken);
+        return settlement with { PetExperience = result };
     }
 
     private static CharacterProgressionResult ToLegacyProgressionResult(
@@ -153,5 +186,6 @@ internal sealed partial class GameClientHandler
         CharacterProgressionResult Progression,
         MonsterDeathRewardProjection? Projection,
         bool IsFirstCommit,
-        bool IsDurable);
+        bool IsDurable,
+        PetMonsterExperienceResult? PetExperience = null);
 }

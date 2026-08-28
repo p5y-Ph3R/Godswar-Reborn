@@ -1,6 +1,7 @@
 using System.Reflection;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
+using Godswar.Server.Packets;
 using Godswar.Server.Protocol;
 using Godswar.Server.State;
 
@@ -38,13 +39,17 @@ internal static partial class IntonedCombatSkillHandlerChecks
             fixture.Handler);
 
         await fixture.BeginCastAsync();
-        await Task.Delay(
-            combat.CastTime + TimeSpan.FromMilliseconds(250));
+        var notice = await fixture.Socket.ReadPacketAsync(12);
+        var interruption = await fixture.Socket.ReadPacketAsync(8);
 
-        Check.Equal(
-            0,
-            fixture.Socket.Available,
-            $"{runtimeMode} cooldown rejection emits no completion packets");
+        Check.True(
+            notice.SequenceEqual(PacketBuilder.LocalizedError(
+                NativeErrorCodes.SkillNotReady)),
+            $"{runtimeMode} cooldown rejection reaches the native left log");
+        Check.True(
+            interruption.SequenceEqual(
+                PacketBuilder.SkillCastInterrupt(LocalObjectId)),
+            $"{runtimeMode} cooldown rejection clears the published cast");
         Check.Equal(
             manaAfterAcceptedCast,
             fixture.Character.CurrentMp,
@@ -174,10 +179,14 @@ internal static partial class IntonedCombatSkillHandlerChecks
             packet,
             cast,
             combat);
-        Check.Equal(
-            0,
-            fixture.Socket.Available,
-            "mana-rise replay inside cooldown emits no packets");
+        var replayNotice = await fixture.Socket.ReadPacketAsync(12);
+        var replayInterruption = await fixture.Socket.ReadPacketAsync(8);
+        Check.True(
+            replayNotice.SequenceEqual(PacketBuilder.LocalizedError(
+                NativeErrorCodes.SkillNotReady)) &&
+            replayInterruption.SequenceEqual(
+                PacketBuilder.SkillCastInterrupt(LocalObjectId)),
+            "mana-rise replay inside cooldown reports the rejection and clears client casting");
         Check.Equal(
             healthAfterAdmitted,
             fixture.CurrentMonsterHealth(),

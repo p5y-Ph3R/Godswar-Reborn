@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Inventory;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Inventory;
 using Godswar.Server.Infrastructure.Messaging;
@@ -11,6 +13,11 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class PostgresHolySuitCommandIntegrationChecks
 {
+    private static RealmCalendar TestRealmCalendar(int realmId = 1) =>
+        RealmCalendar.CreateForTesting(
+            new RealmId(realmId),
+            "Asia/Manila");
+
     public const string CheckName =
         "PostgreSQL authoritative Holy Suit transactions";
 
@@ -61,6 +68,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         await AssertAutomaticMaximumAsync(connectionString, itemContent);
         await AssertBoxFiveCapacityAsync(connectionString, itemContent);
         await AssertRealmQuotaIsolationAsync(connectionString, itemContent);
+        await AssertRealmDayFromEnvelopeAsync(connectionString, itemContent);
         await AssertAdversarialAuthorityAsync(connectionString, itemContent);
     }
 
@@ -73,7 +81,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         var executor = new PostgresHolySuitCommandExecutor(
             dataSource,
             new PostgresOutboxDispatcherOptions(),
-            itemContent);
+            itemContent,
+            TestRealmCalendar());
         var connection = new CommandConnectionCorrelation(
             Guid.NewGuid(),
             CommandTransportKind.SecureTlsLegacy);
@@ -325,7 +334,8 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
         int secondarySlot = HolySuitCommandEnvelope.NoKitBagSlot,
         string secondaryState = "[]",
         long experience = 0,
-        int prisms = 0)
+        int prisms = 0,
+        DateTimeOffset? receivedAt = null)
     {
         if (!HolySuitCommandEnvelope.TryCreateCommand(
             HolySuitOperationIdentity.SecureClient(operationId),
@@ -348,7 +358,7 @@ internal static partial class PostgresHolySuitCommandIntegrationChecks
                 HolySuitCommandEnvelope.CreateSecure(
                     fixture.Subject,
                     connection,
-                    DateTimeOffset.UtcNow,
+                    receivedAt ?? DateTimeOffset.UtcNow,
                     command)));
     }
 

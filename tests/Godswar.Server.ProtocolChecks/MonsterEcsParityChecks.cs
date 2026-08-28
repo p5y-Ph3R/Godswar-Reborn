@@ -7,7 +7,7 @@ using Godswar.Server.World.Systems.Monsters;
 
 namespace Godswar.Server.ProtocolChecks;
 
-internal static class MonsterEcsParityChecks
+internal static partial class MonsterEcsParityChecks
 {
     private static readonly DateTimeOffset Start =
         new(2026, 7, 23, 0, 0, 0, TimeSpan.Zero);
@@ -15,8 +15,11 @@ internal static class MonsterEcsParityChecks
     public static Task RunAsync()
     {
         CheckTypedHydrationAndPatrolParity();
+        CheckAggressiveProximityAndDamageThreatParity();
+        CheckRangedReachAndFirstHitClaimParity();
         CheckDamageAggroAndStunParity();
         CheckDeathDespawnAndRespawnParity();
+        CheckNeverRespawnParity();
         CheckLeashReturnAndReplacementParity();
         return Task.CompletedTask;
     }
@@ -301,9 +304,12 @@ internal static class MonsterEcsParityChecks
     private static CapturedMonsterSpawn CreateMonster(
         uint objectId,
         float x,
-        float z)
+        float z,
+        uint tier = 1,
+        byte mapId = 0,
+        string templateKey = "A_normal_stub_001",
+        string? displayName = null)
     {
-        const string templateKey = "A_normal_stub_001";
         var packet = new byte[108];
         BinaryPrimitives.WriteUInt16LittleEndian(
             packet.AsSpan(0, 2),
@@ -319,7 +325,7 @@ internal static class MonsterEcsParityChecks
             objectId);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(12, 4),
-            1);
+            tier);
         BinaryPrimitives.WriteUInt32LittleEndian(
             packet.AsSpan(20, 4),
             237);
@@ -340,10 +346,10 @@ internal static class MonsterEcsParityChecks
             1f);
         Encoding.ASCII.GetBytes(templateKey).CopyTo(packet.AsSpan(44));
         return new CapturedMonsterSpawn(
-            0,
+            mapId,
             "Sparta",
             templateKey,
-            templateKey,
+            displayName ?? templateKey,
             objectId,
             x,
             z,

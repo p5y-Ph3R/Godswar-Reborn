@@ -33,12 +33,21 @@ internal sealed partial class GameClientHandler
             // no cast-start visual, cast impact, mana update, cooldown, or delay.
             // This deliberately happens before mount validation so inconsistent
             // equipment state can never trap a character in Ride status.
+            if (!_registry.TryGetPlayerLifeRevision(
+                    _session,
+                    out var dismountLifeRevision))
+            {
+                Console.WriteLine(
+                    $"[mount] rejected dismount without life authority " +
+                    $"character={character.Name}");
+                return;
+            }
             _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
             await DismountMountRideAndPublishAsync(
                 _session,
                 _registry,
                 character,
-                _registry.GetPlayerLifeRevision(_session),
+                dismountLifeRevision,
                 cancellationToken);
             return;
         }
@@ -85,8 +94,8 @@ internal sealed partial class GameClientHandler
         {
             Console.WriteLine(
                 $"[mount] rejected Ride insufficient MP character={character.Name} mp={currentMana} cost={manaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "RideManaRejected");
             return;
@@ -96,7 +105,15 @@ internal sealed partial class GameClientHandler
         var targetX = float.IsFinite(cast.TargetX) ? cast.TargetX : character.PositionX;
         var targetZ = float.IsFinite(cast.TargetZ) ? cast.TargetZ : character.PositionZ;
         var worldObjectId = CurrentPlayerObjectId;
-        var lifeRevision = _registry.GetPlayerLifeRevision(_session);
+        if (!_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var activationLifeRevision))
+        {
+            Console.WriteLine(
+                $"[mount] rejected Ride without life authority " +
+                $"character={character.Name}");
+            return;
+        }
 
         var visualRecipients = 0;
         var started = await TryBeginPendingSkillCastAsync(
@@ -128,7 +145,7 @@ internal sealed partial class GameClientHandler
                 targetX,
                 targetZ,
                 worldObjectId,
-                lifeRevision,
+                activationLifeRevision,
                 visualRecipients,
                 token),
             cancellationToken,
@@ -166,11 +183,20 @@ internal sealed partial class GameClientHandler
         }
 
         _registry.UpdateCharacter(_session, character, advanceWorldRevision: false);
+        if (!_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var lifeRevision))
+        {
+            Console.WriteLine(
+                $"[mount] rejected cancellation without life authority " +
+                $"character={character.Name}");
+            return;
+        }
         await DismountMountRideAndPublishAsync(
             _session,
             _registry,
             character,
-            _registry.GetPlayerLifeRevision(_session),
+            lifeRevision,
             cancellationToken);
     }
 
@@ -203,8 +229,7 @@ internal sealed partial class GameClientHandler
                 expectedLifeRevision,
                 mount,
                 DateTimeOffset.UtcNow,
-                cancellationToken,
-                castCompletionClaimed: true);
+                cancellationToken);
         if (activation is null)
         {
             var currentMana = 0;
@@ -221,12 +246,19 @@ internal sealed partial class GameClientHandler
                 $"[mount] Ride completion rejected by character, " +
                 $"life, mount, or MP state character={characterName} " +
                 $"mount={mount.ItemId}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
-                cancellationToken,
-                "RideManaCompletionRejected");
+            if (currentMana < MountCatalog.RideManaCost)
+            {
+                await SendInsufficientManaRejectionAsync(
+                    currentMana,
+                    cancellationToken,
+                    "RideManaCompletionRejected");
+            }
+            else
+            {
+                await SendSkillCastRejectionInterruptAsync(
+                    cancellationToken,
+                    "RideCompletionRejected");
+            }
             return;
         }
 
@@ -274,8 +306,7 @@ internal sealed partial class GameClientHandler
 
         lock (character.VitalsSync)
         {
-            return character.CurrentHp > 0 &&
-                   character.CurrentMp >= MountCatalog.RideManaCost;
+            return character.CurrentHp > 0;
         }
     }
 

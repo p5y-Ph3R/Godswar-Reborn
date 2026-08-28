@@ -5,11 +5,11 @@ namespace Godswar.Server.Networking;
 /// Completion of <see cref="WriteAsync"/> means the physical transport write
 /// completed; reliable data is never silently dropped.
 /// </summary>
-internal sealed class BoundedReliableEgress : IAsyncDisposable
+internal sealed partial class BoundedReliableEgress : IAsyncDisposable
 {
     private readonly NetworkEndpointRole _endpointRole;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly Action _disconnect;
+    private readonly Action<Exception> _terminalizeSession;
     private readonly object _reservationGate = new();
     private readonly BoundedByteQueue<PendingWrite> _queue;
     private readonly NetworkRuntimeOptions _options;
@@ -19,17 +19,19 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
     private long _pendingAdmissionBytes;
     private int _pendingAdmissionItems;
     private int _terminal;
+    private Exception? _terminalError;
 
     public BoundedReliableEgress(
         NetworkRuntimeOptions options,
         NetworkEndpointRole endpointRole,
         Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask> write,
-        Action disconnect,
+        Action<Exception> terminalizeSession,
         TimeProvider? timeProvider = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _write = write ?? throw new ArgumentNullException(nameof(write));
-        _disconnect = disconnect ?? throw new ArgumentNullException(nameof(disconnect));
+        _terminalizeSession = terminalizeSession ??
+            throw new ArgumentNullException(nameof(terminalizeSession));
         _endpointRole = endpointRole;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _queue = new BoundedByteQueue<PendingWrite>(
@@ -108,15 +110,14 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
     public void Abort(Exception error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        Fail(error);
+        FinalizeTerminal(error, notifySession: false);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.CompareExchange(ref _terminal, 1, 0) == 0)
-        {
-            _queue.Complete();
-        }
+        FinalizeTerminal(
+            new ObjectDisposedException(nameof(BoundedReliableEgress)),
+            notifySession: false);
 
         try
         {
@@ -131,6 +132,7 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
     private async Task PumpAsync()
     {
         Exception? failure = null;
+        PendingWrite? active = null;
         try
         {
             while (true)
@@ -141,14 +143,19 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
                     return;
                 }
 
-                var pending = result.Item;
-                pending.EnsureAdmissionRecorded(_endpointRole);
-                await pending.AdmissionRecorded;
-                NetworkRuntimeMetrics.RecordReliableQueueRemoved(
-                    _endpointRole,
-                    NetworkTrafficDirection.Outbound,
-                    itemCount: 1,
-                    byteCount: result.ByteCount);
+                active = result.Item;
+                active.EnsureAdmissionRecordedNonThrowing(_endpointRole);
+                try
+                {
+                    NetworkRuntimeMetrics.RecordReliableQueueRemoved(
+                        _endpointRole,
+                        NetworkTrafficDirection.Outbound,
+                        itemCount: 1,
+                        byteCount: result.ByteCount);
+                }
+                catch
+                {
+                }
 
                 try
                 {
@@ -161,7 +168,7 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
                             deadline.Token);
                     try
                     {
-                        await _write(pending.Bytes, writeLifetime.Token);
+                        await _write(active.Bytes, writeLifetime.Token);
                     }
                     catch (OperationCanceledException)
                         when (deadline.IsCancellationRequested
@@ -174,11 +181,13 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
                             NetworkTimeoutStage.ReliableWrite);
                     }
 
-                    pending.SetResult();
+                    active.SetResult();
+                    active = null;
                 }
                 catch (Exception ex)
                 {
-                    pending.SetException(ex);
+                    active?.SetExceptionNonThrowing(ex);
+                    active = null;
                     failure = ex;
                     Fail(ex);
                     return;
@@ -194,45 +203,102 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
         catch (Exception ex)
         {
             failure = ex;
+            active?.SetExceptionNonThrowing(ex);
+            active = null;
             Fail(ex);
         }
         finally
         {
-            var terminalError = failure
-                ?? new ObjectDisposedException(nameof(BoundedReliableEgress));
-            var drained = _queue.TryDrain();
-            foreach (var entry in drained)
+            var terminalError = failure ??
+                Volatile.Read(ref _terminalError) ??
+                new ObjectDisposedException(nameof(BoundedReliableEgress));
+            active?.SetExceptionNonThrowing(terminalError);
+            active = null;
+            while (_queue.TryTakeTerminalEntry(out var entry))
             {
-                entry.Item.EnsureAdmissionRecorded(_endpointRole);
-                await entry.Item.AdmissionRecorded;
-            }
-
-            if (drained.Count > 0)
-            {
-                NetworkRuntimeMetrics.RecordReliableQueueRemoved(
-                    _endpointRole,
-                    NetworkTrafficDirection.Outbound,
-                    drained.Count,
-                    drained.Sum(static item => (long)item.ByteCount));
-            }
-
-            foreach (var entry in drained)
-            {
-                entry.Item.SetException(terminalError);
+                // Completion ownership is the first obligation. Metrics and
+                // admission diagnostics are deliberately best effort after
+                // every removed write has a terminal result.
+                entry.Item.SetExceptionNonThrowing(terminalError);
+                entry.Item.EnsureAdmissionRecordedNonThrowing(_endpointRole);
+                try
+                {
+                    NetworkRuntimeMetrics.RecordReliableQueueRemoved(
+                        _endpointRole,
+                        NetworkTrafficDirection.Outbound,
+                        itemCount: 1,
+                        byteCount: entry.ByteCount);
+                }
+                catch
+                {
+                }
             }
         }
     }
 
     private void Fail(Exception error)
     {
-        if (Interlocked.CompareExchange(ref _terminal, 1, 0) != 0)
+        FinalizeTerminal(error, notifySession: true);
+    }
+
+    private void Seal(Exception error)
+    {
+        Interlocked.CompareExchange(
+            ref _terminalError,
+            error,
+            comparand: null);
+        if (Interlocked.CompareExchange(ref _terminal, 1, 0) == 0)
         {
-            return;
+            _queue.Seal(error);
+        }
+    }
+
+    private void FinalizeTerminal(
+        Exception error,
+        bool notifySession)
+    {
+        Seal(error);
+        while (true)
+        {
+            var observed = Volatile.Read(ref _terminal);
+            if (observed == 2)
+            {
+                return;
+            }
+            if (Interlocked.CompareExchange(
+                    ref _terminal,
+                    2,
+                    observed) == observed)
+            {
+                break;
+            }
         }
 
-        _queue.Complete(error);
-        _lifetime.Cancel();
-        _disconnect();
+        try
+        {
+            _queue.Complete(error);
+        }
+        catch
+        {
+        }
+        try
+        {
+            _lifetime.Cancel();
+        }
+        catch
+        {
+            // Cancellation callbacks are untrusted teardown observers.
+        }
+        try
+        {
+            if (notifySession)
+            {
+                _terminalizeSession(error);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private ReliableQueueOverflowException FailQueueOverflow(
@@ -330,9 +396,32 @@ internal sealed class BoundedReliableEgress : IAsyncDisposable
             }
         }
 
+        public void EnsureAdmissionRecordedNonThrowing(
+            NetworkEndpointRole endpointRole)
+        {
+            try
+            {
+                EnsureAdmissionRecorded(endpointRole);
+            }
+            catch
+            {
+            }
+        }
+
         public void SetResult() => _completion.TrySetResult();
 
         public void SetException(Exception error) =>
             _completion.TrySetException(error);
+
+        public void SetExceptionNonThrowing(Exception error)
+        {
+            try
+            {
+                _completion.TrySetException(error);
+            }
+            catch
+            {
+            }
+        }
     }
 }

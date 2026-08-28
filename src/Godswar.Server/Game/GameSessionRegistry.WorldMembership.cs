@@ -114,6 +114,12 @@ internal sealed partial class GameSessionRegistry
         GameSessionContext? previous;
         lock (_gate)
         {
+            if (session.IsDisconnected)
+            {
+                throw new InvalidOperationException(
+                    "A disconnected session cannot join a world instance.");
+            }
+
             _sessions.TryGetValue(session, out previous);
             var objectId = requestedObjectId ??
                 AllocatePlayerObjectIdLocked(
@@ -131,9 +137,11 @@ internal sealed partial class GameSessionRegistry
                 objectId,
                 character,
                 worldReady,
-                0)
+                runtime.Descriptor.Revision)
             {
-                Ownership = ownership
+                Ownership = ownership,
+                WorldMembershipEpoch =
+                    NextWorldMembershipEpochLocked()
             };
             EnsureMapObjectIdAvailable(context);
             var placementChange =
@@ -203,6 +211,13 @@ internal sealed partial class GameSessionRegistry
         return context.ObjectId;
     }
 
+    private long NextWorldMembershipEpochLocked()
+    {
+        var next = checked(_nextWorldMembershipEpoch + 1);
+        _nextWorldMembershipEpoch = next;
+        return next;
+    }
+
     private static void ValidateGatewayWorldJoin(
         int accountId,
         GameCharacter character,
@@ -264,8 +279,12 @@ internal sealed partial class GameSessionRegistry
         }
 
         _playerLifeRevisions.TryAdd(session, 0);
-        _nextPlayerRecoveryAt[character.Id] =
-            onlineStartedAt + PlayerRecoveryInterval;
+        var recoveryDeadline = _nextPlayerRecoveryAt.GetOrAdd(
+            character.Id,
+            static _ => new PlayerRecoveryDeadline(
+                DateTimeOffset.UnixEpoch));
+        recoveryDeadline.Write(
+            onlineStartedAt + PlayerRecoveryInterval);
         _zodiacOnlineSessions.AddOrUpdate(
             session,
             _ => new ZodiacOnlineSessionState(
@@ -328,6 +347,7 @@ internal sealed partial class GameSessionRegistry
         GameSessionContext? previous,
         GameSessionContext next)
     {
+        RequireWorldInstanceAdmission(next);
         if (previous is null)
         {
             var assigned = CompletePlacement(

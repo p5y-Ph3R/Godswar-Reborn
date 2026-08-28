@@ -75,6 +75,7 @@ internal sealed partial class GameSessionRegistry
             }
         }
 
+        var admissionClaims = new ExactStatusDisconnectClaims();
         await state.Gate.WaitAsync(cancellationToken);
         try
         {
@@ -96,11 +97,13 @@ internal sealed partial class GameSessionRegistry
                 reason,
                 force: false,
                 broadcast: true,
-                cancellationToken);
+                cancellationToken,
+                claimedDisconnects: admissionClaims);
         }
         finally
         {
             state.Gate.Release();
+            admissionClaims.CompleteAll(this);
         }
     }
 

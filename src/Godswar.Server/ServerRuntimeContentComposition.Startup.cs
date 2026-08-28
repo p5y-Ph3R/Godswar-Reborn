@@ -2,7 +2,9 @@ using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Pets;
 using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Application.World;
+using Godswar.Server.Application.WorldInstances;
 using Godswar.Server.Game;
+using Godswar.Server.Infrastructure.WorldInstances;
 using Godswar.Server.State;
 
 namespace Godswar.Server;
@@ -33,6 +35,14 @@ internal static partial class ServerRuntimeContentComposition
         var holySpiritBalance = await LoadHolySpiritBalanceAsync(options);
         var warehouseExpansionPolicy =
             await LoadWarehouseExpansionPolicyAsync(options, items);
+        var medusaRewards =
+            await PostgresMedusaRewardPolicySnapshotReader.LoadAsync(
+                options.Storage.PostgresConnectionString);
+        var medusaMonsters =
+            await PostgresMedusaMonsterContentSnapshotReader.LoadAsync(
+                options.Storage.PostgresConnectionString);
+        MedusaRewardPolicyCatalog.Install(medusaRewards);
+        MedusaMonsterContentCatalog.Install(medusaMonsters);
         var world = await ServerWorldContentComposition.TryLoadAsync(options);
         if (world is null)
         {

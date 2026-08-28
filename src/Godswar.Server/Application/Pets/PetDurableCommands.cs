@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Godswar.Server.Application.Commands;
+using Godswar.Server.Application.WorldInstances;
 
 namespace Godswar.Server.Application.Pets;
 
@@ -7,7 +8,8 @@ internal readonly record struct BagItemActivationCommand(
     PetCommandOperationIdentity Identity,
     int KitBagSlot,
     BagItemActivationExecutionConstraint ExecutionConstraint =
-        BagItemActivationExecutionConstraint.None)
+        BagItemActivationExecutionConstraint.None,
+    PetCaptureIntent? Capture = null)
 {
     public BagItemActivationCommand(
         Guid clientOperationId,
@@ -23,6 +25,23 @@ internal readonly record struct BagItemActivationCommand(
 
     public Guid ClientOperationId =>
         Identity.IsSecureClient ? Identity.OperationId : Guid.Empty;
+}
+
+internal readonly record struct PetCaptureIntent(
+    uint TargetObjectId,
+    Guid TargetRuntimeInstanceId,
+    uint TargetSpawnGeneration,
+    ulong TargetHealthRevision,
+    uint EggItemId,
+    MedusaEncounterDifficulty Difficulty)
+{
+    public bool IsValid =>
+        TargetObjectId != 0 &&
+        TargetRuntimeInstanceId != Guid.Empty &&
+        TargetSpawnGeneration != 0 &&
+        EggItemId != 0 &&
+        Difficulty is MedusaEncounterDifficulty.Enhanced or
+            MedusaEncounterDifficulty.Mythic;
 }
 
 /// <summary>
@@ -154,8 +173,47 @@ internal static class PetDurableCommandContract
         return raw;
     }
 
-    public static byte[] CanonicalBagActivation(int kitBagSlot)
+    public static byte[] CanonicalBagActivation(
+        int kitBagSlot,
+        PetCaptureIntent? capture = null)
     {
+        if (capture is { } captured)
+        {
+            var captureBytes = new byte[
+                (sizeof(ushort) * 2) + 2 + sizeof(uint) + 16 +
+                sizeof(uint) + sizeof(ulong) + sizeof(uint)];
+            BinaryPrimitives.WriteUInt16BigEndian(
+                captureBytes,
+                CanonicalVersion);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                captureBytes.AsSpan(sizeof(ushort)),
+                checked((ushort)kitBagSlot));
+            captureBytes[sizeof(ushort) * 2] = 1;
+            captureBytes[(sizeof(ushort) * 2) + 1] =
+                checked((byte)captured.Difficulty);
+            var offset = (sizeof(ushort) * 2) + 2;
+            BinaryPrimitives.WriteUInt32BigEndian(
+                captureBytes.AsSpan(offset),
+                captured.TargetObjectId);
+            offset += sizeof(uint);
+            WriteGuid(
+                captured.TargetRuntimeInstanceId,
+                captureBytes.AsSpan(offset, 16));
+            offset += 16;
+            BinaryPrimitives.WriteUInt32BigEndian(
+                captureBytes.AsSpan(offset),
+                captured.TargetSpawnGeneration);
+            offset += sizeof(uint);
+            BinaryPrimitives.WriteUInt64BigEndian(
+                captureBytes.AsSpan(offset),
+                captured.TargetHealthRevision);
+            offset += sizeof(ulong);
+            BinaryPrimitives.WriteUInt32BigEndian(
+                captureBytes.AsSpan(offset),
+                captured.EggItemId);
+            return captureBytes;
+        }
+
         var bytes = new byte[sizeof(ushort) * 2];
         BinaryPrimitives.WriteUInt16BigEndian(bytes, CanonicalVersion);
         BinaryPrimitives.WriteUInt16BigEndian(

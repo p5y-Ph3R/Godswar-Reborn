@@ -10,7 +10,9 @@ internal sealed partial class MonsterMapRuntime
         CapturedMonsterSpawn definition,
         DateTimeOffset initializedAt,
         WorldBossRespawnState? activeWorldBossRespawn,
-        Guid runtimeInstanceId)
+        Guid runtimeInstanceId,
+        MonsterRespawnPolicy respawnPolicy,
+        float attackRange)
     {
         if (definition.MapId != mapId)
         {
@@ -37,7 +39,9 @@ internal sealed partial class MonsterMapRuntime
             BinaryPrimitives.ReadUInt32LittleEndian(packet.AsSpan(24, 4)),
             CreateSeed(mapId, definition.ObjectId),
             spawnGeneration: 1,
-            runtimeInstanceId);
+            runtimeInstanceId,
+            respawnPolicy,
+            attackRange);
         if (activeWorldBossRespawn is not null &&
             activeWorldBossRespawn.MapId == mapId &&
             activeWorldBossRespawn.RespawnAt > initializedAt &&
@@ -131,6 +135,12 @@ internal sealed partial class MonsterMapRuntime
         MonsterRuntimeState retired,
         DateTimeOffset now)
     {
+        if (retired.RespawnPolicy != MonsterRespawnPolicy.Timed)
+        {
+            throw new InvalidOperationException(
+                "Only timed monster lifecycles can respawn.");
+        }
+
         var respawned = new MonsterRuntimeState(
             retired.Definition,
             retired.HomeX,
@@ -141,9 +151,29 @@ internal sealed partial class MonsterMapRuntime
             retired.MaximumHealth,
             retired.RandomState,
             checked(retired.SpawnGeneration + 1),
-            retired.RuntimeInstanceId);
+            retired.RuntimeInstanceId,
+            retired.RespawnPolicy,
+            retired.AttackRange);
         respawned.NextMovementAt = now + NextIdleDelay(respawned);
         return respawned;
+    }
+
+    private static void ValidateRespawnState(MonsterRuntimeState monster)
+    {
+        if (monster.RespawnPolicy == MonsterRespawnPolicy.Never &&
+            monster.RespawnAt is not null)
+        {
+            throw new InvalidOperationException(
+                "Never-respawn monster contains a scheduled respawn.");
+        }
+
+        if (monster.RespawnPolicy is not (
+                MonsterRespawnPolicy.Timed or
+                MonsterRespawnPolicy.Never))
+        {
+            throw new InvalidOperationException(
+                "Monster state contains an unsupported respawn policy.");
+        }
     }
 
     private static MonsterRuntimeSnapshot CreateSnapshot(MonsterRuntimeState monster)

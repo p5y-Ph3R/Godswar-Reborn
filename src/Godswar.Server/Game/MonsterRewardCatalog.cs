@@ -36,6 +36,9 @@ internal static class MonsterRewardCatalog
     public static MonsterKillReward Resolve(MonsterRuntimeSnapshot monster, int playerLevel) =>
         Resolve(monster.Definition.Tier, playerLevel);
 
+    public static int ResolvePetExperience(MonsterRuntimeSnapshot monster) =>
+        Resolve(monster.Definition.Tier, playerLevel: 1).Experience;
+
     internal static MonsterKillReward Resolve(uint monsterTier, int playerLevel)
     {
         if (playerLevel >= PlayerExperienceCatalog.MaximumLevel)

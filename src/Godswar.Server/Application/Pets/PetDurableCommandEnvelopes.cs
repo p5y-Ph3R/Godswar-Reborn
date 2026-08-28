@@ -24,6 +24,26 @@ internal static class BagItemActivationCommandEnvelope
         return CreateCore(subject, connection, receivedAt, command);
     }
 
+    public static CommandEnvelope<BagItemActivationCommand>
+        CreateServerSessionLifecycle(
+            CommandSubject subject,
+            CommandConnectionCorrelation connection,
+            DateTimeOffset receivedAt,
+            BagItemActivationCommand command)
+    {
+        if (!command.Identity.IsServerSessionLifecycle ||
+            !PetDurableCommandContract.HasMatchingProvenance(
+                command.Identity,
+                connection))
+        {
+            throw new ArgumentException(
+                "Server bag-item lifecycle commands require the owning " +
+                "session correlation.");
+        }
+
+        return CreateCore(subject, connection, receivedAt, command);
+    }
+
     private static CommandEnvelope<BagItemActivationCommand> CreateCore(
         CommandSubject subject,
         CommandConnectionCorrelation connection,
@@ -38,7 +58,8 @@ internal static class BagItemActivationCommandEnvelope
             PetDurableCommandContract.OperationScope(
                 command.Identity),
             PetDurableCommandContract.CanonicalBagActivation(
-                command.KitBagSlot),
+                command.KitBagSlot,
+                command.Capture),
             command);
 
     public static CommandEnvelopeValidation Validate(
@@ -50,7 +71,8 @@ internal static class BagItemActivationCommandEnvelope
                 PetDurableCommandContract.MinimumKitBagSlot or >
                 PetDurableCommandContract.MaximumKitBagSlot ||
             !Enum.IsDefined(
-                envelope.Command.ExecutionConstraint))
+                envelope.Command.ExecutionConstraint) ||
+            envelope.Command.Capture is { IsValid: false })
         {
             return CommandEnvelopeValidation.InvalidCommand;
         }
@@ -68,7 +90,8 @@ internal static class BagItemActivationCommandEnvelope
             PetDurableCommandContract.OperationScope(
                 envelope.Command.Identity),
             PetDurableCommandContract.CanonicalBagActivation(
-                envelope.Command.KitBagSlot));
+                envelope.Command.KitBagSlot,
+                envelope.Command.Capture));
     }
 
     private static void RequireSecureProvenance(

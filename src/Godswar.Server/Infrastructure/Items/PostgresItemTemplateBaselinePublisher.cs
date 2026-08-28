@@ -21,7 +21,7 @@ internal static partial class PostgresItemTemplateBaselinePublisher
     private const long PublicationLockId = 0x4954454D53434F4E;
     private const string PublicationSource =
         "items-v9+holy-v3+element-v1+sockets-v1+holy-stones-v2+" +
-        "zephyr-v1+mount-speed-v3+pets-v4+wh-v1";
+        "zephyr-v1+mount-speed-v3+pets-v5+warehouse-v1";
 
     public static async Task<ItemTemplatePublicationResult>
         EnsurePublishedAsync(

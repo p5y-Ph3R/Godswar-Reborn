@@ -35,13 +35,13 @@ internal static partial class IntonedCombatSkillHandlerChecks
             CreateSkillCastPacket(
                 fixture.Character.PositionX,
                 fixture.Character.PositionZ));
-        var mana = await fixture.Socket.ReadPacketAsync(12);
+        await AssertInsufficientManaSequenceAsync(
+            fixture,
+            authored.Mp,
+            "projected Zodiac MP precheck");
         Check.True(
             projected.Applied &&
             projected.Skill.Mp > authored.Mp &&
-            ReadOpcode(mana) == 10135 &&
-            BinaryPrimitives.ReadInt32LittleEndian(
-                mana.AsSpan(8, 4)) == authored.Mp &&
             fixture.Character.CurrentMp == authored.Mp &&
             fixture.CurrentMonsterHealth() == InitialMonsterHealth,
             "intoned precheck requires projected Zodiac MP without spending base MP");

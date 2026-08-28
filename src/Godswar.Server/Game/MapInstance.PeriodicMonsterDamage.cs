@@ -26,27 +26,39 @@ internal sealed partial class MapInstance
         DateTimeOffset now,
         out MonsterDamageResult result)
     {
-        lock (_monsterRuntimeGate)
+        lock (_medusaOwnershipGate)
         {
-            if (_monsterRuntime is not null &&
-                _monsterRuntime.TryGetSnapshot(
-                    objectId,
-                    out var snapshot) &&
-                snapshot.SpawnGeneration == expectedSpawnGeneration &&
-                snapshot.HealthRevision == expectedHealthRevision &&
-                _monsterRuntime.TryApplyPeriodicDamage(
-                    objectId,
-                    damage,
-                    sourceCharacterId,
-                    expectedSpawnGeneration,
-                    now,
-                    out result))
+            // Periodic elemental damage currently carries no authoritative
+            // physical/magical channel. It cannot bypass a bound Medusa boss
+            // reduction or produce an unclaimed roster defeat.
+            if (_medusaInstanceOwner is not null)
             {
-                return true;
+                result = default!;
+                return false;
             }
 
-            result = default!;
-            return false;
+            lock (_monsterRuntimeGate)
+            {
+                if (_monsterRuntime is not null &&
+                    _monsterRuntime.TryGetSnapshot(
+                        objectId,
+                        out var snapshot) &&
+                    snapshot.SpawnGeneration == expectedSpawnGeneration &&
+                    snapshot.HealthRevision == expectedHealthRevision &&
+                    _monsterRuntime.TryApplyPeriodicDamage(
+                        objectId,
+                        damage,
+                        sourceCharacterId,
+                        expectedSpawnGeneration,
+                        now,
+                        out result))
+                {
+                    return true;
+                }
+
+                result = default!;
+                return false;
+            }
         }
     }
 }

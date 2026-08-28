@@ -18,13 +18,18 @@ internal sealed partial class GameSessionRegistry
                 continue;
             }
 
+            var baseMovementSpeed = InvokeWorldOwner(
+                runtime,
+                map => map.ResolveMonsterBaseMovementSpeedBasisPoints(
+                    pair.Key.ObjectId,
+                    pair.Value.Identity.SpawnGeneration));
             int movementSpeedBasisPoints;
             lock (pair.Value.Gate)
             {
                 movementSpeedBasisPoints = checked((int)Math.Clamp(
                     pair.Value.Statuses.ApplyAdjustments(
                         nowMilliseconds,
-                        movementSpeed: 10_000,
+                        movementSpeed: baseMovementSpeed,
                         physicalDefense: 0,
                         magicDefense: 0,
                         hitRating: 0,

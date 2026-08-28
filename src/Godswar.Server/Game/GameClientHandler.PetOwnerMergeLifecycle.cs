@@ -61,6 +61,10 @@ internal sealed partial class GameClientHandler
                     {
                         return;
                     }
+                    if (_registry.IsSessionInMedusaInstance(_session))
+                    {
+                        continue;
+                    }
 
                     var result = await lifecycle.DrainEnergyAsync(
                         subject,

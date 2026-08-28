@@ -22,6 +22,7 @@ internal enum MonsterAttackDamageKind : short
 /// </summary>
 internal readonly record struct MonsterCombatProfile(
     MonsterAttackDamageKind AttackKind,
+    float CollisionRange,
     int Level,
     int PhysicalAttack,
     int MagicAttack,
@@ -144,7 +145,11 @@ internal sealed class MonsterCombatProfileCatalog
         bool isBoss = false) =>
         Resolve(
             tier,
-            new TemplateProfile(attackKind, isElite, isBoss),
+            new TemplateProfile(
+                attackKind,
+                MonsterCombatResolver.DefaultPlayerBasicAttackRange,
+                isElite,
+                isBoss),
             isElite,
             isBoss);
 
@@ -169,6 +174,7 @@ internal sealed class MonsterCombatProfileCatalog
         var square = (long)level * level;
         return new MonsterCombatProfile(
             template.AttackKind,
+            template.CollisionRange,
             level,
             physicalAttack,
             magicAttack,
@@ -201,11 +207,13 @@ internal sealed class MonsterCombatProfileCatalog
 
     private readonly record struct TemplateProfile(
         MonsterAttackDamageKind AttackKind,
+        float CollisionRange,
         bool IsElite,
         bool IsBoss)
     {
         public static TemplateProfile Default { get; } = new(
             MonsterAttackDamageKind.Physical,
+            MonsterCombatResolver.DefaultPlayerBasicAttackRange,
             false,
             false);
 
@@ -218,6 +226,9 @@ internal sealed class MonsterCombatProfileCatalog
                     3 => MonsterAttackDamageKind.Special,
                     _ => MonsterAttackDamageKind.Physical
                 },
+                definition.CollisionRange is > 0f
+                    ? definition.CollisionRange.Value
+                    : MonsterCombatResolver.DefaultPlayerBasicAttackRange,
                 definition.IsElite,
                 definition.IsBoss);
     }

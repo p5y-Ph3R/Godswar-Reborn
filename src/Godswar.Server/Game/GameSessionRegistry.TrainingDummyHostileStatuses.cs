@@ -112,10 +112,10 @@ internal sealed partial class GameSessionRegistry
             HostileStatusDurationPolicy.ResolveExpiry(
                 now,
                 definition.Duration));
-        var sourceStats = attacker.Character.CalculatedStats ??
-            CharacterStats.FromCharacter(attacker.Character);
-        var targetStats = target.Character.CalculatedStats ??
-            CharacterStats.FromCharacter(target.Character);
+        var sourceStats = CharacterStats.FromCharacter(
+            attacker.Character);
+        var targetStats = CharacterStats.FromCharacter(
+            target.Character);
         var proc = HostileStatusProcPolicy.Evaluate(
             new HostileStatusProcRatings(
                 attacker.Character.Level,
@@ -223,6 +223,43 @@ internal sealed partial class GameSessionRegistry
         var snapshot = CaptureTrainingDummyHostileStatusSnapshotLocked(
             target,
             now);
+        return ComposeTrainingDummyHostileIncomingModifiers(snapshot);
+    }
+
+    private TrainingDummyHostileIncomingModifiers
+        PreviewTrainingDummyHostileIncomingModifiersLocked(
+            GameSessionContext target,
+            DateTimeOffset now)
+    {
+        if (!Monitor.IsEntered(_gate))
+        {
+            throw new SynchronizationLockException(
+                "The hostile status preview requires the registry gate.");
+        }
+        if (!_trainingDummyHostileStatuses.TryGetValue(
+                target.Session,
+                out var state) ||
+            !state.Matches(target) ||
+            !_trainingDummies.Contains(target.Character) ||
+            target.Character.CurrentHp <= 0)
+        {
+            return default;
+        }
+
+        var snapshot = new TrainingDummyHostileStatusSnapshot(
+            target.CharacterId,
+            state.Revision,
+            state.ActiveStatuses.Values
+                .Where(status => status.ExpiresAt > now)
+                .OrderBy(static status => status.Definition.StatusId)
+                .ToArray());
+        return ComposeTrainingDummyHostileIncomingModifiers(snapshot);
+    }
+
+    private static TrainingDummyHostileIncomingModifiers
+        ComposeTrainingDummyHostileIncomingModifiers(
+            in TrainingDummyHostileStatusSnapshot snapshot)
+    {
         long physicalDefense = 0;
         long magicDefense = 0;
         long physicalTaken = 0;

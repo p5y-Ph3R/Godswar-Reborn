@@ -78,14 +78,24 @@ internal sealed partial class GameSessionRegistry
     {
         if (TryGetWorldInstance(context, out var runtime))
         {
+            var removedAt = DateTimeOffset.UtcNow;
+            var lifeRevision = _playerLifeRevisions.TryGetValue(
+                context.Session,
+                out var currentLifeRevision)
+                ? currentLifeRevision
+                : -1;
             InvokeWorldOwner(
                 runtime,
                 map =>
                 {
+                    map.ClearMedusaCharacterEffectsForLifeGuarded(
+                        context,
+                        lifeRevision,
+                        removedAt);
                     map.Remove(context.Session, out _);
                     map.ClearMonsterAggroForCharacter(
                         context.CharacterId,
-                        DateTimeOffset.UtcNow);
+                        removedAt);
                 });
         }
     }

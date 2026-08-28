@@ -218,7 +218,15 @@ internal readonly record struct PlayerCombatMutationOutcomeComponent(
     uint AfterHealth,
     ulong AfterHealthRevision,
     bool Killed,
-    PlayerCombatMutationRejectionReason RejectionReason);
+    PlayerCombatMutationRejectionReason RejectionReason)
+{
+    /// <summary>
+    /// Final typed damage selected by the authoritative mutation boundary.
+    /// This may differ from the reservation when an instance-owned rule is
+    /// resolved atomically with HP mutation. Null preserves ordinary parity.
+    /// </summary>
+    public uint? AuthoritativeRequestedDamage { get; init; }
+}
 
 internal readonly record struct PlayerCombatKillGuard(
     ulong CombatIntentId,

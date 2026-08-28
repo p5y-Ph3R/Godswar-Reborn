@@ -16,12 +16,14 @@ internal sealed partial class MapInstance
         byte mapId,
         MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
         PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs,
-        WorldBossCatalog? worldBossCatalog = null)
+        WorldBossCatalog? worldBossCatalog = null,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
         : this(
             CreateLegacyDescriptor(mapId),
             monsterRuntimeMode,
             playerRuntimeMode,
-            worldBossCatalog)
+            worldBossCatalog,
+            monsterCombatProfiles)
     {
     }
 
@@ -29,7 +31,8 @@ internal sealed partial class MapInstance
         WorldInstanceDescriptor descriptor,
         MonsterRuntimeMode monsterRuntimeMode = MonsterRuntimeMode.Ecs,
         PlayerRuntimeMode playerRuntimeMode = PlayerRuntimeMode.Ecs,
-        WorldBossCatalog? worldBossCatalog = null)
+        WorldBossCatalog? worldBossCatalog = null,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         if (!descriptor.MapId.TryGetLegacyValue(out var legacyMapId))
@@ -45,6 +48,8 @@ internal sealed partial class MapInstance
         _monsterRuntimeMode = monsterRuntimeMode;
         _playerRuntimeMode = playerRuntimeMode;
         _worldBossCatalog = worldBossCatalog ?? WorldBossCatalog.Empty;
+        _monsterCombatProfiles = monsterCombatProfiles ??
+            MonsterCombatProfileCatalog.Empty;
         _ecsShadow = new MapEcsShadow(legacyMapId);
     }
 

@@ -132,15 +132,90 @@ internal sealed class CharacterStats
             $"ar={ArmorRank}:{ArmorScore}/aura{ArmorAuraEffect} skills={LearnedSkillCount}";
     }
 
+    internal CharacterStats WithCoreCombatAttributeBonus(
+        int physicalAttackBasisPoints,
+        int magicAttackBasisPoints,
+        int physicalDefenseBasisPoints,
+        int magicDefenseBasisPoints) =>
+        new()
+        {
+            CharacterId = CharacterId,
+            AccountId = AccountId,
+            Name = Name,
+            Profession = Profession,
+            Level = Level,
+            MaxHp = MaxHp,
+            MaxMp = MaxMp,
+            CurrentHp = CurrentHp,
+            CurrentMp = CurrentMp,
+            PhysicalAttack = ScaleByBonus(
+                PhysicalAttack,
+                physicalAttackBasisPoints),
+            PhysicalDefense = ScaleByBonus(
+                PhysicalDefense,
+                physicalDefenseBasisPoints),
+            MagicAttack = ScaleByBonus(
+                MagicAttack,
+                magicAttackBasisPoints),
+            MagicDefense = ScaleByBonus(
+                MagicDefense,
+                magicDefenseBasisPoints),
+            Hit = Hit,
+            Dodge = Dodge,
+            StatusHit = StatusHit,
+            StatusResistance = StatusResistance,
+            Critical = Critical,
+            CriticalResistance = CriticalResistance,
+            DamageAbsorb = DamageAbsorb,
+            PhysicalDamageBonus = PhysicalDamageBonus,
+            MagicDamageBonus = MagicDamageBonus,
+            CureBonus = CureBonus,
+            BeCureBonus = BeCureBonus,
+            HpRecovery = HpRecovery,
+            MpRecovery = MpRecovery,
+            IgnorePhysicalDefense = IgnorePhysicalDefense,
+            IgnoreMagicDefense = IgnoreMagicDefense,
+            PhysicalAppendDamage = PhysicalAppendDamage,
+            MagicAppendDamage = MagicAppendDamage,
+            CriticalDamagePercent = CriticalDamagePercent,
+            CriticalDamageFlat = CriticalDamageFlat,
+            PhysicalDamageReduction = PhysicalDamageReduction,
+            MagicDamageReduction = MagicDamageReduction,
+            CriticalDamageReduction = CriticalDamageReduction,
+            LifeAbsorption = LifeAbsorption,
+            LifeAbsorptionFlat = LifeAbsorptionFlat,
+            DamageRebound = DamageRebound,
+            PhysicalFlatAbsorption = PhysicalFlatAbsorption,
+            MagicFlatAbsorption = MagicFlatAbsorption,
+            CriticalDamageFlatReduction = CriticalDamageFlatReduction,
+            DamageReboundFlat = DamageReboundFlat,
+            BasicAttackIntervalMilliseconds =
+                BasicAttackIntervalMilliseconds,
+            BasicAttackRange = BasicAttackRange,
+            WeaponScore = WeaponScore,
+            WeaponRank = WeaponRank,
+            WeaponAuraEffect = WeaponAuraEffect,
+            ArmorScore = ArmorScore,
+            ArmorRank = ArmorRank,
+            ArmorAuraEffect = ArmorAuraEffect,
+            LearnedSkillCount = LearnedSkillCount
+        };
+
+    private static int ScaleByBonus(int value, int bonusBasisPoints)
+    {
+        if (value <= 0 || bonusBasisPoints <= 0)
+        {
+            return value;
+        }
+
+        var scaled = ((long)value * (10_000L + bonusBasisPoints)) + 5_000L;
+        return (int)Math.Min(int.MaxValue, scaled / 10_000L);
+    }
+
     public static CharacterStats FromCharacter(GameCharacter character)
     {
         ArgumentNullException.ThrowIfNull(character);
-        if (character.CalculatedStats is { } calculatedStats)
-        {
-            return calculatedStats;
-        }
-
-        return new CharacterStats
+        var baseline = character.CalculatedStats ?? new CharacterStats
         {
             CharacterId = character.Id,
             AccountId = character.AccountId,
@@ -158,5 +233,8 @@ internal sealed class CharacterStats
             BasicAttackIntervalMilliseconds = 1500,
             BasicAttackRange = 1.7f
         };
+        return MedusaTitleAttributePolicy.ApplyStrongestOwned(
+            character.OwnedTitleIds,
+            baseline);
     }
 }

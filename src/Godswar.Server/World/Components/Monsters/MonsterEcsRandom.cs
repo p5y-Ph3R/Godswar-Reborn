@@ -46,7 +46,7 @@ internal static class MonsterEcsRules
     public const int MinimumIdleTicks = 15 * TicksPerSecond;
     public const int MaximumIdleTicks = 20 * TicksPerSecond;
     public const float CombatRange = 3f;
-    public const int AttackCooldownTicks = 21;
+    public const int AttackCooldownTicks = 23;
 
     public static readonly TimeSpan TickInterval =
         TimeSpan.FromSeconds(1d / TicksPerSecond);

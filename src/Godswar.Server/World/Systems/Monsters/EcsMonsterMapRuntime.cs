@@ -29,18 +29,18 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
         TimeSpan? respawnDelay = null,
         WorldBossRespawnState? activeWorldBossRespawn = null,
         Guid? runtimeInstanceId = null,
-        WorldBossCatalog? worldBossCatalog = null)
+        WorldBossCatalog? worldBossCatalog = null,
+        MonsterRespawnPolicy respawnPolicy = MonsterRespawnPolicy.Timed,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(definitions);
+        var capturedDefinitions = definitions.ToArray();
         MapId = mapId;
         _runtimeInstanceId =
             MonsterRuntimeIdentity.Resolve(runtimeInstanceId);
         var corpseDelay =
             corpseDespawnDelay ??
             MonsterMapRuntime.DefaultCorpseDespawnDelay;
-        var ordinaryRespawnDelay =
-            respawnDelay ??
-            MonsterMapRuntime.DefaultRespawnDelay;
         if (corpseDelay <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
@@ -48,15 +48,22 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
                 "Monster corpse-despawn delay must be positive.");
         }
 
-        if (ordinaryRespawnDelay <= corpseDelay)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(respawnDelay),
-                "Monster respawn delay must be later than corpse despawn.");
-        }
+        var ordinaryRespawnDelay =
+            MonsterRespawnPolicyRules.ResolveOrdinaryDelay(
+                respawnPolicy,
+                corpseDelay,
+                respawnDelay);
+        var resolvedWorldBossCatalog =
+            worldBossCatalog ?? WorldBossCatalog.Empty;
+        MonsterRespawnPolicyRules.RejectTimedWorldBossConfiguration(
+            respawnPolicy,
+            mapId,
+            capturedDefinitions,
+            activeWorldBossRespawn,
+            resolvedWorldBossCatalog);
 
         CapturedMonsterSpawnHydrator.RegisterComponents(_world);
-        foreach (var definition in definitions.OrderBy(
+        foreach (var definition in capturedDefinitions.OrderBy(
                      definition => definition.ObjectId))
         {
             var entity = CapturedMonsterSpawnHydrator.Hydrate(
@@ -68,7 +75,9 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
                 ordinaryRespawnDelay,
                 activeWorldBossRespawn,
                 _runtimeInstanceId,
-                worldBossCatalog ?? WorldBossCatalog.Empty);
+                resolvedWorldBossCatalog,
+                respawnPolicy,
+                monsterCombatProfiles);
             _entities.Add(definition.ObjectId, entity);
         }
 
@@ -202,6 +211,37 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
         }
     }
 
+    public bool TrySetCorpseDespawnAt(
+        uint objectId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset? despawnAt)
+    {
+        lock (_gate)
+        {
+            if (!_entities.TryGetValue(objectId, out var entity))
+            {
+                return false;
+            }
+
+            ref var vitals =
+                ref _world.Get<MonsterVitalsComponent>(entity);
+            ref var combat =
+                ref _world.Get<MonsterCombatComponent>(entity);
+            if (vitals.SpawnGeneration != expectedSpawnGeneration ||
+                vitals.IsAlive ||
+                !vitals.IsSpawned ||
+                combat.Phase != MonsterCombatPhase.AwaitingRetirement)
+            {
+                return false;
+            }
+
+            ref var lifecycle =
+                ref _world.Get<MonsterLifecycleComponent>(entity);
+            lifecycle.DespawnAt = despawnAt?.ToUniversalTime();
+            return true;
+        }
+    }
+
     private bool TryApplyDamageCore(
         uint objectId,
         uint damage,
@@ -302,13 +342,73 @@ internal sealed class EcsMonsterMapRuntime : IMonsterMapRuntime
             {
                 ref var combat =
                     ref _world.Get<MonsterCombatComponent>(entity);
-                if (combat.AggroCharacterId == characterId)
+                combat.DamageThreat?.Remove(characterId);
+                if (combat.AggroCharacterId != characterId)
+                {
+                    continue;
+                }
+
+                var nextTarget = MonsterAggroPolicy.SelectLeader(
+                    combat.DamageThreat,
+                    currentTargetCharacterId: null);
+                if (nextTarget.HasValue)
+                {
+                    ref var movement = ref _world.Get<
+                        MonsterMovementComponent>(entity);
+                    MonsterEcsState.SetAggroTarget(
+                        ref movement,
+                        ref combat,
+                        nextTarget.Value,
+                        now);
+                }
+                else
                 {
                     _pendingUpdates.Enqueue(
                         MonsterEcsState.BeginReturnHome(
                             _world,
                             entity,
                             now));
+                }
+            }
+        }
+    }
+
+    public void ClearAggroForCharacterStateOnly(
+        int characterId,
+        DateTimeOffset now)
+    {
+        lock (_gate)
+        {
+            foreach (var pair in _entities)
+            {
+                var entity = pair.Value;
+                ref var combat =
+                    ref _world.Get<MonsterCombatComponent>(entity);
+                combat.DamageThreat?.Remove(characterId);
+                if (combat.AggroCharacterId != characterId)
+                {
+                    continue;
+                }
+
+                var nextTarget = MonsterAggroPolicy.SelectLeader(
+                    combat.DamageThreat,
+                    currentTargetCharacterId: null);
+                if (nextTarget.HasValue)
+                {
+                    ref var movement = ref _world.Get<
+                        MonsterMovementComponent>(entity);
+                    MonsterEcsState.SetAggroTarget(
+                        ref movement,
+                        ref combat,
+                        nextTarget.Value,
+                        now);
+                }
+                else
+                {
+                    _ = MonsterEcsState.BeginReturnHomeState(
+                        _world,
+                        entity,
+                        now);
                 }
             }
         }

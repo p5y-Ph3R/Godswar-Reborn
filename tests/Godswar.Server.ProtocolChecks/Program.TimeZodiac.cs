@@ -4,6 +4,8 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using Godswar.Server.Application.Realms;
+using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Game;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -14,17 +16,34 @@ namespace Godswar.Server.ProtocolChecks;
 
 internal static partial class Program
 {
-    private static Task CheckServerTimePacketAsync()
+    private static async Task CheckServerTimePacketAsync()
     {
         var capturedAt = DateTimeOffset.FromUnixTimeSeconds(1_778_666_596);
-        var packet = PacketBuilder.ServerTime(capturedAt);
+        var manila = RealmCalendar.CreateForTesting(
+            RealmId.Tempest,
+            "Asia/Manila");
+        var packet = PacketBuilder.ServerTime(manila, capturedAt);
         Check.True(
-            packet.SequenceEqual(Convert.FromHexString("0E004728808FFFFF644C046A0000")),
-            "server-time response matches the working capture byte-for-byte");
+            packet.SequenceEqual(Convert.FromHexString(
+                "0E004728808FFFFF644C046A0000")),
+            "server-time response carries the native Manila UTC bias");
         Check.Equal(14, packet.Length, "server-time response uses captured 14-byte shape");
-        Check.Equal(-28_800, ReadInt32(packet, 4), "server-time response uses original fixed UTC-8 offset");
+        Check.Equal(-28_800, ReadInt32(packet, 4), "native Manila bias projects UTC+8");
         Check.Equal(1_778_666_596u, ReadUInt32(packet, 8), "server-time response carries current Unix seconds");
-        return Task.CompletedTask;
+
+        var newYork = RealmCalendar.CreateForTesting(
+            RealmId.Dwargon,
+            "America/New_York");
+        var winter = PacketBuilder.ServerTime(
+            newYork,
+            new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero));
+        var summer = PacketBuilder.ServerTime(
+            newYork,
+            new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero));
+        Check.Equal(18_000, ReadInt32(winter, 4), "New York standard-time bias is UTC minus local");
+        Check.Equal(14_400, ReadInt32(summer, 4), "New York daylight-time bias is UTC minus local");
+
+        await CheckServerTimeHandlerAsync();
     }
 
     private static async Task CheckZodiacProtocolAsync()
@@ -154,11 +173,17 @@ internal static partial class Program
     private static Task CheckZodiacOnlineEnergyPolicyAsync()
     {
         var policy = new ZodiacEnergyOptions().Snapshot();
+        var calendar = RealmCalendar.CreateForTesting(
+            RealmId.Tempest,
+            "Asia/Manila");
         Check.Equal(300, policy.TickSeconds, "Zodiac accrual uses five-minute ticks");
         Check.Equal(10_800, policy.BoostedDailySeconds, "first three online hours use boosted policy");
         Check.Equal(2_000, policy.BoostedEnergyPerTickX100, "emulator boosted rate is explicit x100 policy");
         Check.Equal(1_000, policy.NormalEnergyPerTickX100, "emulator normal rate is explicit x100 policy");
-        Check.Equal(-480, policy.ServerUtcOffsetMinutes, "Zodiac day follows original fixed UTC-8 clock");
+        Check.Equal(
+            "Asia/Manila",
+            calendar.TimeZoneId,
+            "Zodiac day uses the selected realm calendar");
 
         var start = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
         var character = new GameCharacter { ZodiacLevel = 1 };
@@ -166,7 +191,8 @@ internal static partial class Program
             character,
             start,
             start.AddSeconds(299),
-            policy);
+            policy,
+            calendar);
         Check.Equal(0, incomplete.GainedEnergyX100, "an incomplete five-minute interval grants nothing");
         Check.Equal(0, character.ZodiacEnergy, "incomplete interval leaves energy unchanged");
 
@@ -174,7 +200,8 @@ internal static partial class Program
             character,
             start.AddSeconds(299),
             start.AddMinutes(5),
-            policy);
+            policy,
+            calendar);
         Check.Equal(2_000, firstTick.GainedEnergyX100, "first completed tick grants boosted emulator rate");
         Check.Equal(20, character.ZodiacEnergy, "first tick updates authoritative integer energy");
 
@@ -182,7 +209,8 @@ internal static partial class Program
             character,
             start,
             start.AddMinutes(4),
-            policy);
+            policy,
+            calendar);
         Check.Equal(0, staleFlush.GainedEnergyX100, "out-of-order session flush cannot duplicate energy");
         Check.Equal(
             start.AddMinutes(5),
@@ -197,7 +225,8 @@ internal static partial class Program
             character,
             start.AddMinutes(5),
             start.AddHours(3),
-            policy);
+            policy,
+            calendar);
         Check.Equal(70_000, restOfBoostedWindow.GainedEnergyX100, "remaining first-three-hour ticks stay boosted");
         Check.Equal(720, character.ZodiacEnergy, "three boosted hours total thirty-six ticks");
 
@@ -205,7 +234,8 @@ internal static partial class Program
             character,
             start.AddHours(3),
             start.AddHours(3).AddMinutes(5),
-            policy);
+            policy,
+            calendar);
         Check.Equal(1_000, firstNormalTick.GainedEnergyX100, "tick after three online hours uses normal rate");
         Check.Equal(730, character.ZodiacEnergy, "normal tick adds ten emulator energy");
 
@@ -219,7 +249,8 @@ internal static partial class Program
             capped,
             start,
             start.AddMinutes(5),
-            policy);
+            policy,
+            calendar);
         Check.Equal(50, cappedResult.GainedEnergyX100, "cap reports only the actually applied fractional gain");
         Check.Equal(1_000, capped.ZodiacEnergy, "client MaxPower ceiling caps accrued energy");
         Check.Equal(0, capped.ZodiacEnergyRemainderX100, "cap clears impossible fractional overflow");
@@ -233,7 +264,8 @@ internal static partial class Program
             administrativelyOverCap,
             start,
             start.AddMinutes(5),
-            policy);
+            policy,
+            calendar);
         Check.Equal(
             0,
             preservedOverCap.GainedEnergyX100,
@@ -243,15 +275,16 @@ internal static partial class Program
             administrativelyOverCap.ZodiacEnergy,
             "ordinary accrual never destroys an administrative over-cap balance");
 
-        var utcEightMidnight = new DateTimeOffset(2026, 7, 20, 8, 0, 0, TimeSpan.Zero);
+        var realmMidnight = new DateTimeOffset(
+            2026, 7, 19, 16, 0, 0, TimeSpan.Zero);
         Check.Equal(
             new DateOnly(2026, 7, 19),
-            ZodiacEnergyAccrual.GetServerDay(utcEightMidnight.AddTicks(-1), policy.ServerUtcOffset),
-            "instant before UTC-8 midnight remains on prior Zodiac day");
+            calendar.GetDay(realmMidnight.AddTicks(-1)),
+            "instant before Philippine midnight remains on prior Zodiac day");
         Check.Equal(
             new DateOnly(2026, 7, 20),
-            ZodiacEnergyAccrual.GetServerDay(utcEightMidnight, policy.ServerUtcOffset),
-            "UTC-8 midnight rotates the Zodiac day");
+            calendar.GetDay(realmMidnight),
+            "Philippine midnight rotates the Zodiac day");
 
         var compensation = new GameCharacter
         {
@@ -261,9 +294,10 @@ internal static partial class Program
         };
         var compensationResult = ZodiacEnergyAccrual.Apply(
             compensation,
-            utcEightMidnight,
-            utcEightMidnight.AddSeconds(1),
-            policy);
+            realmMidnight,
+            realmMidnight.AddSeconds(1),
+            policy,
+            calendar);
         Check.True(compensationResult.CompensationApplied, "prior day below one hour triggers compensation");
         Check.Equal(24_000, compensationResult.GainedEnergyX100, "compensation is one boosted online hour");
         Check.Equal(240, compensation.ZodiacEnergy, "compensation updates stored energy");
@@ -273,9 +307,10 @@ internal static partial class Program
             "compensation day marker prevents duplicate awards");
         var noDuplicate = ZodiacEnergyAccrual.Apply(
             compensation,
-            utcEightMidnight.AddSeconds(1),
-            utcEightMidnight.AddSeconds(2),
-            policy);
+            realmMidnight.AddSeconds(1),
+            realmMidnight.AddSeconds(2),
+            policy,
+            calendar);
         Check.Equal(0, noDuplicate.GainedEnergyX100, "same-day follow-up does not duplicate compensation");
 
         var absent = new GameCharacter
@@ -286,9 +321,10 @@ internal static partial class Program
         };
         var absentResult = ZodiacEnergyAccrual.Apply(
             absent,
-            utcEightMidnight,
-            utcEightMidnight.AddSeconds(1),
-            policy);
+            realmMidnight,
+            realmMidnight.AddSeconds(1),
+            policy,
+            calendar);
         Check.True(absentResult.CompensationApplied, "absence longer than one day triggers compensation");
 
         return Task.CompletedTask;

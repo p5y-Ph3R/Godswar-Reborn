@@ -19,6 +19,7 @@ internal sealed partial class GameClientHandler
         }
 
         ClearGearEnhancerSelection();
+        ClearInstanceCallerPageContext();
         var npcId = BinaryPrimitives.ReadUInt32LittleEndian(
             packet.Payload[..sizeof(uint)]);
         if (!TryResolveMapNpc(npcId, out var npc))

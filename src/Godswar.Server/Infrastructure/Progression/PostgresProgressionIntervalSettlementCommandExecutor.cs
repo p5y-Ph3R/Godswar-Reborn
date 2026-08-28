@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Godswar.Server.Application.Characters;
 using Godswar.Server.Application.Commands;
 using Godswar.Server.Application.Progression;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Infrastructure.Characters;
 using Godswar.Server.Infrastructure.Messaging;
 using Godswar.Server.State;
@@ -20,11 +21,13 @@ internal sealed partial class
     private readonly int _commandTimeoutSeconds;
     private readonly short _maximumOutboxAttempts;
     private readonly ZodiacEnergyPolicy _zodiacEnergyPolicy;
+    private readonly RealmCalendar _realmCalendar;
 
     public PostgresProgressionIntervalSettlementCommandExecutor(
         NpgsqlDataSource dataSource,
         PostgresOutboxDispatcherOptions options,
-        ZodiacEnergyPolicy zodiacEnergyPolicy)
+        ZodiacEnergyPolicy zodiacEnergyPolicy,
+        RealmCalendar realmCalendar)
     {
         _dataSource = dataSource ??
             throw new ArgumentNullException(nameof(dataSource));
@@ -32,6 +35,8 @@ internal sealed partial class
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         zodiacEnergyPolicy.Validate();
+        _realmCalendar = realmCalendar ??
+            throw new ArgumentNullException(nameof(realmCalendar));
         _commandTimeoutSeconds = Math.Max(
             1,
             (int)Math.Ceiling(options.CommandTimeout.TotalSeconds));
@@ -202,7 +207,8 @@ internal sealed partial class
             domainCharacter,
             envelope.Command.OnlineFromUtc,
             envelope.Command.OnlineUntilUtc,
-            _zodiacEnergyPolicy);
+            _zodiacEnergyPolicy,
+            _realmCalendar);
         var revision = checked(
             (authority?.AggregateRevision ?? 0) + 1);
         var eventId = Guid.NewGuid();

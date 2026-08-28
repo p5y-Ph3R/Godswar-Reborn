@@ -46,6 +46,8 @@ internal static partial class CharacterLoadSnapshotHydrator
             Hair = snapshot.Appearance.Hair,
             Face = snapshot.Appearance.Face,
             Faith = snapshot.Appearance.Faith,
+            SelectedTitleId = snapshot.Appearance.SelectedTitleId,
+            OwnedTitleIds = snapshot.Appearance.OwnedTitleIds.ToArray(),
             ZodiacType = snapshot.Zodiac.Type,
             ZodiacLuckyStatus = snapshot.Zodiac.LuckyStatus,
             ZodiacLuckyExpiresAt = snapshot.Zodiac.LuckyExpiresAtUtc,
@@ -79,6 +81,8 @@ internal static partial class CharacterLoadSnapshotHydrator
             HolySuitPoints = snapshot.Progression.HolySuitPoints,
             Silver = snapshot.Wallet.Silver,
             Gold = snapshot.Wallet.Gold,
+            MedusaHonorPoints = snapshot.Wallet.MedusaHonorPoints,
+            MedusaRewardRevision = snapshot.Wallet.MedusaRewardRevision,
             MaxHp = Math.Max(1, calculatedStats.MaxHp),
             MaxMp = Math.Max(0, calculatedStats.MaxMp),
             CurrentHp = Math.Clamp(

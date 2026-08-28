@@ -8,8 +8,7 @@ internal static class CombatCharacterStatsAdapter
     public static CombatAttackerStats FromCharacter(GameCharacter character)
     {
         ArgumentNullException.ThrowIfNull(character);
-        var stats = character.CalculatedStats ??
-                    CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         return FromStats(character.Profession, character.Level, stats);
     }
 

@@ -79,6 +79,20 @@ internal static class WorldBossCatalogChecks
                 GameplayContentTestFixtures.Runtime.MonsterCombatRanges),
             "basic attack range comes from the published monster template");
         Check.Equal(
+            rangedTemplate.CollisionRange.Value,
+            MonsterCombatResolver.ResolvePlayerBasicAttackRange(
+                rangedSpawn,
+                GameplayContentTestFixtures.Runtime.MonsterCombatRanges,
+                authoredPlayerRange: 1f),
+            "monster collision reach prevents a short authored basic attack from being rejected");
+        Check.Equal(
+            8f,
+            MonsterCombatResolver.ResolvePlayerBasicAttackRange(
+                rangedSpawn,
+                GameplayContentTestFixtures.Runtime.MonsterCombatRanges,
+                authoredPlayerRange: 8f),
+            "a longer authored basic attack reach is preserved");
+        Check.Equal(
             MonsterCombatResolver.DefaultPlayerBasicAttackRange,
             MonsterCombatResolver.ResolvePlayerBasicAttackRange(
                 rangedSpawn,

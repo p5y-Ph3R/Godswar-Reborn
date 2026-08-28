@@ -291,11 +291,12 @@ internal sealed partial class GameClientHandler
             return;
         }
 
-        if (!_registry.TryGetMonsterSnapshot(
+        if (!_registry.TryCapturePlayerMonsterTarget(
                 _session,
                 _character.CurrentMap,
                 cast.TargetObjectId,
-                out var target) ||
+                out var target,
+                out var combatAuthority) ||
             expectedTargetSpawnGeneration is { } expectedGeneration &&
             target.SpawnGeneration != expectedGeneration ||
             !_registry.IsMonsterVisibleTo(
@@ -365,13 +366,16 @@ internal sealed partial class GameClientHandler
         {
             if (cooldownRejected)
             {
+                await SendSkillCooldownRejectionAsync(
+                    cancellationToken,
+                    "SkillCooldownRejected");
                 return;
             }
 
             Console.WriteLine(
                 $"[skill] rejected insufficient MP character={_character.Name} skill={cast.SkillId} mp={currentMana} cost={manaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(LocalPlayerObjectId, currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "SkillManaRejected");
             return;
@@ -407,14 +411,20 @@ internal sealed partial class GameClientHandler
         if (requestedDamage == 0 ||
             !RevalidateCurrentWorldEffectOwnership(
                 "single_skill_damage") ||
-            !_registry.TryApplyMonsterDamage(
+            !_registry.TryCommitPlayerMonsterDamageGuarded(
+                _session,
                 _character.CurrentMap,
                 cast.TargetObjectId,
-                requestedDamage,
+                target.RuntimeInstanceId,
                 _character.Id,
                 expectedTargetSpawnGeneration ??
                     target.SpawnGeneration,
-                out var damageResult) ||
+                target.HealthRevision,
+                combatAuthority,
+                observedAt,
+                resolution,
+                out var damageCommit) ||
+            damageCommit.DamageResult is not { } damageResult ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
             ReleaseHostileSkillCooldown(cooldownLease);
@@ -452,6 +462,7 @@ internal sealed partial class GameClientHandler
                 $"[skill] rejected stale monster target character={_character.Name} skill={cast.SkillId} target={cast.TargetObjectId}");
             return;
         }
+        resolution = damageCommit.Resolution;
 
         var lifeAbsorption = CommitPveLifeAbsorption(
             _character,
@@ -464,7 +475,7 @@ internal sealed partial class GameClientHandler
             resolution,
             damageResult);
         var pendingReward = damageResult.Killed
-            ? await PrepareMonsterKillRewardAsync(damageResult)
+            ? await PrepareClaimedMonsterKillRewardAsync(damageResult)
             : null;
         var elementalRewards =
             await PreparePveElementalKillRewardsAsync(
@@ -517,9 +528,7 @@ internal sealed partial class GameClientHandler
 
         if (pendingReward is not null)
         {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
+            await pendingReward.PublishAsync(cancellationToken);
         }
 
         lock (_character.VitalsSync)

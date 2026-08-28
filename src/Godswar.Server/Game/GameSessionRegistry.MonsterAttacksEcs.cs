@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.Packets;
@@ -10,33 +9,32 @@ namespace Godswar.Server.Game;
 
 internal sealed partial class GameSessionRegistry
 {
-    private readonly ConditionalWeakTable<
-        MonsterRuntimeUpdate,
-        MonsterAttackEventIdentity> _monsterAttackEventIdentities =
-        new();
-    private long _nextMonsterAttackEventId;
-
     private async Task ProcessMonsterAttackEcsAsync(
         WorldInstanceRuntime runtime,
         MonsterRuntimeUpdate attack,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTimeOffset? capturedWorldTime = null)
     {
         if (attack.TargetCharacterId is not { } targetCharacterId)
         {
             return;
         }
 
-        GameSessionContext? targetContext;
         var members = SnapshotMonsterAttackMembers(runtime);
+        var publicationRecipients =
+            CaptureMonsterAttackPublicationRecipients(runtime, members);
         var statusContext = members.FirstOrDefault(context =>
             context.WorldReady &&
             context.CharacterId == targetCharacterId);
-        var damageResolvedAt = DateTimeOffset.UtcNow;
-        // Match the legacy lock order: runtime status first, then registry,
-        // then character vitals inside the lifecycle-owned ECS adapter.
+        var damageResolvedAt =
+            capturedWorldTime?.ToUniversalTime() ?? DateTimeOffset.UtcNow;
+#if DEBUG
+        damageResolvedAt = ResolveMonsterAttackTimeForProtocolCheck(
+            damageResolvedAt);
+#endif
         var runtimeMitigation = default(RuntimeIncomingDamageMitigation);
         if (statusContext is not null &&
-            !TryGetRuntimeIncomingDamageMitigation(
+            !TryPreviewRuntimeIncomingDamageMitigation(
                 statusContext.Session,
                 damageResolvedAt,
                 out runtimeMitigation))
@@ -44,178 +42,98 @@ internal sealed partial class GameSessionRegistry
             throw new MonsterAttackTargetUnavailableException(
                 targetCharacterId);
         }
-        PlayerMonsterDamageEcsDecision decision = default;
-        uint damage = 0;
+
         var monsterProfile = _gameplayCatalogs.MonsterCombatProfiles.Resolve(
             attack.Monster.Definition);
         var combatEventId = ResolveMonsterAttackEventId(attack);
-        CombatResolution resolution = default;
-        uint reboundDamage = 0;
-        var replayRejected = false;
-        var elementalAttempt = default(MonsterIncomingElementalAttempt);
-        var elementalPostCommit =
-            default(MonsterIncomingElementalPostCommit);
-        var petHealingReceivedBasisPoints =
-            ElementalBasisPointMath.Denominator;
-        var deathInterruptionTask = Task.CompletedTask;
-        lock (_gate)
+        var transaction = ResolveMonsterAttackEcsTransaction(
+            runtime,
+            attack,
+            members,
+            statusContext,
+            targetCharacterId,
+            damageResolvedAt,
+            runtimeMitigation,
+            monsterProfile,
+            combatEventId,
+            cancellationToken);
+        if (transaction.MedusaOwnerInvariantFault)
         {
-            targetContext = ResolveCurrentMonsterAttackTarget(
-                runtime,
-                members,
-                targetCharacterId);
-            if (targetContext is not null)
+            transaction.TerminalClear?
+                .FailClosedPreparedMembersNonThrowing();
+        }
+        else if (transaction.TimedOutMedusaInstance.IsValid)
+        {
+            if (transaction.TerminalClear is { } terminalClear &&
+                terminalClear.InstanceId ==
+                    transaction.TimedOutMedusaInstance)
             {
-                if (statusContext is null ||
-                    !ReferenceEquals(
-                        statusContext.Session,
-                        targetContext.Session))
-                {
-                    runtimeMitigation = default;
-                }
-
-                lock (targetContext.Character.VitalsSync)
-                {
-                    var targetCombat =
-                        MonsterIncomingCombatPolicy.ResolveTargetStats(
-                            targetContext.Character,
-                            runtimeMitigation);
-                    var effectiveMonsterProfile =
-                        AdjustPveMonsterAttackerProfile(
-                            targetContext.Session,
-                            attack.Monster,
-                            damageResolvedAt,
-                            monsterProfile);
-                    resolution = MonsterIncomingCombatPolicy.ResolveAttack(
-                            effectiveMonsterProfile,
-                            targetContext.Character,
-                            runtimeMitigation,
-                            combatEventId);
-                    var currentLifeRevision =
-                        _playerLifeRevisions.GetOrAdd(
-                            targetContext.Session,
-                            0);
-                    var canApplyElemental =
-                        CanApplyEcsMonsterIncomingPreResolution(
-                            targetContext,
-                            attack,
-                            combatEventId);
-                    if (canApplyElemental &&
-                        !TryClaimMonsterIncomingAttack(
-                            targetContext,
-                            attack.Monster,
-                            combatEventId))
-                    {
-                        replayRejected = true;
-                    }
-                    else
-                    {
-                        if (canApplyElemental)
-                        {
-                            resolution =
-                                AdjustMonsterIncomingElementalDamageLocked(
-                                    targetContext,
-                                    attack.Monster,
-                                    combatEventId,
-                                    damageResolvedAt,
-                                    resolution,
-                                    out elementalAttempt);
-                            petHealingReceivedBasisPoints = checked((int)
-                                Math.Clamp(
-                                    AdjustMonsterIncomingElementalHealingLocked(
-                                        targetContext,
-                                        damageResolvedAt
-                                            .ToUnixTimeMilliseconds(),
-                                        ElementalBasisPointMath.Denominator),
-                                    0,
-                                    ElementalBasisPointMath.Denominator));
-                        }
-
-                        damage = resolution.Damage;
-                        decision = ResolvePlayerVitalsDamageEcs(
-                            targetContext.Session,
-                            targetContext.Character,
-                            targetContext.ObjectId,
-                            new PlayerMonsterDamageEcsRequest(
-                                combatEventId,
-                                attack.Monster.ObjectId,
-                                attack.Monster.SpawnGeneration,
-                                targetCharacterId,
-                                attack.TargetObjectId ??
-                                    targetContext.ObjectId,
-                                attack.TargetLifeRevision ??
-                                    currentLifeRevision,
-                                attack.TargetVitalsRevision ??
-                                    targetContext.Character
-                                        .VitalsRevision,
-                                damage,
-                                damageResolvedAt,
-                                petHealingReceivedBasisPoints),
-                            beforeLethalCommit: () =>
-                            {
-                                // The ECS decision is accepted and lethal,
-                                // but vitals have not been committed yet.
-                                deathInterruptionTask =
-                                    RequestSkillCastInterruptionAsync(
-                                        targetContext.Session,
-                                        SkillCastInterruptionReason.Death,
-                                        cancellationToken);
-                            });
-                        if (decision.Applied)
-                        {
-                            reboundDamage =
-                                CombatSecondaryEffectPolicy.Resolve(
-                                        decision.AppliedDamage,
-                                        default,
-                                        targetCombat)
-                                    .ReboundDamage;
-                        }
-
-                        var acceptedMiss =
-                            !decision.Applied &&
-                            resolution.Outcome == CombatHitOutcome.Miss &&
-                            decision.RejectionReason ==
-                                MonsterPlayerDamageRejectionReason.ZeroDamage;
-                        if (canApplyElemental &&
-                            (decision.Applied || acceptedMiss))
-                        {
-                            elementalPostCommit =
-                                CommitMonsterIncomingElementalLocked(
-                                    targetContext,
-                                    attack.Monster,
-                                    elementalAttempt,
-                                    decision.AppliedDamage);
-                        }
-                    }
-                }
+                terminalClear.ScheduleNonThrowing(damageResolvedAt);
             }
+            else
+            {
+                transaction.TerminalClear?
+                    .FailClosedPreparedMembersNonThrowing();
+            }
+        }
+        var medusaStatusCompleted = false;
+        try
+        {
+        InvokeProtocolCheckAfterMedusaTransaction();
+        var decision = transaction.Decision;
+        var targetContext = RebaseMedusaPostCommitContext(
+            transaction.MedusaOutcome,
+            transaction.TargetContext,
+            decision.AfterLifeRevision);
+        var resolution = transaction.Resolution;
+        var damage = transaction.Damage;
+        var reboundDamage = transaction.ReboundDamage;
+        var elementalPostCommit = transaction.ElementalPostCommit;
+        var deathInterruptionTask = transaction.DeathInterruptionTask;
+        var rideStatusRemoved = transaction.RideStatusRemoved;
+        if (transaction.ElementalPostCommitError is { } postCommitError)
+        {
+            Console.WriteLine(
+                $"[monster] elemental postcommit deferred target={targetContext?.DisplayName ?? targetCharacterId.ToString()}: {postCommitError.Message}");
         }
 
         if (targetContext is null)
         {
-            ClearMonsterAttackAggro(
-                runtime,
-                targetCharacterId,
-                DateTimeOffset.UtcNow);
+            if (!HasExactEmittedMonsterTarget(attack))
+            {
+                ClearMonsterAttackAggro(
+                    runtime,
+                    targetCharacterId,
+                    DateTimeOffset.UtcNow);
+            }
             return;
         }
 
-        if (replayRejected)
+        if (transaction.ReplayRejected)
         {
             Console.WriteLine(
                 $"[monster] ECS replay rejected monster={attack.Monster.ObjectId} target={targetContext.DisplayName} event={combatEventId}");
             return;
         }
+        if (transaction.AuthorityRejected)
+        {
+            Console.WriteLine(
+                $"[medusa] ECS attack authority rejected monster={attack.Monster.ObjectId} target={targetContext.DisplayName} event={combatEventId} outcome={transaction.MedusaOutcome}");
+            return;
+        }
 
-        // The damage system records the event ID before rejecting zero. Treat
-        // that one rejection as an accepted attack attempt so the miss is
-        // published once without changing HP or the vitals revision.
-        var missed =
+        var acceptedZeroResolution =
             !decision.Applied &&
-            resolution.Outcome == CombatHitOutcome.Miss &&
+            resolution.Damage == 0 &&
             decision.RejectionReason ==
                 MonsterPlayerDamageRejectionReason.ZeroDamage;
-        if (!decision.Applied && !missed)
+        var acceptedInvariantFault =
+            transaction.MedusaOutcome ==
+                MedusaMonsterPlayerHitCommitOutcome
+                    .AppliedWithoutEffectInvariantFault;
+        if (!decision.Applied &&
+            !acceptedZeroResolution &&
+            !acceptedInvariantFault)
         {
             if (decision.RejectionReason is not (
                     MonsterPlayerDamageRejectionReason
@@ -234,267 +152,201 @@ internal sealed partial class GameSessionRegistry
             return;
         }
 
-        var reboundCommit = CommitMonsterRebound(
+        var killed = decision.Killed;
+        var bleedNativePrefix = AdmitCommittedBleedNativePrefix(
+            runtime,
+            attack,
+            transaction,
+            publicationRecipients,
             targetContext,
-            attack.Monster,
-            combatEventId,
-            decision.AppliedDamage,
-            reboundDamage);
-        var elementalReflection =
-            CommitMonsterIncomingElementalReflection(
+            resolution);
+        var reboundCommit = default(PveMonsterReboundCommit);
+        var elementalReflection = PveElementalCommitResult.Empty;
+        try
+        {
+            reboundCommit = CommitMonsterRebound(
+                runtime,
                 targetContext,
                 attack.Monster,
-                elementalPostCommit.Reflection);
-        var preparedReboundReward =
-            await PrepareMonsterReboundRewardAsync(
-                targetContext,
-                reboundCommit);
-        var preparedElementalRewards =
-            await PreparePveElementalKillRewardsAsync(
-                targetContext,
-                elementalReflection);
-
-        var killed = decision.Killed;
-        if (killed)
-        {
-            await deathInterruptionTask;
-        }
-
-        var monster = attack.Monster;
-        var target = targetContext.Character;
-        var worldTargetObjectId = targetContext.ObjectId;
-        try
-        {
-            await TrySendWorldInstancePacketAsync(
-                runtime,
-                targetContext,
-                PacketBuilder.SkillCastImpact(
-                    monster.ObjectId,
-                    LocalPlayerObjectId,
-                    2000,
-                    attack.TargetX,
-                    attack.TargetZ),
-                cancellationToken,
-                "MonsterAttackImpactSelf");
-            await TrySendWorldInstancePacketAsync(
-                runtime,
-                targetContext,
-                PacketBuilder.PhysicalDamage(
-                    monster.ObjectId,
-                    monster.X,
-                    monster.Y,
-                    monster.Z,
-                    LocalPlayerObjectId,
-                    resolution.CapturedDamageValue,
-                    result: 0,
-                    damageType: (byte)resolution.Outcome),
-                cancellationToken,
-                "MonsterAttackDamageSelf");
-            if (decision.PetHealing is { } selfHealing)
-            {
-                await PublishPetHealingTalentAsync(
+                combatEventId,
+                decision.AppliedDamage,
+                reboundDamage);
+            elementalReflection =
+                CommitMonsterIncomingElementalReflection(
                     runtime,
                     targetContext,
-                    target,
-                    LocalPlayerObjectId,
-                    selfHealing,
-                    "Self",
-                    cancellationToken);
-            }
-            if (elementalPostCommit.RecoveryApplied)
-            {
-                await TrySendWorldInstancePacketAsync(
-                    runtime,
-                    targetContext,
-                    PacketBuilder.PlayerVitalsUpdate(
-                        LocalPlayerObjectId,
-                        elementalPostCommit.AfterHealth,
-                        elementalPostCommit.AfterMana),
-                    cancellationToken,
-                    "MonsterElementalGuardRecoverySelf");
-            }
-            if (killed)
-            {
-                await TrySendWorldInstancePacketAsync(
-                    runtime,
-                    targetContext,
-                    PacketBuilder.PlayerDeath(
-                        LocalPlayerObjectId,
-                        target.PositionX,
-                        0f,
-                        target.PositionZ,
-                        target.CurrentMap),
-                    cancellationToken,
-                    "MonsterKillPlayerSelf");
-            }
+                    reboundCommit.DamageResult?.Monster ??
+                        attack.Monster,
+                    elementalPostCommit.Reflection);
         }
-        catch (Exception ex) when (
-            ex is IOException or ObjectDisposedException)
+        catch (Exception ex)
         {
-            Remove(targetContext.Session);
-        }
-
-        foreach (var observer in SnapshotMonsterAttackMembers(runtime))
-        {
-            if (!observer.WorldReady ||
-                ReferenceEquals(
-                    observer.Session,
-                    targetContext.Session) ||
-                !runtime.Map.IsMonsterVisibleTo(
-                    observer.Session,
-                    monster.ObjectId))
-            {
-                continue;
-            }
-
-            try
-            {
-                await TrySendWorldInstancePacketAsync(
-                    runtime,
-                    observer,
-                    PacketBuilder.SkillCastImpact(
-                        monster.ObjectId,
-                        worldTargetObjectId,
-                        2000,
-                        attack.TargetX,
-                        attack.TargetZ),
-                    cancellationToken,
-                    "MonsterAttackImpactWorld");
-                await TrySendWorldInstancePacketAsync(
-                    runtime,
-                    observer,
-                    PacketBuilder.PhysicalDamage(
-                        monster.ObjectId,
-                        monster.X,
-                        monster.Y,
-                        monster.Z,
-                        worldTargetObjectId,
-                        resolution.CapturedDamageValue,
-                        result: 0,
-                        damageType: (byte)resolution.Outcome),
-                    cancellationToken,
-                    "MonsterAttackDamageWorld");
-                if (decision.PetHealing is { } worldHealing)
-                {
-                    await PublishPetHealingTalentAsync(
-                        runtime,
-                        observer,
-                        target,
-                        worldTargetObjectId,
-                        worldHealing,
-                        "World",
-                        cancellationToken);
-                }
-                if (elementalPostCommit.RecoveryApplied)
-                {
-                    await TrySendWorldInstancePacketAsync(
-                        runtime,
-                        observer,
-                        PacketBuilder.PlayerVitalsUpdate(
-                            worldTargetObjectId,
-                            elementalPostCommit.AfterHealth,
-                            elementalPostCommit.AfterMana),
-                        cancellationToken,
-                        "MonsterElementalGuardRecoveryWorld");
-                }
-                if (killed)
-                {
-                    await TrySendWorldInstancePacketAsync(
-                        runtime,
-                        observer,
-                        PacketBuilder.PlayerDeath(
-                            worldTargetObjectId,
-                            target.PositionX,
-                            0f,
-                            target.PositionZ,
-                            target.CurrentMap),
-                        cancellationToken,
-                        "MonsterKillPlayerWorld");
-                }
-            }
-            catch (Exception ex) when (
-                ex is IOException or ObjectDisposedException)
-            {
-                Remove(observer.Session);
-            }
-        }
-
-        await PublishMonsterReboundAsync(
-            runtime,
-            targetContext,
-            reboundCommit,
-            preparedReboundReward,
-            cancellationToken);
-        await PublishPveElementalCommitAsync(
-            targetContext.Session,
-            elementalReflection,
-            cancellationToken,
-            capturedSource: targetContext,
-            preparedRewards: preparedElementalRewards);
-
-        if (killed)
-        {
-            try
-            {
-                await RemovePersistentRuntimeStatusForLifeRevisionAndPublishAsync(
-                    targetContext.Session,
-                    decision.AfterLifeRevision,
-                    MountCatalog.RuntimeStatusKind,
-                    DateTimeOffset.UtcNow,
-                    "mount-death",
-                    cancellationToken);
-            }
-            catch (Exception ex) when (
-                ex is not OperationCanceledException)
-            {
-                Console.WriteLine(
-                    $"[mount] failed clearing Ride after death character={targetContext.DisplayName}: {ex.Message}");
-            }
-
-            ClearMonsterAttackAggro(
-                runtime,
-                targetCharacterId,
-                DateTimeOffset.UtcNow);
+            Console.WriteLine(
+                $"[monster] secondary damage deferred target={targetContext.DisplayName}: {ex.Message}");
         }
 
         try
         {
-            await PersistRoutineVitalsAsync(
+            InvokeProtocolCheckBeforeMedusaBleedVitalsPersistence(
+                bleedNativePrefix.Required);
+            var persistence = PersistRoutineVitalsAsync(
                 targetContext,
-                cancellationToken);
+                CancellationToken.None);
+            if (HasMedusaProjectionObligation(transaction) &&
+                !persistence.IsCompletedSuccessfully)
+            {
+                ObserveDeferredMedusaVitalsPersistence(
+                    targetContext,
+                    persistence);
+            }
+            else
+            {
+                await persistence;
+            }
         }
-        catch (Exception ex) when (
-            ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             Console.WriteLine(
                 $"[monster] victim vitals persistence deferred character={targetContext.DisplayName}: {ex.Message}");
         }
 
-        Console.WriteLine(
-            $"[monster] attack monster={monster.ObjectId} tier={monster.Definition.Tier} target={targetContext.DisplayName} damage={damage} hp={target.CurrentHp}/{target.MaxHp} killed={killed}");
-    }
-
-    private ulong ResolveMonsterAttackEventId(
-        MonsterRuntimeUpdate attack)
-    {
-        if (attack.AttackEventId != 0)
+        if (killed)
         {
-            return attack.AttackEventId;
+            try
+            {
+                // Completion-owned effects linearize before death
+                // publication. Every later lethal send revalidates the
+                // committed HP/vitals epoch, so an intervening same-life
+                // recovery suppresses stale impact/damage/death packets.
+                await deathInterruptionTask;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[monster] death interruption notification deferred target={targetContext.DisplayName}: {ex.Message}");
+            }
         }
 
-        return _monsterAttackEventIdentities.GetValue(
+        if (rideStatusRemoved)
+        {
+            try
+            {
+                await PublishRuntimeStatusRemovalAsync(
+                    targetContext.Session,
+                    DateTimeOffset.UtcNow,
+                    "mount-death",
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[mount] Ride removal publication deferred character={targetContext.DisplayName}: {ex.Message}");
+            }
+        }
+
+        var publicationCancellation = killed ||
+            transaction.MedusaOutcome is not null
+                ? CancellationToken.None
+                : cancellationToken;
+        await PublishMonsterAttackNativeSequenceAsync(
+            runtime,
             attack,
-            _ => new MonsterAttackEventIdentity(
-                checked((ulong)Interlocked.Increment(
-                    ref _nextMonsterAttackEventId))))
-            .Value;
+            transaction,
+            publicationRecipients,
+            targetContext,
+            resolution,
+            elementalPostCommit,
+            killed,
+            bleedNativePrefix,
+            publicationCancellation);
+
+        // The opaque control claim already owns the exact pending cast
+        // generation. Preserve client order: committed impact/damage first,
+        // complete status replacement second, interruption notice last.
+        // Every fallible publication above is caught, so this completion
+        // point cannot be bypassed for an accepted nonlethal Medusa effect.
+        await CompleteMedusaStatusPublicationAsync(
+            targetContext,
+            transaction,
+            damageResolvedAt);
+        medusaStatusCompleted = true;
+
+        PreparedPveMonsterKillReward? preparedReboundReward = null;
+        IReadOnlyList<PreparedPveMonsterKillReward>
+            preparedElementalRewards = [];
+        try
+        {
+            preparedReboundReward =
+                await PrepareMonsterReboundRewardAsync(
+                    targetContext,
+                    reboundCommit);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[monster] rebound reward preparation deferred target={targetContext.DisplayName}: {ex.Message}");
+        }
+        try
+        {
+            preparedElementalRewards =
+                await PreparePveElementalKillRewardsAsync(
+                    targetContext,
+                    elementalReflection);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[monster] elemental reward preparation deferred target={targetContext.DisplayName}: {ex.Message}");
+        }
+
+        try
+        {
+            await PublishMonsterReboundAsync(
+                runtime,
+                targetContext,
+                reboundCommit,
+                preparedReboundReward,
+                publicationCancellation);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[monster] rebound publication deferred target={targetContext.DisplayName}: {ex.Message}");
+        }
+        try
+        {
+            await PublishPveElementalCommitAsync(
+                targetContext.Session,
+                elementalReflection,
+                publicationCancellation,
+                capturedSource: targetContext,
+                preparedRewards: preparedElementalRewards);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[monster] elemental publication deferred target={targetContext.DisplayName}: {ex.Message}");
+        }
+
+        var impactSkillId = ResolveMedusaMonsterImpactSkillId(
+            attack,
+            transaction);
+        Console.WriteLine(
+            $"[monster] attack monster={attack.Monster.ObjectId} " +
+            $"tier={attack.Monster.Definition.Tier} " +
+            $"target={targetContext.DisplayName} " +
+            $"impact-skill={impactSkillId} damage={damage} " +
+            $"hp={targetContext.Character.CurrentHp}/" +
+            $"{targetContext.Character.MaxHp} killed={killed}");
+        }
+        finally
+        {
+            if (!medusaStatusCompleted)
+            {
+                await CompleteAbandonedMedusaStatusPublicationAsync(
+                    transaction);
+            }
+        }
     }
 
-    private sealed class MonsterAttackTargetUnavailableException(
-        int targetCharacterId) : Exception
-    {
-        public int TargetCharacterId { get; } = targetCharacterId;
-    }
-
-    private sealed record MonsterAttackEventIdentity(ulong Value);
 }

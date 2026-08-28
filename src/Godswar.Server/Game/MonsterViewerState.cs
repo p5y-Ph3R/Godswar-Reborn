@@ -57,9 +57,14 @@ internal sealed class MonsterVisibilityTransition : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        Release();
+        return ValueTask.CompletedTask;
+    }
+
+    internal void Release()
+    {
         var viewer = Interlocked.Exchange(ref _viewer, null);
         viewer?.TransitionGate.Release();
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -79,17 +84,20 @@ internal sealed class MonsterViewerDeliveryLease : IAsyncDisposable
     private readonly IReadOnlyList<MonsterHealthMutation>
         _directHealthMutations;
     private readonly IReadOnlyList<uint> _reconciliationObjectIds;
+    private readonly IReadOnlyList<uint> _terminalObjectIds;
 
     public MonsterViewerDeliveryLease(
         MonsterViewerState viewer,
         IReadOnlyList<MonsterHealthMutation> directHealthMutations,
         IReadOnlyList<uint> reconciliationObjectIds,
-        IReadOnlyList<MonsterRuntimeSnapshot> reconciliationMonsters)
+        IReadOnlyList<MonsterRuntimeSnapshot> reconciliationMonsters,
+        IReadOnlyList<uint> terminalObjectIds)
     {
         _viewer = viewer;
         _directHealthMutations = directHealthMutations;
         _reconciliationObjectIds = reconciliationObjectIds;
         ReconciliationMonsters = reconciliationMonsters;
+        _terminalObjectIds = terminalObjectIds;
     }
 
     public IReadOnlyList<MonsterHealthMutation> DirectHealthMutations =>
@@ -97,6 +105,8 @@ internal sealed class MonsterViewerDeliveryLease : IAsyncDisposable
 
     public IReadOnlyList<uint> ReconciliationObjectIds =>
         _reconciliationObjectIds;
+
+    public IReadOnlyList<uint> TerminalObjectIds => _terminalObjectIds;
 
     public IReadOnlyList<MonsterRuntimeSnapshot> ReconciliationMonsters
     {
@@ -132,8 +142,13 @@ internal sealed class MonsterViewerDeliveryLease : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        Release();
+        return ValueTask.CompletedTask;
+    }
+
+    internal void Release()
+    {
         var viewer = Interlocked.Exchange(ref _viewer, null);
         viewer?.TransitionGate.Release();
-        return ValueTask.CompletedTask;
     }
 }

@@ -1,3 +1,4 @@
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.Networking;
 using Godswar.Server.State;
 using Godswar.Server.World.Systems.Combat;
@@ -37,14 +38,50 @@ internal sealed partial class GameSessionRegistry
             monster.SpawnGeneration,
             combatEventId));
 
+    private bool TryClaimMonsterIncomingAttack(
+        GameSessionContext target,
+        MonsterRuntimeSnapshot monster,
+        ulong combatEventId,
+        out MonsterIncomingAttackCommitKey key)
+    {
+        key = new(
+            MonsterIncomingAttackCommitPhase.DirectAttack,
+            target.CharacterId,
+            monster.ObjectId,
+            monster.SpawnGeneration,
+            combatEventId);
+        return _monsterIncomingAttackReplay.TryReserve(key);
+    }
+
+    private void CompleteMonsterIncomingAttack(
+        in MonsterIncomingAttackCommitKey key)
+    {
+        if (key.IsValid)
+        {
+            _monsterIncomingAttackReplay.Complete(key);
+        }
+    }
+
+    private void ReleaseMonsterIncomingAttack(
+        in MonsterIncomingAttackCommitKey key)
+    {
+        if (key.IsValid)
+        {
+            _monsterIncomingAttackReplay.Release(key);
+        }
+    }
+
     private bool CanApplyEcsMonsterIncomingPreResolution(
         GameSessionContext target,
         MonsterRuntimeUpdate attack,
         ulong combatEventId)
     {
-        var currentLifeRevision = _playerLifeRevisions.GetOrAdd(
-            target.Session,
-            0);
+        if (!_playerLifeRevisions.TryGetValue(
+                target.Session,
+                out var currentLifeRevision))
+        {
+            return false;
+        }
         var lastEventId = GetPlayerVitalsDamageEcsDiagnostics(
             target.Session)?.LastAttackEventId ?? 0;
         return target.Character.CurrentHp > 0 &&
@@ -65,6 +102,46 @@ internal sealed partial class GameSessionRegistry
         in CombatResolution original,
         out MonsterIncomingElementalAttempt attempt)
     {
+        return AdjustMonsterIncomingElementalDamageLocked(
+            target,
+            monster,
+            combatEventId,
+            authoritativeAt,
+            original,
+            reserveMutation: false,
+            out attempt,
+            out _);
+    }
+
+    private CombatResolution ReserveMonsterIncomingElementalDamageLocked(
+        GameSessionContext target,
+        MonsterRuntimeSnapshot monster,
+        ulong combatEventId,
+        DateTimeOffset authoritativeAt,
+        in CombatResolution original,
+        out MonsterIncomingElementalAttempt attempt,
+        out ElementalIncomingMutationReservation? reservation) =>
+        AdjustMonsterIncomingElementalDamageLocked(
+            target,
+            monster,
+            combatEventId,
+            authoritativeAt,
+            original,
+            reserveMutation: true,
+            out attempt,
+            out reservation);
+
+    private CombatResolution AdjustMonsterIncomingElementalDamageLocked(
+        GameSessionContext target,
+        MonsterRuntimeSnapshot monster,
+        ulong combatEventId,
+        DateTimeOffset authoritativeAt,
+        in CombatResolution original,
+        bool reserveMutation,
+        out MonsterIncomingElementalAttempt attempt,
+        out ElementalIncomingMutationReservation? reservation)
+    {
+        reservation = null;
         if (!original.Hit)
         {
             attempt = default;
@@ -88,7 +165,8 @@ internal sealed partial class GameSessionRegistry
             target.CharacterId,
             target.MapId,
             target.Ownership);
-        if (TryAdjustElementalIncomingHit(
+        var adjustedHit = reserveMutation
+            ? TryReserveElementalIncomingHit(
                 target.Session,
                 fence,
                 combatEvent,
@@ -97,7 +175,19 @@ internal sealed partial class GameSessionRegistry
                 target.Character.CurrentHp,
                 target.Character.MaxHp,
                 target.Character.MaxMp,
-                out var adjusted))
+                out var adjusted,
+                out reservation)
+            : TryAdjustElementalIncomingHit(
+                target.Session,
+                fence,
+                combatEvent,
+                target.Character.ElementalEquipment,
+                original.Damage,
+                target.Character.CurrentHp,
+                target.Character.MaxHp,
+                target.Character.MaxMp,
+                out adjusted);
+        if (adjustedHit)
         {
             adjustment = adjusted;
         }
@@ -210,8 +300,37 @@ internal sealed partial class GameSessionRegistry
             : requestedHealth;
     }
 
+    private long PreviewMonsterIncomingElementalHealingLocked(
+        GameSessionContext target,
+        long authoritativeTimeMilliseconds,
+        long requestedHealth)
+    {
+        if (requestedHealth <= 0)
+        {
+            return 0;
+        }
+
+        var fence = new ElementalCombatSessionFence(
+            target.CharacterId,
+            target.MapId,
+            target.Ownership);
+        return TryPreviewElementalStatusAdjustment(
+            target.Session,
+            fence,
+            authoritativeTimeMilliseconds,
+            movementSpeed: 0,
+            physicalDefense: 0,
+            magicDefense: 0,
+            hitRating: 0,
+            healingReceived: requestedHealth,
+            out var status)
+            ? status.HealingReceived
+            : requestedHealth;
+    }
+
     private PveElementalCommitResult
         CommitMonsterIncomingElementalReflection(
+            WorldInstanceRuntime runtime,
             GameSessionContext source,
             MonsterRuntimeSnapshot monster,
             ResonanceDamageIntent? reflection)
@@ -233,7 +352,7 @@ internal sealed partial class GameSessionRegistry
             monster.ObjectId,
             monster.SpawnGeneration,
             intent.SourceEventId);
-        if (!_monsterIncomingAttackReplay.TryClaim(key))
+        if (!_monsterIncomingAttackReplay.TryReserve(key))
         {
             return PveElementalCommitResult.Empty;
         }
@@ -242,18 +361,32 @@ internal sealed partial class GameSessionRegistry
             intent.Damage,
             0,
             uint.MaxValue));
-        if (!TryApplyMonsterDamage(
-                source.MapId,
-                monster.ObjectId,
+        MonsterDamageResult damageResult;
+        bool applied;
+        try
+        {
+            applied = TryApplyMonsterSecondaryDamageExact(
+                runtime,
+                source,
+                monster,
                 requestedDamage,
                 source.CharacterId,
-                monster.SpawnGeneration,
-                out var damageResult) ||
+                DateTimeOffset.UtcNow,
+                out damageResult);
+        }
+        catch
+        {
+            _monsterIncomingAttackReplay.Release(key);
+            throw;
+        }
+        if (!applied ||
             damageResult.BeforeHealth == damageResult.AfterHealth)
         {
             _monsterIncomingAttackReplay.Release(key);
             return PveElementalCommitResult.Empty;
         }
+
+        _monsterIncomingAttackReplay.Complete(key);
 
         return new PveElementalCommitResult(
             [],
@@ -307,8 +440,12 @@ internal sealed class MonsterIncomingAttackReplayLedger
 {
     private const int Capacity = 4_096;
     private readonly object _gate = new();
-    private readonly HashSet<MonsterIncomingAttackCommitKey> _claimed = [];
-    private readonly Queue<MonsterIncomingAttackCommitKey> _order = [];
+    private readonly HashSet<MonsterIncomingAttackCommitKey> _claimed =
+        new(Capacity);
+    private readonly HashSet<MonsterIncomingAttackCommitKey> _pending =
+        new(Capacity);
+    private readonly Queue<MonsterIncomingAttackCommitKey> _order =
+        new(Capacity);
 
     public bool TryClaim(in MonsterIncomingAttackCommitKey key)
     {
@@ -319,19 +456,66 @@ internal sealed class MonsterIncomingAttackReplayLedger
 
         lock (_gate)
         {
-            if (!_claimed.Add(key))
+            if (_claimed.Contains(key) || _pending.Contains(key))
             {
                 return false;
             }
 
-            _order.Enqueue(key);
-            while (_order.Count > Capacity)
+            CommitLocked(key);
+            return true;
+        }
+    }
+
+    public bool TryReserve(in MonsterIncomingAttackCommitKey key)
+    {
+        if (!key.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key));
+        }
+
+        lock (_gate)
+        {
+            if (_claimed.Contains(key) || !_pending.Add(key))
             {
-                _claimed.Remove(_order.Dequeue());
+                return false;
             }
 
             return true;
         }
+    }
+
+    public void Complete(in MonsterIncomingAttackCommitKey key)
+    {
+        if (!key.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key));
+        }
+
+        lock (_gate)
+        {
+            if (_claimed.Contains(key))
+            {
+                _pending.Remove(key);
+                return;
+            }
+
+            _pending.Remove(key);
+            CommitLocked(key);
+        }
+    }
+
+    private void CommitLocked(in MonsterIncomingAttackCommitKey key)
+    {
+        if (_claimed.Count == Capacity)
+        {
+            System.Diagnostics.Debug.Assert(_order.Count > 0);
+            if (_order.TryDequeue(out var evicted))
+            {
+                _claimed.Remove(evicted);
+            }
+        }
+        _claimed.Add(key);
+        _order.Enqueue(key);
     }
 
     public bool Release(in MonsterIncomingAttackCommitKey key)
@@ -343,6 +527,10 @@ internal sealed class MonsterIncomingAttackReplayLedger
 
         lock (_gate)
         {
+            if (_pending.Remove(key))
+            {
+                return true;
+            }
             if (!_claimed.Remove(key))
             {
                 return false;

@@ -1,3 +1,4 @@
+using Godswar.Server.Game.WorldInstances;
 using Godswar.Server.State;
 
 namespace Godswar.Server.Game;
@@ -35,6 +36,14 @@ internal sealed partial class GameClientHandler
             return PlayerSkillCastControl.Stunned;
         }
 
+        if (!IsMedusaActionAllowed(
+                MedusaEncounterControlRestriction.SkillCast,
+                observedAt,
+                "skill cast"))
+        {
+            return PlayerSkillCastControl.Stunned;
+        }
+
         return PlayerSkillCastControl.None;
     }
 
@@ -44,14 +53,45 @@ internal sealed partial class GameClientHandler
         var hostile = _registry.GetTrainingDummyHostileControl(
             _session,
             observedAt);
-        if ((hostile & HostileStatusControlFlags.NonAttackUsing) == 0)
+        if ((hostile & HostileStatusControlFlags.NonAttackUsing) != 0)
         {
-            return true;
+            Console.WriteLine(
+                "[status] basic attack blocked " +
+                $"character={_character?.Name} control={hostile}");
+            return false;
         }
 
-        Console.WriteLine(
-            "[status] basic attack blocked " +
-            $"character={_character?.Name} control={hostile}");
-        return false;
+        return IsMedusaActionAllowed(
+            MedusaEncounterControlRestriction.BasicAttack,
+            observedAt,
+            "basic attack");
+    }
+
+    private bool IsHostileStatusItemUseAllowed(
+        DateTimeOffset observedAt) => IsMedusaActionAllowed(
+            MedusaEncounterControlRestriction.ItemUse,
+            observedAt,
+            "item use");
+
+    private bool IsMedusaActionAllowed(
+        MedusaEncounterControlRestriction action,
+        DateTimeOffset observedAt,
+        string actionName)
+    {
+        var allowed = _registry.IsMedusaActionAllowed(
+            _session,
+            action,
+            observedAt,
+            out var authority);
+        if (!allowed)
+        {
+            Console.WriteLine(
+                "[medusa-status] action blocked " +
+                $"character={_character?.Name} action={actionName} " +
+                $"authority={authority.Outcome} " +
+                $"control={authority.View?.ControlRestriction}");
+        }
+
+        return allowed;
     }
 }

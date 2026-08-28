@@ -30,6 +30,12 @@ internal static partial class PacketBuilder
     private const int PlayerStatusEffectsDamageAbsorbOffset = 228;
     private const int PlayerStatusEffectsBeCureBonusOffset = 232;
     private const int PlayerStatusEffectsCureBonusOffset = 236;
+    private const int PlayerStatusEffectsHaltIntonateOffset = 248;
+    private const int PlayerStatusEffectsNonMovingOffset = 256;
+    private const int PlayerStatusEffectsNonMagicUsingOffset = 260;
+    private const int PlayerStatusEffectsNonTechniqueUsingOffset = 264;
+    private const int PlayerStatusEffectsNonAttackUsingOffset = 268;
+    private const int PlayerStatusEffectsNonItemUsingOffset = 272;
     private const int PlayerStatusEffectsExperienceBonusOffset = 300;
     private const int PlayerStatusEffectsMovementSpeedMultiplierOffset = 324;
     private const int PlayerStatusEffectsRidingFlagOffset = 328;
@@ -127,7 +133,7 @@ internal static partial class PacketBuilder
             packet.AsSpan(PlayerStatusEffectsRidingFlagOffset, sizeof(uint)),
             aggregate.IsRiding ? 1u : 0u);
 
-        var stats = character.CalculatedStats ?? CharacterStats.FromCharacter(character);
+        var stats = CharacterStats.FromCharacter(character);
         BinaryPrimitives.WriteInt32LittleEndian(
             packet.AsSpan(PlayerStatusEffectsMaximumHpOffset, sizeof(int)),
             character.MaxHp);
@@ -181,6 +187,36 @@ internal static partial class PacketBuilder
         BinaryPrimitives.WriteSingleLittleEndian(
             packet.AsSpan(PlayerStatusEffectsCureBonusOffset, sizeof(float)),
             ToClientPercent(stats.CureBonus));
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsHaltIntonateOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.HaltIntonate);
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsNonMovingOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.NonMoving);
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsNonMagicUsingOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.NonMagicUsing);
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsNonTechniqueUsingOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.NonTechniqueUsing);
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsNonAttackUsingOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.NonAttackUsing);
+        WriteStatusControl(
+            packet,
+            PlayerStatusEffectsNonItemUsingOffset,
+            aggregate.Control,
+            HostileStatusControlFlags.NonItemUsing);
         aggregate = aggregate with
         {
             Hit = (int)Math.Clamp(
@@ -204,6 +240,15 @@ internal static partial class PacketBuilder
             aggregate.ExperienceBonus);
         return packet;
     }
+
+    private static void WriteStatusControl(
+        byte[] packet,
+        int offset,
+        HostileStatusControlFlags active,
+        HostileStatusControlFlags control) =>
+        BinaryPrimitives.WriteSingleLittleEndian(
+            packet.AsSpan(offset, sizeof(float)),
+            (active & control) != 0 ? 1f : 0f);
 
     private static int SaturatingStatusValue(
         int baseValue,

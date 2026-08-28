@@ -152,6 +152,14 @@ internal sealed partial class GameSessionRegistry
 
             // No area or chained candidate is admitted by this adapter.
             IReadOnlyList<PvpElementalCandidate> candidates = [];
+            if (!HaveEstablishedPlayerLifeAuthoritiesLocked(
+                    [attacker, target]))
+            {
+                return TrainingDummySkillDecision.Reject(
+                    TrainingDummySkillRejectionReason.StaleWorldOwnership,
+                    currentMana,
+                    eligibility: eligibility);
+            }
             using (AcquirePvpVitalsLocks([attacker, target]))
             {
                 eligibility = EvaluatePvpBasicAttack(
@@ -174,8 +182,8 @@ internal sealed partial class GameSessionRegistry
                         currentMana,
                         eligibility: eligibility);
                 }
-                var targetStats = target.Character.CalculatedStats ??
-                    CharacterStats.FromCharacter(target.Character);
+                var targetStats = CharacterStats.FromCharacter(
+                    target.Character);
                 var targetCombat =
                     CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
                         CombatCharacterStatsAdapter.ToTarget(

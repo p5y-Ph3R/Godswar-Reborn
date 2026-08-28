@@ -43,8 +43,7 @@ internal static class MonsterIncomingCombatPolicy
         in RuntimeIncomingDamageMitigation runtimeMitigation)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var stats = target.CalculatedStats ??
-                    CharacterStats.FromCharacter(target);
+        var stats = CharacterStats.FromCharacter(target);
         return CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
             CombatCharacterStatsAdapter.ToTarget(
                 target.Level,

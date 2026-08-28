@@ -16,6 +16,8 @@ internal static class MonsterEcsCombatSimulation
         ref var transform = ref world.Get<MonsterTransformComponent>(entity);
         ref var movement = ref world.Get<MonsterMovementComponent>(entity);
         ref var combat = ref world.Get<MonsterCombatComponent>(entity);
+        ref var identity = ref world.Get<MonsterIdentityComponent>(entity);
+        var attackRange = identity.AttackRange;
         var positionsChanged = false;
         var distance = Math.Sqrt(MonsterEcsState.DistanceSquared(
             transform.X,
@@ -23,7 +25,7 @@ internal static class MonsterEcsCombatSimulation
             target.X,
             target.Z));
 
-        if (distance <= MonsterEcsRules.CombatRange)
+        if (distance <= attackRange)
         {
             if (combat.Phase == MonsterCombatPhase.Chasing ||
                 movement.IsMoving)
@@ -66,7 +68,19 @@ internal static class MonsterEcsCombatSimulation
                             : target.ObjectId,
                         TargetLifeRevision: target.ObjectId == 0
                             ? null
-                            : target.LifeRevision));
+                            : target.LifeRevision,
+                        TargetOwnership: target.ObjectId == 0
+                            ? null
+                            : target.Ownership,
+                        TargetWorldInstanceId: target.ObjectId == 0
+                            ? null
+                            : target.WorldInstanceId,
+                        TargetWorldRevision: target.ObjectId == 0
+                            ? null
+                            : target.WorldRevision,
+                        TargetWorldMembershipEpoch: target.ObjectId == 0
+                            ? null
+                            : target.WorldMembershipEpoch));
             }
 
             return false;
@@ -105,7 +119,7 @@ internal static class MonsterEcsCombatSimulation
                 target.Z));
             var remainingDistance = Math.Max(
                 0d,
-                distance - MonsterEcsRules.CombatRange);
+                distance - attackRange);
             if (remainingDistance <= double.Epsilon)
             {
                 MonsterEcsState.StopCombatMovement(ref movement);
@@ -153,7 +167,7 @@ internal static class MonsterEcsCombatSimulation
                 transform.Z,
                 target.X,
                 target.Z));
-            if (distance <= MonsterEcsRules.CombatRange + 0.0001d)
+            if (distance <= attackRange + 0.0001d)
             {
                 MonsterEcsState.StopCombatMovement(ref movement);
                 combat.Phase = MonsterCombatPhase.Attacking;
@@ -215,12 +229,17 @@ internal static class MonsterEcsCombatSimulation
                         MonsterRuntimeUpdateKind.Returned,
                         MonsterEcsState.Snapshot(world, entity),
                         MovementEndField: 1));
-                Publish(
-                    events,
-                    MonsterEcsState.RetireReturnedMonster(
+                if (MonsterEcsState.ShouldRetireReturnedMonster(
                         world,
-                        entity,
-                        stepAt));
+                        entity))
+                {
+                    Publish(
+                        events,
+                        MonsterEcsState.RetireReturnedMonster(
+                            world,
+                            entity,
+                            stepAt));
+                }
                 break;
             }
 
@@ -246,7 +265,8 @@ internal static class MonsterEcsCombatSimulation
             entity,
             now);
         Publish(events, update);
-        if (update.Kind == MonsterRuntimeUpdateKind.Returned)
+        if (update.Kind == MonsterRuntimeUpdateKind.Returned &&
+            MonsterEcsState.ShouldRetireReturnedMonster(world, entity))
         {
             Publish(
                 events,

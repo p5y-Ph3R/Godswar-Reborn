@@ -102,6 +102,7 @@ services:
         target: redis_connection_string
     environment:
       GODSWAR_RUNTIME_PROFILE: LocalDevelopment
+      GODSWAR_LOCAL_GAMEPLAY_LOGS: "true"
       GODSWAR_STORAGE_PROVIDER: postgres
       GODSWAR_POSTGRES_CONNECTION_STRING_FILE: /run/secrets/postgres_connection_string
       GODSWAR_LOGIN_BIND_HOST: 0.0.0.0
@@ -191,6 +192,7 @@ services:
         target: redis_connection_string
     environment:
       GODSWAR_RUNTIME_PROFILE: LocalDevelopment
+      GODSWAR_LOCAL_GAMEPLAY_LOGS: "true"
       GODSWAR_STORAGE_PROVIDER: postgres
       GODSWAR_POSTGRES_CONNECTION_STRING_FILE: /run/secrets/postgres_connection_string
       GODSWAR_LOGIN_BIND_HOST: 0.0.0.0

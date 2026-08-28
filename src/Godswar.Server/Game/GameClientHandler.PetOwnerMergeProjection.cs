@@ -28,17 +28,23 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             "PetOwnerMergeEnergyStart");
         await _session.SendAsync(
+            BuildLocalPlayerStatusUpdate(),
+            cancellationToken,
+            "PetOwnerMergeStatusRefresh");
+        // The stock server sends the rebuilt owner/status state first and
+        // 10275 last. 10275 is what moves the native pet controls into their
+        // merged state; a later 10166 rebuild can restore the summon control.
+        await _session.SendAsync(
             PacketBuilder.PetOwnerMergeStarted(
                 LocalPlayerObjectId,
                 pet.Aptitude,
                 pet.CompletedRebirths),
             cancellationToken,
             "PetOwnerMergeStarted");
-        await _session.SendAsync(
-            BuildLocalPlayerStatusUpdate(),
-            cancellationToken,
-            "PetOwnerMergeStatusRefresh");
 
+        await BroadcastPetOwnerMergeStatusAsync(
+            "PetOwnerMergeStartedStatusWorld",
+            cancellationToken);
         await _registry.BroadcastToMapAsync(
             _character.CurrentMap,
             PacketBuilder.PetOwnerMergeStarted(
@@ -48,9 +54,6 @@ internal sealed partial class GameClientHandler
             cancellationToken,
             _session,
             "PetOwnerMergeStartedWorld");
-        await BroadcastPetOwnerMergeStatusAsync(
-            "PetOwnerMergeStartedStatusWorld",
-            cancellationToken);
         StartPetOwnerMergeEnergyDrain();
     }
 

@@ -17,12 +17,26 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
         ArgumentNullException.ThrowIfNull(session);
+        session.RegisterEgressTerminalObserver(RemoveEgressTerminalSession);
 
         lock (_gate)
         {
             return ReplaceAccountSessionLocked(
                 accountId,
                 session);
+        }
+    }
+
+    private void RemoveEgressTerminalSession(ClientSession session)
+    {
+        try
+        {
+            Remove(session);
+        }
+        catch
+        {
+            // Session routing already rejects the terminal epoch. The normal
+            // connection owner retains its idempotent removal fallback.
         }
     }
 
@@ -33,6 +47,7 @@ internal sealed partial class GameSessionRegistry
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(accountId);
         ArgumentNullException.ThrowIfNull(session);
+        session.RegisterEgressTerminalObserver(RemoveEgressTerminalSession);
 
         lock (_gate)
         {

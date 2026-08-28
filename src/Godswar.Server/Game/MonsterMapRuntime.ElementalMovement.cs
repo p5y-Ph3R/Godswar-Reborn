@@ -26,6 +26,28 @@ internal sealed partial class MonsterMapRuntime
         }
     }
 
+    public bool TrySetCorpseDespawnAt(
+        uint objectId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset? despawnAt)
+    {
+        lock (_gate)
+        {
+            if (!_monsters.TryGetValue(objectId, out var monster) ||
+                monster.SpawnGeneration != expectedSpawnGeneration ||
+                monster.IsAlive ||
+                !monster.IsSpawned ||
+                monster.CombatPhase !=
+                    MonsterCombatPhase.AwaitingRetirement)
+            {
+                return false;
+            }
+
+            monster.DespawnAt = despawnAt?.ToUniversalTime();
+            return true;
+        }
+    }
+
     private static TimeSpan ElementalMovementInterval(
         MonsterRuntimeState monster)
     {

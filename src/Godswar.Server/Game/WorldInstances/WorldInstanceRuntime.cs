@@ -77,7 +77,8 @@ internal sealed class MapWorldInstanceRuntimeFactory(
     int mailboxCapacity =
         MapWorldInstanceRuntimeFactory.DefaultMailboxCapacity,
     TimeSpan? mailboxShutdownTimeout = null,
-    WorldBossCatalog? worldBossCatalog = null) :
+    WorldBossCatalog? worldBossCatalog = null,
+    MonsterCombatProfileCatalog? monsterCombatProfiles = null) :
     IWorldInstanceRuntimeFactory
 {
     internal const int DefaultMailboxCapacity = 4_096;
@@ -89,7 +90,8 @@ internal sealed class MapWorldInstanceRuntimeFactory(
             descriptor,
             monsterRuntimeMode,
             playerRuntimeMode,
-            worldBossCatalog);
+            worldBossCatalog,
+            monsterCombatProfiles);
         return new WorldInstanceRuntime(
             map,
             new BoundedSingleOwnerMailbox<MapInstance>(

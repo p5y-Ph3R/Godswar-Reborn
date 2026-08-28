@@ -36,10 +36,8 @@ internal sealed partial class GameClientHandler
         var manaCost = Math.Max(0, combat.Mp);
         if (currentMana < manaCost)
         {
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "PriestHealManaRejected");
             Console.WriteLine(
@@ -105,7 +103,6 @@ internal sealed partial class GameClientHandler
         lock (character.VitalsSync)
         {
             return character.CurrentHp > 0 &&
-                   character.CurrentMp >= Math.Max(0, combat.Mp) &&
                    !IsSkillCooldownActive(
                        cast.SkillId,
                        DateTimeOffset.UtcNow);
@@ -174,10 +171,8 @@ internal sealed partial class GameClientHandler
 
         if (!manaReserved)
         {
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "PriestHealManaRejected");
             Console.WriteLine(

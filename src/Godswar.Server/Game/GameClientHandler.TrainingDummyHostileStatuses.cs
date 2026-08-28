@@ -254,10 +254,8 @@ internal sealed partial class GameClientHandler
         }
         if (currentMana < definition.ManaCost)
         {
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "TrainingDummyHostileIntonationManaRejected");
             return true;
@@ -314,8 +312,7 @@ internal sealed partial class GameClientHandler
 
         lock (character.VitalsSync)
         {
-            return character.CurrentMp >= definition.ManaCost &&
-                IsTrainingDummyHostileStatusTargetInRange(
+            return IsTrainingDummyHostileStatusTargetInRange(
                     character,
                     target,
                     skill);

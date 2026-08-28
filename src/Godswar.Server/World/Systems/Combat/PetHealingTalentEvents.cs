@@ -16,4 +16,5 @@ internal readonly record struct PetHealingAppliedEvent(
     long BeforeVitalsRevision,
     long AfterVitalsRevision,
     DateTimeOffset AppliedAt,
-    DateTimeOffset CooldownReadyAt);
+    DateTimeOffset CooldownReadyAt,
+    PetHealingCooldownReservation CooldownReservation);

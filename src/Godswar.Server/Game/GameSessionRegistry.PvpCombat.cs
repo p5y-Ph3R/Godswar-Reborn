@@ -96,8 +96,8 @@ internal sealed partial class GameSessionRegistry
                     eligibility);
             }
 
-            var sourceStats = attacker.Character.CalculatedStats ??
-                CharacterStats.FromCharacter(attacker.Character);
+            var sourceStats = CharacterStats.FromCharacter(
+                attacker.Character);
             var attackRange = PlayerCombatRules.ResolveBasicAttackRange(
                 sourceStats.BasicAttackRange);
             if (eligibility.EntitlementKind ==
@@ -143,6 +143,13 @@ internal sealed partial class GameSessionRegistry
                 .Append(target)
                 .DistinctBy(static value => value.CharacterId)
                 .ToArray();
+            if (!HaveEstablishedPlayerLifeAuthoritiesLocked(
+                    participants))
+            {
+                return PvpBasicAttackDecision.Reject(
+                    PvpBasicAttackRejectionReason.AdmissionDenied,
+                    eligibility);
+            }
             using (AcquirePvpVitalsLocks(participants))
             {
                 eligibility = EvaluatePvpBasicAttack(
@@ -156,8 +163,8 @@ internal sealed partial class GameSessionRegistry
                         eligibility);
                 }
 
-                var targetStats = target.Character.CalculatedStats ??
-                    CharacterStats.FromCharacter(target.Character);
+                var targetStats = CharacterStats.FromCharacter(
+                    target.Character);
                 var targetCombat =
                     CombatCharacterStatsAdapter.ApplyRuntimeTargetModifiers(
                         CombatCharacterStatsAdapter.ToTarget(

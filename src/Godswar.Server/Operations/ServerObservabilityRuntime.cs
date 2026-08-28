@@ -7,6 +7,8 @@ namespace Godswar.Server.Operations;
 internal sealed class ServerObservabilityRuntime : IDisposable
 {
     private const int TraceResponseSpanLimit = 64;
+    private const string LocalGameplayLogsEnvironmentVariable =
+        "GODSWAR_LOCAL_GAMEPLAY_LOGS";
 
     private readonly StructuredConsoleBoundary? _consoleBoundary;
     private readonly BoundedPrometheusCollector _metrics;
@@ -49,7 +51,12 @@ internal sealed class ServerObservabilityRuntime : IDisposable
         var logger = new BoundedStructuredLogger(
             Console.Out,
             logOptions);
-        var boundary = installConsoleBoundary
+        var boundary = ShouldInstallConsoleBoundary(
+                installConsoleBoundary,
+                Environment.GetEnvironmentVariable(
+                    "GODSWAR_RUNTIME_PROFILE"),
+                Environment.GetEnvironmentVariable(
+                    LocalGameplayLogsEnvironmentVariable))
             ? StructuredConsoleBoundary.Install(logger, logOptions)
             : null;
         return new ServerObservabilityRuntime(
@@ -59,6 +66,20 @@ internal sealed class ServerObservabilityRuntime : IDisposable
             traces,
             maximumPayloadBytes);
     }
+
+    internal static bool ShouldInstallConsoleBoundary(
+        bool requested,
+        string? runtimeProfile,
+        string? localGameplayLogs) =>
+        requested &&
+        !(string.Equals(
+              runtimeProfile,
+              nameof(ServerRuntimeProfileKind.LocalDevelopment),
+              StringComparison.OrdinalIgnoreCase) &&
+          string.Equals(
+              localGameplayLogs,
+              "true",
+              StringComparison.OrdinalIgnoreCase));
 
     public void RecordLifecycle(
         string component,

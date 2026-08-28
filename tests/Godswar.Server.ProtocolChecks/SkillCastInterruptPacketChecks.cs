@@ -17,6 +17,18 @@ internal static class SkillCastInterruptPacketChecks
             "SkillCastInterrupt",
             Opcodes.Name(Opcodes.SkillCastInterrupt),
             "cast interruption opcode uses its bidirectional protocol name");
+        Check.True(
+            PacketBuilder.LocalizedError(
+                    NativeErrorCodes.InsufficientMana)
+                .SequenceEqual(Convert.FromHexString(
+                    "0C00E827000000006C000000")),
+            "insufficient MP uses native ERROR_006C left-log notice");
+        Check.True(
+            PacketBuilder.LocalizedError(
+                    NativeErrorCodes.SkillNotReady)
+                .SequenceEqual(Convert.FromHexString(
+                    "0C00E827000000006D000000")),
+            "cooldown rejection uses native ERROR_006D left-log notice");
 
         return Task.CompletedTask;
     }

@@ -73,8 +73,7 @@ internal static class GameCharacterEcsHydrator
                 nameof(status));
         }
 
-        var calculatedStats = character.CalculatedStats ??
-            CharacterStats.FromCharacter(character);
+        var calculatedStats = CharacterStats.FromCharacter(character);
         var hasCalculatedStats = character.CalculatedStats is not null;
         var effects = ImmutableArray.CreateRange(status.Effects);
 

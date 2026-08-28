@@ -2,6 +2,7 @@ using Godswar.Server.Application.Coordination;
 using Godswar.Server.Application.Inventory;
 using Godswar.Server.Application.Items;
 using Godswar.Server.Application.Pets;
+using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Warehouse;
 using Godswar.Server.Infrastructure;
@@ -54,7 +55,8 @@ internal static partial class ServerRuntimeContentComposition
         PinnedPetOwnerMergeContentCatalog petOwnerMerge,
         PinnedPetLearnedSkillContentCatalog learnedSkills,
         HolySpiritBalanceSnapshot holySpiritBalance,
-        WarehouseExpansionPolicySnapshot warehouseExpansionPolicy) =>
+        WarehouseExpansionPolicySnapshot warehouseExpansionPolicy,
+        RealmCalendar realmCalendar) =>
         new(
             options.Storage.PostgresConnectionString,
             options.Storage.Outbox,
@@ -62,6 +64,7 @@ internal static partial class ServerRuntimeContentComposition
             items,
             world.Manifest.Gameplay.Sha256,
             options.Game.WorldInstances.ProcessRealmId,
+            realmCalendar,
             pets,
             petOwnerMerge,
             learnedSkills,
@@ -76,15 +79,17 @@ internal static partial class ServerRuntimeContentComposition
             GameplayItemContent items,
             PinnedPetContentCatalog pets,
             PinnedPetOwnerMergeContentCatalog petOwnerMerge,
-            PinnedPetLearnedSkillContentCatalog learnedSkills,
-            HolySpiritBalanceSnapshot holySpiritBalance,
-            WarehouseExpansionPolicySnapshot warehouseExpansionPolicy,
+        PinnedPetLearnedSkillContentCatalog learnedSkills,
+        HolySpiritBalanceSnapshot holySpiritBalance,
+        WarehouseExpansionPolicySnapshot warehouseExpansionPolicy,
+        RealmCalendarCatalog realmCalendars,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(learnedSkills);
         ArgumentNullException.ThrowIfNull(holySpiritBalance);
         ArgumentNullException.ThrowIfNull(warehouseExpansionPolicy);
+        ArgumentNullException.ThrowIfNull(realmCalendars);
         var fingerprint = RuntimeContentFingerprint.Create(
             world.Manifest.Revision,
             items.Templates.Revision.Sha256,
@@ -92,6 +97,9 @@ internal static partial class ServerRuntimeContentComposition
             petOwnerMerge.Revision.Sha256,
             learnedSkills.Revision.Sha256,
             holySpiritBalance.CoordinationRevision(),
+            new string('0', 64),
+            realmCalendars.CoordinationRevision,
+            new string('0', 64),
             warehouseExpansionPolicy.CoordinationRevision());
         return await ServerCoordinationComposition.CreateAsync(
             options,

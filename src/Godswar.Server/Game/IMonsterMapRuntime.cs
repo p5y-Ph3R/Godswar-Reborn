@@ -35,6 +35,11 @@ internal interface IMonsterMapRuntime
         uint expectedSpawnGeneration,
         int speedBasisPoints);
 
+    bool TrySetCorpseDespawnAt(
+        uint objectId,
+        uint expectedSpawnGeneration,
+        DateTimeOffset? despawnAt);
+
     bool TryApplyStun(
         uint objectId,
         int attackerCharacterId,
@@ -44,6 +49,10 @@ internal interface IMonsterMapRuntime
         out MonsterStunResult result);
 
     void ClearAggroForCharacter(
+        int characterId,
+        DateTimeOffset now);
+
+    void ClearAggroForCharacterStateOnly(
         int characterId,
         DateTimeOffset now);
 

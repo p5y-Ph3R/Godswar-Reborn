@@ -36,6 +36,7 @@ internal sealed partial class GameClientHandler
                 cancellationToken,
                 _session,
                 "RealtimeMovementWorld");
+            await PublishPartyPositionRefreshAsync(cancellationToken);
         }
 
         if (effects.PositionSave is not { } save)

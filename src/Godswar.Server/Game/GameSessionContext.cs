@@ -18,6 +18,12 @@ internal sealed record GameSessionContext(
     bool WorldReady,
     long WorldRevision)
 {
+    /// <summary>
+    /// Registry-local membership lineage. Routine character revisions keep
+    /// this value; join/rejoin/instance transfer always advances it.
+    /// </summary>
+    public long WorldMembershipEpoch { get; init; }
+
     public PlayerOwnershipFence Ownership { get; init; }
 
     public bool PetOwnerMergeActive { get; init; }

@@ -8,6 +8,7 @@ using Godswar.Server.Application.Realms;
 using Godswar.Server.Application.Talents;
 using Godswar.Server.Application.World;
 using Godswar.Server.Application.Warehouse;
+using Godswar.Server.Application.WorldInstances;
 using Godswar.Server.Application.Zodiac;
 using Godswar.Server.Domain.World.Instances;
 using Godswar.Server.Networking;
@@ -96,10 +97,12 @@ internal sealed partial class GameClientHandler
         TimeSpan? petOwnerMergeRechargeInterval = null,
         IRealmCatalogReader? realmCatalog = null,
         RealmId? processRealmId = null,
+        RealmCalendar? realmCalendar = null,
         IWarehouseSnapshotReader? warehouseSnapshots = null,
         IWarehouseTransferCommandExecutor? warehouseTransferCommands = null,
         IWarehouseExpansionCommandExecutor? warehouseExpansionCommands = null,
-        WarehouseExpansionPolicySnapshot? warehouseExpansionPolicy = null)
+        WarehouseExpansionPolicySnapshot? warehouseExpansionPolicy = null,
+        IMedusaDailyEntryClaimStore? medusaDailyEntries = null)
     {
         if (backhaulSkillCastTime < TimeSpan.Zero)
         {
@@ -124,6 +127,22 @@ internal sealed partial class GameClientHandler
         if (!_processRealmId.IsValid)
         {
             throw new ArgumentOutOfRangeException(nameof(processRealmId));
+        }
+        if (requiresDurablePlayerCommands && realmCalendar is null)
+        {
+            throw new InvalidOperationException(
+                "Production player composition requires the persisted " +
+                "process-realm calendar.");
+        }
+        _realmCalendar = realmCalendar ??
+            RealmCalendar.CreateForTesting(
+                _processRealmId,
+                "Asia/Manila");
+        if (_realmCalendar.RealmId != _processRealmId)
+        {
+            throw new ArgumentException(
+                "The game handler realm calendar must match the process realm.",
+                nameof(realmCalendar));
         }
         _accountDirectory = accountDirectory ??
             gameStore as IAccountDirectory ??
@@ -182,6 +201,7 @@ internal sealed partial class GameClientHandler
         _warehouseTransferCommands = warehouseTransferCommands;
         _warehouseExpansionCommands = warehouseExpansionCommands;
         _warehouseExpansionPolicy = warehouseExpansionPolicy;
+        _medusaDailyEntries = medusaDailyEntries;
         _petOwnerMergeEnergyInterval =
             petOwnerMergeEnergyInterval ?? TimeSpan.FromSeconds(3);
         _petOwnerMergeRechargeInterval =

@@ -51,7 +51,11 @@ internal sealed record CharacterAppearanceSnapshot(
     byte Profession,
     byte Hair,
     byte Face,
-    byte Faith);
+    byte Faith,
+    uint SelectedTitleId = 0)
+{
+    public ImmutableArray<uint> OwnedTitleIds { get; init; } = [];
+}
 
 internal sealed record CharacterLocationSnapshot(
     byte CurrentMap,
@@ -83,7 +87,9 @@ internal sealed record CharacterVitalsSnapshot(
 
 internal sealed record CharacterWalletSnapshot(
     int Silver,
-    int Gold);
+    int Gold,
+    int MedusaHonorPoints = 0,
+    long MedusaRewardRevision = 0);
 
 internal sealed record CharacterLoadoutSnapshot(
     string Equipment,

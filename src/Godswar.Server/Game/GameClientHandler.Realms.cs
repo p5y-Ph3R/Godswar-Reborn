@@ -9,6 +9,7 @@ internal sealed partial class GameClientHandler
 {
     private readonly IRealmCatalogReader? _realmCatalog;
     private readonly RealmId _processRealmId;
+    private readonly RealmCalendar _realmCalendar;
 
     private async Task<string?> ResolveGameLoginUsernameAsync(
         GamePacket packet,

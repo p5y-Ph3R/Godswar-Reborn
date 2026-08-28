@@ -76,10 +76,8 @@ internal sealed partial class GameClientHandler
                 $"[backhaul] rejected insufficient MP " +
                 $"character={character.Name} skill={definition.SkillId} " +
                 $"mp={currentMana} cost={definition.ManaCost}");
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "BackhaulManaRejected");
             return;
@@ -96,8 +94,15 @@ internal sealed partial class GameClientHandler
         var characterId = character.Id;
         var characterName = character.Name;
         var worldObjectId = CurrentPlayerObjectId;
-        var expectedLifeRevision =
-            _registry.GetPlayerLifeRevision(_session);
+        if (!_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var expectedLifeRevision))
+        {
+            Console.WriteLine(
+                $"[backhaul] rejected missing life authority " +
+                $"character={character.Name} skill={definition.SkillId}");
+            return;
+        }
 
         var visualRecipients = 0;
         var started = await TryBeginPendingSkillCastAsync(
@@ -186,10 +191,8 @@ internal sealed partial class GameClientHandler
 
         if (!manaReserved)
         {
-            await _session.SendAsync(
-                PacketBuilder.PlayerManaUpdate(
-                    LocalPlayerObjectId,
-                    currentMana),
+            await SendInsufficientManaRejectionAsync(
+                currentMana,
                 cancellationToken,
                 "BackhaulManaCompletionRejected");
             Console.WriteLine(
@@ -290,8 +293,10 @@ internal sealed partial class GameClientHandler
             IsMapTransitionPending ||
             !_registered ||
             !_worldPresenceAnnounced ||
-            _registry.GetPlayerLifeRevision(_session) !=
-                expectedLifeRevision ||
+            !_registry.TryGetPlayerLifeRevision(
+                _session,
+                out var lifeRevision) ||
+            lifeRevision != expectedLifeRevision ||
             MathF.Abs(character.PositionX - sourceX) >
                 BackhaulMovementTolerance ||
             MathF.Abs(character.PositionZ - sourceZ) >

@@ -163,12 +163,18 @@ internal sealed partial class GameClientHandler
             resolution,
             damageResult);
         var pendingReward = damageResult.Killed
-            ? await PrepareMonsterKillRewardAsync(damageResult)
+            ? await PrepareClaimedMonsterKillRewardAsync(damageResult)
             : null;
         var elementalRewards =
             await PreparePveElementalKillRewardsAsync(
                 elementalAuthority,
                 elementalCommit);
+
+        await _registry.PublishMonsterClaimStateAsync(
+            _session,
+            character.CurrentMap,
+            damageResult,
+            cancellationToken);
 
         if (interruptAdmittedCast)
         {
@@ -181,7 +187,8 @@ internal sealed partial class GameClientHandler
             LocalPlayerObjectId,
             attack.TargetObjectId,
             attackSelector,
-            resolution);
+            resolution,
+            damageResult.Killed);
         var casterNotified = true;
         try
         {
@@ -210,7 +217,8 @@ internal sealed partial class GameClientHandler
                 worldObjectId,
                 attack.TargetObjectId,
                 attackSelector,
-                resolution),
+                resolution,
+                damageResult.Killed),
             cancellationToken,
             _session,
             "BasicAttackWorld",
@@ -229,20 +237,19 @@ internal sealed partial class GameClientHandler
 
         if (pendingReward is not null)
         {
-            await PublishMonsterKillRewardAsync(
-                pendingReward,
-                cancellationToken);
+            await pendingReward.PublishAsync(cancellationToken);
         }
 
         Console.WriteLine(
-            $"[attack] damage character={character.Name} target={attack.TargetObjectId} event={resolution.EventId} outcome={resolution.Outcome} resolved={reportedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} caster-notified={casterNotified} viewers={viewers}");
+            $"[attack] damage character={character.Name} target={attack.TargetObjectId} event={resolution.EventId} outcome={resolution.Outcome} resolved={reportedDamage} applied={damageResult.BeforeHealth - damageResult.AfterHealth} hp={damageResult.AfterHealth}/{damageResult.Monster.MaximumHealth} killed={damageResult.Killed} first-hit={damageResult.FirstHitCharacterId} caster-notified={casterNotified} viewers={viewers}");
     }
 
     internal static byte[] BuildResolvedBasicAttackPacket(
         uint attackerObjectId,
         uint targetObjectId,
         byte attackSelector,
-        in CombatResolution resolution) =>
+        in CombatResolution resolution,
+        bool killed = false) =>
         PacketBuilder.PhysicalDamage(
             attackerObjectId,
             attackerX: 0f,
@@ -250,7 +257,7 @@ internal sealed partial class GameClientHandler
             attackerZ: 0f,
             targetObjectId,
             resolution.CapturedDamageValue,
-            result: attackSelector,
+            result: killed ? (byte)5 : attackSelector,
             damageType: (byte)resolution.Outcome);
 
     private void LogBasicAttackEcsRejection(

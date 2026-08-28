@@ -27,5 +27,8 @@ internal enum NpcDialogueBehavior
     ClassSuit = 5,
     PetManager = 6,
     PetPointReset = 7,
-    WarehouseManager = 10
+    FactionCrier = 8,
+    OnlineAward = 9,
+    WarehouseManager = 10,
+    InstanceCaller = 11
 }

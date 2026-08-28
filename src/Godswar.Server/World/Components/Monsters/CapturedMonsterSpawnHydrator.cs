@@ -29,10 +29,12 @@ internal static class CapturedMonsterSpawnHydrator
         CapturedMonsterSpawn definition,
         DateTimeOffset initializedAt,
         TimeSpan corpseDespawnDelay,
-        TimeSpan ordinaryRespawnDelay,
+        TimeSpan? ordinaryRespawnDelay,
         WorldBossRespawnState? activeWorldBossRespawn,
         Guid runtimeInstanceId,
-        WorldBossCatalog worldBossCatalog)
+        WorldBossCatalog worldBossCatalog,
+        MonsterRespawnPolicy respawnPolicy = MonsterRespawnPolicy.Timed,
+        MonsterCombatProfileCatalog? monsterCombatProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(definition);
@@ -42,6 +44,17 @@ internal static class CapturedMonsterSpawnHydrator
             throw new ArgumentOutOfRangeException(
                 nameof(runtimeInstanceId));
         }
+
+        ordinaryRespawnDelay = MonsterRespawnPolicyRules.ResolveOrdinaryDelay(
+            respawnPolicy,
+            corpseDespawnDelay,
+            ordinaryRespawnDelay);
+        MonsterRespawnPolicyRules.RejectTimedWorldBossConfiguration(
+            respawnPolicy,
+            mapId,
+            [definition],
+            activeWorldBossRespawn,
+            worldBossCatalog);
 
         if (definition.MapId != mapId)
         {
@@ -69,12 +82,19 @@ internal static class CapturedMonsterSpawnHydrator
             spawnGeneration: 1);
         var lifecycle = new MonsterLifecycleComponent(
             corpseDespawnDelay,
-            worldBossCatalog.ResolveRespawnInterval(
-                mapId,
-                definition.TemplateKey,
-                ordinaryRespawnDelay));
+            respawnPolicy == MonsterRespawnPolicy.Timed
+                ? worldBossCatalog.ResolveRespawnInterval(
+                    mapId,
+                    definition.TemplateKey,
+                    ordinaryRespawnDelay!.Value)
+                : null,
+            respawnPolicy);
         var random = new MonsterRandomComponent(
             MonsterEcsRandom.CreateSeed(mapId, definition.ObjectId));
+        var attackRange = MonsterAttackRangePolicy.Resolve(
+            (monsterCombatProfiles ?? MonsterCombatProfileCatalog.Empty)
+            .Resolve(definition),
+            definition);
 
         if (activeWorldBossRespawn is not null &&
             activeWorldBossRespawn.MapId == mapId &&
@@ -102,7 +122,8 @@ internal static class CapturedMonsterSpawnHydrator
             entity,
             new MonsterIdentityComponent(
                 definition,
-                runtimeInstanceId));
+                runtimeInstanceId,
+                attackRange));
         world.Add(entity, transform);
         world.Add(entity, vitals);
         world.Add(entity, movement);

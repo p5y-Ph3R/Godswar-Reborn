@@ -83,13 +83,16 @@ internal sealed partial class GameSessionRegistry
             {
                 if (!_sessions.TryGetValue(snapshot.Session, out var current) ||
                     !current.WorldReady ||
-                    !_nextPlayerRecoveryAt.TryGetValue(current.CharacterId, out var nextRecoveryAt) ||
-                    now < nextRecoveryAt)
+                    !_nextPlayerRecoveryAt.TryGetValue(
+                        current.CharacterId,
+                        out var recoveryDeadline) ||
+                    now < recoveryDeadline.Read())
                 {
                     continue;
                 }
 
-                _nextPlayerRecoveryAt[current.CharacterId] = now + PlayerRecoveryInterval;
+                recoveryDeadline.Write(
+                    now + PlayerRecoveryInterval);
                 var recovery = ApplyAuthoritativeRecoveryPulseLocked(
                     current,
                     now,

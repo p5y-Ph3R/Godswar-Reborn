@@ -234,8 +234,41 @@ internal static partial class Program
                             selfAreaDamage.HealthMutation!.Value,
                             7)],
                         timeout.Token,
-                        "AreaDamageSelfReplay"),
+                    "AreaDamageSelfReplay"),
                     "self AoE replay is suppressed after stamp advancement");
+
+                Check.True(
+                    registry.TryApplyMonsterDamage(
+                        partialCharacter.CurrentMap,
+                        firstMonster.ObjectId,
+                        damage: uint.MaxValue,
+                        attackerCharacterId: partialCharacter.Id,
+                        expectedSpawnGeneration: 1,
+                        out var lethalAreaDamage) &&
+                    lethalAreaDamage.Killed,
+                    "lethal AoE fixture commits an exact terminal mutation");
+                var lethalAreaRead = ReadExactlyAsync(
+                    partialInbound.GetStream(),
+                    oneHitClusterLength,
+                    timeout.Token);
+                Check.True(
+                    await registry.DeliverMonsterAreaDamageToViewerAsync(
+                        partialSession,
+                        partialCharacter.CurrentMap,
+                        0x1448u,
+                        skillId: 2000,
+                        [new MonsterAreaDamageBroadcastHit(
+                            lethalAreaDamage.HealthMutation!.Value,
+                            uint.MaxValue)],
+                        timeout.Token,
+                        "AreaDamageLethalSelf"),
+                    "lethal AoE remains eligible for its exact viewer");
+                var lethalAreaFrame = await lethalAreaRead;
+                partialCipher.Transform(lethalAreaFrame);
+                Check.Equal(
+                    (byte)5,
+                    lethalAreaFrame[21],
+                    "lethal AoE carries the native monster-death animation flag");
 
                 var partialZeroRead = ReadExactlyAsync(
                     partialInbound.GetStream(),

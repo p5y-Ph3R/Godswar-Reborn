@@ -34,8 +34,17 @@ internal sealed partial class GameSessionRegistry
                     "Incoming player damage requires the joined character identity.");
             }
 
-            var lifeRevision =
-                _playerLifeRevisions.GetOrAdd(session, 0);
+            if (!_playerLifeRevisions.TryGetValue(
+                    session,
+                    out var lifeRevision))
+            {
+                throw new InvalidOperationException(
+                    "Incoming player damage requires an established life authority.");
+            }
+            var nextRecoveryAt =
+                request.ResolvedAt + PlayerRecoveryInterval;
+            var recoveryDeadline =
+                GetOrCreatePlayerRecoveryDeadlineLocked(session);
             var decision = GetPlayerRuntimeEcs(session)
                 .IncomingDamage.Apply(
                     character,
@@ -46,18 +55,29 @@ internal sealed partial class GameSessionRegistry
             if (decision.Applied &&
                 decision.Killed)
             {
-                var committedLifeRevision =
-                    _playerLifeRevisions.AddOrUpdate(
+                var committedLifeRevision = checked(lifeRevision + 1);
+                if (!_playerLifeRevisions.TryUpdate(
                         session,
-                        1,
-                        static (_, revision) =>
-                            checked(revision + 1));
+                        committedLifeRevision,
+                        lifeRevision))
+                {
+                    throw new InvalidOperationException(
+                        "Established player life authority changed while " +
+                        "the registry gate was held.");
+                }
                 if (committedLifeRevision !=
                     decision.AfterLifeRevision)
                 {
                     throw new InvalidOperationException(
                         "Incoming damage ECS and registry life revisions diverged.");
                 }
+
+                ApplyPlayerLifeAdvanceSideEffectsLocked(
+                    session,
+                    nextRecoveryAt,
+                    recoveryDeadline,
+                    request.ResolvedAt,
+                    resetIncomingDamage: true);
             }
             else if (decision.AfterLifeRevision !=
                      lifeRevision)

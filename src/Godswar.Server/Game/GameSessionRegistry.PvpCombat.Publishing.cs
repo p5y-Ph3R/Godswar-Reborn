@@ -398,6 +398,7 @@ internal sealed partial class GameSessionRegistry
     {
         foreach (var clear in prepared)
         {
+            var admissionClaims = new ExactStatusDisconnectClaims();
             await clear.State.Gate.WaitAsync(cancellationToken);
             try
             {
@@ -425,7 +426,8 @@ internal sealed partial class GameSessionRegistry
                     force: true,
                     broadcast: true,
                     cancellationToken,
-                    forceLocalGameDataSynchronization: true);
+                    forceLocalGameDataSynchronization: true,
+                    claimedDisconnects: admissionClaims);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -436,6 +438,7 @@ internal sealed partial class GameSessionRegistry
             finally
             {
                 clear.State.Gate.Release();
+                admissionClaims.CompleteAll(this);
             }
         }
     }

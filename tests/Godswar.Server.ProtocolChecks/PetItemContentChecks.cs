@@ -140,6 +140,8 @@ internal static partial class PetItemContentChecks
         var grants = TestItemContent.Content.DeveloperItems;
         var expected = new[]
         {
+            (Id: 10084u, Name: "Mysterious Tuck Net",
+                Alias: "capturetool", Stack: (short)99),
             (Id: PetItemCatalog.MergedSpirit, Name: "Merged Spirit",
                 Alias: "mergingspirit", Stack: (short)99),
             (Id: PetItemCatalog.RebirthSpirit, Name: "Rebirth Spirit",
@@ -276,6 +278,8 @@ internal static partial class PetItemContentChecks
             bindType: "1",
             skill: "4720",
             mode: "4"),
+        E(10084, "Pet10084", "Mysterious Tuck Net", "900,936", "99",
+            use: "1", itemType: "0", skill: "4734"),
         E(10099, "Pet10099", "Pet Enhance Spring", "648,936", "99", "1", "5"),
         E(10100, "Pet10100", "Golden Apple Juice", "504,936", "99", "1", "1"),
         E(10101, "Pet10101", "Strong Purge Potion", "612,936", "99"),

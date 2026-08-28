@@ -19,6 +19,103 @@ internal enum SkillCastInterruptionReason
     InvalidState
 }
 
+internal enum PreparedSkillCastInterruptionClaimOutcome : byte
+{
+    Prepared = 0,
+    InterruptionWon = 1,
+    CompletionWon = 2,
+    NoLongerCurrent = 3,
+    AlreadyInterrupted = 4,
+    ClaimFaulted = 5
+}
+
+internal enum PreparedSkillCastNotificationClaimOutcome : byte
+{
+    NotRequired = 0,
+    Owner = 1,
+    Delegated = 2,
+    ClaimFaulted = 3
+}
+
+/// <summary>
+/// Allocation-complete capability for a single pending cast generation. The
+/// irreversible caller may only perform its synchronous nonthrowing claim;
+/// cancellation and packet work starts later, after authoritative status
+/// publication.
+/// </summary>
+internal abstract class PreparedSkillCastInterruption
+{
+    private protected PreparedSkillCastInterruption()
+    {
+    }
+
+    internal PreparedSkillCastInterruptionClaimOutcome ClaimNonThrowing()
+    {
+        try
+        {
+            return ClaimCore();
+        }
+        catch
+        {
+            return PreparedSkillCastInterruptionClaimOutcome.ClaimFaulted;
+        }
+    }
+
+    internal abstract Task CompleteAfterStatusPublicationAsync();
+
+    internal PreparedSkillCastNotificationClaimOutcome
+        ClaimNotificationNonThrowing()
+    {
+        try
+        {
+            return ClaimNotificationCore();
+        }
+        catch
+        {
+            return PreparedSkillCastNotificationClaimOutcome
+                .ClaimFaulted;
+        }
+    }
+
+    internal abstract Task<bool>
+        WaitForNotificationAdmissionAsync();
+
+    internal void CompleteNotificationAdmissionNonThrowing(
+        bool admitted)
+    {
+        try
+        {
+            CompleteNotificationAdmissionCore(admitted);
+        }
+        catch
+        {
+        }
+    }
+
+    internal void ReleaseNonThrowing()
+    {
+        try
+        {
+            ReleaseCore();
+        }
+        catch
+        {
+        }
+    }
+
+    private protected abstract
+        PreparedSkillCastInterruptionClaimOutcome ClaimCore();
+
+    private protected abstract
+        PreparedSkillCastNotificationClaimOutcome
+        ClaimNotificationCore();
+
+    private protected abstract void
+        CompleteNotificationAdmissionCore(bool admitted);
+
+    private protected abstract void ReleaseCore();
+}
+
 /// <summary>
 /// Native status IDs which stop an in-progress intonation or prevent a new
 /// one. The mappings come from Status.ini: stun/freeze includes

@@ -276,6 +276,43 @@ internal sealed class ElementalResonanceState
         _seenOrder.Clear();
     }
 
+    internal TransactionSnapshot CaptureTransactionSnapshot() => new(
+        _outgoingHits.ToArray(),
+        _incomingHits.ToArray(),
+        _thresholds.ToArray(),
+        _nextRecoveryAt.ToArray(),
+        _seen.ToArray(),
+        _seenOrder.ToArray(),
+        _acceptedMovementMillimeters,
+        _momentumExpiresAtMilliseconds,
+        _momentumReservation,
+        _barrier);
+
+    internal void RestoreTransactionSnapshot(TransactionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot.OutgoingHits.CopyTo(_outgoingHits, 0);
+        snapshot.IncomingHits.CopyTo(_incomingHits, 0);
+        snapshot.Thresholds.CopyTo(_thresholds, 0);
+        snapshot.NextRecoveryAt.CopyTo(_nextRecoveryAt, 0);
+        _seen.Clear();
+        foreach (var key in snapshot.Seen)
+        {
+            _seen.Add(key);
+        }
+        _seenOrder.Clear();
+        foreach (var key in snapshot.SeenOrder)
+        {
+            _seenOrder.Enqueue(key);
+        }
+        _acceptedMovementMillimeters =
+            snapshot.AcceptedMovementMillimeters;
+        _momentumExpiresAtMilliseconds =
+            snapshot.MomentumExpiresAtMilliseconds;
+        _momentumReservation = snapshot.MomentumReservation;
+        _barrier = snapshot.Barrier;
+    }
+
     private void ExpireMomentum(long authoritativeTimeMilliseconds)
     {
         if (_momentumExpiresAtMilliseconds > 0 &&
@@ -291,14 +328,50 @@ internal sealed class ElementalResonanceState
     private static int NextCounter(int current) =>
         current >= 60 ? 1 : current + 1;
 
-    private readonly record struct ResonanceEventKey(
+    internal readonly record struct ResonanceEventKey(
         ulong EventId,
         long SourceCharacterId,
         long TargetCharacterId,
         ResonanceEventPhase Phase);
 
-    private readonly record struct MomentumReservation(
+    internal readonly record struct MomentumReservation(
         ulong ScopeId,
         ulong EventId,
         long TargetCharacterId);
+
+    internal sealed class TransactionSnapshot(
+        int[] outgoingHits,
+        int[] incomingHits,
+        int[] thresholds,
+        long?[] nextRecoveryAt,
+        ResonanceEventKey[] seen,
+        ResonanceEventKey[] seenOrder,
+        long acceptedMovementMillimeters,
+        long momentumExpiresAtMilliseconds,
+        MomentumReservation momentumReservation,
+        long barrier)
+    {
+        internal int[] OutgoingHits { get; } = outgoingHits;
+
+        internal int[] IncomingHits { get; } = incomingHits;
+
+        internal int[] Thresholds { get; } = thresholds;
+
+        internal long?[] NextRecoveryAt { get; } = nextRecoveryAt;
+
+        internal ResonanceEventKey[] Seen { get; } = seen;
+
+        internal ResonanceEventKey[] SeenOrder { get; } = seenOrder;
+
+        internal long AcceptedMovementMillimeters { get; } =
+            acceptedMovementMillimeters;
+
+        internal long MomentumExpiresAtMilliseconds { get; } =
+            momentumExpiresAtMilliseconds;
+
+        internal MomentumReservation MomentumReservation { get; } =
+            momentumReservation;
+
+        internal long Barrier { get; } = barrier;
+    }
 }

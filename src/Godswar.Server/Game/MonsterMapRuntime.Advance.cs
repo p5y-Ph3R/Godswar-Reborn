@@ -34,6 +34,7 @@ internal sealed partial class MonsterMapRuntime
             {
                 if (!monster.IsAlive)
                 {
+                    ValidateRespawnState(monster);
                     if (deathsAnnouncedThisTick.Contains(monster.Definition.ObjectId))
                     {
                         continue;
@@ -83,7 +84,8 @@ internal sealed partial class MonsterMapRuntime
                     if (targetsByCharacterId.TryGetValue(aggroCharacterId, out var combatTarget) &&
                         combatTarget.IsAlive &&
                         DistanceSquared(monster.HomeX, monster.HomeZ, combatTarget.X, combatTarget.Z) <=
-                        (CombatLeashRadius + CombatRange) * (CombatLeashRadius + CombatRange))
+                        (CombatLeashRadius + monster.AttackRange) *
+                        (CombatLeashRadius + monster.AttackRange))
                     {
                         positionsChanged |= AdvanceCombat(monster, combatTarget, now, updates);
                         continue;
@@ -105,7 +107,42 @@ internal sealed partial class MonsterMapRuntime
 
                 if (monster.CombatPhase == MonsterCombatPhase.AwaitingRetirement)
                 {
-                    updates.Add(RetireReturnedMonster(monster, now));
+                    if (ShouldRetireReturnedMonster(monster))
+                    {
+                        updates.Add(RetireReturnedMonster(monster, now));
+                    }
+                    else
+                    {
+                        SettleReturnedMonster(monster);
+                    }
+
+                    continue;
+                }
+
+                if (MonsterAggroPolicy.IsAggressive(
+                        monster.Definition.Tier) &&
+                    MonsterAggroPolicy.TrySelectNearestAggressiveTarget(
+                        targetsByCharacterId,
+                        monster.CurrentX,
+                        monster.CurrentZ,
+                        out var nearbyTarget))
+                {
+                    var stoppedPatrol = SetAggroTarget(
+                        monster,
+                        nearbyTarget.CharacterId,
+                        now);
+                    if (stoppedPatrol)
+                    {
+                        updates.Add(new MonsterRuntimeUpdate(
+                            MonsterRuntimeUpdateKind.Arrived,
+                            CreateSnapshot(monster),
+                            MovementEndField: 1));
+                    }
+                    positionsChanged |= AdvanceCombat(
+                        monster,
+                        nearbyTarget,
+                        now,
+                        updates);
                     continue;
                 }
 

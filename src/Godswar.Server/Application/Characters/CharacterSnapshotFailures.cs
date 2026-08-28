@@ -33,6 +33,7 @@ internal static class CharacterSnapshotLimits
     public const int EquipmentProjectionLength = 16 * 1024;
     public const int KitBagProjectionLength = 64 * 1024;
     public const int ZodiacGridCount = 16;
+    public const int OwnedTitleCount = 64;
     public const int SkillCount = 1_024;
     public const int TalentCount = 256;
     public const int OwnedPetCount = 8;

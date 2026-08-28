@@ -20,11 +20,12 @@ internal sealed partial class GameSessionRegistry
                     !current.WorldReady ||
                     !_nextPlayerRecoveryAt.TryGetValue(
                         current.CharacterId,
-                        out var nextRecoveryAt))
+                        out var recoveryDeadline))
                 {
                     continue;
                 }
 
+                var nextRecoveryAt = recoveryDeadline.Read();
                 var recoveryStartedAt =
                     nextRecoveryAt - PlayerRecoveryInterval;
                 var character = current.Character;
@@ -36,8 +37,7 @@ internal sealed partial class GameSessionRegistry
                         current.ObjectId,
                         recoveryStartedAt,
                         now);
-                _nextPlayerRecoveryAt[current.CharacterId] =
-                    decision.NextPulseAt;
+                recoveryDeadline.Write(decision.NextPulseAt);
                 if (!decision.PulseAccepted)
                 {
                     continue;
@@ -141,6 +141,7 @@ internal sealed partial class GameSessionRegistry
         {
             var session = pair.Key;
             var state = pair.Value;
+            var admissionClaims = new ExactStatusDisconnectClaims();
             await state.Gate.WaitAsync(cancellationToken);
             try
             {
@@ -156,7 +157,8 @@ internal sealed partial class GameSessionRegistry
                     "ecs-status-clock",
                     force: false,
                     broadcast: true,
-                    cancellationToken);
+                    cancellationToken,
+                    claimedDisconnects: admissionClaims);
             }
             catch (Exception ex) when (
                 ex is IOException or ObjectDisposedException)
@@ -173,6 +175,7 @@ internal sealed partial class GameSessionRegistry
             finally
             {
                 state.Gate.Release();
+                admissionClaims.CompleteAll(this);
             }
         }
     }

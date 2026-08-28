@@ -32,8 +32,9 @@ internal sealed class CombatSecondaryEffectCommitLedger
 
     private readonly object _gate = new();
     private readonly int _capacity;
-    private readonly HashSet<CombatSecondaryEffectCommitKey> _claimed = [];
-    private readonly Queue<CombatSecondaryEffectCommitKey> _order = [];
+    private readonly HashSet<CombatSecondaryEffectCommitKey> _claimed;
+    private readonly HashSet<CombatSecondaryEffectCommitKey> _pending;
+    private readonly Queue<CombatSecondaryEffectCommitKey> _order;
 
     public CombatSecondaryEffectCommitLedger(
         int capacity = DefaultCapacity)
@@ -44,6 +45,9 @@ internal sealed class CombatSecondaryEffectCommitLedger
         }
 
         _capacity = capacity;
+        _claimed = new(capacity);
+        _pending = new(capacity);
+        _order = new(capacity);
     }
 
     public bool TryClaim(in CombatSecondaryEffectCommitKey key)
@@ -55,19 +59,62 @@ internal sealed class CombatSecondaryEffectCommitLedger
 
         lock (_gate)
         {
-            if (!_claimed.Add(key))
+            if (_claimed.Contains(key) || _pending.Contains(key))
             {
                 return false;
             }
 
-            _order.Enqueue(key);
-            while (_order.Count > _capacity)
-            {
-                _claimed.Remove(_order.Dequeue());
-            }
+            CommitLocked(key);
 
             return true;
         }
+    }
+
+    public bool TryReserve(in CombatSecondaryEffectCommitKey key)
+    {
+        if (!key.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key));
+        }
+
+        lock (_gate)
+        {
+            return !_claimed.Contains(key) && _pending.Add(key);
+        }
+    }
+
+    public void Complete(in CombatSecondaryEffectCommitKey key)
+    {
+        if (!key.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(key));
+        }
+
+        lock (_gate)
+        {
+            if (_claimed.Contains(key))
+            {
+                _pending.Remove(key);
+                return;
+            }
+
+            _pending.Remove(key);
+            CommitLocked(key);
+        }
+    }
+
+    private void CommitLocked(in CombatSecondaryEffectCommitKey key)
+    {
+        if (_claimed.Count == _capacity)
+        {
+            System.Diagnostics.Debug.Assert(_order.Count > 0);
+            if (_order.TryDequeue(out var evicted))
+            {
+                _claimed.Remove(evicted);
+            }
+        }
+        _claimed.Add(key);
+        _order.Enqueue(key);
     }
 
     public bool Release(in CombatSecondaryEffectCommitKey key)
@@ -79,6 +126,10 @@ internal sealed class CombatSecondaryEffectCommitLedger
 
         lock (_gate)
         {
+            if (_pending.Remove(key))
+            {
+                return true;
+            }
             if (!_claimed.Remove(key))
             {
                 return false;
